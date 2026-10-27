@@ -120,6 +120,8 @@ In the reply or the todo list, never a plan file - a flow's plan file included: 
 `Execution:` line rides the flow's mode ask, and a diagnose flow states it in its close. Then
 proceed without waiting unless a stop below applies.
 
+Where a `scorer: on` line naming the inline plan or a `scorer: stacked` line is in context, the FIRST action before releasing the plan and its `Execution:` line is the `mode-output-scorer` Skill call with output `inline-plan`.
+
 1. **Subtasks** - each with the files it touches.
 2. **Dependencies** - dependent when one consumes the other's output, or both touch the same file, project or manifest file, lockfile, migration, DI registration or shared contract.
 3. **Route, mode, model** - the `Execution:` verdict above.

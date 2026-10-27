@@ -1,12 +1,12 @@
 ---
-description: "Install and bootstrap Alfred Code in a project - one command, two phases. Nothing installed: the fresh install - scope and profile up front, the project analysis (the evidence scan plus validate's missing and evidence-gap checks), the six-layer selection walk (rules -> agents -> skills -> hooks -> MCPs -> plugins: one full-catalog table and one selection ask per layer), the prerequisite check and the install, ending on a restart. Typed again in the new session: the one-time bootstrap - what the kept MCP servers need to start (uv, the pinned Python, the kept LSP plugins' servers, the picked browsers, the navigation-server index, claude-hud's status line - one ask first), the shared-memory level and the old notes import, the captures the install carries, the AGENTS.md fill. A later run finishes only what is left. NOT for changing an install - that is configure; a refresh is update."
+description: "Install and bootstrap Alfred Code in a project - one command, two phases. Nothing installed: the fresh install - scope and profile up front, the project analysis (the evidence scan plus validate's missing and evidence-gap checks), the five-layer selection walk (rules -> agents -> skills -> hooks -> plugins: one full-catalog table and one selection ask per layer), the prerequisite check and the install, ending on a restart. Typed again in the new session: the one-time bootstrap - what the kept LSP plugins need (csharp-ls, typescript-language-server) and claude-hud's status line, one ask first, then the captures the install carries and the AGENTS.md fill. A later run finishes only what is left. NOT for changing an install - that is configure; a refresh is update."
 disable-model-invocation: true
 ---
 
 # Alfred Code - install, then bootstrap
 
 One command, two phases, never both in one session. The INSTALL phase selects and installs, and ends on a restart:
-plugins, MCP servers, skills, seats and rules load at session start, so what it installed is not live in the session
+plugins, skills, seats and rules load at session start, so what it installed is not live in the session
 that installed it. The BOOTSTRAP phase - this same command, typed again in the new session - uses them. The install
 records decide which phase this run is; nothing else does.
 

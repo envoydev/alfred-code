@@ -22,7 +22,7 @@
   <a href="#faq">FAQ</a>
 </p>
 
-Alfred Code reads your project, picks what it needs from a catalog of skills, agents, rules, hooks and MCP servers, and installs it for [Claude Code](https://claude.com/claude-code). From then on Claude follows your conventions without being asked, and risky moves are stopped before they run.
+Alfred Code reads your project, picks what it needs from a catalog of skills, agents, rules, hooks and plugins, and installs it for [Claude Code](https://claude.com/claude-code). From then on Claude follows your conventions without being asked, and risky moves are stopped before they run.
 
 ## Quick start
 
@@ -51,7 +51,7 @@ second run finishes the one-time set-up.
 /alfred-code:init
 ```
 
-A one-time step: it prepares the MCP servers, sets up memory and writes the first project docs. That's it - work as usual.
+A one-time step: it installs the language servers the LSP plugins need, sets up the status line and writes the first project docs. That's it - work as usual.
 
 ## What changes
 
@@ -66,7 +66,7 @@ Open a `.cs`, `.ts` or template file and the matching house style attaches on it
 | `git push --force` to `main`, `master` or `develop` | blocks it |
 | `git reset --hard` over uncommitted work | blocks it and names what would be lost |
 | `cat .env` | shows the keys, with the values masked |
-| read the project's secrets in `.alfred/.sensitive-data` | can't read the file, and a printed value is masked (its exact text - leak protection, not a wall) - a command that needs one gets it in its environment |
+| read the project's secrets in `.alfred/.secrets` | can't read the file, and a printed value is masked (its exact text - leak protection, not a wall) - a command that needs one gets it in its environment |
 | commit a large change that was never reviewed | blocks it until the review runs |
 | loosen `.eslintrc` so a failing check passes | blocks it - fix the code, not the check |
 | write into another repository | blocks it and writes a task card instead |
@@ -78,17 +78,6 @@ When a block needs your decision, it ends in one question to you.
 
 Each stack has three seats: a **designer** plans the change, an **implementer** builds it after you approve, a **verifier** reviews the result. Work that spans backend and frontend ends with a read-only integration review.
 
-### The right tools are wired in
-
-| Server | Claude uses it to |
-| --- | --- |
-| navigation (Serena) | find a symbol and its references without reading whole files |
-| documentation (Context7) | read current library docs instead of guessing from memory |
-| memory | keep your preferences and corrections across sessions |
-| browser (Playwright MCP) | open the app and check it, for web stacks |
-| windows-control, macos-control | drive desktop apps - opt-in, on their own OS only |
-| mobile-control (appium-mcp) | drive Android and iOS apps on an emulator, simulator or device - opt-in |
-
 ## Commands
 
 The first time: **init**, restart, **init** again. After that: **update** when a release lands.
@@ -97,7 +86,7 @@ The first time: **init**, restart, **init** again. After that: **update** when a
 | --- | --- |
 | `/alfred-code:init` | First install: scan, recommend, install - then, after the restart, the one-time finish |
 | `/alfred-code:update` | Move to the newest release |
-| `/alfred-code:configure` | Add or remove skills, agents and servers |
+| `/alfred-code:configure` | Add or remove skills, agents, rules, hooks and plugins |
 | `/alfred-code:status` | Show what is on and what gets used |
 | `/alfred-code:validate` | Match the install to the project again |
 | `/alfred-code:uninstall` | Remove what the install wrote, nothing else |
@@ -114,10 +103,10 @@ Skills you start by name. Every install has these.
 | `/task-solve-cross` | A feature across backend and frontend |
 | `/issue-diagnoser` | Find the cause of a failure |
 | `/task-version-upgrade` | A breaking upgrade, like .NET 10 |
-| `/capture-first-look` | A quick map of an unfamiliar project |
 | `/capture-architecture` | Write or refresh the architecture docs |
 | `/capture-awareness` | What is installed, the run book, sibling repos |
 | `/loop-code-quality` | Find and fix code-quality issues in rounds |
+| `/mode-auto-run` | Any request, start to finish, while you are away |
 
 Add what you want after the name:
 
@@ -128,6 +117,25 @@ Add what you want after the name:
 ```
 
 More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-guide.md).
+
+## Modes
+
+A mode stays on for the rest of the session once you turn it on. Its flag goes right after a `/task-*`,
+`/capture-*`, `/loop-*`, `/issue-*` or `/mode-*` command, before the request:
+
+| Flag | What it does |
+| --- | --- |
+| `--mode-auto-run-on` | Auto-run: each question takes its recommended option, so runs go on without you |
+| `--mode-auto-run-off` | Auto-run off: each question waits for your answer again |
+| `--mode-output-scorer-on` | A fresh grader scores plans and root-cause verdicts before they are released |
+| `--mode-output-scorer-off` | The grader is off again |
+
+```text
+/task-solve --mode-auto-run-on add paging to GET /api/loans
+```
+
+Nothing outward happens unasked under auto-run: no push, merge, deploy or publish. `/mode-auto-run <request>` turns
+auto-run on and runs the request in one go. Each prompt shows the modes that are on (`Modes ON: auto-run`).
 
 ## Supported stacks
 
@@ -142,11 +150,10 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 91 | house conventions and workflows |
-| **Agents** | 44 | designers, implementers, verifiers, reviewers |
-| **Rules** | 19 | always-on basics and per-file conventions |
-| **Hooks** | 18 | the guards, plus the docs, memory and history hooks |
-| **MCP servers** | 4 | alfred-navigation, alfred-documentation, alfred-memory (required) and the browser (optional), plus the opt-in desktop pair and mobile server |
+| **Skills** | 92 | house conventions and workflows |
+| **Agents** | 45 | designers, implementers, verifiers, reviewers |
+| **Rules** | 18 | always-on basics and per-file conventions |
+| **Hooks** | 18 | the guards, plus the docs, preferences and history hooks |
 | **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |
 
 The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it in a browser.
@@ -156,9 +163,8 @@ The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it
 | Place | What goes there |
 | --- | --- |
 | `.claude/` in your project | the picked skills and rules, settings, the install stamp |
-| `.alfred/` in your project | docs, the navigation index, browser profiles - all but the docs stay out of git |
-| `~/.claude/` | the plugin cache, an optional API key, the status line |
-| `~/.alfred-memory/` | the shared memory database |
+| `.alfred/` in your project | docs, the hooks' state, the seats' handoff notes - all but the docs stay out of git |
+| `~/.claude/` | the plugin cache, the status line |
 
 `/alfred-code:uninstall` removes only what the install recorded. Every file, process and token, in detail: [`docs/install-footprint.md`](docs/install-footprint.md).
 
@@ -191,8 +197,7 @@ Or run `/alfred-code:configure` and it writes the key for you.
 - **local** - the same, in `.claude/settings.local.json`, for you only.
 - **user** - the plugins are enabled for your whole account. The copies and the stamp still live in the project.
 
-That scope covers the core and the three required servers. Each optional item - a browser, a desktop server, a
-language server, claude-hud - has its own: global (every project on your account) or this project, this project
+That scope covers the core. Each optional item - a language server plugin, claude-hud - has its own: global (every project on your account) or this project, this project
 by default. `/alfred-code:configure` moves one.
 
 </details>
@@ -227,11 +232,9 @@ The flags you are most likely to want:
 | Flag | Does |
 | --- | --- |
 | `--scope project\|user\|local` | where the install is enabled |
-| `--memory-level global\|scoped\|project` | which memory database to use |
-| `--browsers chrome,firefox` | which browsers the browser server gets: chrome, msedge, firefox, webkit |
-| `--add 'skill dotnet'` | add one skill, agent, rule, hook, mcp or plugin |
-| `--drop 'mcp browser'` | remove one |
-| `--scope-of browser=global` | one optional item's own scope: `global` or `project` |
+| `--add 'skill dotnet'` | add one skill, agent, rule, hook or plugin |
+| `--drop 'plugin claude-hud'` | remove one |
+| `--scope-of claude-hud=global` | one optional item's own scope: `global` or `project` |
 | `--print-plan` | show what would change, write nothing |
 
 </details>
@@ -242,7 +245,7 @@ The flags you are most likely to want:
 Under managed settings:
 
 - `strictKnownMarketplaces` registers nothing, and Claude Code refuses an `extraKnownMarketplaces` entry it does not admit: allow `{ "source": "github", "repo": "envoydev/alfred-code" }`, `anthropics/claude-plugins-official` (the LSP pair) and `jarrodwatts/claude-hud` if you keep it, then register the same three (`envoydev`, `claude-plugins-official`, `claude-hud`) in `extraKnownMarketplaces`.
-- Enable `alfred-code` and the three servers `alfred-navigation`, `alfred-documentation` and `alfred-memory` (each `@envoydev`) in `enabledPlugins`, and `claude-hud@claude-hud` if you want its status line.
+- Enable `alfred-code@envoydev` in `enabledPlugins`, and `claude-hud@claude-hud` if you want its status line.
 - `allowManagedHooksOnly` silently switches off all eighteen hooks - the guards never fire.
 
 Details: [`docs/install-footprint.md`](docs/install-footprint.md#under-managed-settings).

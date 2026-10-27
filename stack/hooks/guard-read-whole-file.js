@@ -2,13 +2,13 @@
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate (matchers: Read + Bash): enforce alfred-navigation.md's hard rule - "Read
 // is for code you've ALREADY located, never to find a symbol." Blocks a whole-file Read of a
-// large source file so navigation goes through the navigation server (get_symbols_overview -> find_symbol)
+// large source file so navigation goes through the navigation tools (LSP documentSymbol -> goToDefinition, or the server the tool order names)
 // first; on Bash it blocks the same dump routed around the Read tool (a bare `cat file.ts` -
 // measured: one session cat-ed the exact file the Read matcher had blocked, unblocked, and a
 // 47-file grep loop dumped ~19.8k tokens the guard never saw). It also caps CUMULATIVE ranged
 // reads per file per session: 2-3 half-splits that reconstruct the whole file satisfied the
 // per-call check in 7 files across one run with zero counter-examples, so past ~60% coverage
-// the remainder goes through the navigation server. A cat whose output is redirected into a file is a copy,
+// the remainder goes through the navigation tools. A cat whose output is redirected into a file is a copy,
 // not a dump, and passes. exit 2 = block (stderr fed back); exit 0 = allow.
 const fs = require('fs');
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
@@ -284,12 +284,11 @@ function smallLiteralLoop(list) {
   }
   return smallFiles(files);
 }
-// The trees the installers seed into the navigation server's OWN `ignored_paths` (its project.yml): the data
-// root (ALFRED_CODE_DATA_PATH, default .alfred - serena's own home, the browser profiles, the docs), `.claude`,
-// and the 2.0.0 `.serena` / `.playwright`. It cannot index them, so naming its tools for a path under one of them
-// hands the model a remedy that errors. Measured twice - the denial named it for a `.claude/...` path and the
-// redirect the model made from it failed. The ranged read is the remedy there.
-const SERENA_IGNORED = /(?:^|[\\/])\.(?:claude|serena|playwright)(?:[\\/]|$)/;
+// Trees no symbol lookup indexes: the data root (ALFRED_CODE_DATA_PATH, default .alfred - the docs, the state, an old
+// server's data), `.claude`, and the 2.0.0 `.serena` / `.playwright` folders. Naming a symbol lookup for a path under one
+// of them hands the model a remedy that errors - measured twice, when the stack's navigation server skipped them: the
+// denial named it for a `.claude/...` path and the redirect the model made from it failed. The ranged read is the remedy.
+const UNINDEXED = /(?:^|[\\/])\.(?:claude|serena|playwright)(?:[\\/]|$)/;
 const dataRootEnv = () => String(envOf(process.env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
 const underDataRoot = (p) =>
 {
@@ -298,16 +297,16 @@ const underDataRoot = (p) =>
   const norm = String(p).replace(/\\/g, '/');
   return norm === root || norm.startsWith(`${root}/`) || norm.includes(`/${root}/`);
 };
-// The hint must be EXECUTABLE, not just correct. The navigation server's tools are deferred behind tool search in
-// this harness, so naming them is not having them: measured, two sessions carried the rule text
-// saying exactly that and still made 100 Bash calls and 0 navigation calls. The loading call goes in
-// the denial itself, where the model is already looking for what to do instead.
-const LOAD_SERENA = `  ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols\n`
-  + `  (a seat whose tools grant them - by name or as the whole server - has them loaded already; call them directly)\n`;
-// A markup template has no symbols the navigation server indexes: get_symbols_overview on a 326-line Angular template
+// The hint must be EXECUTABLE, not just correct. The navigation tools can be deferred behind tool search in this
+// harness, so naming them is not having them: measured, two sessions carried the rule text saying exactly that and still
+// made 100 Bash calls and 0 navigation calls. The stack ships no server (2026-10-24), so the denial points at the one
+// place that names this session's loader - the navigation line of the session-start tool order.
+const LOAD_NAV = `  the navigation line of your session-start tool order - its ToolSearch select: loads them\n`
+  + `  (a seat whose tools grant them calls them directly; the LSP tool needs no server)\n`;
+// A markup template has no symbols a navigation tool indexes: get_symbols_overview on a 326-line Angular template
 // was the remedy a denial named, and the session read the lines through `sed -n` instead (audit 2026-10-10, 81264f0d).
 const MARKUP_EXT = /\.(?:html|razor|cshtml|xaml)$/i;
-// A file OUTSIDE the project is in no index this session's navigation server holds (audit 2026-10-11 SD16, 5984019e: a
+// A file OUTSIDE the project is in no index this session's navigation tools hold (audit 2026-10-11 SD16, 5984019e: a
 // sibling repo's service worker was denied with the navigation remedy, the grep -C 3 fallback cut the handler that
 // held the decisive line, and a wrong bug claim reached the user and two handoff memories for 12h).
 function outsideProject(p) {
@@ -318,22 +317,22 @@ function outsideProject(p) {
   const rel = pathMod.relative(realOr(root), realOr(s));
   return rel.startsWith('..') || pathMod.isAbsolute(rel);
 }
-const serenaHint = (p) => (MARKUP_EXT.test(String(p))
+const navHint = (p) => (MARKUP_EXT.test(String(p))
   ? `A markup template has no symbols to navigate - locate inside it instead:\n`
     + `  grep -n '<element, binding or text you need>' '${p}'   ->  then Read with offset+limit on the lines it names.`
-  : SERENA_IGNORED.test(String(p)) || underDataRoot(p)
-  ? `The navigation server cannot locate anything here: the installers seed the data root (\`${dataRootEnv()}\`), \`.claude\` and the old \`.serena\` / \`.playwright\` into\n`
-    + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
+  : UNINDEXED.test(String(p)) || underDataRoot(p)
+  ? `No symbol lookup indexes this tree (the data root \`${dataRootEnv()}\`, \`.claude\`, the old \`.serena\` / \`.playwright\`).\n`
+    + `Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
   : outsideProject(p)
-  ? `This file is outside the project, so the navigation server has not indexed it. Locate inside the file instead:\n`
+  ? `This file is outside the project, so no navigation index covers it. Locate inside the file instead:\n`
     + `  grep -n '<function, handler or key you need>' '${p}'   ->  then Read with offset+limit from the line it names\n`
     + `  through the end of that function (a grep -C window cuts a handler in half).`
-  : `Locate first with the navigation server. If those tools are not loaded in this session, load them first:\n` +
-  LOAD_SERENA +
-  `then get_symbols_overview('${p}') and find_symbol(...),\n` +
-  `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
-  `for a large body fetch it without the body first, then Read the range you need).`);
+  : `Locate first with the navigation tools your session-start tool order ranks: LSP documentSymbol on '${p}'\n` +
+  `to list its symbols, goToDefinition / findReferences for one (or the navigation server the order names first),\n` +
+  `then Read with offset+limit on the range they return. Where they are deferred, load them first with\n` +
+  LOAD_NAV +
+  `With none of them: grep -n '<symbol>' '${p}', then Read the range it names.`);
 
 const input = payload.tool_input || {};
 
@@ -1810,7 +1809,7 @@ function rangeCap(abs, shown, lineCount, a, b) {
       `function's own lines (a grep -n of its name gives the start), not on the rest of this request.\n` +
       (state === 'changed' ? `Reviewing this change? Its diff is the review route: git diff HEAD -- '${shown}'\n` : '') +
       `A file with nothing to locate (a data table, a message map): grep -n '<the key you need>' '${shown}', then that range.\n` +
-      `For the remainder:\n` + serenaHint(shown),
+      `For the remainder:\n` + navHint(shown),
   );
   process.exit(2);
 }
@@ -2467,8 +2466,8 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       process.stderr.write(
         `Blocked: ${sweep} prints ${bigNamed.file} whole - ${bigNamed.why}.\n` +
         `The find names the file, but the cat after it prints every line, which is the whole-file read the Read gate\n` +
-        `blocks. Locate what you need first (the navigation server's find_symbol / get_symbols_overview, or grep -n for a\n` +
-        `pattern), then read only the ranges that matter. The navigation tools are DEFERRED - load them first:\n` + LOAD_SERENA,
+        `blocks. Locate what you need first (the navigation tools - LSP documentSymbol / goToDefinition - or grep -n for a\n` +
+        `pattern), then read only the ranges that matter. Where the navigation tools are deferred, load them first with\n` + LOAD_NAV,
       );
       process.exit(2);
     }
@@ -2478,9 +2477,9 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
         `Blocked: whole-file sweep of source files via ${sweep}.\n` +
         `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +
         `variable or a find placeholder. Per alfred-navigation.md, locate what you need first\n` +
-        `(the navigation server's find_symbol / get_symbols_overview, or grep -n for a pattern), then read only the\n` +
-        `ranges that matter. If you genuinely need one whole small file, cat it by name. The navigation\n` +
-        `tools are DEFERRED - load them first:\n` + LOAD_SERENA,
+        `(the navigation tools - LSP documentSymbol / goToDefinition - or grep -n for a pattern), then read only the\n` +
+        `ranges that matter. If you genuinely need one whole small file, cat it by name. Where the navigation\n` +
+        `tools are deferred, load them first with\n` + LOAD_NAV,
       );
       process.exit(2);
     }
@@ -2504,10 +2503,10 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     process.stderr.write(
       'Blocked: whole-file read of a source file through a language runtime.\n' +
       'Per alfred-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
-      'differently. Locate the symbol first (the navigation server\'s find_symbol / get_symbols_overview), then read\n' +
+      'differently. Locate the symbol first (the navigation tools - LSP documentSymbol / goToDefinition), then read\n' +
       'only the range you need. A script that PRINTS only a count, a length or a test of the content\n' +
       '(`.length`, `.match(re).length`, `len(...)`, `.includes(...)`) is not a dump and is not blocked.\n' +
-      'The navigation tools are DEFERRED - load them first:\n' + LOAD_SERENA,
+      'Where the navigation tools are deferred, load them first with\n' + LOAD_NAV,
     );
     process.exit(2);
   };
@@ -2575,8 +2574,8 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     if (unb && gatedIn(unb[1])) {
       process.stderr.write(
         'Blocked: unbounded whole-file dump (head -n <huge> / tail -n +1 / less / awk \'1\').\n' +
-        'Per alfred-navigation.md, read the located range - the navigation server\'s find_symbol, or a bounded\n' +
-        'sed -n \'<start>,<end>p\' once you know where to look. The navigation tools are DEFERRED - load them first:\n' + LOAD_SERENA,
+        'Per alfred-navigation.md, read the located range - the navigation tools\' goToDefinition, or a bounded\n' +
+        'sed -n \'<start>,<end>p\' once you know where to look. Where the navigation tools are deferred, load them first with\n' + LOAD_NAV,
       );
       process.exit(2);
     }
@@ -2615,7 +2614,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       global.BLOCK_DETAIL = { branch: 'sweep', shape: 'substitution' };
       process.stderr.write(
         `Blocked: a listing substitution (${subSweep[0].slice(0, 120)}) hands every file it names to the dump verb - a whole-file sweep.\n` +
-        `Name the one file and read a range, or grep -n across them for what you need first:\n` + LOAD_SERENA,
+        `Name the one file and read a range, or grep -n across them for what you need first:\n` + LOAD_NAV,
       );
       process.exit(2);
     }
@@ -2641,7 +2640,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       if (matched && smallFiles(matched)) continue;
       process.stderr.write(
         `Blocked: a glob (${f}) hands every matching file to cat - a whole-file sweep, whatever each one weighs.\n` +
-        `Name the one file and read a range, or locate the symbol first:\n` + serenaHint(f),
+        `Name the one file and read a range, or locate the symbol first:\n` + navHint(f),
       );
       process.exit(2);
     }
@@ -2673,7 +2672,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       process.stderr.write(
         `Blocked: cannot size ${f} - no file at ${anchorDirs.map((d) => pathMod.join(d, nativePath(f))).slice(0, 3).join(' or ')}, and this\n` +
         `command cd's somewhere the guard cannot follow first. Check the path; spell the target as an absolute path,\n` +
-        `or locate the symbol first:\n` + serenaHint(f),
+        `or locate the symbol first:\n` + navHint(f),
       );
       process.exit(2);
     }
@@ -2684,7 +2683,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       process.stderr.write(
         `Blocked: ${n === lc ? 'whole-file dump' : `a ${n}-line span`} of ${f} (${lc} lines) via ${payload.tool_name}.\n` +
         `Per alfred-navigation.md, a bare cat/sed of a large source file is the same\n` +
-        `whole-file read the Read gate blocks - routed through the shell.\n` + serenaHint(f),
+        `whole-file read the Read gate blocks - routed through the shell.\n` + navHint(f),
       );
       process.exit(2);
     }
@@ -2702,8 +2701,8 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     global.BLOCK_DETAIL = { branch: 'budget', matched: err.message };
     process.stderr.write(`Blocked: this command is too large or too deeply nested for the read guard to judge inside its\n` +
       `budget (${JUDGE_WORK.max} characters of judging) - nothing ran, and a command it cannot judge is read as the whole-file dump it may be.\n` +
-      `Split it into smaller commands, or locate what you need first and read that range. The navigation tools\n` +
-      `are DEFERRED - load them first:\n` + LOAD_SERENA);
+      `Split it into smaller commands, or locate what you need first and read that range. Where the navigation tools\n` +
+      `are deferred, load them first with\n` + LOAD_NAV);
     process.exit(2);
   }
   process.exit(0);
@@ -2733,7 +2732,10 @@ if (!GATED_EXT.test(path)) {
   // read whole by design: a verifier denied its 65KB plan read it back through two ranges at once, so the block bought a
   // round trip and nothing else (audit 2026-10-10, session 05c925e9).
   const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  const planFile = /\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d)); // plans/ is pre-2.8.0
+  // A scorer draft (mode-output-scorer) is the grader's mandated input the same way: the seat reads the whole draft.
+  const dataRel = (() => { try { return require('./layout.js').dataRoot(process.env); } catch { return '.alfred'; } })();
+  const scorerDraft = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${dataRel}/state/sessions/scorer/`);
+  const planFile = scorerDraft || (/\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d))); // plans/ is pre-2.8.0
   if (size > BIG_BYTES && whole && !planFile && /\.pdf$/i.test(path)) {
     // A PDF is read by PAGE: the Read tool takes one of 10 pages or fewer whole, and a longer one only through `pages`,
     // at most 20 a call - the binary remedy below ('head -c', 'file') answered nothing for one (hooks review 2026-10-16).
@@ -2795,7 +2797,7 @@ if (wholeShape) {
       `symbol, then Read its range with offset+limit. A limit covering the whole file is still a whole read, and ranges\n` +
       `of one file may cover at most ${Math.round(CAP * 100)}% of it per session - never read it in halves.\n` +
       (state === 'changed' ? `Reviewing this change? Its diff is the review route: git diff HEAD -- '${path}'\n` : '') +
-      serenaHint(path),
+      navHint(path),
   );
   process.exit(2);
 }

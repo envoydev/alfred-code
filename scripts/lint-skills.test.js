@@ -50,25 +50,13 @@ test('M-F4-1: meta/environment.json describes ALFRED_CODE_INSTRUMENT=0 as a node
     assert.match(row.what, /node start per call/, row.what);
 });
 
-// F4 re-review M-F4-2: since C8 every scope writes ALFRED_CODE_MEMORY_DB into settings.local.json, and the
-// hook engine reads that file first - its comments still said the key lands in settings.json (the account
-// file for a global install), and that only a local-scope install writes the local file.
-test('M-F4-2: stack/hooks/memory.js describes the memory path as settings.local.json\'s at every scope', () => {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'memory.js'), 'utf8');
-    const block = src.slice(src.indexOf('function memoryEnvPath'), src.indexOf('for (const file of files)', src.indexOf('function settingsDbState')));
-    assert.doesNotMatch(block, /in the project's\s*\/\/\s*settings\.json|the only file a local-scope/, 'a pre-C8 layout is still described');
-    assert.match(block, /settings\.local\.json at every(\s*\/\/)?\s+scope/, 'the header names the file every scope writes');
-});
-
-// F4 re-review M-F4-3: the preload clause is its own sentence, never folded into the MCP-route one. Since
-// 2.1.0 a seat's preloads are bare in the source, so CLAUDE.md says the full copy route's re-spell has
-// nothing left to do.
-test('M-F4-3: CLAUDE.md keeps the preload clause out of the MCP copy-route sentence', () => {
+// F4 re-review M-F4-3: the preload clause is its own sentence, never folded into the MCP-route one. The MCP copy route
+// left with the servers in 2.10.1, so the docs no longer describe it, and the preload spelling keeps its own sentence
+// in the catalog rule: a seat's preloads are bare in the source since 2.1.0.
+test('M-F4-3: the docs describe no MCP copy route, and the preload spelling keeps its own sentence', () => {
     const claudeMd = require('./claude-docs.js').readClaudeDocs();
-    const sentence = /`ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0\.2\.x registration route[^]*?half-fixed\)\./.exec(claudeMd);
-    assert.ok(sentence, 'the MCP copy-route sentence must still exist');
-    assert.doesNotMatch(sentence[0], /preload/, 'the preload clause still rides the MCP-route sentence');
-    assert.match(claudeMd, /`skills:` preloads are bare in the source since 2\.1\.0/, 'the preload spelling names its own rule');
+    assert.doesNotMatch(claudeMd, /`ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores/, 'the MCP copy-route sentence came back');
+    assert.match(claudeMd, /`skills:` preloads are BARE - the project copy/, 'the preload spelling names its own rule');
 });
 
 test('requiring lint-skills does not run the linter and exposes parsers', () => {
@@ -550,7 +538,7 @@ test('check 40: an agent tools: entry must be a real tool name or an mcp__ grant
     const { lintAgentTools, TOOL_NAMES } = require('./lint-skills.js');
     assert.ok(TOOL_NAMES.has('LSP'), 'LSP is in the tools reference - the audit left this unverified');
 
-    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_chrome-control_chrome-control__*, mcp__github\n';
+    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_chrome-control_chrome-control__*, mcp__github\n'; // mcp-fixture
     assert.deepStrictEqual(lintAgentTools('agents/x.md', clean), []);
     assert.deepStrictEqual(lintAgentTools('agents/x.md', 'no frontmatter tools line here\n'), []);
 
@@ -659,35 +647,29 @@ test('check 35: a trailing load verb with a back-reference is a directive too', 
     assert.strictEqual(fires('Load `angular-security` before the edit.'), 1);
 });
 
-// 43. Every agent's tools: allowlist must grant the shared memory MCP's store, search and list
-// tools - the spec gives every seat search AND save, not just the implementers who already write.
-test('check 43: an agent tools: allowlist must grant the shared memory tools', () => {
-    const { lintAgentMemoryTools, MEMORY_TOOLS } = require('./lint-skills.js');
-    assert.deepStrictEqual(MEMORY_TOOLS, ['mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list']);
+// 43. A seat grants no MCP server (the user's ruling of 2026-10-24: the stack depends on none), and a seat whose body
+// runs the handoff bus holds the Bash it runs through.
+test('check 43: a seat names no MCP server, and one that runs the handoff bus holds Bash', () => {
+    const { lintAgentServerFree } = require('./lint-skills.js');
 
-    // A fixture agent with serena tools but no memory tools - the new check reports it by file.
-    const noMemory = 'tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_alfred-navigation_alfred-navigation__write_memory, mcp__plugin_alfred-navigation_alfred-navigation__read_memory, mcp__plugin_alfred-navigation_alfred-navigation__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
-    const found = lintAgentMemoryTools('agents/fixture.md', noMemory);
+    const granted = 'tools: mcp__plugin_alfred-memory_alfred-memory, LSP, Read, Bash\n'; // mcp-fixture
+    const found = lintAgentServerFree('agents/fixture.md', granted);
     assert.strictEqual(found.length, 1, found.join('\n'));
     assert.match(found[0], /agents\/fixture\.md/);
-    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_store/);
-    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_search/);
-    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_list/);
+    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory/); // mcp-fixture
 
-    // The granted allowlist is clean.
-    const granted = 'tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_alfred-navigation_alfred-navigation__write_memory, mcp__plugin_alfred-navigation_alfred-navigation__read_memory, mcp__plugin_alfred-navigation_alfred-navigation__list_memories, mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_alfred-memory_alfred-memory__memory_search, mcp__plugin_alfred-memory_alfred-memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
-    assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', granted), []);
+    const removal = 'tools: Read, Bash\ndisallowedTools: mcp__other__thing\n';
+    assert.strictEqual(lintAgentServerFree('agents/fixture.md', removal).length, 1, 'a removal names a server too');
 
-    // Partial grant still fails, naming only what is missing.
-    const partial = 'tools: Read, Grep, Glob, Bash, mcp__plugin_alfred-memory_alfred-memory__memory_store\n';
-    const partialFound = lintAgentMemoryTools('agents/partial.md', partial);
-    assert.strictEqual(partialFound.length, 1, partialFound.join('\n'));
-    assert.ok(!partialFound[0].includes('mcp__plugin_alfred-memory_alfred-memory__memory_store,'), 'the already-granted tool is not listed as missing');
-    assert.match(partialFound[0], /mcp__plugin_alfred-memory_alfred-memory__memory_search/);
-    assert.match(partialFound[0], /mcp__plugin_alfred-memory_alfred-memory__memory_list/);
+    const noBash = 'tools: Read, Grep\n---\nAt HAND-OFF, `node .claude/hooks/handoff.js put a/v1/seat`.\n';
+    const bashFound = lintAgentServerFree('agents/fixture.md', noBash);
+    assert.strictEqual(bashFound.length, 1, bashFound.join('\n'));
+    assert.match(bashFound[0], /handoff\.js/);
+    assert.match(bashFound[0], /Bash/);
 
-    // No tools: line at all = every tool inherited, memory included - nothing to report.
-    assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', 'no frontmatter tools line here\n'), []);
+    assert.deepStrictEqual(lintAgentServerFree('agents/fixture.md', 'tools: LSP, Read, Bash, WebFetch\n---\nnode .claude/hooks/handoff.js list a/v1\n'), []);
+    // No tools: line at all = every tool inherited, Bash included - nothing to report.
+    assert.deepStrictEqual(lintAgentServerFree('agents/fixture.md', 'no frontmatter tools line here\nhandoff.js put x\n'), []);
 });
 
 test('checks 44 + 45: the real repo passes placement and its entries are current', () => {
@@ -1114,6 +1096,24 @@ test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration dr
         .some((f) => /ALFRED_CODE_FOO does not record renamed_from 'OLD_FOO'/.test(f)));
 });
 
+test('lint 58 accepts a boolean seed and rejects any other value', () => {
+    const { lintEnvironmentCatalog } = require('./lint-skills.js');
+    const commandSrc = { init: 'meta/environment.json', configure: 'meta/environment.json', validate: 'meta/environment.json' };
+    const rows = (seed) => ([
+        { key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git', what: 'docs versioning' },
+        { key: 'ALFRED_CODE_HOOKS_OFF', default: '', what: 'hooks off csv' },
+        { key: 'ALFRED_CODE_SWITCH', default: '1', what: 'a switch', ask: false, seed },
+    ]);
+    const seedSrc = 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF';
+    for (const ok of [false, true]) assert.deepStrictEqual(lintEnvironmentCatalog({ env: rows(ok) }, seedSrc, { migrations: [] }, commandSrc), []);
+    for (const bad of ['false', 0, null])
+        assert.ok(lintEnvironmentCatalog({ env: rows(bad) }, seedSrc, { migrations: [] }, commandSrc)
+            .some((f) => /ALFRED_CODE_SWITCH has a `seed` that is not true or false/.test(f)), `seed ${JSON.stringify(bad)} passed`);
+    const asked = rows(false).map((r) => (r.key === 'ALFRED_CODE_SWITCH' ? { ...r, ask: true } : r));
+    assert.ok(lintEnvironmentCatalog({ env: asked }, seedSrc, { migrations: [] }, commandSrc)
+        .some((f) => /ALFRED_CODE_SWITCH is never written \(seed: false\), so it cannot be asked/.test(f)));
+});
+
 // M31 (check 54): the bare registration spelling of a server the stack RENAMED or RETIRED resolves to nothing too,
 // and the check built its pattern from today's names only - the old serena spelling passed it. The fixture lines below
 // carry the marker the check skips, which is what a deliberate old spelling in a test does.
@@ -1144,22 +1144,27 @@ test('M35 check 59 lets a seat\'s grant line name a listed alias, and nothing el
     assert.strictEqual(lintStaleMcpToolNames({ entries, aliases: [], files: [{ file: 'stack/agents/a.md', text: grant }] }).length, 1, 'an id no alias lists');
 });
 
-// M31 (check 62): a pin bump that renames or drops a tool ships a silent drop - check 59 reads only the plugin and
-// server part of a spelling. meta/mcp-tools.json records each pinned server's tool names (refresh-mcp-pins.js
-// --write), and a shipped plugin spelling whose TOOL is not listed there is a finding; an alias spelling is judged
-// by its successor's list, and a wildcard names no tool.
-test('M31 check 62 flags a plugin tool spelling whose tool the pinned server does not have', () => {
-    const { lintMcpToolsAtPin } = require('./lint-mcp-tools.js');
-    const tools = { servers: { 'alfred-memory': { version: '1', tools: ['memory_store', 'memory_search'] }, browser: { version: '1', tools: ['browser_navigate'] }, 'alfred-navigation': { version: '1', tools: ['find_symbol'] } } };
-    const ok = 'mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_webkit-control_webkit-control__browser_navigate, mcp__plugin_chrome-control_chrome-control__*\n';
-    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'stack/a.md', text: ok }] }), []);
-    const bad = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/b.md', text: 'x\nmcp__plugin_alfred-memory_alfred-memory__retrieve_memory\n' }] }); // mcp-fixture
-    assert.strictEqual(bad.length, 1);
-    assert.match(bad[0], /stack\/b\.md:2 .*retrieve_memory.*memory/);
-    const alias = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/c.md', text: 'mcp__plugin_serena_serena__find_symbol mcp__plugin_serena_serena__nope\n' }] }); // mcp-fixture
-    assert.strictEqual(alias.length, 1, 'an alias spelling is judged by its successor\'s list');
-    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'scripts/t.js', text: 'mcp__plugin_alfred-memory_alfred-memory__nope // mcp-fixture\n' }] }), [], 'a marked fixture line passes');
-    assert.deepStrictEqual(lintMcpToolsAtPin(), [], 'every shipped spelling names a tool its pinned server has');
+// Check 67 (2026-10-24, spec N8): the stack ships no MCP server, so no shipped skill, rule, seat or command body names a
+// concrete MCP tool spelling or a server id the stack retired with its servers. A placeholder (`mcp__<server>__<tool>`,
+// `mcp__plugin_<server>_<server>__*`, a connector's own `mcp__*`) names none; the rule file `alfred-navigation.md` and a
+// data folder (`.alfred-memory/`) are no server; update-history.md is the release record, naming what each release
+// changed; a deliberate example carries `mcp-fixture` in a comment. Check 62 (a tool at its pin) is gone: with no
+// shipped server every concrete plugin spelling is already check 59's finding.
+test('check 67 flags an MCP tool spelling or a retired server id in a shipped body, and the live tree carries none', () => {
+    const { lintServerFreeBodies } = require('./lint-skills.js');
+    const names = ['alfred-memory', 'alfred-navigation', 'chrome-control'];
+    const hits = (file, text) => lintServerFreeBodies({ names, files: [{ file, text }] });
+    assert.strictEqual(hits('stack/skills/x/SKILL.md', 'Call `mcp__github__create_issue`.\n').length, 1, 'a concrete bare spelling'); // mcp-fixture
+    assert.strictEqual(hits('stack/agents/a.md', 'x\nuse mcp__plugin_foo_foo__bar\n').length, 1, 'a concrete plugin spelling'); // mcp-fixture
+    assert.match(hits('stack/rules/r.md', 'the alfred-memory server\n')[0], /stack\/rules\/r\.md:1 .*alfred-memory/, 'a retired server id');
+    assert.strictEqual(hits('setup-plugin/commands/c.md', 'chrome-control drives a browser\n').length, 1, 'a command body');
+    for (const text of ['per `.claude/rules/alfred-navigation.md`\n', 'the folders `.alfred-memory/` stay\n', 'a `<engine>-control/` folder\n',
+        'its `mcp__plugin_<server>_<server>__<tool>` spelling, or `mcp__<server>__<tool>`\n', 'that connector\'s own `mcp__*` tools\n',
+        'matched by `^mcp__.+__App$`\n', 'the alfred-memory server <!-- mcp-fixture -->\n'])
+        assert.deepStrictEqual(hits('stack/skills/x/SKILL.md', text), [], text.trim());
+    assert.deepStrictEqual(hits('stack/skills/x/scripts/t.json', 'mcp__plugin_foo_foo__bar alfred-memory\n'), [], 'only .md bodies are read'); // mcp-fixture
+    assert.deepStrictEqual(hits('setup-plugin/references/update-history.md', 'alfred-memory left\n'), [], 'the release record names what left');
+    assert.deepStrictEqual(lintServerFreeBodies(), [], 'no shipped body names one');
 });
 
 // Check 59. A renamed MCP server leaves its old plugin spelling behind in every `tools:` allowlist and
@@ -1346,20 +1351,6 @@ test('check 19: the live HTML legend names the model-only state and the four fla
     assert.deepStrictEqual(flagged, ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript']);
 });
 
-// Check 12a (audit 2026-10-14 PL12): mobile-control shipped opt-in while the README's MCP row described only the desktop
-// pair. Each opt-in server (manifest active: false) needs its word in that row; one with no word fails until it gets one.
-test('check 12a: the README MCP row describes every opt-in MCP server, and a new opt-in server fails until it does', () =>
-{
-    const { lintReadmeOptInMcps } = require('./lint-skills.js');
-    const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
-    const row = (readme.match(/^\| \*\*MCP servers\*\* \|.*$/m) || [''])[0];
-    const optIn = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).mcps.filter((r) => r.active === false).map((r) => r.name);
-    assert.ok(optIn.includes('mobile-control') && optIn.length >= 3, optIn.join(','));
-    assert.deepStrictEqual(lintReadmeOptInMcps(row, optIn), [], 'the live README row');
-    assert.match(lintReadmeOptInMcps(row.replace(/mobile/gi, 'phone'), ['mobile-control'])[0], /does not describe the opt-in mobile-control/);
-    assert.match(lintReadmeOptInMcps(row, ['tv-control'])[0], /has no README word - add it to OPT_IN_README_WORDS/);
-});
-
 // 2.8.0 moved the hooks' state and ledgers into the data root and the flow docs under work/ and quality/
 // (stack/hooks/layout.js LAYOUT_MOVES). A text naming an old home sends the model to a folder the update emptied.
 test('check 65 flags <docs-path>/flow/APPROVAL in a skill and passes state/approvals/APPROVAL', () => {
@@ -1404,4 +1395,14 @@ test('check 65: a sentence may end on an old home; an extension is another name'
     const of = (text) => lintOldLocations([{ file: 'stack/rules/r.md', text }]);
     assert.strictEqual(of('the receipts live in <docs-path>/flow.\n').length, 1, 'a full stop is punctuation');
     assert.deepStrictEqual(of('a <docs-path>/plans.md file\n'), [], 'plans.md is not the plans/ folder');
+});
+
+// Item 7 (2026-10-25): each claim of meta/conformance.json cites the line that states its behaviour; check 68 sends a
+// claim to review when that line leaves its file.
+test('check 68: lint-skills.js runs the conformance marker check, and the live claims are clean', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'lint-skills.js'), 'utf8');
+    assert.match(src, /\/\/ 68\. [^\n]*meta\/conformance\.json/);
+    assert.match(src, /lintConformance\(/);
+    const cf = require('./conformance.js');
+    assert.deepStrictEqual(cf.lintConformance(cf.loadClaims()), []);
 });

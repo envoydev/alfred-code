@@ -19,6 +19,7 @@
 //     overlay, so the probe is written to fail toward `git`.
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { parseJson } = require('./json-file.js');
 const rt = require('./runtime.js');  // R105: every external command through the one Windows-safe spawn
 
@@ -178,7 +179,7 @@ function lastHome(to)
 
 // `rules` are the generated rules (selection.generatedRules), `instructions` the project's own AGENTS.md /
 // CLAUDE.md files to name - see repointDocs.
-function migrateDocsDomains({ projectRoot, docsPath, rules = [], instructions = [], log = () => {} })
+function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = [], instructions = [], log = () => {}, spawn = spawnSync })
 {
     // resolve, not join: a docs root the user set may be absolute (migrateUsageReport and migratePlans read it so too)
     const base = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''));
@@ -195,7 +196,7 @@ function migrateDocsDomains({ projectRoot, docsPath, rules = [], instructions = 
         if (migrateDocsFile(path.join(base, from), path.join(base, to), label, { log })) moved.push(to);
     }
     // Before the switch-on: the git doc it seeds, and code-style/watch.json it carries over, decide what is switched on.
-    const preferences = migratePreferences({ projectRoot, base, log });
+    const preferences = migratePreferences({ projectRoot, base, dataPath, log, spawn });
     const switched = [];
     for (const [dir, doc] of DOCS_SWITCH_ON)
         if (switchOnDomain(path.join(base, dir), doc, { log })) switched.push(dir);
@@ -255,9 +256,9 @@ const STYLE_RULE = 'project-code-style.md';
 const STYLE_RULE_HEAD = /^# Project code style \(generated\b/m;
 const LOCKED = /<!--\s*locked:\s*([a-z][a-z-]*)\s*-->/g;
 
-function migratePreferences({ projectRoot, base, log = () => {} })
+function migratePreferences({ projectRoot, base, dataPath = null, log = () => {}, spawn = spawnSync })
 {
-    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none', scopes: [], reach: [] };
+    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none', scopes: [], reach: [], tools: [] };
     if (!fs.existsSync(projectRoot)) return out;
     const dir = path.join(base, PREFERENCES);
     const keys = completedKeys(base, PREFERENCES, PREFERENCES_HOMES);
@@ -275,6 +276,47 @@ function migratePreferences({ projectRoot, base, log = () => {} })
     out.git = seedGitPreferences(projectRoot, path.join(dir, GIT_DOC), log);
     out.scopes = deadScopeLines(projectRoot, dir, log);
     out.reach = mismatchLines(projectRoot, dir, log);
+    out.tools = toolsRefreshLines(projectRoot, log, { spawn, dataPath });
+    return out;
+}
+
+// The tools inventory brought up to date where /capture-preferences tools took one: the snapshot's tools.js re-lists each
+// server whose registration changed, in its own process so a server that hangs costs the update at most a minute. Nothing
+// when no inventory was taken, or when the snapshot's capture has no refresh yet.
+const TOOLS = path.join(__dirname, '..', '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js');
+const TOOLS_REFRESH_MS = 60000;
+// The child reads the data root this run resolved: an ALFRED_CODE_DATA_PATH the session exported outranks the settings
+// files, and during a --data-path move it still names the old root (fix-pass review m1).
+const toolsEnv = (dataPath) => (dataPath ? { ...process.env, ALFRED_CODE_DATA_PATH: dataPath } : process.env);
+function toolsRefreshLines(projectRoot, log, { spawn = spawnSync, dataPath = null } = {})
+{
+    let file;
+    try { file = require(TOOLS).inventoryPath(projectRoot); } catch { return []; }
+    // The run's own root here too: this process inherits the same exported value.
+    if (dataPath) file = path.resolve(projectRoot, dataPath, 'state', path.basename(file));
+    if (!fs.existsSync(file)) return [];
+    const r = spawn(process.execPath, [TOOLS, 'refresh', '--project', projectRoot], { cwd: projectRoot, env: toolsEnv(dataPath), encoding: 'utf8', timeout: TOOLS_REFRESH_MS, windowsHide: true });
+    // What it said before a cap or a stop is kept; the reason follows it.
+    const out = String(r.stdout || '').split(/\r?\n/).filter(Boolean);
+    if (r.error && r.error.code === 'ETIMEDOUT') out.push(`!! tools: the inventory refresh did not finish in ${TOOLS_REFRESH_MS / 1000}s - its recorded tools stand; /capture-preferences tools takes it again`);
+    else if (r.status !== 0) out.push(`!! tools: the inventory refresh stopped (${r.error ? r.error.code || r.error.name : `exit ${r.status}`}) - its recorded tools stand; /capture-preferences tools takes it again`);
+    for (const line of out) log(`  ${line}`);
+    return out;
+}
+
+// Whether a language server covers the project (lsp-coverage.js, spec N2), checked on EVERY run - an inventory or not, a
+// docs root pending or not (alfred-code.js runLayers calls it outside the docs block, final review M8) - by the snapshot's
+// tools.js in its own process, so a huge tree costs the run at most its cap; the tool order reads the file.
+// It speaks only when the result changed, so a re-run is quiet.
+const TOOLS_LSP_MS = 30000;
+function lspCoverageLines(projectRoot, log, { spawn = spawnSync, dataPath = null } = {})
+{
+    if (!fs.existsSync(TOOLS) || !fs.existsSync(projectRoot)) return [];
+    const r = spawn(process.execPath, [TOOLS, 'lsp', '--changed-only', '--project', projectRoot], { cwd: projectRoot, env: toolsEnv(dataPath), encoding: 'utf8', timeout: TOOLS_LSP_MS, windowsHide: true });
+    const out = String(r.stdout || '').split(/\r?\n/).filter(Boolean);
+    if (r.error && r.error.code === 'ETIMEDOUT') out.push(`!! lsp: the language-server check did not finish in ${TOOLS_LSP_MS / 1000}s - the last result stands; the next run checks again`);
+    else if (r.status !== 0) out.push(`!! lsp: the language-server check stopped (${r.error ? r.error.code || r.error.name : `exit ${r.status}`}) - the last result stands; the next run checks again`);
+    for (const line of out) log(`  ${line}`);
     return out;
 }
 
@@ -1011,6 +1053,7 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
     const groups = [];
     const group = (from, to) => { let g = groups.find((x) => x.from === from && x.to === to); if (!g) groups.push(g = { from, to, pairs: [] }); return g; };
     const sources = [];
+    const notFolders = [];
     for (const m of LAYOUT.LAYOUT_MOVES)
     {
         if (m.removeIfEmpty) continue;
@@ -1025,7 +1068,8 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
             }
             continue;
         }
-        if (!isDir(from)) continue;
+        // A file where a folder move expects a folder is no old home of the stack's: left, and named every run.
+        if (!isDir(from)) { if (fs.existsSync(from)) notFolders.push([from, path.join(m.base === 'data' ? dataBase : docsBase, ...(m.split ? 'state' : m.to).split('/'))]); continue; }
         sources.push(from);
         if (m.split === 'flow')
         {
@@ -1057,6 +1101,11 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
     };
     const gitMv = (a, b) => rt.execCommand('git', ['-C', projectRoot, 'mv', '--', rel(a), rel(b)], { stdio: 'ignore' });
     const lines = [];
+    for (const [from, to] of notFolders)
+    {
+        out.kept.push(rel(from));
+        lines.push(`  layout: kept ${rel(from)} - a file where a folder moving to ${rel(to)} belongs`);
+    }
     try
     {
         for (const g of groups)
@@ -1227,7 +1276,7 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, covered = false, log = 
 // places) moves nothing and keeps the key, so the hooks keep reading where the docs are until one side is cleared. With
 // no key the root to drain is the earlier data root's docs (a data-root change), or on a stamped install the old default
 // LEGACY_DOCS_ROOT, which a release before 2.0.0 read with no key at all. Never a part of the data-move offer: the docs
-// move unasked, the servers' data stays asked - except a HAND-SET root (`handSet`: one no release seeded and no ledger
+// move unasked - except a HAND-SET root (`handSet`: one no release seeded and no ledger
 // row records), which may be the team's own `docs/`: since the stack's entries are picked by name, it moves only on the
 // answer to update's ask (`--docs-root-move`), which names the entries that are the team's own (`leave`, kept in place).
 // There is no keep - every docs file of the stack's belongs under the data root (the user's answers of 2026-10-20).
@@ -1259,7 +1308,7 @@ function filesUnder(dir)
 // migration below still moves on (DOCS_MIGRATIONS, the usage report, layout.js LAYOUT_MOVES), the first-look map, and
 // any folder holding a watch.json (a domain by definition). Everything else under the root is the project's.
 const STACK_DOCS = new Set([
-    'architecture', 'code-style', 'preferences', 'decisions', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
+    'architecture', 'code-style', 'preferences', 'decisions', 'tickets', 'explanations', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
     ...DOCS_MIGRATIONS.map(([from]) => from.split('/')[0]), USAGE_REPORT_OLD, ...LAYOUT.LAYOUT_MOVES.map((m) => m.from),
 ]);
 function stackEntry(base, e)
@@ -1431,7 +1480,7 @@ function moveDocsRoot({ projectRoot, plan })
 // older text is written, any other text is the project's own and is left alone. `mode` is the docs versioning; a
 // `local` root over docs git already tracks keeps them visible (a `*` would hide every NEW doc while the old ones
 // stay committed - `docs.js status` reports the disagreement), the hooks' state still kept out.
-const { DATA_IGNORE_HEAD, dataIgnoreText, docsInsideRoot, engineOfServer } = require('../../stack/mcp/data-root.js');
+const { DATA_IGNORE_HEAD, dataIgnoreText, docsInsideRoot } = require('../../stack/mcp/data-root.js');
 
 // 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
 function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
@@ -1462,15 +1511,18 @@ function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
     }
     fs.mkdirSync(base, { recursive: true });
     fs.writeFileSync(file, want);
-    log(`  data root: ${normRoot(root)}/.gitignore ${have === null ? 'written' : 'rewritten'} - the servers' data stays out of git${want.split('\n').some((l) => l.startsWith('!/') && l !== '!/.gitignore') ? ', the docs under it do not' : ''}`);
+    log(`  data root: ${normRoot(root)}/.gitignore ${have === null ? 'written' : 'rewritten'} - the machine-local data stays out of git${want.split('\n').some((l) => l.startsWith('!/') && l !== '!/.gitignore') ? ', the docs under it do not' : ''}`);
     return have === null ? 'written' : 'replaced';
 }
 
 // A root the data just left: its emptied folders go, and the root itself when all it still holds is the
-// stack's own .gitignore. A folder holding anything at all stays.
+// stack's own .gitignore. A folder holding anything at all stays. What every run derives again at the root in effect
+// (the language-server check's result, lsp-coverage.js) is no data: it goes first, or no move would ever empty a root.
+const DERIVED_STATE = ['state/lsp-coverage.json'];
 function pruneDataRoot({ projectRoot, root, log = () => {} })
 {
     const base = path.join(projectRoot, ...normRoot(root).split('/'));
+    for (const rel of DERIVED_STATE) try { fs.rmSync(path.join(base, ...rel.split('/')), { force: true }); } catch { /* a folder of that name is not ours */ }
     const prune = (dir) =>
     {
         let entries;
@@ -1521,10 +1573,10 @@ function pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered = false, 
     return out;
 }
 
-// THE WHOLE DATA MOVE AN UPDATE OFFERS - every server class whose data sits somewhere other than its place under the root
-// (the 2.0.0 place, or an earlier root the stamp names), minus the moves already recorded as pending. The docs are no part
-// of it since 2.8.0: they move unasked (docsMovePlan). { state: 'offer' | 'none', why, rows, root }.
-function dataOffer({ projectRoot, stamped, stampText = '', root, engines = [], memoryProject = false })
+// THE WHOLE DATA MOVE AN UPDATE OFFERS - the sensitive-data file an earlier root the stamp names still holds, minus a move
+// already recorded as pending. The docs are no part of it since 2.8.0: they move unasked (docsMovePlan); no server's data
+// is since 2.10.1, when the stack stopped shipping MCP servers. { state: 'offer' | 'none', why, rows, root }.
+function dataOffer({ projectRoot, stamped, stampText = '', root })
 {
     const dr = require('../../stack/mcp/data-root.js');
     const none = (why) => ({ state: 'none', why, rows: [], root });
@@ -1533,27 +1585,24 @@ function dataOffer({ projectRoot, stamped, stampText = '', root, engines = [], m
     const priorLine = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const prior = priorLine && dr.checkDataPath(priorLine).ok && priorLine !== root ? priorLine : null;
     const pending = dr.readPending(stampText);
-    // An engine's profile leaving the root's own shared folder is no offer: the installer moves it unasked (isRelayout).
-    const rows = dr.dataMovePlan({ projectRoot, root, prior, engines, memory: memoryProject })
-        .filter((r) => !dr.isRelayout(r, root) && !pending.some((p) => p.cls === r.cls && p.from === r.from && p.to === r.to));
+    // A row recorded under `.sensitive-data` is the same move once the store is `.secrets` (item 3's rename, M10).
+    const fold = (p) => String(p).replace(new RegExp(`(^|/)${dr.LEGACY_SECRETS_FILE.replace('.', '\\.')}$`), `$1${dr.SECRETS_FILE}`);
+    const rows = dr.dataMovePlan({ projectRoot, root, prior })
+        .filter((r) => !pending.some((p) => p.cls === r.cls && fold(p.from) === fold(r.from) && fold(p.to) === fold(r.to)));
     if (!rows.length) return none('nothing to move');
     return { state: 'offer', why: 'data outside the root', rows, root };
 }
 
-// The preflight's line: `data-move: offer <root>\tfrom=<places>\tserena=yes|no browser=<engines|none> memory=yes|no
-// [\tconflicts=<n>]`, or `data-move: none (<why>)`.
+// The preflight's line: `data-move: offer <root>\tfrom=<places>[\tconflicts=<n>]`, or `data-move: none (<why>)`.
 function dataOfferLine(offer)
 {
     if (offer.state !== 'offer') return `data-move: none (${offer.why})`;
-    const has = (cls) => (offer.rows.some((r) => r.cls === cls) ? 'yes' : 'no');
-    const engines = offer.rows.map((r) => engineOfServer(r.cls)).filter(Boolean);
     const conflicts = offer.rows.filter((r) => r.conflict).length;
-    return `data-move: offer ${offer.root}\tfrom=${offer.rows.map((r) => r.from).join(',')}\tserena=${has('serena')} browser=${engines.join(',') || 'none'} memory=${has('memory')}`
-        + (conflicts ? `\tconflicts=${conflicts}` : '');
+    return `data-move: offer ${offer.root}\tfrom=${offer.rows.map((r) => r.from).join(',')}` + (conflicts ? `\tconflicts=${conflicts}` : '');
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
-    DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER,
+    DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,
 };

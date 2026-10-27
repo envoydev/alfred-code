@@ -14,10 +14,14 @@
 //   deliverable -> ONE format AskUserQuestion' - injection only, never a denial. Measured lost as
 //   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask. And it writes
 //   the CORRECTION probe: one ledger row per correction turn (ALFRED_CODE_CORRECTION_NUDGE, seeded
-//   `log`; `inject` adds the memory-save line).
+//   `log`; `inject` adds the save line).
+//   And the modes' lines (stack-modes spec section 3): `--mode-output-scorer-on|off` in a family command's leading run
+//   switch the scorer for the session, an on line names what to grade, a typed stack gets the stacked line - the state is
+//   the prelude's, shared with the stop contract; while auto-run is on, its line; and the user-visible ON line, a
+//   `systemMessage` listing the modes on.
 // No Stop wiring since 2026-10-20 (the user's ruling): the length cap and the em-dash block at Stop are gone - the
 //   answer budget is the interaction rule's, injected here, never enforced by a block.
-// SessionStart:compact wiring: re-emits the budget as additionalContext after a compaction, which drops the
+// SessionStart:compact wiring: re-emits the budget (and the modes' context lines, never the ON line) as additionalContext after a compaction, which drops the
 //   UserPromptSubmit injection; startup, resume and clear get it from the first prompt (deep hooks review 2026-10-16).
 // PostToolUse AskUserQuestion wiring: an answer typed into an ask's Other field is the user speaking through a tool
 //   result - one probe row, the correction test over it, and a note to open a path it names (audit 2026-10-10 C15).
@@ -30,11 +34,13 @@ const fs = require('fs');
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let harnessPrompt = (prompt) => /^\s*<task-notification>/.test(String(prompt || ''));   // hook-prelude.js harnessPrompt
+let scorer = null;   // the prelude, for the modes' state and lines - no prelude, no scorer, no auto-run line, no ON line (R32)
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
+    if (prelude.scorerState) scorer = prelude;
     if (prelude.standDown('guard-answer')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -293,14 +299,13 @@ function repeatsLastPrompt(currentPrompt) {
 // path gets a note to open it and restate what it changes before acting. Log and inject only - it never blocks.
 const PATH_IN_ANSWER_RE = /(?:^|[\s'"(`])((?:~|\.{1,2})?\/?(?:[\w.@-]+\/){2,}[\w.@-]*)/;
 // The save line both correction routes inject. A correction often carries a PROJECT FACT (audit 2026-10-10, T5
-// cross-track, 84eedb4b: 'api from develop is for current version' - a branch pairing acted on, never stored, 0
-// memory_store calls), so it names the reference type beside user_correction (alfred-memory.md's three save triggers).
-// A stated preference rides the same line (audit 2026-10-11 SD16, session ce9d4811: 'I do not want it global but per
-// project scope' was never stored and restated 3 minutes later): its type is preference_signal.
-const SAVE_LINE = 'store it with memory_store (user_correction, project tag) before continuing - a preference it states '
-  + '(\'per project, never global\') as preference_signal, and a project fact it states '
-  + '(a branch, an environment, a version pairing) as a reference memory; the tool is deferred, so load it first: '
-  + 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store';
+// cross-track, 84eedb4b: 'api from develop is for current version' - a branch pairing acted on, never stored) or a stated
+// preference (audit 2026-10-11 SD16, session ce9d4811: 'I do not want it global but per project scope' was never stored and
+// restated 3 minutes later). The stack depends on no memory server since 2026-10-24, so the line names the two homes that
+// outlast the session: the preferences docs for how the user wants the work done, Claude Code's own memory for the rest.
+const SAVE_LINE = 'keep what it teaches before continuing - a preference it states (\'per project, never global\') as an entry '
+  + 'in the preferences docs (/capture-preferences), and the lesson or a project fact it states (a branch, an environment, a '
+  + 'version pairing) in Claude Code\'s own memory';
 function typedAnswers(p) {
   const questions = Array.isArray(p.tool_input && p.tool_input.questions) ? p.tool_input.questions : [];
   let answers = p.tool_response && typeof p.tool_response === 'object' && p.tool_response.answers && typeof p.tool_response.answers === 'object'
@@ -367,6 +372,102 @@ if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQ
   process.exit(0);
 }
 
+// --- the modes (stack-modes spec section 3): the session's flags and the lines that name them ----------------------
+// The prompt's own flags count only in a family command's leading run (hook-prelude.js modeFlags). A mode's state for
+// this prompt is that flag, else the stored state - computed here, never read back after the start hook's write, since
+// the two hooks run in parallel: auto-run's -on counts only when autoRunRefusal says '', else the stamp live for this
+// session decides; the scorer's flag writes the session's SCORER- file, which outranks ALFRED_CODE_SCORER. A seat's
+// prompt and a missing prelude carry no line. Each line rides after the budget with one leading space.
+const AUTO_LINE = 'auto-run: on for this session - each ask takes its (Recommended) option; only --mode-auto-run-off after a command ends it';
+function scorerPhrases(outputs) {
+  const p = outputs.map((o) => scorer.SCORER_PHRASES[o]);
+  return p.length > 1 ? `${p.slice(0, -1).join(', ')} or ${p[p.length - 1]}` : p[0];
+}
+function scorerOnLine(s, auto) {
+  return `scorer: on (level ${s.level}, rounds ${s.rounds}, ${s.source}${auto ? ', auto-run' : ''}) - load mode-output-scorer before releasing a ${scorerPhrases(s.outputs)}; --mode-output-scorer-off after a command stops it`;
+}
+// An ignored ALFRED_CODE_SCORER_OUTPUTS name is ledgered once per session and name: the names already reported sit in
+// the session's SCORER-NOTED- file, and a name that file cannot take is not ledgered, so no prompt repeats it (R25).
+function noteIgnored(root, sid, ignored) {
+  if (!ignored.length) return;
+  const file = scorer.scorerNotedFile(root, sid, process.env);
+  if (!file) return;
+  let seen = [];
+  try { seen = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean); } catch { /* none noted yet */ }
+  const fresh = ignored.filter((n) => !seen.includes(n));
+  if (!fresh.length) return;
+  try {
+    fs.mkdirSync(require('path').dirname(file), { recursive: true });
+    fs.appendFileSync(file, fresh.map((n) => `${n}\n`).join(''));
+  } catch { return; }
+  for (const name of fresh) {
+    ledgerRow({ mode: 'probe', kind: 'scorer-outputs-ignored', reason: `probe: ALFRED_CODE_SCORER_OUTPUTS names '${name}', which is no automatic output - ignored`, detail: { name } });
+  }
+}
+// auto-run for this prompt: the family run's -off, its -on when nothing refuses it, else the stamp live for this session.
+function autoRunNow(flags) {
+  try {
+    if (flags && flags.autoRun === 'off') return false;
+    if (flags && flags.autoRun === 'on' && !scorer.autoRunRefusal(payload, process.env, flags)) return true;
+    const stamp = scorer.approvalStamp(payload, process.env);
+    return Boolean(stamp && stamp.live && stamp.session && stamp.session === String(payload.session_id || '') && /^AUTO\b/.test(stamp.first));
+  } catch { return false; }
+}
+// The scorer for this prompt: its flag written first, then the state; a flag the file cannot take still counts here.
+function scorerNow(flags, root, sid) {
+  try {
+    const nodePath = require('path');
+    const flag = flags ? flags.scorer : null;
+    const file = flag && sid ? scorer.scorerFile(root, sid, process.env) : null;
+    if (file) {
+      try {
+        const before = scorer.readScorerFile(root, sid, process.env);
+        fs.mkdirSync(nodePath.dirname(file), { recursive: true });
+        fs.writeFileSync(file, `${flag}\nat: ${new Date().toISOString()}\n`);
+        if (before !== flag) ledgerRow({ mode: 'probe', kind: 'scorer-flag', reason: `probe: the scorer switched ${flag} for this session`, detail: { state: flag } });
+      } catch { /* a data root that cannot be written - the flag holds for this prompt only */ }
+    }
+    // State hygiene (R11): the SCORER- files and the draft folders, each at most once a day per dir.
+    try {
+      const sessions = nodePath.dirname(scorer.scorerFile(root, 'x', process.env));
+      scorer.sweepStale(sessions, 'SCORER-');
+      scorer.sweepScorerFolders(nodePath.join(sessions, 'scorer'));
+    } catch { /* no layout - nothing of ours to sweep */ }
+    const s = scorer.scorerState(root, sid, process.env);
+    if (s.file === 'garbage') ledgerRow({ mode: 'probe', kind: 'scorer-file-garbage', reason: 'probe: the session\'s scorer file holds neither on nor off - read as absent' });
+    noteIgnored(root, sid, s.ignored);
+    const switchable = s.usable && s.copy !== 'user-invocable-only';
+    if (switchable && flag) Object.assign(s, { on: flag === 'on', source: 'flag' });
+    return { ...s, flag: switchable ? flag : null };
+  } catch { return null; }
+}
+// The modes for this payload, once: `prompt` is the typed text (null on the compaction route - no flags, no stack,
+// no ON line). Returns the context lines and the ON line's text ('' when no mode is on).
+function modesText(prompt) {
+  const none = { context: '', message: '' };
+  try {
+    if (!scorer || payload.agent_id) return none;
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const sid = payload.session_id;
+    const parsed = prompt === null ? null : scorer.modeFlags(String(prompt || ''));
+    const flags = parsed && parsed.family ? parsed : null;   // a reader acts on the leading run only after a family command
+    const auto = autoRunNow(flags);
+    const s = scorerNow(flags, root, sid);
+    const lines = [];
+    if (s && s.usable) {
+      if (s.flag === 'off') lines.push('scorer: off for this session');
+      else if (s.on) lines.push(scorerOnLine(s, auto));
+      // a flag-only line switches and starts nothing, so it is no stack (spec section 4, round-0 M7)
+      if (prompt !== null && scorer.stackNamed(prompt) && !(parsed && parsed.flagOnly)) {
+        lines.push(`scorer: stacked for this request (level ${s.level}, rounds ${s.rounds}) - grade this request's output with mode-output-scorer before releasing it`);
+      }
+    }
+    if (auto) lines.push(AUTO_LINE);
+    const on = [auto ? 'auto-run' : '', s && s.usable && s.on ? `output-scorer (level ${s.level})` : ''].filter(Boolean);
+    return { context: lines.map((l) => ` ${l}`).join(''), message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '' };
+  } catch { return none; }
+}
+
 if (payload.hook_event_name === 'UserPromptSubmit') {
   // A harness prompt is no user turn: no budget, no correction test (audit 2026-10-10 C25, 758ce661: the 780-char
   // budget rode a background gate's completion notice, ~195 tokens carried on every later message; 2026-10-14 HK14: and
@@ -386,7 +487,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
       '(measured: nine corrections and nine redrafts of one report with no ask, 1.64M cache-read).'
     : '';
   // The correction nudge, LOG-ONLY by default (the user's 'count first' ruling): 38 of 38 and then
-  // 35 of 35 measured corrections were never saved to the shared memory. ALFRED_CODE_CORRECTION_NUDGE:
+  // 35 of 35 measured corrections were never saved anywhere. ALFRED_CODE_CORRECTION_NUDGE:
   // `log` (the seed, and the value when absent) writes one row per correction turn and injects
   // nothing; `inject` also hands the save line back; `0` (or `off`) is off.
   const nudgeMode = String(envOf(process.env, 'CORRECTION_NUDGE') || 'log').trim().toLowerCase();
@@ -398,8 +499,11 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
       detail: { marker, chars: String(payload.prompt).trim().length } });
   }
   const nudge = inject ? ` CORRECTION: this reads as a correction - ${SAVE_LINE}` : '';
+  const modes = modesText(payload.prompt);
+  // The ON line is a systemMessage beside the context: the user sees it, the model reads the context lines (spec section 3).
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge },
+    ...(modes.message ? { systemMessage: modes.message } : {}),
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge + modes.context },
   }));
   process.exit(0);
 }
@@ -414,7 +518,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
 // seat's report has its own shape, so no budget goes there.
 if (payload.hook_event_name === 'SessionStart' && !payload.agent_id) {
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: BUDGET_TEXT },
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: BUDGET_TEXT + modesText(null).context },
   }));
   process.exit(0);
 }

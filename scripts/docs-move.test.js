@@ -112,6 +112,19 @@ test('plan: with no key the earlier data root\'s docs move with the root, and an
     assert.strictEqual(plan(root, { shared: {}, stamped: false }).state, 'none', 'a fresh install has no earlier root');
 });
 
+test('plan: an earlier data root\'s tickets/ moves with its docs; in a hand-set root it is named among the moves (item 5)', () =>
+{
+    const root = repo({ '.data/docs/tickets/fix-api-retry.md': '# Fix API retry\n', '.data/docs/architecture/ARCHITECTURE.md': '# a\n' });
+    const p = plan(root, { shared: {}, prior: '.data' });
+    assert.deepStrictEqual([p.state, p.from], ['move', '.data/docs']);
+    assert.ok(p.untracked.includes('tickets/fix-api-retry.md'), JSON.stringify(p.untracked));
+    const ext = repo({ ...EXT, 'docs-ext/tickets/team-board.md': '# the team\'s own\n' });
+    const q = plan(ext);
+    assert.ok(q.untracked.includes('tickets/team-board.md'), 'a hand-set root\'s tickets/ is a stack entry, so the ask names it');
+    assert.ok(q.moves.includes('tickets/'), 'the ask\'s moves name it: ' + JSON.stringify(q.moves));
+    assert.ok(plan(ext, { leave: ['tickets'] }).left.includes('tickets'), '--docs-root-leave tickets keeps the team\'s own');
+});
+
 // The boundary: an EMPTY key names no root - every reader takes the default, as Claude Code's merge hands it on - so it is a
 // key to drop, with the no-key drain behind it; and an empty settings.local.json key over a set settings.json one leaves
 // that one shadowed, not in effect.
@@ -494,6 +507,24 @@ test(`installer (${scope} scope): an update moves every folder under superpowers
     assert.deepStrictEqual(steps[1], { superpowers: false, plan: '# cart - plan\n', sdd: 'ledger\n' }, 'every folder moved and the emptied one went');
     assert.doesNotMatch(outs[2], /docs migration \(superpowers\)/, 'a re-run moves nothing');
     assert.deepStrictEqual(steps[2], steps[1]);
+});
+
+// M10 (final review): a `data-pending:` row an earlier run recorded under `.sensitive-data` is the same move once the store
+// is renamed `.secrets` - the offer leaves it out under either name, or update offers a move the run already retries.
+test('dataOffer: a pending move recorded under either store name matches the store under the other', () =>
+{
+    for (const [onDisk, recorded] of [['.secrets', '.sensitive-data'], ['.sensitive-data', '.secrets'], ['.secrets', '.secrets']])
+    {
+        const root = fs.mkdtempSync(path.join(TMP, 'offer-'));
+        put(root, `.alfred/${onDisk}`, 'K=v\n');
+        const stampText = `data-root: .alfred\ndata-pending: sensitive .alfred/${recorded} -> .data/${recorded}\n`;
+        const offer = docs.dataOffer({ projectRoot: root, stamped: true, stampText, root: '.data' });
+        assert.deepStrictEqual([offer.state, offer.why], ['none', 'nothing to move'], `${recorded} recorded, ${onDisk} on disk`);
+    }
+    const root = fs.mkdtempSync(path.join(TMP, 'offer-'));
+    put(root, '.alfred/.secrets', 'K=v\n');
+    const other = docs.dataOffer({ projectRoot: root, stamped: true, stampText: 'data-root: .alfred\ndata-pending: sensitive .alfred/.secrets -> .store/.secrets\n', root: '.data' });
+    assert.strictEqual(other.state, 'offer', 'a pending move to another root is no match');
 });
 
 test('preflight: the docs are no part of the data-move offer; only a hand-set root gets a docs-move offer', POSIX_ONLY, () =>

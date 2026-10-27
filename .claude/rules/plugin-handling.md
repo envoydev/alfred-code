@@ -14,7 +14,8 @@ Adding, changing, renaming or removing anything the plugin ships. `CLAUDE.md` ho
 
 ## One home per item
 
-- A skill is `stack/skills/<name>/SKILL.md`, an agent `stack/agents/<seat>.md` plus its `meta/seat-tools.json` row (its tool lines are generated), a rule `stack/rules/alfred-<job>.md`, a hook `stack/hooks/<name>.js` plus its `hooks[]` row, an MCP server its manifest row plus `meta/mcp-pins.json`, a command `setup-plugin/commands/<name>.md`.
+- No MCP server ships (2.10.1): a server comes back only through a new spec, never as a manifest row added in passing; `repo-mcp.md` holds the record and the retire path.
+- A skill is `stack/skills/<name>/SKILL.md`, an agent `stack/agents/<seat>.md` plus its `meta/seat-tools.json` row (its tool lines are generated), a rule `stack/rules/alfred-<job>.md`, a hook `stack/hooks/<name>.js` plus its `hooks[]` row, a command `setup-plugin/commands/<name>.md`.
 - `meta/stack-manifest.json` is hand-edited and lists every one of them. Change the item and its manifest row in the same step.
 - A rename adds a `renamed` row (old to new), a removal a `retired` row, or installed projects keep the old copy or prune it wrongly.
 - New names are `alfred-code` / `ALFRED_CODE_`. The 1.x name is gone: lint 57 fails on it in any tracked file.

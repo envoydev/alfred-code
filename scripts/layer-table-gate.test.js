@@ -323,7 +323,7 @@ test('banners: a gap in a guided run is denied, naming the missing steps', () =>
   const r = run([typed('/alfred-code:configure'), b(1), b(2), b(5), b(9)], areas);
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /step banner missing - step 3, 4, 6, 7, 8 of 13 printed none/);
-  assert.match(r.stderr, /\[step 7\/13 - MCPs\] skipped - area not selected/);
+  assert.match(r.stderr, /\[step 7\/12 - plugins\] skipped - area not selected/);
   assert.strictEqual(run([typed('/alfred-code:validate'), b(1, 12), b(2, 12), say('[step 3/12 - rules] nothing to reconcile'), b(4, 12)], areas).status, 0);
 });
 
@@ -343,7 +343,7 @@ test('banners: the gap denial has its own valve of three', () => {
 test('banners: the ask\'s own message is waited for, so a gap it opens is seen and a banner it adds counts', () => {
   const rows = [typed('/alfred-code:configure'), b(1), b(2)];
   assert.strictEqual(runWith([...rows, ...own('[step 3/13 - rules] adjust the installed rules · next: agents')]).status, 0);
-  const gap = runWith([...rows, ...own('[step 6/13 - hooks] adjust the installed hooks · next: MCPs')]);
+  const gap = runWith([...rows, ...own('[step 6/13 - hooks] adjust the installed hooks · next: plugins')]);
   assert.strictEqual(gap.status, 2);
   assert.match(gap.stderr, /step 3, 4, 5 of 13 printed none/);
 });
@@ -372,7 +372,7 @@ const FIRST4 = ['rules', 'agents', 'skills'].flatMap(walked);
 
 test('skipped ask: the next walk call after an unasked layer table is denied, naming the layer and the ask', () => {
   const rows = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'), say('All 18 hooks are set to recommended. Next I\'ll decide which to keep.')];
-  for (const cmd of [NEXT_RECOMPUTE, `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table mcps --recs r.json`, EMIT, INSTALL]) {
+  for (const cmd of [NEXT_RECOMPUTE, `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json`, EMIT, INSTALL]) {
     const r = runBash(rows, cmd);
     assert.strictEqual(r.status, 2, cmd);
     assert.match(r.stderr, /the hooks ask never happened/);
@@ -418,7 +418,7 @@ test('skipped ask: the pending-ask denial has its own valve of three', () => {
 
 test('skipped layer: init denies the prerequisite check and the installer while a layer table never ran', () => {
   // The plugins layer was rendered by a hand-written `node -e` script, never `--table plugins`.
-  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), ...walked('mcps'),
+  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'),
     call('h1', 'Bash', { command: 'node -e \'const fs=require("fs");console.log(" # | plugin")\'' }), result('h1', ' # | plugin\n 1 | claude-hud')];
   for (const cmd of [EMIT, INSTALL]) {
     const r = runBash(rows, cmd);
@@ -431,22 +431,22 @@ test('skipped layer: init denies the prerequisite check and the installer while 
 });
 
 test('skipped layer: init denies a later layer table while an earlier layer never ran; configure skips areas freely', () => {
-  const r = runBash([typed('/alfred-code:init'), ...FIRST4, ...walked('hooks')], `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json`);
+  const r = runBash([typed('/alfred-code:init'), ...FIRST4], `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json`);
   assert.strictEqual(r.status, 2);
-  assert.match(r.stderr, /mcps/);
+  assert.match(r.stderr, /hooks/);
   assert.strictEqual(runBash([typed('/alfred-code:configure'), ...walked('hooks')], EMIT).status, 0, 'configure walks only the picked areas');
 });
 
 test('skipped layer: the never-walked denial has its own valve of three', () => {
   const nw = (n) => [call(`w${n}`, 'Bash', { command: EMIT }), result(`w${n}`, 'alfred-code layer-table gate: layers never walked - plugins', true)];
-  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), ...walked('mcps'), ...nw(1), ...nw(2)];
+  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), ...nw(1), ...nw(2)];
   assert.strictEqual(runBash(rows, EMIT).status, 2);
   assert.strictEqual(runBash([...rows, ...nw(3)], EMIT).status, 0);
 });
 
 test('skipped ask: the hook own Bash row on disk is not taken for the latest table call', () => {
-  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), call('own', 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table mcps --recs r.json` })];
-  assert.strictEqual(runBash(rows, `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table mcps --recs r.json`, 'own').status, 0);
+  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), call('own', 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json` })];
+  assert.strictEqual(runBash(rows, `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json`, 'own').status, 0);
 });
 
 test('skipped ask: a non-walk Bash call exits before reading the transcript - fail-open on garbage too', () => {
@@ -478,7 +478,7 @@ test('6.5: a typed reply after the table is the user\'s answer there', () => {
 });
 
 test('6.5: init\'s never-walked check reaches past a typed reply', () => {
-  const rows = [TYPED_INIT, ...FIRST4, typed('ok'), ...walked('hooks'), ...walked('mcps')];
+  const rows = [TYPED_INIT, ...FIRST4, typed('ok'), ...walked('hooks')];
   const r = runBash(rows, EMIT);
   assert.strictEqual(r.status, 2, r.stderr);
   assert.match(r.stderr, /never walked/);
@@ -532,15 +532,6 @@ test('6.5: a layer ask after a typed reply mid-walk still needs its table', () =
   assert.match(r.stderr, /agents table never ran/);
 });
 
-// commands track T2-15: 'Add to the installed MCP servers?' named no layer the check knew, so it passed with no table.
-test('T2-15: the MCP layer ask is read whether it says MCPs or MCP servers', () => {
-  for (const q of ['Add to the installed MCP servers?', 'MCP servers: keep the marked rows?', 'Drop from the installed MCP server list?']) {
-    const r = run([typed('/alfred-code:configure'), recompute, result('r1', '')], layerAsk(q));
-    assert.strictEqual(r.status, 2, q);
-    assert.match(r.stderr, /mcps table never ran/);
-  }
-});
-
 // commands track T2-01: every artifact is "$TMP/<file>" (source-protocol.md) - a bare raw.json resolves against whatever
 // cwd the shell drifted to, and the never-ran denial handed the bare form over.
 test('T2-01: the never-ran denial names the selection file under $TMP', () => {
@@ -557,7 +548,7 @@ test('6.5: a compaction summary restarts the walk only when it names it', () => 
   assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, summary('This session is being continued. The user asked about tests.'), ...UNASKED_HOOKS], NEXT_RECOMPUTE).status, 0);
   // hooks track H1: past a summary init's order check stands down - the layers walked before it are never asked again,
   // and a configure summary that names init first is no init walk; the pending-ask check still judges the tables after it.
-  assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, named, ...walked('hooks')], `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table mcps --recs r.json`).status, 0);
+  assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, named, ...walked('hooks')], `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json`).status, 0);
   const configureNamingInit = summary('Continued. Earlier /alfred-code:init installed the stack; the user then ran /alfred-code:configure.');
   assert.strictEqual(runBash([typed('/alfred-code:configure'), configureNamingInit, ...walked('skills')], EMIT).status, 0);
 });

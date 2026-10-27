@@ -12,9 +12,9 @@ Updated: __TODAY__
 ## G2 - Run the pre-commit checkpoint first
 <!-- id: g2 -->
 <!-- locked: checkpoint -->
-- Rule: when a non-trivial commit, a `git push` or a `gh pr merge` is next, the FIRST action is the `habits-commit-checkpoint` Skill call, before the command runs. It writes the `<data root>/state/approvals/COMMIT-GATE` receipt, or the same-shaped `<data root>/state/approvals/PUSH-GATE` receipt for a publish.
-- Scope: commits, pushes, pull request merges
-- Why: `guard-ungated-commit` blocks all three without a fresh receipt.
+- Rule: when a non-trivial commit, a `git push`, or merging or opening a change request by any route is next, the FIRST action is the `habits-commit-checkpoint` Skill call, before the command runs. It writes the `<data root>/state/approvals/COMMIT-GATE` receipt, or the same-shaped `<data root>/state/approvals/PUSH-GATE` receipt for a publish.
+- Scope: commits, pushes, change-request merges and openings
+- Why: `guard-ungated-commit` blocks a commit, a push and a merge without a fresh receipt, through any tool; opening a change request publishes its branch.
 
 ## G3 - Never lose work
 <!-- id: g3 -->

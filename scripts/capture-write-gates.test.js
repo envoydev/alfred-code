@@ -114,9 +114,6 @@ test('audit 2026-10-08: each capture close is a literal template with its post-w
     assert.ok(squash(style).includes('`node .claude/hooks/docs.js lint preferences`'), 'code-style lints its domain');
     const aq = read('stack/skills/capture-architecture-quality/SKILL.md');
     assert.ok(aq.includes('| `Ceilings:` |'), 'the Known-ceilings flag has a receipt field');
-    const look = read('stack/skills/capture-first-look/SKILL.md');
-    for (const field of ['File:', 'Stack:', 'Modules:', 'Not declared:', 'Lint:', 'Replaced by:'])
-        assert.match(look, new RegExp(`^${field} +`, 'm'), `first-look close carries ${field}`);
     assert.ok(read('stack/skills/capture-awareness/references/project.md').includes('node .claude/hooks/docs.js watch <one file DISCOVER cited>') && /^Watch: +</m.test(aware), 'the run book checks its watch globs');
 });
 
@@ -193,7 +190,7 @@ test('audit 2026-10-14 SKC05: the login ask names the KEY= handoff, never a writ
     const ask = (raw.match(/```ask\nHow does an agent log in\?[\s\S]*?```/) || [''])[0];
     assert.ok(ask, 'the login ask is a template');
     const first = ask.split('\n').find((l) => l.startsWith('- '));
-    assert.match(first, /\(Recommended\)' - the report hands one `KEY=` line per key for `<data root>\/\.sensitive-data`/, 'the recommended option names the handoff');
+    assert.match(first, /\(Recommended\)' - the report hands one `KEY=` line per key for `<data root>\/\.secrets`/, 'the recommended option names the handoff');
     assert.doesNotMatch(ask, /its keys, empty, in/, 'no promised write');
     const ref = squash(read('stack/skills/capture-awareness/references/project.md'));
     assert.ok(ref.includes('The capture writes it only when the login answer asked for the keys and it is absent (an install older than that)') && ref.includes('every value EMPTY'), 'the absent-file write stays the stated exception');

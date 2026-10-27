@@ -8,23 +8,18 @@
    "evidence-gatherer",
    "integration-reviewer",
    "issue-diagnoser-runtime",
+   "output-scorer",
    "security-auditor",
    "test-coverage-analyzer"
   ],
   "rules": [
    "alfred-docs-root",
    "alfred-interaction",
-   "alfred-memory",
    "alfred-navigation",
    "alfred-preferences",
    "alfred-quality-gates",
    "alfred-security",
    "markdown-docs"
-  ],
-  "mcps": [
-   "alfred-navigation",
-   "alfred-documentation",
-   "alfred-memory"
   ],
   "plugins": [
    "claude-hud"
@@ -45,9 +40,9 @@
    "instrument-tool-usage",
    "docs-session",
    "preferences-session",
-   "memory-session",
    "check-turn-build",
-   "history-session"
+   "history-session",
+   "forge-session"
   ],
   "skills": [
    "habits-clarify",
@@ -66,20 +61,21 @@
    "capture-project-code-style",
    "habits-commit-checkpoint",
    "issue-diagnoser",
-   "capture-first-look",
    "habits-adjust-agents-md",
    "task-implement",
    "loop-code-quality",
    "task-design",
    "task-solve-cross",
    "task-solve",
+   "mode-auto-run",
    "capture-test-coverage",
    "loop-test-coverage",
    "task-verify-code",
    "task-verify-plan",
    "review-code",
    "review-security",
-   "task-version-upgrade"
+   "task-version-upgrade",
+   "mode-output-scorer"
   ]
  },
  "general": {
@@ -149,9 +145,6 @@
    "plugins": [
     "typescript-lsp"
    ],
-   "mcps": [
-    "browser"
-   ],
    "skills": [
     "angular-security",
     "angular-testing"
@@ -181,9 +174,6 @@
     "wpf-conventions",
     "dotnet-repair-agents"
    ],
-   "mcps": [
-    "windows-control"
-   ],
    "plugins": [
     "csharp-lsp"
    ]
@@ -211,9 +201,6 @@
     "csharp-conventions",
     "winforms-conventions",
     "dotnet-repair-agents"
-   ],
-   "mcps": [
-    "windows-control"
    ],
    "plugins": [
     "csharp-lsp"
@@ -296,9 +283,6 @@
    ],
    "plugins": [
     "typescript-lsp"
-   ],
-   "mcps": [
-    "browser"
    ]
   },
   "data": {
@@ -340,9 +324,6 @@
    ],
    "plugins": [
     "typescript-lsp"
-   ],
-   "mcps": [
-    "browser"
    ]
   },
   "typescript": {

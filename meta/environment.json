@@ -1,12 +1,12 @@
 {
-  "_comment": "The environment values this stack owns in the scope's settings.json `env` block (the project's .claude/settings.json, or the account file for a global install). ONE source for the three guided commands: init's install phase asks the `ask: true` rows on its environment screen, configure step 9 shows and changes them, validate reconciles what is on disk against this list - a row absent from the file is a MISSING key the release introduced, a `renamed_from` still present is the old spelling, and a value failing `validate` is flagged with the expected shape. The installers seed every row ABSENT-ONLY on install and update (and apply the renames first, value carried over), so this catalog and the two installer twins must agree - `npm run lint` fails when they drift. Adding a variable: add the row here, seed it in both twins, and, when it replaces an older name, add the rename pair to migrations.json and give every consumer an old-name fallback. A row may carry `group_off`: it and every row naming it in `asked_with` are ONE feature, so the question that asks it also offers switching the feature off, which writes that value to the whole group (the walks never invent an off answer for a row without it). A row may also carry `secret: true`, and any key matching `secret_key_pattern` is treated the same way whether or not it has a row: its VALUE is never printed, never echoed back as a default, and never asked for through the chat - the walks report `set (N chars)` or `absent` and point the user at the file. Measured: seven credential exposures across one corpus, one of them an account settings.json read whole as a session's first tool call. A row may carry `former_defaults`: the values the stack seeded before its current `default`, read as the stack's own seed wherever a key's owner is judged without a ledger - never re-seeded, and never rewritten silently (the docs root's old default is moved only on an answer, `/alfred-code:update`). One row is WRITTEN rather than seeded (`written: true` - ALFRED_CODE_MEMORY_DB): it mirrors a choice the run just made (`--memory-level`) into the file the PLUGIN route's memory launcher reads, because a plugin MCP entry cannot expand a project env key (measured, spike S10 in docs/plugin-migration-evidence.md) while a launcher whose cwd is the project can read the file itself. A changed level has to land or the server keeps the old one, so a hand-edit is overwritten by the next install or update - change it with `--memory-level`, not by hand. A change to ANY of these takes effect on the NEXT TOOL CALL - every hook reads its value per invocation - so no session restart is ever needed. State that when reporting a flip: a run once told the user to restart, and `grep -rn restart` over stack/, meta/, scripts/ and setup-plugin/ found no such claim anywhere, so the model had invented it (the instrumentation ledger's first row in fact landed 27.2 s later in the same session, covering 63 of 65 calls). A fact about the stack's own behaviour that the stack does not state gets invented.",
+  "_comment": "The environment values this stack owns in the scope's settings.json `env` block (the project's .claude/settings.json, or the account file for a global install). ONE source for the three guided commands: init's install phase asks the `ask: true` rows on its environment screen, configure step 9 shows and changes them, validate reconciles what is on disk against this list - a row absent from the file is a MISSING key the release introduced, a `renamed_from` still present is the old spelling, and a value failing `validate` is flagged with the expected shape. The installers seed every row ABSENT-ONLY on install and update (and apply the renames first, value carried over), so this catalog and the two installer twins must agree - `npm run lint` fails when they drift. Adding a variable: add the row here, seed it in both twins, and, when it replaces an older name, add the rename pair to migrations.json and give every consumer an old-name fallback. A row may carry `group_off`: it and every row naming it in `asked_with` are ONE feature, so the question that asks it also offers switching the feature off, which writes that value to the whole group (the walks never invent an off answer for a row without it). A row may carry `seed: false` (a boolean; absent means true): the installers never write it - no seed, no leave-local carry, no ledger claim from its default - validate never reports it MISSING and configure never offers it, so it is documented and validated here and set only in the launch environment or by hand in a settings `env` (`ALFRED_CODE_WORKSPACE`). A row may also carry `secret: true`, and any key matching `secret_key_pattern` is treated the same way whether or not it has a row: its VALUE is never printed, never echoed back as a default, and never asked for through the chat - the walks report `set (N chars)` or `absent` and point the user at the file. Measured: seven credential exposures across one corpus, one of them an account settings.json read whole as a session's first tool call. A row may carry `former_defaults`: the values the stack seeded before its current `default`, read as the stack's own seed wherever a key's owner is judged without a ledger - never re-seeded, and never rewritten silently (the docs root's old default is moved only on an answer, `/alfred-code:update`). A row may carry `written: true`: it mirrors a choice the run just made rather than seeding a default, so a hand-edit is overwritten by the next install or update. No row carries it since the memory server left the stack (2026-10-24), and the run removes the old ALFRED_CODE_MEMORY_DB key. A change to ANY of these takes effect on the NEXT TOOL CALL - every hook reads its value per invocation - so no session restart is ever needed. State that when reporting a flip: a run once told the user to restart, and `grep -rn restart` over stack/, meta/, scripts/ and setup-plugin/ found no such claim anywhere, so the model had invented it (the instrumentation ledger's first row in fact landed 27.2 s later in the same session, covering 63 of 65 calls). A fact about the stack's own behaviour that the stack does not state gets invented.",
   "secret_key_pattern": "(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$",
   "env": [
     {
       "key": "ALFRED_CODE_DATA_PATH",
       "default": ".alfred",
       "ask": true,
-      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the navigation server's index, handoff notes and language servers (`<root>/serena`), the browser profiles (`<root>/<engine>-control`) and a project-level memory database (`<root>/.alfred-memory`). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data: the docs at once, each server's data at that server's next start, once nothing holds it. No space, no `..`, never under `.claude/`.",
+      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the hooks' machine state (`<root>/state`, the seats' handoff notes among it), the ledgers (`<root>/statistics`) and the secrets store (`<root>/.secrets`, `.sensitive-data` before). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data inline: the docs and the secrets store. No space, no `..`, never under `.claude/`.",
       "validate": {
         "type": "relative-path"
       }
@@ -41,7 +41,7 @@
       "key": "ALFRED_CODE_CORRECTION_NUDGE",
       "default": "log",
       "ask": false,
-      "what": "guard-answer.js: a correction turn (a short prompt that follows an answer and carries a correction marker - 'no, ...', 'I meant', 'why did you', 'shorter') writes one `mode: probe` / `kind: correction` row to the hook-blocks ledger. `log` writes the row and injects nothing (the count-first week); `inject` also hands back the line 'this reads as a correction - store it with memory_store (user_correction, project tag) before continuing'; `0` (or `off`, which the hook reads the same) is off.",
+      "what": "guard-answer.js: a correction turn (a short prompt that follows an answer and carries a correction marker - 'no, ...', 'I meant', 'why did you', 'shorter') writes one `mode: probe` / `kind: correction` row to the hook-blocks ledger. `log` writes the row and injects nothing (the count-first week); `inject` also hands back the line 'this reads as a correction - keep what it teaches before continuing', naming the preferences docs for a preference and Claude Code's own memory for a lesson or project fact; `0` (or `off`, which the hook reads the same) is off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -63,6 +63,55 @@
           "0",
           "1"
         ]
+      }
+    },
+    {
+      "key": "ALFRED_CODE_SCORER",
+      "default": "0",
+      "ask": false,
+      "what": "mode-output-scorer: `1` grades each automatic output (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scorer` seat before it is released, and holds it until it meets the level or the user accepts it; `0` (the seed) is off. `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a task, capture, loop, issue or mode command override it for the session (off wins when both are typed), and a typed `/<producer> /mode-output-scorer <request>` stack grades that one request even while it is off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
+      "key": "ALFRED_CODE_SCORER_LEVEL",
+      "default": "80",
+      "ask": false,
+      "what": "mode-output-scorer: the score out of 100 an output must reach to be released, a whole number from 60 to 100 (anything else reads as 80). A target, not a strict bar: when the grade shows the level cannot be reached with what is in hand, the user is asked whether to go on or accept the output below it.",
+      "validate": {
+        "type": "percent",
+        "min": 60,
+        "max": 100
+      }
+    },
+    {
+      "key": "ALFRED_CODE_SCORER_OUTPUTS",
+      "default": "",
+      "ask": false,
+      "what": "mode-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. Empty (the seed) means all three; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
+      "validate": {
+        "type": "csv",
+        "values": [
+          "designer-plan",
+          "root-cause",
+          "inline-plan"
+        ]
+      }
+    },
+    {
+      "key": "ALFRED_CODE_SCORER_ROUNDS",
+      "default": "3",
+      "ask": false,
+      "what": "mode-output-scorer: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one.",
+      "validate": {
+        "type": "int",
+        "min": 1,
+        "max": 10
       }
     },
     {
@@ -163,6 +212,20 @@
       }
     },
     {
+      "key": "ALFRED_CODE_MEMORY",
+      "default": "default",
+      "ask": false,
+      "what": "which memory this project uses. `default` (the seed) is Claude Code's own memory at its default place. `custom` switches Claude's own memory off (the installer writes a ledgered `autoMemoryEnabled: false` into this project's own settings file) and the memory tool TOOLS-PREFERENCES.md ranks holds the lessons. Asked in init's bootstrap and configure's Environment area, passed as `--memory default|custom`; read at session start, so it applies from the next session.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "default",
+          "custom"
+        ],
+        "off": "default"
+      }
+    },
+    {
       "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
       "default": "2",
       "ask": false,
@@ -173,22 +236,37 @@
       }
     },
     {
+      "key": "ALFRED_CODE_FORGE_WATCH",
+      "default": "all",
+      "ask": false,
+      "what": "forge-session.js's ref watch: `all` (the seed) reports every branch and tag that moved with no gated act behind it - the default branch, the upstream, a branch the git preferences name, a commit from this checkout and any tag loud, the rest as one summary line; `loud-only` drops the summary line for a busy team repo, and the session's Forge: line says so, since the watch then no longer covers every branch; `publish-only` checks the remote only after a turn that made a forge call or a gated push, for a git login that asks every time (a security key that needs a touch, an approval dialog) - a move is then reported at the next such check, not the turn it happened. `forge-session:watch` in ALFRED_CODE_HOOKS_OFF turns the watch off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "all",
+          "loud-only",
+          "publish-only"
+        ]
+      }
+    },
+    {
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22) - each but the last was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here.",
+      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22) - each but the last was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here. `guard-answer:scorer` (the scorer lines and flags) and `guard-stop-contract:scorer` (the scorer backstop and the sealed scorecard) - either one turns the whole scorer off, stacks included.",
       "validate": {
         "type": "csv"
       }
     },
     {
-      "key": "ALFRED_CODE_MEMORY_DB",
-      "default": "~/.alfred-memory/memory.db",
+      "key": "ALFRED_CODE_WORKSPACE",
+      "default": "0",
       "ask": false,
-      "written": true,
-      "what": "the shared `memory` MCP database this install points at - the path the `--memory-level` choice resolved to (`global` ~/.alfred-memory/memory.db, `scoped` ~/.alfred-memory/memory_<space>.db, `project` <project>/<data root>/.alfred-memory/memory.db). The plugin route's launcher (`stack/mcp/memory-launch.js`) reads it from this file because a plugin MCP entry cannot expand a project env key; with the key absent it falls back to the global default. A 2.0.0 `~/.memory-mcp` is moved to `~/.alfred-memory` by that launcher once no server holds it, with a link left at the old path. Written every run from the resolved level, never seeded - change it with `--memory-level` / `-MemoryLevel`, never by hand, and note that re-pointing the registration never moves or touches the old database file.",
+      "seed": false,
+      "what": "Workspace layering, OFF until 3.0.0: `1` lets a child project inherit its parent folder's Alfred install; anything else (unset included) freezes the workspace - no parent lookup, join ask, cascade or delta, and nothing it wrote is removed. Never written into a project; set it in the launch environment or a settings `env`.",
       "validate": {
-        "type": "absolute-path"
+        "type": "enum",
+        "values": ["0", "1"]
       }
     }
   ]

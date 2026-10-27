@@ -73,8 +73,8 @@ function setting(projectRoot, key)
     return undefined;
 }
 // The data root read as the hooks' layout.js reads it (`./` and an empty value are `.alfred`), so both find one folder.
-const docsRoot = (projectRoot) => setting(projectRoot, 'ALFRED_CODE_DOCS_PATH')
-    || `${String(setting(projectRoot, 'ALFRED_CODE_DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred'}/docs`;
+const dataRoot = (projectRoot) => String(setting(projectRoot, 'ALFRED_CODE_DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
+const docsRoot = (projectRoot) => setting(projectRoot, 'ALFRED_CODE_DOCS_PATH') || `${dataRoot(projectRoot)}/docs`;
 
 const prefsDir = (projectRoot) => path.resolve(projectRoot, docsRoot(projectRoot), PREFS_DIR);
 
@@ -165,7 +165,8 @@ function parseCheck(value)
 // Every `##` section with what lint needs beside the fields: the heading, its id line, the raw Check: text. A fenced
 // block is the entry's text: a `## ` line or a field inside one is an example, never read (audit 2026-10-21 PF-19).
 const FENCE = /^\s*(`{3,}|~{3,})/;
-function parseSections(text)
+// `field` is the doc's field pattern: the four entry docs' by default, the tools doc's own from tools.js.
+function parseSections(text, field = FIELD)
 {
     const out = [];
     let cur = null;
@@ -188,7 +189,7 @@ function parseSections(text)
         if (idLine && cur.idLine === null) { cur.idLine = idLine[1]; continue; }
         const locked = LOCKED_LINE.exec(line.trim());
         if (locked && cur.locked === null) { cur.locked = locked[1]; continue; }
-        const f = FIELD.exec(line);
+        const f = field.exec(line);
         if (f && !(f[1] in cur.fields)) cur.fields[f[1]] = f[2];
     }
     return out;
@@ -640,6 +641,6 @@ function main(argv)
     return 2;
 }
 
-module.exports = { parseDoc, parseSections, runCheck, parseCheck, globRe, scopeOf, deadScopes, scopeMismatches, docsRoot, CAP, GIT_CAP, PERSONAL_CAP, HOUSE_KEYS };
+module.exports = { parseDoc, parseSections, retiredIds, runCheck, parseCheck, globRe, scopeOf, deadScopes, scopeMismatches, docsRoot, dataRoot, prefsDirs, setting, CAP, GIT_CAP, PERSONAL_CAP, HOUSE_KEYS };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

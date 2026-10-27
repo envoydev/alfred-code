@@ -184,7 +184,7 @@ test('done gate: a Monitor shell write and a navigation rename are source edits 
         assert.ok(unrun(g), `${tool} then Done`);
         assert.match(g.row.detail.file, /src[\\/]cart\.ts/, `${tool}: the declaring file`);
     }
-    const lookup = call('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Cart', relative_path: 'src/cart.ts' });
+    const lookup = call('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Cart', relative_path: 'src/cart.ts' }); // mcp-fixture
     assert.strictEqual(gate(root, turn(lookup), 'Done.').row, null, 'a lookup is no edit');
 });
 

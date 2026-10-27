@@ -5,12 +5,12 @@ description: "Use to decompile a .NET .dll or NuGet package with ilspycmd - 'wha
 
 # ilspy-decompile
 
-Decompile a compiled assembly when you need the real implementation - a framework internal, a NuGet package you have no source for, or the exact behavior of a method before you upgrade across it. For source you already have, navigate with the navigation server / the LSP instead; this is only for compiled `.dll` you cannot open otherwise. An API signature is the documentation server's question; decompile only for implementation behavior.
+Decompile a compiled assembly when you need the real implementation - a framework internal, a NuGet package you have no source for, or the exact behavior of a method before you upgrade across it. For source you already have, navigate with the navigation tools instead; this is only for compiled `.dll` you cannot open otherwise. An API signature is the documentation tools' question; decompile only for implementation behavior.
 
 ## When to use
 
 - Reads a compiled assembly's real implementation when you need ground truth from a .dll or NuGet package - also 'did behavior change before an upgrade'.
-- Not for source you already have - navigate that with the navigation server or the LSP.
+- Not for source you already have - navigate that with the navigation tools.
 
 ## Tool
 

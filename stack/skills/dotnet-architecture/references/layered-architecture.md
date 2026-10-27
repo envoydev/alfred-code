@@ -1,6 +1,6 @@
 # Layered architecture in .NET
 
-What each layer owns, which libraries a client project can take on, how desktop and web hosts share one core, and what each layer's tests cover. Load it beside the style you picked - the shared dependency rule and the pick-one rule are in `SKILL.md`, the four-project layout in `clean-architecture.md`, slices in `vertical-slice.md`, modules in `modular-monolith.md`. The licence boundaries, the support dates and the advisory below were checked against first-party pages on 2026-10-21 (sources at the end); fetch any version, date or template release through the documentation server at use - never quote one from here to a client.
+What each layer owns, which libraries a client project can take on, how desktop and web hosts share one core, and what each layer's tests cover. Load it beside the style you picked - the shared dependency rule and the pick-one rule are in `SKILL.md`, the four-project layout in `clean-architecture.md`, slices in `vertical-slice.md`, modules in `modular-monolith.md`. The licence boundaries, the support dates and the advisory below were checked against first-party pages on 2026-10-21 (sources at the end); fetch any version, date or template release through the documentation tools at use - never quote one from here to a client.
 
 ## Contents
 

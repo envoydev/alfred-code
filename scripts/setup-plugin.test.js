@@ -69,7 +69,7 @@ const STATE_READ = /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js"
 test('init is one command with two phases: the router reads the state and loads ONE phase file - manual-only', () => {
     const init = cmdBody('init');
     assert.match(init, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, 'init stays manual-only');
-    assert.match(installBody(), /^## 11\. Install$/m, 'the walk lives in the install phase');
+    assert.match(installBody(), /^## 10\. Install$/m, 'the walk lives in the install phase');
     assert.ok(!/^## \d+\. Install$/m.test(bootstrapBody()), 'the bootstrap never installs');
     assert.ok(!/^## \d+\. /m.test(init), 'the router holds no step of its own');
     // The phase is the install state, read the way the hooks read it - the stamp state.
@@ -106,54 +106,57 @@ test('init install phase: the suggestions are validate\'s checks in fresh-instal
 
 test('init install phase: no memory level, the bootstrap prerequisites deferred, and a close that ends on the restart and init again', () => {
     const setup = installBody();
-    const install = setup.slice(setup.indexOf('## 11. Install'), setup.indexOf('## Post-check'));
+    const install = setup.slice(setup.indexOf('## 10. Install'), setup.indexOf('## Post-check'));
     assert.match(install, /install\/alfred-code\.js" install --source "\$TMP\/repo" --scope <scope>/);
     assert.ok(!/--memory-level/.test(install.split('\n').find((l) => l.includes('- **Any OS:**'))), 'the level is init\'s question');
-    assert.match(setup, /--check --defer-init/, 'uv and csharp-ls are init\'s to install, never setup\'s blockers');
+    assert.match(setup, /--check --defer-init/, 'the language servers are init\'s to install, never setup\'s blockers');
     const close = setup.slice(setup.indexOf('## Post-check'));
     assert.match(flat(close), /\*\*Restart, then `\/alfred-code:init` again\*\*/);
     assert.match(flat(close), /Nothing is pending on this run - these are yours to run when you choose\./);
     assert.ok(!/## \d+\. AGENTS\.md/.test(setup) && /## 6\. AGENTS\.md/.test(bootstrapBody()), 'the AGENTS.md fill is the bootstrap phase\'s');
 });
 
-// R77: the engine pick pre-selects the LIVE state over an install - the table's own rows, which stack-select reads from
-// plan-out's `browser` block (stack-select.test.js) - never the stamp's line. Since 2026-10-15 the engines are rows of
-// their own and no enable question is asked: the run passes no --browser-enabled, so an installed engine keeps its on/off.
-test('the walk: the browser engine pick reads the live install in DELTA and asks no enable question (R77)', () => {
+// 2.10.1 (spec N5): the stack ships no MCP server, so no walk carries a server layer or a server ask, and no
+// command passes a server flag; the FRESH / DELTA modes are unchanged.
+test('the walk: no MCP layer, no server ask, no server flag', () => {
     const walk = walkBody();
-    const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
-    // AskUserQuestion has no pre-selection (audit 2026-10-21 C-T4-01): the question names the default and marks it.
-    assert.match(mcps, /the question names the default - FRESH `chrome-control` when it was earned, DELTA every engine the table reads `yes` or `yes \(off\)` - and the mark sits on it/);
-    assert.match(mcps, /No enable question is asked and no `--browser-enabled` is passed: an engine installed now arrives on, one already installed keeps its on\/off/);
-    assert.match(mcps, /The `--emit` run prints a `browsers: <csv>` line - pass it to the installer as `--browsers <csv>`/);
-    assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
-    // M2: picking a Playwright-built engine installs it in THIS run - the ask says so; init only reports.
-    assert.match(mcps, /Picking one IS installing it: a picked `firefox` \/ `webkit` is downloaded/);
-    for (const [cmd, body] of [['init install phase', installBody()], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]]) assert.ok(!/--browser-enabled/.test(body), `${cmd} passes no enable answer`);
-    assert.match(mcps, /`\/alfred-code:init` reports one that is not there/);
+    assert.ok(!walk.includes('\n## MCPs\n'), 'no MCPs section');
+    for (const b of askBlocks(walk)) assert.doesNotMatch(b[0], /browser|Playwright|mobile-control|windows-control|macos-control|memory level/i, b[0]);
+    for (const [cmd, body] of [['init install phase', installBody()], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]])
+        assert.doesNotMatch(body, /--browser-enabled|--browsers |--memory-level|--table mcps/, `${cmd} passes no server flag`);
     assert.match(flat(installBody()), /references\/walk\.md` before step 4 and run it in \*\*FRESH\*\*/);
     assert.match(flat(cmdBody('configure')), /references\/walk\.md` AT step 3, never earlier - [^*]*and run it in \*\*DELTA\*\*/);
     assert.match(cmdBody('configure'), /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, 'the DELTA walk reads the plan configure wrote');
 });
 
-test('init bootstrap phase: the order - read, plan, one machine ask, memory, captures inline, AGENTS.md; no sentry', () => {
+test('init bootstrap phase: the order - read, plan, one machine ask, memory and navigation, captures inline, AGENTS.md; no sentry', () => {
     const init = bootstrapBody();
-    // M6: a fresh uv lands off the shell's PATH - step 4's import needs uvx, so it gets the prefix too.
-    assert.match(flat(init), /EVERY later command of this run carries that directory first - `PATH="<dir>:\$PATH" <command>` - step 3's `after uv` commands and step 4's `memory\.js init` alike/);
-    // The hook count, stated once per table: the manifest ships eighteen (preferences-session joined, 2026-10-21).
+    // 2.10.1: no server runtime to install and no memory import - the stack ships no MCP server.
+    assert.doesNotMatch(init, /\buvx?\b|memory\.js|--level/, 'no uv, no memory step');
+    // The hook count, stated once per table: the manifest ships eighteen (forge-session joined 2026-10-23, memory-session
+    // retired 2026-10-24).
     assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
-    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
+    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory and navigation', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
+    // Spec P1 + P2: the step reads tools.js modes, asks the two templates, and applies a changed memory mode in one call.
+    assert.match(init, /tools\.js" modes --project \. --lsp/);
+    assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --memory <mode>/);
+    // Final review C1: the fall-back check previews custom's lines, since the mode is written only by the call after it,
+    // and the ranking run asks the job's question even with one candidate.
+    for (const body of [init, cmdBody('configure')])
+    {
+        assert.match(body, /tools\.js" modes --project \. --memory custom/);
+        assert.match(flat(body), /even with one server candidate/);
+    }
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
     assert.match(init, /scripts\/init-plan\.js" --installed "\$TMP\/installed\.json" --root \./);
-    assert.match(init, /scripts\/install\/memory\.js" init --project-root \. --level <answer>/);
     // C-T4-01: no pre-selection exists, so the one ask is a single-select and 'Pick which' opens the multi-select.
     assert.match(flat(init), /Otherwise ONE AskUserQuestion - .*'Install all of them \(Recommended\)' - each line's exact command runs, in plan order - 'Pick which' - the next call is a multi-select/);
     // Task 24: claude-hud's status line + compact layout rides that same ask - no ask of its own.
     assert.match(flat(init), /`claude-hud status line \+ compact layout` is one of those lines: its command \(`hud-statusline\.js`\)/);
     assert.match(flat(init), /A `skip` line is not an option either/);
     // Fix round 1 (I-3, M-3): a stale line is a `refresh` option, backed up first; the keys the row adds are named.
-    assert.match(flat(init), /one option per `missing` \/ `missing after uv` \/ `refresh` line/);
+    assert.match(flat(init), /one option per `missing` \/ `refresh` line/);
     assert.match(flat(init), /`# adds <n> claude-hud keys: <names>`/);
     assert.match(flat(init), /settings\.json\.bak\.<time>/);
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
@@ -176,7 +179,8 @@ test('the router: nothing installed -> init (install phase), installed but never
     assert.match(router, /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js" state \./);
     assert.match(router, /\*\*Initialised\*\* = the stamp's `initialised:` line holds a date/);
     assert.match(router, /`initialised: pending`/);
-    assert.match(router, /a stamp from before that line counts as initialised when `autoMemoryEnabled: false`/);
+    assert.match(router, /a stamp from\s+before that line reads as never initialised/);
+    assert.doesNotMatch(router, /autoMemoryEnabled/, 'the memory switch is no sign of a bootstrap since 2.10.1');
     assert.match(router, /Not installed -> `\/alfred-code:init` \(its install phase/);
     assert.match(router, /Installed, never initialised -> `\/alfred-code:init`/);
     assert.match(router, /Initialised -> no bootstrap/);
@@ -391,32 +395,23 @@ test('both walks ask the plugin-settings question in the plugins layer and apply
     }
 });
 
-test('the always MCP baseline is stack-neutral - the browser is seeded or proven, and no cut server comes back', () => {
+test('no MCP server is seeded, proven or addable - the stack ships none, and every one it shipped is retired', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
-    // memory joined navigation and documentation as a locked server (alfred-memory.md names it, the same
-    // way alfred-navigation locks the navigation server in) - the shared-memory-mcp feature made it required.
-    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation'], 'only the three rules lock in');
-    assert.ok(!(recs.always.mcps || []).includes('browser'), 'the browser server must not install into every project');
-    assert.ok(!((recs.general || {}).mcps || []).includes('memory'), 'memory left the general (addable, never seeded) list once it locked in');
+    // 2.10.1 (N1): no rule, skill, seat or hook needs a server, so none is locked in, seeded or offered.
+    assert.deepStrictEqual(manifest.mcps, [], 'the catalog lists no server');
+    assert.ok(!Object.hasOwn(recs.always, 'mcps'), 'no server locks in');
+    const seededBy = Object.entries(recs.stacks).filter(([, sel]) => Object.hasOwn(sel, 'mcps')).map(([st]) => st);
+    assert.deepStrictEqual(seededBy, [], 'no stack seeds a server');
+    assert.ok(!Object.hasOwn(recs.general || {}, 'mcps'), 'no server is addable');
+    assert.deepStrictEqual(evidence.mcps, {}, 'no evidence proves a server');
 
-    // 2.0.0 cut five servers: no seed, no evidence row and no addable list may bring one back.
-    const cut = manifest.retired.mcps;
-    assert.deepStrictEqual([...cut].sort(), ['angular-cli', 'appium-mcp', 'chrome-devtools', 'context7-local', 'sentry']);
-    for (const server of cut)
-    {
-        const seededBy = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes(server)).map(([st]) => st);
-        assert.deepStrictEqual(seededBy, [], `${server} left the stack in 2.0.0, yet a stack seeds it`);
-        assert.ok(!(evidence.mcps || {})[server], `${server} left the stack in 2.0.0, yet evidence proves it`);
-        assert.ok(!((recs.general || {}).mcps || []).includes(server), `${server} left the stack in 2.0.0, yet it is addable`);
-        assert.ok(!manifest.mcps.some((r) => r.name === server), `${server} is still in the catalog`);
-    }
-
-    // two proven routes into a project: a stack whose surface always has a browser, or the packages
-    const seeded = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes('browser')).map(([st]) => st).sort();
-    assert.deepStrictEqual(seeded, ['browser-extension', 'ionic-angular', 'web-angular']);
-    assert.ok((evidence.mcps || {}).browser, 'and an evidence signal for any other stack that actually uses it');
+    // every name the stack ever shipped stays retired, so update prunes an install that still holds one
+    const cut = new Set(manifest.retired.mcps);
+    for (const server of ['angular-cli', 'appium-mcp', 'chrome-devtools', 'context7-local', 'sentry', 'alfred-navigation', 'alfred-documentation',
+        'alfred-memory', 'browser', 'windows-control', 'macos-control', 'mobile-control', 'chrome-control', 'msedge-control', 'firefox-control', 'webkit-control'])
+        assert.ok(cut.has(server), `${server} is not in retired.mcps`); // mcp-fixture
 });
 
 test('every shipped plugin is suggested somewhere - validate cannot flag what nothing suggests', () => {
@@ -515,6 +510,16 @@ test('every command that runs the installer runs the SEED, and names the shell s
     // status runs no installer at all, so it names neither.
     const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
     assert.ok(!/alfred-code\.(sh|ps1)|install\/alfred-code\.js/.test(status), 'status must stay read-only');
+});
+
+// The tool order: status shows the start line the next session gets, validate prints the inventory's rows - both from the
+// capture skill's script, at a path this tree ships.
+test('status and validate run tools.js from a path this tree has', () => {
+    const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
+    const validate = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');
+    assert.ok(status.includes('node "${CLAUDE_PLUGIN_ROOT}/stack/skills/capture-preferences/scripts/tools.js" order --project .'), 'status runs tools.js order');
+    assert.ok(validate.includes('node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" validate --project .'), 'validate runs tools.js validate');
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js')));
 });
 
 // D1: from 2.0.0 the shell seed is refused. The frozen twin cannot resolve a 2.0.0 registration, so
@@ -638,18 +643,17 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.match(status, /"\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/library-check\.js" --project \. --source "\$\{CLAUDE_PLUGIN_ROOT\}" --json/);
     assert.match(f, /When `invalid` is above 0, one more line: `invalid: <n> stamp name\(s\) are not valid item names/);
     assert.match(f, /`health` is `ok` when the row's `errors` list is empty or absent, else the `type` of each `errorDetails` entry/);
-    assert.match(f, /The `health` column is ONE `claude mcp list` call/);
+    assert.doesNotMatch(status, /claude mcp list/, 'status lists no MCP server since 2.10.1');
     assert.match(status, /scripts\/analyze-usage\.js" --inventory \.claude/);
     assert.match(status, /stack\/hooks\/guard-secret-value\.js" --presence /);
     for (const row of ['stack version \\(stamp\\)', 'running plugin', 'scope', 'docs root', 'initialised'])
         assert.match(status, new RegExp(`^\\| ${row} \\|`, 'm'), `the general table has its ${row} row`);
-    // Review finding 10: the transcript folder is derived by the analyzer from its own cwd, named the way
-    // the memory import names it - one encoding, two readers - and no body builds it with `pwd | sed`
-    // (Git Bash's `pwd` is not the native path Claude Code names the folder from).
-    const { slugify } = require('./memory-import.js');
+    // Review finding 10: the transcript folder is derived by the analyzer from its own cwd, by Claude Code's rule - every
+    // non-alphanumeric character a dash - and no body builds it with `pwd | sed` (Git Bash's `pwd` is not the native path
+    // Claude Code names the folder from).
     const { sessionsDirOf } = require('./analyze-usage.js');
-    for (const sample of ['/Users/x/My Repo', 'C:\\work\\app.v2', '/tmp/a_b-c'])
-        assert.strictEqual(path.basename(sessionsDirOf(sample, '/acct')), slugify(sample), `the analyzer and the memory import name ${sample}'s transcript folder alike`);
+    for (const [sample, slug] of [['/Users/x/My Repo', '-Users-x-My-Repo'], ['C:\\work\\app.v2', 'C--work-app-v2'], ['/tmp/a_b-c', '-tmp-a-b-c']])
+        assert.strictEqual(path.basename(sessionsDirOf(sample, '/acct')), slug, `the analyzer names ${sample}'s transcript folder by the rule`);
     for (const body of [status, cmdBody('validate')]) assert.ok(!/pwd \| sed/.test(body), 'no body derives the transcript folder in the shell');
     // validate reports the same invalid line.
     assert.match(flat(cmdBody('validate')), /An `invalid: N stamp name\(s\) \.\.\.` line is a finding too/);
@@ -658,7 +662,7 @@ test('status: read-only from the running plugin - stamp state, health columns, u
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
     for (const [name, body] of [['init install phase', installBody()], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]])
     {
-        assert.match(body, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, `${name} walks the layers in dependency order`);
+        assert.match(flat(body), /rules -> agents -> skills -> hooks -> plugins/, `${name} walks the layers in dependency order`);
         assert.match(body, /\[step \d+\/\d+ - /, `${name} announces every step with the n/total banner`);
     }
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
@@ -666,7 +670,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     assert.match(configure, /orphan:/, 'configure consumes the orphan: lines');
     // The shared walk text carries the same machinery for both modes.
     const walk = flat(walkBody());
-    assert.match(walk, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, 'the walk holds the layer order');
+    assert.match(walk, /rules -> agents -> skills -> hooks -> plugins/, 'the walk holds the layer order');
     assert.match(walk, /DELTA: `node "\$TMP\/repo\/scripts\/stack-select\.js" --selection "\$TMP\/raw\.json" --dropped "\$TMP\/dropped\.json"`/, 'the DELTA walk drives the drop cascade');
     assert.match(walk, /An `orphan: <category> <name> - <why> \(dropped\); nothing kept still needs it` line/, 'the DELTA walk consumes the orphan: lines');
     assert.match(walk, /a layer turn missing the fenced table is invalid/, 'the table-before-question rule rides the walk');
@@ -983,53 +987,65 @@ function assertSurfaced(report, text, { firstRun = true, start = text } = {})
     assert.ok(report.first.warn.includes(line.trim()), `update-preflight --log does not forward: ${line}\nwarn: ${report.first.warn.join('\nwarn: ')}`);
 }
 
-// N1 (re-review): C10's stale user-scope registration (the line carrying the command to run), A-M2's kept
-// and unreadable lines and C11's here-only switch-off reach neither body without a marker. C12's move
+// N1 (re-review): A-M2's kept and unreadable lines reached neither body without a marker (C10's stale-registration
+// and C11's here-only lines left with the registrations in 2.10.1). C12's move
 // off local scope cannot meet the 1.x body: 1.x wrote no local scope (its --scope took project or
 // global), and the move fires only on a stamp that says local - so the current grep alone carries it.
-test('update: the stale-registration, kept, unreadable and here-only lines reach both update bodies; the local move reaches the current one (N1)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+test('update: the kept and unreadable lines reach both update bodies; the local move reaches the current one (N1)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
 {
     const { seedRun } = require('./seed-sandbox.js');
     const P = require('./install/plugins.js');
     const account = (work, text) => { fs.mkdirSync(path.join(work, 'acct'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', '.claude.json'), text); };
-    const serena = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--from', 'serena-agent@1.6.0', 'serena', 'start-mcp-server', '--project-from-cwd'], env: {} };
     const stale = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
-        env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
-        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { navigation: serena, 'alfred-memory': { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } } })),
+        env: COPY_ENV, args: ['--scope', 'user'],
+        // `navigation`, a name the 2.2.0 rename left behind, is judged on the first run past its successor's retirement
+        // (a 2.10.0 stamp): this one is the user's own server.
+        prepare: (repo, work) =>
+        {
+            account(work, JSON.stringify({ mcpServers: { navigation: { type: 'stdio', command: 'node', args: ['my-nav.js'], env: {} } } }));
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.10.0\n');
+        },
     }).out;
+    // An install a 2.10.0 release stamped, so the retired servers are due - the only run that reads the account file for them
+    // (a fresh one has nothing to take out, and since the final review's A4 never reaches the line through `browser`).
     const unreadable = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
-        env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
-        prepare: (repo, work) => account(work, '{not json'),
+        env: COPY_ENV, args: ['--scope', 'user'],
+        prepare: (repo, work) =>
+        {
+            account(work, '{not json');
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.10.0\n');
+        },
     }).out;
     const logs = [];
-    const row = (scope, enabled = true) => ({ name: 'chrome-control', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
-    P.engineStandDown({ rows: [row('user')], market: 'envoydev', scope: 'user', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: () => true, log: (m) => logs.push(m) });
-    P.moveLocalRows({ plugins: ['alfred-navigation@envoydev'], rows: [{ ...row('local'), name: 'alfred-navigation' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
+    const row = (scope, enabled = true) => ({ name: 'alfred-code', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
+    P.moveLocalRows({ plugins: ['alfred-code@envoydev'], rows: [row('local')], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
     const report = reportOf([stale, unreadable, ...logs.map((m) => `==> ${m}`)].join('\n'));
-    assertSurfaced(report, 'mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove navigation -s user');
-    assertSurfaced(report, 'mcp alfred-memory: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove alfred-memory -s user');
+    // M-F5-1: no name is live since 2.10.1 - the stack wants no server - so the kept line is plain, for update.md's grep alone.
+    assertSurfaced(report, 'mcp navigation: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove navigation -s user', { firstRun: false });
     assertSurfaced(report, '.claude.json could not be read - no user-scope registration was removed; fix the file and re-run', { start: 'mcp: /' });
-    assertSurfaced(report, 'plugin disabled [project]: chrome-control@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
-    assertSurfaced(report, 'plugin moved [local -> project]: alfred-navigation@envoydev', { firstRun: false });
+    assertSurfaced(report, 'plugin moved [local -> project]: alfred-code@envoydev', { firstRun: false });
 });
 
 // F7 (observation 1): C8's line naming a settings.local.json this run created and git would commit - a
 // machine path in the repo unless the user acts - matched neither the 1.x body's grep (`settings\.json
-// env:` only) nor its `warn:` lines, so the advice never showed there.
-test('update: a project install\'s update shows the settings.local.json gitignore advice through both update bodies (F7)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+// env:` only) nor its `warn:` lines, so the advice never showed there. Since 2.10.1 no memory database path
+// makes a project install write the file, so a local-scope update - whose own file it is - carries the case.
+test('update: a local install\'s update shows the settings.local.json gitignore advice through both update bodies (F7)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
 {
     const { seedRun } = require('./seed-sandbox.js');
     const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
-        args: ['--scope', 'project'],
-        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '1.3.0', scope: 'project', enabled: true }]),
+        args: ['--scope', 'local'],
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '1.3.0', scope: 'local', enabled: true }]),
         prepare: (repo) =>
         {
             fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
-            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: project\n');
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: local\n');
             fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
         },
     });
-    assertSurfaced(reportOf(out), 'settings.local.json: created for this machine\'s own values (the memory database path) - git does not ignore it here; add .claude/settings.local.json to .gitignore');
+    assertSurfaced(reportOf(out), 'settings.local.json: created for this machine\'s own values - git does not ignore it here; add .claude/settings.local.json to .gitignore');
 });
 
 // The way back from the 2.0.0 cut is printed text the user runs as-is, at whatever scope the install
@@ -1064,15 +1080,9 @@ test('superpowers is on no stack selection surface', () => {
     assert.doesNotMatch(html, /\["superpowers:/, 'the HTML skill rows');
 });
 
-// F4 re-review N2: C10 (registrationScope, mcp.js) removed the --scope user full-copy-route refusal
-// on `--memory-level project` - configure.md must not tell the model to hide that row any more, and
-// the HTML catalog must not repeat the same stale claim.
-test('N2: configure.md and the HTML catalog no longer claim --memory-level project is refused at --scope user', () => {
-    const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
-    assert.doesNotMatch(configure, /drop the `project` row/, 'configure.md must not tell the walk to hide the project level');
-    assert.doesNotMatch(configure, /the installer\s*\nrefuses it there/, 'configure.md must not claim a user-scope refusal');
-    assert.match(configure, /project.*is safe there too/s, 'configure.md must say the project level is safe at every scope');
-
+// 2.10.1: the memory level left configure with the memory server, and the HTML catalog keeps no stale refusal claim.
+test('N2: configure carries no memory level, and the HTML catalog no user-scope refusal claim', () => {
+    assert.doesNotMatch(cmdBody('configure'), /--memory-level|memory level/i, 'configure asks no memory level');
     const html = fs.readFileSync(path.join(ROOT, 'docs', 'alfred-code.html'), 'utf8');
     assert.doesNotMatch(html, /only the full copy route refuses it at user scope/, 'the HTML memory row must not repeat the stale refusal claim');
 });
@@ -1127,7 +1137,7 @@ test('every layer ask in walk.md offers 2-4 options with the recommended one fir
         assert.match(opts[0], /\(Recommended\)'/, `'${b[0].slice(0, 50)}' lists the recommended option first`);
         assert.strictEqual(opts.filter((l) => /\(Recommended\)'/.test(l)).length, 1);
     }
-    for (const layer of ['Rules', 'Agents', 'Skills', 'Hooks', 'MCPs', 'Plugins'])
+    for (const layer of ['Rules', 'Agents', 'Skills', 'Hooks', 'Plugins'])
         assert.ok(askBlocks(sectionOf(walk, layer)).length >= 1, `the ${layer} layer carries its own ask template`);
     assert.match(walk, /one AskUserQuestion call of up to 4 multi-select questions/i, 'the Pick follow-up is one call of up to 4 questions');
 });
@@ -1146,23 +1156,6 @@ test('the data-root question is one ask template in init\'s install phase and co
         const opts = data[0].filter((l) => /^- '/.test(l));
         assert.match(opts[0], first, `${rel}: the recommended first option`);
     }
-});
-
-// M13: each enabled browser puts about 25 tools into every session, so a browser is recommended only where the walk
-// seeded it (a web stack) or the evidence proved it; with neither, a gate leading with leaving them out comes first.
-// Since 2026-10-15 the engines are picked as rows of their own: the gate, then ONE engine pick, chrome first.
-test('M13 the browser ask recommends a browser only when a stack seeded it or the evidence proved it', () =>
-{
-    const walk = walkBody();
-    const gate = askBlocks(walk).filter((b) => /Add a browser server \(Playwright\)\?/.test(b[0]));
-    const pick = askBlocks(walk).filter((b) => /^Which browser servers\?/.test(b[0]));
-    assert.strictEqual(gate.length, 1, 'one gate for a row nothing earned');
-    assert.strictEqual(pick.length, 1, 'one engine pick');
-    assert.match(gate[0].filter((l) => /^- '/.test(l))[0], /^- 'Leave the browsers out \(Recommended\)'/);
-    const engines = pick[0].filter((l) => /^- '/.test(l)).map((l) => /^- '([^ ']+)/.exec(l)[1]);
-    assert.deepStrictEqual(engines, ['chrome-control', 'firefox-control', 'msedge-control', 'webkit-control']);
-    assert.match(pick[0].filter((l) => /^- '/.test(l))[0], /^- 'chrome-control \(Recommended\)'/);
-    assert.match(flat(walk), /When the `chrome-control` row reads `stack:<name>`, `recommended` or `evidence`[^.]*ask the engine pick straight away; otherwise[^.]*ask the gate first/);
 });
 
 test('init\'s install phase and configure name option asks, not typed numbers, for stacks and the add/drop rounds', () =>
@@ -1425,7 +1418,7 @@ test('C21: configure reports in a fixed shape - one table, then labelled lines',
     const c = cmdBody('configure');
     const post = c.slice(c.indexOf('## Post-check'), c.indexOf('**Git hygiene'));
     assert.match(post, /\| category \| refreshed \| added \| dropped \| kept \(orphan or required\) \|/);
-    for (const label of ['AGENTS.md:', 'Memory:', 'Deferred by you:', 'Warnings:', 'Restart:']) assert.ok(post.includes(`\`${label}\``), label);
+    for (const label of ['AGENTS.md:', 'Deferred by you:', 'Warnings:', 'Restart:']) assert.ok(post.includes(`\`${label}\``), label);
 });
 
 // Review 2026-10-23: an unattended update never writes over the user's AGENTS.md answer - ask-local's Recommended option
@@ -1434,4 +1427,72 @@ test('update-walk: unattended, ask-local keeps the AGENTS.md answer instead of t
 {
     const body = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'update-walk.md'), 'utf8'));
     assert.match(body, /Unattended, take the Recommended option.*except on `update=ask-local`, which takes 'Keep the AGENTS\.md answer'/);
+});
+
+// Workspace layering (spec section 3): each new stop is a template whose Recommended option is listed first - lint 61
+// holds the counts and the mark; these hold the option each one recommends.
+const firstOption = (text, question) =>
+{
+    const m = text.match(new RegExp(`^[ \\t]*\`\`\`ask[ \\t]*\\n[ \\t]*${question}[^\\n]*\\n[ \\t]*- '([^\\n]*?)' - `, 'm'));
+    return m ? m[1] : null;
+};
+test('setup-plugin: every new ask is a template with one Recommended option, listed first', () =>
+{
+    const walk = refBody('update-walk');
+    assert.strictEqual(firstOption(walk, 'Join the workspace at'), 'Join (Recommended)');
+    assert.strictEqual(firstOption(walk, 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
+    const cascade = refBody('update-workspace');
+    assert.strictEqual(firstOption(cascade, 'Answer each project'), 'Take the recommended (Recommended)');
+    assert.strictEqual(firstOption(cascade, 'Join these installed projects'), 'Join as children (Recommended)');
+    assert.strictEqual(firstOption(refBody('init-bootstrap'), 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
+    const child = refBody('init-child');
+    assert.strictEqual(firstOption(child, 'Where should the stack\'s plugins be enabled in this child'), 'local (Recommended)');
+    assert.strictEqual(firstOption(child, 'Ignore these machine-local paths in this clone'), '.git/info/exclude (Recommended)');
+    // the child text is read only on child=yes, so a standalone install carries none of it
+    assert.match(flat(refBody('init-install')), /grep -q 'child=yes' "\$TMP\/parent\.txt" && cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md"/);
+});
+
+test('init-child: the local-scope hygiene lines come from git-hygiene.js --local-child, read and applied (AC8)', () =>
+{
+    const child = refBody('init-child');
+    const hy = child.slice(child.indexOf('## Git hygiene at `local` scope'));
+    assert.match(hy, /`node "\$TMP\/repo\/scripts\/git-hygiene\.js" --root \. --local-child`/);
+    assert.match(hy, /`node "\$TMP\/repo\/scripts\/git-hygiene\.js" --root \. --local-child --apply exclude\|gitignore`/);
+    assert.match(hy, /\.prettierignore/);
+    assert.match(hy, /no `!\.claude\/AGENTS\.md` re-include/);
+});
+
+test('update-workspace.md is cat only behind a workspace line', () =>
+{
+    const walk = flat(refBody('update-walk'));
+    const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-workspace\.md"/g) || [];
+    assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
+    assert.match(cats[0], /^ grep -qE '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child or a rescan row');
+    assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
+});
+
+test('the plan and the cascade calls carry the 10-minute budget, and a cascade that outruns it is waited for, never re-run', () =>
+{
+    const walk = flat(refBody('update-walk'));
+    assert.match(walk, /Pass `timeout: 600000` to this call: `plan` reads each parent back/, 'step 2 gives the plan call the budget its read-backs need');
+    const cascade = flat(refBody('update-workspace'));
+    assert.match(cascade, /ONE call with `timeout: 600000`/);
+    assert.match(cascade, /A cascade that outruns it comes back BACKGROUNDED and keeps running: never start it again \(two cascades would update the same children at once\)\. Wait for its completion notice, then go on/);
+    const close = flat(refBody('update-close'));
+    assert.match(close, /A `cascade\.txt` with no `cascade: done` line is a cascade still running: wait for its completion notice and read it again/);
+});
+
+test('validate and configure never offer a seed:false row', () =>
+{
+    const sentence = /A row with `"seed": false` is never MISSING and never offered: it is set only in the launch environment or by hand \(`ALFRED_CODE_WORKSPACE`\)\./;
+    assert.match(flat(cmdBody('validate')), sentence);
+    assert.match(flat(cmdBody('configure')), sentence);
+});
+
+test('update-close reads the cascade rows and runs check-loads only when cascade.txt exists', () =>
+{
+    const close = flat(refBody('update-close'));
+    assert.match(close, /\[ -f "\$TMP\/cascade\.txt" \] && cat "\$TMP\/cascade\.txt"/, 'the rows are read only when the cascade ran');
+    assert.match(close, /node "\$TMP\/repo\/scripts\/workspace\.js" check-loads --root <rel>/, 'check-loads per updated child');
+    assert.match(close, /`updated` \/ `unchanged` \/ `failed` \/ `skipped` \/ `gone`/);
 });

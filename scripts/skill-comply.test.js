@@ -23,6 +23,8 @@ const user = (text) => ({ type: 'user', message: { role: 'user', content: text }
 const exited = (row, code = 1, out = '') => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: row.message.content[0].id, is_error: true, content: `Exit code ${code}\n${out}` }] } });
 const denied = (row) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: row.message.content[0].id, is_error: true, content: 'blocked' }] } });
 const jsonl = (rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+const cmdRow = (name) => user(`<command-name>/${name}</command-name>\n<command-message>${name}</command-message>\n<command-args></command-args>`);
+const meta = (text) => ({ type: 'user', isMeta: true, message: { role: 'user', content: text } });
 
 const expectOf = (skill) => sc.loadExpectation(skill).data;
 const verdicts = (r) => Object.fromEntries(r.steps.map((s) => [s.id, s.verdict]));
@@ -167,11 +169,12 @@ test('a verifier seat satisfies the review step the same as the in-session skill
 
 // --- solve-task: the size line and the first stop -------------------------------------------------
 
-function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_alfred-memory_alfred-memory__memory_list', approve = false } = {})
+function solveRun({ sizeFirst = true, size = 'standard', resume = 'Bash', approve = false } = {})
 {
     const sizeRow = say(`Size: ${size} - request validation is input parsing, on the floor whatever the file count.`);
     const rows = [user('<command-name>/task-solve</command-name>\n<command-args>Add request validation to the create-order handler</command-args>')];
-    if (resume) rows.push(tool(resume, {}));
+    // the cycle note comes off the handoff bus (2026-10-24: no memory server); any other tool is no resume
+    if (resume) rows.push(tool(resume, resume === 'Bash' ? { command: 'node .claude/hooks/handoff.js left order-validation' } : {}));
     if (sizeFirst) rows.push(sizeRow);
     rows.push(tool('Skill', { skill: 'task-design' }));
     if (!sizeFirst) rows.push(sizeRow);
@@ -209,11 +212,12 @@ test('skipping the resume check fails it; a self-written Approved stamp fails no
 
 test('an MCP tool counts in both spellings: the plugin route and the registration route', () =>
 {
-    assert.strictEqual(sc.canonical('mcp__plugin_alfred-memory_alfred-memory__memory_list'), BARE('alfred-memory', 'memory_list'));
-    assert.strictEqual(sc.canonical('mcp__plugin_chrome-control_chrome-control__browser_navigate'), BARE('chrome-control', 'browser_navigate'));
+    assert.strictEqual(sc.canonical('mcp__plugin_alfred-memory_alfred-memory__memory_list'), BARE('alfred-memory', 'memory_list')); // mcp-fixture
+    assert.strictEqual(sc.canonical('mcp__plugin_chrome-control_chrome-control__browser_navigate'), BARE('chrome-control', 'browser_navigate')); // mcp-fixture
     assert.strictEqual(sc.canonical('Read'), 'Read');
+    // the resume step reads the handoff bus, so a memory-server call no longer counts for it (2026-10-24)
     const r = sc.grade(expectOf('task-solve'), solveRun({ resume: BARE('alfred-memory', 'memory_list') }));
-    assert.strictEqual(verdicts(r)['resume-first'], 'PASS');
+    assert.strictEqual(verdicts(r)['resume-first'], 'FAIL');
 });
 
 // --- the convention skill -------------------------------------------------------------------------
@@ -573,10 +577,47 @@ test('an execution-strategy trace grades the load before the first edit and no p
     assert.deepStrictEqual(failing(sc.grade(exp, planned, { level: 'plain' })), ['no-plan-file']);
 });
 
+test('an output-scorer trace grades the seat, the script\'s next before the plan, no plan after a withhold and one more attempt', () =>
+{
+    const exp = expectOf('mode-output-scorer');
+    // Each row is built per use: two rows from one call share a message id and the reader keeps one.
+    const plan = () => tool('Write', { file_path: '/w/.alfred/docs/work/plans/cancel-reason.md', content: '# plan' });
+    const seat = () => tool('Agent', { subagent_type: 'alfred-code:output-scorer', prompt: 'score-file: /w/s.md' });
+    const next = () => tool('Bash', { command: 'node "$S" next --root /w --session s1 --slug cancel --level 80 --rounds 3' });
+    const answers = () => tool('Write', { file_path: '/w/.alfred/state/sessions/scorer/s1/cancel/answers.md', content: 'a' });
+    const good = jsonl([user('plan it'), seat(), next(), say('Scored: 91/100 (level 80) - 1 run(s) - independent - designer-plan'), plan()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, good, { level: 'plain' })), []);
+
+    const early = jsonl([user('plan it'), plan(), seat(), next()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, early, { level: 'plain' })), ['script-decides']);
+
+    const noSeat = jsonl([user('plan it'), next(), plan()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, noSeat, { level: 'plain' })), ['grader-is-the-seat']);
+
+    const withheld = 'Scored: 70/100 (level 80) - NOT PASSED after 3 run(s) - withheld at /w/d.md';
+    const leaked = jsonl([user('plan it'), seat(), next(), say(withheld), plan()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, leaked, { level: 'plain' })), ['no-plan-after-withhold']);
+
+    const second = jsonl([user('plan it'), seat(), next(), say(withheld), answers(), seat(), next(),
+        say('Scored: 88/100 (level 80) - 4 run(s) - independent - designer-plan'), plan()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, second, { level: 'plain' })), []);
+
+    const third = jsonl([user('plan it'), seat(), next(), say(withheld), answers(), seat(), next(), say(withheld), answers()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, third, { level: 'plain' })), ['one-more-attempt']);
+
+    // the fix-on-pass offer: no plan until the answer's release line, whichever draft that release names
+    const offered = 'Scored: 88/100 (level 80) - fix offered - 1 run(s) - independent - designer-plan';
+    const jumped = jsonl([user('plan it'), seat(), next(), say(offered), plan()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, jumped, { level: 'plain' })), ['no-plan-while-fix-offered']);
+    const waited = jsonl([user('plan it'), seat(), next(), say(offered), seat(), next(),
+        say('Scored: 90/100 (level 80) - 2 run(s) - independent - designer-plan'), plan()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, waited, { level: 'plain' })), []);
+});
+
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
-    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'task-solve']);
+    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-solve']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -632,8 +673,8 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.ok(!fs.existsSync(out), 'a dry run writes nothing');
         const lines = r.out.split('\n');
         const billed = lines.filter((l, i) => lines[i - 1] === '# billed: one nested model session');
-        assert.strictEqual(billed.length, 24);
-        assert.match(r.out, /8 skill\(s\) x 3 level\(s\) = 24 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
+        assert.strictEqual(billed.length, 27);
+        assert.match(r.out, /9 skill\(s\) x 3 level\(s\) = 27 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
         assert.match(lines.slice(3).find((l) => !l.startsWith('#') && l !== 'set -e'), /clean-export\.js/, 'the source is exported first when none is handed in');
         for (const b of billed)
         {
@@ -643,15 +684,15 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
             assert.match(b, /--max-budget-usd 1\.5 --model=claude-sonnet-4-5 > /);
             assert.ok(b.includes(`CLAUDE_CONFIG_DIR=${path.join(out, 'config')}`));
         }
-        assert.ok(billed.some((b) => b.includes(BARE('alfred-memory', 'memory_list'))), 'the copy route allows the bare spelling');
+        assert.ok(billed.every((b) => !/mcp__/.test(b)), 'no fixture allows a stack server tool - the stack ships none');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
-        assert.strictEqual(installs.length, 24);
+        assert.strictEqual(installs.length, 27);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
         // The scaffold's commit leaves ~300 loose objects, past git's loose-objects threshold (100), so an
         // unconfigured project starts a DETACHED `git maintenance run --auto` that is still packing into
         // .git/objects when the run is deleted (reproduced: ENOTEMPTY, a tmp_pack left behind).
         const inits = lines.filter((l) => / init -q/.test(l));
-        assert.strictEqual(inits.length, 24);
+        assert.strictEqual(inits.length, 27);
         for (const i of inits) assert.match(i, / init -q && git -C \S+ config maintenance\.auto false$/, 'a throwaway project runs no background maintenance');
         // bash parses the whole plan without running any of it
         const script = path.join(dir, 'plan.sh');
@@ -661,10 +702,10 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         const one = cli(['replay', '--dry-run', '--skill', 'csharp', '--level', 'plain', '--source', path.join(__dirname, '..'), '--out', out]);
         assert.strictEqual(one.code, 0, one.err);
         assert.doesNotMatch(one.out, /clean-export/);
-        // the project gets what an init walk installs: the locked always-on set and the stack's seeds too
+        // the project gets what an init walk installs: the locked always-on set and the stack's seeds too, and no server (2.10.1)
         const sel = JSON.parse(one.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
         for (const r of ['alfred-interaction', 'alfred-navigation', 'csharp-conventions', 'dotnet-repair-agents']) assert.ok(sel.rules.includes(r), r);
-        for (const m of ['alfred-navigation', 'alfred-documentation', 'alfred-memory']) assert.ok(sel.mcps.includes(m), m);
+        assert.deepStrictEqual(sel.mcps || [], [], 'the stack seeds no MCP server');
         assert.ok(sel.skills.includes('csharp') && sel.skills.includes('dotnet-testing'));
         assert.strictEqual((one.out.match(/^# billed/mg) || []).length, 1);
         assert.strictEqual(cli(['replay', '--dry-run', '--level', 'loud']).code, 2);
@@ -720,4 +761,51 @@ test('replay --live against a stub claude installs, scaffolds, records and grade
         assert.strictEqual(fs.readFileSync(path.join(out, 'csharp', 'plain', 'transcript.jsonl'), 'utf8'), fs.readFileSync(canned, 'utf8'));
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// --- item 7 (2026-10-25): the grading half split out, and the positions a session is cut at --------------------
+
+// grade is gradeRun over parseTranscript by construction, so this pins the wiring, not the verdicts (final review M2: as an
+// equality of the two it compared a function with itself). The split itself was checked once against the pre-split
+// grader (24b0105a) on these traces for every expectation: 0 differences (ledgered 2026-10-25).
+test('grade is gradeRun over parseTranscript, and a level\'s prompt joins a copy of the run\'s users (item 7, A7.3)', () => {
+    for (const name of sc.listSkills()) {
+        const exp = expectOf(name);
+        const traces = [
+            jsonl([user('go'), tool('Skill', { skill: name }), tool('Read', { file_path: 'a.md' }), say('Done.')]),
+            jsonl([user('go'), tool('Edit', { file_path: 'src/app.js', old_string: 'a', new_string: 'b' }), say('Changed it.')]),
+            jsonl([user('go'), say('Nothing to do.')]),
+        ];
+        for (const text of traces) {
+            assert.deepStrictEqual(sc.gradeRun(exp, sc.parseTranscript(text)), sc.grade(exp, text), name);
+            const run = sc.parseTranscript(text);
+            const before = JSON.stringify(run);
+            for (const level of Object.keys(exp.prompts || {})) sc.gradeRun(exp, run, { level });
+            assert.strictEqual(JSON.stringify(run), before, `${name}: grading at a level left the run it was handed as it was`);
+        }
+    }
+});
+test('parseTranscript marks typed prompts, command rows and meta rows at their event position', () => {
+    const run = sc.parseTranscript(jsonl([user('go'), tool('Read', { file_path: 'a.md' }), cmdRow('task-solve'), meta('hook text'), tool('Edit', { file_path: 'a.md' })]));
+    assert.deepStrictEqual(run.marks.map((m) => [m.at, m.kind]), [[0, 'prompt'], [1, 'command'], [1, 'attachment']]);
+    assert.strictEqual(run.events.length, 2);
+    assert.deepStrictEqual(run.users, ['go', run.marks[1].text], 'the command row is still a user turn; the meta row is not');
+    const blocks = sc.parseTranscript(jsonl([{ type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: 'skill body' }, { type: 'text', text: 'more' }] } }]));
+    assert.strictEqual(blocks.marks[0].text, 'skill body\nmore', 'a block meta row\'s text is its text blocks alone');
+});
+test('parseTranscript marks a session file\'s attachment rows - hook context, instruction loads, a queued prompt - and reads a seat\'s own sidechain rows on request', () => {
+    const att = (a) => ({ type: 'attachment', attachment: a });
+    const rows = [att({ type: 'instructions', files: [{ path: 'C:\\p\\.claude\\rules\\alfred-awareness.md', content: 'x' }, { path: '/p/.alfred/docs/awareness/PROJECT-AWARENESS.md', content: 'y' }] }),
+        user('go'), att({ type: 'hook_additional_context', content: ['Answer budget (alfred-interaction.md): 3 sentences'], hookEvent: 'UserPromptSubmit' }),
+        tool('Read', { file_path: 'a.md' }), att({ type: 'queued_command', prompt: 'and the tests too', humanTurn: true }),
+        att({ type: 'nested_memory', path: '/p/.claude/rules/markdown-docs.md' }), att({ type: 'skill_listing', content: 'ignored' })];
+    const run = sc.parseTranscript(jsonl(rows));
+    assert.deepStrictEqual(run.marks.map((m) => [m.at, m.kind]), [[0, 'attachment'], [0, 'prompt'], [0, 'attachment'], [1, 'prompt'], [1, 'attachment']]);
+    assert.strictEqual(run.marks[0].text, 'C:/p/.claude/rules/alfred-awareness.md\n/p/.alfred/docs/awareness/PROJECT-AWARENESS.md');
+    assert.deepStrictEqual(run.users, ['go', 'and the tests too'], 'a queued prompt is the user\'s turn');
+    const ctx = (pattern) => sc.gradeRun({ steps: [{ id: 'c', graders: [{ type: 'regex', target: 'context', pattern, flags: 'm' }] }] }, run).steps[0].verdict;
+    assert.deepStrictEqual([ctx('^Answer budget'), ctx('awareness/PROJECT-AWARENESS\\.md$'), ctx('and the tests too')], ['PASS', 'PASS', 'FAIL'], 'context is the attachment marks\' text, never a typed turn');
+    const seat = jsonl([{ ...user('the brief'), isSidechain: true }, { ...tool('Read', { file_path: 'b.md' }), isSidechain: true }]);
+    assert.strictEqual(sc.parseTranscript(seat).events.length, 0, 'a main-session parse skips a seat\'s rows');
+    assert.deepStrictEqual(sc.parseTranscript(seat, { sidechain: true }).events.map((e) => e.tool), ['Read']);
 });

@@ -1234,7 +1234,7 @@ test('scorecard: a weak "it should" inside a wh-clause is no correction; standin
 test('scorecard: a correction is saved when a memory store follows within three replies, and unsaved otherwise', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
-  const store = (id, ts, name = 'mcp__plugin_alfred-memory_alfred-memory__memory_store') => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name, input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
+  const store = (id, ts, name = 'mcp__plugin_alfred-memory_alfred-memory__memory_store') => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name, input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored'); // mcp-fixture
   const long = 'prose '.repeat(280);
   // Transcript A, hand-counted: correction 1 saved in the first reply; correction 2 saved in the
   // THIRD reply (still inside the window); correction 3 never saved over three replies.
@@ -1283,7 +1283,7 @@ test('scorecard: a correction is saved when a memory store follows within three 
 test('scorecard: a correction typed into an ask waits on a save like a typed prompt; an offered label never does (audit 2026-10-10 C15, 4f1c2ebb)', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
-  const store = (id, ts) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name: 'mcp__plugin_alfred-memory_alfred-memory__memory_store', input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
+  const store = (id, ts) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name: 'mcp__plugin_alfred-memory_alfred-memory__memory_store', input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored'); // mcp-fixture
   const questions = [{ question: 'Ship it?', header: 'Ship', multiSelect: false, options: [{ label: 'Ship (Recommended)', description: 'a' }, { label: 'Hold', description: 'b' }] }];
   const ask = (id, ts, answer, structured) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `q${id}`, name: 'AskUserQuestion', input: { questions } }])
     + line({ type: 'user', timestamp: ts, message: { content: [{ type: 'tool_result', tool_use_id: `q${id}`, content: `User has answered your questions: "Ship it?"="${answer}". You can now continue.` }] },
@@ -1423,7 +1423,7 @@ function writeInventoryTranscript(dir, root, name) {
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:02.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
     // guard-read-whole-file's shell-route reminder names its rule, and nothing else does
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:03.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.claude/rules/shell-only-conventions.md`. Read the rule.'] } }),
-    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Foo' })])),
+    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Foo' })])), // mcp-fixture
     line({ type: 'user', timestamp: '2026-07-15T07:04:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: 'sym' }] } }),
     line(invAsst('m5', '2026-07-15T07:05:00.000Z', [use('t5', 'LSP', { method: 'definition' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:05:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't5', content: 'def' }] } }),
@@ -1944,7 +1944,7 @@ test('a token past the label cut is still masked - the mask runs before the slic
 // opening a command segment) sits in the 3 tool calls before it, or in the same call. A symbol step
 // in that window wins over a grep. Whole-file denials come from the block ledger when it is passed,
 // else from the transcript's own hook bracket.
-const SERENA = (tool) => `mcp__plugin_alfred-navigation_alfred-navigation__${tool}`;
+const SERENA = (tool) => `mcp__plugin_alfred-navigation_alfred-navigation__${tool}`; // mcp-fixture
 const navCall = (id, name, input = {}) => ({ type: 'tool_use', id, name, input });
 function navTranscript(file, calls, results = {}) {
   let body = '';
@@ -2335,4 +2335,82 @@ test('houseBare: a session recorded before a rename joins the item under its new
   assert.strictEqual(houseBare(`alfred-code:${seat}`), 'issue-diagnoser-ci', 'a seat too');
   assert.strictEqual(houseBare('alfred-code:task-solve'), 'task-solve');
   assert.strictEqual(houseBare('superpowers:brainstorming'), 'superpowers:brainstorming', 'a foreign namespace stays whole');
+});
+
+// --- item 7: the Conformance section (2026-10-25) ------------------------------------------------------------------
+const cells = (md, id) => md.split('\n').find((l) => l.startsWith(`| ${id} |`)).split(/(?<!\\)\|/).slice(5, 10).map((c) => c.trim());
+
+test('analyze-usage prints a machine-written Conformance section outside JUDGMENT_HEAD_RE; --check-report accepts a verdict citing it (A7.2)', () => {
+  const dir = tmp();
+  fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'F1', 'violated'), dir, { recursive: true });
+  const dest = path.join(dir, 'report.md');
+  assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--out', dest]).status, 0);
+  const md = fs.readFileSync(dest, 'utf8');
+  assert.match(md, /^## Conformance - expected vs observed \(machine-written\)$/m);
+  assert.doesNotMatch('Conformance - expected vs observed (machine-written)', require('./analyze-usage.js').JUDGMENT_HEAD_RE);
+  for (const area of ['navigation', 'scoring', 'preferences', 'awareness', 'questions', 'answers', 'flow', 'decisions']) assert.match(md, new RegExp(`\\| ${area} \\|`), area);
+  assert.deepStrictEqual(cells(md, 'F1').slice(2, 3), ['1'], 'F1 violated once');
+  assert.match(md, /^\| task-solve \| size-first \| 1 \| 0 \| 1 \| 0 \|$/m, 'the expect.json steps graded in the window task-solve opened');
+  // an author replaces the FILL IN skeleton (whose TOKEN VERDICT template check-report rejects unfilled) with the verdict
+  fs.writeFileSync(dest, `${md.slice(0, md.indexOf('## Waste analysis - FILL IN'))}## Verdict\n\nThe flow claim F1 was violated 1 time (Conformance row F1).\n`);
+  assert.strictEqual(cli(['--check-report', dest]).status, 0);
+});
+// Final review 2026-10-25 (M4, re-graded Important): a --from / --to report graded its claims over the whole session, so a
+// verdict citing the rows cited runs outside the window it reports.
+test('a --from / --to report grades its Conformance rows over the same window, and says so', () => {
+  const dir = tmp();
+  let n = 0;
+  const at = (iso, row) => ({ ...row, timestamp: iso, uuid: `u${++n}` });
+  const call = (iso, name, input) => at(iso, { type: 'assistant', message: { id: `m${n}`, role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'tool_use', id: `t${n}`, name, input }], usage: { input_tokens: 1, output_tokens: 1 } } });
+  const say = (iso, text) => at(iso, { type: 'assistant', message: { id: `m${n}`, role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text }], usage: { input_tokens: 1, output_tokens: 1 } } });
+  const cmd = (iso) => at(iso, { type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>\n<command-message>task-solve</command-message>\n<command-args></command-args>' } });
+  const ask = { questions: [{ question: 'Which way?', header: 'Way', multiSelect: false, options: [{ label: 'A (Recommended)', description: 'a' }, { label: 'B', description: 'b' }] }] };
+  const rows = [
+    // 10:00 - the design before the size line: F1 violated
+    cmd('2026-10-25T10:00:00Z'), call('2026-10-25T10:00:05Z', 'Skill', { skill: 'task-design' }), say('2026-10-25T10:00:10Z', 'Size: standard - input parsing.'),
+    call('2026-10-25T10:00:15Z', 'AskUserQuestion', ask),
+    // 12:00 - in order: F1 held
+    cmd('2026-10-25T12:00:00Z'), say('2026-10-25T12:00:05Z', 'Size: standard - input parsing.'), call('2026-10-25T12:00:10Z', 'Skill', { skill: 'task-design' }),
+    call('2026-10-25T12:00:15Z', 'AskUserQuestion', ask)];
+  fs.writeFileSync(path.join(dir, 's.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const md = (...args) => {
+    const dest = path.join(dir, 'report.md');
+    assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', ...args, '--out', dest]).status, 0);
+    return fs.readFileSync(dest, 'utf8');
+  };
+  assert.deepStrictEqual(cells(md(), 'F1').slice(0, 3), ['2', '1', '1'], 'the whole session: two runs, one held, one violated');
+  const windowed = md('--from', '2026-10-25T11:00:00Z');
+  assert.deepStrictEqual(cells(windowed, 'F1').slice(0, 3), ['1', '1', '0'], 'the window holds the second run alone');
+  assert.match(windowed, /^\| task-solve \| size-first \| 1 \| 1 \| 0 \| 0 \|$/m, 'the steps graded over the window too');
+  assert.match(windowed, /_Graded in \d+ ms; .*windowed: 2026-10-25T11:00:00Z → end/);
+  assert.deepStrictEqual(cells(md('--to', '2026-10-25T11:00:00Z'), 'F1').slice(0, 3), ['1', '0', '1'], 'and the first alone before it');
+});
+test('a state claim reads data/ beside the transcript or --data-root; with neither it is not visible, naming the file (item 7 design 4)', () => {
+  const dir = tmp();
+  fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'D2', 'held'), dir, { recursive: true });
+  const d2 = (...args) => {
+    const dest = path.join(dir, 'report.md');
+    assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', ...args, '--out', dest]).status, 0);
+    return cells(fs.readFileSync(dest, 'utf8'), 'D2');
+  };
+  assert.deepStrictEqual(d2(), ['1', '1', '0', '0', '']);
+  fs.renameSync(path.join(dir, 'data'), path.join(dir, 'elsewhere'));
+  assert.deepStrictEqual(d2(), ['1', '0', '0', '1', '<data root>/state/history/s.json']);
+  assert.deepStrictEqual(d2('--data-root', path.join(dir, 'elsewhere')), ['1', '1', '0', '0', '']);
+});
+test('--no-conformance leaves the section out; the probe kinds the shell guards write get a table each; the navigation row names no retired server', () => {
+  const dir = tmp();
+  fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'N1', 'violated'), dir, { recursive: true });
+  const row = (kind, extra = {}) => JSON.stringify({ ts: '2026-10-25T10:00:03.000Z', hook: 'shell-guards.js', event: 'PreToolUse', tool: 'Bash', mode: 'probe', kind, reason: `probe: ${kind}`, detail: { branch: kind, ...extra } });
+  fs.writeFileSync(path.join(dir, 'hook-blocks-s.jsonl'), [row('symbol-grep', { pattern: 'cartTotal' }), row('symbol-grep', { pattern: 'cartTotal' }), row('bg-note'), row('sed-multi-match')].join('\n') + '\n');
+  const dest = path.join(dir, 'report.md');
+  assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--hook-blocks', dir, '--out', dest]).status, 0);
+  const md = fs.readFileSync(dest, 'utf8');
+  assert.match(md, /^\| symbol-grep \| 2 \| .*cartTotal x2/m);
+  assert.match(md, /^\| bg-note \| 1 \|/m);
+  assert.match(md, /^\| sed-multi-match \| 1 \|/m);
+  assert.doesNotMatch(md, /^\| monitor-note \|/m, 'a kind with no row prints no table');
+  assert.doesNotMatch(md, /locate with serena/);
+  assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--no-conformance', '--out', dest]).status, 0);
+  assert.doesNotMatch(fs.readFileSync(dest, 'utf8'), /^## Conformance/m);
 });

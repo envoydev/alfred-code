@@ -259,7 +259,8 @@ const body = (text) => String(text).replace(/^---\n[\s\S]*?\n---\n/, '');
 // MINOR task-solve/references/step-mechanics.md:40: the dispatch guard reads a pre-session stamp as stale.
 test('task-solve: the AUTO stamp ends with the session; a resumed session re-writes it only from that session\'s words', () => {
     const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
-    assert.match(mech, /The AUTO stamp lives until step 6's close deletes it or the session ends - a resumed session re-writes it only from the user's waiver words typed in THAT session, else the next dispatch asks\./);
+    // final review 2026-10-27 I5: the line names which stamp - the hook's session stamp is never deleted
+    assert.match(mech, /This hand-written AUTO stamp lives until step 6's close deletes it or the session ends \(the hook's session stamp is never deleted - step 6 deletes its run marker\) - a resumed session re-writes it only from the user's waiver words typed in THAT session, else the next dispatch asks\./);
 });
 
 // MINOR task-solve:172: the agents-mode stamp's first line is given, not learned from a bounce.
@@ -364,7 +365,7 @@ test('issue-signatures-ci: the worked verdict carries its proof line, and the qu
     assert.match(flat(text), /The four-line verdict it produces:/);
     const verdict = (text.match(/```text\n(signature:[\s\S]*?)```/) || [])[1] || '';
     assert.deepStrictEqual(verdict.split('\n').filter(Boolean).map((l) => l.split(':')[0]), ['signature', 'call', 'route', 'proof']);
-    assert.match(verdict, /^proof: after the feed secret is rotated, `gh run rerun --failed` passes with no code change - NOT RUN until then$/m);
+    assert.match(verdict, /^proof: after the feed secret is rotated, a re-run of the failed jobs \(`gh run rerun --failed`, `glab ci retry`\) passes with no code change - NOT RUN until then$/m);
     assert.doesNotMatch(flat(text), /The \.NET gate is a build/);
     assert.match(flat(text), /A quality gate is usually a build with warnings promoted to errors plus a formatter check \(`dotnet format --verify-no-changes`, `prettier --check`, `eslint`\)/);
 });
@@ -419,9 +420,9 @@ test('SKF-05: no flow skill hands off, purges or deletes a note on the navigatio
     for (const f of flowFiles())
         assert.doesNotMatch(flat(read(f)), /navigation-server hand-off|navigation server cursor note|purge the navigation-server/, f);
     const close = flat(skill('issue-diagnoser'));
-    assert.match(close, /Delete this run's cursor rows \(`memory_delete`, tags `note:<slug>\/diagnosis` and the project tag, `tag_match: 'all'`\)/);
-    assert.match(close, /store the signature and its fix as ONE alfred-memory row without the `handoff` \/ `note:` tags - the reusable half/);
-    assert.match(flat(read('stack/skills/loop-code-quality/references/staged-mode.md')), /purge the run's alfred-memory handoff notes fold-first/);
+    // 2026-10-24: the cursor is a note on the handoff bus, and the reusable half lands in the findings file the next run greps.
+    assert.match(close, /Purge this run's cursor \(`node \.claude\/hooks\/handoff\.js purge <slug>`\); when the cause was proven, first write the signature and its fix into the findings file's `Cause` stamp - the reusable half, which a later diagnosis greps `<docs-path>\/work\/diagnoses\/` for/);
+    assert.match(flat(read('stack/skills/loop-code-quality/references/staged-mode.md')), /purge the run's handoff notes fold-first/);
 });
 
 // SKF-09 / SKF-15: task-design and task-verify-plan collided at Jaccard 0.278 with neither naming the other's case; the
@@ -436,7 +437,9 @@ test('SKF-09 + SKF-15: the design and plan-audit descriptions each exclude the o
 // The 2026-10-17 usage audit: a customer-side bug was fixed before its symptom was ever reproduced; task-design opens such a
 // plan with a reproduce task, and step 3's background runs get one start line (task-solve's step mechanics).
 test('2026-10-17: a customer-side bug opens with its symptom reproduced; a background run gets one start line', () => {
-    assert.match(skill('task-design'), /A bug seen only on the customer's side .* opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task/);
+    // Item 4 (2026-10-25) moved the rule into design-rules.md, which step 4 reads; SKILL.md keeps the pointer.
+    assert.match(read('stack/skills/task-design/references/design-rules.md'), /A bug seen only on the customer's side .* opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task/);
+    assert.match(skill('task-design'), /A bug seen only on the customer's side - read `references\/design-rules\.md`/);
     const mech = read('stack/skills/task-solve/references/step-mechanics.md');
     assert.match(mech, /^## Background runs - the one start line$/m);
     assert.match(mech, /ONE wait whose\ncommand ends on the result or a crash/);
@@ -492,18 +495,39 @@ test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its basel
 });
 
 // SKF-04 (the user's ruling, option A): the upgrade carried a legacy `--auto` that 'skips the gate' beside auto-mode, which
-// answers every marked ask - so a stage that stayed red re-planned unattended with no cap. One mode now: auto-mode answers
+// answers every marked ask - so a stage that stayed red re-planned unattended with no cap. One mode now (auto-run since the
+// stack-modes spec of 2026-10-27): auto-run answers
 // the gate, and the hard-stop ask goes out unmarked under it, so the hook leaves it for the user (lint 61 holds templates
 // only, and this ask is prose; scripts/auto-mode.test.js replays both shapes through the hook).
 test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the user under it', () => {
     const t = flat(skill('task-version-upgrade'));
-    assert.strictEqual((t.match(/--auto(?!-mode)\b/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
+    assert.strictEqual((t.match(/--auto\b(?!-)/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
+    assert.doesNotMatch(t, /--auto-mode/, 'the old flag is gone');
     assert.doesNotMatch(t, /Auto mode (skips|still stops|\(explicitly requested\))|auto mode included|skipping the approval gate/, 'the legacy mode is folded');
-    assert.match(t, /\*\*Under auto-mode the gate is answered, not skipped - and only when the user typed `--auto-mode` on the call\.\*\*/);
-    assert.match(t, /the old `--auto`, 'auto mode' or bare `auto-mode` wording starts nothing, and the gate stands/);
-    assert.match(t, /Hard stops, auto-mode included:/);
-    assert.match(t, /Under auto-mode put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-mode' - the hook answers only a marked ask, so this one waits\./);
-    // the attended ask keeps its mark, and the auto-mode contract paragraph is untouched
+    assert.match(t, /\*\*Under auto-run the gate is answered, not skipped - and only when the user turned auto-run on, the hook's contract in context\.\*\*/);
+    assert.match(t, /the old `--auto`, 'auto mode' or `auto-mode` wording starts nothing, and the gate stands/);
+    assert.match(t, /Hard stops, auto-run included:/);
+    assert.match(t, /Under auto-run put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-run' - the hook answers only a marked ask, so this one waits\./);
+    // the attended ask keeps its mark, and the modes paragraph is untouched
     assert.match(t, /- 'Re-plan from this stage \(Recommended\)' - .* - 'Roll back to the last stage's rollback point' - .* - 'Stop here' - /);
-    assert.match(t, /\*\*auto-mode\.\*\* `--auto-mode` as the first word of the arguments is a mode flag, not a target/);
+    assert.match(t, /\*\*Modes\.\*\* Mode flags right after the command - `--mode-auto-run-on`/);
+});
+
+// ---- stack-modes (spec 2026-10-27 sections 7, 8): the flows read the four mode flags, never an old one ------------
+const MODE_FLAG_NAMES = ['--mode-auto-run-on', '--mode-auto-run-off', '--mode-output-scorer-on', '--mode-output-scorer-off'];
+test('every flow paragraph names the four mode flags and no old flag (AC10)', () => {
+    const files = copiesOf(shared()['auto-mode-contract']);
+    assert.strictEqual(files.length, 18, 'the owner and its 17 sites');
+    for (const file of files) {
+        const t = read(file);
+        for (const flag of MODE_FLAG_NAMES) assert.ok(t.includes(flag), `${file} names ${flag}`);
+        assert.doesNotMatch(t, /--auto-mode|--score-(?:on|off)/, `${file} names no old flag`);
+    }
+    assert.deepStrictEqual(registryFindings('auto-mode-contract', 'no-stops-points-to-auto-mode', 'approval-stamp-auto-carve-out'), []);
+});
+test('M2: mode-auto-run says auto-run did not start because no hook ran when no contract line is in context (AC11)', () => {
+    const t = flat(skill('mode-auto-run'));
+    assert.match(t, /no hook ran/);
+    assert.match(t, /no `auto-run is ON` contract line is in context[^.]*no hook ran[^.]*stop/i);
+    assert.doesNotMatch(t, /--auto-mode/);
 });

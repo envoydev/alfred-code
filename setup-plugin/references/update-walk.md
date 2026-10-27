@@ -7,10 +7,9 @@ branches in `update-slow-path.md`, read only when a step below sends you there.
 ## 1. Preconditions
 
 This run refreshes an existing install to the newest release, unchanged in shape: the same items, new content -
-the MOVING parts included (every MCP runtime at the release's own pin from `meta/mcp-pins.json`, every installed stack
-plugin through `claude plugin update`) - and removes what the STACK removed upstream. **No newer plugin is needed:**
-the snapshot is the release this run installs, so an `already newest` plugin line is a normal run, never a reason to
-stop. The installer's `--installed-only` reads the install back and closes its dependencies itself;
+the MOVING part included (every installed stack plugin through `claude plugin update`) - and removes what the STACK
+removed upstream. **No newer plugin is needed:** the snapshot is the release this run installs, so an `already
+newest` plugin line is a normal run, never a reason to stop. The installer's `--installed-only` reads the install back and closes its dependencies itself;
 `update-preflight.js` computes the upstream delta - you orchestrate and report.
 
 `node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read from the install records
@@ -34,8 +33,12 @@ install owes (only the releases between its stamp and the snapshot, from `setup-
 a snapshot without the script prints an error - read nothing more for it and go on):
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root .
+node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --source "$TMP/repo" > "$TMP/plan.txt" ; grep -qE '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-workspace.md"
 ```
+
+(The last two read the workspace: with children below, their rows and `update-workspace.md`, the cascade's walk;
+standalone, nothing. Add `--rescan` to `plan` when the user asks to find installed projects below.) Pass
+`timeout: 600000` to this call: `plan` reads each parent back, one installer run per project with children.
 
 (The preflight reads the scope's settings as the installer does - `settings.local.json` laid over `settings.json` at
 local scope, and at every other scope the stack keys `settings.local.json` holds. A fork install passes `--repo <owner/name>`; a
@@ -131,9 +134,9 @@ first (the typed-folder and `conflicts=` cases live there), then one AskUserQues
 installer runs, naming the `from=` places - in the SAME call as the new-items ask when both fire, one question each:
 
 ```ask
-Move this project's Alfred Code data into <root>? From <from places>: the navigation index, browser profiles and project memory at each server's next start, after a restart. Recommended: one folder outside .claude/, its machine state kept out of git.
-- '<root> - move everything (Recommended)' - the servers' data moves at their next start once nothing holds it; nothing is overwritten
-- 'Keep the current layout' - nothing moves, the servers keep reading where their data is, and no later update asks again (configure can still move it)
+Move this project's sensitive-data file into <root>? From <from places>. Recommended: one folder outside .claude/, its machine state kept out of git.
+- '<root> - move it (Recommended)' - the file moves in this run; nothing is overwritten
+- 'Keep the current layout' - nothing moves, the hooks keep reading it where it is, and no later update asks again (configure can still move it)
 ```
 
 After a move, until that restart this session's hooks keep writing under the OLD root - they read it from the
@@ -175,21 +178,41 @@ answer, so the next update asks no more. The log names each rename. Unattended, 
 and its git history - except on `update=ask-local`, which takes 'Keep the AGENTS.md answer': the Recommended one writes over
 the user's own answer, and an unattended run replaces nothing of theirs (review 2026-10-23).
 
+**The workspace - in the same AskUserQuestion call as the other asks, one question each.** On `workspace: join <rel>`
+(a folder above holds an install this project never joined; `rejoin`: its parent no longer lists it):
+
+```ask
+Join the workspace at <rel>? This project then takes that install's skills, seats, rules and env, and can ignore any of them.
+- 'Join (Recommended)' - the parent's set applies from this run; configure ignores an item later
+- 'Stay standalone' - parent none is written, so no update asks again
+```
+
+Run `node "$TMP/repo/scripts/workspace.js" join --root . --answer join|none` before the installer call; on exit 3 (the
+parent's file was locked) say the join is offered again at the next update. On `instructions-both: ask` (a CLAUDE.md
+above a joined child, and the account loads only one of the two files):
+
+```ask
+Load CLAUDE.md and AGENTS.md both, in every project of this account? A parent folder holds a CLAUDE.md, so this child's AGENTS.md is skipped there.
+- 'Load both (Recommended)' - one key in the account's settings.json, removed again by the last uninstall that recorded it
+- 'Leave it' - nothing is written and no project of this account asks again
+```
+
+'Load both' runs `node "$TMP/repo/scripts/workspace.js" account-instructions --root . --apply`, 'Leave it' the same with
+`--decline`. Unattended, both take the Recommended option.
+
 ## 3. Fast path - refresh in place (the common case)
 
 Run the installer; it reads the install back itself, closes new dependencies through `stack-select.js`, and logs
 any `installed-only: required:` additions. **One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on
 the call itself (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--memory-level global|scoped|project] [--instructions-file agents|claude] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--instructions-file agents|claude] 2>&1 | tee "$TMP/install.log"`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
-`<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` (`project`, `user` or `local`) and
-`--space` names the profile that owns the install. `--keep-pins` is the default here - a fast refresh must not
-flatten deliberate local model/effort pin edits. `--docs-versioning` and `--memory-level` ride the call ONLY when the
-user's own invocation names a value - read `update-slow-path.md`'s 'Flags' section first. An install with no
-memory registration yet needs no flag: the read-back adopts the `alfred-memory` rule and MCP at `global`; the notes
-import waits for `/alfred-code:init` (the log says so, and the close names init).
+`<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` (`project`, `user` or `local`).
+`--keep-pins` is the default here - a fast refresh must not
+flatten deliberate local model/effort pin edits. `--docs-versioning` rides the call ONLY when the
+user's own invocation names a value - read `update-slow-path.md`'s 'Flags' section first.
 
 **Give that call a 10-minute timeout, and read its exit code.** A timed-out call is BACKGROUNDED, not failed, and
 the run then pays turns re-finding its own installer. Pass `timeout: 600000`, open the call with
@@ -198,13 +221,14 @@ the log's last lines verbatim as a blocker with the fix they name, and never con
 ad-hoc repair work (measured: 14 messages and 1.69M tokens of improvised forensics after exit 1, then 226 files
 changed under the user's `.claude` with no ask).
 
-The refresh re-registers every MCP and READS BACK what landed (`mcp repaired: <name>` for a drifted entry), updates
-each stack plugin at EVERY scope it is installed at (`plugin update [<scope>]: <entry>` as `x -> y`, `installed this
-run` or `already newest`; `plugin current [<scope>]` for one the resolve already took to the release), and never moves
-an item between scopes or removes a pick - only what the release itself retired or renamed goes. Pass these log
-lines through verbatim in the close: a retired server's removal with its `add it back:` line, a row kept at another
-scope with its uninstall command, `context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable
-context7`, and `claude-hud has no status line yet - run /alfred-code:init to set it up` - it prints on EVERY run where
+The refresh updates each stack plugin at EVERY scope it is installed at (`plugin update [<scope>]: <entry>` as
+`x -> y`, `installed this run` or `already newest`; `plugin current [<scope>]` for one the resolve already took to
+the release), and never moves an item between scopes or removes a pick - only what the release itself retired or
+renamed goes. Pass these log lines through verbatim in the close: the `mcp servers:` block - the servers an earlier
+release registered, taken out by the first update onto 2.10.1 or later (`mcp <name>: kept` for one changed since, the
+user's), each with its `add it back:` line, and the `mcp data:` line naming what they left on disk - a row kept at
+another scope with its uninstall command, `context7-local removed - if you ran /mcp disable context7 for it, run /mcp
+enable context7`, and `claude-hud has no status line yet - run /alfred-code:init to set it up` - it prints on EVERY run where
 claude-hud is installed - this run or already - and no settings file this project reads has a `statusLine` yet; name
 `/alfred-code:init` in the close when it prints.
 
@@ -212,7 +236,7 @@ claude-hud is installed - this run or already - and no settings file this projec
 never a second grep (a tail is ~75% static boilerplate, and two greps of one log cost two full context re-sends):
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp servers:|mcp data:|mcp pruned:|mcp [A-Za-z0-9_.-]+: (the|kept)|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy' "$TMP/install.log"
 ```
 
 Add a marker to the pattern when the report needs another fact; do not add a call. The RESTART row and any
@@ -227,15 +251,9 @@ Paste `restart: yes|no`, every `warn: <line>`, and its `renamed:` / `pruned:` li
 the raw grep. `--running` is the release this session loaded, so a session already on the snapshot's release owes no
 restart for the hook delta.
 
-Presence, never the value - the grep already carries the installer's own `KEY=` presence output on most runs. Run
-this ONLY when it returned no `KEY=` line, and paste its lines as-is:
-`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is
-`KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed. A key the user
-wants set: `update-slow-path.md`'s 'A credential the user wants set' - the value never travels through the chat.
-
 Then:
 
+- With `$TMP/plan.txt` naming a child, run `update-workspace.md`'s cascade call now.
 - Reconcile the project's AGENTS.md (`update-close.md`'s step 6).
 - Report per its step 7.
 - On the copy route, NAME every `installed-only: adopting hook <name>` line in the report with what it blocks; a

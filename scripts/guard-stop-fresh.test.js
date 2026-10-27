@@ -756,17 +756,19 @@ test('guard-stop-contract: a solve-task stop that owes a receipt is told which o
   assert.match(note('rc-passes', [marker, ...answered('u8'), gateRun, assistantRow('a', mech)], approve), /`Passes: risk <v>/);
   assert.equal(note('rc-passes-ok', [marker, ...answered('u9'), gateRun, assistantRow('a', `${mech} Passes: risk pass | scope pass | existence pass | edges MINOR | soundness pass`)], approve), '');
   assert.equal(note('rc-passes-none', [marker, ...answered('u10'), assistantRow('a', mech)], approve), '', 'no gate ran this cycle, no Passes owed');
-  // 390aebcb, 3ce6b036, 49cb4b82: the close with no `memories purged:`
+  // 390aebcb, 3ce6b036, 49cb4b82: the close with no `notes purged:` (`memories purged:` before 2026-10-24, still read)
   const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
     input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
-  assert.match(note('rc-close', [marker, ...answered('u4'), completed, assistantRow('a', fields)], goOn), /memories purged/);
+  assert.match(note('rc-close', [marker, ...answered('u4'), completed, assistantRow('a', fields)], goOn), /`notes purged: <names\|none>`/);
   assert.equal(note('rc-close-ok', [marker, ...answered('u5'), completed,
-    assistantRow('a', 'Result: Completed 2026-10-08, memories purged: none. Progress: 6 of 6 steps. Leftovers: none.')], goOn), '');
-  assert.doesNotMatch(note('rc-after-close', [marker, ...answered('u6'), completed, ...answered('u7'), assistantRow('a', fields)], goOn), /memories purged/,
+    assistantRow('a', 'Result: Completed 2026-10-08, notes purged: none. Progress: 6 of 6 steps. Leftovers: none.')], goOn), '');
+  assert.equal(note('rc-close-old', [marker, ...answered('u5b'), completed,
+    assistantRow('a', 'Result: Completed 2026-10-08, memories purged: none. Progress: 6 of 6 steps. Leftovers: none.')], goOn), '', 'an older skill copy\'s spelling still closes');
+  assert.doesNotMatch(note('rc-after-close', [marker, ...answered('u6'), completed, ...answered('u7'), assistantRow('a', fields)], goOn), /notes purged/,
     'an ask after the close was answered is no close');
   // a6a24815: the cross close report with no `ceilings:`
   const cross = typed('<command-name>/task-solve-cross</command-name>');
-  const report = `${fields}\nmode: agents | contract: n/a\nlanes: api - endpoints - SIGNED_OFF\nfinal gate: PASS\npending: none\nleftovers: none\nmemories purged: none`;
+  const report = `${fields}\nmode: agents | contract: n/a\nlanes: api - endpoints - SIGNED_OFF\nfinal gate: PASS\npending: none\nleftovers: none\nnotes purged: none`;
   assert.match(note('rc-cross', [cross, ...answered('u8'), assistantRow('a', report)], goOn), /ceilings:/);
   assert.equal(note('rc-cross-ok', [cross, ...answered('u9'), assistantRow('a', `${report}\nceilings: none`)], goOn), '');
   assert.equal(note('rc-noflow', [typed('fix the typo'), assistantRow('a', 'hello')], approve), '', 'a session that never ran the flow owes nothing');
@@ -1107,4 +1109,30 @@ test('guard-stop-contract (C45): a referent approval is judged on what was shown
   const agree = [{ ...mis[0], options: [{ label: 'Alpha site after the deploy (Recommended)', description: 'safe' }, { label: 'Swap the scripts on production', description: 'fast' }] }];
   assert.equal(askIn(tp, agree).status, 0, 'mark and question agree');
   assert.equal(askIn(tp, [{ ...mis[0], question: 'Where do we verify? Recommended: a quick look first.' }]).status, 0, 'a question naming no option decides nothing');
+});
+
+test('guard-stop-contract: a /mode-auto-run run that reads the installed solve flow owes its receipts; nothing else marks one (2026-10-25)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const auto = typed('<command-message>mode-auto-run</command-message>\n<command-name>/mode-auto-run</command-name>\n<command-args>add a status route</command-args>');
+  let k = 0;
+  const readOf = (file) => ({ type: 'assistant', message: { id: `rd${++k}`, content: [{ type: 'tool_use', id: `rd${k}t`, name: 'Read', input: { file_path: file } }] } });
+  const SOLVE = '/p/.claude/skills/task-solve/SKILL.md';
+  const fields = 'Result: spec at docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none.';
+  const note = (name, rows, q) => {
+    const r = askIn(transcript(name, rows), q);
+    assert.equal(r.status, 0, `${name}: a receipt is a note, never a deny`);
+    try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; }
+  };
+  const goOn = [{ question: 'Next?', options: [{ label: 'Go on (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  const answered = (id) => [{ type: 'assistant', message: { id: `q-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: goOn } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered: "Next?"="Go on (Recommended)". You can now continue.' }] } }];
+  assert.match(note('ta-first', [auto, readOf(SOLVE), assistantRow('a', fields)], goOn), /`Size: /, 'the code route owes the first stop\'s Size line');
+  assert.match(note('ta-win', [auto, readOf('C:\\p\\.claude\\skills\\task-solve\\SKILL.md'), assistantRow('a', fields)], goOn), /`Size: /, 'a Windows path, as the JSON escapes it');
+  assert.equal(note('ta-noauto', [readOf(SOLVE), assistantRow('a', fields)], goOn), '', 'a read of the source with no /mode-auto-run row');
+  const quoted = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'z', content: '<command-name>/mode-auto-run</command-name>' }] } };
+  assert.equal(note('ta-quoted', [quoted, readOf(SOLVE), assistantRow('a', fields)], goOn), '', 'a /mode-auto-run quoted in a tool result');
+  assert.equal(note('ta-other', [auto, readOf('/p/stack/skills/task-design/SKILL.md'), assistantRow('a', fields)], goOn), '', 'another skill read');
+  // the re-read after a compaction keeps the cycle's start: a later turn's stop owes no Size again
+  assert.doesNotMatch(note('ta-reread', [auto, readOf(SOLVE), assistantRow('a', `Size: standard - two modules. ${fields}`), ...answered('u1'),
+    typed('use the v2 endpoint'), readOf(SOLVE), assistantRow('b', fields)], goOn), /Size/);
 });

@@ -12,7 +12,7 @@
 // this session never ran, invisible to the project that owns it.
 //
 // Reads pass. Writes inside the project root pass. Writes to the session's own scratch (the OS
-// temp dir), to the Claude account dirs (~/.claude and the ~/.claude-<space> siblings - settings,
+// temp dir), to the Claude account dirs (~/.claude and the ~/.claude-<name> siblings - settings,
 // memory, plugins), and to /dev pass. Everything else is blocked - and the block ENDS IN AN ASK:
 // the denial mandates one AskUserQuestion (task card here - recommended; allow that tree for this
 // session; drop), because a bare denial left the user out of the decision (the model wrote the
@@ -248,10 +248,10 @@ const receiptRoots = (() => {
     return receiptLines.map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
   } catch { return []; } // absent or unreadable - no allowance recorded
 })();
-// ~/.claude-<space> account dirs are siblings of ~/.claude, matched by prefix. The prefix is
-// dropped only when the project itself sits under such a dir (the containment rule above) -
+// ~/.claude-<name> account dirs (a second account's CLAUDE_CONFIG_DIR) are siblings of ~/.claude, matched by prefix.
+// The prefix is dropped only when the project itself sits under such a dir (the containment rule above) -
 // checking whether the project sat under HOME instead disabled it for every real project, and a
-// --space install's memory writes were blocked (reproduced).
+// second account's memory writes were blocked (reproduced).
 const spacePrefix = HOME ? real(HOME) + path.sep + '.claude-' : null;
 const spaceOk = spacePrefix && !fold(ROOT).startsWith(fold(spacePrefix));
 // A LINKED WORKTREE of this project's own repository is the project (audit 2026-10-11 SD16, session 42951e5b: two Edits

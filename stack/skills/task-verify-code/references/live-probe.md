@@ -1,4 +1,4 @@
-# The live probe - launching the app, the visual check, driving a browser MCP
+# The live probe - launching the app, the visual check, driving a browser
 
 Read at step 4, before the first probe run. The mandate (probe the failable inputs, boot through
 the production composition root, make one real end-to-end call) and its bound (an in-process run
@@ -20,14 +20,14 @@ from the app's own startup output, then poll.
 
 When the diff touches styles or templates (`.scss` / `.css` / `.html`), the probe includes ONE
 targeted visual check of the changed surface - a screenshot of the element or region through the
-browser-driving MCP, not a DOM assertion alone (measured: a DOM-only probe signed off a style diff
-and the user caught a CSS-only defect in the exact reviewed feature 92 seconds later). That MCP is
-per-project and droppable - seeded only where the stack renders a browser UI - so it can be absent
-from your tool list. Where the harness defers MCP tools, load the browser plugin's tools through
-ToolSearch, by the names the deferred listing shows, before you call it absent. Absent it, the visual
-check is reported `live-probe: visual NOT RUN - no browser MCP`, never assumed from the DOM.
+browser tools, not a DOM assertion alone (measured: a DOM-only probe signed off a style diff
+and the user caught a CSS-only defect in the exact reviewed feature 92 seconds later). The stack ships
+no browser server: the browser tools are the `browser` line of the session-start tool order, the server
+the user registered, so they can be absent. Where the harness defers MCP tools, load them with that
+line's `ToolSearch select:` before you call them absent. Absent them, the visual check is reported
+`live-probe: visual NOT RUN - no browser tools`, never assumed from the DOM.
 
-## Driving the probe through a browser MCP
+## Driving the probe through the browser tools
 
 - Resolve interactive targets from a page snapshot's element refs before any click or form fill -
   never a guessed CSS or text selector (measured: 4 of 5 probe errors in one session were guessed

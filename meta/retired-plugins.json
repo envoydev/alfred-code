@@ -65,6 +65,177 @@
       "retiredIn": "2.0.0",
       "why": "a third-party pick the plugins audit (2026-09-26) scored a blocker - a billed model review of the diff per Stop, SubagentStop and commit with 0 findings in 217 sessions, sent under the user's own credential, and an unpinned pip install at every session start; /security-review, the security-auditor seat and the commit checkpoint's security half stay",
       "addBack": "claude plugin install security-guidance@claude-plugins-official --scope <scope>"
+    },
+    {
+      "name": "alfred-navigation",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24, the user's ruling): the stack depends on no MCP server - symbol navigation is the LSP tool first, then the user's own navigation server through the session-start tool order",
+      "registration": {
+        "package": "serena-agent"
+      },
+      "addBack": "claude mcp add-json --scope <scope> serena '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--from\",\"serena-agent@2.1.0\",\"serena\",\"start-mcp-server\",\"--context\",\"claude-code\",\"--enable-web-dashboard\",\"false\",\"--project-from-cwd\",\"--agent-interface\",\"tools\"],\"env\":{\"SERENA_USAGE_REPORTING\":\"false\",\"SERENA_HOME\":\".alfred/serena/home\"}}'"
+    },
+    {
+      "name": "alfred-documentation",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): library documentation through WebFetch by default, or the user's own documentation server through the tool order",
+      "registration": {
+        "url": "https://mcp.context7.com/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> context7 '{\"type\":\"http\",\"url\":\"https://mcp.context7.com/mcp\",\"headers\":{\"Context7-API-Key\":\"${CONTEXT7_API_KEY:-}\"}}'"
+    },
+    {
+      "name": "alfred-memory",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): lessons and corrections go to Claude Code's own memory, preferences to /capture-preferences, a seat's hand-off to the file bus",
+      "registration": {
+        "package": "mcp-memory-service"
+      },
+      "addBack": "claude mcp add-json --scope <scope> memory '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--with\",\"numpy\",\"--from\",\"mcp-memory-service[sqlite]==12.1.1\",\"memory\",\"server\"],\"env\":{\"MCP_MEMORY_STORAGE_BACKEND\":\"sqlite_vec\",\"MCP_MEMORY_SQLITE_PATH\":\"${HOME}/.alfred-memory/memory.db\",\"MCP_MEMORY_SQLITE_PRAGMAS\":\"busy_timeout=15000\"}}'"
+    },
+    {
+      "name": "chrome-control",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): the chrome browser server is the user's own registration now, ranked by the tool order",
+      "registration": {
+        "package": "@playwright/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> playwright-chrome '{\"command\":\"npx\",\"args\":[\"-y\",\"@playwright/mcp@0.0.83\",\"--browser\",\"chrome\",\"--user-data-dir\",\".alfred/chrome-control\",\"--output-dir\",\".alfred/chrome-control/output\",\"--no-webmcp\"],\"env\":{\"npm_config_before\":\"2026-10-20T23:59:59Z\"}}'"
+    },
+    {
+      "name": "msedge-control",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): the msedge browser server is the user's own registration now, ranked by the tool order",
+      "registration": {
+        "package": "@playwright/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> playwright-msedge '{\"command\":\"npx\",\"args\":[\"-y\",\"@playwright/mcp@0.0.83\",\"--browser\",\"msedge\",\"--user-data-dir\",\".alfred/msedge-control\",\"--output-dir\",\".alfred/msedge-control/output\",\"--no-webmcp\"],\"env\":{\"npm_config_before\":\"2026-10-20T23:59:59Z\"}}'"
+    },
+    {
+      "name": "firefox-control",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): the firefox browser server is the user's own registration now, ranked by the tool order",
+      "registration": {
+        "package": "@playwright/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> playwright-firefox '{\"command\":\"npx\",\"args\":[\"-y\",\"@playwright/mcp@0.0.83\",\"--browser\",\"firefox\",\"--user-data-dir\",\".alfred/firefox-control\",\"--output-dir\",\".alfred/firefox-control/output\",\"--no-webmcp\"],\"env\":{\"npm_config_before\":\"2026-10-20T23:59:59Z\"}}'"
+    },
+    {
+      "name": "webkit-control",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): the webkit browser server is the user's own registration now, ranked by the tool order",
+      "registration": {
+        "package": "@playwright/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> playwright-webkit '{\"command\":\"npx\",\"args\":[\"-y\",\"@playwright/mcp@0.0.83\",\"--browser\",\"webkit\",\"--user-data-dir\",\".alfred/webkit-control\",\"--output-dir\",\".alfred/webkit-control/output\",\"--no-webmcp\"],\"env\":{\"npm_config_before\":\"2026-10-20T23:59:59Z\"}}'"
+    },
+    {
+      "name": "windows-control",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): the Windows desktop server is the user's own registration now",
+      "registration": {
+        "package": "windows-mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> windows-desktop '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.14\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--from\",\"windows-mcp==0.8.8\",\"windows-mcp\",\"serve\",\"--exclude-tools\",\"PowerShell,Registry,Process,FileSystem\"],\"env\":{\"ANONYMIZED_TELEMETRY\":\"false\"}}'"
+    },
+    {
+      "name": "macos-control",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): the macOS desktop server is the user's own registration now",
+      "registration": {
+        "package": "macos-mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> macos-desktop '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--from\",\"macos-mcp==0.4.6\",\"macos-mcp\",\"serve\"],\"env\":{\"ANONYMIZED_TELEMETRY\":\"false\"}}'"
+    },
+    {
+      "name": "mobile-control",
+      "retiredIn": "2.10.1",
+      "why": "the no-MCP stack (2026-10-24): the mobile server is the user's own registration now",
+      "registration": {
+        "package": "appium-mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> appium-mcp '{\"command\":\"npx\",\"args\":[\"-y\",\"appium-mcp@1.97.1\"],\"env\":{\"NO_UI\":\"true\",\"ALLOW_REMOTE_APP_URLS\":\"false\",\"REMOTE_SERVER_URL_ALLOW_REGEX\":\"^https?://(localhost|127\\\\.0\\\\.0\\\\.1|\\\\[::1\\\\])(:[0-9]+)?(/[^?#]*)?$\",\"SCREENSHOTS_DIR\":\".alfred/mobile-control/screenshots\",\"PAGE_SOURCES_DIR\":\".alfred/mobile-control/page-sources\",\"npm_config_before\":\"2026-10-21T23:59:59Z\"}}'"
+    },
+    {
+      "name": "browser-chrome",
+      "retiredIn": "2.10.1",
+      "why": "the 2.4.0 alias of chrome-control, listed until the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "@playwright/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> playwright-chrome '{\"command\":\"npx\",\"args\":[\"-y\",\"@playwright/mcp@0.0.83\",\"--browser\",\"chrome\",\"--user-data-dir\",\".alfred/chrome-control\",\"--output-dir\",\".alfred/chrome-control/output\",\"--no-webmcp\"],\"env\":{\"npm_config_before\":\"2026-10-20T23:59:59Z\"}}'"
+    },
+    {
+      "name": "browser-msedge",
+      "retiredIn": "2.10.1",
+      "why": "the 2.4.0 alias of msedge-control, listed until the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "@playwright/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> playwright-msedge '{\"command\":\"npx\",\"args\":[\"-y\",\"@playwright/mcp@0.0.83\",\"--browser\",\"msedge\",\"--user-data-dir\",\".alfred/msedge-control\",\"--output-dir\",\".alfred/msedge-control/output\",\"--no-webmcp\"],\"env\":{\"npm_config_before\":\"2026-10-20T23:59:59Z\"}}'"
+    },
+    {
+      "name": "browser-firefox",
+      "retiredIn": "2.10.1",
+      "why": "the 2.4.0 alias of firefox-control, listed until the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "@playwright/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> playwright-firefox '{\"command\":\"npx\",\"args\":[\"-y\",\"@playwright/mcp@0.0.83\",\"--browser\",\"firefox\",\"--user-data-dir\",\".alfred/firefox-control\",\"--output-dir\",\".alfred/firefox-control/output\",\"--no-webmcp\"],\"env\":{\"npm_config_before\":\"2026-10-20T23:59:59Z\"}}'"
+    },
+    {
+      "name": "browser-webkit",
+      "retiredIn": "2.10.1",
+      "why": "the 2.4.0 alias of webkit-control, listed until the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "@playwright/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> playwright-webkit '{\"command\":\"npx\",\"args\":[\"-y\",\"@playwright/mcp@0.0.83\",\"--browser\",\"webkit\",\"--user-data-dir\",\".alfred/webkit-control\",\"--output-dir\",\".alfred/webkit-control/output\",\"--no-webmcp\"],\"env\":{\"npm_config_before\":\"2026-10-20T23:59:59Z\"}}'"
+    },
+    {
+      "name": "windows-desktop",
+      "retiredIn": "2.10.1",
+      "why": "the 2.4.0 alias of windows-control, listed until the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "windows-mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> windows-desktop '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.14\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--from\",\"windows-mcp==0.8.8\",\"windows-mcp\",\"serve\",\"--exclude-tools\",\"PowerShell,Registry,Process,FileSystem\"],\"env\":{\"ANONYMIZED_TELEMETRY\":\"false\"}}'"
+    },
+    {
+      "name": "macos-desktop",
+      "retiredIn": "2.10.1",
+      "why": "the 2.4.0 alias of macos-control, listed until the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "macos-mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> macos-desktop '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--from\",\"macos-mcp==0.4.6\",\"macos-mcp\",\"serve\"],\"env\":{\"ANONYMIZED_TELEMETRY\":\"false\"}}'"
+    },
+    {
+      "name": "navigation",
+      "retiredIn": "2.10.1",
+      "why": "the 2.0.0 id of alfred-navigation, unlisted in 2.2.1 once every install had updated past the 2.2.0 rename; an install still holding its row gets nothing from the marketplace, and the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "serena-agent"
+      },
+      "addBack": "claude mcp add-json --scope <scope> serena '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--from\",\"serena-agent@2.1.0\",\"serena\",\"start-mcp-server\",\"--context\",\"claude-code\",\"--enable-web-dashboard\",\"false\",\"--project-from-cwd\",\"--agent-interface\",\"tools\"],\"env\":{\"SERENA_USAGE_REPORTING\":\"false\",\"SERENA_HOME\":\".alfred/serena/home\"}}'"
+    },
+    {
+      "name": "documentation",
+      "retiredIn": "2.10.1",
+      "why": "the 2.0.0 id of alfred-documentation, unlisted in 2.2.1 once every install had updated past the 2.2.0 rename; an install still holding its row gets nothing from the marketplace, and the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "url": "https://mcp.context7.com/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> context7 '{\"type\":\"http\",\"url\":\"https://mcp.context7.com/mcp\",\"headers\":{\"Context7-API-Key\":\"${CONTEXT7_API_KEY:-}\"}}'"
+    },
+    {
+      "name": "memory",
+      "retiredIn": "2.10.1",
+      "why": "the 2.0.0 id of alfred-memory, unlisted in 2.2.1 once every install had updated past the 2.2.0 rename; an install still holding its row gets nothing from the marketplace, and the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "mcp-memory-service"
+      },
+      "addBack": "claude mcp add-json --scope <scope> memory '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--with\",\"numpy\",\"--from\",\"mcp-memory-service[sqlite]==12.1.1\",\"memory\",\"server\"],\"env\":{\"MCP_MEMORY_STORAGE_BACKEND\":\"sqlite_vec\",\"MCP_MEMORY_SQLITE_PATH\":\"${HOME}/.alfred-memory/memory.db\",\"MCP_MEMORY_SQLITE_PRAGMAS\":\"busy_timeout=15000\"}}'"
     }
   ]
 }

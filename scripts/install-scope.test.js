@@ -60,9 +60,9 @@ test('install-scope: at local scope the stack\'s own settings writes go to setti
     assert.strictEqual(result.local.env.ALFRED_CODE_DOCS_PATH, undefined, 'and the retired docs key is never written');
 });
 
-// C8 (R100, R101): the one exception is this machine's memory database path - settings.local.json holds
-// it at every scope, and nothing else of the run lands there.
-test('install-scope: --scope project and --scope user write the shared settings.json, and settings.local.json only the machine\'s memory path (C8)', POSIX_ONLY, () =>
+// C8 (R100, R101), after the memory server left (2026-10-24): a project or user install writes the shared
+// settings.json and no settings.local.json at all - the machine's memory path was its one key.
+test('install-scope: --scope project and --scope user write the shared settings.json and no settings.local.json', POSIX_ONLY, () =>
 {
     for (const scope of ['project', 'user'])
     {
@@ -74,18 +74,19 @@ test('install-scope: --scope project and --scope user write the shared settings.
             }),
         });
         assert.ok(result.shared, `--scope ${scope} did not write settings.json`);
-        assert.ok(!('ALFRED_CODE_MEMORY_DB' in (result.shared.env || {})), `--scope ${scope} put this machine's memory path in the committed settings.json`);
-        assert.deepStrictEqual(Object.keys(result.local || {}), ['env'], `--scope ${scope} wrote more than the memory path to settings.local.json`);
-        assert.deepStrictEqual(Object.keys(result.local.env), ['ALFRED_CODE_MEMORY_DB']);
-        assert.ok(path.isAbsolute(result.local.env.ALFRED_CODE_MEMORY_DB));
+        assert.strictEqual(result.local, null, `--scope ${scope} wrote settings.local.json`);
     }
-    // Claude Code ignores settings.local.json only when it creates the file itself, so a file this run
-    // created is named when git would commit it - and not when the repo already ignores it.
-    const said = /settings\.local\.json: created for this machine's own values \(the memory database path\) - git does not ignore it here; add \.claude\/settings\.local\.json to \.gitignore/;
-    const bare = seedRun(['install', 'update'], SELECTION, {});
+});
+
+// Claude Code ignores settings.local.json only when it creates the file itself, so a file a local-scope run
+// created is named when git would commit it - and not when the repo already ignores it.
+test('install-scope: a settings.local.json a local run creates is named when git would commit it', POSIX_ONLY, () =>
+{
+    const said = /settings\.local\.json: created for this machine's own values - git does not ignore it here; add \.claude\/settings\.local\.json to \.gitignore/;
+    const bare = seedRun(['install', 'update'], SELECTION, { args: ['--scope', 'local'] });
     assert.match(bare.outs[0], said, bare.outs[0]);
     assert.doesNotMatch(bare.outs[1], said, 'the file already existed on the second run');
-    const ignored = seedRun('install', SELECTION, { prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/settings.local.json\n') });
+    const ignored = seedRun('install', SELECTION, { args: ['--scope', 'local'], prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/settings.local.json\n') });
     assert.doesNotMatch(ignored.out, said, 'the repo already ignores it');
 });
 
@@ -113,96 +114,34 @@ for (const record of [true, false])
     });
 }
 
-// A-I5 (final review A, ruling): `--space <name>` with no CLAUDE_CONFIG_DIR puts the installer's own
-// writes in ~/.claude-<name>, but every `claude` spawn inherited an env naming no account, so the CLI
-// installed the core and its plugins into the DEFAULT one. Each spawn now carries the space's account; a
-// CLAUDE_CONFIG_DIR already set wins, as it does for the installer's own writes. The recording stub logs
-// the CLAUDE_CONFIG_DIR each call received.
+// A-I5 (final review A, ruling): every `claude` spawn uses the account the installer's own writes land in. Since the
+// --space profile flag left (the user's ruling of 2026-10-23) that is the run's env alone - CLAUDE_CONFIG_DIR, else
+// ~/.claude, which a spawn naming no account uses too. The recording stub logs the CLAUDE_CONFIG_DIR each call received.
 const ENV_STUB = ['printf \'%s|%s\\n\' "${CLAUDE_CONFIG_DIR:-unset}" "$*" >> "$CLAUDE_STUB_LOG"',
     'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0'].join('\n');
-for (const [label, env, dir] of [['no CLAUDE_CONFIG_DIR', { CLAUDE_CONFIG_DIR: undefined }, '.claude-work'], ['CLAUDE_CONFIG_DIR set', {}, 'acct']])
+for (const [label, env, dir, seen] of [['no CLAUDE_CONFIG_DIR', { CLAUDE_CONFIG_DIR: undefined }, '.claude', 'unset'], ['CLAUDE_CONFIG_DIR set', {}, 'acct', 'acct']])
 {
-    test(`install-scope: a --space run with ${label} hands every claude call the account it writes (A-I5)`, POSIX_ONLY, () =>
+    test(`install-scope: a run with ${label} hands every claude call the account it writes (A-I5)`, POSIX_ONLY, () =>
     {
         let work = '';
         const { calls, out } = seedRun('install', SELECTION, {
-            env, args: ['--space', 'work'], tools: { claude: ENV_STUB },
+            env, tools: { claude: ENV_STUB },
             prepare: (repo, w) => { work = w; },
         });
         const want = path.join(work, dir);
+        const spawned = seen === 'unset' ? 'unset' : want;
         assert.match(out, new RegExp(`account=${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`), out);
         assert.ok(calls.some((c) => c.endsWith('|plugin install alfred-code@envoydev --scope project -y')), calls.join('\n'));
-        assert.deepStrictEqual(calls.filter((c) => !c.startsWith(`${want}|`)), [], `a claude call ran against another account (want ${want})`);
+        assert.deepStrictEqual(calls.filter((c) => !c.startsWith(`${spawned}|`)), [], `a claude call ran against another account (want ${spawned})`);
     });
 }
 
-// A-I5 completion (F4 re-review, item 2): the copy route writes the machine's Python pin into each uvx
-// registration, and `ALFRED_CODE_UV_PYTHON` is read from the account settings last. The installer asked
-// uv-python with the run's own env, so a `--space` run from a plain shell read the DEFAULT account's
-// override, not the space's. It asks with the env its claude calls carry.
-test('install-scope: a --space run with no CLAUDE_CONFIG_DIR takes the space account\'s Python override for the copy route (A-I5)', POSIX_ONLY, () =>
+test('install-scope: --space is refused before anything runs - the profile flag is gone (2026-10-23)', POSIX_ONLY, () =>
 {
-    const { calls } = seedRun('install', SELECTION, {
-        env: { CLAUDE_CONFIG_DIR: undefined, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
-        args: ['--space', 'work'],
-        prepare: (repo, work) =>
-        {
-            for (const [dir, pin] of [['.claude-work', '3.10'], ['.claude', '3.11']])
-            {
-                fs.mkdirSync(path.join(work, dir), { recursive: true });
-                fs.writeFileSync(path.join(work, dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_UV_PYTHON: pin } }));
-            }
-        },
-    });
-    const serena = calls.find((c) => /^mcp add --scope project alfred-navigation /.test(c));
-    assert.ok(serena, calls.join('\n'));
-    assert.match(serena, / uvx --python 3\.10 /, `not the space account's pin: ${serena}`);
-});
-
-// R29: the memory db path is resolved PER PROJECT by the launcher, never baked into the
-// registration - `--memory-level project` must ride every scope without refusal.
-test('install-scope: --memory-level project rides --scope user without refusal', POSIX_ONLY, () =>
-{
-    const { out } = seedRun('install', SELECTION, { args: ['--scope', 'user', '--memory-level', 'project'] });
-    assert.match(out, /memory=project \(/, out);
-});
-
-// I1 (R47, fix round 1): a local-scope import whose GATE actually opens (memory + alfred-memory
-// picked, so the gate's mcps/rules checks pass; the sandbox's uvx stub is enough - `which` only
-// checks presence, and the importer's own 'nothing to import' exit is success without a real
-// server) writes the switch-off to settings.local.json, never the shared settings.json.
-test('install-scope: at local scope a memory import that actually runs lands autoMemoryEnabled in settings.local.json, never settings.json', POSIX_ONLY, () =>
-{
-    const SEL = 'skill csharp\nrule markdown-docs\nrule alfred-memory\nmcp memory\n';
-    // No run imports before /alfred-code:init marks the stamp (Task 18a I1), so the install is marked
-    // initialised by hand and the UPDATE after it is the run whose import opens. A project with no
-    // notes is switched off by the install itself (pilot 3), so the key is taken back out after it -
-    // the shape of an install made before that - to keep the update's import route under test.
-    const { markInitialised } = require('./install/stamp.js');
-    const localOf = (repo) => path.join(repo, '.claude', 'settings.local.json');
-    const { outs, out, result, steps } = seedRun(['install', 'update'], SEL, {
-        args: ['--scope', 'local', '--memory-level', 'global'],
-        each: (repo, i) =>
-        {
-            if (i !== 0) return null;
-            const installed = JSON.parse(fs.readFileSync(localOf(repo), 'utf8'));
-            const byInstall = installed.autoMemoryEnabled;
-            delete installed.autoMemoryEnabled;
-            fs.writeFileSync(localOf(repo), `${JSON.stringify(installed, null, 2)}\n`);
-            markInitialised(path.join(repo, '.claude'));
-            return { byInstall, sharedAfterInstall: exists(repo, '.claude', 'settings.json') };
-        },
-        inspect: (repo) => ({
-            hasShared: exists(repo, '.claude', 'settings.json'),
-            local: exists(repo, '.claude', 'settings.local.json') ? json(repo, path.join('.claude', 'settings.local.json')) : null,
-        }),
-    });
-    assert.match(outs[0], /settings\.local\.json: autoMemoryEnabled set to false/, 'the install with no notes switched it off in the local file');
-    assert.strictEqual(steps[0].byInstall, false, '... and the key was there before the test took it out');
-    assert.strictEqual(steps[0].sharedAfterInstall, false, 'the install never created the shared settings.json');
-    assert.match(out, /settings\.local\.json: autoMemoryEnabled set to false/, out);
-    assert.strictEqual(result.hasShared, false, 'the switch-off must not create the shared settings.json');
-    assert.strictEqual(result.local.autoMemoryEnabled, false);
+    const { calls, err, code } = seedRun('install', SELECTION, { args: ['--space', 'work'], tools: { claude: ENV_STUB }, failOk: true });
+    assert.notStrictEqual(code, 0);
+    assert.match(err, /unknown argument '--space'/, err);
+    assert.deepStrictEqual(calls, [], 'a claude call ran before the refusal');
 });
 
 // I2 (R47, fix round 1): --installed-only's read-back now goes through readJson (fail-soft) against
@@ -266,76 +205,6 @@ test('install-scope: --scope local, then a bare update with no --scope flag, kee
     assert.strictEqual(result.hasShared, false, 'a bare update after a local-scope install must not create settings.json');
     assert.strictEqual(result.hasLocal, true);
     assert.match(result.stampText, /^scope: local$/m);
-});
-
-// C10 (R136 q), replacing I5's refusal: memory baked ONE path into a user-scope `claude mcp add -s user`
-// on the FULL copy route, the one route that registers it itself, so a project level was refused there.
-// That route now registers in this project's .mcp.json (mcp.registrationScope), so the path is this
-// project's alone and the level runs.
-const memoryIn = (repo) => ((JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {})["alfred-memory"] || {}).env || {};
-test('install-scope: --memory-level project at --scope user on the FULL copy route registers memory in this project\'s .mcp.json (C10)', POSIX_ONLY, () =>
-{
-    const { out, calls, result } = seedRun('install', SELECTION, {
-        args: ['--scope', 'user', '--memory-level', 'project'],
-        env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' },
-        inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
-    });
-    assert.match(out, /memory=project \(/, out);
-    // Project-relative in the committed .mcp.json, started at the project through ROOT_BOOT (re-verify 3 S2).
-    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', out);
-    assert.deepStrictEqual(calls.filter((c) => /^mcp add .*--scope user/.test(c)), []);
-});
-
-// I5: the MCP copy route ALONE (hooks and skills still riding the plugin) is the safe mix the
-// over-refusal used to block - memory's per-project re-read still covers it, so it must NOT refuse.
-test('install-scope: --memory-level project at --scope user is NOT refused on the MCP-copy-route-alone mix (I5)', POSIX_ONLY, () =>
-{
-    const { out } = seedRun('install', SELECTION, {
-        args: ['--scope', 'user', '--memory-level', 'project'],
-        env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
-    });
-    assert.match(out, /memory=project \(/, out);
-});
-
-const FULL_COPY = { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
-
-// m5, after C10: nothing refuses a project memory level at user scope on the full copy route any more - a
-// project-level path its .mcp.json already holds is kept, registered in this project's .mcp.json.
-test('install-scope: a project-level memory path already in .mcp.json is kept at --scope user on the full copy route (m5, C10)', POSIX_ONLY, () =>
-{
-    // The level is kept; the path is the one the database LIVES at - a 2.0.0 file not moved yet keeps its
-    // registration byte-for-byte, and with no file anywhere the current place is named (Task 7a).
-    // The row is the stack's exact shape (matrix F-OWN: with no ledger, a project-scope row of any other shape is the user's own
-    // and never re-registered), taken from a fresh run.
-    const stackMemory = seedRun('install', SELECTION, { args: ['--scope', 'user'], env: FULL_COPY, inspect: (repo) => json(repo, '.mcp.json').mcpServers["alfred-memory"] }).result;
-    for (const [label, exists, want] of [['a database there', true, ['.memory-mcp', 'memory.db']], ['no database yet', false, ['.alfred', '.alfred-memory', 'memory.db']]])
-    {
-        const { out, result } = seedRun('update', SELECTION, {
-            args: ['--scope', 'user'],
-            env: FULL_COPY,
-            prepare: (repo) =>
-            {
-                // The project root the installer resolves is git's own, symlinks resolved (macOS /var).
-                const db = path.join(fs.realpathSync(repo), '.memory-mcp', 'memory.db');
-                if (exists) { fs.mkdirSync(path.dirname(db), { recursive: true }); fs.writeFileSync(db, ''); }
-                fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({
-                    mcpServers: { "alfred-memory": { ...stackMemory, env: { ...stackMemory.env, MCP_MEMORY_SQLITE_PATH: db } } },
-                }));
-            },
-            inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
-        });
-        assert.match(out, /memory=project \(/, `${label}\n${out}`);
-        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, want.join('/'), `${label}\n${out}`);
-    }
-});
-
-test('install-scope: --memory-level project at --scope project is never refused on the MCP copy route (I5)', POSIX_ONLY, () =>
-{
-    const { out } = seedRun('install', SELECTION, {
-        args: ['--scope', 'project', '--memory-level', 'project'],
-        env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
-    });
-    assert.match(out, /memory=project \(/, out);
 });
 
 // m2 (I3 minor, fix round 2): the stamp's own `scope:` line reaches the CLI unvalidated otherwise -
@@ -620,7 +489,7 @@ test('install-scope: a local install moved to project scope drops its seeded key
         }),
     });
     assert.match(outs[1], /action: update \[scope=project,/, outs[1]);
-    const { ALFRED_CODE_MEMORY_DB: _db, ...localEnv } = result.local.env;
+    const localEnv = result.local.env;
     // ALFRED_CODE_DOCS_PATH is retired (2.8.0): its root held no docs, so the key goes from the local file too.
     assert.deepStrictEqual(localEnv, {
         MY_OWN: 'x', ALFRED_CODE_TURN_CHECK: '1',
@@ -638,14 +507,12 @@ test('install-scope: a local install moved to project scope drops its seeded key
     assert.ok((result.shared.permissions.deny || []).some((d) => /^Agent\(alfred-code:/.test(d)), 'the seat denies moved into settings.json');
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here \(your value, 12 chars\) - it applies over settings\.json/, outs[1]);
     assert.ok(!/stays here.*(guard-answer|\/elsewhere\/other-repo)/.test(outs[1]), 'a kept value reached the log');
-    // C18: one line for every removed seed. C8: the memory path stays local, so the move leaves it.
+    // C18: one line for every removed seed.
     assert.match(outs[1], /settings\.local\.json: \d+ stack env keys removed - each held the stack's own seed, so settings\.json's value or its seed applies from here on: [A-Z_, ]*ALFRED_CODE_INSTRUMENT/, outs[1]);
     assert.match(outs[1], /stack env keys removed - [^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);
     assert.strictEqual((outs[1].match(/^==> +settings\.local\.json: .* removed/gm) || []).length, 1, outs[1]);
     assert.ok(!('attribution' in result.local) && !('worktree' in result.local), `the stack's settings seeds stayed local: ${JSON.stringify(result.local)}`);
     assert.deepStrictEqual(result.shared.attribution, { commit: '', pr: '', sessionUrl: false }, 'settings.json carries them from here on');
-    assert.ok(String(result.local.env.ALFRED_CODE_MEMORY_DB || '').endsWith('memory.db'), 'the machine\'s memory path left settings.local.json (C8)');
-    assert.ok(!('ALFRED_CODE_MEMORY_DB' in result.shared.env), 'the machine\'s memory path reached the committed settings.json (C8)');
 });
 
 // R99 (Task 18b fix round 2), the re-review's N1 measured end to end: a walk at local scope names an
@@ -745,45 +612,6 @@ test('install-entry: no home and no CLAUDE_CONFIG_DIR is refused with one line, 
     assert.deepStrictEqual(run.result, { claude: false, mcp: false }, 'the project was written');
 });
 
-// C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global and scoped memory databases
-// live under the HOME - with none, the path was a RELATIVE `.memory-mcp/memory.db`, written into
-// settings.json and resolved against whatever cwd reads it. Refused like the no-home case: one line,
-// before any call or write. The project level needs no home, and runs.
-for (const [label, args, refused] of [['the default level', [], true], ['--memory-level scoped', ['--memory-level', 'scoped'], true], ['--memory-level project', ['--memory-level', 'project'], false]])
-{
-    test(`install-entry: CLAUDE_CONFIG_DIR with no HOME and ${label} ${refused ? 'is refused before anything is called or written' : 'runs - its database is the project\'s'} (C9)`, POSIX_ONLY, () =>
-    {
-        const env = { HOME: undefined, USERPROFILE: undefined };
-        const run = seedRun('install', SELECTION, {
-            env, failOk: true, args,
-            prepare: (repo, work) =>
-            {
-                const guard = path.join(work, 'home-guard.js');
-                fs.writeFileSync(guard, `require('node:os').homedir = () => ${JSON.stringify(path.join(work, 'no-home'))};\n`);
-                env.NODE_OPTIONS = `--require ${guard}`;
-            },
-            inspect: (repo) => ({
-                claude: exists(repo, '.claude'),
-                db: exists(repo, '.claude', 'settings.local.json') ? (json(repo, '.claude/settings.local.json').env || {}).ALFRED_CODE_MEMORY_DB || null : null,
-                real: fs.realpathSync(repo),
-            }),
-        });
-        if (!refused)
-        {
-            assert.strictEqual(run.code, 0, run.err);
-            // The machine-local key is the absolute path (re-verify 3 S1).
-            assert.strictEqual(run.result.db, path.join(run.result.real, '.alfred', '.alfred-memory', 'memory.db'), `the project database: ${run.result.db}`);
-            return;
-        }
-        assert.notStrictEqual(run.code, 0, run.out);
-        const said = run.err.trim().split('\n');
-        assert.strictEqual(said.length, 1, run.err);
-        assert.match(said[0], /no home directory - HOME and USERPROFILE are unset, so the (global|scoped) memory database would be the relative path/);
-        assert.deepStrictEqual(run.calls, [], `a claude call ran:\n${run.calls.join('\n')}`);
-        assert.strictEqual(run.result.claude, false, 'the project was written');
-    });
-}
-
 // C4 (R133 N1) end to end: a core seat the user denied for themselves in settings.local.json, then
 // added back through configure's `--add agent`, loads again - the local deny goes, with a line.
 test('install-scope: --add agent at project scope drops the seat\'s deny from settings.local.json (C4)', POSIX_ONLY, () =>
@@ -800,7 +628,7 @@ test('install-scope: --add agent at project scope drops the seat\'s deny from se
             s.permissions.deny = s.permissions.deny.filter((d) => d !== seat);
             fs.writeFileSync(shared, JSON.stringify(s, null, 2));
             const localFile = path.join(repo, '.claude', 'settings.local.json');
-            const l = JSON.parse(fs.readFileSync(localFile, 'utf8'));
+            const l = fs.existsSync(localFile) ? JSON.parse(fs.readFileSync(localFile, 'utf8')) : {};
             l.permissions = { deny: [seat] };
             fs.writeFileSync(localFile, JSON.stringify(l, null, 2));
             return null;

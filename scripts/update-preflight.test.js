@@ -543,18 +543,18 @@ test('new items: an arriving rename still names its old copy for the prune; None
         stamp: 'sha: aaa111\nversion: 0.2.60\nshipped-hooks: guard-read-whole-file\n',
         settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-read-whole-file' } },
         fixture: { files: [
-            { status: 'renamed', filename: 'stack/rules/alfred-memory.md', previous_filename: 'stack/rules/old-memory.md' },
+            { status: 'renamed', filename: 'stack/rules/alfred-security.md', previous_filename: 'stack/rules/old-security.md' },
             { status: 'added', filename: 'stack/hooks/docs-session.js' },
         ] },
     });
     fs.mkdirSync(path.join(snap, 'meta'), { recursive: true });
-    fs.writeFileSync(path.join(snap, 'meta', 'recommendations.json'), JSON.stringify({ always: { rules: ['alfred-memory'] } }));
+    fs.writeFileSync(path.join(snap, 'meta', 'recommendations.json'), JSON.stringify({ always: { rules: ['alfred-security'] } }));
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.writeFileSync(path.join(install, '.claude', 'rules', 'old-memory.md'), '# old\n');
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'old-security.md'), '# old\n');
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const on = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
-    assert.match(on, /^new: rule alfred-memory\tarrives\t-\tfrom=old-memory\told-on-disk$/m, on);
+    assert.match(on, /^new: rule alfred-security\tarrives\t-\tfrom=old-security\told-on-disk$/m, on);
     assert.match(on, /^new: hook docs-session\toff\talfred-code$/m, 'None held');
     // The core carrying the hooks is locked on: its listing flag can read false while it runs (S22),
     // and the installer's read-back holds the None the same way.
@@ -679,10 +679,10 @@ test('env-keys: the before-state is the file the run writes - settings.local.jso
 });
 
 // Task 3 (2.1.0): an unstamped legacy copy-route install (`stamp.js state` reads `legacy-unstamped`) takes
-// update's normal path, so its servers' data at the old places is OFFERED the move like any older install's -
-// 'no install record' let the default change under them silently. A tree with no stack signature stays a
-// fresh project with nothing to offer. Since 2.8.0 the docs are no part of the offer: they move unasked.
-test('data-move: an unstamped legacy install is offered the move; a tree with no stack signature is not', () => {
+// update's normal path. A tree with no stack signature stays a fresh project with nothing to offer. Since 2.8.0 the docs
+// are no part of the offer (they move unasked), and since 2.10.1 an old server's data is none either: the stack ships no
+// server, so its `.serena` stays where it is.
+test('data-move: an unstamped legacy install takes update\'s path, and its old server data is no offer; a tree with no stack signature is no install', () => {
     const legacyKey = { ALFRED_CODE_DOCS_PATH: '.claude/docs' };
     const { snap, install, fixtureFile } = scaffold({ stamp: null, settings: { env: legacyKey } });
     fs.mkdirSync(path.join(install, '.claude', 'docs', 'architecture'), { recursive: true });
@@ -695,8 +695,8 @@ test('data-move: an unstamped legacy install is offered the move; a tree with no
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'guard-catastrophic-rm.js'), '// old\n');
     const legacy = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.strictEqual(legacy.code, 2, 'still no stamp to compare');
-    assert.match(legacy.out, /^data-move: offer \.alfred\tfrom=\.serena\tserena=yes browser=none memory=no$/m, legacy.out);
-    assert.doesNotMatch(legacy.out, /docs=/, 'the docs are no part of the offer');
+    assert.match(legacy.out, /^data-move: none \(nothing to move\)$/m, legacy.out);
+    assert.ok(fs.existsSync(path.join(install, '.serena', 'project.yml')), 'the old server data is left where it is');
 });
 
 // audit 2026-10-11, session 5b9ce9c5: the close named the release delta ('changed: skills=10 agents=44') as this
@@ -819,7 +819,7 @@ test('--respell: the project\'s own instruction file gets a per-line plan, and -
 
 // audit 2026-10-11, session a9e06780: configure step 1's inventory, rendered from the read-back so its shape is fixed and
 // the layer-table gate can prove the paste by its last line.
-test('--inventory: the six rows in order with counts, plugins with their scope, and the total line last', () => {
+test('--inventory: the five rows in order with counts, plugins with their scope, and the total line last - an mcps key is no row', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-inv-'));
     try {
         const file = path.join(dir, 'installed.json');
@@ -828,9 +828,9 @@ test('--inventory: the six rows in order with counts, plugins with their scope, 
         const lines = run(['--inventory', file]).out.trim().split('\n');
         assert.deepStrictEqual(lines, [
             '| category | count | items |', '|---|---|---|',
-            '| rules | 1 | r1 |', '| agents | 0 | - |', '| skills | 2 | b, a |', '| hooks | 2 | h1, h2 |', '| mcps | 1 | browser |',
+            '| rules | 1 | r1 |', '| agents | 0 | - |', '| skills | 2 | b, a |', '| hooks | 2 | h1, h2 |',
             '| plugins | 1 | claude-hud [user] |',
-            'total: 7 installed, 1 switched off, 1 plugin(s) parked',
+            'total: 6 installed, 1 switched off, 1 plugin(s) parked',
         ]);
         fs.writeFileSync(file, 'garbage');
         const bad = run(['--inventory', file]);
@@ -864,4 +864,85 @@ test('the name line: the full read and --offers both print it from the stamp\'s 
     const offers = run(['--offers', '--root', install]).out;
     assert.match(offers, /^instructions-file: claude files=agents answer=claude local=no update=ask$/m, offers);
     assert.doesNotMatch(offers, /^agents-md:/m);
+});
+
+// D5 (workspace layering): an update in a joined child with a CLAUDE.md above it asks the account question.
+test('update-preflight prints instructions-both: ask in a child', () =>
+{
+    const { snap, install, fixtureFile } = scaffold();
+    const parent = path.dirname(install);
+    fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
+    for (const [dir, line] of [[parent, 'child project\n'], [install, 'parent ..\n']])
+    {
+        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
+    }
+    fs.writeFileSync(path.join(parent, 'CLAUDE.md'), '# team\n');
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
+    delete env.ALFRED_CODE_UNATTENDED;
+    const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env);
+    assert.match(out, /^instructions-both: ask$/m, out);
+    fs.rmSync(path.join(parent, '.alfred'), { recursive: true });
+    assert.doesNotMatch(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out, /instructions-both/, 'a standalone project is never asked');
+});
+
+
+// The join ask (AC13, AC18, AC27): a nested standalone checkout is offered the join, `parent none` ends the offer, and a
+// child whose back-reference was deleted by hand is offered the rejoin.
+function nestedPreflight({ parentLine = null, childLine = null } = {})
+{
+    const { snap, install, fixtureFile } = scaffold();
+    const parent = path.dirname(install);
+    fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
+    execFileSync('git', ['init', '-q', install]);
+    for (const [dir, line] of [[parent, parentLine], [install, childLine]])
+    {
+        if (line === null) continue;
+        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
+    }
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
+    delete env.ALFRED_CODE_UNATTENDED;
+    env.ALFRED_CODE_WORKSPACE = '1';   // off until 3.0.0; this case runs it on
+    const full = (extra = {}) => run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], { ...env, ...extra }).out;
+    const asks = (extra = {}) => run(['--asks', '--root', install], { ...env, ...extra }).out;
+    return { install, parent, env, full, asks };
+}
+
+test('update-preflight prints workspace: join only for a nested standalone project, and nothing after parent none', () =>
+{
+    const p = nestedPreflight();
+    assert.match(p.full(), /^workspace: join \.\.$/m);
+    assert.match(p.asks(), /^workspace: join \.\.$/m);
+    const unattended = p.full({ ALFRED_CODE_UNATTENDED: '1' });
+    assert.ok(unattended.indexOf('workspace: join') < unattended.indexOf('unattended: on'), unattended);
+    assert.doesNotMatch(p.full({ ALFRED_CODE_WORKSPACE: '0' }), /^workspace:/m, 'the kill switch asks nothing');
+    fs.mkdirSync(path.join(p.install, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(p.install, '.alfred', 'workspace'), 'parent none\n');
+    assert.doesNotMatch(p.full(), /^workspace:/m);
+    assert.doesNotMatch(p.asks(), /^workspace:/m);
+    const joined = nestedPreflight({ parentLine: 'child project\n', childLine: 'parent ..\n' });
+    assert.doesNotMatch(joined.full(), /^workspace:/m, 'a joined child is asked nothing');
+});
+
+test('update-preflight prints no workspace line in a project with nothing installed above it', () =>
+{
+    const { snap, install, fixtureFile } = scaffold();
+    execFileSync('git', ['init', '-q', install]);
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(path.dirname(install), 'acct') };
+    env.ALFRED_CODE_WORKSPACE = '1';   // off until 3.0.0; this case runs it on
+    assert.doesNotMatch(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out, /^workspace:/m);
+    assert.doesNotMatch(run(['--asks', '--root', install], env).out, /^workspace:/m);
+});
+
+test('a child whose child line was deleted by hand gets workspace: join .. rejoin, and join --answer join brings the line back', () =>
+{
+    const p = nestedPreflight({ parentLine: '', childLine: 'parent ..\n' });
+    assert.match(p.full(), /^workspace: join \.\.\trejoin$/m);
+    const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'join', '--root', p.install, '--answer', 'join'], { encoding: 'utf8', env: p.env });
+    assert.match(joined, /join: join\n$/);
+    assert.strictEqual(fs.readFileSync(path.join(p.parent, '.alfred', 'workspace'), 'utf8'), 'child project\n');
+    assert.doesNotMatch(p.full(), /^workspace:/m);
 });

@@ -5,13 +5,13 @@ description: "Use when setting up formatting, analyzers, .editorconfig, warnings
 
 # .NET code quality - enforcement, not opinion
 
-The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. This is about configuring the tools - authoring a source generator belongs to the skill covering source-generator authoring, a Roslyn analyzer has no house skill (resolve its API through the documentation server), and judging whether the *tests* are any good belongs to the .NET testing hub.
+The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. This is about configuring the tools - authoring a source generator belongs to the skill covering source-generator authoring, a Roslyn analyzer has no house skill (resolve its API through the documentation tools), and judging whether the *tests* are any good belongs to the .NET testing hub.
 
 ## When to use
 
 - Also fires on: fixing formatting or analyzer warnings, Roslynator, AnalysisLevel, NoWarn.
 - .NET conventions for mechanically enforcing code quality: making the house style a build gate, not a review opinion.
-- Do NOT use for authoring a source generator (the source-generator skill) or a Roslyn analyzer (no house skill covers it - resolve the analyzer API through the documentation server), or for test-suite quality (dotnet-testing).
+- Do NOT use for authoring a source generator (the source-generator skill) or a Roslyn analyzer (no house skill covers it - resolve the analyzer API through the documentation tools), or for test-suite quality (dotnet-testing).
 
 ## Two owners, one boundary: formatting vs rules
 

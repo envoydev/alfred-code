@@ -205,7 +205,7 @@ test("a seat granted a server the install does not run is a dangling cite; a hid
     });
     const dangling = flagsOf(fx.run(), 'dangling');
     assert.equal(dangling.length, 1, 'one flag per seat, and none for a seat whose grants all resolve');
-    assert.equal(dangling[0].detail, 'seat alfred-code:gatherer is granted mcp__plugin_chrome-control_chrome-control - no such server in this install');
+    assert.equal(dangling[0].detail, 'seat alfred-code:gatherer is granted mcp__plugin_chrome-control_chrome-control - no such server in this install'); // mcp-fixture
 });
 
 test('--run-hooks captures each injection at its load point; a turn is one prompt, not the samples summed', () =>

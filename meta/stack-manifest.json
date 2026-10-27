@@ -14,7 +14,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "habits-explain-topic",
-      "note": "senior-mentor explainer for any topic on a depth ask: this project's code (bug/concept/trade-off) via a real-file walkthrough, anything else as a layered answer (analogy and its limit, steps, worked example, mix-ups, recap, check-yourself, glossary), an offline inline-SVG diagram under <docs root>/tutorial/; depth ELI5/intermediate/expert"
+      "note": "senior-mentor explainer for any topic on a depth ask: this project's code (bug/concept/trade-off) via a real-file walkthrough, anything else as a layered answer (analogy and its limit, steps, worked example, mix-ups, recap, check-yourself, glossary), each run saved under <docs root>/explanations/ as the walkthrough and an offline no-script page (inline-SVG diagram, click-to-check questions); depth child/ELI5/intermediate/expert"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -35,11 +35,6 @@
       "repo": "envoydev/alfred-code",
       "name": "capture-architecture",
       "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-architecture.md; model-invocable, and the architecture-quality loop invokes it"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "capture-first-look",
-      "note": "provisional ORIENTATION.md from one manifest scan (scripts/scan-evidence.js --orientation) - stack, modules, build/test/run commands, entry points; never over a capture, replaced by the architecture capture"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -133,6 +128,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "mode-auto-run",
+      "note": "/mode-auto-run <request> - turns auto-run on for the session and runs any request start to finish: a code change follows the installed task-solve body read whole (a model Skill call on a flagged flow is refused by Claude Code), a question or doc is done directly, another user-typed flow is named under Left for you; no flag, an empty request starts nothing, and a flag-only line only switches the mode"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "issue-diagnoser",
       "note": "gated single-chat investigation: triage evidence to a tier -> gather (evidence-gatherer seats or inline) -> prove root cause -> user fork (report / contracted fix tasks / log-points card); read-only, any evidence source incl. none but a client report"
     },
@@ -170,6 +170,11 @@
       "repo": "envoydev/alfred-code",
       "name": "habits-clarify",
       "note": "the clarify discipline's one home (R106): one AskUserQuestion at a time, 2-3 options with the recommended one marked, until one reading is left - the requirement, never the implementation; loaded by task-solve step 1, task-solve-cross and task-build-from-scratch before any design"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "mode-output-scorer",
+      "note": "grades a producer's draft with the output-scorer seat and releases it only on a pass (ALFRED_CODE_SCORER / --mode-output-scorer-on, or a typed stack)"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -399,7 +404,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "desktop-automation",
-      "note": "driving a native desktop app through windows-control / macos-control: observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures - arrives with either desktop server"
+      "note": "driving a native desktop app through a desktop server the user registered (Windows-MCP, MacOS-MCP): observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -496,7 +501,7 @@
     },
     {
       "file": "issue-diagnoser-ci.md",
-      "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis via gh - categorize, local repro, route"
+      "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis through the forge tool the session line names (gh, glab, an MCP pipeline read) - categorize, local repro, route"
     },
     {
       "file": "issue-diagnoser-runtime.md",
@@ -513,6 +518,10 @@
     {
       "file": "integration-reviewer.md",
       "note": "final gate (opus/xhigh): read-only cross-domain integration review - contract consistency, assembled build/test/migration, the commit gate no single-stack verifier is"
+    },
+    {
+      "file": "output-scorer.md",
+      "note": "mode-output-scorer's grader (sonnet/xhigh): read-only, one draft against one rubric and its producer's docs, a quote per yes"
     },
     {
       "file": "aspnet-solution-designer.md",
@@ -659,10 +668,6 @@
       "note": "generated-docs root - always <data root>/docs (ALFRED_CODE_DOCS_PATH retired in 2.8.0)"
     },
     {
-      "file": "alfred-memory.md",
-      "note": "what goes to the memory MCP - locks it in, like alfred-navigation locks the navigation server"
-    },
-    {
       "file": "markdown-docs.md",
       "note": "markdown-style routing, path-scoped **/*.md"
     },
@@ -756,15 +761,15 @@
     },
     {
       "file": "guard-secret-value.js",
-      "matcher": "^mcp__(plugin_((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))_)?((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))__browser_file_upload$",
+      "matcher": "^mcp__.+__browser_file_upload$",
       "event": "",
-      "note": "the fourth read route: Playwright MCP's browser_file_upload hands a workspace file to whatever page asks - the Read judgement over tool_input.paths, both routes' spellings of the four engine servers (audit 2026-10-14 PL3)"
+      "note": "the fourth read route: Playwright MCP's browser_file_upload hands a workspace file to whatever page asks - the Read judgement over tool_input.paths, matched by the tool's name under whatever server the user registered (audit 2026-10-14 PL3; the stack ships no browser server since 2026-10-24)"
     },
     {
       "file": "guard-secret-value.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "the project's sensitive data (<data root>/.sensitive-data, a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a dump masked and a source or copy refused"
+      "note": "the project's sensitive data (<data root>/.secrets, .sensitive-data before; a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a dump masked and a source or copy refused"
     },
     {
       "file": "guard-unapproved-dispatch.js",
@@ -776,13 +781,19 @@
       "file": "guard-ungated-commit.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without state/approvals/PUSH-GATE (guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF turns that half off)"
+      "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push or a change-request merge on any CLI or API route (gh pr merge, glab mr merge, az repos pr update --status completed, a curl PUT .../merge) without state/approvals/PUSH-GATE; a forge call forge.js cannot read is an ask, a deny when unattended (guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF turns that half off)"
+    },
+    {
+      "file": "guard-ungated-commit.js",
+      "matcher": "^mcp__.*",
+      "event": "",
+      "note": "the publish half on every MCP server: forge.js reads the tool by its words (accept_merge_request, repo_pull_request_write with autoComplete, push_files), so a merge or a branch write through any forge server needs the PUSH-GATE receipt git push and a CLI merge do; a forge call with no known verb is an ask (a deny when nobody is at the terminal); every MCP server is judged (the stack ships none since 2026-10-24), a navigation, documentation or memory type's tool never a forge call (forge.js localTool)"
     },
     {
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth, and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-mode run's stamp (a `session:` line naming this session) a Stop is sent back to the run until its close deletes the stamp - held again only after a tool call (the Stop chain's workSince), and at most 49 times per stamp: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth, and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-run stamp naming this session, while the run's marker (`state/sessions/AUTO-RUN-<session>`) stands, a Stop is sent back to the run until its close deletes the marker - never the stamp, which only --mode-auto-run-off ends - held again only after a tool call (the Stop chain's workSince), and at most 49 times per marker: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
     },
     {
       "file": "guard-stop-contract.js",
@@ -797,16 +808,22 @@
       "note": "PreToolUse AskUserQuestion: FIX IN PLACE an ask whose own shape is mechanically wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry, a fresh option pointing at a resume block above that no fence shows - the corrected questions sent through updatedInput with no decision; DENY once per ask text, carrying any such fix, an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only. Under a live AUTO stamp it ANSWERS an ask whose every question marks one (Recommended) option - allow plus an answers map in updatedInput - except a recommended push, merge, deploy or publish, and takes the next option over a recommended fresh-session hand-off; anything else waits for the user."
     },
     {
-      "file": "guard-fresh-session-start.js",
-      "matcher": "Skill",
+      "file": "guard-stop-contract.js",
+      "matcher": "SubagentHandback",
       "event": "",
-      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. `--auto-mode` in the call's args on a task, capture, loop or issue skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead - only when the user's newest typed prompt is such a command opening with the flag (the user's rulings: 2026-10-15, a prose mention starts nothing; 2026-10-17, captures joined and the flag replaced the bare word). A message the user types mid-run is input to the run and keeps auto-mode on; it ends only on the user's word to stop ('stop auto-mode', a bare 'stop', or a new flow command without the flag) or the run's own close. COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on. BUILT-IN REVIEWS (the user's ruling of 2026-10-22, 'Stop the model using theirs'): the model's or a seat's call to bare code-review / security-review with no skill of that name on disk is denied, naming /review-code or /review-security, once the model can load ours (a personal or project copy skillOverrides leaves on - before update copies it, the built-in passes); guard-fresh-session-start:builtin-review in ALFRED_CODE_HOOKS_OFF switches it off."
+      "note": "PreToolUse SubagentHandback: seal an output-scorer seat's report into its score file (mode-output-scorer); never decides"
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
+      "matcher": "Skill",
       "event": "",
-      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `--auto-mode` as the first word of command_args on a task, capture, loop or issue command (the user's rulings of 2026-10-15 and 2026-10-17; the bare word, or the flag anywhere else, is the task's text) writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer. Every capture-* and issue-* name spawns it too (the user's ruling of 2026-10-15): each typed task-*, capture-*, loop-* or issue-* command gets the MODE BANNER after whatever else it injects - two lines its first reply opens with, auto-mode ON or OFF and how the session meets a full context (it compacts, or offers a fresh session at its trigger), with the window numbers."
+      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. AUTO-RUN (the stack-modes spec of 2026-10-27): `--mode-auto-run-on` leading the call's args on a task, capture, loop, issue or mode skill writes or keeps the session's AUTO stamp, never a run marker - only when the user's newest typed prompt is such a command whose leading run carries the flag (`modeFlags`; a prose mention starts nothing). Auto-run lasts the session: a message the user types mid-run is input to the run, a run's close deletes its marker, and only `--mode-auto-run-off` after a command ends the mode. COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on. BUILT-IN REVIEWS (the user's ruling of 2026-10-22, 'Stop the model using theirs'): the model's or a seat's call to bare code-review / security-review with no skill of that name on disk is denied, naming /review-code or /review-security, once the model can load ours (a personal or project copy skillOverrides leaves on - before update copies it, the built-in passes); guard-fresh-session-start:builtin-review in ALFRED_CODE_HOOKS_OFF switches it off."
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|mode-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
+      "event": "",
+      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). The leading run of mode flags right after a task, capture, loop, issue or mode command (`modeFlags`, the stack-modes spec of 2026-10-27; a flag anywhere else is the task's text): `--mode-auto-run-on` writes or keeps the session's AUTO stamp, and each typed family command while it is live writes the run marker `<data root>/state/sessions/AUTO-RUN-<session>` and gets the auto-run contract instead of any offer; `/mode-auto-run <request>` is its own -on, and an old flag gets a pointer line and starts nothing. Every capture-*, issue-* and mode-* name spawns it too: each typed family command gets the MODE BANNER after whatever else it injects - two lines its first reply opens with, auto-run ON or OFF and how the session meets a full context (it compacts, or offers a fresh session at its trigger), with the window numbers."
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -876,15 +893,15 @@
     },
     {
       "file": "guard-desktop-exec.js",
-      "matcher": "^mcp__(plugin_windows-(control|desktop)_)?windows-(control|desktop)__App$|^mcp__(plugin_macos-(control|desktop)_)?macos-(control|desktop)__Shell$",
+      "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$",
       "event": "",
-      "note": "the desktop servers' process launchers, both routes' spellings: deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
+      "note": "the desktop servers' process launchers, matched by tool name under whatever server the user registered (the stack ships none since 2026-10-24): deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; and a browser server's browser_run_code_unsafe (arbitrary JavaScript in the server's own process, no flag switches it off - 2026-10-24, ruling N9); the DESKTOP-EXEC-ALLOW receipt (App, Shell, browser_run_code_unsafe, an executable, or *) honours a wanted call"
     },
     {
       "file": "guard-answer.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
-      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the memory-save line)"
+      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the save line - the preferences docs or Claude Code's own memory)"
     },
     {
       "file": "guard-answer.js",
@@ -930,9 +947,9 @@
     },
     {
       "file": "docs-session.js",
-      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
+      "matcher": "^mcp__.+__(rename_symbol|safe_delete_symbol)$",
       "event": "",
-      "note": "the same hold on the navigation server's two edit tools the stack keeps on (the other five are off at its launch) - the file is tool_input.relative_path; both routes' spellings"
+      "note": "the same hold on a navigation server's two edit tools (Serena's rename_symbol / safe_delete_symbol), matched by name under whatever server the user registered - the file is tool_input.relative_path"
     },
     {
       "file": "docs-session.js",
@@ -954,18 +971,6 @@
     },
     {
       "file": "preferences-session.js",
-      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
-      "event": "",
-      "note": "the same first-edit hold on the navigation server's two edit tools the stack keeps on - the file is tool_input.relative_path; both routes' spellings"
-    },
-    {
-      "file": "preferences-session.js",
-      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$",
-      "event": "",
-      "note": "a judge's first symbol lookups held like its first Reads while its start left entries unhanded, each handing over the next part - a seat that locates before it reads may never call Read; both routes' spellings"
-    },
-    {
-      "file": "preferences-session.js",
       "matcher": "LSP",
       "event": "",
       "note": "a judge's first LSP calls held like its first Reads while its start left entries unhanded, each handing over the next part - the filePath under the preferences folder never held"
@@ -974,43 +979,37 @@
       "file": "preferences-session.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "the FIRST git write of each actor (index, tree, ref, stash, a branch, tag or worktree branch made, gh pr merge / create, gh release create / edit / delete) held until GIT-PREFERENCES.md was read, handed over live with its locked entries first as the seed states them; one command that edits and commits shares one room, git first; a shell source write is an edit, a whole-file reader naming a doc (no head, grep or pipe into one) marks it read; a judge's, a handed architecture analyzer's or a reviewing main session's shell read of a file outside the preferences folder (cat, sed, head, grep, rg ... with a path argument on disk, through a variable the command sets, or as a glob an entry matches; a search given no path - rg reading no pipe, a recursive grep; a reader find -exec or xargs runs; a Select-String fed by a file listing - never wc or ls) is held like its Read, a grep word earning the steer line - run inside shell-guards.js"
+      "note": "the FIRST git write of each actor (index, tree, ref, stash, a branch, tag or worktree branch made, a change request opened or merged, a release made - by concept, on any CLI or API route) held until GIT-PREFERENCES.md was read, handed over live with its locked entries first as the seed states them; one command that edits and commits shares one room, git first; a shell source write is an edit, a whole-file reader naming a doc (no head, grep or pipe into one) marks it read; a judge's, a handed architecture analyzer's or a reviewing main session's shell read of a file outside the preferences folder (cat, sed, head, grep, rg ... with a path argument on disk, through a variable the command sets, or as a glob an entry matches; a search given no path - rg reading no pipe, a recursive grep; a reader find -exec or xargs runs; a Select-String fed by a file listing - never wc or ls) is held like its Read, a grep word earning the steer line - run inside shell-guards.js"
+    },
+    {
+      "file": "preferences-session.js",
+      "matcher": "^mcp__.*",
+      "event": "",
+      "note": "every MCP call, read by its tool name (the stack ships no server since 2026-10-24): a navigation server's two edit tools take the first-edit hold (the file is tool_input.relative_path), its five symbol lookups a judge's read hold (a seat that locates before it reads may never call Read), and a tool forge.js reads as opening or merging a change request, a branch write or a release (create_merge_request, push_files, repo_pull_request_write with autoComplete) the first-git-write hold, as the shell route does"
     },
     {
       "file": "preferences-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again - a compaction keeps the record's run and architecture hand-over, a clear ends them; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes nothing"
+      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again - a compaction keeps the record's run and architecture hand-over, a clear ends them; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes only that seat's tool order. After the personal doc: the tool order (tools.js toolsLine) - each job's ranks from TOOLS-PREFERENCES.md, or the adapter table's defaults for a job it leaves out, resolved against what this machine reaches, each with its ToolSearch select: load line, and once per project with no doc the /capture-preferences tools suggestion; preferences-session:tools in ALFRED_CODE_HOOKS_OFF off; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines - audit 2026-10-14 RU13, moved here from the retired memory-session.js), at a seat's own compaction too; preferences-session:host in ALFRED_CODE_HOOKS_OFF drops them alone"
     },
     {
       "file": "preferences-session.js",
       "matcher": "@SubagentStart",
       "event": "",
-      "note": "a judge - a solution designer or a verifier (agent_type ending solution-designer or -verifier), or a finding seat (code-quality-analyzer, security-auditor, integration-reviewer) - has no edit tool, so no edit hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits, and marked in its record; the entries the room could not hold come with its first reads (a Read, a Grep, an LSP call or a symbol lookup). The architecture analyzer is handed ARCHITECTURE-PREFERENCES.md alone, and told to report a departure as a smell naming its id, only inside an architecture quality run (the main session's run, below) - the map capture dispatches the same seat to describe the code as it is. alfred-code:<seat> always; a bare name only where the install stamp's library-agents: line records its copy, so a project's own agent or another plugin's seat of the same name gets nothing; any other seat gets nothing here"
+      "note": "a judge - a solution designer or a verifier (agent_type ending solution-designer or -verifier), or a finding seat (code-quality-analyzer, security-auditor, integration-reviewer) - has no edit tool, so no edit hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits, and marked in its record; the entries the room could not hold come with its first reads (a Read, a Grep, an LSP call or a symbol lookup). The architecture analyzer is handed ARCHITECTURE-PREFERENCES.md alone, and told to report a departure as a smell naming its id, only inside an architecture quality run (the main session's run, below) - the map capture dispatches the same seat to describe the code as it is. alfred-code:<seat> always; a bare name only where the install stamp's library-agents: line records its copy, so a project's own agent or another plugin's seat of the same name gets no docs. Every seat but Claude Code's two guides is told its tool order after any doc push: a seat whose definition the hook finds (the core's own, a project copy) only the ranks its tools: and disallowedTools: grant, with no load line, any other the main session's; then, for every seat, this host's shell traps (preferences-session:host off)"
     },
     {
       "file": "preferences-session.js",
       "matcher": "Skill",
       "event": "",
-      "note": "the main session's run: a Skill call naming a capture-, loop-, task- or issue- skill, review-code or review-security (or the built-in code-review / security-review a user types; bare) is recorded as the run, with where the transcript stood - the run ends at the user's next typed turn other than a go-on reply (continue, go on, yes, ok ...), read only at an analyzer's start and a reviewing main session's held read; a review run's (review-code, review-security, the built-in two, the code and architecture quality captures and loops) first call waits until the code docs were handed over, in parts past one room - the main session reviewing without an edit never meets the edit hold; a seat's Skill call passes"
+      "note": "the main session's run: a Skill call naming a capture-, loop-, task- or issue- skill, review-code or review-security (or the built-in code-review / security-review a user types; bare) is recorded as the run, with where the transcript stood - the run ends at the user's next typed turn other than a go-on reply (continue, go on, yes, ok ...), read only at an analyzer's start and a reviewing main session's held read; a review run's (review-code, review-security, the built-in two, the code and architecture quality captures and loops) first call waits until the code docs were handed over, in parts past one room - the main session reviewing without an edit never meets the edit hold; a seat's Skill call passes A design run's (task-design, issue-diagnoser, task-build-from-scratch) chat load is handed the code docs as additionalContext and never denied: one room, the rest named one read line each, only what was pasted whole marked, so the first scoped edit still hands the rest."
     },
     {
       "file": "preferences-session.js",
-      "matcher": "@UserPromptExpansion:^((alfred-)?(capture|loop|task|issue)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
+      "matcher": "@UserPromptExpansion:^((alfred-)?(capture|loop|task|issue|mode)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
       "event": "",
-      "note": "a typed run emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse) - its expansion records the run, and a typed review is handed the code docs as a judge's start is, the rest with the main session's first reads; the matcher keeps every other prompt from spawning the hook"
-    },
-    {
-      "file": "memory-session.js",
-      "matcher": "@SessionStart",
-      "event": "",
-      "note": "push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired; it ends on this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines - audit 2026-10-14 RU13)"
-    },
-    {
-      "file": "memory-session.js",
-      "matcher": "@SubagentStart",
-      "event": "",
-      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one at dispatch (a seat's own compaction runs SessionStart inside it), and a seat stores and reads its handoff note under that tag - and the memory tools line, which a seat whose tools grant the server skips: it calls them directly; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
+      "note": "a typed run emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse) - its expansion records the run, and a typed review is handed the code docs as a judge's start is, the rest with the main session's first reads; the matcher keeps every other prompt from spawning the hook; a typed design run (task-design, issue-diagnoser, task-build-from-scratch) is handed them the same way, never held"
     },
     {
       "file": "check-turn-build.js",
@@ -1029,6 +1028,36 @@
       "matcher": "@Stop",
       "event": "",
       "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <data root>/state/history/"
+    },
+    {
+      "file": "forge-session.js",
+      "matcher": "@SessionStart",
+      "event": "",
+      "note": "one line of forge facts at start (no network): the remote's host and kind, the forge CLIs on PATH, the MCP servers that are forge servers by their launch command or URL (never their name) and whether the ref watch is on - the model maps each concept onto the tool it has and never guesses the remote; engine forge.js beside it"
+    },
+    {
+      "file": "forge-session.js",
+      "matcher": "@SubagentStart",
+      "event": "",
+      "note": "the same forge line for a dispatched subagent - SessionStart context never reaches one at dispatch, and a seat that merges or watches a pipeline needs the same facts"
+    },
+    {
+      "file": "forge-session.js",
+      "matcher": "@PostToolUse:Bash|PowerShell|Monitor",
+      "event": "",
+      "note": "the ref watch's PostToolUse: every call confirms the act the commit guard ledgered for it (an act never confirmed covers nothing), and one that could move a ref marks the cycle for the Stop's diff, a seat's calls included; the strong window: after a shell call forge.js reads as a merge, a branch write, a release or a forge call it cannot read, every branch and tag is re-read with git ls-remote and diffed against the session's baseline; a loud move no ledger act covers (the default branch, the upstream, a branch GIT-PREFERENCES.md names, a commit in this checkout, a tag) blocks with feedback to stop and report it"
+    },
+    {
+      "file": "forge-session.js",
+      "matcher": "@PostToolUse:^mcp__.*",
+      "event": "",
+      "note": "the same strong window after a call on any MCP server - an unknown tool that merged is caught right after it ran"
+    },
+    {
+      "file": "forge-session.js",
+      "matcher": "@Stop",
+      "event": "",
+      "note": "the ref watch's catch-all: when the turn ran anything but a known read (a script, a seat, a browser click, an unknown tool) or a PostToolUse marked the cycle, and again after a turn that left background work running, every branch and tag is diffed once more - a loud move blocks once per cycle, the rest is one summary line for the user; an unreachable remote is 'not checked', never clean; forge-session:watch in ALFRED_CODE_HOOKS_OFF turns it off, ALFRED_CODE_FORGE_WATCH=loud-only drops the summary; a check that fails or takes over 3s pauses the catch-all for 30 min (a turn that made a forge call or a gated push still checks), and publish-only holds it to those turns"
     },
     {
       "file": "instrument-tool-usage.js",
@@ -1052,52 +1081,7 @@
       "marketplace": "jarrodwatts/claude-hud"
     }
   ],
-  "mcps": [
-    {
-      "name": "alfred-navigation",
-      "args": "-e SERENA_HOME=@SERENA_HOME@ -e SERENA_USAGE_REPORTING=false -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@ --agent-interface tools",
-      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch (@SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@; a project with no .git whose serena folder moved under the data root registers --project . instead, which the cwd walk cannot find); PyPI (not git), dashboard off, its usage ping off (SERENA_USAGE_REPORTING=false); --context names the stack's own serena context (@SERENA_CONTEXT@ = .claude/navigation-context.yml, copied there from stack/mcp) - the upstream claude-code one minus five editing tools and onboarding"
-    },
-    {
-      "name": "browser",
-      "args": "-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp",
-      "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one <engine>-control server per kept browser; --no-webmcp, so a visited page never adds tools of its own"
-    },
-    {
-      "name": "alfred-memory",
-      "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- node -e @ROOT_BOOT@ -- project uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
-      "note": "memory: required, like navigation and documentation (alfred-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives"
-    },
-    {
-      "name": "alfred-documentation",
-      "args": "@HTTP@",
-      "note": "the documentation server (Context7): up-to-date library/framework/SDK docs (beats recalled API knowledge) - the hosted server only since 2.0.0 (the local npx transport was cut, R32)"
-    },
-    {
-      "name": "windows-control",
-      "active": false,
-      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @WINDOWS_CONTROL_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
-      "skills": [
-        "desktop-automation"
-      ],
-      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE says otherwise (WINDOWS_MCP_TOOLS registered empty, so an inherited one never overrides the list); App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it; screenshots arrive at Windows-MCP's full size unless WINDOWS_MCP_SCREENSHOT_SCALE (0.1-1.0) is set in the shell that starts Claude Code - the stack seeds no value until a readability measurement (observe-first)"
-    },
-    {
-      "name": "macos-control",
-      "active": false,
-      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_CONTROL_PIN@ macos-mcp serve",
-      "skills": [
-        "desktop-automation"
-      ],
-      "note": "the macOS desktop server (MacOS-MCP): drives native macOS apps through the Accessibility API; macOS only, addable, seeded by no stack; opt-in (active: false); needs Accessibility and Screen Recording for the terminal and the uv-managed Python"
-    },
-    {
-      "name": "mobile-control",
-      "active": false,
-      "args": "-e NO_UI=@MOBILE_NO_UI@ -e ALLOW_REMOTE_APP_URLS=@MOBILE_REMOTE_APPS@ -e REMOTE_SERVER_URL_ALLOW_REGEX=@MOBILE_REMOTE_ALLOW@ -e SCREENSHOTS_DIR=@MOBILE_SCREENSHOTS@ -e PAGE_SOURCES_DIR=@MOBILE_PAGE_SOURCES@ -e npm_config_before=@MOBILE_BEFORE@ -- node -e @ROOT_BOOT@ -- checkout npx -y appium-mcp@MOBILE_CONTROL_PIN@",
-      "note": "the mobile server (appium-mcp): drives Android and iOS apps on an emulator, a simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers; addable, seeded by no stack; opt-in (active: false); Node 22+; the Android SDK and a JDK come from ANDROID_HOME / JAVA_HOME where Claude Code starts (the plugin route's launcher, stack/mcp/mobile-launch.js, looks each up only when unset), iOS needs macOS with Xcode; app URLs refused and a local Appium server only unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX; screenshots and page sources under <data root>/mobile-control; its caret-ranged dependencies held to the pin's own day (npm_config_before=@MOBILE_BEFORE@, meta/mcp-pins.json's mobile-control refreshed)"
-    }
-  ],
+  "mcps": [],
   "retired": {
     "skills": [
       "frontend",
@@ -1147,6 +1131,7 @@
       "alfred-capture-code-style",
       "capture-code-style",
       "alfred-capture-first-look",
+      "capture-first-look",
       "alfred-capture-project-capabilities",
       "capture-project-capabilities",
       "alfred-capture-related-projects",
@@ -1183,7 +1168,9 @@
       "capture-agent-awareness",
       "capture-project-awareness",
       "capture-related-projects",
-      "habits-skill-writing"
+      "habits-skill-writing",
+      "task-auto",
+      "habits-output-scorer"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1222,20 +1209,33 @@
       "baseline-quality-gates.md",
       "baseline-security.md",
       "alfred-git.md",
-      "skill-authoring.md"
+      "skill-authoring.md",
+      "alfred-memory.md"
     ],
     "hooks": [
       "require-convention-skill.js",
       "inject-code-style.js",
       "monitor-session.js",
-      "guard-answer-length.js"
+      "guard-answer-length.js",
+      "memory-session.js"
     ],
     "mcps": [
       "angular-cli",
       "chrome-devtools",
       "appium-mcp",
       "sentry",
-      "context7-local"
+      "context7-local",
+      "alfred-navigation",
+      "browser",
+      "alfred-memory",
+      "alfred-documentation",
+      "windows-control",
+      "macos-control",
+      "mobile-control",
+      "chrome-control",
+      "msedge-control",
+      "firefox-control",
+      "webkit-control"
     ],
     "plugins": [
       "ponytail",
@@ -1263,7 +1263,6 @@
       "project-related-context": "capture-awareness",
       "project-agent-capabilities": "capture-awareness",
       "project-stack-usage-analyzer": "capture-usage-report",
-      "project-first-look": "capture-first-look",
       "project-quality-loop": "loop-code-quality",
       "project-architecture-quality-loop": "loop-architecture-quality",
       "project-test-coverage-loop": "loop-test-coverage",
@@ -1273,6 +1272,8 @@
       "alfred-capture-stack-usage": "capture-usage-report",
       "create-ticket": "habits-create-ticket",
       "explain-code-tutor": "habits-explain-topic",
+      "task-auto": "mode-auto-run",
+      "habits-output-scorer": "mode-output-scorer",
       "alfred-capture-agent-capabilities": "capture-awareness",
       "capture-agent-capabilities": "capture-awareness",
       "alfred-capture-architecture": "capture-architecture",
@@ -1280,7 +1281,6 @@
       "alfred-capture-code-quality": "capture-code-quality",
       "alfred-capture-code-style": "capture-project-code-style",
       "capture-code-style": "capture-project-code-style",
-      "alfred-capture-first-look": "capture-first-look",
       "alfred-capture-project-capabilities": "capture-awareness",
       "capture-project-capabilities": "capture-awareness",
       "alfred-capture-related-projects": "capture-awareness",

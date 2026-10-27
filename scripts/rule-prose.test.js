@@ -35,13 +35,13 @@ test('M62: both repair routers give a read-only seat its action - report the red
 
 // ------------------------------------------------------------------ M64
 
-test('M64: the C# depth hint lives in the always-on navigation rule, beside the overview call it governs', () =>
+// 2026-10-24: the C# depth hint was the navigation server's `depth` parameter; with no server shipped the outline line names
+// the built-in `documentSymbol`, and no rule carries a parameter of a server the install may not have.
+test('M64: the outline line names one file per call, and no rule carries a server\'s depth parameter', () =>
 {
     const nav = injected('alfred-navigation');
-    assert.match(nav, /`get_symbols_overview` takes ONE file, never a directory[^.]*on C# pass `depth: 2`/, 'the overview bullet carries the C# depth');
-    assert.match(nav, /nested-type members need 3; a top-level-statements file returns `\{\}` at any depth/, 'the move kept the two edge facts the C# rule carried');
-    assert.ok(!injected('csharp-conventions').includes('depth: 2'), 'the path rule no longer carries a hint only a file-tool touch delivers');
-    assert.strictEqual(registry()['serena-csharp-overview-depth'].owner.file, 'stack/rules/alfred-navigation.md');
+    assert.match(nav, /`documentSymbol` takes ONE file, never a directory - list the directory first/, 'the outline bullet');
+    assert.ok(!nav.includes('depth: 2') && !injected('csharp-conventions').includes('depth: 2'), 'no server parameter in a rule');
 });
 
 // ------------------------------------------------------------------ M65
@@ -97,15 +97,16 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
 {
     const nav = injected('alfred-navigation');
     assert.ok(!/screenshot/i.test(nav), 'the browser row owns screenshot readback');
-    const row = read('stack/skills/capture-awareness/references/agents.md').split('\n').find((l) => l.startsWith('- `browser` - '));
+    const row = read('stack/skills/capture-awareness/references/agents.md').split('\n').find((l) => l.startsWith('- `playwright` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
     // The M68 ruling stands - one rule text for every teammate, never a per-OS rule COPY. Audit 2026-10-14 RU13 (the
-    // user's ruling): a per-host hook line is no copy, so the Windows line rides memory-session.js on win32 only, and the
-    // rule kept one pointer at it (the hook's own cases: memory-session.test.js, RU13) - until stack audit 2026-10-20 rules
+    // user's ruling): a per-host hook line is no copy, so the Windows line rides preferences-session.js (memory-session.js until
+    // 2026-10-24) on win32 only, and the
+    // rule kept one pointer at it (the hook's own cases: preferences-session.test.js, RU13) - until stack audit 2026-10-20 rules
     // row 6 dropped the pointer as a no-op: the hook line arrives on its own, where it applies.
     assert.ok(!nav.includes('The traps of this host\'s own shell'), 'the no-op pointer is gone');
     assert.ok(!nav.includes('cygpath'), 'the Windows line left the always-on rule');
-    const { hostLines } = require('../stack/hooks/memory-session.js');
+    const { hostLines } = require('../stack/hooks/preferences-session.js');
     assert.ok(hostLines('win32', 'C:\\Program Files\\Git\\usr\\bin\\bash.exe').some((l) => l.startsWith('- On Windows (Git Bash): pass a `/tmp/x` path')), 'the hook carries it on win32');
 });
 
@@ -199,13 +200,14 @@ test('rules F5 + F16: the navigation rule says one thing per line, in plain word
 {
     const nav = injected('alfred-navigation');
     assert.ok(!nav.includes("A language serena's"), 'the ungrammatical fused line');
-    assert.match(nav, /- A language the navigation server's `project\.yml` \(`<data root>\/serena\/`\) does not list takes the fallback from its first call\. -/);
+    // 2026-10-24: the server's project.yml line left with the server; a missing language server is now a run-level fact.
+    assert.ok(!/project\.yml|serena/.test(nav), 'no line about one server\'s config');
+    assert.match(nav, /A tool that reports no language server for the file is a run-level fact/);
     assert.match(nav, /- A large JSON \/ YAML \/ lock \/ fixture file is queried/);
     assert.ok(!nav.includes('check the tool list before an edit call'), 'F16');
     // F16's edit-tool line named the server's memory edit tools; they are off since the user's 2026-10-13 ruling, and
     // the memory rule is the one home of that line (stack audit 2026-10-20 rules row 6).
     assert.ok(!/memory tools are off/.test(nav), 'F16 superseded, the duplicate gone');
-    assert.ok(injected('alfred-memory').includes('never in the navigation server (its memory tools are off)'), 'the memory rule owns it');
 });
 
 test('rules F6: the compaction section carries the name the docs give it', () =>
@@ -262,26 +264,26 @@ test('rules F11: the docs root exempts instruction files and drops capture-inter
     assert.ok(!line.includes('watch.json'));
 });
 
-test('rules F12 + F13: the git seed states no commit header shape, and the memory verify clause is stated once', () =>
+test('rules F12: the git seed states no commit header shape', () =>
 {
     // 2026-10-21: the seed keeps only the crucial git lines - the commit message shape is the user's to capture.
+    // F13's memory verify clause went with alfred-memory.md (2026-10-24).
     const vcs = squash(read(GIT_SEED));
     assert.strictEqual((vcs.match(/Conventional[- ]Commits|Commit message shape|Critical:/g) || []).length, 0, vcs);
-    const memory = injected('alfred-memory');
-    assert.strictEqual((memory.match(/verified before use/g) || []).length, 1, memory);
 });
 
 // audit 2026-10-14 AG01: ec2f0027 granted every seat whole servers; the 2026-10-14 probe (docs/baseline-rules-evidence.md)
 // saw a whole-server-granted seat with no ToolSearch call the tools on its first try, so the clause names both grant shapes.
 test('agents F03 + AG01: a seat whose tools grant a locked server\'s tools - by name or whole - calls them directly - live probes 2026-10-09, 2026-10-14', () =>
 {
-    const clause = 'A seat whose tools grant them - by name or as the whole server - has them loaded already; it calls them directly.';
-    assert.ok(injected('alfred-navigation').includes(clause), 'alfred-navigation');
-    // RU10 moved the memory line into the hook's SubagentStart push, carve-out and all.
-    assert.ok(fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'memory-session.js'), 'utf8')
-        .includes('a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly'), 'memory-session.js');
-    assert.ok(injected('alfred-quality-gates').includes('then the query (a seat whose tools grant them - by name or as the whole server - calls them directly)'));
-    for (const name of ['alfred-navigation', 'alfred-memory', 'alfred-quality-gates'])
+    // 2026-10-24: the seats hold no server until tool preferences phase 4, so the clause is the short form.
+    assert.ok(injected('alfred-navigation').includes('a seat whose tools grant them calls them directly'), 'alfred-navigation');
+    // RU10 moved the memory line into the memory hook's SubagentStart push, carve-out and all; the tool order's start
+    // line carries both since 2026-10-24 - a seat with a tools: line is told its ranks with no load line.
+    assert.ok(fs.readFileSync(path.join(ROOT, 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js'), 'utf8')
+        .includes("'Call them directly - your tools grant them.'"), 'tools.js');
+    assert.ok(injected('alfred-quality-gates').includes('(a seat whose tools grant it calls it directly)'));
+    for (const name of ['alfred-navigation', 'alfred-quality-gates'])
         assert.ok(!injected(name).includes('list names them'), `${name}: the exact-name-only clause`);
 });
 
@@ -307,9 +309,9 @@ test('C14: no shipped instruction prescribes the bash-only PIPESTATUS read; the 
     assert.match(nav, /Read `\$\?` on the very next line, with `set -o pipefail` before a pipe/);
     // audit 2026-10-14 RU05: shell-guards.js quotes a tool-owned glob and a bare `=word` under zsh (shell-guards.test.js C14), so the rule drops both
     assert.ok(!/opening with `=`|a glob the TOOL owns/.test(nav), 'a hook-held clause left the rule');
-    // audit 2026-10-14 RU13: the two zsh traps ride memory-session.js on a zsh host only; the rule points at them
+    // audit 2026-10-14 RU13: the two zsh traps ride preferences-session.js on a zsh host only
     assert.ok(!/word-splits|bare path glob/.test(nav), 'the zsh lines left the always-on rule');
-    const zsh = require('../stack/hooks/memory-session.js').hostLines('darwin', '/bin/zsh').join('\n');
+    const zsh = require('../stack/hooks/preferences-session.js').hostLines('darwin', '/bin/zsh').join('\n');
     assert.match(zsh, /never word-splits `\$VAR`/);
     assert.match(zsh, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
 });
@@ -499,7 +501,7 @@ test('RU03: the credentials section keeps its constraints and leaves the ask, th
     for (const gone of ['ROTATE_ASK', 'once per exposure', 'SECRET-READ-ALLOW', 'When the VALUE', 'nested key', 'Read rules cover'])
         assert.ok(!sec.includes(gone), `the always-on copy still carries '${gone}'`);
     for (const kept of ['End the turn on the ask (rotate now / acknowledge and defer), never on prose.', "(the secret guard's `--presence` view - its denial prints the command)",
-        'a pasted one may do the job it was pasted for, inline in that one call', '`.sensitive-data`', '`--with-sensitive`', 'never a fragment of the value',
+        'a pasted one may do the job it was pasted for, inline in that one call', '`.secrets`', '`--with-sensitive`', 'never a fragment of the value',
         'Each rotation option names its site, action and command itself'])
         assert.ok(sec.includes(kept), `the constraint '${kept}' stays`);
     assert.ok(squash(rule('alfred-security')).includes('`guard-secret-value.js` covers those by content'), 'the coverage line is a maintainer note');

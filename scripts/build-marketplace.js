@@ -9,12 +9,10 @@
 //
 // The live .claude-plugin/marketplace.json is NOT touched by --write, which only regenerates
 // meta/plugin-entries.json; --write-marketplace is the Phase 3 transcription that applies those
-// entries to the live file, leaving
-// the MCP entries and the marketplace metadata alone.
+// entries to the live file, leaving the marketplace metadata alone.
 //
 //   node scripts/build-marketplace.js --write-marketplace   apply the entries to the live file
 //   node scripts/build-marketplace.js --hooks-entry         print the core's hooks block (lint 48)
-//   node scripts/build-marketplace.js --mcp-entries         the generated MCP plugin entries (`npm run marketplace`; lint 53 checks them)
 //
 // The CORE entry is generated too, from Phase 3 on. It used to ship from `./setup-plugin`, whose
 // own .claude-plugin/plugin.json was its manifest; its seats live under stack/, outside that folder,
@@ -35,9 +33,6 @@ const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
 const historySession = require('../stack/hooks/history-session.js');
-const { DEFAULT_EXCLUDE, DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
-const { NAVIGATION_ENV } = require('../stack/mcp/serena-launch.js');
-const { excludeNewerOf, pythonFor } = require('../stack/mcp/uv-python.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -175,12 +170,15 @@ function serialize(entries)
 const FOLDED_ENTRIES = ['alfred-code-hooks'];
 
 // Applies the generated entries to the live marketplace, the CORE entry included from Phase 3 on.
-// Anything the generator does not own - an MCP entry, a hand-written extra - keeps its place,
-// except a RETIRED or FOLDED name the entries no longer carry: it would keep a dead entry installable.
+// Anything the generator does not own - a hand-written extra - keeps its place, except a RETIRED or
+// FOLDED name the entries no longer carry, and every MCP server entry: the stack ships no server since
+// 2026-10-24 (the user's ruling - the record of what it shipped is stack/mcp/shipped-mcps.json), and a
+// dead entry left listed stays installable.
+const mcpEntry = (p) => Boolean(p && p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks);
 function applyToMarketplace(mkt, entries, { retired = [] } = {})
 {
     const gone = new Set([...retired, ...FOLDED_ENTRIES]);
-    const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !gone.has(p.name));
+    const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !gone.has(p.name) && !mcpEntry(p));
     mkt.plugins = kept.concat(entries);
     return mkt;
 }
@@ -253,266 +251,6 @@ function hooksBlock(wirings)
     return block;
 }
 
-// ---------------------------------------------------------------------------------------------
-// The MCP plugin entries. Eight servers leave <repo>/.mcp.json and arrive as plugin-declared
-// `mcpServers`, one plugin per server family. Two rulings shape what is written here, both in
-// docs/superpowers/plans/2026-09-20-plugin-native-migration-phase-6.md and both measured:
-//
-//   R1 - the plugin is NAMED for its server (`navigation`, not `alfred-code-mcp-navigation`), because the
-//        plugin name sits inside every tool name: `mcp__plugin_<plugin>_<server>__<tool>`, repeated
-//        837 times across the shipped surfaces. The short name costs 14,000 fewer characters.
-//   R3 - the version pins are resolved at RELEASE time from meta/mcp-pins.json, never from the
-//        registry during a build and never at launch. `node scripts/refresh-mcp-pins.js --write`
-//        moves a pin; a null version ships unpinned, the same fallback the installer had.
-//
-// Per-project values cannot come from the project settings.json: a plugin MCP entry expands only
-// the SHELL and the ACCOUNT settings env (measured 2026-09-22 - S10's note to the contrary is
-// retracted in docs/plugin-migration-evidence.md). What a plugin server DOES get is a cwd equal to
-// the project dir, so the one server that needs a per-project value - memory, whose db path is the
-// install's level choice - goes through a launcher that reads the project itself.
-const PINS_FILE = path.join(REPO, 'meta/mcp-pins.json');
-
-function readPins(options = {})
-{
-    const file = options.pins ? null : readJson(PINS_FILE, 'mcp-pins');
-    const pins = options.pins || file.pins || {};
-    // M24: the release's dependency cut-off for uvx (uv-python.js excludeNewerOf), from the same file.
-    const cutoff = excludeNewerOf(options.pins ? options.refreshed : file.refreshed);
-    // '@<v>' for the npx/uvx packages, '==<v>' inside memory's extras brackets. A null version is
-    // the offline fallback the installer already had: ship unpinned rather than ship nothing.
-    const suffix = name =>
-    {
-        const row = pins[name];
-        if (!row || !row.version) return '';
-        return String(row.spelling || '@<v>').replace('<v>', row.version);
-    };
-    // PL4: an npm row's OWN cut-off day (refresh-mcp-pins.js 'an npm row's own day'), '' when it records none.
-    const npmBefore = (name) => excludeNewerOf(pins[name] && pins[name].refreshed);
-    return { suffix, pins, cutoff, npmBefore };
-}
-
-// The four browsers the browser catalog entry expands into - ONE PLUGIN EACH, not one plugin
-// declaring four servers. A plugin's servers all load together, so four in one entry would put four
-// copies of the browser server's tool schemas in every session of a project that kept a single browser; the
-// registration route never did that (it wrote one server per KEPT engine), and the selection already
-// knows which engines those are. One plugin per engine keeps that, and drops the `/mcp disable`
-// step the one-entry shape would have needed.
-const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
-
-// INVARIANT: one plugin, one server, SAME NAME. A plugin server's tools are addressed
-// `mcp__plugin_<plugin>_<server>__<tool>`, so this is what makes every shipped tool name
-// `mcp__plugin_<n>_<n>__<tool>` for a single `<n>` - readable, and mechanical to generate. Lint
-// check 53 fails on any entry that breaks it.
-//
-// The names are the ROLE (2.0.0, the user's rename), `alfred-` prefixed for the locked three (2.2.0): alfred-navigation,
-// alfred-documentation, alfred-memory, one <engine>-control per browser, windows-control / macos-control and mobile-control. The
-// upstream each one runs - Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP, appium-mcp - is named once in its
-// description, where a reader needs it.
-
-function mcpServerShapes(options = {})
-{
-    const { suffix, cutoff, npmBefore } = readPins(options);
-    // A launcher flag, before the server's own `--` arguments; an older launcher ignores it.
-    const cut = cutoff ? ['--exclude-newer', cutoff] : [];
-    const root = '${CLAUDE_PLUGIN_ROOT}';
-    const browsers = {};
-    for (const engine of PW_ENGINES)
-    {
-        const name = `${engine}-control`;
-        browsers[name] = {
-            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/${engine}-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.`,
-            servers: {
-                [name]: {
-                    // The launcher, not npx directly: the profile's place is the project's data root
-                    // (ALFRED_CODE_DATA_PATH, a PROJECT setting a plugin entry never sees), and a move
-                    // the installer recorded runs there, once no browser holds the profile.
-                    command: 'node',
-                    args: [`${root}/stack/mcp/browser-launch.js`, '--package', `@playwright/mcp${suffix('browser')}`, '--browser', engine],
-                },
-            },
-        };
-    }
-    return {
-        // --- the three locked servers -----------------------------------------------------------
-        'alfred-navigation': {
-            locked: true,
-            description: `The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (${pythonFor('alfred-navigation')}; the x64 build on Windows on ARM).`,
-            servers: {
-                'alfred-navigation': {
-                    // The launcher, not uvx directly: it hands uvx the Python this MACHINE needs
-                    // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another -
-                    // and it sets SERENA_HOME to the data root's own home, RELATIVE, resolved against the
-                    // server's cwd, which is the project (stack/mcp/serena-launch.js).
-                    command: 'node',
-                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('alfred-navigation')}`, ...cut, '--', 'start-mcp-server',
-                        // claude-code inside a Claude Code plugin (the ide-assistant value is
-                        // cursor-stack's). The launcher swaps it for the stack's own context file beside
-                        // it (navigation-context.yml, I12) - named here as claude-code so a project whose
-                        // plugin cache predates that file still starts serena after a catalog refresh.
-                        '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd',
-                        // serena 2.0.0's interface pinned to tools (audit 2026-10-14 PL10): its own config template
-                        // says REPL, which ignores the context's exclusions and edits through serena_repl unseen.
-                        '--agent-interface', 'tools'],
-                    // serena's usage ping off (PL1): the launcher hands its whole env to uvx, so this reaches serena.
-                    env: NAVIGATION_ENV,
-                },
-            },
-        },
-        'alfred-documentation': {
-            locked: true,
-            description: 'The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.',
-            servers: {
-                'alfred-documentation': {
-                    type: 'http',
-                    url: 'https://mcp.context7.com/mcp',
-                    // ':-' so an UNSET key sends an EMPTY header = the keyless free tier. A literal
-                    // ${CONTEXT7_API_KEY} is rejected as an invalid key on every call (measured), and
-                    // an unset ${VAR} with no default stays literal in a plugin entry too (S14).
-                    // M25: the header NAME is Context7's documented `Context7-API-Key` - a proxy may drop
-                    // one with an underscore, which drops a keyed user to the free tier silently (upstash
-                    // docs/clients/cursor.mdx; probed: empty = anonymous, a bogus key = 'Invalid API key').
-                    headers: { 'Context7-API-Key': '${CONTEXT7_API_KEY:-}' },
-                },
-            },
-        },
-        'alfred-memory': {
-            locked: true,
-            description: 'The memory server (mcp-memory-service), as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install\'s level choice (global, scoped or project), so this one server starts through a launcher that reads the project\'s own settings.json - a plugin entry cannot expand a PROJECT env key (measured).',
-            servers: {
-                'alfred-memory': {
-                    // The launcher, not uvx directly: cwd is the project, so it can read
-                    // <cwd>/.claude/settings.json for ALFRED_CODE_MEMORY_DB and exec uvx itself.
-                    command: 'node',
-                    args: [`${root}/stack/mcp/memory-launch.js`, '--package',
-                        `mcp-memory-service[sqlite]${suffix('alfred-memory')}`, ...cut],
-                    env: { MCP_MEMORY_STORAGE_BACKEND: 'sqlite_vec',
-                        // A shared file with several writers: the busy timeout is not optional.
-                        MCP_MEMORY_SQLITE_PRAGMAS: 'busy_timeout=15000' },
-                },
-            },
-        },
-        // --- the droppable servers: one browser plugin per engine ---------------------------------
-        ...browsers,
-        // --- the desktop servers: each drives the machine's own apps, so each ships for ONE OS -----
-        // The launcher pins the Python, refuses on the other OS and applies the tool-gate override
-        // (stack/mcp/desktop-launch.js); the installer offers each only on its own OS.
-        'windows-control': {
-            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (${pythonFor('windows-control')}; the x64 build on Windows on ARM) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE names another list (none = every tool).`,
-            servers: {
-                'windows-control': {
-                    command: 'node',
-                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-control', '--package', `windows-mcp${suffix('windows-control')}`, ...cut,
-                        '--', 'serve', '--exclude-tools', DEFAULT_EXCLUDE],
-                    env: DESKTOP_ENV,
-                },
-            },
-        },
-        'macos-control': {
-            description: `The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (${pythonFor('macos-control')}) and refuses on another OS.`,
-            servers: {
-                'macos-control': {
-                    command: 'node',
-                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-control', '--package', `macos-mcp${suffix('macos-control')}`, ...cut, '--', 'serve'],
-                    env: DESKTOP_ENV,
-                },
-            },
-        },
-        // --- the mobile server: an npx package, so no Python ---------------------------------------
-        // The launcher looks up an unset ANDROID_HOME / JAVA_HOME, puts the output dirs under the data root and keeps the
-        // safe defaults where the user set nothing (stack/mcp/mobile-launch.js). Its dependencies are caret ranges, so it
-        // takes its pin's own cut-off day (`--before`, handed to npx as npm_config_before - PL4); an older launcher ignores it.
-        'mobile-control': {
-            description: 'The mobile server (appium-mcp), as a plugin: drives Android and iOS apps on an emulator, a simulator or a real device through Appium\'s embedded UiAutomator2 and XCUITest drivers (sessions, find, tap, type, gestures, screenshots). Needs Node 22+; Android needs the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME, looked up when unset), iOS needs macOS with Xcode. Started through a launcher that puts screenshots and page sources under the project\'s data root (<data root>/mobile-control) and refuses app URLs and remote Appium servers unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX.',
-            servers: {
-                'mobile-control': {
-                    command: 'node',
-                    args: [`${root}/stack/mcp/mobile-launch.js`, '--package', `appium-mcp${suffix('mobile-control')}`,
-                        ...(npmBefore('mobile-control') ? ['--before', npmBefore('mobile-control')] : [])],
-                },
-            },
-        },
-    };
-}
-
-function mcpPlugins(options = {})
-{
-    const shapes = options.shapes || mcpServerShapes(options);
-    const version = options.version || marketplaceVersion(options);
-    const author = options.author || { name: 'envoydev', url: 'https://github.com/envoydev' };
-    return Object.entries(shapes).map(([name, spec]) =>
-    {
-        const entry = {
-            name,
-            source: './',
-            description: spec.description,
-            version,
-            author,
-            strict: false,
-            mcpServers: spec.servers,
-        };
-        // NO MCP entry declares a dependency (I7). The locked three are installed beside the core on
-        // every run, and an entry with no dependency can never be disabled at load for a missing one.
-        // The droppable ones name no core either: since 2.1.0 the core carries no skill a browser or
-        // desktop server needs, and the installer installs the core every run - while Claude Code refuses
-        // to disable a plugin an enabled one depends on ('... is still required by ...', measured on
-        // 2.1.284), so the edge only blocked the full copy route's core stand-down and a user's own
-        // core disable while a browser or desktop row was on.
-        return entry;
-    });
-}
-
-// THE IDS 2.4.0 RENAMED, LISTED AGAIN AS RETIRED ALIASES (audit 2026-10-14 PL5, the user's ruling of 2026-10-14). 2.4.0
-// renamed browser-<engine>, windows-desktop and macos-desktop to <engine>-control, windows-control and macos-control
-// (meta/stack-manifest.json `renamed.mcps`) and unlisted the old ids in the same release - an id a catalog drops stops
-// loading in every project still enabled on it the moment its marketplace refreshes, silently (S25), and one project's
-// update refreshes it for every project on the account. So each is listed again the way 2.2.0 listed its renames:
-// RETIRED, carrying its successor's server under the OLD server name, so a project not yet updated keeps the tool names
-// its copies spell, and its next update swaps the plugin for the new one (install/plugins.js migrateRenamed). An alias
-// names no dependency (I6, I7). Kept until evidence shows no install still resolves through one - never on a release
-// cadence. The 2.0.0 and 2.2.0 renames stay unlisted (2.2.1, the user's ruling of 2026-10-06).
-const LISTED_ALIASES = Object.freeze(['browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop']);
-const ALIAS_RELEASE = '2.4.0';
-function mcpAliasEntries(options = {})
-{
-    const renamed = options.renamedMcps || loadManifest(REPO).renamed.mcps;
-    const current = options.entries || mcpPlugins(options);
-    return LISTED_ALIASES.map((old) =>
-    {
-        const now = renamed[old];
-        const entry = now ? current.find((e) => e.name === now) : null;
-        if (!entry) throw new Error(`build-marketplace: the retired alias ${old} has no successor entry (renamed.mcps names ${now || 'none'})`);
-        const { dependencies, ...rest } = entry;
-        return {
-            ...rest,
-            name: old,
-            description: `RETIRED in ${ALIAS_RELEASE} - renamed ${now}. Run /${CORE}:update: it installs ${now} in its place and removes this entry.`,
-            mcpServers: { [old]: entry.mcpServers[now] },
-        };
-    });
-}
-
-function applyMcpPlugins(mkt, entries)
-{
-    const wanted = entries || mcpPlugins().concat(mcpAliasEntries());
-    const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
-    for (const w of wanted)
-    {
-        const at = plugins.findIndex(p => p && p.name === w.name);
-        if (at >= 0) plugins[at] = w; else plugins.push(w);
-    }
-    // PRUNE what this generator used to own. An MCP entry carries servers and nothing else, so it
-    // is recognisable without a list of past names - which matters, because a regeneration that
-    // only adds leaves a split entry (one playwright -> one plugin per engine) behind in the
-    // marketplace, enabled on every machine that already installed it. A RENAMED one's old id goes the same way
-    // (2.2.1: the RETIRED aliases are no longer listed) - except the 2.4.0 ones, which are among the wanted entries
-    // (mcpAliasEntries) and stay listed on purpose.
-    const keep = new Set(wanted.map(w => w.name));
-    const ownedByMcp = p => p && p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
-    for (let i = plugins.length - 1; i >= 0; i--)
-        if (ownedByMcp(plugins[i]) && !keep.has(plugins[i].name)) plugins.splice(i, 1);
-    return mkt;
-}
-
 function main(argv)
 {
     const arg = (flag, fallback) =>
@@ -527,21 +265,6 @@ function main(argv)
 
     const place = placement(options);
     const entries = buildEntries({ ...options, placement: place });
-
-    if (argv.includes('--mcp-entries'))
-    {
-        const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
-        const mkt = readJson(file, 'marketplace.json');
-        const current = mcpPlugins(options);
-        const entries = current.concat(mcpAliasEntries({ ...options, entries: current }));
-        const before = JSON.stringify(mkt, null, 2) + '\n';
-        const after = JSON.stringify(applyMcpPlugins(mkt, entries), null, 2) + '\n';
-        if (before === after) { console.log(`mcp entries current: ${entries.length} plugins`); return 0; }
-        fs.writeFileSync(file, after);
-        const servers = entries.reduce((n, e) => n + Object.keys(e.mcpServers).length, 0);
-        console.log(`mcp entries written: ${entries.length} plugins / ${servers} servers -> ${path.relative(REPO, file)}`);
-        return 0;
-    }
 
     // The core's whole hooks block - its own two plus every stack wiring - which is what lint check
     // 48 compares with the live core. Printed, never written: --write-marketplace writes the core.
@@ -581,7 +304,7 @@ function main(argv)
         console.log(`plugin entries written: ${entries.length} entries -> ${path.relative(REPO, entriesFile)}`);
         return 0;
     }
-    console.error('usage: build-marketplace.js --write | --write-marketplace | --check | --hooks-entry | --mcp-entries');
+    console.error('usage: build-marketplace.js --write | --write-marketplace | --check | --hooks-entry');
     return 1;
 }
 
@@ -592,4 +315,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpAliasEntries, LISTED_ALIASES, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, mcpEntry, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE };

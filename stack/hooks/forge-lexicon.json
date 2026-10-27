@@ -1,0 +1,60 @@
+{
+  "_note": "The forge concept vocabulary forge.js reads every tool call through - WORDS, never a list of CLIs or servers. `shellVerbs` are a CLI's short aliases and verbs that are only verbs in a command's verb slot (`tea pulls m`, `glab mr for`), keyed by the class of the noun they follow - never read in a tool name or an API path. `requestCalls` are the call shapes that mark inline code (`node -e`, a heredoc into python) as making an HTTP request - a URL in code without one is text. A user overlay at <data root>/forge-lexicon.json adds words to these classes (arrays are appended); docs/forge-routes-evidence.md holds the verified routes the words are tested against.",
+  "nouns": {
+    "change": ["pull_request", "merge_request", "pr", "prs", "mr", "mrs", "pull", "pulls", "pullrequest", "pullrequests", "mergerequest", "mergerequests", "pull-request", "merge-request"],
+    "release": ["release", "releases"],
+    "ref": ["branch", "branches", "ref", "refs", "tag", "tags", "commit", "commits", "remote"],
+    "file": ["file", "files", "contents"],
+    "pipeline": ["pipeline", "pipelines", "pipe", "run", "runs", "workflow", "workflows", "build", "builds", "job", "jobs", "actions", "action", "stage", "stages", "ci", "check", "checks", "policy", "policies"],
+    "review": ["review", "reviews", "reviewer", "reviewers", "approval", "approvals"],
+    "annotation": ["comment", "comments", "reply", "label", "labels", "vote", "thread", "threads", "assignee", "assignees", "reaction", "note", "notes"]
+  },
+  "groups": ["repos", "repo"],
+  "verbs": {
+    "merge": ["merge", "accept", "complete", "completed", "automerge", "autocomplete", "enqueue", "merge_when_pipeline_succeeds", "bypass-policy", "bypass_policy", "bypasspolicy"],
+    "push": ["push"],
+    "create": ["create", "new", "open", "save", "propose", "submit", "revert"],
+    "write": ["update", "edit", "delete", "remove", "close", "reopen", "put", "patch", "upload", "publish", "write", "set", "rebase", "ready", "draft", "rename", "move", "erase", "manage"],
+    "pipeline": ["rerun", "retry", "trigger", "run", "dispatch", "cancel", "play", "queue", "restart", "stop", "trig"],
+    "annotate": ["approve", "review", "vote", "comment", "reply", "resolve", "unresolve", "assign", "unassign", "label", "unlabel", "revoke", "react", "request", "reject", "note", "lock", "unlock", "subscribe", "unsubscribe", "todo"],
+    "watch": ["watch", "wait"],
+    "read": ["get", "list", "read", "view", "show", "diff", "status", "checks", "log", "logs", "trace", "search", "download", "fetch", "find", "count", "compare", "info", "stats", "co", "checkout", "ls", "browse", "inspect", "describe", "query", "output", "content"]
+  },
+  "shellVerbs": {
+    "change": { "merge": ["m"], "create": ["c", "for"], "write": ["e", "clean"], "annotate": ["a", "lgtm", "add"], "read": ["rc", "approvers", "issues"] },
+    "release": { "create": ["c"], "write": ["e", "rm"] }
+  },
+  "watchFlags": ["--watch", "--live", "--wait"],
+  "mergeFlags": ["--status", "--state"],
+  "armWords": ["auto", "automerge", "autocomplete", "merge_when_pipeline_succeeds", "enqueue"],
+  "selectors": ["method", "action", "operation", "op", "event", "status", "state", "state_event", "mode"],
+  "changeKeys": ["pull_number", "pullNumber", "pull_request_number", "pullRequestNumber", "number", "index", "merge_request_iid", "mergeRequestIid", "iid", "pullRequestId", "pull_request_id", "prNumber", "pr_number"],
+  "refKeys": ["branch", "ref", "branchName", "branch_name", "target_branch", "targetBranch", "base", "targetRefName", "tag_name", "tagName", "from_branch"],
+  "tagKeys": ["tag_name", "tagName", "tag"],
+  "headKeys": ["sha", "head_sha", "headSha", "expected_head_sha", "match_head_commit"],
+  "forgeServerWords": ["git", "github", "gitlab", "gitea", "forgejo", "codeberg", "bitbucket", "azure", "ado", "devops", "atlassian", "forge"],
+  "apiCommands": ["curl", "wget", "http", "https", "xh", "invoke-restmethod", "invoke-webrequest", "irm", "iwr"],
+  "interpreters": ["node", "nodejs", "python", "python3", "ruby", "perl", "php", "deno", "bun", "pwsh", "powershell"],
+  "requestCalls": ["fetch(", "requests.", "urlopen(", "urllib.request", "http.client", "httpx", "aiohttp", "http.request(", "https.request(", "axios", "got(", "undici", "xmlhttprequest", "net::http", "http::tiny", "lwp::", "curl_exec", "httpclient", "webclient", "invoke-restmethod", "invoke-webrequest", "irm ", "iwr "],
+  "paths": [
+    { "re": "/(?:pulls|merge_requests|pullrequests)/\\d+/merge(?:-async)?$", "concept": "change.merge" },
+    { "re": "/merge_requests/\\d+/cancel_auto_merge$", "concept": "change.annotate" },
+    { "re": "/(?:pulls|merge_requests|pullrequests)/\\d+$", "concept": "change.item" },
+    { "re": "/(?:pulls|merge_requests|pullrequests)/\\d+/", "concept": "change.annotate" },
+    { "re": "/(?:pulls|merge_requests|pullrequests)$", "concept": "change.create" },
+    { "re": "/releases(?:/|$)", "concept": "release.write" },
+    { "re": "/(?:git/refs|refs|repository/branches|repository/tags|repository/files|repository/commits|contents|merges|branches|tags)(?:/|$)", "concept": "branch.write" },
+    { "re": "/(?:actions|pipelines?|jobs|builds|workflows|runs)(?:/|$)", "concept": "pipeline.write" }
+  ],
+  "hints": {
+    "kinds": { "github": "github", "gitlab": "gitlab", "dev.azure.com": "azure", "visualstudio.com": "azure", "bitbucket": "bitbucket", "gitea": "gitea", "codeberg": "gitea", "forgejo": "gitea" },
+    "clis": { "github": "gh", "gitlab": "glab", "azure": "az", "gitea": "tea" },
+    "mcpLaunch": ["github-mcp-server", "api.githubcopilot.com", "mcp-gitlab", "/api/v4/mcp", "glab mcp", "server-gitlab", "azure-devops/mcp", "mcp.dev.azure.com", "gitea-mcp", "mcp.atlassian.com"],
+    "install": {
+      "gh": { "brew": "gh", "how": "https://cli.github.com" },
+      "glab": { "brew": "glab", "how": "https://gitlab.com/gitlab-org/cli" },
+      "az": { "brew": "azure-cli", "after": ["az", "extension", "add", "--name", "azure-devops"], "how": "https://learn.microsoft.com/cli/azure/install-azure-cli, then az extension add --name azure-devops" },
+      "tea": { "brew": "tea", "how": "https://gitea.com/gitea/tea" }
+    }
+  }
+}

@@ -5,7 +5,7 @@ description: "Load when cutting a release, wiring signing or building release CI
 
 # Capacitor release pipeline
 
-This skill owns the last mile: turning a feature-complete Ionic/Capacitor app into a signed artifact in TestFlight or a Play testing track, and deciding what ships over-the-air versus through a fresh store binary. The app itself - UI, lifecycle, permissions, plugin wrapping - is `ionic`; per-plugin install/config is fetched live (the documentation server / the plugin README); this file picks up where the build is done. Floored at Capacitor 7, current on 8 - prefer the 8 path and treat anything newer as optional; a v6 project: upgrade first, `npx cap migrate` (one major per hop). Native Swift / Kotlin source edits are out of scope: this skill configures the native projects (signing, versions, symbols), it does not write platform code - that boundary stays with the platform tooling, not the agent.
+This skill owns the last mile: turning a feature-complete Ionic/Capacitor app into a signed artifact in TestFlight or a Play testing track, and deciding what ships over-the-air versus through a fresh store binary. The app itself - UI, lifecycle, permissions, plugin wrapping - is `ionic`; per-plugin install/config is fetched live (the documentation tools / the plugin README); this file picks up where the build is done. Floored at Capacitor 7, current on 8 - prefer the 8 path and treat anything newer as optional; a v6 project: upgrade first, `npx cap migrate` (one major per hop). Native Swift / Kotlin source edits are out of scope: this skill configures the native projects (signing, versions, symbols), it does not write platform code - that boundary stays with the platform tooling, not the agent.
 
 ## When to use
 

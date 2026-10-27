@@ -32,7 +32,7 @@
 // hooks table, narrated 'Next I'll decide which to keep' and moved on; its plugins layer rendered a table of its own
 // through `node -e` and went straight to the prerequisite check. Inside a typed init / configure walk the walk's next
 // step - a `stack-select.js`, `plugin-settings.js` or installer call - is denied while the latest layer table has no
-// answered ask after it, and in init (which walks all six layers) while an earlier layer's table never ran. Each has its
+// answered ask after it, and in init (which walks all five layers) while an earlier layer's table never ran. Each has its
 // own valve of three. Any other Bash command leaves before the prelude loads.
 // Step 6.5 (the same day): the walk outlives a typed reply. It is found back to the newest TYPED init / configure command
 // (a 2MB tail on this path): a typed reply counts as the user's answer where it stands, a harness prompt (a task notice, a
@@ -163,16 +163,14 @@ const tailHasTable = (rs) => {
 // layer's table at all asked with nothing on screen (the user's report of 2026-10-06: 'No tables with
 // hooks, skills, agents, rules are shown'), so such an ask needs that layer's `--table` call since the
 // typed prompt - judged only inside a walk (a `stack-select.js` call in the same span).
-const LAYERS = 'rules|agents|skills|hooks|mcps|plugins';
-// The MCP layer is asked as 'MCPs' or 'MCP servers' (commands track T2-15: the second passed with no table).
-const ASKED_LAYERS = 'rules|agents|skills|hooks|mcps|mcp\\s+servers?|plugins';
-const LAYER_ASK = new RegExp(`^\\s*(?:(${ASKED_LAYERS})\\s*:|(?:add to|drop from) the installed (${ASKED_LAYERS})\\b)`, 'i');
+const LAYERS = 'rules|agents|skills|hooks|plugins';
+const LAYER_ASK = new RegExp(`^\\s*(?:(${LAYERS})\\s*:|(?:add to|drop from) the installed (${LAYERS})\\b)`, 'i');
 const layersAsked = (input) => {
   const qs = input && Array.isArray(input.questions) ? input.questions : [];
   const out = new Set();
   for (const q of qs) {
     const m = LAYER_ASK.exec(String((q && q.question) || ''));
-    if (m) out.add(/^mcp/i.test(m[1] || m[2]) ? 'mcps' : (m[1] || m[2]).toLowerCase());
+    if (m) out.add((m[1] || m[2]).toLowerCase());
   }
   return [...out];
 };
@@ -255,10 +253,10 @@ const guidedRun = (rs) => {
 };
 
 // THE NEXT STEP (2026-10-21): a Bash walk step is judged against the walk so far - the latest layer table needs an
-// answered ask after it, and init's walk (all six layers, in order) needs every earlier layer's table to have run before
+// answered ask after it, and init's walk (all five layers, in order) needs every earlier layer's table to have run before
 // a later table, the prerequisite check (`--emit`) or the installer. Configure walks only the areas its user picked, so
 // it gets the first check alone. Both are judged only since a typed init / configure prompt.
-const ORDER = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
+const ORDER = ['rules', 'agents', 'skills', 'hooks', 'plugins'];
 const WALKS = /\balfred-code:(init|configure)\b/;
 const EMIT_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--emit\b/;
 const INSTALL_RE = /install[\\/]alfred-code\.js["']?\s+install\b/;
@@ -337,7 +335,7 @@ function judgeStep(rs, cmd) {
   const next = TABLE_RE.exec(cmd);
   const nextLayer = next && next[1].toLowerCase();
   if (last && answeredAt < last.at && nextLayer !== last.layer && denials(`the ${last.layer} ask never happened`) < MAX_DENIALS) {
-    const Layer = last.layer === 'mcps' ? 'MCPs' : last.layer[0].toUpperCase() + last.layer.slice(1);
+    const Layer = last.layer[0].toUpperCase() + last.layer.slice(1);
     deny(`${MARKER}: the ${last.layer} ask never happened - the ${last.layer} table ran, but no answered question ` +
       `followed it, and the user decides every layer (auto mode included). Do not move on: send ONE message - the step ` +
       `banner, the table output byte-for-byte inside a fenced code block (it is already in your context; do not re-run ` +
@@ -348,7 +346,7 @@ function judgeStep(rs, cmd) {
   const upTo = nextLayer ? ORDER.indexOf(nextLayer) : (EMIT_RE.test(cmd) || INSTALL_RE.test(cmd)) ? ORDER.length : -1;
   const missing = ORDER.slice(0, Math.max(upTo, 0)).filter((l) => !ran.has(l));
   if (missing.length && denials('layers never walked') < MAX_DENIALS) {
-    deny(`${MARKER}: layers never walked - init walks all six layers in order (rules, agents, skills, hooks, MCPs, ` +
+    deny(`${MARKER}: layers never walked - init walks all five layers in order (rules, agents, skills, hooks, ` +
       `plugins), and the ${missing.join(', ')} table${missing.length > 1 ? 's' : ''} never ran. Walk each missing layer ` +
       `first (walk.md, its three beats): \`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ` +
       `${missing[0]} ...\` with the walk's other flags, never redirected and never a table of your own (a \`node -e\` ` +
@@ -401,7 +399,7 @@ try {
   }
   const gap = guided ? bannerGap(rows) : null;
   if (gap) {
-    const example = '`[step 7/13 - MCPs] skipped - area not selected`';
+    const example = '`[step 7/12 - plugins] skipped - area not selected`';
     const denial =
       `${MARKER}: step banner missing - step ${gap.missing.join(', ')} of ${gap.total} printed none. The skeleton is ` +
         `invariant: every step prints its banner, a skipped one with ONE line saying why (${example}). Send ONE message: ` +

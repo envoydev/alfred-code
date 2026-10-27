@@ -1,0 +1,4 @@
+{"type":"attachment","timestamp":"2026-10-25T10:00:10.000Z","attachment":{"type":"hook_additional_context","content":["Tool order - the stack's defaults (no TOOLS-PREFERENCES.md): in each job use the first rank that serves the target before the next.\n- navigation (locate symbols, callers and types before reading or editing code): LSP > Grep."],"hookName":"SessionStart","toolUseID":"SessionStart","hookEvent":"SessionStart"}}
+{"type":"user","timestamp":"2026-10-25T10:00:11.000Z","message":{"role":"user","content":"where is the total computed"}}
+{"type":"assistant","timestamp":"2026-10-25T10:00:12.000Z","message":{"id":"m6","role":"assistant","content":[{"type":"tool_use","id":"toolu_6","name":"Grep","input":{"pattern":"total","path":"src"}}]}}
+{"type":"assistant","timestamp":"2026-10-25T10:00:13.000Z","message":{"id":"m7","role":"assistant","content":[{"type":"tool_use","id":"toolu_7","name":"Read","input":{"file_path":"src/cart.js","offset":1,"limit":20}}]}}

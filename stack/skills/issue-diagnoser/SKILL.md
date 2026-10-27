@@ -12,7 +12,7 @@ seats do the specialist work. It is READ-ONLY from start to finish - no step her
 so no approval stamp and no commit gate come into play. The measurements behind these rules live in
 `references/evidence.md` - an audit appendix, not a run-time load.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line.
+**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line.
 
 ## When to use
 
@@ -40,12 +40,10 @@ Read it at step 1, before the tier is named.
   an observable, the evidence tier, every digest's key lines, the hypotheses with their verdicts,
   the proven cause, and the stamps this run adds (`Tier`, `Gathered`, `Cause`, `Outcome`). On any
   conflict with memory or the chat, the file wins.
-- **The handoff note** (an `alfred-memory` row tagged `note:<slug>/diagnosis`, stored as `alfred-memory.md` says) is the working cursor: current
-  step, chosen mode, resume pointer, the error signature and its proven fix once found - that
-  last part is the reusable half, keyed to the signature, never a dump of the log.
+- **The handoff note** (`<slug>/diagnosis/cursor` on the handoff bus, `node .claude/hooks/handoff.js put <slug>/diagnosis/cursor <<'EOF'`) is the working cursor: current
+  step, chosen mode, resume pointer, the error signature and its proven fix once found, never a dump of the log.
 
-**On invocation, resume before starting:** `memory_list` with the tags `note:<slug>/diagnosis` and the project tag,
-`tag_match: 'all'` - the newest row is the cursor - and read the findings file's stamps. A run
+**On invocation, resume before starting:** `node .claude/hooks/handoff.js list <slug>/diagnosis/cursor` - the newest copy is the cursor - and read the findings file's stamps. A run
 mid-flight resumes at its cursor - never re-run a step already stamped. A run between steps 2
 and 3 looks like:
 
@@ -103,7 +101,11 @@ cycle in the same chat, even when an earlier cycle already loaded it.
 
 1. **TRIAGE** - read the evidence in whatever form it arrived (`Read` opens a screenshot as
    readily as a log), restate the failure as an OBSERVABLE - what happened, where, what should
-   have happened instead - and name the tier, per `references/evidence-tiers.md`. Then load the signature
+   have happened instead - and name the tier, per `references/evidence-tiers.md`. Read the project's
+   docs for the area too, scoped, never whole: `<docs-path>/architecture/ARCHITECTURE.md` for the area,
+   `PERSONAL-CODE-PREFERENCES.md`, `ARCHITECTURE-PREFERENCES.md` and `PROJECT-CODE-PREFERENCES.md` under
+   `<docs-path>/preferences/`, and both assessments, `<docs-path>/quality/CODE-ASSESSMENT.md` and
+   `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` - an assessment entry is a lead, never proof. Then load the signature
    catalogue that matches the failure's origin, matched from YOUR skill list by what each skill
    says it covers, never by a remembered name: the one covering local-runtime crash signatures
    (null-reference, DI resolution, async deadlock, race, disposed lifecycle, config drift) for a
@@ -123,7 +125,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    bounded commands inline. Correlate multiple sources on a shared key - a correlation/trace id,
    a timestamp window, a release version - and say which sources agreed and which did not. At
    tier 4, with no source to pull, this step is code-first instead: locate the named behaviour
-   with the navigation server per `.claude/rules/alfred-navigation.md`, read the paths that could produce the
+   with the navigation tools per `.claude/rules/alfred-navigation.md`, read the paths that could produce the
    symptom, and attempt a repro. Never slurp a large log into this context - grep to the signal
    and quote a bounded window. If it cannot be reproduced, say so with what you tried, and work
    from the evidence and the code. Append the digests' key lines to the findings file, stamp
@@ -137,8 +139,12 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    symptom, never a plausible guess. Match the evidence to the catalogue's signature and isolate
    where the signature points, which is almost never the line that threw. **Hard cap: 2
    investigation passes.** If the cause stays ambiguous after 2, stop guessing and record the
-   surviving hypotheses RANKED with what would decide between each. Stamp `Cause:` with the
-   file + symbol and the evidence that proves it, or `Cause: unproven - <n> hypotheses ranked`.
+   surviving hypotheses RANKED with what would decide between each. Where a `scorer: on` line
+   naming the root-cause verdict or a `scorer: stacked` line is in context, the FIRST action before
+   releasing the verdict - stamping it, or putting the fork below - is the `mode-output-scorer`
+   Skill call with output `root-cause`. Stamp `Cause:` with the file + symbol and the evidence that
+   proves it, or `Cause: unproven - <n> hypotheses ranked`, once the scorer released it where one
+   runs (`Cause: <pending>` until then).
    Report a severity and an explicit P0-P3 priority when the ask was to level it rather than fix
    it. **This step ends at the fork below - it never continues into planning on its own.**
 4. **THE FORK** - the step-3 stop asks ONE question whose options are the three real outcomes,
@@ -155,7 +161,9 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    - **4a. REPORT** ('Write a report on the issue') - finish the findings file as a standalone
      document: the observable, the evidence tier, the proven cause with its located symbol, the
      blast radius and who it affects, severity + priority, and what a fix would have to change.
-     No task cards. This is the outcome when the fix is someone else's, or not now.
+     Where a `scorer: on` line naming the root-cause verdict or a `scorer: stacked` line is in
+     context, the FIRST action before releasing the report is the `mode-output-scorer`
+     Skill call with output `root-cause`. No task cards. This is the outcome when the fix is someone else's, or not now.
    - **4b. PLAN TASKS** ('Plan the fix as tasks') - first load `habits-execution-strategy` (the Skill
      tool) over the minimal change: how the fix runs, not only what it changes. Its `Execution:` line sets the cards' split -
      units it found parallel-safe become separate cards, units that share a file or need another's
@@ -201,15 +209,14 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    This close-out stop carries anything
    pending: an unwritten task card, a source the user still has to paste, a sibling repo that
    needs the same fix (that handoff is a FILE - a task card under `<docs-path>/work/cross-project-tasks/`,
-   printed as the docs-root rule's hand-off block - never chat-only prose). Delete this run's cursor rows (`memory_delete`, tags `note:<slug>/diagnosis`
-   and the project tag, `tag_match: 'all'`); when the cause was proven, first store the signature and its
-   fix as ONE alfred-memory row without the `handoff` / `note:` tags - the reusable half.
+   printed as the docs-root rule's hand-off block - never chat-only prose). Purge this run's cursor (`node .claude/hooks/handoff.js purge <slug>`); when the cause was proven, first write the signature and its
+   fix into the findings file's `Cause` stamp - the reusable half, which a later diagnosis greps `<docs-path>/work/diagnoses/` for.
 
 ## Do not
 
 - Never pass a stop without the user's explicit word, and never take the fork yourself - step 4
   runs the branch the USER picked, and 'obviously they want the fix' is not an answer. Under
-  auto-mode the hook's answer to a marked ask is that word; the build stays the user's own command.
+  auto-run the hook's answer to a marked ask is that word; the build stays the user's own command.
 - Never end a stop's turn without its AskUserQuestion (or the plain-text fallback's option list).
 - Never write code, edit a file under test, or run a destructive repro - one that applies a
   migration against a real database, seeds or deletes tracked files, or commits. If the only

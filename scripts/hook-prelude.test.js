@@ -412,7 +412,7 @@ test('in a repo never set up the protective guards stay live and write nothing; 
         const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read');
         assert.strictEqual(secret.status, 2, `a credential file read blocked: ${secret.stderr}`);
         // Final review IM2: the desktop Shell is a shell no shell guard sees - `rm -rf ~` ran there while Bash's was blocked.
-        const shell = fireIn('guard-desktop-exec.js', dir, { command: 'rm -rf ~' }, 'mcp__plugin_macos-control_macos-control__Shell');
+        const shell = fireIn('guard-desktop-exec.js', dir, { command: 'rm -rf ~' }, 'mcp__plugin_macos-control_macos-control__Shell'); // mcp-fixture
         assert.strictEqual(shell.status, 2, `the macOS desktop Shell blocked: ${shell.stderr}`);
         assert.ok(!fs.existsSync(path.join(dir, '.claude')) && !fs.existsSync(path.join(dir, '.alfred')), 'four blocks, no block row - nothing written into a repo never set up');
 
@@ -481,7 +481,7 @@ test('cursorHost reads the payload only: cursor_version or a camelCase event nam
 
 test('cursorStandDown: a Cursor payload stands a non-protective hook down and never a protective one or a CLI', () => {
     const input = { cursor_version: '2.1.0', hook_event_name: 'stop' };
-    for (const hook of ['guard-stop-contract', 'guard-answer', 'docs-session', 'guard-fresh-session-start', 'memory-session'])
+    for (const hook of ['guard-stop-contract', 'guard-answer', 'docs-session', 'guard-fresh-session-start', 'preferences-session'])
         assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), true, hook);
     for (const hook of PROTECTIVE_SET) assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), false, hook);
     assert.strictEqual(cursorStandDown(input, '/p/guard-stop-contract.js', ['node', 'x.js', '--flag']), false, 'a CLI is never gated');
@@ -578,12 +578,14 @@ test('as a process: the rm guard still blocks rm -rf ~ under a Cursor payload, a
     assert.doesNotMatch(r.stderr, /outside this session's project/, 'the non-protective cross-project guard stood down');
 });
 
-test('as a process: memory-session with a stdin that never closes still exits within its bound', () => {
+// The session hooks that read stdin through a bounded reader (history-session, forge-session; memory-session's until it
+// retired on 2026-10-24) give up on a pipe left open instead of holding the session start to the harness timeout.
+test('as a process: history-session with a stdin that never closes still exits within its bound', () => {
     const { spawn } = require('node:child_process');
     return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [path.join(HOOKS_DIR, 'memory-session.js')], { env: { ...process.env, CLAUDE_PROJECT_DIR: SUITE.project }, stdio: ['pipe', 'pipe', 'pipe'] });
+        const child = spawn(process.execPath, [path.join(HOOKS_DIR, 'history-session.js')], { env: { ...process.env, CLAUDE_PROJECT_DIR: SUITE.project }, stdio: ['pipe', 'pipe', 'pipe'] });
         const started = Date.now();
-        const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('memory-session hung past 6s on an open stdin')); }, 6000);
+        const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('history-session hung past 6s on an open stdin')); }, 6000);
         child.on('exit', () => { clearTimeout(timer); assert.ok(Date.now() - started < 6000); resolve(); });
         // stdin is left open: never ended, never written
     });
@@ -1039,4 +1041,98 @@ test('snapshotReview: one file per call, so calls started together all keep thei
     fs.writeFileSync(path.join(dir, '.alfred', 'state', 'sessions', 'review-snapshot-cap@junk.json'), '{not json');
     assert.strictEqual(readReviewSnapshots(dir, 'cap', env).length, 1, 'an unreadable snapshot file is skipped');
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------------------------
+// the scorer's shared state (mode-output-scorer): parses, the switch, the skill copy, the stack reader, row marks
+// ---------------------------------------------------------------------------------------------
+const { skillCopyState, oursLoadable, scorerLevel, scorerRounds, scorerOutputs, scorerState, scorerFile, safeSession, stackNamed, producerMarks, sweepScorerFolders } = require(PRELUDE);
+const scorerWrite = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+const scorerRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-root-')));
+scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\n---\n');
+// no CLAUDE_PLUGIN_ROOT, so neverSetUp is false; an empty config dir, so no account skill or override reaches in
+const scorerBase = { CLAUDE_PROJECT_DIR: scorerRoot, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-cfg-')) };
+const scorerOn = { ...scorerBase, ALFRED_CODE_SCORER: '1' };
+const pickState = (s) => ({ usable: s.usable, on: s.on, source: s.source });
+
+test('scorer parses: the level, the run cap and the outputs list', () => {
+    for (const [v, want] of [['60', 60], ['80', 80], ['100', 100], ['59', 80], ['101', 80], ['abc', 80], ['', 80], [undefined, 80], ['8.5', 80]])
+        assert.strictEqual(scorerLevel({ ALFRED_CODE_SCORER_LEVEL: v }), want, `level ${v}`);
+    for (const [v, want] of [['1', 1], ['10', 10], ['3', 3], ['0', 3], ['11', 3], ['abc', 3], ['', 3], [undefined, 3], ['2.5', 3]])
+        assert.strictEqual(scorerRounds({ ALFRED_CODE_SCORER_ROUNDS: v }), want, `rounds ${v}`);
+    const all = ['designer-plan', 'root-cause', 'inline-plan'];
+    for (const [v, outputs, ignored] of [[undefined, all, []], ['', all, []], ['designer-plan,root-cause', ['designer-plan', 'root-cause'], []],
+        [' Root-Cause , inline-plan', ['root-cause', 'inline-plan'], []], ['topic-explainer', all, ['topic-explainer']],
+        ['foo,root-cause', ['root-cause'], ['foo']], ['inline-plan,designer-plan,inline-plan', ['designer-plan', 'inline-plan'], []]])
+        assert.deepStrictEqual(scorerOutputs({ ALFRED_CODE_SCORER_OUTPUTS: v }), { outputs, ignored }, `outputs ${v}`);
+});
+
+test('scorerState: env, the flag file, a garbage file, and every switch that makes it unusable (AC13, AC20)', () => {
+    assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', scorerOn)), { usable: true, on: true, source: 'env' });
+    assert.strictEqual(scorerState(scorerRoot, 's1', scorerBase).on, false);
+    scorerWrite(scorerFile(scorerRoot, 's2', scorerBase), 'on\nat: x\n');
+    assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's2', scorerBase)), { usable: true, on: true, source: 'flag' });
+    scorerWrite(scorerFile(scorerRoot, 's3', scorerBase), 'off\nat: x\n');
+    assert.strictEqual(scorerState(scorerRoot, 's3', scorerOn).on, false, 'off beats env');
+    scorerWrite(scorerFile(scorerRoot, 's4', scorerBase), 'garbage');
+    assert.deepStrictEqual([scorerState(scorerRoot, 's4', scorerOn).source, scorerState(scorerRoot, 's4', scorerOn).file], ['env', 'garbage']);
+    for (const off of ['guard-answer', 'guard-answer:scorer', 'guard-stop-contract', 'guard-stop-contract:scorer'])
+        assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', { ...scorerOn, ALFRED_CODE_HOOKS_OFF: off })), { usable: false, on: false, source: 'env' }, off);
+    const s = scorerState(scorerRoot, 's1', { ...scorerOn, ALFRED_CODE_SCORER_LEVEL: '95', ALFRED_CODE_SCORER_ROUNDS: '5', ALFRED_CODE_SCORER_OUTPUTS: 'root-cause' });
+    assert.deepStrictEqual([s.level, s.rounds, s.outputs], [95, 5, ['root-cause']]);
+});
+
+test('skillCopyState and scorerState: no copy and off are unusable; user-invocable-only is usable but not on (AC19, R24)', () => {
+    for (const name of ['settings.local.json', 'settings.json'])
+        for (const [v, state, usable] of [['off', 'off', false], ['user-invocable-only', 'user-invocable-only', true], ['on', 'on', true]]) {
+            scorerWrite(path.join(scorerRoot, '.claude', name), JSON.stringify({ skillOverrides: { 'mode-output-scorer': v } }));
+            assert.strictEqual(skillCopyState(scorerRoot, 'mode-output-scorer', scorerOn), state, `${name} ${v}`);
+            assert.deepStrictEqual([scorerState(scorerRoot, 's1', scorerOn).usable, scorerState(scorerRoot, 's1', scorerOn).on], [usable, v === 'on'], `${name} ${v}`);
+            assert.strictEqual(oursLoadable(scorerRoot, 'mode-output-scorer', scorerOn), v === 'on');
+            fs.rmSync(path.join(scorerRoot, '.claude', name));
+        }
+    fs.rmSync(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer'), { recursive: true });
+    assert.strictEqual(skillCopyState(scorerRoot, 'mode-output-scorer', scorerOn), 'absent');
+    assert.strictEqual(scorerState(scorerRoot, 's1', scorerOn).usable, false);
+    scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\n---\n');
+});
+
+test('stackNamed: the slash form, the bare name after a usage word, a command-args row; code, quotes and talk are not (final review 4)', () => {
+    for (const t of ['/task-version-upgrade /mode-output-scorer upgrade to .NET 10', '/mode-output-scorer explain closures',
+        'using mode-output-scorer, explain closures', 'explain closures with the mode-output-scorer', 'run mode-output-scorer on this plan',
+        '<command-name>/habits-explain-topic</command-name><command-args>/mode-output-scorer explain x</command-args>'])
+        assert.ok(stackNamed(t), t);
+    for (const t of ['what does `/mode-output-scorer` do', '```\n/mode-output-scorer\n```', '> /mode-output-scorer x',
+        'my-mode-output-scorer-notes', 'mode-output-scorers', '| mode-output-scorer | row |',
+        'why did mode-output-scorer not run?', 'mode-output-scorer graded my plan at 71 - why?', 'is the mode-output-scorer on'])
+        assert.ok(!stackNamed(t), t);
+});
+
+test('producerMarks: a Skill call, a typed command, a command inside a tool result, a non-marked name and a cut row', () => {
+    const skill = (s) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill: s } }] } });
+    const typed = (t) => JSON.stringify({ type: 'user', message: { role: 'user', content: t } });
+    assert.deepStrictEqual(producerMarks(skill('task-implement')), ['task-implement']);
+    assert.deepStrictEqual(producerMarks(skill('alfred-code:task-verify-plan')), ['task-verify-plan']);
+    assert.deepStrictEqual(producerMarks(typed('<command-name>/mode-output-scorer</command-name>')), ['mode-output-scorer']);
+    assert.deepStrictEqual(producerMarks(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: '<command-name>/task-implement</command-name>' }] } })), []);
+    assert.deepStrictEqual(producerMarks(skill('javascript')), []);
+    assert.deepStrictEqual(producerMarks('{"type":"assistant","mess'), []);
+});
+
+test('safeSession: separators, dot names and spaces never leave the scorer folder (R31)', () => {
+    for (const [id, want] of [['abc-1.2', 'abc-1.2'], ['a/../b', 'a_.._b'], ['..', '_'], ['.', '_'], ['a b', 'a_b'], ['a\\b', 'a_b']])
+        assert.strictEqual(safeSession(id), want, id);
+    assert.strictEqual(path.dirname(scorerFile(scorerRoot, '../x', scorerBase)), path.dirname(scorerFile(scorerRoot, 'y', scorerBase)));
+});
+
+test('sweepScorerFolders: an 8-day-old session folder goes, a fresh one stays, once a day', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-sweep-'));
+    const age = (f) => { const s = (Date.now() - 8 * 86400000) / 1000; fs.utimesSync(f, s, s); };
+    const old = path.join(dir, 'old', 'x', 'ab12cd34.draft.md'); const fresh = path.join(dir, 'new', 'x', 'cd34ab12.draft.md');
+    scorerWrite(old, 'd'); scorerWrite(fresh, 'd'); age(old);
+    assert.strictEqual(sweepScorerFolders(dir, { now: Date.now() }), 1);
+    assert.deepStrictEqual([fs.existsSync(path.join(dir, 'old')), fs.existsSync(fresh)], [false, true]);
+    const later = path.join(dir, 'old2', 'x', 'ef56ab12.draft.md'); scorerWrite(later, 'd'); age(later);
+    assert.strictEqual(sweepScorerFolders(dir, { now: Date.now() }), 0, "the day's stamp holds a second call");
+    assert.ok(fs.existsSync(later));
 });

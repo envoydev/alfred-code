@@ -1,6 +1,6 @@
 # The guided walk - one text for init's install phase and configure
 
-The six-layer selection walk, read by `/alfred-code:init`'s install phase and `/alfred-code:configure` so the two
+The five-layer selection walk, read by `/alfred-code:init`'s install phase and `/alfred-code:configure` so the two
 can never drift apart. It runs in one of two modes, and the calling command names which:
 
 - **FRESH** (init's install phase) - a first install. The baseline is the RECOMMENDATIONS: what `always` and the
@@ -17,15 +17,15 @@ picked). This file owns the layers themselves.
 ## Order and the running files
 
 The layer order follows the dependency graph's arrows: rules pull agents + skills, agents pull
-skills, everything pulls MCPs and plugins, and hooks stand alone - rules -> agents -> skills ->
-hooks -> MCPs -> plugins. Dependencies only point FORWARD through the walk, so an earlier answer is
+skills, everything pulls plugins, and hooks stand alone - rules -> agents -> skills -> hooks ->
+plugins. Dependencies only point FORWARD through the walk, so an earlier answer is
 never invalidated by a later one.
 
 - **FRESH:** hold ONE running `raw.json` (in the temp dir) of the user's DIRECT picks per category
-  (`rules`, `agents`, `skills`, `hooks`, `mcps`, `plugins`); locked items never enter it - the
+  (`rules`, `agents`, `skills`, `hooks`, `plugins`); locked items never enter it - the
   closure re-adds them at emit time.
 - **DELTA:** hold TWO running files in the temp dir: `raw.json` - the remaining selection
-  (installed + adds - drops, every category incl. `hooks` and `mcps`) - and `dropped.json` -
+  (installed + adds - drops, every category incl. `hooks`) - and `dropped.json` -
   everything dropped so far, per category. Seed BOTH before the first recompute - `raw.json` from
   the step-1 inventory, `dropped.json` as `{}` - so no layer ever runs against a file that does not
   exist yet.
@@ -36,7 +36,7 @@ grep at 258k context to confirm this shape):
 
 ```json
 { "skills": ["csharp"], "agents": ["aspnet-implementer"], "rules": ["csharp-conventions"],
-  "hooks": ["guard-stop-contract"], "mcps": ["alfred-navigation"], "plugins": ["csharp-lsp"] }
+  "hooks": ["guard-stop-contract"], "plugins": ["csharp-lsp"] }
 ```
 
 ## Per layer - the same three beats
@@ -59,7 +59,8 @@ grep at 258k context to confirm this shape):
    you, and it is **never redirected to a file** - the table comes back IN the tool result:
    - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"`
    - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --installed "$TMP/installed.json" --dropped "$TMP/dropped.json" --found "$TMP/found.json"`
-     (omit `--found` when no evidence scan ran). A not-installed row whose reason column carries a
+     (omit `--found` when no evidence scan ran; in a child of an installed folder add `--inherited
+     "$TMP/parent.json"`, the parent's read-back). A not-installed row whose reason column carries a
      matched signal is the project telling you it uses what the install lacks - an informed add
      candidate, never an auto-add.
 
@@ -95,11 +96,12 @@ grep at 258k context to confirm this shape):
    FRESH rows are labeled `required` (closure-locked, reason in the last column), `evidence` (the
    scan matched a signal - PRE-SELECTED, the matched signal as the reason, droppable like any
    seed), `recommended` / `stack:<name>` (seeded, droppable), `added` (the user's own pick), `-`
-   (not selected). Recommended = the union of `always` + each confirmed stack in
+   (not selected), and in a child `from root` (the parent install holds it - kept unless unpicked, and an unpick is an
+   ignore line, never a drop). Recommended = the union of `always` + each confirmed stack in
    `$TMP/repo/meta/recommendations.json`, pre-selected:
 
    ```
-   [step 5/11 - agents] adjust the agent roster · next: skills
+   [step 5/10 - agents] adjust the agent roster · next: skills
     # | agent                       | selected     | required by
    ---+-----------------------------+--------------+---------------------------
     1 | issue-diagnoser-ci        | recommended  | -
@@ -108,11 +110,12 @@ grep at 258k context to confirm this shape):
    ```
 
    DELTA rows are labeled in the `installed` column - `yes`, `orphaned` (with the cascade origin)
-   or `-` - and the `required by` column carries the lock reason for a kept item something else
+   or `-`, and in a child `from root` (installed because the parent holds it) or `ignored` (the parent holds it and this
+   child ignores it) - and the `required by` column carries the lock reason for a kept item something else
    kept needs:
 
    ```
-   [step 5/13 - skills] adjust the installed skills · next: hooks
+   [step 5/12 - skills] adjust the installed skills · next: hooks
     # | skill      | installed | required by
    ---+------------+-----------+------------------------------------------
     1 | csharp     | yes       | rule csharp-conventions
@@ -202,13 +205,13 @@ Step 2: 'Add which?' (multi-select, one option per unmarked row, at most 4) and 
 Locked = agents the kept rules require (the repair-loop rules pin their resolvers, e.g. `required by
 rule dotnet-repair-agents`). DELTA orphans here trace back to rule drops.
 
-FRESH ask (44 rows: the marked ones are the support seats, the resolvers and the confirmed stacks' trios):
+FRESH ask (45 rows: the marked ones are the support seats, the resolvers and the confirmed stacks' trios):
 
 ```ask
 Agents: install the marked rows? The unmarked ones are other stacks' trios and related-project-analyzer.
 - 'Keep the marked rows (Recommended)' - the support seats, the resolvers and the confirmed stacks' trios
 - 'Pick stack trios to add' - next call lists the unmarked designer-implementer-verifier trios
-- 'Add every agent' - all 44 (each description rides every session's first call)
+- 'Add every agent' - all 45 (each description rides every session's first call)
 - 'Only the locked rows' - what the kept rules require
 ```
 
@@ -263,9 +266,9 @@ windows-service sets; ionic-angular, data, browser-extension, js), plus one ques
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
 cascade never reaches here. Recommended (FRESH) = all eighteen: the twelve always-on guards, the
 four session engines (`docs-session` - the docs start block and finish ask - `preferences-session` - the
-preferences docs handed over before the first edit and the first git write - `memory-session` - the
-shared-memory slice at session start - and `history-session` - what the last sessions on this branch
-did and ruled), the turn-end build check (`check-turn-build` - run inside history-session's Stop, inert until
+preferences docs handed over before the first edit and the first git write, the tool order and the
+host's shell lines at every start - `history-session` - what the last sessions on this branch
+did and ruled - and `forge-session` - the forge line at session and seat start), the turn-end build check (`check-turn-build` - run inside history-session's Stop, inert until
 `ALFRED_CODE_TURN_CHECK` flips to `1`, seeded `0`), plus the env-gated `instrument-tool-usage` (wired
 like the guards, but inert until `ALFRED_CODE_INSTRUMENT` flips to `1` - so keeping it costs nothing
 idle, and dropping it leaves the install unable to record a measured run without a manual re-wire).
@@ -276,8 +279,8 @@ env - the rows dropped are the ones named there, re-adding a row removes its nam
 all eighteen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
 prerequisite check is what writes it). It can be changed later by editing that value, no reinstall.
 An install on the hooks copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the old behaviour -
-dropping a hook removes its file and its wiring - and, while the core is on for the skills or the
-MCP servers, names it in `ALFRED_CODE_HOOKS_OFF` too, since the core carries every hook; on that
+dropping a hook removes its file and its wiring - and, while the core is on for the skills, names
+it in `ALFRED_CODE_HOOKS_OFF` too, since the core carries every hook; on that
 route every run rewrites the value as the hooks the project does not wire, so a hand edit there does
 not hold.
 
@@ -291,83 +294,10 @@ Hooks: keep all 18 on? The build check and the instrumenter stay inert until swi
 - 'None - every hook off' - writes `hook none`
 ```
 
-Step 2: multi-select questions of 4 - session (docs-session, preferences-session, memory-session, history-session), optional (check-turn-build, instrument-tool-usage, guard-answer,
+Step 2: multi-select questions of 4 - session (docs-session, preferences-session, history-session, forge-session), optional (check-turn-build, instrument-tool-usage, guard-answer,
 guard-fresh-session-start) and the guards in groups of 4, the last group padded from the
 neighbouring one so no question has fewer than 2 options.
 
-
-## MCPs
-
-Locked = the servers the kept selection pulls: `alfred-navigation` via the `alfred-navigation` rule, `alfred-documentation`
-via `alfred-quality-gates`, `alfred-memory` via the `alfred-memory` rule - required in every install, the same way
-the navigation server and the documentation server are. The browser server is FOUR rows, one per engine -
-`chrome-control`, `firefox-control`, `msedge-control`, `webkit-control` - each its own plugin, all droppable: a seed
-(the web Angular, Ionic and browser-extension stacks) or an evidence match lands on `chrome-control`, and in DELTA each
-row reads the live install (`yes`, `yes (off)` for one installed but switched off, `-`). `raw.json` carries the picked
-engines by those names; the tool folds them onto the one catalog entry `browser`. The two desktop servers drive
-the machine's own apps, so the table offers each on its own OS only and neither on Linux:
-`windows-control` (Windows-MCP) on Windows, seeded on the WPF and WinForms stacks, and `macos-control`
-(MacOS-MCP) on macOS, seeded by no stack - a plain add. A seed this OS cannot run comes back as one
-`skipped: mcp <name> - ...` line on stderr instead of a row; say it in one line under the table. Picking
-either is opt-in consent to a server that clicks through the user's own desktop with their full rights,
-so the question names that in one line; the installer prints what each needs (English display language
-and matching privilege on Windows, the Accessibility and Screen Recording grants on macOS). `mobile-control`
-(appium-mcp) drives Android and iOS apps on an emulator, a simulator or a device, on every OS; seeded by no stack,
-it is offered as a plain row everywhere and asked in FRESH only for a mobile app (an Ionic or Capacitor stack, or
-an `android/` or `ios/` folder at the root) - the installer prints what it needs (Node 22+, the Android SDK and a
-JDK through ANDROID_HOME / JAVA_HOME, Xcode for iOS). Those seven (the browser as its four engines) are the whole catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`,
-`context7-local`) is offered nowhere: the run uninstalls the stack's own copy and prints the `claude
-mcp add` line that brings it back as the user's own.
-
-FRESH asks, one per free row (alfred-navigation, alfred-documentation and alfred-memory are locked and never an option).
-Each enabled browser puts about 25 tools (about 18.7k characters of schema) into every session, so a browser is
-recommended only where it was earned. When the `chrome-control` row reads `stack:<name>`, `recommended` or `evidence`,
-or any engine row reads `yes` / `yes (off)` in DELTA, ask the engine pick straight away; otherwise (every engine row `-`)
-ask the gate first, and only 'Pick browsers' opens the engine pick:
-
-```ask
-MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. Add a browser server (Playwright)?
-- 'Leave the browsers out (Recommended)' - no stack or evidence here needs one, and each browser adds about 25 tools to every session
-- 'Pick browsers' - opens the engine pick: chrome-control, firefox-control, msedge-control, webkit-control
-```
-
-The engine pick is ONE multi-select question. AskUserQuestion has no pre-selection (audit 2026-10-21 C-T4-01), so the
-question names the default - FRESH `chrome-control` when it was earned, DELTA every engine the table reads `yes` or
-`yes (off)` - and the mark sits on it (the first of them in DELTA). Ticking none drops the browser:
-
-```ask
-Which browser servers? Each one is its own plugin and adds about 25 tools to every session.
-- 'chrome-control (Recommended)' - runs the machine's Google Chrome; downloads nothing
-- 'firefox-control' - downloads Playwright's Firefox build at the release's pin
-- 'msedge-control' - runs the machine's Microsoft Edge; downloads nothing
-- 'webkit-control' - downloads Playwright's WebKit build (Safari's engine) at the release's pin
-```
-
-```ask
-Add <windows-control | macos-control>? It clicks through your desktop apps with your full rights.
-- 'Leave it out (Recommended)' - opt-in only; recommend 'Add' instead when WPF or WinForms is confirmed on Windows
-- 'Add the desktop server' - needs the OS grants the installer prints (Accessibility and Screen Recording on macOS)
-```
-
-```ask
-Add mobile-control (Appium)? It drives Android and iOS apps on an emulator, a simulator or a device.
-- 'Leave it out (Recommended)' - opt-in only, and its 32 tools load in every session; recommend 'Add' instead when an emulator, simulator or device is at hand for this app
-- 'Add the mobile server' - needs Node 22+, and the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME) or Xcode on macOS
-```
-
-Ask only the rows this OS and selection have. In DELTA the browser and desktop questions read the live
-state and the Recommended option is the current one.
-
-
-The ticked engines replace `browser` in `raw.json` as `<engine>-control` names; none ticked removes every one.
-Picking one IS installing it: a picked `firefox` / `webkit` is downloaded (Playwright's own build, at the release's
-pinned `@playwright/mcp`), while `chrome` and `msedge` run the browser already on the machine and `/alfred-code:init`
-reports one that is not there. The `--emit` run prints a `browsers: <csv>` line - pass it to the installer as
-`--browsers <csv>` (an engine left out is uninstalled by the run); in DELTA an unchanged pick passes nothing. No enable
-question is asked and no `--browser-enabled` is passed: an engine installed now arrives on, one already installed keeps
-its on/off (a `yes (off)` row stays off), and `/plugin` toggles them later. On the MCP copy route they are
-`.mcp.json` servers: at project scope each picked engine is registered, and taking it out of `disabledMcpjsonServers`
-turns on one left off; at local and user scope the registration IS the enable.
 
 ## Plugins
 
@@ -387,14 +317,13 @@ Plugins: install the <n> marked rows? <the marked rows and their reasons, one cl
 - 'Keep the marked rows (Recommended)' - claude-hud's status line plus each LSP the evidence or a stack marked
 - 'Pick plugins to add or drop' - the next call lists claude-hud, csharp-lsp and typescript-lsp
 - 'Add every plugin' - claude-hud, csharp-lsp and typescript-lsp
-- 'None' - no status line; symbol lookups stay with the navigation server alone
+- 'None' - no status line; symbol lookups stay with the built-in search tools
 ```
 
 DELTA takes the two layer questions above (add, drop) like every layer.
 
-**Where each optional item installs - the last ask of the walk.** The core and the three `alfred-` servers
-follow the run's scope. Every OTHER kept item - each kept browser engine (`<engine>-control`), a kept desktop
-server, `mobile-control`, a kept LSP, `claude-hud` - goes where the user chooses, item by item: `project` (this project only,
+**Where each optional item installs - the last ask of the walk.** The core follows the run's scope. Every
+OTHER kept item - a kept LSP, `claude-hud` - goes where the user chooses, item by item: `project` (this project only,
 the default for every one), `global` (every project on this account loads it) or `local` (this checkout only,
 never shared through the repo). Never `managed`: that scope is the admin's, and no run installs there. Nothing
 kept that is optional: ask nothing. FRESH has no install, so every item starts at `project`:
@@ -421,20 +350,17 @@ Keep the optional picks where they are? <item: global | project, one clause each
 'Pick ...' opens ONE call of multi-select questions, one per target scope the items are not already at
 ('Make global', 'Keep in this project', 'This checkout only (local)' - up to 4 options per question, each option
 one item, its description naming its scope now); an item ticked under two targets is asked once more. Pass
-every answer that is not the item's current place as `--scope-of <item>=<global|project|local>`
-(`--scope-of browser=<...>` covers every engine at once): FRESH passes each `global` or `local` one, DELTA
+every answer that is not the item's current place as `--scope-of <item>=<global|project|local>`: FRESH passes each `global` or `local` one, DELTA
 each move - the installer installs the item at the new scope first, then removes it at the old one alone
 (a row at a third scope stays), and says a move off `global` loud (every other project loses it, with the
-line that puts it back). An unchanged answer passes nothing. On the full copy route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`)
-the engines and desktop servers are `.mcp.json` / `claude mcp add` registrations at the run's scope - their
-answer does not apply there; say so in one line and ask only the plugins.
+line that puts it back). An unchanged answer passes nothing.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
 plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`, when it is
 kept - its config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
 here - the answer is applied after the installer runs, exactly like the environment choices:
 
-1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
+1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`.
 2. ONE AskUserQuestion carrying those counts:
 
 ```ask

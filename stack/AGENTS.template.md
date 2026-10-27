@@ -73,7 +73,7 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 9. Cross-cutting checklists - for each change that must move several files in lockstep, the full touch-point list.
 10. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
    permissions.deny in .claude/settings.json - the installer seeds only the generic .env* / key /
-   cert / .sensitive-data blocks.
+   cert / .secrets / .sensitive-data blocks.
 11. Code conventions - only where this project DEPARTS from the house-style skill the path-scoped
    rules attach for that file type; a line that repeats the skill or a preference is a duplicate.
 12. Testing approach - per-layer strategy, what's excluded, the integration / regression net.

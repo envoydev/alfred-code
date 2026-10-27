@@ -4,7 +4,7 @@
 
 The single source of truth for the **Claude Code** half of the house coding-agent setup - not an
 application. It holds what is applied to *other* projects: house-style skills, the base instruction
-template, hook scripts, convention rules, agents, and the installer that wires skills / MCP servers /
+template, hook scripts, convention rules, agents, and the installer that wires skills / hooks /
 plugins into each project. The **Cursor** twin lives in
 [`cursor-stack`](https://github.com/envoydev/cursor-stack), a sibling with its OWN skills, agents and
 installers (it does not clone this repo, and its lists may diverge).
@@ -23,15 +23,15 @@ change (see the invariants below).
 
 The mechanism notes for each part live in a path-scoped rule in `.claude/rules/` and load when you edit its files. Read the named rule before you change that part; it holds the why, the measurements and the edge cases this file leaves out.
 
-- `stack/skills/` (library skills, each copied per pick), `stack/agents/` (44 seats in the core plugin), `stack/rules/` (nineteen shipped rules) and `stack/AGENTS.template.md` (the per-project instruction skeleton): `repo-catalog.md`.
+- `stack/skills/` (library skills, each copied per pick), `stack/agents/` (45 seats in the core plugin), `stack/rules/` (eighteen shipped rules) and `stack/AGENTS.template.md` (the per-project instruction skeleton): `repo-catalog.md`.
 - `stack/hooks/` - eighteen hooks folded into the core `alfred-code` plugin, generated from the manifest's `hooks[]`: `repo-hooks.md`.
 - `scripts/install/` - THE INSTALLER, the ONLY route, one `node` command on every OS - and `setup-plugin/`, the six commands and the router skill. The delivery-surfaces table, the install stamp and the snapshot gotchas are there too: `repo-installer.md`.
-- `stack/mcp/` and the generated MCP plugin entries (one plugin, one server, same name): `repo-mcp.md`.
+- `stack/mcp/` - the record of the MCP servers the stack shipped until 2.10.1 and the retire path that takes them out of an older install: `repo-mcp.md`.
 - Memory levels, the docs root, the data root and the two stores: `repo-memory-data.md`.
 - `meta/` (never installed) and the repo scripts (`lint-skills.js`, `analyze-usage.js`, `scan-evidence.js`): `repo-meta.md`.
 - `docs/` holds the browser inventory `docs/alfred-code.html` and the evidence files; `assets/` the logo and banner.
 
-**Three locked MCP servers** - `alfred-navigation`, `alfred-documentation`, `alfred-memory` (2.2.0; `navigation` / `documentation` / `memory` before) - are in every install and may be named in artifacts; every other server is droppable, so a body describes it. **Never `Read` a whole file to find a symbol**: locate it through the navigation server (`find_symbol` / `find_referencing_symbols`) or the LSP; `Read` is for code already located.
+**No MCP server ships** (2.10.1, the user's ruling of 2026-10-24): no skill, seat, rule or hook depends on one. A body names the JOB - the navigation tools, the documentation tools - and the session-start tool order ranks the tools for it: the `LSP` tool then a scoped grep, and the vendor's page through `WebFetch`, unless `/capture-preferences tools` ranked a server the user registered. The seats' handoff notes are files (`handoff.js`), and lint check 67 fails a body that names an MCP tool or a retired server. **Never `Read` a whole file to find a symbol**: locate it through the navigation tools (`LSP` `workspaceSymbol` / `findReferences`); `Read` is for code already located.
 
 ## Working in THIS repo - invariants
 
@@ -63,17 +63,13 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
 - **Parity / source-of-truth.** Behaviour lands only in `scripts/install/`, the one route.
   `meta/stack-manifest.json` is hand-edited and carries the six lists the seed reads (`npm run lint`
   holds it to disk, the HTML and the skill count). A shared baseline change is mirrored into
-  cursor-stack in the same sitting. Never patch only a generated `.mcp.json` or a consuming
-  project's copy - the installer wipes it.
+  cursor-stack in the same sitting. Never patch only a consuming project's copy - the installer wipes it.
 - **Select a skill by DESCRIPTION, not by name.** Naming works only for a skill guaranteed alongside its
   citer (a frontmatter preload, an own-stack skill). Anything else - a skill no stack seeds, or one from a
   DIFFERENT stack - is described by what it covers. A guard phrase beside the name is not the remedy.
   Lint checks 25 and 26 block a named cite that can be absent; a router hub opts out with an
   `**Availability**` callout. Naming a skill never installs it: `suggests:` is removed (check 27) and the
-  graph emits no body-mention edge. Install need is PROVEN via `meta/evidence.json`, a per-stack seed, or
-  a server that brings the skill: a manifest `mcps[].skills` row is the graph's one edge back at a skill
-  (`graph.mcps`), so the skill arrives with its server, a configure drop cascades both ways, and update
-  never offers it alone.
+  graph emits no body-mention edge. Install need is PROVEN via `meta/evidence.json` or a per-stack seed.
 - **One home per piece, no duplication.** A deterministic gate -> a hook. A per-file-type convention -> a
   path-scoped rule attaching its skill. A keyword capability -> the skill's description. Cross-cutting
   guidance -> the always-on `alfred-*.md` set (each with an `.mdc` twin in cursor-stack to mirror). The

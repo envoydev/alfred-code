@@ -6,427 +6,14 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
-    "version": "2.10.0"
+    "version": "2.11.0"
   },
   "plugins": [
     {
-      "name": "chrome-control",
-      "source": "./",
-      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/chrome-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "chrome-control": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
-            "--package",
-            "@playwright/mcp@0.0.83",
-            "--browser",
-            "chrome"
-          ]
-        }
-      }
-    },
-    {
-      "name": "msedge-control",
-      "source": "./",
-      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/msedge-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "msedge-control": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
-            "--package",
-            "@playwright/mcp@0.0.83",
-            "--browser",
-            "msedge"
-          ]
-        }
-      }
-    },
-    {
-      "name": "firefox-control",
-      "source": "./",
-      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/firefox-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "firefox-control": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
-            "--package",
-            "@playwright/mcp@0.0.83",
-            "--browser",
-            "firefox"
-          ]
-        }
-      }
-    },
-    {
-      "name": "webkit-control",
-      "source": "./",
-      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/webkit-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "webkit-control": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
-            "--package",
-            "@playwright/mcp@0.0.83",
-            "--browser",
-            "webkit"
-          ]
-        }
-      }
-    },
-    {
-      "name": "windows-control",
-      "source": "./",
-      "description": "The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.14; the x64 build on Windows on ARM) and refuses on another OS; PowerShell, Registry, Process, FileSystem stay off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE names another list (none = every tool).",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "windows-control": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
-            "--server",
-            "windows-control",
-            "--package",
-            "windows-mcp==0.8.8",
-            "--exclude-newer",
-            "2026-10-20T23:59:59Z",
-            "--",
-            "serve",
-            "--exclude-tools",
-            "PowerShell,Registry,Process,FileSystem"
-          ],
-          "env": {
-            "ANONYMIZED_TELEMETRY": "false"
-          }
-        }
-      }
-    },
-    {
-      "name": "macos-control",
-      "source": "./",
-      "description": "The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "macos-control": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
-            "--server",
-            "macos-control",
-            "--package",
-            "macos-mcp==0.4.6",
-            "--exclude-newer",
-            "2026-10-20T23:59:59Z",
-            "--",
-            "serve"
-          ],
-          "env": {
-            "ANONYMIZED_TELEMETRY": "false"
-          }
-        }
-      }
-    },
-    {
-      "name": "alfred-navigation",
-      "source": "./",
-      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "alfred-navigation": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
-            "--package",
-            "serena-agent@2.1.0",
-            "--exclude-newer",
-            "2026-10-20T23:59:59Z",
-            "--",
-            "start-mcp-server",
-            "--context",
-            "claude-code",
-            "--enable-web-dashboard",
-            "false",
-            "--project-from-cwd",
-            "--agent-interface",
-            "tools"
-          ],
-          "env": {
-            "SERENA_USAGE_REPORTING": "false"
-          }
-        }
-      }
-    },
-    {
-      "name": "alfred-documentation",
-      "source": "./",
-      "description": "The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "alfred-documentation": {
-          "type": "http",
-          "url": "https://mcp.context7.com/mcp",
-          "headers": {
-            "Context7-API-Key": "${CONTEXT7_API_KEY:-}"
-          }
-        }
-      }
-    },
-    {
-      "name": "alfred-memory",
-      "source": "./",
-      "description": "The memory server (mcp-memory-service), as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install's level choice (global, scoped or project), so this one server starts through a launcher that reads the project's own settings.json - a plugin entry cannot expand a PROJECT env key (measured).",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "alfred-memory": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/memory-launch.js",
-            "--package",
-            "mcp-memory-service[sqlite]==12.1.1",
-            "--exclude-newer",
-            "2026-10-20T23:59:59Z"
-          ],
-          "env": {
-            "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
-            "MCP_MEMORY_SQLITE_PRAGMAS": "busy_timeout=15000"
-          }
-        }
-      }
-    },
-    {
-      "name": "mobile-control",
-      "source": "./",
-      "description": "The mobile server (appium-mcp), as a plugin: drives Android and iOS apps on an emulator, a simulator or a real device through Appium's embedded UiAutomator2 and XCUITest drivers (sessions, find, tap, type, gestures, screenshots). Needs Node 22+; Android needs the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME, looked up when unset), iOS needs macOS with Xcode. Started through a launcher that puts screenshots and page sources under the project's data root (<data root>/mobile-control) and refuses app URLs and remote Appium servers unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "mobile-control": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/mobile-launch.js",
-            "--package",
-            "appium-mcp@1.97.1",
-            "--before",
-            "2026-10-21T23:59:59Z"
-          ]
-        }
-      }
-    },
-    {
-      "name": "browser-chrome",
-      "source": "./",
-      "description": "RETIRED in 2.4.0 - renamed chrome-control. Run /alfred-code:update: it installs chrome-control in its place and removes this entry.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "browser-chrome": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
-            "--package",
-            "@playwright/mcp@0.0.83",
-            "--browser",
-            "chrome"
-          ]
-        }
-      }
-    },
-    {
-      "name": "browser-msedge",
-      "source": "./",
-      "description": "RETIRED in 2.4.0 - renamed msedge-control. Run /alfred-code:update: it installs msedge-control in its place and removes this entry.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "browser-msedge": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
-            "--package",
-            "@playwright/mcp@0.0.83",
-            "--browser",
-            "msedge"
-          ]
-        }
-      }
-    },
-    {
-      "name": "browser-firefox",
-      "source": "./",
-      "description": "RETIRED in 2.4.0 - renamed firefox-control. Run /alfred-code:update: it installs firefox-control in its place and removes this entry.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "browser-firefox": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
-            "--package",
-            "@playwright/mcp@0.0.83",
-            "--browser",
-            "firefox"
-          ]
-        }
-      }
-    },
-    {
-      "name": "browser-webkit",
-      "source": "./",
-      "description": "RETIRED in 2.4.0 - renamed webkit-control. Run /alfred-code:update: it installs webkit-control in its place and removes this entry.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "browser-webkit": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
-            "--package",
-            "@playwright/mcp@0.0.83",
-            "--browser",
-            "webkit"
-          ]
-        }
-      }
-    },
-    {
-      "name": "windows-desktop",
-      "source": "./",
-      "description": "RETIRED in 2.4.0 - renamed windows-control. Run /alfred-code:update: it installs windows-control in its place and removes this entry.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "windows-desktop": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
-            "--server",
-            "windows-control",
-            "--package",
-            "windows-mcp==0.8.8",
-            "--exclude-newer",
-            "2026-10-20T23:59:59Z",
-            "--",
-            "serve",
-            "--exclude-tools",
-            "PowerShell,Registry,Process,FileSystem"
-          ],
-          "env": {
-            "ANONYMIZED_TELEMETRY": "false"
-          }
-        }
-      }
-    },
-    {
-      "name": "macos-desktop",
-      "source": "./",
-      "description": "RETIRED in 2.4.0 - renamed macos-control. Run /alfred-code:update: it installs macos-control in its place and removes this entry.",
-      "version": "2.10.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "macos-desktop": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
-            "--server",
-            "macos-control",
-            "--package",
-            "macos-mcp==0.4.6",
-            "--exclude-newer",
-            "2026-10-20T23:59:59Z",
-            "--",
-            "serve"
-          ],
-          "env": {
-            "ANONYMIZED_TELEMETRY": "false"
-          }
-        }
-      }
-    },
-    {
       "name": "alfred-code",
       "source": "./",
-      "description": "The Claude Code stack, guided: init installs it from scratch into a project and, typed again after the restart, bootstraps it once (services, memory, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "2.10.0",
+      "description": "The Claude Code stack, guided: init installs it from scratch into a project and, typed again after the restart, bootstraps it once (tools, status line, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
+      "version": "2.11.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -490,6 +77,7 @@
         "./stack/agents/issue-diagnoser-ci.md",
         "./stack/agents/issue-diagnoser-runtime.md",
         "./stack/agents/ng-build-error-resolver.md",
+        "./stack/agents/output-scorer.md",
         "./stack/agents/related-project-analyzer.md",
         "./stack/agents/security-auditor.md",
         "./stack/agents/test-coverage-analyzer.md",
@@ -556,7 +144,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))_)?((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))__browser_file_upload$",
+            "matcher": "^mcp__.+__browser_file_upload$",
             "hooks": [
               {
                 "type": "command",
@@ -571,6 +159,36 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__.*",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "SubagentHandback",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               }
             ]
@@ -601,7 +219,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_windows-(control|desktop)_)?windows-(control|desktop)__App$|^mcp__(plugin_macos-(control|desktop)_)?macos-(control|desktop)__Shell$",
+            "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$",
             "hooks": [
               {
                 "type": "command",
@@ -611,36 +229,11 @@
             ]
           },
           {
-            "matcher": "SubagentHandback",
+            "matcher": "^mcp__.+__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
                 "timeout": 10
               }
             ]
@@ -702,12 +295,12 @@
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
                 "timeout": 10
               }
             ]
@@ -740,6 +333,11 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
                 "timeout": 60
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "timeout": 10
               }
             ]
           }
@@ -762,7 +360,7 @@
         ],
         "UserPromptExpansion": [
           {
-            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
+            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|mode-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",
@@ -772,7 +370,7 @@
             ]
           },
           {
-            "matcher": "^((alfred-)?(capture|loop|task|issue)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
+            "matcher": "^((alfred-)?(capture|loop|task|issue|mode)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
             "hooks": [
               {
                 "type": "command",
@@ -830,6 +428,26 @@
                 "timeout": 10
               }
             ]
+          },
+          {
+            "matcher": "Bash|PowerShell|Monitor",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__.*",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "timeout": 10
+              }
+            ]
           }
         ],
         "SubagentStart": [
@@ -847,7 +465,7 @@
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
                 "timeout": 10
               }
             ]

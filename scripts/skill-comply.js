@@ -29,7 +29,8 @@
 // name equality, `input_match` a RegExp over the JSON-serialized input. A grader that uses only
 // those fields pastes into a case.yaml as is. `llm`, `baseline` and `file_exists` are accepted and
 // reported SKIP: a model judge is out of scope offline, and a transcript carries no created-files
-// list. The rest is this script's own, named `x_*` or marked in the matcher:
+// list. The rest is this script's own, named `x_*`, marked in the matcher, or the `regex` target
+// `context` - the harness text the run was given (its attachment marks: hook context, instruction loads):
 //   matcher   'Tool' | {tool?, input_match?, field?, text_match?, text_not_match?} | {any: [...]}
 //             | {all: [...]} | {ref: '<name in the file's matchers>'}. `text_match` runs over the
 //             input's RAW string values (or one `field`), with the m flag; a string or a list, all
@@ -37,8 +38,12 @@
 //             a call that FAILED - a rejected Edit, a hook or permission deny, a blocked or invalid
 //             call changed nothing and ran nothing. A shell command that ran and exited non-zero did
 //             not fail: Claude Code marks it is_error ('Exit code 1'), but a red test run is a run.
-//             Left out, a failed call still counts, so a denied commit is still an attempt in order. An MCP tool matches in both spellings - the
+//             Left out, a failed call still counts, so a denied commit is still an attempt in order. `answered: true` skips
+//             an AskUserQuestion Claude Code closed on its idle timeout ('No response after <N>s ...') - nobody answered it. An MCP tool matches in both spellings - the
 //             plugin route's `mcp__plugin_<n>_<n>__<tool>` and the registration route's bare one.
+//   session   a STEP field read by conformance.js alone (never by a replay's grade): `false` - the step cannot hold in a
+//             real session (it is bound to the replay fixture); `{ said: '<regex>' }` - graded only in a session window
+//             whose own assistant text matches (task-solve's design steps on `Size: standard`); SKIP elsewhere.
 //   @text     each assistant text block is an event named `@text` in the same ordered trace, so a
 //             line the skill says must come first ('Size: ...') is ordered like a tool call.
 //   x_between some `tool` call lies after the LAST `after` call and before the FIRST `before` call
@@ -86,17 +91,32 @@ const SECRETS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
 // A shell tool's non-zero exit comes back is_error with this head - the command RAN.
 const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
 const EXIT_STATUS = /^Exit code \d+/;
+// An AskUserQuestion Claude Code closed on its idle timeout - nobody answered (the hook prelude's own pattern, one home).
+const ASK_TIMEOUT_RE = (() => { try { return require(path.join(ROOT, 'stack', 'hooks', 'hook-prelude.js')).ASK_TIMEOUT_RE; } catch { return /\bNo response after \d+\s*s\b/i; } })();
+// A user row the harness wrote with no isMeta - a task notice, a command's output, a peer session's message, an
+// interrupt marker (hook-prelude.js harnessPrompt's list) - is no typed turn: it marks as an attachment.
+const HARNESS_ROW = /^\s*(?:<(?:local-command-stdout|local-command-caveat|task-notification|agent-message|bash-input|bash-stdout|bash-stderr|system-reminder)\b|Another Claude session sent a message:|\[Request interrupted by user)/;
 
 const COPY_ROUTE = ['ALFRED_CODE_SKILLS_VIA_PLUGIN=false', 'ALFRED_CODE_HOOKS_VIA_PLUGIN=false', 'ALFRED_CODE_MCPS_VIA_PLUGIN=false'];
 
 // --- the transcript -------------------------------------------------------------------------------
 
 // One ordered trace of the MAIN session: tool calls (deduplicated by id - a streamed message can
-// repeat a block) and assistant text blocks. A subagent's lines are its own session, not this one.
-function parseTranscript(text)
+// repeat a block) and assistant text blocks. A subagent's lines are its own session, not this one -
+// unless `sidechain` says the text IS a seat's own transcript (`subagents/agent-*.jsonl`, every row
+// marked isSidechain).
+// `marks` place the user rows in that trace (item 7, 2026-10-25): `at` is how many events came before
+// the row, `kind` a typed `prompt`, a `<command-name>` row (`command`, still a user turn) or a
+// harness-written `attachment` (a hook's text, a skill body - no user turn); a tool result is no mark.
+// A session file's `attachment` rows mark too: a hook's additionalContext (its text), the instruction
+// files a session or a seat loaded (their paths, one per line), and a prompt typed while the run was busy
+// (`queued_command`, a typed `prompt`).
+// Each event carries `ts`, its row's timestamp in ms (null when the row has none).
+function parseTranscript(text, { sidechain = false } = {})
 {
     const events = [];
     const users = [];
+    const marks = [];
     const byId = new Map();
     const seenText = new Set();
     let lastMessage = '';
@@ -109,8 +129,25 @@ function parseTranscript(text)
         try { o = JSON.parse(line); }
         catch { bad++; continue; }
         if (!o || typeof o !== 'object') { bad++; continue; }
-        if (o.isSidechain === true || o.parent_tool_use_id) continue;
+        if ((o.isSidechain === true && !sidechain) || o.parent_tool_use_id) continue;
         const m = o.message;
+        const stamp = typeof o.timestamp === 'string' ? Date.parse(o.timestamp) : NaN;
+        const ts = Number.isFinite(stamp) ? stamp : null;
+        if (o.type === 'attachment' && o.attachment && typeof o.attachment === 'object')
+        {
+            const a = o.attachment;
+            if (a.type === 'queued_command' && typeof a.prompt === 'string' && a.prompt.trim())
+            {
+                users.push(a.prompt);
+                marks.push({ at: events.length, kind: HARNESS_ROW.test(a.prompt) ? 'attachment' : /^\s*<command-name>/.test(a.prompt) ? 'command' : 'prompt', text: a.prompt });
+                continue;
+            }
+            const body = a.type === 'hook_additional_context' ? strings(a.content).join('\n')
+                : a.type === 'instructions' ? (Array.isArray(a.files) ? a.files : []).map((f) => String((f && f.path) || '').replace(/\\/g, '/')).filter(Boolean).join('\n')
+                : a.type === 'nested_memory' ? String(a.path || a.displayPath || '').replace(/\\/g, '/') : '';
+            if (body) marks.push({ at: events.length, kind: 'attachment', text: body });
+            continue;
+        }
         if (o.type === 'assistant' && m && Array.isArray(m.content))
         {
             for (const c of m.content)
@@ -120,7 +157,7 @@ function parseTranscript(text)
                 {
                     if (c.id && byId.has(c.id)) continue;
                     const input = c.input && typeof c.input === 'object' ? c.input : {};
-                    const ev = { tool: String(c.name || ''), input, inputText: jsonText(input), isError: false, failed: false };
+                    const ev = { tool: String(c.name || ''), input, inputText: jsonText(input), isError: false, failed: false, ts };
                     events.push(ev);
                     if (c.id) byId.set(c.id, ev);
                 }
@@ -129,7 +166,7 @@ function parseTranscript(text)
                     const key = `${m.id || ''}|${c.text}`;
                     if (seenText.has(key)) continue;
                     seenText.add(key);
-                    events.push({ tool: TEXT, input: { text: c.text }, inputText: jsonText({ text: c.text }), isError: false, failed: false });
+                    events.push({ tool: TEXT, input: { text: c.text }, inputText: jsonText({ text: c.text }), isError: false, failed: false, ts });
                     lastMessage = c.text;
                 }
             }
@@ -138,23 +175,38 @@ function parseTranscript(text)
         {
             // A harness-written row (a loaded skill body, a hook injection) is no user turn - the
             // skill's own receipt template must never count as the words it asks the run to quote.
-            if (o.isMeta === true) continue;
-            if (typeof m.content === 'string') users.push(m.content);
+            if (o.isMeta === true)
+            {
+                const body = typeof m.content === 'string' ? m.content
+                    : (Array.isArray(m.content) ? m.content : []).filter((c) => c && c.type === 'text' && typeof c.text === 'string').map((c) => c.text).join('\n');
+                marks.push({ at: events.length, kind: 'attachment', text: body });
+                continue;
+            }
+            // A compaction summary, and text riding a tool-result row, are the harness's too.
+            const harness = o.isCompactSummary === true || (Array.isArray(m.content) && m.content.some((c) => c && c.type === 'tool_result'));
+            const typed = (t) =>
+            {
+                users.push(t);
+                const kind = harness || HARNESS_ROW.test(t) ? 'attachment' : /^\s*<command-name>/.test(t) ? 'command' : 'prompt';
+                marks.push({ at: events.length, kind, text: t, ...(o.isCompactSummary === true ? { compact: true } : {}) });
+            };
+            if (typeof m.content === 'string') typed(m.content);
             else if (Array.isArray(m.content)) for (const c of m.content)
             {
-                if (c && c.type === 'text' && typeof c.text === 'string') users.push(c.text);
+                if (c && c.type === 'text' && typeof c.text === 'string') typed(c.text);
                 else if (c && c.type === 'tool_result' && byId.has(c.tool_use_id))
                 {
                     const ev = byId.get(c.tool_use_id);
                     ev.isError = c.is_error === true;
                     const body = typeof c.content === 'string' ? c.content : strings(c.content).join('\n');
                     ev.failed = ev.isError && !(SHELL_TOOLS.has(canonical(ev.tool)) && EXIT_STATUS.test(body));
+                    if (canonical(ev.tool) === 'AskUserQuestion' && ASK_TIMEOUT_RE.test(body)) ev.timedOut = true;
                 }
             }
         }
         else if (o.type === 'result' && typeof o.result === 'string') result = o.result;
     }
-    return { events, users, lastMessage: lastMessage || result, bad };
+    return { events, users, lastMessage: lastMessage || result, bad, marks };
 }
 
 function jsonText(v)
@@ -194,6 +246,7 @@ function matches(ev, raw, refs)
 {
     const m = resolve(raw, refs);
     if (m.succeeded === true && ev.failed) return false;
+    if (m.answered === true && ev.timedOut) return false;
     if (Array.isArray(m.any)) return m.any.some((x) => matches(ev, x, refs));
     if (Array.isArray(m.all)) return m.all.every((x) => matches(ev, x, refs));
     if (m.tool !== undefined && canonical(ev.tool) !== canonical(m.tool)) return false;
@@ -227,7 +280,7 @@ function inlineMatcher(g)
 {
     if (g.match !== undefined) return g.match;
     const m = {};
-    for (const k of ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all', 'ref', 'succeeded']) if (g[k] !== undefined) m[k] = g[k];
+    for (const k of ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all', 'ref', 'succeeded', 'answered']) if (g[k] !== undefined) m[k] = g[k];
     return m;
 }
 
@@ -312,8 +365,9 @@ function runGrader(g, run, refs)
         case 'regex':
         {
             const target = g.target ?? 'last_message';
-            if (target !== 'last_message' && target !== 'trace') return skip(`regex target ${JSON.stringify(target)} needs the run's working tree`);
-            const text = target === 'trace' ? renderTrace(run) : run.lastMessage;
+            if (!['last_message', 'trace', 'context'].includes(target)) return skip(`regex target ${JSON.stringify(target)} needs the run's working tree`);
+            const text = target === 'trace' ? renderTrace(run)
+                : target === 'context' ? (run.marks || []).filter((m) => m.kind === 'attachment').map((m) => m.text).join('\n') : run.lastMessage;
             const hit = new RegExp(g.pattern, g.flags || '').test(text);
             const want = (g.match ?? 'contains') === 'contains';
             return pass(hit === want, `/${g.pattern}/ ${hit ? 'found' : 'not found'} in ${target}`);
@@ -324,10 +378,16 @@ function runGrader(g, run, refs)
     }
 }
 
-function grade(expect, transcriptText, { level } = {})
+function grade(expect, transcriptText, opts = {})
 {
-    const run = parseTranscript(transcriptText);
-    if (level && expect.prompts && typeof expect.prompts[level] === 'string') run.users.push(expect.prompts[level]);
+    return gradeRun(expect, parseTranscript(transcriptText), opts);
+}
+
+// The grading half over a run already parsed - a whole transcript, or one window of a session
+// (conformance.js); the level's prompt joins a copy of its users, never the run it was handed.
+function gradeRun(expect, parsed, { level } = {})
+{
+    const run = level && expect.prompts && typeof expect.prompts[level] === 'string' ? { ...parsed, users: [...parsed.users, expect.prompts[level]] } : parsed;
     const refs = expect.matchers || {};
     const steps = expect.steps.map((s) =>
     {
@@ -471,6 +531,7 @@ function checkMatcher(m, refs, where, problems, depth = 0)
             else m[k].forEach((x, i) => checkMatcher(x, refs, `${where}.${k}[${i}]`, problems, depth + 1));
         }
     if (m.succeeded !== undefined && typeof m.succeeded !== 'boolean') problems.push(`${where}: 'succeeded' must be true or false`);
+    if (m.answered !== undefined && m.answered !== true) problems.push(`${where}: 'answered' takes only true`);
     if (m.input_match !== undefined) compiles(m.input_match, '', where, problems);
     for (const p of [...list(m.text_match), ...list(m.text_not_match)]) compiles(p, 'm', where, problems);
     const keys = ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all'];
@@ -518,6 +579,8 @@ function checkExpectation(exp)
     if (!fs.existsSync(path.join(dir, 'scaffold.sh'))) problems.push(`${where}: scaffold.sh is missing beside it`);
     const refs = e.matchers || {};
     for (const [name, m] of Object.entries(refs)) checkMatcher(m, refs, `${where} matchers.${name}`, problems);
+    // A session's window (conformance.js): absent, the skill's own - its call or typed command row to its first stop.
+    if (e.window !== undefined && e.window !== 'turn') problems.push(`${where}: window takes only 'turn' (absent: the skill's own window)`);
     const steps = Array.isArray(e.steps) ? e.steps : [];
     if (!steps.length) problems.push(`${where}: steps must be a non-empty list`);
     const ids = new Set();
@@ -526,6 +589,15 @@ function checkExpectation(exp)
         const at = `${where} step ${s.id || '?'}`;
         if (!s.id || ids.has(s.id)) problems.push(`${at}: every step needs a unique id`);
         ids.add(s.id);
+        // false: a step that cannot hold in a real session; { said }: one that holds only where the model's own text in the
+        // window matches (a size line), each SKIP elsewhere - read by conformance.js alone, never by a replay's grade
+        if (s.session !== undefined && s.session !== false)
+        {
+            const said = s.session && typeof s.session === 'object' && Object.keys(s.session).join() === 'said' ? s.session.said : undefined;
+            let compiles = typeof said === 'string' && said !== '';
+            if (compiles) try { new RegExp(said, 'm'); } catch { compiles = false; }
+            if (!compiles) problems.push(`${at}: session takes false or { said: <regex> } (a step that cannot hold in a real session, or holds only where the window says it)`);
+        }
         if (!sources.includes(s.from)) problems.push(`${at}: from must be one of sources`);
         else if (text[s.from] !== undefined && (!s.quote || !text[s.from].includes(norm(s.quote))))
             problems.push(`${at}: its quote is no longer in ${s.from} - the skill changed, re-extract this step`);
@@ -805,4 +877,4 @@ if (require.main === module)
     process.exitCode = main(process.argv.slice(2));
 }
 
-module.exports = { parseTranscript, grade, formatGrade, compareArms, formatCompare, checkExpectation, loadExpectation, listSkills, replayPlan, formatPlan, canonical, matches, main, LEVELS, EXPECT_DIR };
+module.exports = { parseTranscript, grade, gradeRun, formatGrade, compareArms, formatCompare, checkExpectation, loadExpectation, listSkills, replayPlan, formatPlan, canonical, matches, main, LEVELS, EXPECT_DIR, EVAL_TYPES, X_TYPES, SKIP_TYPES };

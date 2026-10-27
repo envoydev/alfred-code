@@ -24,7 +24,7 @@ Project structure (all versions): all UI under `src/`, bootstrap in `src/main.ts
 
 ## Enforceable config (angular-eslint flat config + typescript-eslint + Prettier)
 
-Use the ESLint flat config (`eslint.config.js`, ESLint 9.22+ for `defineConfig` and `extends`; v9 is end of life, so a new setup takes the current major - check it through the documentation server). Combine @eslint/js, typescript-eslint, angular-eslint, and eslint-config-prettier. Enforce the selector prefixes and the useful Angular rules:
+Use the ESLint flat config (`eslint.config.js`, ESLint 9.22+ for `defineConfig` and `extends`; v9 is end of life, so a new setup takes the current major - check it through the documentation tools). Combine @eslint/js, typescript-eslint, angular-eslint, and eslint-config-prettier. Enforce the selector prefixes and the useful Angular rules:
 
 ```js
 // eslint.config.js

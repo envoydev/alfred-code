@@ -10,8 +10,8 @@ const { execFileSync } = require('node:child_process');
 
 const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
 // Every hook the manifest wires, read from the manifest itself - a hand list drifted twice (it once said
-// 'fifteen' while the manifest held seventeen; no count is written here). The engines (docs.js, memory.js,
-// history.js) are copied beside them and never wired, so they carry no gate.
+// 'fifteen' while the manifest held seventeen; no count is written here). The engines (docs.js, history.js,
+// layout.js, handoff.js) are copied beside them and never wired, so they carry no gate.
 const { loadManifest } = require('./install/manifest.js');
 const WIRED = [...new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))];
 
@@ -66,7 +66,7 @@ test('every wired hook carries the gate block, and the engines do not', () => {
         assert.ok(text.includes(`standDown('${hook}')`) || text.includes(`standDown('${hook}',`), `${hook} must name ITSELF in standDown`);
         assert.ok(text.includes('require.main === module'), `${hook}'s gate must not fire when required by a test`);
     }
-    for (const engine of ['docs', 'memory'])
+    for (const engine of ['docs', 'history', 'layout', 'handoff'])
         assert.ok(!fs.readFileSync(path.join(HOOKS_DIR, engine + '.js'), 'utf8').includes('STACK HOOK GATES'),
             `${engine}.js is an engine, never wired, so it carries no gate`);
 });
@@ -109,7 +109,7 @@ test('a missing prelude leaves every hook running - the gate is fail-open', () =
     // copied beside the hooks, so their absence would be a different bug than the one under test.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'noprelude-'));
     for (const hook of WIRED) fs.copyFileSync(path.join(HOOKS_DIR, hook + '.js'), path.join(tmp, hook + '.js'));
-    for (const extra of ['docs.js', 'memory.js', 'model-windows.json'])
+    for (const extra of require('./install/alfred-code.js').HOOK_ENGINES)
         fs.copyFileSync(path.join(HOOKS_DIR, extra), path.join(tmp, extra));
     const dir = fixture('guard-read-whole-file');
     for (const hook of WIRED)

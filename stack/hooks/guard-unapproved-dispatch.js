@@ -12,7 +12,7 @@
 // clears it at run end - per plan since 2.8.0 (<data root>/state/approvals/<plan id>/APPROVAL, the brief's
 // `plan: <plan id>` line naming which; below). A stamp is the writing session's own: one written before this
 // session began is absent (a resumed flow re-stamps), unless it names its session on a
-// `session:` line (an auto-mode stamp, that session's for up to a week - hook-prelude.js
+// `session:` line (an auto-run stamp, that session's for up to a week - hook-prelude.js
 // approvalStamp). Stamps older than MAX_STAMP_AGE_MS are treated as absent - measured: a
 // leftover stamp from a finished flow silently authorized three later, unrelated
 // runs' dispatches in one consuming project.
@@ -26,7 +26,7 @@
 // Symbol-search rule: a SYMBOL question - who calls this, where is it declared, what
 // type resolves here - is never delegated to a grep-shaped seat (Explore/general-purpose/
 // claude). Those answer by name-match, and the built-in Explore does not even load the
-// project's rules, so alfred-navigation's 'locate with the navigation server, inline' never reaches it
+// project's rules, so alfred-navigation's 'locate with the navigation tools, inline' never reaches it
 // (measured: a consuming session handed a C# symbol hunt to Explore and got grep hits).
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
@@ -45,12 +45,15 @@ let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unsetRepo = false;
 // hook-prelude.js approvalStamp - the one reading of the stamp's age, birth and named session; null without the prelude.
 let approvalStamp = null;
+// hook-prelude.js runMarkerFile - the auto-run marker of a session, open while its run goes; null without the prelude.
+let runMarkerFile = null;
 if (require.main === module) {
   let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     approvalStamp = prelude.approvalStamp || null;
+    runMarkerFile = prelude.runMarkerFile || null;
     off = prelude.standDown('guard-unapproved-dispatch', undefined, undefined, { setUp: false });
     unsetRepo = !off && prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
@@ -120,7 +123,7 @@ const seat = String(input.subagent_type || 'general-purpose');
 // no gate looked at (measured: a fork taken for a read-only grep job cost 869,483 cache-read over
 // 6 messages and 4 Bash calls, while a named or read-only seat would have started from its own
 // floor). The gates stay what they are for every generic seat - a symbol question goes back to
-// the navigation server, and a generic dispatch is refused only while a flow is actively stamped.
+// the navigation tools, and a generic dispatch is refused only while a flow is actively stamped.
 const GENERIC_SEATS = new Set(['general-purpose', 'claude', 'fork']);
 const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 // A plugin agent is addressable ONLY as `<plugin>:<agent>` (measured, spike S1 run 4: the bare
@@ -153,13 +156,13 @@ if (/^(?:alfred-)?issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat
   process.exit(2);
 }
 
-// A symbol question routed at a grep-shaped seat: block and send it back to the navigation server.
+// A symbol question routed at a grep-shaped seat: block and send it back to the navigation tools.
 // The patterns are the QUESTION shapes alfred-navigation names, not tool words - a
 // sweep brief ('map the auth module', 'which files configure logging') carries none.
 // 'reference to' / 'usages of' describe a TEXT sweep as often as a symbol hunt (the 2026-09-28 block was
 // 'every reference to plugin-authoring' over the manifest, the graph and the docs), so they count only when a
 // CODE IDENTIFIER follows: backticked, CamelCase or camelCase, a call `name(`, or a member `A.B` / `A::B` -
-// never a kebab-case, path or file-shaped token, which the navigation server cannot resolve anyway.
+// never a kebab-case, path or file-shaped token, which no symbol lookup can resolve anyway.
 const FILE_EXT = '(?:json[c5]?|md|mdx|mdc|ya?ml|toml|ini|html?|txt|xml|csv|lock|[cm]?[jt]sx?|cs|csproj|sln|props|targets|py|sh|ps1|css|scss|env)';
 const IDENT = [
   `\`(?![^\`\\n]*\\.${FILE_EXT}\`)[A-Za-z_$][\\w$]*(?:(?:\\.|::|#)[A-Za-z_$][\\w$]*)*(?:\\(\\))?\``,
@@ -207,12 +210,11 @@ if (SEARCH_SEATS.has(seat)) {
     process.stderr.write(
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
         `A grep-shaped seat answers that by name-match, and name-matches lie; the built-in\n` +
-        `Explore does not load this project's rules at all, so it cannot know to use the navigation server.\n` +
-        `Answer it INLINE instead: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol for a declaration or signature,\n` +
-        `mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols for callers, mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview\n` +
-        `(ONE file, depth 2 on C#) to enumerate - falling back to the LSP plugin when the navigation server's\n` +
-        `language server cannot resolve it. The navigation tools are DEFERRED - load them first with\n` +
-        `ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols,mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview\n` +
+        `Explore does not load this project's rules at all, so it cannot know to use the navigation tools.\n` +
+        `Answer it INLINE instead, with the navigation tools your session-start tool order ranks: LSP goToDefinition\n` +
+        `for a declaration or signature, findReferences for callers, documentSymbol (ONE file) to enumerate - or the\n` +
+        `navigation server the order names first. Where they are deferred, load them with that order's navigation\n` +
+        `line (its ToolSearch select:). With none of them, a name-matched grep -n, each hit checked by reading it.\n` +
         `Dispatch a search seat only for a genuinely broad\n` +
         `multi-file sweep that asks no symbol question.`,
     );
@@ -247,7 +249,7 @@ const MAX_STAMP_AGE_MS = 8 * 60 * 60 * 1000; // 8h - re-stamping is one Write; s
 // One stamp's reading: its file, its first line while it is live, and whether it is stale. `planId` names a plan's own
 // stamp (<data root>/state/approvals/<plan id>/APPROVAL, layout.js approvalPath); none, the root one.
 function readStamp(file, planId) {
-  // An auto-mode stamp names its session and is that session's for the whole run (hook-prelude.js approvalStamp); the
+  // An auto-run stamp names its session and is that session's for the whole session (hook-prelude.js approvalStamp); the
   // prelude reads every stamp, so the age and birth rules below are its stand-in for an install without it.
   const state = approvalStamp ? approvalStamp({ ...payload, cwd: root }, undefined, planId) : undefined;
   if (state !== undefined) return { file: state ? state.file : file, first: state && state.live ? state.first : '', stale: Boolean(state) && !state.live, state };
@@ -276,9 +278,22 @@ function readStamp(file, planId) {
 const CONSENT = /^(APPROVED|AUTO)\b/;
 const rootStamp = readStamp(gate);
 const stampState = rootStamp.state;
+// AUTO-RUN (stack-modes spec section 2, 2026-10-27): a session-named AUTO stamp is the session's MODE, and a run is
+// active only while that session's run marker is open (<data root>/state/sessions/AUTO-RUN-<session>, written by each
+// typed family command, deleted by the run's close or --mode-auto-run-off). Between runs the mode answers asks but
+// approves no seat: the stamp reads as absent here. A torn or garbage marker still counts as open; its `skill:` line is
+// the run's skill. A hand-written AUTO (no `session:` line) and the plan stamps are read as before.
+let runSkill = null;
+if (stampState && stampState.live && stampState.session && /^AUTO\b/.test(rootStamp.first)) {
+  const marker = runMarkerFile ? runMarkerFile(root, payload.session_id) : null;
+  if (!marker || !fs.existsSync(marker)) rootStamp.first = '';
+  else {
+    try { runSkill = (/^skill:[ \t]*(\S+)/m.exec(fs.readFileSync(marker, 'utf8').slice(0, 2048)) || [])[1] || ''; } catch { runSkill = ''; }
+  }
+}
 // PER-PLAN APPROVALS (2026-10-20, spec Part 4): two sessions on two plans shared one APPROVAL - the later approval
 // overwrote the earlier and either session dispatched on it. A brief names its plan on a `plan: <id>` line, and only that
-// plan's stamp passes it, or a live root AUTO (auto-mode, a solve flow's typed waiver - session-wide by design). A brief
+// plan's stamp passes it, or a live root AUTO (auto-run with its run marker open, or a solve flow's typed waiver). A brief
 // with no line is a pre-2.8.0 skill copy's: the root stamp passes it, APPROVED or AUTO, for the 2.x line.
 const planId = layout && layout.planIdOf ? layout.planIdOf(input.prompt) : undefined; // an older layout.js beside it: no plan lines
 const approvalsDir = layout ? layout.statePath(root, 'approvals', '') : path.dirname(gateWrite);
@@ -329,9 +344,9 @@ if (isImplementer) {
         ? `Blocked: dispatch of ${seat} - its brief names plan ${planId}, and no stamp records the user's approval of THAT plan (${rootStamp.file} is another run's, or a pre-2.8.0 one).\n`
         : `Blocked: dispatch of ${seat} without an approval gate.\n`) +
       `Implementer fan-out runs only on the user's explicit approval, or a no-stops run - never on an\n` +
-      `inferred or ambiguous go-ahead. A no-stops run is the user's '--auto-mode' first after the command (the hook\n` +
-      `stamps it); a hand-written AUTO waiver exists only under task-solve and task-solve-cross, in the user's typed\n` +
-      `words - anywhere else the user re-runs the command with --auto-mode.\n` +
+      `inferred or ambiguous go-ahead. A no-stops run is the user's '--mode-auto-run-on' right after the command (the hook\n` +
+      `stamps it and opens the run); a hand-written AUTO waiver exists only under task-solve and task-solve-cross, in the\n` +
+      `user's typed words - anywhere else the user re-runs the command with --mode-auto-run-on.\n` +
       `If the user approved THIS plan in THIS conversation, write ${planWrite}\n` +
       `with one first line - APPROVED ${planId || '<plan id>'} - "<their words, verbatim>" - and give every implementer brief the line\n` +
       `plan: ${planId || '<plan id>'} (the plan file's name without .md), then retry the dispatch. Under those two solve flows only,\n` +
@@ -359,11 +374,11 @@ if (!liveStamp && layout && layout.approvalStamps) {
 if (!liveStamp) {
   process.exit(0);
 }
-// ... unless the run the stamp belongs to dispatches generic seats by design: an auto-mode stamp names its session and
-// its skill (`skill:`), and capture-usage-report's bundle authors are generic seats on a named model (audit 2026-10-20 H5:
-// its authors were denied under its own `--auto-mode` stamp). Only a stamp naming THIS session reads as live here.
+// ... unless the run open under the session's auto-run dispatches generic seats by design: the run marker's `skill:` names
+// it, and capture-usage-report's bundle authors are generic seats on a named model (audit 2026-10-20 H5: its authors were
+// denied under its own auto-mode stamp). Only THIS session's marker is read.
 const GENERIC_DISPATCH_SKILLS = new Set(['capture-usage-report']);
-if (stampState && stampState.live && stampState.session && GENERIC_DISPATCH_SKILLS.has(String(stampState.skill || '').replace(/^alfred-code:/, ''))) {
+if (runSkill && GENERIC_DISPATCH_SKILLS.has(runSkill.replace(/^alfred-code:/, ''))) {
   process.exit(0);
 }
 global.BLOCK_DETAIL = { branch: 'generic-while-stamped' };
@@ -375,6 +390,7 @@ process.stderr.write(
     `Never delete or edit the stamp to get past this - it is the user's consent to the run. If this\n` +
     `generic dispatch is deliberate work outside that run, ask the user through ONE AskUserQuestion\n` +
     `whether the run is over: 'Keep the run going (Recommended)' - use a named seat instead; 'End the run' -\n` +
-    `the run's own close then clears the stamp, and the dispatch goes after it.`,
+    `the run's own close then deletes its run marker (auto-run itself ends only with the user's --mode-auto-run-off),\n` +
+    `and the dispatch goes after it.`,
 );
 process.exit(2);

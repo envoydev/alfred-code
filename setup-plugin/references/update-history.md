@@ -283,6 +283,8 @@ who asks about a name the log did not print.
 | seat `alfred-issue-diagnoser-ci` | seat `issue-diagnoser-ci` |
 | seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
 | `/habits-explain-code` | `/habits-explain-topic` |
+| `/task-auto` | `/mode-auto-run` |
+| `/habits-output-scorer` | `/mode-output-scorer` |
 
 ## after 2.9.0 - the stack's own code and security reviews
 
@@ -329,3 +331,123 @@ and is named, to merge what you need and remove by hand. Report those lines.
 still exactly as the stack wrote it - an edited one is kept unasked, as before. 'Delete it' is recommended, since an
 unedited seed only describes the tools the uninstall removes. Run without the command, the installer keeps it and names
 `--instructions-seed remove`. Nothing changes for an update.
+
+## after 2.10.0 - the tools start line, /capture-preferences tools and its refresh
+
+Every session and seat start carries a tool order now: for each job (navigation, library docs, memory, the browser) the
+tools to use first, from the stack's defaults or from `preferences/TOOLS-PREFERENCES.md` once `/capture-preferences tools`
+ranks them. The defaults are `LSP` and `Grep` for navigation and `WebFetch` for library docs, with a known server type
+ranked first where this machine registers one (serena, context7, memory-service - the record's add-back lines below
+register each); a type it does not register is left out unnamed. An update from v2.10.0 writes no doc and takes no
+inventory, so the order is the stack's defaults until the capture runs.
+Every update after a capture refreshes its inventory (`<data root>/state/tools-inventory.json`): a known type at its pin
+is re-read from the table and never started, a registration whose launch changed is listed again
+(at most a minute), and one that is gone leaves. Report every `tools:` and `!! tools:` line; a `!!` line names a server
+that could not be re-listed or a ranked tool that is gone, and `/capture-preferences tools` settles both.
+
+## after 2.10.0 - the stack ships no MCP server
+
+No skill, seat, rule or hook depends on an MCP server now. The session-start tool order's defaults are the `LSP` tool
+and a scoped grep for navigation and the vendor's own page (`WebFetch`) for library docs; the seats' handoff notes
+are files under `<data root>/state/handoff/`, and lessons go into Claude Code's own memory.
+The first update onto 2.10.1 or later takes out what an earlier release's servers left - their plugins at this run's scope, the stack's registrations, the memory tool denies, `alfred-memory.md` and the memory
+hook - and prints ONE `mcp servers:` block: what it removed, where each server is recorded as it shipped
+(`stack/mcp/original-mcps.json`), and one `add it back:` line per server, which registers the upstream server under its
+original name. A registration changed since the stack wrote it is the user's and stays (`mcp <name>: kept`). The
+servers' data stays where it was (the `mcp data:` line) - the stack no longer reads it, but a server added back does,
+and so may another project still on an older release. Where the stack had switched Claude Code's own memory off, the
+update switches it back on; a switch-off the user set stays. Report the block verbatim, and put the add-back lines on
+the card as the user's to run - only when they want that server again.
+
+## after 2.10.1 - grade before release: the output scorer
+
+A designer's plan file, a diagnoser's root-cause verdict and an inline plan can be graded by a fresh, read-only
+`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It is OFF by
+default: `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
+`ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
+outputs (a csv; empty means all three). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
+stack - `/habits-explain-topic /mode-output-scorer <request>` - grades that one request's output even while it is off,
+an explainer answer, a ticket, an upgrade plan or a pick included. An output that cannot reach the level is withheld and
+the user decides: answer the open decisions, accept it marked, one more revision, or keep it withheld.
+`guard-answer:scorer` or `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` switches the whole scorer off. Update
+seeds the four keys absent-only, so a value the project set stays; report the seeded lines.
+
+## after 2.10.1 - .sensitive-data becomes .secrets
+
+The project's secrets file is `<data root>/.secrets` now (`.alfred/.secrets` by default); `.sensitive-data` was its
+name. Every 2.x release reads both, `.secrets` first, and the shipped deny carries `Read(.secrets)` beside
+`Read(.sensitive-data)`. The rename takes two updates, so a session opened before it never loses the file mid-run: the
+first update beside an old file records `secrets: dual` in the stamp, writes no `.secrets` and prints
+`sensitive: .sensitive-data becomes .secrets at the next update` - only once the core plugin reads back at this release
+or later (or the hooks are copies), else it prints `sensitive: .sensitive-data stays - the core plugin reads back at
+<version>, ...` and records nothing, since an older guard knows only the old name; the next update, from another session, renames the
+file (its bytes unchanged), re-points the run book's path and prints `sensitive: renamed .sensitive-data -> .secrets -
+restart any session opened before this update`. Report that line and tell the user to restart those sessions. An `!!`
+line - both files present, `.secrets` not a file, or a `.secrets` git would not ignore - keeps the old file: report it,
+since the next update tries again only once the user has merged the two and deleted the old one, cleared the path or
+ignored it. A project's own `.secrets` outside the data root is not touched. There is no way back by downgrading: an
+older release reads only `.sensitive-data`, so a renamed file would sit unguarded under it - the way back is a forward
+fix in a later release.
+The guard judges the store behind a computed prefix too - a print through `"$(pwd)/..."` or `"$(git rev-parse
+--show-toplevel)/..."` is masked like the literal path's, `$R/...` and a script's own string are refused - and a `find`
+that hands it to a reader, and its name or the data root in any letter case; a refusal there is the guard working - the
+command that needs the values runs through `--with-sensitive`. `cat "$(pwd)/.env"` is the dotenv it names, masked too.
+
+## after 2.10.1 - capture-first-look leaves the stack
+
+The provisional-map skill no longer ships: `/alfred-code:init` runs the architecture capture, which writes the real
+map, and the scan behind the old skill stays - `node <stack>/scripts/scan-evidence.js --orientation --root .` prints
+the same provisional `ORIENTATION.md` for a project with no capture yet. Update prunes an unchanged copy as retired
+upstream; a copy edited since the stack wrote it stays and is named with `!!`, to merge what you need and remove by
+hand. Report those lines.
+
+## after 2.10.1 - a drafted ticket is also a file
+
+`habits-create-ticket` also writes each ticket to `<docs root>/tickets/<slug>.md` (`.alfred/docs/tickets/` by default) -
+the title, `Type:`, `Created:`, `Status: draft` (`filed <ID or URL>` once filed through the connector) and the
+Description - and names the file on a `Saved:` line below the chat block. `tickets/` is a stack docs folder: it moves
+with the data root, and in a hand-set docs root a team's own `tickets/` is named among the moves and stays only with
+`--docs-root-leave tickets`. Update refreshes the skill copy; nothing else to report.
+
+## after 2.10.1 - the explainer gains a child level and saves every walkthrough
+
+`habits-explain-topic` has a child level now ('like I'm six': a short story in sentences of about 8-10 words, an
+everyday name before every technical word). Every run saves two files under `<docs root>/explanations/`:
+`<topic-slug>.<level>.md`, the walkthrough as sent, and `<topic-slug>.<level>.html`, an offline page with the
+steps, the diagram when the topic has a shape and Check yourself as questions to click - no script, nothing loaded.
+Update moves an older `<docs root>/tutorial/` there (a `layout:` line); a file already at its path under
+`explanations/` stays where it was and is named. Report the layout line.
+
+## after 2.10.1 - designers read the recorded weaknesses, and a design load is handed the preferences
+
+A plan card's `traps:` names each recorded weakness in the files its slice touches (the assessment entry's title and
+`path:line`), so the implementer meets it without reading the assessments. `task-design` orients on the related-projects
+awareness doc for a sibling-repo seam, the ten designer seats name all four doc families, and a greenfield design
+reads `PERSONAL-CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` before drawing its options. A design run loaded
+in the chat (`task-design`, `issue-diagnoser`, `task-build-from-scratch`) is handed the code preferences beside the
+skill's text - nothing is held or asked. Update refreshes the skill copies; the core brings the seats and the hook.
+Nothing to report.
+
+## after 2.10.1 - the usage report grades the stack's claims
+
+`capture-usage-report`'s skeleton gains a machine-written `## Conformance - expected vs observed` section: each claim
+the stack makes (`meta/conformance.json` - navigation, scoring, preferences, awareness, questions, answers, flow,
+decisions) and every graded skill step, counted applied, held, violated or not visible over the session, with the
+transcript locators of each violation. The batch copies each session's history record, scorer folder and block ledger
+into its bundle's `data/` and points the analyzer at the copy (`--data-root`), so a state claim still reads after the
+scorer folder is swept; a session with none of the three prints those claims `not visible`, never held. The verdict
+cites the rows and never recounts them. A `--from` / `--to` report grades the same window and says so in the section's
+note, and task-solve's design steps are graded only for a run that stated `Size: standard`. Update refreshes the skill
+copy; nothing else to report.
+
+## after 2.10.1 - modes: four flags that last the session
+
+Auto-run and the output scorer are modes now, each switched by a flag right after a `/task-*`, `/capture-*`,
+`/loop-*`, `/issue-*` or `/mode-*` command, before the request: `--mode-auto-run-on`, `--mode-auto-run-off`,
+`--mode-output-scorer-on` and `--mode-output-scorer-off`. `--auto-mode` is now `--mode-auto-run-on`. A mode once on
+stays on for the rest of the session - every later typed flow command runs unattended too - until its `-off` flag; a
+new session starts with both off. The old flag switches nothing: typed, it gets a one-line pointer to the new one and
+that run is attended, so a flow skill copied before this update never runs unattended by it. `/mode-auto-run <request>`
+turns auto-run on and runs the request start to finish; `/mode-auto-run --mode-auto-run-off` switches it off and runs
+nothing. While a mode is on, each prompt shows `Modes ON: ...`. Update refreshes the flow skill copies; nothing else
+to report.

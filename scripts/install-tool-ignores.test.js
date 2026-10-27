@@ -119,6 +119,25 @@ test('uninstall: a file the stack made goes when only its block is left, and sta
     assert.strictEqual(rd(kept, '.prettierignore'), 'coverage\n');
 });
 
+test('a child at local scope never appends the block to a tracked .eslintignore; a block appended earlier stays and is named once', () =>
+{
+    const root = project({ '.eslintignore': 'dist/\n' });
+    const tracked = (file) => path.basename(file) === '.eslintignore';
+    const said = [];
+    const record = ensureToolIgnores({ projectRoot: root, root: '.alfred', prior: {}, skipTracked: true, tracked, log: (l) => said.push(l) });
+    assert.strictEqual(rd(root, '.eslintignore'), 'dist/\n', 'a tracked file gained the block');
+    assert.deepStrictEqual(record, {});
+    assert.deepStrictEqual(said, ['  tool ignores: .eslintignore is tracked here - the block is not added, so teammates get no Alfred edit; add /.alfred/ and /.claude/ yourself if eslint walks them']);
+    const earlier = project({ '.eslintignore': `dist/\n\n${block()}` });
+    const before = rd(earlier, '.eslintignore');
+    const again = [];
+    const kept = ensureToolIgnores({ projectRoot: earlier, root: '.ws-data', prior: { '.eslintignore': 'appended' }, skipTracked: true, tracked, log: (l) => again.push(l) });
+    assert.strictEqual(rd(earlier, '.eslintignore'), before, 'a block in a tracked file was rewritten');
+    assert.deepStrictEqual(kept, { '.eslintignore': 'appended' });
+    assert.deepStrictEqual(again, ['  tool ignores: .eslintignore is tracked here - the block an earlier run added is left as it is']);
+    assert.deepStrictEqual(run(project({ '.eslintignore': 'dist/\n' })).record, { '.eslintignore': 'appended' }, 'without skipTracked the block still lands');
+});
+
 test('the stamp line reads back only the files the module knows, in the two shapes it writes', () =>
 {
     const f = path.join(TMP, 'stamp');

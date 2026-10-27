@@ -55,7 +55,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 71, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22)');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 71, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), and the two mode skills task-auto and habits-output-scorer became (2026-10-27)');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -256,13 +256,14 @@ test('respellRenamed (I2): the longest old name wins, and a shorter one inside i
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-// The 2.0.0 MCP rename: a generated rule names the servers the capture saw - their tool spellings (the
-// plugin form, or the bare one a copy-route registration answers) and each routing row's server. Those
-// follow the rename like a skill name does, so no seat is pointed at a tool that no longer resolves. The
-// spellings are built, never typed: lint 54 and 59 read this file.
+// A generated rule names the servers the capture saw - their tool spellings (the plugin form, or the bare one a copy-route
+// registration answers) and each routing row's server. Until 2.10.1 those followed the MCP renames like a skill name does;
+// the stack ships no server since, so none has a successor to follow, and an old name in a project file may be the
+// user's own add-back. The rule is left as written - the capture that wrote it rewrites it. The spellings are built,
+// never typed: lint 54 and 59 read this file.
 const pluginTool = (n, t) => `mcp__plugin_${n}_${n}__${t}`;
 const bareTool = (n, t) => `mcp_${'_'}${n}__${t}`;
-test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys follow the 2.0.0, 2.2.0 and 2026-10-13 renames straight to today\'s names, and a second run changes nothing', () =>
+test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys are left as written - no server ships since 2.10.1', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));
     try
@@ -274,49 +275,15 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
             `- \`playwright-firefox\` - registered: \`${bareTool('playwright-firefox', 'browser_snapshot')}\``,
             `- \`memory\` - \`${pluginTool('memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
             `- \`windows-desktop\` - first call: \`ToolSearch select:${pluginTool('windows-desktop', 'Snapshot')}\`; registered: \`${bareTool('macos-desktop', 'Snapshot')}\``,
-            '',
-        ].join('\n');
-        const after = [
-            '## MCP routing',
-            `- \`alfred-navigation\` - first call: \`ToolSearch select:${pluginTool('alfred-navigation', 'find_symbol')},${pluginTool('alfred-navigation', 'get_symbols_overview')}\``,
-            `- \`alfred-documentation\` - first call: \`ToolSearch select:${pluginTool('alfred-documentation', 'query-docs')}\``,
-            `- \`firefox-control\` - registered: \`${bareTool('firefox-control', 'browser_snapshot')}\``,
-            `- \`alfred-memory\` - \`${pluginTool('alfred-memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
-            `- \`windows-control\` - first call: \`ToolSearch select:${pluginTool('windows-control', 'Snapshot')}\`; registered: \`${bareTool('macos-control', 'Snapshot')}\``,
+            `- browser - \`${bareTool('playwright', 'browser_navigate')}\``,
             '',
         ].join('\n');
         write(dir, '.claude/rules/alfred-agent-awareness.md', before);
         const logs = [];
         const run = () => selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
-        const read = () => fs.readFileSync(path.join(dir, '.claude/rules/alfred-agent-awareness.md'), 'utf8');
-        assert.strictEqual(read(), after);
-        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/alfred-agent-awareness.md - 12 old MCP tool or server name(s) re-spelled to the new names']);
-        logs.length = 0;
-        run();
-        assert.strictEqual(read(), after, 'a second run changes nothing');
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude/rules/alfred-agent-awareness.md'), 'utf8'), before);
         assert.deepStrictEqual(logs, []);
-    }
-    finally { fs.rmSync(dir, { recursive: true, force: true }); }
-});
-
-// M46: before one server per engine the browser was ONE registration, `playwright`, and a generated rule written then
-// spells its tools under that one bare name; the rename table maps only the per-engine names, so that spelling was never
-// re-spelled. It follows to the first engine this project keeps (chrome when it keeps none).
-test('M46 respellRenamed: the single pre-per-engine browser spelling follows to the first kept engine', () =>
-{
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-pw-'));
-    try
-    {
-        const rule = '.claude/rules/alfred-agent-awareness.md';
-        write(dir, rule, `- browser - \`${bareTool('playwright', 'browser_navigate')}\`, \`${bareTool('playwright', 'browser_snapshot')}\`\n`);
-        const logs = [];
-        selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, engines: ['firefox', 'chrome'], log: (m) => logs.push(m), note: (m) => assert.fail(m) });
-        const text = fs.readFileSync(path.join(dir, rule), 'utf8');
-        assert.strictEqual(text, `- browser - \`${bareTool('firefox-control', 'browser_navigate')}\`, \`${bareTool('firefox-control', 'browser_snapshot')}\`\n`);
-        write(dir, rule, `\`${bareTool('playwright', 'browser_click')}\`\n`);
-        selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: () => {}, note: (m) => assert.fail(m) });
-        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), `\`${bareTool('chrome-control', 'browser_click')}\`\n`, 'no kept engine: chrome');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -325,77 +292,6 @@ test('respellRenamed (I2): no CLAUDE.md and no rules folder is nothing to do', (
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));
     try { assert.strictEqual(selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: (m) => assert.fail(m), note: (m) => assert.fail(m) }), 0); }
-    finally { fs.rmSync(dir, { recursive: true, force: true }); }
-});
-
-// A rule captured on the copy route before 2.1.0, as a project kept it through the renames: every server bare, the
-// browser's single `.playwright/output/`. Its screenshots landed at the repo root's `.playwright/output/` (2026-10-10).
-const STALE_ROWS = [
-    '## MCP routing',
-    `- \`alfred-memory\` - first call: \`ToolSearch select:\` plus the \`${bareTool('alfred-memory', '*')}\` names`,
-    `- \`chrome-control\` - Screenshots: omit \`filename\` (auto-names land in the registered output dir, \`.playwright/output/\`), or prefix an explicit name with \`.playwright/output/\`. first call: \`ToolSearch select:${bareTool('chrome-control', 'browser_snapshot')},${bareTool('chrome-control', 'browser_evaluate')}\``,
-    `- \`firefox-control\` - auto-names land in \`.playwright/firefox/output/\`. first call: \`ToolSearch select:${bareTool('firefox-control', 'browser_snapshot')}\``,
-    `- \`my-server\` - writes to \`.playwright/output/\`; \`${bareTool('my-server', 'run')}\` and \`${pluginTool('alfred-navigation', 'find_symbol')}\` stay`,
-    '',
-].join('\n');
-const FRESH_ROWS = [
-    '## MCP routing',
-    `- \`alfred-memory\` - first call: \`ToolSearch select:\` plus the \`${pluginTool('alfred-memory', '*')}\` names`,
-    `- \`chrome-control\` - Screenshots: omit \`filename\` (auto-names land in the registered output dir, \`.alfred/chrome-control/output/\`), or prefix an explicit name with \`.alfred/chrome-control/output/\`. first call: \`ToolSearch select:${pluginTool('chrome-control', 'browser_snapshot')},${pluginTool('chrome-control', 'browser_evaluate')}\``,
-    `- \`firefox-control\` - auto-names land in \`.alfred/firefox-control/output/\`. first call: \`ToolSearch select:${bareTool('firefox-control', 'browser_snapshot')}\``,
-    `- \`my-server\` - writes to \`.playwright/output/\`; \`${bareTool('my-server', 'run')}\` and \`${pluginTool('alfred-navigation', 'find_symbol')}\` stay`,
-    '',
-].join('\n');
-const OUTPUTS = { chrome: '.alfred/chrome-control/output/', firefox: '.alfred/firefox-control/output/' };
-
-test('respellMcpRows: a plugin server\'s bare tool names take the plugin spelling, a browser row its engine\'s output dir under the data root, and a second run changes nothing', () =>
-{
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-rows-'));
-    try
-    {
-        const rule = '.claude/rules/alfred-agent-awareness.md';
-        write(dir, rule, STALE_ROWS);
-        write(dir, '.claude/rules/my-browser-notes.md', STALE_ROWS);
-        const logs = [];
-        // firefox-control is registered bare (a copy-route pick or the project's own .mcp.json row): its names stay.
-        const run = () => selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory', 'chrome-control', 'alfred-navigation'], outputs: OUTPUTS, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
-        assert.strictEqual(run(), 6);
-        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), FRESH_ROWS);
-        assert.deepStrictEqual(logs, [
-            '  route: alfred-agent-awareness.md - 3 MCP tool name(s) re-spelled to the plugin spelling (mcp__plugin_<server>_<server>__) their servers answer to',
-            '  browser: alfred-agent-awareness.md - 3 output dir(s) re-stamped to the engine\'s dir under the data root',
-        ]);
-        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude/rules/my-browser-notes.md'), 'utf8'), STALE_ROWS, 'a rule of the project\'s own is never rewritten');
-        logs.length = 0;
-        assert.strictEqual(run(), 0);
-        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), FRESH_ROWS, 'a second run changes nothing');
-        assert.deepStrictEqual(logs, []);
-    }
-    finally { fs.rmSync(dir, { recursive: true, force: true }); }
-});
-
-test('respellMcpRows: nothing on the plugin route and no kept engine is nothing to do; no rules folder, an unreadable rule and CRLF lines are handled', POSIX_ONLY, () =>
-{
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-rows-'));
-    try
-    {
-        assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory'], outputs: OUTPUTS, log: (m) => assert.fail(m), note: (m) => assert.fail(m) }), 0, 'no rules folder');
-        const rule = '.claude/rules/alfred-agent-awareness.md';
-        write(dir, rule, STALE_ROWS);
-        assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, log: (m) => assert.fail(m), note: (m) => assert.fail(m) }), 0);
-        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), STALE_ROWS);
-        write(dir, rule, STALE_ROWS.split('\n').join('\r\n'));
-        selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory', 'chrome-control', 'alfred-navigation'], outputs: OUTPUTS, log: () => {}, note: (m) => assert.fail(m) });
-        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), FRESH_ROWS.split('\n').join('\r\n'), 'a CRLF rule keeps its line ends');
-        write(dir, rule, STALE_ROWS);
-        fs.chmodSync(path.join(dir, rule), 0o444);
-        const notes = [];
-        if (process.getuid && process.getuid() !== 0)
-        {
-            assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, plugin: ['chrome-control'], outputs: OUTPUTS, log: (m) => assert.fail(m), note: (m) => notes.push(m) }), 0);
-            assert.match(notes.join('\n'), /alfred-agent-awareness\.md names \d+ stale MCP tool name\(s\) or browser output dir\(s\) and could not be re-spelled .* re-run \/capture-awareness/);
-        }
-    }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -441,9 +337,9 @@ test('settings writer: a skillOverrides value already set under the new name win
     try
     {
         const file = path.join(dir, 'settings.json');
-        fs.writeFileSync(file, JSON.stringify({ skillOverrides: { 'project-first-look': 'off', 'capture-first-look': 'on' } }));
+        fs.writeFileSync(file, JSON.stringify({ skillOverrides: { 'project-quality-loop': 'off', 'loop-code-quality': 'on' } }));
         writeSettings({ file, renamed: RENAMED, log: () => {}, note: (m) => assert.fail(m) });
-        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, { 'capture-first-look': 'on' });
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, { 'loop-code-quality': 'on' });
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -1092,6 +988,9 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     {
         const rel = path.relative(ROOT, full).split(path.sep).join('/');
         if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'docs/ecc-comparison-2026-09-20.md' || rel === 'scripts/install-renames.test.js' || rel === 'scripts/fixtures/retired-rules.js') return;
+        // recorded transcripts are what a session wrote at the time, and the conformance readers match the name they hold
+        // (the stack-modes spec of 2026-10-27, AC10) - only that one old name, nowhere else
+        const recorded = /^scripts\/fixtures\/conformance\//.test(rel) || rel === 'scripts/conformance.test.js' || rel === 'meta/conformance.json';
         const buf = fs.readFileSync(full);
         if (buf.includes(0)) return;
         let text = buf.toString('utf8');
@@ -1100,6 +999,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
         {
             const found = line.match(old);
             if (!found) return;
+            if (recorded && found.every((n) => n === 'habits-output-scorer')) return;
             const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)` \|$/.exec(line);
             if (rel === 'setup-plugin/references/update-history.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
             hits.push(`${rel}:${i + 1}: ${found.join(', ')}`);
@@ -1138,17 +1038,17 @@ test('settings writer: at local scope an old skillOverrides key in settings.json
     {
         const sharedFile = path.join(dir, 'settings.json');
         const localFile = path.join(dir, 'settings.local.json');
-        const shared = { skillOverrides: { 'project-quality-loop': 'off', 'project-first-look': 'off', 'my-own-skill': 'off' } };
+        const shared = { skillOverrides: { 'project-quality-loop': 'off', 'project-architecture-quality-loop': 'off', 'my-own-skill': 'off' } };
         fs.writeFileSync(sharedFile, JSON.stringify(shared));
-        fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'capture-first-look': 'on' } }));
+        fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'loop-architecture-quality': 'on' } }));
         const logs = [];
         const opts = { file: localFile, renamed: RENAMED, inheritedOverrides: shared.skillOverrides, note: (m) => assert.fail(m) };
         writeSettings({ ...opts, log: (m) => logs.push(m) });
-        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'capture-first-look': 'on', 'loop-code-quality': 'off' }, 'the user\'s switch-off stopped applying');
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'loop-architecture-quality': 'on', 'loop-code-quality': 'off' }, 'the user\'s switch-off stopped applying');
         assert.deepStrictEqual(JSON.parse(fs.readFileSync(sharedFile, 'utf8')), shared, 'settings.json is never written at local scope');
         const text = logs.join('\n');
         assert.match(text, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-code-quality in settings\.local\.json; a local-scope run never writes settings\.json, a project-scope update re-keys it/);
-        assert.doesNotMatch(text, /project-first-look/, 'a new name the local file already sets wins, silently');
+        assert.doesNotMatch(text, /project-architecture-quality-loop/, 'a new name the local file already sets wins, silently');
         const before = fs.readFileSync(localFile, 'utf8');
         const again = [];
         writeSettings({ ...opts, log: (m) => again.push(m) });

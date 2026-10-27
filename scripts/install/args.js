@@ -11,16 +11,14 @@
 // the next run as a deliberate choice, and nothing downstream can tell the difference.
 //
 // An empty string is not a default. It means 'not given', and a later rule decides - the docs
-// versioning from the absent-only seed, the memory level from what is already registered. Collapsing that into a default here would silently
-// overwrite a project's own answer on every update.
+// versioning from the absent-only seed. Collapsing that into a default here would silently overwrite a project's own
+// answer on every update.
 
 const ENUMS = {
     scope: { values: ['', 'project', 'user', 'local'], text: "--scope must be 'project', 'user' or 'local'" },
     docsVersioning: { values: ['', 'git', 'local'], text: "--docs-versioning must be 'git' or 'local'" },
-    memoryLevel: { values: ['', 'global', 'scoped', 'project'], text: "--memory-level must be 'global', 'scoped' or 'project'" },
-    // The answer to the data move (docs.dataOffer): 'move' carries the docs, the navigation server's
-    // folder, the browser profiles and a project-level memory database under the data root; 'keep' leaves
-    // the layout as it is and no later update offers again. Not given, nothing moves. `--docs-move` is the
+    // The answer to the data move (docs.dataOffer): 'move' carries the secrets file under the data root;
+    // 'keep' leaves it where it is and no later update offers again. Not given, nothing moves. `--docs-move` is the
     // 2.0.0 spelling, read for one release.
     dataMove: { values: ['', 'move', 'keep'], text: "--data-move must be 'move' or 'keep'" },
     // The answer to update's docs-move ask (docs.docsMovePlan `handSet`, 2.8.0): a docs root the user set by hand moves
@@ -30,6 +28,8 @@ const ENUMS = {
     // Compact instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, settings.js applyEnv): setup's screen-B
     // answer, written over the value already there. Not given, the absent-only seed (`0`) stands.
     autoCompact: { values: ['', 'on', 'off'], text: "--auto-compact must be 'on' or 'off'" },
+    // 'docs' joins once the docs memory mode ships (spec P3).
+    memory: { values: ['', 'default', 'custom'], text: "--memory must be 'default' or 'custom'" },
     // Where the project's instruction files (AGENTS.md, CLAUDE.md) live - init's and configure's answer: a seed is written
     // there and a file at the other place moves (seeds.placeInstructionFiles). Not given, nothing moves and a seed goes to
     // .claude/.
@@ -43,23 +43,16 @@ const ENUMS = {
     instructionsSeed: { values: ['', 'keep', 'remove'], text: "--instructions-seed must be 'keep' or 'remove'" },
 };
 
-// ONE canonical order, so a server list never depends on how the flag was typed.
-const { ENGINES: PW_ENGINES } = require('../../stack/mcp/data-root.js');
-
 const VALUED = new Map([
-    ['--space', 'space'], ['--scope', 'scope'],
-    ['--browsers', 'playwrightBrowsersRaw'], ['--browser-enabled', 'playwrightEnabledRaw'],
-    // The pre-2.0.0 spellings (the playwright -> browser rename), read for one release: a command body
-    // from before it still passes them. Never beside the new spelling of the same flag.
-    ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
-    ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
-    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'],
+    ['--scope', 'scope'],
+    ['--docs-versioning', 'docsVersioning'],
+    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'], ['--memory', 'memory'],
     ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'], ['--instructions-seed', 'instructionsSeed'],
-    ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
+    ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'], ['--parent-plan', 'parentPlan'],
 ]);
 
 const BOOLEAN = new Map([
-    ['--github-cli', 'githubCli'], ['--keep-pins', 'keepPins'],
+    ['--forge-cli', 'forgeCli'], ['--keep-pins', 'keepPins'],
     ['--installed-only', 'installedOnly'], ['--print-plan', 'printPlan'], ['--skills-only', 'skillsOnly'],
 ]);
 
@@ -72,16 +65,30 @@ const REMOVED = new Map([
     ['--sentry-auth', 'the sentry server left the stack'],
 ]);
 
+// The flags 2.10.1 took out with the servers they configured (the stack ships no MCP server): ACCEPTED with their
+// value and ignored, one line each (`ignored`, which the installer logs) - not refused like the 2.0.0 ones, because a
+// session started before the update still runs the older command body, which passes them to this snapshot's installer.
+const RETIRED_FLAGS = new Map([
+    ['--memory-level', 'the memory server left the stack'],
+    ['--browsers', 'the browser servers left the stack'],
+    ['--browser-enabled', 'the browser servers left the stack'],
+    ['--playwright-browsers', 'the browser servers left the stack'],
+    ['--playwright-enabled', 'the browser servers left the stack'],
+]);
+
 // 2.2.0: the OPTIONAL items, each installed at its own scope - global (the CLI's `user`, every project on the
 // account), this project (the run's own scope; `project` when the run is a user-scope one) or local (this checkout
-// alone). Never managed: no run installs there. The required ones - the core and the three alfred- servers -
-// follow --scope. `browser` names every engine at once.
-const SCOPED_ITEMS = [...PW_ENGINES.map((e) => `${e}-control`), 'windows-control', 'macos-control', 'mobile-control', 'typescript-lsp', 'csharp-lsp', 'claude-hud'];
+// alone). Never managed: no run installs there. The core follows --scope.
+const SCOPED_ITEMS = ['typescript-lsp', 'csharp-lsp', 'claude-hud'];
+// The servers that took a scope of their own until 2.10.1 (and the three that followed --scope): an older walk still passes
+// `--scope-of <server>=...`, so the line is ignored like a retired flag, never refused.
+const RETIRED_SCOPED = new Set(['browser', 'chrome-control', 'msedge-control', 'firefox-control', 'webkit-control',
+    'windows-control', 'macos-control', 'mobile-control', 'alfred-navigation', 'alfred-documentation', 'alfred-memory']);
 const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
-const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
+const ALIASES = new Map([['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --instructions-seed, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
+const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -98,11 +105,11 @@ const lower = (v) => String(v ?? '').toLowerCase();
 function parseArgs(argv)
 {
     const out = {
-        action: '', space: '', scope: '',
-        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
-        selection: '', source: '', planOut: '',
-        githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
-        add: [], drop: [], scopeOf: {},
+        action: '', scope: '',
+        docsVersioning: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
+        selection: '', source: '', planOut: '', parentPlan: '',
+        forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
+        add: [], drop: [], scopeOf: {}, ignored: [],
     };
 
     const given = new Set();
@@ -114,6 +121,12 @@ function parseArgs(argv)
 
         if (REMOVED.has(name)) fail(`${name} was removed in 2.0.0 - ${REMOVED.get(name)}; drop the flag`);
         if (BOOLEAN.has(name) && name === arg) { out[BOOLEAN.get(name)] = true; continue; }
+        if (RETIRED_FLAGS.has(name))
+        {
+            if (!(eq > -1 && name !== arg)) i++;
+            out.ignored.push(`${name} ignored - ${RETIRED_FLAGS.get(name)} in 2.10.1`);
+            continue;
+        }
 
         // Repeatable: each --add is an item the user said yes to, each --drop one they switched off,
         // on top of what the install reads back.
@@ -131,10 +144,10 @@ function parseArgs(argv)
             const value = lower(eq > -1 && name !== arg ? arg.slice(eq + 1) : argv[++i]).trim();
             const m = SCOPE_OF.exec(value);
             if (!m) fail(`--scope-of takes '<item>=<global|project|local>' (got '${value}')`);
-            const items = m[1] === 'browser' ? PW_ENGINES.map((e) => `${e}-control`) : [m[1]];
-            if (!items.every((n) => SCOPED_ITEMS.includes(n)))
-                fail(`--scope-of: '${m[1]}' has no scope of its own - one of browser, ${SCOPED_ITEMS.join(', ')}; the core and the alfred- servers follow --scope`);
-            for (const n of items) out.scopeOf[n] = m[2] === 'project' || m[2] === 'local' ? m[2] : 'user';
+            if (RETIRED_SCOPED.has(m[1])) { out.ignored.push(`--scope-of ${m[1]} ignored - the server left the stack in 2.10.1`); continue; }
+            if (!SCOPED_ITEMS.includes(m[1]))
+                fail(`--scope-of: '${m[1]}' has no scope of its own - one of ${SCOPED_ITEMS.join(', ')}; the core follows --scope`);
+            out.scopeOf[m[1]] = m[2] === 'project' || m[2] === 'local' ? m[2] : 'user';
             continue;
         }
 
@@ -165,14 +178,8 @@ function parseArgs(argv)
         if (out[flag].length && !out.installedOnly) fail(`--${flag} needs --installed-only - a walk writes its picks into the --selection file`);
     if (out.planOut && !out.printPlan) fail('--plan-out needs --print-plan - it writes the inventory the plan prints');
 
-    // --space is baked into a path (~/.claude-<space>, memory_<space>.db), so its characters are
-    // checked here rather than discovered as a broken directory name later. Its CASING is
-    // significant - it names a directory - which is why it is the one value not lower-cased.
-    if (out.space && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(out.space))
-        fail(`--space '${out.space}' must start alphanumeric; chars [A-Za-z0-9._-]`);
-
     // I3 (R47): the flag, else '' - NOT a default of 'project' here, the same 'an empty string means
-    // not given' rule this file's own header states for docsVersioning and memoryLevel. `update` without
+    // not given' rule this file's own header states for docsVersioning. `update` without
     // it takes the scope the LAST install actually used, from the stamp's own `scope:` line
     // (alfred-code.js, once it has read the stamp); an `install` (nothing to read yet) resolves '' to
     // 'project' right there too. Collapsing to 'project' HERE, before that stamp read, is exactly the
@@ -183,16 +190,16 @@ function parseArgs(argv)
     // and it is aliased here so nothing downstream ever sees a fourth spelling.
     if (out.scope === 'global') out.scope = 'user';
     out.docsVersioning = lower(out.docsVersioning);
-    out.memoryLevel = lower(out.memoryLevel);
     out.dataMove = lower(out.dataMove);
     out.docsRootMove = lower(out.docsRootMove);
     out.autoCompact = lower(out.autoCompact);
+    out.memory = lower(out.memory);
     out.instructionsAt = lower(out.instructionsAt);
     out.instructionsFile = lower(out.instructionsFile);
     out.instructionsSeed = lower(out.instructionsSeed);
     if (out.instructionsSeed && out.action !== 'uninstall') fail('--instructions-seed is uninstall\'s answer - install and update never remove the seed');
     // The data root is a folder INSIDE the project (stack/mcp/data-root.js checkDataPath says what is refused
-    // and why) - refused here, before a path that would prompt, escape the project or break a server lands.
+    // and why) - refused here, before a path that would prompt or escape the project lands.
     if (out.dataPath)
     {
         const checked = require('../../stack/mcp/data-root.js').checkDataPath(out.dataPath);
@@ -209,48 +216,7 @@ function parseArgs(argv)
     if (out.docsRootLeave.some((n) => /[\\/]/.test(n) || n === '.' || n === '..'))
         fail('--docs-root-leave names top-level entries of the old docs root, comma-separated (architecture/,decisions/)');
 
-    // R29 (T16) / I5 (R47) / C10: the memory db path is resolved PER PROJECT by the PLUGIN launcher (it
-    // reads the CURRENT project's settings at launch, never a value baked into the registration), and
-    // the FULL copy route - the one route that registers memory itself - registers it in THIS project's
-    // .mcp.json at every scope (mcp.registrationScope). So `--memory-level project` is safe at every
-    // CLI scope, and nothing here or in alfred-code.js refuses it.
-    out.playwrightBrowsers = [];
-    if (out.playwrightBrowsersRaw)
-    {
-        const want = lower(out.playwrightBrowsersRaw).split(',').map((s) => s.trim()).filter(Boolean);
-        for (const engine of want)
-            if (!PW_ENGINES.includes(engine))
-                fail(`--browsers takes chrome, msedge, firefox, webkit (got '${engine}')`);
-        out.playwrightBrowsers = PW_ENGINES.filter((e) => want.includes(e));
-        // A value that names no engine at all (`,`) is a typo, never 'no flag'.
-        if (!out.playwrightBrowsers.length)
-            fail('--browsers needs at least one of chrome, msedge, firefox, webkit');
-    }
-    delete out.playwrightBrowsersRaw;
-
-    // Which of the installed engines to ENABLE (R67): a csv, `all` or `none`. Absent is null - 'not
-    // asked', which the run reads as every engine on for a fresh install and no flip on an update.
-    out.playwrightEnabled = null;
-    if (out.playwrightEnabledRaw)
-    {
-        const want = lower(out.playwrightEnabledRaw).split(',').map((s) => s.trim()).filter(Boolean);
-        const word = want.filter((w) => w === 'all' || w === 'none');
-        if (word.length && want.length > 1) fail('--browser-enabled takes all or none ALONE, never beside an engine');
-        if (!want.length) fail('--browser-enabled needs all, none, or at least one of chrome, msedge, firefox, webkit');
-        for (const engine of want)
-            if (!word.length && !PW_ENGINES.includes(engine))
-                fail(`--browser-enabled takes all, none, or chrome, msedge, firefox, webkit (got '${engine}')`);
-        out.playwrightEnabled = word[0] === 'all' ? 'all' : PW_ENGINES.filter((e) => want.includes(e));
-        // Beside an explicit install set it is checked here; without one, the run checks it against
-        // the set it resolves, before anything is written.
-        const outside = Array.isArray(out.playwrightEnabled) && out.playwrightBrowsers.length
-            ? out.playwrightEnabled.filter((e) => !out.playwrightBrowsers.includes(e)) : [];
-        if (outside.length)
-            fail(`--browser-enabled names ${outside.join(',')}, which --browsers does not install (${out.playwrightBrowsers.join(',')}) - enable only an engine being installed`);
-    }
-    delete out.playwrightEnabledRaw;
-
     return out;
 }
 
-module.exports = { parseArgs, PW_ENGINES, FLAG_LIST, ENUMS, SCOPED_ITEMS };
+module.exports = { parseArgs, FLAG_LIST, ENUMS, SCOPED_ITEMS };

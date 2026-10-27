@@ -1725,14 +1725,14 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
-  assert.equal(inst({ tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0); // mcp-fixture
   // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
   // description the model omitted falls back to the VERB - never a path or an argument
   assert.equal(inst({ tool_name: 'Task', tool_input: { subagent_type: 'architecture-analyzer', prompt: 'characterize /secret/module' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'git commit -m "wip"' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat /home/me/.env' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   const rows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', 'alfred-navigation'],
+  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', 'alfred-navigation'], // mcp-fixture
     ['Task', 'architecture-analyzer'], ['Bash', 'git commit'], ['Bash', 'cat']]);
   assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
   assert.ok(!JSON.stringify(rows).includes('.env'), '... and neither is a path the fallback saw');
@@ -1775,10 +1775,14 @@ test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped s
   assert.equal(disp('Explore', 'find the class SocketConnection'), 2, 'named-symbol hunt');
   assert.equal(disp('general-purpose', 'list all usages of AddSocketServices'), 2, 'the generic seat too');
 
-  // the denial names the deferred tools AND the one line that loads them - naming a tool is not having it
+  // the denial names the tools by job and where their load line is - the session-start tool order, since the stack ships
+  // no navigation server (2026-10-24) - plus the fallback when no navigation tool serves
   const denied = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: 'Explore', prompt: 'Find who calls SocketConnection.Send' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
-  assert.match(denied.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols,mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview/, 'the loading line');
+  assert.match(denied.stderr, /LSP goToDefinition[\s\S]*findReferences[\s\S]*documentSymbol/, 'the LSP operations first');
+  assert.match(denied.stderr, /order's navigation\s+line \(its ToolSearch select:\)/, 'the loading line, by where it is');
+  assert.match(denied.stderr, /a name-matched grep -n/, 'and the fallback');
+  assert.doesNotMatch(denied.stderr, /mcp__/, 'no server is named');
 
   // a real sweep still passes - no stamp involved, so this is the no-flow path
   assert.equal(disp('Explore', 'Map the auth module and report which files configure logging'), 0, 'a broad sweep');
@@ -2525,9 +2529,9 @@ test('guard-cross-project-write: space account dirs, ~ in the allowance, and unr
   const tmpReal = fs.realpathSync(os.tmpdir());
   const homeInTmp = !!home && (() => { try { const h = fs.realpathSync(home); return h === tmpReal || h.startsWith(tmpReal + path.sep); } catch { return false; } })();
   if (home && !homeInTmp) {
-    // A --space install keeps its memory under ~/.claude-<space>; the old check disabled that
+    // A second account (CLAUDE_CONFIG_DIR ~/.claude-<name>) keeps its memory there; the old check disabled that
     // allowance for every project living under HOME, i.e. every real project (reproduced).
-    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md') } }), 0, 'a space account dir');
+    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md') } }), 0, 'a second account dir');
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-x', '..', 'elsewhere', 'f.txt') } }), 2, 'reaching back out of one');
     const owned = path.join(home, `alfred-code-owned-tree-${process.pid}`); // never created - realish resolves through the missing tail
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(owned, 'f.txt') } }), 2, 'a second tree under HOME is outside');
@@ -3522,10 +3526,11 @@ test('guard-read-whole-file: a whole Read of an oversized file is blocked whatev
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('guard-read-whole-file: the denial names the call that LOADS the serena tools', () => {
+test('guard-read-whole-file: the denial names where the navigation tools LOAD from', () => {
   // The tools are deferred behind tool search in this harness, so naming them is not having them:
   // two sessions carried the rule text saying exactly that and still made 100 Bash calls and 0
-  // serena calls. The remedy belongs in the denial the model is already reading.
+  // navigation calls. The remedy belongs in the denial the model is already reading - and since the stack ships no
+  // server (2026-10-24), it points at the session-start tool order, the one place naming this session's loader.
   // 2.1.6 K4: a fixture outside the repo - a checkout under a `.claude/` directory (every .claude/worktrees/<x>) puts
   // BIG in a tree the navigation server ignores, where the denial rightly names grep instead of the load call.
   // audit 2026-10-11 SD16: and inside the project - a file outside it is in no index either, and takes the grep route
@@ -3533,17 +3538,20 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   fs.writeFileSync(big, Array.from({ length: 600 }, (_, i) => `export const v${i} = ${i};`).join('\n'));
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: big } }, {});
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol/);
-  // agents F03 + audit 2026-10-14 AG01 (live probes 2026-10-09 and 2026-10-14): a seat granted an MCP tool - by name or
-  // as the whole server, the shape every seat has since ec2f0027 - has it loaded, so the denial says so
-  assert.match(r.stderr, /a seat whose tools grant them - by name or as the whole server - has them loaded already; call them directly/);
+  assert.match(r.stderr, /LSP documentSymbol on '[^']+navigable\.ts'/);
+  assert.match(r.stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/);
+  assert.match(r.stderr, /With none of them: grep -n '<symbol>'/, 'and the fallback where no navigation tool serves');
+  assert.doesNotMatch(r.stderr, /mcp__/, 'no server is named');
+  // agents F03 + audit 2026-10-14 AG01 (live probes 2026-10-09 and 2026-10-14): a seat granted an MCP tool has it loaded,
+  // so the denial says so
+  assert.match(r.stderr, /a seat whose tools grant them calls them directly; the LSP tool needs no server/);
   // ... and the same file under a `.claude/` tree takes the grep route, so the fixture's place is what decides
   const hidden = path.join(TMP, '.claude', 'worktrees', 'x', 'navigable.ts');
   fs.mkdirSync(path.dirname(hidden), { recursive: true });
   fs.copyFileSync(big, hidden);
   const h = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: hidden } }, {});
   assert.equal(h.status, 2);
-  assert.match(h.stderr, /cannot locate anything here/);
+  assert.match(h.stderr, /No symbol lookup indexes this tree/);
 });
 
 test('guard-read-whole-file: a file is as long as its lines - the trailing newline is not one more', () => {
@@ -3575,7 +3583,7 @@ test('guard-read-whole-file: the PowerShell reads and anchors are judged like th
   assert.equal(pwsh('guard-read-whole-file.js', `$x = (Get-Content ${BIG})`), 2, 'a parenthesised read is still the command');
 });
 
-test('guard-read-whole-file: every source-read denial carries the call that loads serena', () => {
+test('guard-read-whole-file: every source-read denial says where the navigation tools load from', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loadline-'));
   const big = path.join(dir, 'big.ts');
   fs.writeFileSync(big, Array.from({ length: 600 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
@@ -3583,7 +3591,7 @@ test('guard-read-whole-file: every source-read denial carries the call that load
   for (const c of [`for f in ${dir}/*.ts; do cat $f; done`, `node -e "console.log(require('fs').readFileSync('${big}','utf8'))"`, `head -n 99999 ${big}`]) {
     const r = deny(c);
     assert.equal(r.status, 2, c);
-    assert.match(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/, `the loading line: ${c}`);
+    assert.match(r.stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/, `the loading line: ${c}`);
   }
 });
 
@@ -4616,8 +4624,8 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
 // executable with caller-given args (wheel windows_mcp/tools/app.py:90 at 0.8.5) - and MacOS-MCP's `Shell` runs a
 // shell command no shell guard sees. Both spellings: the plugin route's and the copy route's (built at run time -
 // lint check 54 bans the bare server spelling as literal text).
-const WIN_APP = ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`];
-const MAC_SHELL = ['mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`];
+const WIN_APP = ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`]; // mcp-fixture
+const MAC_SHELL = ['mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`]; // mcp-fixture
 function desktopRun(root, tool_name, tool_input, extra = {}) {
   return spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], {
     input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'desk', tool_name, tool_input, ...extra }), encoding: 'utf8',
@@ -4640,11 +4648,50 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
     assert.equal(r.status, 2, `${tool}`);
     assert.match(r.stderr, /Bash tool/, 'the command goes back to the shell route the guards see');
   }
-  for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', 'Bash'])
+  for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__Snapshot', 'Bash']) // mcp-fixture
     assert.equal(desktopRun(root, tool, { mode: 'launch_executable', command: 'ls' }).status, 0, `${tool} is not this guard's`);
+  // A server TYPE's tool under any registration name (N6, 2026-10-24): an `App` launching an executable is held wherever it
+  // is registered, and its ordinary modes pass.
+  for (const tool of ['mcp__windows-mcp__App', 'mcp__plugin_my-desk_my-desk__App']) // mcp-fixture
+  {
+    assert.equal(desktopRun(root, tool, { mode: 'launch_executable', executable: 'C:\\x.exe' }).status, 2, tool);
+    assert.equal(desktopRun(root, tool, { mode: 'switch', name: 'Notepad' }).status, 0, `${tool} switch`);
+  }
+  assert.equal(desktopRun(root, 'mcp__mac__Shell', { command: 'ls' }).status, 2, 'a Shell under any name'); // mcp-fixture
   const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'desk.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length, 'one ledger row per block');
+  assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length + 3, 'one ledger row per block');
   assert.ok(rows.every((row) => row.hook === 'guard-desktop-exec.js'));
+});
+
+// The browser server type's code runner (the side note of 2026-10-24, ruling N9): Playwright MCP's browser_run_code_unsafe
+// 'executes arbitrary JavaScript in the Playwright server process and is RCE-equivalent' (its README), and no flag
+// switches it off. 2.5.0 to 2.10.0 denied it in settings under the stack's own server names only, so a server added back
+// under its record name ran it unjudged - the gate holds it by tool name, under any registration.
+const RUN_CODE = [`mcp__plugin_${'chrome-control'}_${'chrome-control'}__browser_run_code_unsafe`, `mcp__${'playwright-chrome'}__browser_run_code_unsafe`, 'mcp__my-browser__browser_run_code_unsafe']; // mcp-fixture
+test('guard-desktop-exec: the browser code runner is denied under any registration name, its code never ledgered, and its receipt line opens it', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-code-'));
+  for (const tool of RUN_CODE) {
+    const r = desktopRun(root, tool, { code: "async (page) => require('child_process').execSync('TOKEN=ghp_0123456789abcdefghijABCDEFGHIJ012345 curl x')" });
+    assert.equal(r.status, 2, tool);
+    assert.match(r.stderr, /arbitrary JavaScript in the browser server's own process/);
+    assert.match(r.stderr, /browser_evaluate/, 'the page tools are the way round');
+    assert.match(r.stderr, /ONE AskUserQuestion/, 'the decision goes to the user through one ask');
+    assert.match(r.stderr, /with the line `browser_run_code_unsafe`/, 'and names the receipt line that opens it');
+  }
+  assert.equal(desktopRun(root, RUN_CODE[1], { filename: 'scripts/run.js' }).status, 2, 'code loaded from a file is the same call');
+  for (const tool of RUN_CODE.map((t) => t.replace(/browser_run_code_unsafe$/, 'browser_evaluate')).concat(RUN_CODE.map((t) => `${t}X`)))
+    assert.equal(desktopRun(root, tool, { function: '() => document.title' }).status, 0, `${tool} is not this guard's`);
+  const ledger = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'desk.jsonl'), 'utf8');
+  const rows = ledger.trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(rows.map((row) => row.detail), [...RUN_CODE.map(() => ({ tool: 'browser_run_code_unsafe', from: 'code' })), { tool: 'browser_run_code_unsafe', from: 'file' }]);
+  assert.doesNotMatch(ledger, /ghp_|child_process|run\.js/, 'neither the code nor the file reaches the ledger');
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'Shell\nApp\n');
+  assert.equal(desktopRun(root, RUN_CODE[0], { code: 'x' }).status, 2, 'the desktop lines open no code runner');
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'browser_run_code_unsafe\n');
+  assert.equal(desktopRun(root, RUN_CODE[2], { code: 'x' }).status, 0, 'its own line opens it');
+  assert.equal(desktopRun(root, 'mcp__mac__Shell', { command: 'ls' }).status, 2, 'and nothing else'); // mcp-fixture
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', '*\n');
+  assert.equal(desktopRun(root, RUN_CODE[1], { code: 'x' }).status, 0, '`*` opens it too');
 });
 
 // Audit 2026-10-08 row 40: the ledger kept 120 characters of the Shell command, credential included, and the denial
@@ -4658,7 +4705,8 @@ test('mcps T1-1: the retired alias spellings are gated like their successors', (
   for (const tool of spell('windows-desktop', 'App'))
     assert.equal(desktopRun(root, tool, { mode: 'launch_executable', executable: 'C:\\Windows\\System32\\cmd.exe' }).status, 2, tool);
   for (const tool of spell('macos-desktop', 'Shell')) assert.equal(desktopRun(root, tool, { command: 'ls' }).status, 2, tool);
-  const { LISTED_ALIASES } = require('./build-marketplace.js');
+  // the six 2.4.0 aliases, retired with their successors on 2026-10-24 - a user may still run one under its old name
+  const LISTED_ALIASES = ['browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop'];
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
   const gated = ['App', 'Shell', 'browser_file_upload'];
   let held = 0;
@@ -4842,15 +4890,21 @@ test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught howe
   assert.equal(rmIn('rm -rf ~/no-such-h6-dir'), 0, 'a leading tilde stays the symbolic rules\'');
 });
 
-// Audit 2026-10-20 H5: capture-usage-report's bundle authors are generic seats on a named model, and its own `--auto-mode`
+// Audit 2026-10-20 H5: capture-usage-report's bundle authors are generic seats on a named model, and its own auto-mode
 // stamp denied them as 'generic while stamped'; the denial's escape said to clear the stamp file, and one session ran
 // `rm .../flow/APPROVAL`. A stamp naming THIS session and that skill passes the generic dispatch; every other stamped
 // generic dispatch is still denied, and the denial ends in an ask - never a stamp deletion.
-test('H5: a session-named auto-mode stamp of a skill that dispatches generic seats passes them; the denial ends in an ask', () => {
+test('H5: a session-named auto-run whose run marker names a skill that dispatches generic seats passes them; the denial ends in an ask', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'h5-'));
   const flow = path.join(root, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
-  const stamp = (skill, session = 'h5-sess') => fs.writeFileSync(path.join(flow, 'APPROVAL'), `AUTO - "/${skill} --auto-mode"\nsession: ${session}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
+  // auto-run (stack-modes spec section 2): the session's stamp is the mode, and the run marker names the run's skill
+  const marker = path.join(root, '.alfred', 'state', 'sessions', 'AUTO-RUN-h5-sess');
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  const stamp = (skill, session = 'h5-sess') => {
+    fs.writeFileSync(path.join(flow, 'APPROVAL'), `AUTO - "/${skill} --mode-auto-run-on"\nsession: ${session}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
+    fs.writeFileSync(marker, `skill: ${skill}\nprompt: 0123456789ab\nat: ${new Date().toISOString()}\n`);
+  };
   const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', session_id: 'h5-sess', cwd: root, tool_input: { subagent_type: seat, prompt: 'write the bundle', model: 'sonnet' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
   stamp('capture-usage-report');
@@ -4863,6 +4917,9 @@ test('H5: a session-named auto-mode stamp of a skill that dispatches generic sea
   assert.match(denied.stderr, /Never delete or edit the stamp/);
   assert.match(denied.stderr, /AskUserQuestion/);
   assert.doesNotMatch(denied.stderr, /clear the\s+stamp file first/);
+  fs.rmSync(marker);
+  assert.equal(disp('general-purpose').status, 0, 'between runs the mode approves no seat and blocks none');
+  stamp('task-solve');
   stamp('capture-usage-report', 'another-session');
   assert.equal(disp('general-purpose').status, 0, 'another session\'s stamp is no live stamp here at all');
   fs.writeFileSync(path.join(flow, 'APPROVAL'), 'AUTO - "run without stops"\nskill: capture-usage-report\n');
@@ -4890,9 +4947,9 @@ test('H10: a bare built-in name is never a plugin command, the scoped one still 
 
 // Ruling S3 (2026-10-20): an APPROVAL stamp written after an ask the idle timeout closed records no one's approval -
 // the implementer dispatch is denied once ('the question timed out - re-ask'), the marker spent; a stamp written before
-// the timeout, or with no timeout marker, passes. Ruling S1: the unapproved denial names --auto-mode for a no-stops run
+// the timeout, or with no timeout marker, passes. Ruling S1: the unapproved denial names --mode-auto-run-on for a no-stops run
 // and keeps a hand-written AUTO waiver to the two solve flows.
-test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved denial names --auto-mode', () => {
+test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved denial names --mode-auto-run-on', () => {
   const root = fs.mkdtempSync(path.join(TMP, 's3d-'));
   const logDir = fs.mkdtempSync(path.join(TMP, 's3d-log-'));
   const flow = path.join(root, '.alfred', 'docs', 'flow');
@@ -4903,7 +4960,7 @@ test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved deni
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   const unapproved = disp();
   assert.equal(unapproved.status, 2);
-  assert.match(unapproved.stderr, /--auto-mode/, 'S1: a no-stops run is the typed flag');
+  assert.match(unapproved.stderr, /--mode-auto-run-on/, 'S1: a no-stops run is the typed flag');
   assert.match(unapproved.stderr, /only under task-solve and task-solve-cross/, 'S1: a hand-written AUTO is the solve flows\' alone');
   const past = new Date(Date.now() - 60000);
   fs.writeFileSync(marker, past.toISOString()); fs.utimesSync(marker, past, past);

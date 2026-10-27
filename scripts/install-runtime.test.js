@@ -146,6 +146,19 @@ test('install-runtime: resolveWin walks PATH in order, each entry through PATHEX
     assert.strictEqual(resolveWin('x.cmd', { Path: '"C:\\Program Files\\t";C:\\u' }, files('C:\\Program Files\\t\\x.cmd').isFile), 'C:\\Program Files\\t\\x.cmd');
 });
 
+test('install-runtime: resolveWin takes an absolute path as it stands - process.execPath, a --claude path - and through PATHEXT when it has no extension', () =>
+{
+    // The workspace cascade, the parent read-back and check-loads --claude name their command by full path: joined onto
+    // each PATH entry it was never found, and every one failed on Windows (the release 1 matrix, Windows 11 VM).
+    const node = files('C:\\Program Files\\nodejs\\node.exe');
+    assert.strictEqual(resolveWin('C:\\Program Files\\nodejs\\node.exe', { PATH: 'C:\\bin' }, node.isFile), 'C:\\Program Files\\nodejs\\node.exe');
+    assert.strictEqual(resolveWin('C:\\Program Files\\nodejs\\node.exe', {}, node.isFile), 'C:\\Program Files\\nodejs\\node.exe', 'no PATH needed');
+    assert.ok(!node.seen.some((p) => p.startsWith('C:\\bin')), 'no PATH entry is tried for a full path');
+    assert.strictEqual(resolveWin('C:\\u\\claude', { PATH: 'C:\\bin' }, files('C:\\u\\claude', 'C:\\u\\claude.cmd').isFile), 'C:\\u\\claude.cmd', 'the sh shim beside it is never the one');
+    assert.strictEqual(resolveWin('\\\\Mac\\share\\claude.exe', {}, files('\\\\Mac\\share\\claude.exe').isFile), '\\\\Mac\\share\\claude.exe', 'a UNC path too');
+    assert.strictEqual(resolveWin('C:\\gone\\node.exe', { PATH: 'C:\\bin' }, files('C:\\bin\\node.exe').isFile), '', 'a full path that is not there is not found elsewhere');
+});
+
 test('install-runtime: resolveWin never looks in the current directory - an empty or relative PATH entry is skipped (M5)', () =>
 {
     const here = files('claude.cmd', '.\\claude.cmd', path.win32.join(process.cwd(), 'claude.cmd'), 'bin\\claude.cmd');
@@ -286,7 +299,7 @@ test('install-runtime: unrunnable names the path and the error when the CLI cann
 const STUB_HEAD = ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"', 'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi'];
 const bangLines = (out) => out.split('\n').filter((l) => l.includes('!!'));
 
-test('install-runtime: the seed with a claude it finds but cannot run says so ONCE and skips the plugin and MCP layers', POSIX_ONLY, () =>
+test('install-runtime: the seed with a claude it finds but cannot run says so ONCE and skips the plugin layer', POSIX_ONLY, () =>
 {
     // The posix twin of the Windows failure: on PATH and executable, but its interpreter is missing,
     // so every spawn fails ENOENT exactly as spawnSync('claude') did on the VM. PATH holds nothing
@@ -311,19 +324,17 @@ test('install-runtime: the seed with a claude it finds but cannot run says so ON
     });
     const loud = run.out.split('\n').filter((l) => /could not be run/.test(l));
     assert.strictEqual(loud.length, 1, run.out);
-    assert.match(loud[0], /!! claude found at \S+\/bin\/claude but could not be run: .*ENOENT - the plugin and MCP layers were skipped/);
+    assert.match(loud[0], /!! claude found at \S+\/bin\/claude but could not be run: .*ENOENT - the plugin layer was skipped$/);
     assert.doesNotMatch(run.out, /not on PATH|plugin \S+ failed|mcp \S+ failed/);
     assert.strictEqual(run.result, true, 'the file layers still land');
     assert.deepStrictEqual(outside, [], 'PATH reaches past the sandbox');
 });
 
-test('install-runtime: the seed prints a line for a failed marketplace refresh and a failed mcp remove, and none for an absent server', POSIX_ONLY, () =>
+test('install-runtime: the seed prints a line for a failed marketplace refresh and a failed plugin install, and makes no mcp call', POSIX_ONLY, () =>
 {
     const stub = [...STUB_HEAD,
         'if [ "$1" = "plugin" ] && [ "$2" = "marketplace" ] && [ "$3" = "update" ]; then echo "r105 refresh refused" >&2; exit 1; fi',
         'if [ "$1" = "plugin" ] && [ "$2" = "install" ] && [ "${3%%@*}" = "claude-hud" ]; then echo "r105 install refused" >&2; exit 1; fi',
-        'if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$3" = "alfred-navigation" ]; then echo "r105 .mcp.json could not be parsed" >&2; exit 1; fi',
-        'if [ "$1" = "mcp" ] && [ "$2" = "remove" ]; then echo "No MCP server named \\"$3\\" in .mcp.json" >&2; exit 1; fi',
         'exit 0', ''].join('\n');
     const run = seedRun('install', 'skill csharp\nplugin claude-hud\n', { prepare: (repo, work) => fs.writeFileSync(path.join(work, 'bin', 'claude'), stub, { mode: 0o755 }) });
     const bangs = bangLines(run.out);
@@ -331,9 +342,8 @@ test('install-runtime: the seed prints a line for a failed marketplace refresh a
     assert.ok(refreshes.length > 0, run.calls.join('\n'));
     for (const c of refreshes)
         assert.strictEqual(bangs.filter((l) => l.includes(`!! claude ${c} failed (exit 1): r105 refresh refused`)).length, 1, `${c}:\n${bangs.join('\n')}`);
-    assert.strictEqual(bangs.filter((l) => l.includes('!! claude mcp remove alfred-navigation failed (exit 1): r105 .mcp.json could not be parsed')).length, 1, bangs.join('\n'));
-    assert.ok(run.calls.includes('mcp remove alfred-documentation -s project'), 'the absent-server remove ran');
-    assert.deepStrictEqual(bangs.filter((l) => /mcp remove/.test(l) && !/navigation/.test(l)), [], 'an absent server is nothing to report');
+    // 2.10.1: the stack ships no server, so a fresh install has nothing of its own registered to remove.
+    assert.deepStrictEqual(run.calls.filter((c) => /^mcp /.test(c)), [], run.calls.join('\n'));
     // The install failure is the caller's own note, once - never a second line from the runner.
     assert.deepStrictEqual(bangs.filter((l) => /claude-hud@/.test(l)), ['==>   !! plugin claude-hud@claude-hud failed'], bangs.join('\n'));
 });

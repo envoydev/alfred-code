@@ -1,12 +1,12 @@
 # The review passes
 
-The method `review-code` runs, and `task-verify-code` uses for its code checks. Each pass reads the target only. Locate a symbol through the navigation server (`get_symbols_overview`, `find_symbol` with its body, `find_referencing_symbols`) or the LSP before you read code; Read is for code already located. At a branch or pull request that is not checked out, the checkout is not the code under review: read each file at the target's head, `git show <head>:<path>` (the skill's Target section).
+The method `review-code` runs, and `task-verify-code` uses for its code checks. Each pass reads the target only. Locate a symbol through the navigation tools (a file's outline, the symbol with its body, its callers) before you read code; Read is for code already located. At a branch or pull request that is not checked out, the checkout is not the code under review: read each file at the target's head, `git show <head>:<path>` (the skill's Target section).
 
 ## Passes
 
 1. **Each touched function, read whole.** Every function or method the diff touches, read in full: an unchanged line inside a touched function is in scope, since the change can break it (a variable now null on a path the old code never took, an early return that now skips a cleanup).
 2. **Removed behaviour.** For each deleted or changed condition, guard, call or default: name the invariant it enforced, then find where that invariant holds now. Nowhere is a finding (category dropped-guard). Moved code counts - a guard that stayed behind in the old place is gone from the new one.
-3. **Callers and callees.** For each changed signature, return shape or thrown error, the callers (`find_referencing_symbols`) still pass what it needs and still handle what it returns; for each new call, the callee does what the change assumes (read its body, not its name).
+3. **Callers and callees.** For each changed signature, return shape or thrown error, the callers (the navigation tools' references) still pass what it needs and still handle what it returns; for each new call, the callee does what the change assumes (read its body, not its name).
 4. **Stack pitfalls.** The trap list of the touched files' convention skill (the path-scoped convention rule attaches it; load it with the Skill tool if it is not in context): data access, lifecycle, concurrency, async, disposal, the framework's known misuses. A named trap the code hits is a finding.
 5. **Wrapper and proxy routing.** A call that reaches the changed code through a wrapper, decorator, proxy, middleware or DI registration: the wrapper still forwards every argument and the result, and the registration still points at the changed type.
 6. **Altitude.** Does the change fix the cause or patch the symptom? A null check where the null should never arrive, a retry around a deterministic failure, a special case for one input: say where the cause lives.

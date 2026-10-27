@@ -267,8 +267,9 @@ test('a fresh install records alfred-docs-root\'s hash AFTER the placeholder sub
 // downconvertToolNames re-spells every `mcp__plugin_<n>_<n>__` occurrence in a copied rule's body -
 // alfred-navigation.md's own ToolSearch line is real, shipped content that does exactly this (alfred-memory.md carried one
 // until audit 2026-10-14 RU10 moved it into the hook). The
-// rewrite lands AFTER copyLibrary already hashed the rule, so the stamp must be re-hashed too.
-test('the copy-route MCP tool-name re-spelling is hashed too - a rewritten rule never reads as drift', POSIX_ONLY, () =>
+// rewrite lands AFTER copyLibrary already hashed the rule, so the stamp must be re-hashed too. Since 2026-10-24 no rule
+// names a server, so there is nothing to re-spell: the rule is the source's text and its recorded hash matches it.
+test('the copy-route rule carries no MCP tool name and is hashed as written - it never reads as drift', POSIX_ONLY, () =>
 {
     // The FULL copy route: no plugin runs, so a registered server answers its bare tool name and
     // downconvertToolNames has real work to do.
@@ -286,12 +287,9 @@ test('the copy-route MCP tool-name re-spelling is hashed too - a rewritten rule 
             };
         },
     });
-    // Built, never typed literally: lint check 54 bans the bare `mcp__<server>__` spelling
-    // anywhere under scripts/, and the down-converter itself builds it the same way.
-    const bareTool = (server, tool) => `mcp__${server}__${tool}`;
-    assert.ok(result.content.includes(bareTool('alfred-navigation', 'find_symbol')), 'the bare-registered server name was re-spelled into the rule');
-    assert.ok(!result.content.includes('mcp__plugin_alfred-navigation_alfred-navigation__'), 'the plugin spelling did not survive the copy route');
-    assert.strictEqual(result.recorded, result.computed, 'the recorded hash must match the RE-SPELLED file, not what copyLibrary wrote before the downconvert pass');
+    assert.doesNotMatch(result.content, /mcp__/, 'the rule names no MCP tool');
+    assert.strictEqual(result.content, fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'alfred-navigation.md'), 'utf8'), 'the copy is the source text');
+    assert.strictEqual(result.recorded, result.computed, 'the recorded hash matches the file as written');
 });
 
 // Task 8a concern 7: every update logged alfred-docs-root as rewritten - copyLibrary compared the
@@ -319,24 +317,21 @@ test('alfred-docs-root is logged as rewritten only when its content changed', PO
 // different, copied the plugin spelling back and re-spelled it again: three rules logged as rewritten
 // on every run with nothing changed. The re-spelling is part of the rendered text now, like the docs
 // root, so only a real change is a write and a log line.
-test('copy route: a rule is logged as rewritten only when its content changed - the tool-name re-spelling alone is none (R111)', POSIX_ONLY, () =>
+test('copy route: a rule is logged as rewritten only when its content changed (R111)', POSIX_ONLY, () =>
 {
     const env = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     const rule = (repo) => path.join(repo, '.claude', 'rules', 'alfred-navigation.md');
-    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule alfred-navigation\nrule alfred-quality-gates\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n', {
+    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule alfred-navigation\nrule alfred-quality-gates\nmcp serena\nmcp context7\nmcp memory\n', {
         env,
         each: (repo, i) => { const text = fs.readFileSync(rule(repo), 'utf8'); if (i === 1) fs.appendFileSync(rule(repo), '\na hand edit\n'); return text; },
     });
     const logged = (out) => out.split('\n').filter((l) => /rule \[library\]: /.test(l)).map((l) => l.replace(/^.*rule \[library\]: /, ''));
-    // The bare spelling is BUILT, never typed: lint check 54 bans the literal under scripts/.
-    const bareTool = (server, tool) => `mcp__${server}__${tool}`;
-    assert.ok(steps[0].includes(bareTool('alfred-navigation', 'find_symbol')), 'the copy route registers serena bare, so the rule names it bare');
-    assert.doesNotMatch(steps[0], /mcp__plugin_alfred-navigation_alfred-navigation__/);
+    assert.doesNotMatch(steps[0], /mcp__/, 'the rule names no MCP tool');
     assert.deepStrictEqual(logged(outs[1]), [], 'an update that changes no rule logs none as rewritten');
     assert.strictEqual(steps[1], steps[0], 'and leaves the re-spelled rule as it was');
     assert.deepStrictEqual(logged(outs[2]), ['alfred-navigation'], 'a hand-edited rule is rewritten, and says so - alone');
     assert.match(outs[2], /overwriting a hand-edited copy: rule alfred-navigation/);
-    assert.strictEqual(steps[2], steps[0], 'restored to the re-spelled text');
+    assert.strictEqual(steps[2], steps[0], 'restored to the shipped text');
 });
 
 // M3 end to end: a project's own `typescript` skill (its own text, no stamp to record it) sits where the pick
@@ -392,7 +387,7 @@ for (const [label, env] of [['plugin route', {}], ['skills copy route', { ALFRED
 // The check compares like with like now: the source is re-spelled the way the copy is before it is hashed.
 test('library-check on the full copy route: a fresh install is clean, an edited copy is drift, a newer source is behind', POSIX_ONLY, () =>
 {
-    const sel = 'skill markdown-style\nrule alfred-navigation\nrule alfred-quality-gates\nrule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n';
+    const sel = 'skill markdown-style\nrule alfred-navigation\nrule alfred-quality-gates\nmcp navigation\nmcp documentation\nmcp memory\n';
     const env = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     const { result } = seedRun('install', sel, {
         env,
@@ -405,7 +400,7 @@ test('library-check on the full copy route: a fresh install is clean, an edited 
             fs.mkdirSync(path.join(newer, 'stack', 'rules'), { recursive: true });
             fs.cpSync(path.join(ROOT, 'stack', 'rules'), path.join(newer, 'stack', 'rules'), { recursive: true });
             fs.cpSync(path.join(ROOT, 'stack', 'skills'), path.join(newer, 'stack', 'skills'), { recursive: true });
-            fs.appendFileSync(path.join(newer, 'stack', 'rules', 'alfred-memory.md'), '\n- a line a newer release added.\n');
+            fs.appendFileSync(path.join(newer, 'stack', 'rules', 'alfred-quality-gates.md'), '\n- a line a newer release added.\n');
             out.newer = states(newer);
             // A really edited copy.
             fs.appendFileSync(path.join(repo, '.claude', 'rules', 'alfred-navigation.md'), '\nedited here\n');
@@ -415,6 +410,6 @@ test('library-check on the full copy route: a fresh install is clean, an edited 
     });
     const bad = (m) => Object.entries(m).filter(([, s]) => s !== 'ok');
     assert.deepStrictEqual(bad(result.fresh), [], 'a fresh full-route install must read clean');
-    assert.deepStrictEqual(bad(result.newer), [['rule alfred-memory', 'behind']]);
+    assert.deepStrictEqual(bad(result.newer), [['rule alfred-quality-gates', 'behind']]);
     assert.deepStrictEqual(bad(result.edited), [['rule alfred-navigation', 'drift']]);
 });

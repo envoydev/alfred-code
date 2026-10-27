@@ -74,7 +74,7 @@ A precise type is documentation the compiler enforces. Reach for the type system
 
 ## TypeScript version state
 
-Adopting TS 7 (Go-native): verify its current status through the documentation server first - `references/typescript-style.md` Caveats.
+Adopting TS 7 (Go-native): verify its current status through the documentation tools first - `references/typescript-style.md` Caveats.
 
 ## Plain JavaScript is checked JavaScript
 

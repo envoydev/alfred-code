@@ -15,13 +15,13 @@ This is capture only: it measures, judges, and documents - it fixes nothing, wri
 - Deliberate only, never mid-build.
 - Not for writing the missing tests - that is the coverage loop (/loop-test-coverage).
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
 
 ## Execution modes
 Two halves, split differently:
 
 - **Measurement is ALWAYS in this session** - every mode, every platform. The instrumented run is a slow gate; it never goes into any dispatch brief.
-- **Analysis on the FIRST capture** (no existing doc / no stamp) - when dispatch is available, ask ONE question before the fan-out, via AskUserQuestion - analyze via test-coverage-analyzer seats (recommend it: the read-only seats absorb the raw-output reads), or in-session? - unless a calling flow (the coverage loop) already picked the run's mode, which is inherited, never re-asked. When the first capture's other mandatory asks fire (the % bar; a suite that cannot run - Docker down for Testcontainers, a red baseline - may add a run-it-or-record-unmeasured decision), the mode question joins the SAME AskUserQuestion call as one batched ask - a separately-scheduled mode question is the one that gets dropped. DELEGATED: fan out the read-only test-coverage-analyzer agent, one per measured surface, each dispatch carrying that surface's raw-results path, the suite location, and the requirement; it returns a structured digest (per-module numbers, uncovered hot spots, weak-point candidates, test-quality smells) and this session reasons over the digests - the judgment and the writing NEVER leave here. INLINE (chosen - or forced, no question asked: no dispatch): the same analysis yourself, locating testability facts with the navigation server, bounded.
+- **Analysis on the FIRST capture** (no existing doc / no stamp) - when dispatch is available, ask ONE question before the fan-out, via AskUserQuestion - analyze via test-coverage-analyzer seats (recommend it: the read-only seats absorb the raw-output reads), or in-session? - unless a calling flow (the coverage loop) already picked the run's mode, which is inherited, never re-asked. When the first capture's other mandatory asks fire (the % bar; a suite that cannot run - Docker down for Testcontainers, a red baseline - may add a run-it-or-record-unmeasured decision), the mode question joins the SAME AskUserQuestion call as one batched ask - a separately-scheduled mode question is the one that gets dropped. DELEGATED: fan out the read-only test-coverage-analyzer agent, one per measured surface, each dispatch carrying that surface's raw-results path, the suite location, and the requirement; it returns a structured digest (per-module numbers, uncovered hot spots, weak-point candidates, test-quality smells) and this session reasons over the digests - the judgment and the writing NEVER leave here. INLINE (chosen - or forced, no question asked: no dispatch): the same analysis yourself, locating testability facts with the navigation tools, bounded.
 
 - **Run gate on an UPDATE no calling flow started.** Where COVERAGE.md exists and the coverage loop did not invoke this run, put this ask before MEASURE - every instrumented suite runs and the doc is rewritten, so a conversational 'what is our coverage?' never starts that alone. No answer, no run.
 
@@ -44,7 +44,7 @@ Two halves, split differently:
   ```ask
   Analyze <the measured surfaces> through the test-coverage-analyzer seats or in this session?
   - 'Through the seats (Recommended)' - the read-only seats absorb the raw-output reads; the judgment and the write stay here
-  - 'In this session' - navigation-server-first and bounded, no dispatch
+  - 'In this session' - navigation-tools-first and bounded, no dispatch
   ```
 
   ```ask
@@ -63,10 +63,10 @@ Read `<docs-path>/quality/test-coverage/COVERAGE.md` if it exists - a claim to v
 ### 2. DETECT - the tooling per surface
 Find what the project already uses - never pick or install one:
 
-- **.NET** - coverlet via `dotnet test --collect:"XPlat Code Coverage"` (or the msbuild `/p:CollectCoverage=true /p:CoverletOutputFormat=cobertura` form the repo already wires - without the format flag it writes json) -> cobertura XML - a Microsoft.Testing.Platform project takes that platform's coverage extension and flag instead (`coverlet.MTP` and `--coverlet` at this writing; confirm via the documentation server, never from recall).
-- **Angular** - `ng test` with the coverage flag of the builder `angular.json` names (`--coverage` under `@angular/build:unit-test`, the Vitest default for new workspaces, which needs `@vitest/coverage-v8` installed - a missing one is an unmeasured surface, never an install by this capture; `--code-coverage` under the older Karma builder - confirm an unfamiliar builder's flag via the documentation server, never from recall) -> the `coverage/` output (lcov + summary).
+- **.NET** - coverlet via `dotnet test --collect:"XPlat Code Coverage"` (or the msbuild `/p:CollectCoverage=true /p:CoverletOutputFormat=cobertura` form the repo already wires - without the format flag it writes json) -> cobertura XML - a Microsoft.Testing.Platform project takes that platform's coverage extension and flag instead (`coverlet.MTP` and `--coverlet` at this writing; confirm via the documentation tools, never from recall).
+- **Angular** - `ng test` with the coverage flag of the builder `angular.json` names (`--coverage` under `@angular/build:unit-test`, the Vitest default for new workspaces, which needs `@vitest/coverage-v8` installed - a missing one is an unmeasured surface, never an install by this capture; `--code-coverage` under the older Karma builder - confirm an unfamiliar builder's flag via the documentation tools, never from recall) -> the `coverage/` output (lcov + summary).
 - **Plain JS/TS** - the ladder: a `package.json` test script -> a runner config file -> a test runner in devDependencies; use the first rung that answers, with its coverage flag.
-- **Any other stack** - the project's own test script or runner config, with the coverage flag that runner documents (confirm it via the documentation server, never from recall).
+- **Any other stack** - the project's own test script or runner config, with the coverage flag that runner documents (confirm it via the documentation tools, never from recall).
 
 A surface where every rung is empty is a **'no test infrastructure'** verdict: coverage unmeasurable, the requirement UNMET, one weak point tiered substantial whose simplify-testing action names the missing harness. Installing the runner is the loop's first fix, never this capture's.
 

@@ -88,13 +88,10 @@
       "e61b0aaa81effc31",
       "e699336f3c7949a6"
     ],
-    "capture-first-look": [
-      "5aa554d8235c9b6f",
-      "ad339279f5b1d78e"
-    ],
     "capture-preferences": [
       "7dfb81e0ad2f3481",
-      "9975e5d09845df4b"
+      "9975e5d09845df4b",
+      "f242517bd5432ddd"
     ],
     "capture-project-code-style": [
       "20263fd5d208939d"
@@ -151,6 +148,7 @@
     "desktop-automation": [
       "59eb7548cc241108",
       "695e6cec555c056c",
+      "6e4e1204edf32e3d",
       "7cbe9e752ce7bfbf",
       "b9d801d5ad8c0ede"
     ],
@@ -493,6 +491,7 @@
       "f192024a4cefa07e"
     ],
     "habits-commit-checkpoint": [
+      "a745776d08d29a51",
       "d134ae15947f3166"
     ],
     "habits-create-ticket": [
@@ -577,6 +576,13 @@
     "markdown-style": [
       "24d9d3007b646a71",
       "658d73eb5d5163f7"
+    ],
+    "mode-auto-run": [
+      "62d0f9e3c129e7ce",
+      "a33b93ffece1fb9e"
+    ],
+    "mode-output-scorer": [
+      "72453ac82f099647"
     ],
     "npm": [
       "0662540d79f09412",

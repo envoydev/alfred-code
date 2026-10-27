@@ -20,7 +20,7 @@ The single discipline that runs through everything below: the document is genera
 - **On .NET 8 (below the floor)** there is no built-in generator: use Swashbuckle (`AddSwaggerGen()` at startup, `UseSwagger()` to expose the JSON), or NSwag when the same toolchain must also generate typed C# or TypeScript clients from the document.
 - Do not run two generators side by side, and do not migrate an existing project's generator without a concrete reason - a project already on Swashbuckle stays on Swashbuckle until there's a payoff. Match what the repo already does.
 
-Built-in wiring, the common path end to end - a document transformer adds the bearer scheme, `MapOpenApi` serves the JSON, and Scalar renders it behind a dev gate. The model types follow the `Microsoft.OpenApi` major the framework ships (1.x on .NET 9, 2.x on .NET 10; .NET 11's major is fetched at use - its release candidate's package already references 3.x), so the snippet below is the .NET 10 shape; for any other target fetch the current transformer sample through the documentation server rather than adapting it by hand:
+Built-in wiring, the common path end to end - a document transformer adds the bearer scheme, `MapOpenApi` serves the JSON, and Scalar renders it behind a dev gate. The model types follow the `Microsoft.OpenApi` major the framework ships (1.x on .NET 9, 2.x on .NET 10; .NET 11's major is fetched at use - its release candidate's package already references 3.x), so the snippet below is the .NET 10 shape; for any other target fetch the current transformer sample through the documentation tools rather than adapting it by hand:
 ```csharp
 using Microsoft.OpenApi;   // 2.x on .NET 10; 1.x (.NET 9) uses Microsoft.OpenApi.Models
 

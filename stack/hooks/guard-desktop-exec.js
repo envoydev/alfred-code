@@ -11,10 +11,15 @@
 //     the PowerShell tool excluded.
 //   - MacOS-MCP's `Shell` - a shell command the Bash-route guards (rm, secret, force-push, cross-project
 //     write) never see. MacOS-MCP 0.4.6 has no exclude flag, so the tool itself is the gate's unit.
-// Both are denied; App's `launch`, `switch` and `resize` pass. Both spellings: the plugin route's
-// `mcp__plugin_<n>_<n>__<tool>` and the MCP copy route's bare server spelling, one pattern each below.
+//   - Playwright MCP's `browser_run_code_unsafe` - 'executes arbitrary JavaScript in the Playwright server process and is
+//     RCE-equivalent' (its README, read 2026-10-24), with no flag to switch it off. 2.5.0 to 2.10.0 denied it in settings
+//     under the stack's own server names only, so one added back under its record name ran it unjudged (ruling N9).
+// All three are denied; App's `launch`, `switch` and `resize` pass. The stack ships no such server (2026-10-24), so each
+// tool is matched by its NAME under whatever server the user registered (a plugin's, a .mcp.json row, any name) - a user
+// server with a tool of the same name meets the same gate, the accepted cost.
 // 'Allow' is honoured through <data root>/state/approvals/DESKTOP-EXEC-ALLOW, the pre-2.8.0 <docs-path>/flow/ one still
-// read (this session's own, under 8h): a line `App` opens every launch_executable, `Shell` every macOS shell call, an executable's FULL path that one executable
+// read (this session's own, under 8h): a line `App` opens every launch_executable, `Shell` every macOS shell call,
+// `browser_run_code_unsafe` every browser code run, an executable's FULL path that one executable
 // (a bare name only a call naming it bare - audit 2026-10-20, the hooks track's minor list: a file-name line opened that
 // name in every directory), `*` both.
 'use strict';
@@ -40,11 +45,11 @@ if (require.main === module) {
 }
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
-// The two tools, on both routes, under the server's name and its retired 2.4.0 alias's (`windows-desktop`, `macos-desktop`
-// - build-marketplace.js LISTED_ALIASES runs the same server under the old name; mcps track T1-1, 2026-10-21). Built as
-// patterns so the copy route's bare spelling is never literal text (lint check 54 fails on it anywhere under stack/).
-const WIN_APP = /^mcp__(?:plugin_windows-(?:control|desktop)_)?windows-(?:control|desktop)__App$/;
-const MAC_SHELL = /^mcp__(?:plugin_macos-(?:control|desktop)_)?macos-(?:control|desktop)__Shell$/;
+// The three tools under any registration (the tool-type match, no-MCP spec N6).
+const WIN_APP = /^mcp__.+__App$/;
+const MAC_SHELL = /^mcp__.+__Shell$/;
+const RUN_CODE = /^mcp__.+__browser_run_code_unsafe$/;
+const CODE_LINE = 'browser_run_code_unsafe';
 
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
@@ -101,8 +106,9 @@ const tool = String(payload.tool_name || '');
 const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
 const isApp = WIN_APP.test(tool);
 const isShell = MAC_SHELL.test(tool);
+const isCode = RUN_CODE.test(tool);
 // App's own default mode is `launch` (a Start-menu name), so only the named process mode is judged.
-if (!isShell && !(isApp && String(input.mode || '').trim().toLowerCase() === 'launch_executable')) process.exit(0);
+if (!isShell && !isCode && !(isApp && String(input.mode || '').trim().toLowerCase() === 'launch_executable')) process.exit(0);
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 let layout = null;
@@ -130,6 +136,7 @@ const allowed = (() => {
     const lines = fs.readFileSync(receipt, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
     if (lines.includes('*')) return true;
     if (isShell) return lines.includes('Shell');
+    if (isCode) return lines.includes(CODE_LINE);
     if (lines.includes('App') || (executable !== '' && lines.some((l) => samePath(l, executable)))) return true;
     const file = executable.split(/[\\/]/).pop();
     bareLine = (file !== executable && lines.find((l) => !/[\\/]/.test(l) && (winPath(executable) ? l.toLowerCase() === file.toLowerCase() : l === file))) || '';
@@ -139,6 +146,23 @@ const allowed = (() => {
 if (allowed) process.exit(0);
 
 const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', 'DESKTOP-EXEC-ALLOW') : receipt).split(path.sep).join('/');
+if (isCode) {
+  // The ledger keeps where the code came from, never the code or the file's name: either can carry a credential.
+  global.BLOCK_DETAIL = { tool: CODE_LINE, from: input.code === undefined && input.filename !== undefined ? 'file' : 'code' };
+  process.stderr.write(
+    `Blocked: the browser server's browser_run_code_unsafe runs arbitrary JavaScript in the browser server's own process\n` +
+    `(RCE-equivalent, in Playwright's own words) - no shell guard sees it, and the server has no flag to switch it off.\n` +
+    `Drive the page through its own tools instead: browser_navigate, browser_click, browser_type, and browser_evaluate\n` +
+    `for JavaScript inside the page; a script that needs the machine belongs on the Bash tool, where the guards judge it.\n\n` +
+    `If the user wants this code run in the server, do not decide for them: end this turn with ONE AskUserQuestion\n` +
+    `carrying, in this order -\n` +
+    `  'Use the page tools instead (Recommended)' - nothing runs outside the page\n` +
+    `  'Allow the browser code runner this session' - the code runs with the user's full rights\n` +
+    `On 'Allow', write the receipt ${receiptRel} with the line \`${CODE_LINE}\` and retry the SAME call. It is\n` +
+    `honoured for this session only, under 8h.\n`,
+  );
+  process.exit(2);
+}
 if (isShell) {
   // The ledger keeps the command's VERB, as every other guard keeps a branch or a token: 120 characters of the command
   // carried whatever credential it held (audit 2026-10-08 row 40). A leading `NAME=value` is skipped, never recorded.

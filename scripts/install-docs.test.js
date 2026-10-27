@@ -50,7 +50,7 @@ const seed = (root) => docs.docsVersioningSeed({ projectRoot: root, docsPath: '.
 // No awareness doc under the docs root: the awareness step moves nothing and writes no rule.
 const NO_AWARENESS = { respelled: [], overlays: [], agents: 'none', rule: 'not written - no awareness doc yet' };
 // Every project's first run seeds the git doc (the preferences layout, 2026-10-21); a later run finds it there.
-const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [] });
+const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [], tools: [] });
 
 // --- the versioning seed, the four-home rule ------------------------------
 
@@ -739,7 +739,7 @@ test('crucial seed: a 2.9.0 doc left as seeded keeps G1, G3, G4 and G6 under the
     const logs = [];
     const out = prefsRun(root, (m) => logs.push(m));
     const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
-    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; locked attribution; updated safety; merged checks');
+    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; locked attribution; updated checkpoint, safety; merged checks');
     assert.deepStrictEqual(headsOf(git), ['G1', 'G3', 'G4', 'G6', 'G9'], 'the kept ids stay, the new entry takes the next one');
     assert.deepStrictEqual(lockedKeys(git), ['consent', 'checkpoint', 'safety', 'attribution', 'checks']);
     assert.match(git, /^Updated: 2026-10-21\nRetired: G2, G5, G7, G8\n/m);
@@ -780,7 +780,7 @@ test('crucial seed: what the user changed in a 2.9.0 doc stays - an edited entry
     const logs = [];
     const out = prefsRun(root, (m) => logs.push(m));
     const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
-    assert.strictEqual(out.preferences.git, 'retired G7; locked attribution; unlocked G2; updated safety; merged checks');
+    assert.strictEqual(out.preferences.git, 'retired G7; locked attribution; unlocked G2; updated checkpoint, safety; merged checks');
     assert.deepStrictEqual(headsOf(git), ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G8', 'G9', 'G11']);
     assert.match(git, /^Retired: G7, G10$/m);
     assert.match(git, /^## G2 - Derive the commit scope fresh\n<!-- id: g2 -->\n- Rule: for us, the scope/m, 'the changed entry stays, its lock dropped');
@@ -800,7 +800,7 @@ test('crucial seed: an attribution entry the user changed is not locked over - t
     const logs = [];
     const out = prefsRun(root, (m) => logs.push(m));
     const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
-    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; updated safety; merged attribution, checks');
+    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; updated checkpoint, safety; merged attribution, checks');
     assert.deepStrictEqual(headsOf(git), ['G1', 'G3', 'G4', 'G6', 'G9', 'G10']);
     assert.match(git, /^## G6 - No AI attribution\n<!-- id: g6 -->\n- Rule: never mention yourself[^\n]*\n- Scope: commit messages only/m, 'the user\'s copy stays unlocked');
     assert.match(git, /^## G9 - No AI attribution\n<!-- id: g9 -->\n<!-- locked: attribution -->/m);
@@ -850,7 +850,7 @@ test('preferences: CODE-STYLE.md moves to preferences/PROJECT-CODE-PREFERENCES.m
     assert.strictEqual(out.preferences.watch, 'moved');
     const again = prefsRun(root);
     assert.deepStrictEqual(again.moved, []);
-    assert.deepStrictEqual(again.preferences, { respelled: [], overlays: [], watch: 'none', git: 'present', rule: 'none', scopes: [], reach: [] }, 'a re-run is quiet');
+    assert.deepStrictEqual(again.preferences, PREFS_RESULT('present'), 'a re-run is quiet');
 });
 
 test('preferences: the loose PROJECT-CODE-STYLE.md of 0.2.x chains straight to preferences/', () =>
@@ -931,4 +931,106 @@ test('preferences: a project-code-style.md the capture did not write is kept and
     assert.strictEqual(out.preferences.rule, 'kept');
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/project-code-style.md'), 'utf8'), '# Our own style rule\n');
     assert.ok(logs.some((m) => /!! \.claude\/rules\/project-code-style\.md .*not the capture's text/.test(m)), logs.join(' | '));
+});
+
+// --- the tools inventory's refresh (tool preferences, phase 1) ------------
+
+// A stack plugin's server recorded from the table at the pin it ships now: a refresh finds nothing to do.
+const TABLE_ONLY = () =>
+{
+    const t = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tool-adapters.json'), 'utf8')).types.serena;
+    const prefix = 'mcp__plugin_alfred-navigation_alfred-navigation__'; // mcp-fixture
+    const tools = Object.fromEntries(t.tools.map((n) => [n, { readOnly: null, destructive: t.edit.includes(n) ? true : null, target: null }]));
+    return `${JSON.stringify({ version: 1, captured: '2026-10-24', servers: { [prefix]: { name: 'alfred-navigation', prefix, scope: 'plugin', plugin: 'alfred-navigation', type: 'serena', version: t.version, registration: 'x', listed: 'table', tools } } }, null, 2)}\n`;
+};
+const INVENTORY = '.alfred/state/tools-inventory.json';
+
+test('preferences: a table-only inventory is refreshed to nothing and left byte for byte', () =>
+{
+    const body = TABLE_ONLY();
+    const root = project({ files: { [INVENTORY]: body } });
+    const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
+    assert.deepStrictEqual(out.preferences.tools, []);
+    assert.strictEqual(fs.readFileSync(path.join(root, INVENTORY), 'utf8'), body);
+});
+
+test('preferences: the refresh runs the snapshot\'s tools.js only where an inventory was taken, and logs what it says', () =>
+{
+    const calls = [];
+    const answer = (result) => (cmd, args, opts) => { calls.push({ cmd, args, opts }); return result; };
+    const bare = project();
+    assert.deepStrictEqual(docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', spawn: answer({ status: 0, stdout: '' }) }).preferences.tools, []);
+    assert.strictEqual(calls.filter((c) => c.args[1] === 'refresh').length, 0, 'no inventory: no refresh spawned');
+    calls.length = 0;
+    const root = project({ files: { [INVENTORY]: TABLE_ONLY() } });
+    const logs = [];
+    const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m), spawn: answer({ status: 0, stdout: 'tools: mcp__x__ re-listed - 3 tools\n' }) });
+    assert.deepStrictEqual(out.preferences.tools, ['tools: mcp__x__ re-listed - 3 tools']);
+    assert.strictEqual(calls.find((x) => x.args[1] === 'refresh').cmd, process.execPath);
+    assert.ok(calls.find((x) => x.args[1] === 'refresh').args[0].endsWith(path.join('capture-preferences', 'scripts', 'tools.js')), calls.find((x) => x.args[1] === 'refresh').args[0]);
+    assert.deepStrictEqual(calls.find((x) => x.args[1] === 'refresh').args.slice(1), ['refresh', '--project', root]);
+    assert.strictEqual(calls.find((x) => x.args[1] === 'refresh').opts.timeout, 60000);
+    assert.ok(logs.includes('  tools: mcp__x__ re-listed - 3 tools'), logs.join('\n'));
+    const late = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: '' }) });
+    assert.deepStrictEqual(late.preferences.tools, ['!! tools: the inventory refresh did not finish in 60s - its recorded tools stand; /capture-preferences tools takes it again']);
+    // what it said before the cap is kept, the late line after it (the final review, I5)
+    const partial = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: 'tools: mcp__x__ re-listed - 3 tools\n' }) });
+    assert.deepStrictEqual(partial.preferences.tools, ['tools: mcp__x__ re-listed - 3 tools', '!! tools: the inventory refresh did not finish in 60s - its recorded tools stand; /capture-preferences tools takes it again']);
+});
+
+test('the language-server check runs the snapshot\'s tools.js lsp on every run, an inventory or not', () =>
+{
+    const calls = [];
+    const answer = (result) => (cmd, args, opts) => { calls.push({ cmd, args, opts }); return result; };
+    const bare = project();
+    const logs = [];
+    const lines = docs.lspCoverageLines(bare, (m) => logs.push(m), { spawn: answer({ status: 0, stdout: "lsp: none covers this project's files - navigation starts at the grep\n" }) });
+    const call = calls.find((x) => x.args[1] === 'lsp');
+    assert.ok(call, 'spawned with no inventory');
+    assert.strictEqual(call.cmd, process.execPath);
+    assert.ok(call.args[0].endsWith(path.join('capture-preferences', 'scripts', 'tools.js')), call.args[0]);
+    assert.deepStrictEqual(call.args.slice(1), ['lsp', '--changed-only', '--project', bare]);
+    assert.strictEqual(call.opts.timeout, 30000);
+    assert.deepStrictEqual(lines, ["lsp: none covers this project's files - navigation starts at the grep"]);
+    assert.ok(logs.includes("  lsp: none covers this project's files - navigation starts at the grep"), logs.join('\n'));
+    const late = docs.lspCoverageLines(bare, () => {}, { spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: '' }) });
+    assert.deepStrictEqual(late, ['!! lsp: the language-server check did not finish in 30s - the last result stands; the next run checks again']);
+    const stopped = docs.lspCoverageLines(bare, () => {}, { spawn: answer({ status: 1, stdout: '' }) });
+    assert.deepStrictEqual(stopped, ['!! lsp: the language-server check stopped (exit 1) - the last result stands; the next run checks again']);
+});
+
+// Fix-pass review m1: an ALFRED_CODE_DATA_PATH the session exported outranks the settings files in the child, and during a
+// --data-path move it names the old root - both children get the root this run resolved.
+test('the tools.js children read the data root this run resolved, over an exported one', () =>
+{
+    const calls = [];
+    const answer = (cmd, args, opts) => { calls.push({ args, opts }); return { status: 0, stdout: '' }; };
+    const was = process.env.ALFRED_CODE_DATA_PATH;
+    process.env.ALFRED_CODE_DATA_PATH = '.old-root';
+    try
+    {
+        const root = project({ files: { '.new-root/state/tools-inventory.json': TABLE_ONLY() } });
+        docs.lspCoverageLines(root, () => {}, { spawn: answer, dataPath: '.new-root' });
+        docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', dataPath: '.new-root', log: () => {}, spawn: answer });
+        for (const job of ['lsp', 'refresh'])
+        {
+            const call = calls.find((x) => x.args[1] === job);
+            assert.ok(call, `${job} spawned`);
+            assert.strictEqual(call.opts.env.ALFRED_CODE_DATA_PATH, '.new-root', job);
+        }
+        calls.length = 0;
+        docs.lspCoverageLines(root, () => {}, { spawn: answer });
+        assert.strictEqual(calls[0].opts.env.ALFRED_CODE_DATA_PATH, '.old-root', 'no root handed over: the inherited env as before');
+    }
+    finally
+    {
+        if (was === undefined) delete process.env.ALFRED_CODE_DATA_PATH;
+        else process.env.ALFRED_CODE_DATA_PATH = was;
+    }
+});
+
+test('tickets/ is a stack docs folder (item 5)', () => { assert.ok(docs.STACK_DOCS.has('tickets')); });
+
+test('explanations/ and the old tutorial/ are stack docs folders (item 6)', () => {
+  for (const n of ['explanations', 'tutorial']) assert.ok(docs.STACK_DOCS.has(n), n);
 });

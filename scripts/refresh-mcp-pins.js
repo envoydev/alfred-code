@@ -24,15 +24,16 @@
 // which ones could not be checked. A row that never resolved carries `null`, which the generator
 // reads as 'ship unpinned' - the same fallback the installer had.
 //
-// THE SERENA GATE (R7). stack/mcp/navigation-context.yml copies serena-agent's own claude-code.yml minus the
-// editing tools no house hook sees, and records that upstream file's sha256 on its `# upstream:` line. A later
-// serena could add an editing tool the stack's context would then serve unwatched, so a navigation bump goes
-// through only when the new release's claude-code.yml hashes the same; otherwise the pin stays, the report says
-// REFUSED and the run exits 1 - re-diff the file against the new context, record its hash, and refresh again.
+// THE SERENA GATE (R7). The record's add-back line launches serena with its own upstream `claude-code` context, and
+// meta/tool-adapters.json's serena row lists the tools that context turns off (`off`) and records the upstream file's
+// sha256 (`upstream`), so the table lists what that server serves. A later serena could change the context, so a
+// navigation bump goes through only when the new release's claude-code.yml hashes the same; otherwise the pin stays, the
+// report says REFUSED and the run exits 1 - re-check the row's `off` list against the new context, record its hash,
+// and refresh again.
 //
-// THE TOOL LISTS (M31). --write also records each pinned server's tool names in meta/mcp-tools.json, which lint
-// check 62 holds every shipped `mcp__plugin_<p>_<p>__<tool>` spelling to: a pin bump that renames or drops a tool
-// is a lint finding, not a silent drop. A server this machine cannot list keeps its committed list (NOT CHECKED).
+// THE TOOL LISTS (M31). --write also records each pinned server's tool names in meta/mcp-tools.json, which the adapter
+// table folds in - the known server types' tools. The stack ships no server since 2026-10-24, so no check holds a
+// shipped spelling to a list any more. A server this machine cannot list keeps its committed list (NOT CHECKED).
 // A navigation tool absent from the committed list prints '!! navigation: new tool <name>': the claude-code.yml
 // hash proves the context file, not that serena added no editing tool.
 const fs = require('node:fs');
@@ -41,14 +42,21 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
-const { PYTHON, pythonFor, excludeNewerOf } = require('../stack/mcp/uv-python.js');
+const client = require('../stack/skills/capture-preferences/scripts/mcp-client.js');
+// The Python a server's pin is resolved against (the launchers' own until 2.10.1 retired them): 3.13, and a server whose
+// pinned release needs a newer one its own minor. The dependency cut-off is the pins file's own `refreshed` day, spelled
+// as that day's last second in RFC 3339 (docs.astral.sh/uv/concepts/resolution); '' for a missing or malformed day.
+const PYTHON = '3.13';
+const SERVER_PYTHON = { 'windows-control': '3.14' };
+const pythonFor = (server) => SERVER_PYTHON[server] || PYTHON;
+const excludeNewerOf = (refreshed) => (/^\d{4}-\d{2}-\d{2}$/.test(String(refreshed || '')) ? `${refreshed}T23:59:59Z` : '');
 
 const REPO = path.join(__dirname, '..');
 const PINS = path.join(REPO, 'meta', 'mcp-pins.json');
 const TOOLS = path.join(REPO, 'meta', 'mcp-tools.json');
-const CONTEXT = path.join(REPO, 'stack', 'mcp', 'navigation-context.yml');
+const ADAPTERS = path.join(REPO, 'meta', 'tool-adapters.json');
 const CONTEXT_IN_WHEEL = 'serena/resources/config/contexts/claude-code.yml';
-const UPSTREAM_LINE = /^# upstream: serena-agent (\S+) claude-code\.yml sha256 ([0-9a-f]{64})\s*$/m;
+const UPSTREAM_LINE = /^serena-agent (\S+) claude-code\.yml sha256 ([0-9a-f]{64})$/;
 
 // registry: how to ask, and the spelling the pin takes inside the server's own command line.
 const PACKAGES = {
@@ -75,8 +83,8 @@ function npmLatest(pkg)
 
 // Audit 2026-10-21 mcps T1-3 (ruling M-A2): an npm row's whole tree, audited at its pin and the cut-off it launches
 // with - report only, never a refusal (appium-mcp 1.97.1 resolves 20 critical advisories its upstream pins, and no newer
-// release exists to move to). --write records the count on the row as `advisories`, which mobile-launch.js prereqNotes
-// names. Null when npm cannot resolve or audit the tree.
+// release exists to move to). --write records the count on the row as `advisories`, which the
+// mobile launcher named until 2.10.1. Null when npm cannot resolve or audit the tree.
 function npmAudit(pkg, version, before)
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pin-audit-'));
@@ -121,7 +129,7 @@ function admits(spec, python)
 }
 
 // The newest FINAL release, not yanked, that the server's pinned Python can install - each uvx server
-// starts on the interpreter stack/mcp/uv-python.js names for it (3.14 for windows-control, 3.13 for the rest),
+// starts on the interpreter pythonFor names for it (3.14 for windows-control, 3.13 for the rest),
 // so a pin past its floor fails at launch. null when no release qualifies: the row keeps its committed pin.
 function newestFor(json, python)
 {
@@ -209,68 +217,33 @@ function upstreamContext(version)
 const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
 // R7: may the navigation pin move from `was` to `now`? Only when the new release's claude-code.yml is the file the
-// stack's context was diffed against (the `# upstream:` line's sha256).
-function serenaGate({ was, now, contextFile = CONTEXT, fetch = upstreamContext })
+// serena adapter row's `off` list was checked against (its `upstream` field's sha256).
+function serenaGate({ was, now, adaptersFile = ADAPTERS, fetch = upstreamContext })
 {
     if (!now || now === was) return { ok: true };
     let recorded = null;
-    try { recorded = UPSTREAM_LINE.exec(fs.readFileSync(contextFile, 'utf8')); } catch { /* unreadable: no record */ }
-    const rel = 'stack/mcp/navigation-context.yml';
-    if (!recorded) return { ok: false, why: `${rel} records no upstream sha256 (its '# upstream: serena-agent <v> claude-code.yml sha256 <hex>' line)` };
+    try { recorded = UPSTREAM_LINE.exec(String(((JSON.parse(fs.readFileSync(adaptersFile, 'utf8')).types || {}).serena || {}).upstream || '')); } catch { /* unreadable: no record */ }
+    const rel = "meta/tool-adapters.json's serena row";
+    if (!recorded) return { ok: false, why: `${rel} records no upstream sha256 (its 'upstream': 'serena-agent <v> claude-code.yml sha256 <hex>' field)` };
     const text = fetch(now);
     if (typeof text !== 'string') return { ok: false, why: `serena-agent ${now}'s claude-code.yml could not be read - nothing checked it against ${rel}` };
     const hash = sha256(text);
     if (hash === recorded[2]) return { ok: true, note: `its claude-code.yml is unchanged since ${recorded[1]}` };
-    return { ok: false, why: `serena-agent ${now}'s claude-code.yml is not the one ${rel} was diffed against (${recorded[1]}, sha256 ${recorded[2].slice(0, 12)}; now ${hash.slice(0, 12)}) - re-diff the file against it, record the new line, and refresh again` };
+    return { ok: false, why: `serena-agent ${now}'s claude-code.yml is not the one ${rel} was checked against (${recorded[1]}, sha256 ${recorded[2].slice(0, 12)}; now ${hash.slice(0, 12)}) - re-check its off list against it, record the new upstream field, and refresh again` };
 }
 
 // --- the tool lists ----------------------------------------------------------------------------------------
-// One MCP exchange over stdio: initialize, then tools/list; the names, or null on any failure or the timeout.
+// One MCP exchange, initialize then tools/list, through the client the tools capture ships with
+// (stack/skills/capture-preferences/scripts/mcp-client.js); the names, or null on any failure or the timeout. The
+// pinned servers start through the installer's own Windows-safe spawn.
 function stdioTools(command, args, { env = process.env, timeoutMs = 240000 } = {})
 {
-    return new Promise((resolve) =>
-    {
-        let child;
-        try { child = rt.spawnCommandAsync(command, args, { stdio: ['pipe', 'pipe', 'ignore'], env, windowsHide: true }); }
-        catch { resolve(null); return; }
-        let buf = '';
-        let done = false;
-        const finish = (value) => { if (done) return; done = true; clearTimeout(timer); try { child.kill(); } catch { /* gone */ } resolve(value); };
-        const timer = setTimeout(() => finish(null), timeoutMs);
-        const send = (msg) => { try { child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`); } catch { finish(null); } };
-        child.on('error', () => finish(null));
-        child.on('exit', () => finish(null));
-        child.stdin.on('error', () => finish(null));
-        child.stdout.on('data', (chunk) =>
-        {
-            buf += chunk.toString('utf8');
-            let at;
-            while ((at = buf.indexOf('\n')) >= 0)
-            {
-                const line = buf.slice(0, at);
-                buf = buf.slice(at + 1);
-                let msg;
-                try { msg = JSON.parse(line); } catch { continue; }
-                if (msg.id === 1) { send({ method: 'notifications/initialized' }); send({ id: 2, method: 'tools/list', params: {} }); }
-                else if (msg.id === 2) finish(msg.result && Array.isArray(msg.result.tools) ? msg.result.tools.map((t) => t.name) : null);
-            }
-        });
-        send({ id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'refresh-mcp-pins', version: '1' } } });
-    });
+    return client.listStdio(command, args, { env, timeoutMs, spawn: rt.spawnCommandAsync }).then((r) => (r.ok ? r.tools.map((t) => t.name) : null));
 }
 
-async function httpTools(url)
+function httpTools(url)
 {
-    try
-    {
-        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
-            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }), signal: AbortSignal.timeout(30000) });
-        const text = await res.text();
-        const data = text.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5)).join('') || text;
-        const msg = JSON.parse(data);
-        return msg.result && Array.isArray(msg.result.tools) ? msg.result.tools.map((t) => t.name) : null;
-    }
-    catch { return null; }
+    return client.listHttp(url, { timeoutMs: 30000 }).then((r) => (r.ok ? r.tools.map((t) => t.name) : null));
 }
 
 const DESKTOP_TOOL = /@mcp\.tool\(\s*name\s*=\s*['"]([A-Za-z0-9_-]+)['"]/g;
@@ -324,7 +297,7 @@ async function main(argv, deps = {})
 {
     const d = {
         npmLatest, pypiLatest, upstreamContext, listTools, npmAudit, log: (l) => console.log(l),
-        pinsFile: PINS, toolsFile: TOOLS, contextFile: CONTEXT, today: () => new Date().toISOString().slice(0, 10), ...deps,
+        pinsFile: PINS, toolsFile: TOOLS, adaptersFile: ADAPTERS, today: () => new Date().toISOString().slice(0, 10), ...deps,
     };
     const write = argv.includes('--write');
     const at = argv.indexOf('--only');
@@ -357,7 +330,7 @@ async function main(argv, deps = {})
         let version = now || was;
         if (name === 'alfred-navigation' && now && now !== was)
         {
-            const gate = serenaGate({ was, now, contextFile: d.contextFile, fetch: d.upstreamContext });
+            const gate = serenaGate({ was, now, adaptersFile: d.adaptersFile, fetch: d.upstreamContext });
             if (!gate.ok) { refused = true; version = was; report.push(`  ${name}: ${was || 'unpinned'} -> ${now} REFUSED - ${gate.why}`); }
             else report.push(`  ${name}: ${was || 'unpinned'} -> ${now} (${gate.note})`);
         }
@@ -408,7 +381,7 @@ async function main(argv, deps = {})
     }
     fs.writeFileSync(d.toolsFile, JSON.stringify({
         generatedBy: 'refresh-mcp-pins',
-        note: 'Each pinned MCP server\'s tool names at its pin (the hosted documentation server has none), written by `node scripts/refresh-mcp-pins.js --write`. Lint check 62 fails a shipped mcp__plugin_<p>_<p>__<tool> spelling whose tool is not listed here.',
+        note: 'Each pinned MCP server\'s tool names at its pin (the hosted documentation server has none), written by `node scripts/refresh-mcp-pins.js --write`. The adapter table (meta/tool-adapters.json, npm run tool-adapters) folds each list in, so the hooks and the tool preferences capture know each known server type by its tools.',
         servers: Object.fromEntries(Object.entries(servers).sort(([a], [b]) => a.localeCompare(b))),
     }, null, 2) + '\n');
     d.log(`${lines.join('\n')}\ntools written: ${path.relative(REPO, d.toolsFile)}`);

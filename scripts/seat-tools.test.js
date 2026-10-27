@@ -17,8 +17,8 @@ const PINS = {
     'alfred-memory': { tools: ['memory_store', 'memory_search', 'memory_list', 'memory_delete'] },
     browser: { tools: ['browser_navigate', 'browser_click', 'browser_run_code_unsafe'] },
 };
-const MEM = 'mcp__plugin_alfred-memory_alfred-memory';
-const CHROME = 'mcp__plugin_chrome-control_chrome-control';
+const MEM = 'mcp__plugin_alfred-memory_alfred-memory'; // mcp-fixture
+const CHROME = 'mcp__plugin_chrome-control_chrome-control'; // mcp-fixture
 
 test('a server named tool by tool is granted whole and every other pinned tool removed; built-ins keep their place', () =>
 {
@@ -82,20 +82,21 @@ test('drift: a hand edit, a seat with no row and a row with no seat are findings
     assert.deepStrictEqual(st.drift({ intent: { a: intent.a, b: ['Read'] }, pins: PINS, dir }), []);
 });
 
-test('the shipped seats match their rows, and every seat still holds the shared memory\'s store, search and list', () =>
+// The user's ruling of 2026-10-24: the stack depends on no MCP server, so every shipped row is built-in tools only and
+// no seat lists a removal. The generator keeps its server shapes (the fixtures above) for the day a seat holds one again.
+test('the shipped seats match their rows, and every seat holds built-in tools only', () =>
 {
     assert.deepStrictEqual(st.drift(), []);
     const dir = path.join(__dirname, '..', 'stack', 'agents');
     for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.md')))
     {
         const { tools, disallowed } = st.linesOf(fs.readFileSync(path.join(dir, f), 'utf8'));
-        const held = st.effectiveTools(tools, disallowed);
-        for (const t of ['memory_store', 'memory_search', 'memory_list']) assert.ok(held.has(`${MEM}__${t}`), `${f}: ${t}`);
-        assert.ok(!tools.split(',').some((t) => /^\s*mcp__plugin_[^,]*__/.test(t)), `${f}: one grant per server, no tool names in tools:`);
+        assert.ok(tools && !/mcp__/.test(tools), `${f}: ${tools}`);
+        assert.ok(!disallowed, `${f}: no removals`);
     }
 });
 
-test('the lint checks and the copy route read a whole-server grant', () =>
+test('the lint checks read a whole-server grant', () =>
 {
     const lint = require('./lint-mcp-tools.js');
     const file = (text) => [{ file: 'stack/agents/x.md', text }];
@@ -106,11 +107,6 @@ test('the lint checks and the copy route read a whole-server grant', () =>
     const bare = ['mcp', 'alfred-memory'].join('__');
     assert.strictEqual(lint.lintMcpToolNames({ files: file(`tools: ${bare}, Read`), names: ['alfred-memory'] }).length, 1, 'check 54: the bare grant resolves to nothing');
     assert.deepStrictEqual(lint.lintMcpToolNames({ files: file(`${bare}-other`), names: ['alfred-memory'] }), [], 'a longer name is not the grant');
-    const mcp = require('./install/mcp.js');
-    const copied = mcp.respellToolNames(`tools: ${MEM}, ${CHROME}, Read\ndisallowedTools: ${CHROME}__browser_run_code_unsafe\n`, ['chrome-control']);
-    const chromeBare = ['mcp', 'chrome-control'].join('__');
-    assert.strictEqual(copied, `tools: ${MEM}, ${chromeBare}, Read\ndisallowedTools: ${chromeBare}__browser_run_code_unsafe\n`, 'only the registered server takes the bare spelling, grant and removal alike');
-    assert.deepStrictEqual(mcp.bareServersIn(copied), ['chrome-control']);
 });
 
 // audit 2026-10-14 AG06: a server a seat names tool by tool is granted WHOLE minus the pinned list's other tools, so on
@@ -139,8 +135,9 @@ test('every server a seat names tool by tool carries a release pin, so the unpin
     const intent = JSON.parse(fs.readFileSync(st.INTENT_FILE, 'utf8')).seats;
     const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
     assert.deepStrictEqual(unpinnedNamedServers(intent, pins), []);
-    const named = new Set(Object.values(intent).flat().filter((t) => /:[^*!]/.test(t)).map((t) => st.roleOf(t.slice(0, t.indexOf(':')))));
-    assert.ok(named.has('alfred-navigation') && named.has('alfred-memory'), 'the walk saw the named grants');
+    // the shipped rows name no server (2026-10-24), so the guard is held on a row that does
+    const named = { a: ['alfred-memory:memory_store', 'Read'] };
+    assert.deepStrictEqual(unpinnedNamedServers(named, pins), []);
     const nulled = { ...pins, 'alfred-memory': { ...pins['alfred-memory'], version: null } };
-    assert.ok(unpinnedNamedServers(intent, nulled).some((r) => r.startsWith('alfred-memory ')), 'red with one pin nulled');
+    assert.ok(unpinnedNamedServers(named, nulled).some((r) => r.startsWith('alfred-memory ')), 'red with one pin nulled');
 });

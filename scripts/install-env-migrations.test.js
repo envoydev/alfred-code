@@ -206,3 +206,20 @@ test('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is dropped only while it still holds the o
     applyEnv(kept, { catalog: [], migrations: envMigrations(REAL), log: () => {} });
     assert.equal(kept.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, '35');
 });
+
+// 2.10.1 (the user's ruling of 2026-10-24): the stack ships no MCP server, so every key that pointed one of its servers
+// somewhere is dead - the memory database path the install seeded and init rewrote (no ledger hash follows init's write, so
+// it goes whatever it holds), and the switches a user set for a server or its route. Each goes from the file and the overlay.
+const SERVER_KEYS = ['ALFRED_CODE_MEMORY_DB', 'ALFRED_CODE_MCPS_VIA_PLUGIN', 'ALFRED_CODE_UV_PYTHON', 'ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE', 'ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE', 'ALFRED_CODE_MEMORY_WARM'];
+test('the retired servers\' keys go whatever they hold, from the file and the overlay alike (2.10.1)', () =>
+{
+    const m = envMigrations(REAL);
+    for (const key of SERVER_KEYS) assert.ok(m.retired.some(([k, when]) => k === key && when === null), `${key} is retired whatever it holds`);
+    const env = Object.fromEntries(SERVER_KEYS.map((k) => [k, 'x']));
+    const overlay = { ALFRED_CODE_MEMORY_DB: '~/.alfred-memory/global.db', OTHER: 'y' };
+    const lines = [];
+    applyEnv(env, { catalog: [], migrations: m, overlay, log: (l) => lines.push(l) });
+    for (const key of SERVER_KEYS) assert.ok(!(key in env), `${key} left settings.json`);
+    assert.deepEqual(overlay, { OTHER: 'y' }, 'the database path a level answer rewrote leaves the overlay too');
+    assert.ok(lines.some((l) => /settings\.local\.json env: ALFRED_CODE_MEMORY_DB removed \(retired - nothing reads it\)/.test(l)), lines.join('\n'));
+});

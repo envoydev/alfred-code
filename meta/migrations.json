@@ -320,6 +320,84 @@
    },
    "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the lint and format config guard is `guard-config-protection` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
    "then": "nothing - add `guard-config-protection` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
+  },
+  {
+   "id": "memory-db-retired",
+   "since": "2.10.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_MEMORY_DB"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_MEMORY_DB"
+   },
+   "why": "2.10.1 ships no MCP server (the user's ruling of 2026-10-24), the memory server with them: nothing reads the database path the install seeded and init rewrote at its level answer. It goes whatever it holds - init wrote it with no ledger hash, so a changed value is no sign of the user's. The database itself stays where it was, named once by the update that removes the server.",
+   "then": "nothing - the key is gone; add a server back with its line from stack/mcp/original-mcps.json"
+  },
+  {
+   "id": "mcps-route-retired",
+   "since": "2.10.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_MCPS_VIA_PLUGIN"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_MCPS_VIA_PLUGIN"
+   },
+   "why": "2.10.1 ships no MCP server, so there is no route to pick between the plugins and the .mcp.json registrations; nothing reads the switch.",
+   "then": "nothing - the key is gone; add a server back with its line from stack/mcp/original-mcps.json"
+  },
+  {
+   "id": "uv-python-retired",
+   "since": "2.10.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_UV_PYTHON"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_UV_PYTHON"
+   },
+   "why": "2.10.1 ships no MCP server, so no uvx start takes the stack's Python pin; nothing reads the override. A server added back from stack/mcp/original-mcps.json names its own --python.",
+   "then": "nothing - the key is gone; add a server back with its line from stack/mcp/original-mcps.json"
+  },
+  {
+   "id": "windows-control-exclude-retired",
+   "since": "2.10.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE"
+   },
+   "why": "2.10.1 ships no MCP server, windows-control with them: nothing reads its tool gate. A Windows-MCP added back carries --exclude-tools in its own entry (stack/mcp/original-mcps.json).",
+   "then": "nothing - the key is gone; add a server back with its line from stack/mcp/original-mcps.json"
+  },
+  {
+   "id": "windows-desktop-exclude-retired",
+   "since": "2.10.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE"
+   },
+   "why": "The 2026-10-13 name of the windows-control tool gate, read as a fallback until 2.10.1 shipped no MCP server: nothing reads it.",
+   "then": "nothing - the key is gone; add a server back with its line from stack/mcp/original-mcps.json"
+  },
+  {
+   "id": "memory-warm-retired",
+   "since": "2.10.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_MEMORY_WARM"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_MEMORY_WARM"
+   },
+   "why": "2.10.1 ships no MCP server, so there is no memory model to pre-warm; nothing reads the switch.",
+   "then": "nothing - the key is gone; add a server back with its line from stack/mcp/original-mcps.json"
   }
  ]
 }

@@ -125,18 +125,15 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
     };
 }
 
-// The entry the hooks ride - the core, since 2.0.0 folded the hooks entry into it - and the one MCP
-// family that fans a catalog row out into several plugins.
+// The entry the hooks ride - the core, since 2.0.0 folded the hooks entry into it.
 const HOOKS_HOME = BRAND.core;
-const catalogServer = (name) => String(name)
-    .replace(/^(?:browser-(?:chrome|msedge|firefox|webkit)|(?:chrome|msedge|firefox|webkit)-control)$/, 'browser');
 
 // THE INVERSE, for a run that asks nothing (`update --installed-only`): the selection lines the
 // project carries NOW on each plugin route. On those routes `.claude/` holds only the copies, so the
 // disk read alone found no seat and no hook - and the derivation above then switched every one of
 // them off. Each surface is read from the state ITS route writes: the enabled entries' contents
-// minus the seats `permissions.deny` names, the hook catalog minus ALFRED_CODE_HOOKS_OFF, the MCP
-// entries folded onto the catalog. Deriving from these lines writes back the state they came from,
+// minus the seats `permissions.deny` names, and the hook catalog minus ALFRED_CODE_HOOKS_OFF (the stack ships no MCP
+// entry since 2.10.1, so none folds back). Deriving from these lines writes back the state they came from,
 // which is how a seat or hook the user switched off survives an update. `plugins` is this stack's
 // ENABLED entries only (`install/selection.js` readBack filters the listing); a surface whose route
 // is off, or whose entry is absent, reads back nothing and the caller's disk read decides.
@@ -180,11 +177,6 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
         // Every hook off is the walk's None, and reads back as it was written - no hook line at all
         // would mean 'every hook' to the next derivation.
         if (!on.length) lines.push('hook none');
-    }
-    if (routes.mcps)
-    {
-        const catalog = new Set(manifest.catalogs.mcps.map((row) => row.split('|')[0]));
-        for (const server of new Set(names.map(catalogServer))) if (catalog.has(server)) lines.push(`mcp ${server}`);
     }
     return lines;
 }

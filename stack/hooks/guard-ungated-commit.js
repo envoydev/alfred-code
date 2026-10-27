@@ -179,16 +179,73 @@ const PUSH_GATE_ON = !(() => { try { return require('./hook-prelude.js').partOff
 // commit message is text, not an act - the false-positive pair this gate MUST not reproduce cost 430,740 tokens when a
 // report write was denied for quoting a merge command. `--dry-run` / `-n` publishes nothing, and neither does a push
 // with nothing ahead of its upstream.
+// Past `git push`, a publish is read by CONCEPT on every transport (forge.js): a merge or a branch write through any CLI
+// (`gh pr merge`, `glab mr merge`, `az repos pr update --status completed`, one nobody listed), a raw API call, or an
+// MCP tool (`accept_merge_request`, `repo_pull_request_write {autoComplete: true}`, `push_files`) needs the same receipt.
+// A forge call whose verb the lexicon does not know is an ask - a deny when nobody is at the terminal to answer it.
+// With the publish half off nothing is gated or asked, but what it lets through is still ledgered below - else every push
+// would read as ungated to the ref watch (forge-session.js).
 let publishMatch = null;
+let askMatch = null;
+let forgeLib = null;
+try { forgeLib = require(path.join(__dirname, 'forge.js')); } catch { /* an install without it: the git parse alone */ }
+const isMcpCall = /^mcp__/.test(String(payload.tool_name || ''));
 const HISTORY_MOVER = new Set(['commit', 'merge', 'cherry-pick', 'am', 'rebase', 'revert', 'pull', 'reset']);
-if (PUSH_GATE_ON) {
-  const push = calls.find((c) => c.sub === 'push');
-  const merge = push || !parsed ? null : sw.commandWords(null, parsed).find((w) => w.name === 'gh' && w.argv[0] === 'pr' && w.argv[1] === 'merge');
-  if (push) publishMatch = { index: push.at, call: push, git: true, act: actText(push) };
-  else if (merge) {
-    const ws = merge.cmd.words;
-    publishMatch = { index: merge.at, call: null, git: false, act: command.slice(merge.at, ws[ws.length - 1].e).trim().replace(/\s+/g, ' ') };
+if (forgeLib || PUSH_GATE_ON) {
+  const known = (r) => r && r.strength === 'known' && forgeLib.PUBLISH.has(r.concept);
+  if (isMcpCall) {
+    let r = null;
+    try { r = forgeLib && forgeLib.classify(payload); } catch { r = null; }
+    const act = `${String(payload.tool_name).replace(/^mcp__/, '')} ${JSON.stringify(payload.tool_input || {}).slice(0, 120)}`;
+    if (forgeLib && known(r)) publishMatch = { index: 0, call: null, git: false, act, forge: r };
+    else if (r && r.strength === 'unknown') askMatch = { ...r, act };
+  } else {
+    const push = calls.find((c) => c.sub === 'push');
+    let acts = [];
+    if (!push && parsed && forgeLib) { try { acts = forgeLib.classifyCommand(command, gitCwd, { parsed }); } catch { acts = []; } }
+    const pub = acts.find(known);
+    const spanText = (r) => command.slice(r.at, r.end).trim().replace(/\s+/g, ' ');
+    if (push) publishMatch = { index: push.at, call: push, git: true, act: actText(push) };
+    else if (pub) publishMatch = { index: pub.at, call: null, git: false, act: spanText(pub), forge: pub };
+    else {
+      const unknown = acts.find((r) => r.strength === 'unknown');
+      if (unknown) askMatch = { ...unknown, act: spanText(unknown) };
+    }
   }
+}
+// The act ledger the ref watch reads (forge.js recordAct): what moved, where, from which head - in the repository's one
+// ledger (forge.js ledgerRoot), so a worktree's push is read by the session watching its main checkout. A git push is one row
+// per ref it names, so a push of feat/x never covers a move of main; one naming refs it does not list (--all, --tags) is one
+// row marked `all`. The call's tool_use_id rides along: the watch trusts a row only once its PostToolUse confirmed it ran.
+function ledgerPublish(match, dir) {
+  if (!forgeLib || !forgeLib.recordAct) return;
+  const f = match.forge || {};
+  const head = f.head || forgeLib.gitOut(dir, ['rev-parse', 'HEAD']) || null;
+  let rows = [{ ref: f.ref || null }];
+  if (match.git && forgeLib.pushTargets) {
+    rows = [];
+    for (const p of calls.filter((c) => c.sub === 'push')) {
+      const targets = forgeLib.pushTargets(p.argv || [], gitCwd);
+      if (targets === null) rows.push({ ref: null, all: true });
+      else rows.push(...targets.map((ref) => ({ ref })));
+    }
+    if (!rows.length) rows = [{ ref: null }];
+  }
+  let ledger = dir;
+  try { ledger = forgeLib.ledgerRoot(dir) || dir; } catch { /* the act's own repo */ }
+  const seen = new Set();
+  for (const row of rows) {
+    const key = `${row.ref}|${!!row.all}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    forgeLib.recordAct(ledger, payload.session_id, { concept: f.concept || forgeLib.CONCEPTS.BRANCH, change: f.change, ref: row.ref, head, all: row.all, armed: f.armed, tool_use_id: payload.tool_use_id });
+  }
+}
+if (!PUSH_GATE_ON) {
+  const dry = publishMatch && publishMatch.git && (publishMatch.call.argv || []).some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a));
+  if (publishMatch && !dry) { try { ledgerPublish(publishMatch, gitRead.callDir(publishMatch.call || { at: publishMatch.index, dirs: [] })); } catch { /* best effort */ } }
+  publishMatch = null;
+  askMatch = null;
 }
 
 // --- add -N without a chained reset -------------------------------------------------------
@@ -238,7 +295,31 @@ if (bareReset) {
 // Every `git add` in the command - judged below against what was untracked before the session started, so a bare
 // `git add -A` in its own call is read too.
 const addCalls = calls.filter((c) => c.sub === 'add');
-if (!commitMatch && !publishMatch && !addCalls.length) process.exit(0);
+// The ask for a forge call the lexicon cannot read: the user decides whether it publishes. Nobody at the terminal (print
+// mode, auto-mode) cannot answer an ask, so there it is a deny naming the act. The asked act is ledgered (`asked`) for the
+// ref watch, so a move the user approved reads as explained.
+// Where the act ledger lives: the repo root the receipts are read from once it is resolved below, the project before.
+function forgeRoot() {
+  try { return root; } catch { return process.env.CLAUDE_PROJECT_DIR || gitCwd; }
+}
+function forgeAsk(r) {
+  let nobody = false;
+  try { nobody = require('./hook-prelude.js').unattended(payload); } catch { nobody = false; }
+  const what = String(r.act || '').slice(0, 200);
+  if (nobody) {
+    process.stderr.write(`Blocked: ${what} - a forge call the stack cannot classify (${r.why}), and nobody is at the terminal to\n` +
+      `confirm it publishes nothing. If it merges, pushes or releases, run habits-commit-checkpoint's publish half first; if it\n` +
+      `does not, add its verb to <data root>/forge-lexicon.json.`);
+    process.exit(2);
+  }
+  let ledger = forgeRoot();
+  try { ledger = forgeLib.ledgerRoot(ledger) || ledger; } catch { /* the project */ }
+  forgeLib.recordAct(ledger, payload.session_id, { ...r, asked: true, tool_use_id: payload.tool_use_id });
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
+    permissionDecisionReason: `${what} - a forge call the stack cannot classify (${r.why}). Approve only if it merges, pushes and releases nothing; a publish needs the checkpoint's receipt.` } }));
+  process.exit(0);
+}
+if (!commitMatch && !publishMatch && !addCalls.length) { if (askMatch) forgeAsk(askMatch); process.exit(0); }
 
 // Resolve the repo the act actually runs in: a `cd <sibling> && git commit` or a
 // `git -C <sibling> push` executes in a DIFFERENT repo than this hook's default root,
@@ -1284,10 +1365,27 @@ if (publishMatch) {
       process.exit(2);
     }
   }
+  // A merge lands the CHANGE's head, not this checkout's: the receipt's head: must be that head or a descendant of it
+  // (forge.js unseenHead - read with plain git, so on every forge and transport; no change ref or no network leaves the
+  // local-HEAD rule above standing). The atomic receipt in the command is the newest, then the file.
+  if (!dryRun && ahead && forgeLib && publishMatch.forge && publishMatch.forge.concept === forgeLib.CONCEPTS.MERGE) {
+    let text = command.slice(0, publishMatch.index);
+    try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
+    const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
+    let unseen = null;
+    try { unseen = forgeLib.unseenHead({ cwd: root, change: publishMatch.forge.change, sha: publishMatch.forge.head, receiptHead }); } catch { unseen = null; }
+    if (unseen) {
+      process.stderr.write(`Blocked: ${act} - ${unseen}.\n` +
+        'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');
+      process.exit(2);
+    }
+  }
+  // Allowed: the act ledger the ref watch reads.
+  if (!dryRun && ahead && forgeLib) ledgerPublish(publishMatch, root);
 }
 
 // --- the COMMIT gate ----------------------------------------------------------------------
-if (!commitMatch && !addCalls.length) process.exit(0);
+if (!commitMatch && !addCalls.length) { if (askMatch) forgeAsk(askMatch); process.exit(0); }
 
 // --- staged-diff scan: facts a verifier misses and a formatter never sees ------------------------
 // Conflict markers, a debugger, a focused test, a credential-shaped literal and a hidden character

@@ -6,7 +6,7 @@ user-invocable: false
 
 # WinForms conventions
 
-For any WinForms or NuGet API surface not pinned down here, resolve signatures with the `alfred-documentation` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
+For any WinForms or NuGet API surface not pinned down here, resolve signatures with the documentation tools rather than memory - never by grepping the NuGet cache or decompiled sources.
 
 WinForms is an immediate-mode, control-tree desktop UI. The realistic work is maintenance and
 modernization of line-of-business apps, not greenfield, so this skill floors **new** work at .NET 10 /
@@ -157,7 +157,7 @@ Before any done word on a UI change:
 
 1. `dotnet build` - quote the summary line.
 2. Open and close the affected form twenty times and quote the GDI and USER object counts at the start and the end -
-   drive it through the MCP that controls a native desktop app where the install has one; with no desktop session, put
+   drive it through the desktop tools the session-start tool order ranks, where it ranks one; with no desktop session, put
    the twenty-cycle check to the user through AskUserQuestion and mark it UNVERIFIED until answered:
 
    ```ask

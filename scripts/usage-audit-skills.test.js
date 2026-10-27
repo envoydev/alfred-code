@@ -91,7 +91,7 @@ test('C20 69dbed46#4: the related-projects doc says where a card addressed to th
 
 test('C20 close receipts (390aebcb#8 3ce6b036#2 49cb4b82#6 a1fa1b2b#3 f24eb967#9 e499fc94#5 a6a24815#4 3b53e0e8#3): they ride the Result field', () => {
     const t = skill('task-solve');
-    assert.match(t, /The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names\|none>`/);
+    assert.match(t, /The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names\|none>`/);
     assert.doesNotMatch(t, /print one line with it - `Completed - the next scope starts a NEW plan file, not this one`/);
     assert.match(t, /it rides the first stop's `Result:`, `Spec:` beside it/);
     assert.match(t, /this stop's `Result:` line carries `mechanics: read` as the receipt/);
@@ -199,9 +199,10 @@ test('C18 e6a68237#1 (skill half): the format CHECK runs over every staged path 
 
 test('C18 bba03dad#1 e6a68237#2: publish arms one background CI watch on the pushed sha and the close carries its verdict', () => {
     const t = flat(checkpoint());
-    assert.match(t, /\*\*Watch CI once\.\*\*/);
-    assert.match(t, /`gh run watch <id> --exit-status` as a background task, never a foreground sleep loop/);
-    assert.match(t, /`CI: pending - watching run <id>` when the turn ends first/);
+    assert.match(t, /\*\*Watch CI once\*\* - a pipeline watch, through whichever tool the session's `Forge:` line names/);
+    // the concept first, one example per common transport, and a bounded poll where no blocking watch exists
+    assert.match(t, /a blocking watch as a background task when the tool has one - GitHub .*`gh run watch <id> --exit-status`; GitLab `glab ci status --live`; an MCP pipeline-wait tool - else the status read every 60s in a background loop capped at 30 minutes, one line per poll\. Never a foreground sleep loop\./);
+    assert.match(t, /`CI: pending - watching <run or pipeline id>` when the turn ends first/);
     assert.match(t, /A red the receipt's `live-probe:` records on a check CI also runs is named in the question/);
 });
 

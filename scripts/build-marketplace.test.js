@@ -7,7 +7,6 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { buildEntries, coreEntry, applyToMarketplace, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
-const { LOCKED } = require('./install/mcp.js');
 
 const SCRIPT = path.join(__dirname, 'build-marketplace.js');
 const run = (args, opts = {}) => execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts });
@@ -54,7 +53,7 @@ test('the core is the only generated entry, listing skill FOLDERS and agent FILE
     assert.deepStrictEqual(entries.map(e => e.name), ['alfred-code'], 'every skill is library, listed by no entry');
     const core = byName['alfred-code'];
     assert.deepStrictEqual(core.skills, ['./setup-plugin/skills/alfred-code'], '2.1.0: the router is the one skill the core carries - every stack skill is a project copy');
-    assert.strictEqual(core.agents.length, 44, 'every seat rides the core');
+    assert.strictEqual(core.agents.length, 45, 'every seat rides the core');
     assert.ok(core.agents.includes('./stack/agents/integration-reviewer.md') && core.agents.includes('./stack/agents/aspnet-implementer.md'));
     for (const p of [...core.skills, ...core.agents])
         assert.ok(fs.existsSync(path.join(__dirname, '..', p)), `${p} must exist in the tree`);
@@ -81,22 +80,24 @@ test('--write is idempotent - a second run changes nothing', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test('applying to a marketplace rewrites the core and leaves what the generator does not own', () => {
+test('applying to a marketplace rewrites the core, leaves a hand entry and drops every MCP server entry', () => {
     const before = {
         name: 'envoydev',
         metadata: { version: '9.9.9' },
         plugins: [
             { name: 'alfred-code', source: './setup-plugin', description: 'the pre-Phase-3 entry', category: 'development' },
-            { name: 'navigation', source: './', description: 'generated elsewhere', mcpServers: {} },
+            { name: 'third-party', source: './x', description: 'a hand entry' },
+            // the stack ships no server since 2026-10-24: an entry a release before left listed would stay installable
+            { name: 'alfred-navigation', source: './', description: 'an older release\'s server', mcpServers: { 'alfred-navigation': { command: 'node' } } },
         ],
     };
     const after = applyToMarketplace(JSON.parse(JSON.stringify(before)), entries);
     const core = after.plugins.find(p => p.name === 'alfred-code');
     assert.strictEqual(core.source, './', 'the core is re-sourced to the shared root');
     assert.ok(Array.isArray(core.commands) && core.commands.length, 'and carries its commands now');
-    const other = after.plugins.find(p => p.name === 'navigation');
-    assert.strictEqual(other.description, 'generated elsewhere', 'an entry this generator does not own is untouched');
-    assert.strictEqual(after.plugins.length, 1 + entries.length, 'the other entry plus every generated entry');
+    assert.strictEqual(after.plugins.find(p => p.name === 'third-party').description, 'a hand entry', 'an entry this generator does not own is untouched');
+    assert.strictEqual(after.plugins.find(p => p.name === 'alfred-navigation'), undefined, 'a server entry is dropped');
+    assert.strictEqual(after.plugins.length, 1 + entries.length, 'the hand entry plus every generated entry');
 });
 
 // 2.0.0 folds the hooks into the core (user ruling 'Fold into core in 2.0.0'): a separate hooks
@@ -144,54 +145,28 @@ test('mergeHooks keeps one group per matcher, the first block\'s hooks first', (
     assert.deepStrictEqual(own.PreToolUse[0].hooks, [{ command: 'own' }], 'the inputs are not mutated');
 });
 
-// 2.2.1 (the user's ruling of 2026-10-06): the 2.0.0 and 2.2.0 renamed ids are out of the live file, which an update
-// migrates without. The bare 1.x `playwright` row names the catalog group, never a plugin id, so it is not one. The six
-// ids 2.4.0 renamed are listed again as RETIRED aliases (audit 2026-10-14 PL5, the user's ruling of 2026-10-14): 2.4.0
-// unlisted them in the release that renamed them, and an install not yet updated lost its server at the next refresh.
-const RENAMED_MCPS = require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps;
-const RETIRED_ALIAS_NAMES = Object.keys(RENAMED_MCPS).filter((old) => old !== 'playwright');
-const LISTED_2_4 = ['browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop'];
-test('the 2.0.0 and 2.2.0 renamed ids stay unlisted; only the six 2.4.0 ids are RETIRED aliases', () => {
-    assert.strictEqual(RETIRED_ALIAS_NAMES.length, 15, 'serena, context7, the four playwright engines, the three 2.2.0 ids, the two desktop servers and the four browser engines (2026-10-13)');
-    const { LISTED_ALIASES } = require('./build-marketplace.js');
-    assert.deepStrictEqual([...LISTED_ALIASES], LISTED_2_4);
-    for (const name of RETIRED_ALIAS_NAMES.filter((n) => !LISTED_2_4.includes(n))) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
-    assert.deepStrictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).map((p) => p.name).sort(), [...LISTED_2_4].sort(), 'the six, and no other RETIRED row');
-    assert.ok(!('aliasEntries' in require('./build-marketplace.js')), 'no 1.x core alias generator');
-});
-
-test('PL5: each 2.4.0 alias carries its successor\'s server under the OLD name, no dependency, and says what update does', () => {
-    const { mcpAliasEntries, mcpPlugins } = require('./build-marketplace.js');
-    const current = mcpPlugins();
-    const aliases = mcpAliasEntries({ entries: current });
-    assert.strictEqual(aliases.length, 6);
-    for (const alias of aliases)
+// 2026-10-24 (the user's ruling): the stack ships no MCP server. Every server entry and the six 2.4.0 aliases left the live
+// file, and each has a retired row whose add-back registers the record's own entry under its original name.
+test('the live marketplace lists no MCP server entry, and every id it listed has a retired row with an add-json add-back', () => {
+    assert.deepStrictEqual(SHIPPED.plugins.filter((p) => p.mcpServers).map((p) => p.name), [], 'no entry carries a server');
+    for (const name of ['mcpPlugins', 'mcpAliasEntries', 'LISTED_ALIASES', 'mcpServerShapes', 'applyMcpPlugins'])
+        assert.ok(!(name in require('./build-marketplace.js')), `${name} is gone with the entries`);
+    const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-plugins.json'), 'utf8')).plugins;
+    const record = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stack', 'mcp', 'original-mcps.json'), 'utf8')).mcpServers;
+    const original = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stack', 'mcp', 'shipped-mcps.json'), 'utf8')).original;
+    const listed = [...Object.keys(original), 'browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop'];
+    for (const name of listed)
     {
-        const now = RENAMED_MCPS[alias.name];
-        const successor = current.find((e) => e.name === now);
-        assert.ok(successor, `${alias.name} -> ${now}`);
-        assert.deepStrictEqual(Object.keys(alias.mcpServers), [alias.name], 'one server, named like the plugin - the tool names an un-updated copy spells');
-        assert.deepStrictEqual(alias.mcpServers[alias.name], successor.mcpServers[now], 'the successor\'s own launcher and pin');
-        assert.ok(!('dependencies' in alias), 'I6: an alias names no dependency');
-        assert.strictEqual(alias.version, successor.version);
-        assert.strictEqual(alias.description, `RETIRED in 2.4.0 - renamed ${now}. Run /alfred-code:update: it installs ${now} in its place and removes this entry.`);
-        assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name}: the live file is the generated alias`);
+        const row = rows.find((r) => r.name === name);
+        assert.ok(row, `${name} has a retired row`);
+        assert.strictEqual(row.retiredIn, '2.10.1');
+        assert.ok(row.registration && (row.registration.package || row.registration.url), `${name}: what the stack registered`);
+        const m = String(row.addBack).match(/^claude mcp add-json --scope <scope> (\S+) '(.+)'$/);
+        assert.ok(m, `${name}: ${row.addBack}`);
+        assert.deepStrictEqual(JSON.parse(m[2]), record[m[1]], `${name}: the add-back is the record's ${m[1]} entry`);
     }
-    // A manifest that loses a successor fails loudly instead of listing a dead alias.
-    assert.throws(() => mcpAliasEntries({ entries: current, renamedMcps: { ...RENAMED_MCPS, 'macos-desktop': 'gone-control' } }), /macos-desktop has no successor entry/);
-});
-
-test('PL5: --mcp-entries keeps the aliases on a re-run and puts back one a hand edit removed', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-alias-'));
-    const file = path.join(tmp, 'marketplace.json');
-    const live = JSON.parse(JSON.stringify(SHIPPED));
-    live.plugins = live.plugins.filter((p) => p.name !== 'windows-desktop');
-    fs.writeFileSync(file, JSON.stringify(live, null, 2) + '\n');
-    run(['--mcp-entries', '--marketplace-file', file]);
-    const byName = (m) => Object.fromEntries(m.plugins.map((p) => [p.name, p]));
-    assert.deepStrictEqual(byName(JSON.parse(fs.readFileSync(file, 'utf8'))), byName(SHIPPED), 'the alias is back, nothing else moved');
-    assert.match(run(['--mcp-entries', '--marketplace-file', file]), /mcp entries current: 16 plugins/, 'a re-run writes nothing');
-    fs.rmSync(tmp, { recursive: true, force: true });
+    const retired = require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).retired.mcps;
+    for (const name of [...Object.keys(original), 'browser']) assert.ok(retired.includes(name), `${name} is in retired.mcps`);
 });
 
 test('malformed input fails loudly rather than emitting a short list', () => {
@@ -226,7 +201,7 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
     const mcpOnly = (p) => p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'alfred-code' || LOCKED.includes(e.name) || mcpOnly(e)) continue;
+        if (e.name === 'alfred-code' || mcpOnly(e)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)
@@ -268,102 +243,6 @@ test('no plugin is added from another marketplace on every run - claude-hud is a
     assert.strictEqual(shippedBy['alfred-code'].dependencies, undefined);
     assert.deepStrictEqual(CORE_DEP_PLUGINS, []);
     assert.ok(!CORE_DEP_PLUGINS.some((spec) => spec.split('@')[0] === 'superpowers'), `CORE_DEP_PLUGINS still names superpowers: ${CORE_DEP_PLUGINS.join(', ')}`);
-});
-
-// The three servers a project can never drop ship as standalone entries the installer installs beside
-// the core - locked by the installer putting them back on every run, not by a dependency edge that
-// disables the core when one is missing.
-test('the three locked MCP plugins ship standalone, one server each, depending on nothing', () => {
-    for (const name of LOCKED)
-    {
-        assert.ok(shippedBy[name], `${name} is locked, but this marketplace does not ship it`);
-        assert.strictEqual(shippedBy[name].dependencies, undefined, `${name} depends on nothing, so it never loads disabled`);
-        assert.deepStrictEqual(Object.keys(shippedBy[name].mcpServers || {}), [name],
-            `${name} must carry exactly one server of its own name, or its tools stop being mcp__plugin_${name}_${name}__<tool>`);
-    }
-});
-
-// The desktop servers drive the machine's own apps: each one plugin, one server of its own name, a
-// droppable pick that depends on nothing (I7), started through the launcher that pins the Python and
-// refuses on the other OS. windows-control ships with shell, registry, process and file-system control
-// switched off (I10: FileSystem writes, moves and deletes where no house guard looks).
-test('the two desktop MCP plugins: one server each, launched through desktop-launch.js at the release pin', () => {
-    const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
-    const cut = ['--exclude-newer', `${JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).refreshed}T23:59:59Z`];
-    const want = {
-        'windows-control': ['--server', 'windows-control', '--package', `windows-mcp==${pins['windows-control'].version}`, ...cut, '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem'],
-        'macos-control': ['--server', 'macos-control', '--package', `macos-mcp==${pins['macos-control'].version}`, ...cut, '--', 'serve'],
-    };
-    for (const [name, args] of Object.entries(want))
-    {
-        const entry = shippedBy[name];
-        assert.ok(entry, `${name} is not in the marketplace`);
-        assert.deepStrictEqual(Object.keys(entry.mcpServers), [name], `${name} must carry exactly one server of its own name`);
-        assert.strictEqual(entry.dependencies, undefined, `${name} depends on nothing - a dependency on the core blocks every core disable while it is on (I7)`);
-        const server = entry.mcpServers[name];
-        assert.strictEqual(server.command, 'node');
-        assert.deepStrictEqual(server.args, ['${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js', ...args]);
-        assert.ok(fs.existsSync(path.join(__dirname, '..', 'stack', 'mcp', 'desktop-launch.js')), 'the launcher the entry names is not in the tree');
-    }
-});
-
-// I7: Claude Code refuses to disable a plugin an enabled one depends on ('new-core is still required by
-// pw', measured on 2.1.284), so an MCP entry naming the core blocked the full copy route's core stand-down
-// and a user's own core disable while a browser or desktop row was on. Since 2.1.0 the core carries no
-// skill those servers need, and the installer installs the core on every run: no MCP entry names it.
-test('no generated MCP entry declares a dependency - none may block a core disable (I7)', () => {
-    const { mcpPlugins } = require('./build-marketplace.js');
-    for (const entry of mcpPlugins())
-    {
-        assert.strictEqual(entry.dependencies, undefined, `${entry.name} declares ${JSON.stringify(entry.dependencies)}`);
-        assert.ok(shippedBy[entry.name], `${entry.name} is not in the live marketplace`);
-        assert.strictEqual(shippedBy[entry.name].dependencies, undefined, `the live ${entry.name} entry still declares a dependency`);
-    }
-});
-
-// Both upstreams send PostHog usage events unless ANONYMIZED_TELEMETRY is 'false' (read in each wheel's
-// lifespan: windows-mcp 0.8.5 and macos-mcp 0.4.6 __main__.py, default 'true'). A server driving the
-// user's own desktop starts with it off.
-test('the two desktop MCP plugins start their upstream with its telemetry off', () => {
-    for (const name of ['windows-control', 'macos-control'])
-        assert.deepStrictEqual(shippedBy[name].mcpServers[name].env, { ANONYMIZED_TELEMETRY: 'false' }, `${name} must pass ANONYMIZED_TELEMETRY=false`);
-});
-
-// Audit 2026-10-14 PL1: serena-agent 1.7.0 pings its maker's host at every agent start unless SERENA_USAGE_REPORTING is
-// 'false' (serena/agent.py _send_usage_info). A locked server, so every session of every install would ping.
-test('the navigation MCP plugin starts serena with its usage ping off, and the copy-route row registers the same', () => {
-    assert.deepStrictEqual(shippedBy['alfred-navigation'].mcpServers['alfred-navigation'].env, { SERENA_USAGE_REPORTING: 'false' });
-    const row = require('../meta/stack-manifest.json').mcps.find((m) => m.name === 'alfred-navigation');
-    assert.match(row.args, /(^| )-e SERENA_USAGE_REPORTING=false /, row.args);
-});
-
-// M24: every uvx-started server passes the release's dependency cut-off (the pins file's refreshed day, its last
-// second UTC) to its launcher, beside the pin it was generated with; the npx browser has no uvx and takes none.
-test('M24 each uvx MCP entry hands its launcher the release cut-off, and the browser entries none', () =>
-{
-    const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8'));
-    const cutoff = `${pins.refreshed}T23:59:59Z`;
-    for (const name of ['alfred-navigation', 'alfred-memory', 'windows-control', 'macos-control'])
-    {
-        const args = shippedBy[name].mcpServers[name].args;
-        const at = args.indexOf('--exclude-newer');
-        assert.ok(at > 0 && args[at + 1] === cutoff, `${name}: ${args.join(' ')}`);
-        const rest = args.indexOf('--');
-        assert.ok(rest < 0 || at < rest, `${name}: the cut-off is a launcher flag, before the server's own arguments`);
-    }
-    for (const engine of ['chrome', 'msedge', 'firefox', 'webkit'])
-        assert.ok(!shippedBy[`${engine}-control`].mcpServers[`${engine}-control`].args.includes('--exclude-newer'));
-});
-
-// M25: Context7 documents `Context7-API-Key` (or Authorization: Bearer) and warns a header name with an underscore
-// can be dropped by a proxy, which silently drops a keyed user to the free tier. Probed 2026-09-29: an empty
-// Context7-API-Key is the anonymous tier, a bogus one is 'Invalid API key' - the server reads the name.
-test('M25 the documentation entry sends the key as Context7-API-Key, empty when unset', () =>
-{
-    const server = shippedBy['alfred-documentation'].mcpServers['alfred-documentation'];
-    assert.deepStrictEqual(server.headers, { 'Context7-API-Key': '${CONTEXT7_API_KEY:-}' });
-    const { CONTEXT7_REMOTE } = require('./install/mcp.js');
-    assert.strictEqual(CONTEXT7_REMOTE.header, 'Context7-API-Key: ${CONTEXT7_API_KEY:-}', 'the copy route sends the same header');
 });
 
 test('a retired name is dropped from the marketplace, and a name nobody retired is kept', () =>

@@ -106,10 +106,10 @@ test('the seat is a read-only sonnet support seat whose findings each name a fil
     const tools = [...require('./seat-tools.js').effectiveTools(fm.tools, fm.disallowedTools)];
     for (const banned of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Agent', 'Task'])
         assert.ok(!tools.includes(banned), `a read-only seat carries no ${banned}`);
-    for (const need of ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', 'mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols',
-        'mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview', 'mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search',
-        'mcp__plugin_alfred-memory_alfred-memory__memory_list', 'Read', 'Grep', 'Glob', 'Bash', 'Skill', 'LSP'])
+    // built-in tools only since 2026-10-24: the LSP and grep locate, Bash reads git
+    for (const need of ['Read', 'Grep', 'Glob', 'Bash', 'Skill', 'LSP'])
         assert.ok(tools.includes(need), `the seat is granted ${need}`);
+    assert.ok(!tools.some((t) => t.startsWith('mcp__')), 'no MCP server');
 
     const b = squash(body(text));
     assert.match(b, /status: CHARACTERIZED \| PARTIAL \| BLOCKED/, 'a routable status line');

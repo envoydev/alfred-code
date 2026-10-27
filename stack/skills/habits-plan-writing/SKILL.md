@@ -19,10 +19,12 @@ audit and the build read it.
 
 One file per scope at `<docs-path>/work/plans/<feature>.md`. A new scope after `Completed:` starts a new file. `<feature>` doubles as the plan id the approval stamp and every implementer brief's `plan:` line carry, so it takes letters, digits, `.`, `_` and `-` only, starting with a letter or digit.
 
+Where a `scorer: on` line naming the designer plan file or a `scorer: stacked` line is in context, the FIRST action before releasing the plan file - before it is written to that path - is the `mode-output-scorer` Skill call with output `designer-plan`.
+
 ```text
 # <Feature> - plan
 
-Oriented: <architecture sections read, symbol calls made, house skills loaded> | none - <reason>
+Oriented: <architecture sections read, symbol calls made, house skills loaded, preference and assessment docs read> | none - <reason>
 Asked: "<the user's words, verbatim>"
 Build: <the gate commands as the project runs them - build, tests, lint; the final gate's affected-set command>
 Resume: next task 1
@@ -38,7 +40,7 @@ Resume: next task 1
 - status: TODO
 - files: <path> (create | modify) - one line per file; a shared file has ONE owning task
 - anchors: <file:symbol> located this session
-- traps: <the stack skill's trap this slice must handle>
+- traps: <the stack skill's trap this slice must handle>, and each recorded weakness in the files this slice touches - the assessment entry's title and its path:line - fixed in this slice, or left with no new case added
 - test: <the test written first, and the assertion that fails before the slice lands>
 - acceptance: `<command>` - <the green it must show>
 - log_points: <where, level, identifiers> | none - <reason>
@@ -47,6 +49,10 @@ Resume: next task 1
 
 - <the choice> - precedent: <file:symbol or named rule> | no precedent - <reason>
 - <a change to what the user sees that Asked: does not name> - asked: <the user's answer>
+
+## Optional
+
+- <work Asked: does not name> - Recommended - <reason> | Not worth it - <reason>
 ```
 
 ## The task card
@@ -59,6 +65,10 @@ Resume: next task 1
 - `test:` is written first and fails for the reason the card names before the slice lands. A card
   with no test of its own says why (`test: covered by task 2`, `test: none - config only`).
 - `acceptance:` is a command someone can run and a result they can read; 'works' is not a result.
+- Work `Asked:` does not name never becomes a card: it is one `## Optional` line, marked Recommended or Not worth it
+  with the reason, unless the user asked for it (a Decision carries `asked: <the answer>`) or the request cannot be
+  met safely without it - then it is a card, and a Decision says why.
+  No extras, no section.
 
 A documentation plan - pages, sections or docs files, no product code - takes the documentation card:
 four fields in place of `files`, `anchors`, `traps`, `test`, `acceptance` and `log_points`, the status
@@ -101,5 +111,5 @@ whole file, and never another ticket's plan in place of this shape.
 
 - The execution mode, a banner, or advice on how to run it - that is the solve flow's mode ask.
 - A whole implementation pasted in - anchors and shapes, not code.
-- A library or vendor claim from memory - verify it via the documentation server or the vendor doc and cite it,
+- A library or vendor claim from memory - verify it via the documentation tools or the vendor doc and cite it,
   or mark it `unverified`.

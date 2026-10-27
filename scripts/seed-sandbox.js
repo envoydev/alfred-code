@@ -1,8 +1,8 @@
 // scripts/seed-sandbox.js - one throwaway project per case, for the tests that run the Node seed END TO
 // END against a recording `claude`: every CLI call is logged, `plugin list --json` answers from a
-// fixture, and the tools other layers reach for (uvx for the notes import, npx for the browser
-// download, npm and curl - which the seed no longer calls since its pins are the release's) answer
-// 'no' - so no run reaches registry.npmjs.org or pypi.org unless a case hands in its own stub. The unit tests prove what each layer does with what it
+// fixture, and the tools the seed once reached for (uvx for the notes import and npx for the browser download until
+// 2.10.1, npm and curl until its pins became the release's) answer 'no' - so no run reaches registry.npmjs.org or
+// pypi.org unless a case hands in its own stub. The unit tests prove what each layer does with what it
 // is handed; these prove the seed hands it. A shell-script stub cannot be spawned without a shell on
 // Windows, so callers pass POSIX_ONLY as the test options.
 'use strict';
@@ -24,7 +24,8 @@ function scrubStackEnv(env)
 }
 
 // `account: true` swaps the recording claude stub for one that keeps the account file as the real CLI does: `mcp add`
-// writes the registration (its `-e` pairs as env) and says 'already exists' over a held name, `mcp remove` deletes it (a
+// writes the registration (its `-e` pairs as env) and says 'already exists' over a held name, `mcp add-json` writes the
+// entry it is handed (a stdio one gaining `type`, as the CLI stores it), `mcp remove` deletes it (a
 // miss exits 1), `mcp get` prints a held one and exits 1 on a miss - so the ledger each run writes is the one the next reads.
 const ACCOUNT_STUB = `'use strict';
 const fs = require('node:fs');
@@ -67,6 +68,22 @@ if (verb === 'add')
     else servers[name] = { type: 'stdio', command: words[0], args: words.slice(1), env };
     write(scope);
 }
+else if (verb === 'add-json')
+{
+    // \`mcp add-json -s <scope> <name> <json>\`: stored in the CLI's own shape - a stdio entry gains its type - so a suite
+    // never meets a CLI that keeps the JSON as sent. CLAUDE_STUB_ADDJSON_FAIL echoes the JSON on stderr and exits 1.
+    const words = [...rest];
+    let scope = 'local';
+    for (const flag of ['-s', '--scope']) { const at = words.indexOf(flag); if (at >= 0) { scope = words[at + 1]; words.splice(at, 2); } }
+    const [name, json] = words;
+    if (process.env.CLAUDE_STUB_ADDJSON_FAIL) { process.stderr.write('Invalid configuration: ' + json + '\\n'); process.exit(1); }
+    let entry;
+    try { entry = JSON.parse(json); } catch { process.stderr.write('Invalid JSON\\n'); process.exit(1); }
+    const servers = (holder(scope).mcpServers ||= {});
+    if (servers[name]) { process.stderr.write('MCP server ' + name + ' already exists in ' + scope + ' config\\n'); process.exit(1); }
+    servers[name] = entry.type ? entry : { type: 'stdio', ...entry };
+    write(scope);
+}
 else if (verb === 'remove')
 {
     const scope = rest[rest.indexOf('-s') + 1];
@@ -103,7 +120,9 @@ else process.exit(1);
 // install runs that install with the older tree's own installer, as a real one was.
 // `failOk` keeps a run that exits non-zero (a refusal) from throwing: the tree still reaches `inspect`,
 // and the last run's exit status and stderr come back as `code` and `err`.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, seed = SEED, args = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
+// `cwds` names each step's folder under the sandbox (`'ws/api'`), `repo` where it names none - for a tree of projects
+// that `prepare(repo, work)` lays out beside the repo.
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, seed = SEED, args = [], cwds = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -164,7 +183,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
             try
             {
                 outs.push(execFileSync(process.execPath, [Array.isArray(seed) ? seed[i] : seed, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
-                    { cwd: repo, env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+                    { cwd: path.join(work, cwds[i] || 'repo'), env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
                 code = 0;
                 err = '';
             }

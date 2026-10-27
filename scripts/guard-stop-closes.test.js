@@ -298,6 +298,27 @@ test('SD10: a merge, PR or remote ask is backed only by a remote-aware read', ()
   assert.match(ask(ran('ls'), 'Commit the staged files now?'), /no `git status`/, '... and its own note without one');
 });
 
+// The forge is any forge: a watch and a remote read are concepts (forge.js), so GitLab's CLI, an MCP server or a CLI
+// nobody listed back them the way `gh` does.
+test('a pipeline watch and a forge read count on every transport', () => {
+  const ci = "I'm waiting for the pipeline on the branch head. Once it goes green I merge; a background watch tells me when it finishes.";
+  for (const command of ['glab ci status --live', 'glab pipeline status --wait'])
+    assert.strictEqual(over([typed('go')], ci, { background_tasks: [{ id: 'b9', type: 'shell', status: 'running', command }] }).status, 0, command);
+  const ask = (rows, question) => {
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
+  };
+  const used = (name, input) => { const id = `r${seq}`; return [typed('go'), call(id, name, input), result(id, 'ok')]; };
+  const merged = 'The check needs the new services. Recommended: wait until ticket 3 is merged and install that build.';
+  for (const [name, input] of [['Bash', { command: 'glab mr view 4' }], ['Bash', { command: 'tea pr 5' }], ['mcp__gitlab__get_merge_request', { merge_request_iid: 4 }], ['mcp__github__pull_request_read', { method: 'get_status' }]])
+    assert.doesNotMatch(ask(used(name, input), merged), /This ask named (?:remote or job|git) state/, `a remote-aware read: ${name} ${JSON.stringify(input)}`);
+  const note = ask(used('Bash', { command: 'npm run build' }), merged);
+  assert.match(note, /no remote-aware read in this turn/, 'a build reads no remote');
+  assert.match(note, /change request or pipeline/, 'the note names the concept, not one CLI');
+  assert.doesNotMatch(note, /`gh /, 'no gh command is the advice');
+});
+
 // 31da645f: after its own prose-ask block the continuation ran an ask, a Skill, an Edit and a check, then closed on a new
 // prose question that no hook judged. A tool call after the block reopens the cycle; a bare rewrite stays held.
 test('SD10: a continuation that made a tool call after this hook\'s block is judged again', () => {
@@ -471,4 +492,271 @@ test('H9: quoted output is no pending item, a real one still holds, and an exemp
   const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
   const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((x) => x.kind === 'done-close-exempt');
   assert.deepStrictEqual(rows.map((x) => [x.mode, x.exempt]), [['probe', 'nothing-pending']]);
+});
+
+// --- the scorer backstop (mode-output-scorer, spec 5.9): a cycle that released an output the scorer owes a grade for,
+// with no Scored: line its loop wrote, is held once per typed prompt. CLAUDE_PROJECT_DIR holds a skill copy, so the
+// scorer is usable; the suite strips ALFRED_CODE_*, so the docs root is .alfred/docs (layout.js:25).
+const { scorerHeldFile } = require('../stack/hooks/hook-prelude.js');
+const ROOT = process.env.CLAUDE_PROJECT_DIR;
+fs.mkdirSync(path.join(ROOT, '.claude', 'skills', 'mode-output-scorer'), { recursive: true });
+fs.writeFileSync(path.join(ROOT, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\ndescription: x\n---\n');
+let touched = [];
+test.beforeEach(() => { touched = []; });
+const logs = new Map();   // one log dir per transcript, so the Stop chain marker carries across its closes
+const closeOver = (tp, text, extra, env) => {
+  const input = { hook_event_name: 'Stop', session_id: 'S', transcript_path: tp, last_assistant_message: text, ...(extra || {}) };
+  touched.push(input.session_id);
+  fs.appendFileSync(tp, JSON.stringify(say(`c${++seq}`, text)) + '\n');
+  if (!logs.has(tp)) logs.set(tp, fs.mkdtempSync(path.join(TMP, 'log-')));
+  return spawnSync(process.execPath, [HOOK], { input: JSON.stringify(input), encoding: 'utf8',
+    env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logs.get(tp), ALFRED_CODE_SCORER: '1', ...(env || {}) } }).status;
+};
+const scorer = (rows, text, extra, env) => closeOver(transcript(rows), text, extra, env);
+const append = (tp, rows) => fs.appendFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+const ledgerRows = (kind) => [...new Set(touched)].flatMap((sid) => {
+  try { return fs.readFileSync(path.join(ROOT, '.alfred', 'statistics', 'hook-blocks', `${sid.replace(/[^\w.-]/g, '_')}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; }
+}).filter((r) => r.kind === kind);
+const cmd = (name) => typed(`<command-name>/${name}</command-name>`);
+const rowText = (o) => (typeof o.message.content === 'string' ? o.message.content : '');
+const writeOverride = (name, value) => { fs.mkdirSync(path.join(ROOT, '.claude'), { recursive: true }); fs.writeFileSync(path.join(ROOT, '.claude', 'settings.local.json'), JSON.stringify({ skillOverrides: { [name]: value } })); };
+const clearOverride = () => fs.rmSync(path.join(ROOT, '.claude', 'settings.local.json'), { force: true });
+// T1 is per session: the backstop reads only the session's own draft folder (R31), so every case builds the draft from its sid.
+const draftOf = (sid, id = 'ab12cd34') => `${ROOT}/.alfred/state/sessions/scorer/${sid}/x/${id}.draft.md`;
+const T1 = (sid) => call('t1', 'Write', { file_path: draftOf(sid), content: 'd' });
+const T2 = call('t2', 'Write', { file_path: `${ROOT}/.alfred/docs/work/plans/p.md`, content: 'p' });
+const T3W = call('t3', 'Write', { file_path: `${ROOT}/.alfred/docs/work/diagnoses/f.md`, content: 'findings f:\n  Cause: OrderSyncJob.ExecuteAsync disposes the scope\n' });
+const T3E = call('t4', 'Edit', { file_path: `${ROOT}/.alfred/docs/work/diagnoses/f.md`, old_string: 'Cause: <pending>', new_string: 'Cause: unproven - 2 hypotheses ranked' });
+const T3S = call('t5', 'Agent', { subagent_type: 'alfred-code:issue-diagnoser-runtime', prompt: 'diagnose' });
+const SCORED = 'Scored: 91/100 (level 80) - 1 run(s) - independent - designer-plan';
+// backed(sid, line, folder) writes scorer/<folder>/b/rounds.log ending on `line` - the log next writes (R34)
+const backed = (sid, line = 'released ab12cd34', folder = sid) => { const d = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', folder, 'b'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'rounds.log'), `output: custom\n1 0 ab12cd34\n${line}\n`); };
+
+test('scorer backstop: T1, T2, both T3 writes and a settled T3 seat with no Scored line are held once; with it, not (AC11)', () => {
+  for (const [name, make] of [['t1', T1], ['t2', () => T2], ['t3', () => T3W], ['t4', () => T3E], ['t5', () => T3S]]) {
+    assert.strictEqual(scorer([typed('go'), make(`A-${name}`)], 'done', { session_id: `A-${name}` }), 2, name);
+    backed(`B-${name}`);
+    assert.strictEqual(scorer([typed('go'), make(`B-${name}`)], `done\n${SCORED}`, { session_id: `B-${name}` }), 0, name);
+  }
+});
+test('scorer backstop: a draft in another session\'s folder is no T1 for this one (R31)', () => {
+  assert.strictEqual(scorer([typed('go'), T1('other')], 'done', { session_id: 'N1' }), 0);
+  assert.ok(!fs.existsSync(scorerHeldFile(ROOT, 'N1')));
+});
+test('scorer backstop: a Cause: <pending> write and a diagnoser seat still running are no T3 yet (R22)', () => {
+  const pending = call('t6', 'Write', { file_path: `${ROOT}/.alfred/docs/work/diagnoses/g.md`, content: '  Cause: <pending>\n' });
+  assert.strictEqual(scorer([typed('go'), pending], 'triaged', { session_id: 'P1' }), 0);
+  const live = [{ id: 'd1', type: 'subagent', status: 'running', agent_type: 'alfred-code:issue-diagnoser-runtime' }];
+  assert.strictEqual(scorer([typed('go'), T3S], 'Diagnosing - the seat is running', { session_id: 'P2', background_tasks: live }), 0);
+});
+test('scorer backstop: an Edit keeping the Cause line, a released root-cause, a bold <pending> - no T3 (final review 2)', () => {
+  const f = `${ROOT}/.alfred/docs/work/diagnoses/f.md`;
+  const cards = call('t8', 'Edit', { file_path: f, old_string: 'Cause: X disposes the scope\n', new_string: 'Cause: X disposes the scope\n\n### Task 1 - keep the scope\n' });
+  assert.strictEqual(scorer([typed('add the task cards'), cards], 'cards added', { session_id: 'V1' }), 0);
+  const stamp = call('t9', 'Edit', { file_path: f, old_string: 'Cause: X disposes the scope', new_string: 'Cause: X disposes the scope - signature ObjectDisposedException, fix: own scope per run' });
+  const d = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'V2', 'cause');
+  fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, 'rounds.log'), 'output: root-cause\n1 0 ab12cd34\nreleased ab12cd34\n');
+  fs.utimesSync(path.join(d, 'rounds.log'), (Date.now() - 600000) / 1000, (Date.now() - 600000) / 1000);   // an earlier cycle
+  assert.strictEqual(scorer([typed('close it out'), stamp], 'stamped', { session_id: 'V2' }), 0);
+  assert.strictEqual(scorer([typed('close it out'), stamp], 'stamped', { session_id: 'V3' }), 2, 'no released root-cause: held');
+  const bold = call('t10', 'Write', { file_path: `${ROOT}/.alfred/docs/work/diagnoses/h.md`, content: '  Cause: **<pending>**\n  Cause: `<pending>`\n' });
+  assert.strictEqual(scorer([typed('go'), bold], 'triaged', { session_id: 'V4' }), 0);
+});
+test('scorer backstop: a withheld output whose continue ask is open (rounds.log ends on asked) backs its Scored line (final review 3)', () => {
+  backed('W1', 'asked ab12cd34 ask-continue');
+  assert.strictEqual(scorer([typed('go'), T1('W1')], `withheld\nScored: 71/100 (level 80) - NOT PASSED`, { session_id: 'W1' }), 0);
+  assert.strictEqual(ledgerRows('scorer-receipt-unbacked').filter((r) => /W1/.test(JSON.stringify(r))).length, 0);
+  backed('W2', 'asked ab12cd34 offer-fix');                                                        // the fix-on-pass ask, open
+  assert.strictEqual(scorer([typed('go'), T1('W2')], 'offered\nScored: 88/100 (level 80) - fix offered - 1 run(s)', { session_id: 'W2' }), 0);
+});
+test('scorer backstop: a typed stack (T4) is held once with the switch off; the name in inline code is not (AC25)', () => {
+  for (const [i, t] of [typed('/task-version-upgrade /mode-output-scorer upgrade to .NET 10'), typed('using mode-output-scorer, explain closures'),
+    typed('<command-name>/habits-explain-topic</command-name><command-args>/mode-output-scorer explain x</command-args>')].entries()) {
+    assert.strictEqual(scorer([t], 'here', { session_id: `T4-${i}` }, { ALFRED_CODE_SCORER: '0' }), 2, rowText(t));
+    backed(`T4b-${i}`);
+    assert.strictEqual(scorer([t], `here\n${SCORED}`, { session_id: `T4b-${i}` }, { ALFRED_CODE_SCORER: '0' }), 0);
+  }
+  assert.strictEqual(scorer([typed('what does `/mode-output-scorer` do')], 'it grades', { session_id: 'T4c' }, { ALFRED_CODE_SCORER: '0' }), 0);
+});
+test('scorer backstop: a flag-only /mode-output-scorer line is no stack and owes no Scored line (AC7, spec section 4)', () => {
+  for (const [i, t] of [typed('/mode-output-scorer --mode-output-scorer-off'),
+    typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-on</command-args>'),
+    typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-off</command-args>')].entries())
+    assert.strictEqual(scorer([t], 'switched', { session_id: `T4f-${i}` }, { ALFRED_CODE_SCORER: '0' }), 0, rowText(t));
+  assert.strictEqual(scorer([typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-on explain x</command-args>')],
+    'here', { session_id: 'T4f-x' }, { ALFRED_CODE_SCORER: '0' }), 2, 'a request after the run is a stack');
+});
+test('scorer backstop: a stacked cycle with the switch off owes a T1 draft too; an unstacked one does not (spec 5.9)', () => {
+  const off = { ALFRED_CODE_SCORER: '0' };
+  assert.strictEqual(scorer([typed('/habits-explain-topic /mode-output-scorer explain x'), T1('Q1')], 'here', { session_id: 'Q1' }, off), 2);
+  assert.strictEqual(scorer([typed('explain x'), T1('Q2')], 'here', { session_id: 'Q2' }, off), 0);
+});
+test('scorer backstop: two closes in one cycle with a notification turn between - held on the first only (AC11)', () => {
+  const tp = transcript([typed('go'), T1('C1')]);
+  assert.strictEqual(closeOver(tp, 'Scoring designer-plan - the grader is running', { session_id: 'C1' }), 2);
+  append(tp, [typed('<task-notification>grader done</task-notification>')]);              // a harness prompt: the same cycle
+  assert.strictEqual(closeOver(tp, 'here it is', { session_id: 'C1' }), 0);
+});
+test('scorer backstop: a Scored line released in an earlier turn of the cycle clears a later plain close', () => {
+  backed('C2');
+  assert.strictEqual(scorer([typed('go'), T1('C2'), say('a1', `plan\n${SCORED}`), typed('<task-notification>x</task-notification>')], 'ok', { session_id: 'C2' }), 0);
+});
+test('scorer backstop: a typed Scored line with no rounds.log behind it is no receipt; a final line, a SELF log, both are (R34)', () => {
+  assert.strictEqual(scorer([typed('go'), T1('R1')], `done\n${SCORED}`, { session_id: 'R1' }), 2);
+  assert.strictEqual(ledgerRows('scorer-receipt-unbacked').length, 1);
+  backed('R2', 'final ab12cd34');
+  assert.strictEqual(scorer([typed('go'), T1('R2')], `withheld\n${SCORED}`, { session_id: 'R2' }), 0);
+  // a log older than the cycle's opening row backs nothing: the opening row carries a timestamp 60s after the log's mtime
+  backed('R4'); const old = (Date.now() - 120000) / 1000;
+  fs.utimesSync(path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'R4', 'b', 'rounds.log'), old, old);
+  const go = { ...typed('go'), timestamp: new Date(Date.now() - 60000).toISOString() };
+  assert.strictEqual(scorer([go, T1('R4')], `done\n${SCORED}`, { session_id: 'R4' }), 2);
+  // a SELF log backs any session's receipt in its time window, so it runs after R4 and goes after the case
+  backed('R3', 'released ab12cd34', 'self-0a1b2c3d');
+  assert.strictEqual(scorer([typed('/mode-output-scorer explain x')], `here\n${SCORED}`, { session_id: 'R3' }), 0);
+  fs.rmSync(path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'self-0a1b2c3d'), { recursive: true, force: true });
+});
+test('scorer backstop: an ordinary reply, an Edit tick under task-implement, a task-verify-plan stamp - not held (AC14)', () => {
+  assert.strictEqual(scorer([typed('hi')], 'hello', { session_id: 'E1' }), 0);
+  assert.strictEqual(scorer([cmd('task-implement'), call('e1', 'Edit', { file_path: `${ROOT}/.alfred/docs/work/plans/p.md` })], 'ticked', { session_id: 'E2' }), 0);
+  assert.strictEqual(scorer([cmd('task-verify-plan'), T2], 'stamped', { session_id: 'E3' }), 0);
+});
+test('scorer backstop: no flow exemption - /task-solve and a plan Write held; the released target in a later cycle is not (AC16, R23)', () => {
+  assert.strictEqual(scorer([cmd('task-solve'), T2], 'plan written', { session_id: 'F1' }), 2);
+  const slug = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'F2', 'p');
+  fs.mkdirSync(slug, { recursive: true });
+  fs.writeFileSync(path.join(slug, 'rounds.log'), 'output: designer-plan\ntarget: .alfred/docs/work/plans/p.md\n1 0 ab12cd34\nreleased ab12cd34\n');
+  assert.strictEqual(scorer([typed('stamp it'), T2], 'rewritten', { session_id: 'F2' }), 0);
+  const back = call('t7', 'Write', { file_path: `${ROOT}\\.alfred\\docs\\work\\plans\\p.md`, content: 'p' });   // Review Focus: another spelling
+  assert.strictEqual(scorer([typed('stamp it'), back], 'rewritten', { session_id: 'F2' }), 0);
+  assert.strictEqual(scorer([cmd('task-version-upgrade'), call('s1', 'Skill', { skill: 'habits-execution-strategy' }), T1('F3')], 'plan above', { session_id: 'F3' }), 2);
+});
+test('scorer backstop: the outputs list - root-cause alone holds T3, never T2 (AC24)', () => {
+  const only = { ALFRED_CODE_SCORER_OUTPUTS: 'root-cause' };
+  assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O1' }, only), 2);
+  assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O2' }, only), 0);
+  assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O3' }, { ALFRED_CODE_SCORER_OUTPUTS: 'designer-plan,root-cause' }), 2);
+});
+test('scorer backstop: user-invocable-only holds no T2 or T3, and still holds a typed stack (AC19)', () => {
+  writeOverride('mode-output-scorer', 'user-invocable-only');       // ROOT/.claude/settings.local.json
+  try {
+    assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'U1' }), 0);
+    assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'U2' }), 0);
+    assert.strictEqual(scorer([typed('/mode-output-scorer explain x')], 'here', { session_id: 'U3' }), 2);
+  } finally { clearOverride(); }
+});
+test('scorer backstop: a live output-scorer seat in background_tasks - not held; settled - held (AC17)', () => {
+  const seat = (status) => [{ id: 'g1', type: 'subagent', status, agent_type: 'alfred-code:output-scorer' }];
+  for (const [i, rowsOf] of [(sid) => [typed('go'), T1(sid)], () => [typed('/mode-output-scorer explain x')]].entries()) {
+    assert.strictEqual(scorer(rowsOf(`L1-${i}`), 'Scoring custom - the grader is running', { session_id: `L1-${i}`, background_tasks: seat('running') }), 0);
+    assert.strictEqual(scorer(rowsOf(`L2-${i}`), 'Scoring custom - the grader is running', { session_id: `L2-${i}`, background_tasks: seat('completed') }), 2);
+  }
+});
+test('scorer backstop: no typed prompt in the transcript - not held, one scorer-cycle-unread row', () => {
+  assert.strictEqual(scorer([T1('V1')], 'done', { session_id: 'V1' }), 0);
+  assert.strictEqual(ledgerRows('scorer-cycle-unread').length, 1);
+});
+test('scorer backstop: typed rows with no uuid or timestamp key the cycle by the row\'s hash - held once across two closes', () => {
+  const tp = transcript([typed('go'), T1('K1')]);
+  assert.strictEqual(closeOver(tp, 'done', { session_id: 'K1' }), 2);
+  assert.strictEqual(closeOver(tp, 'done', { session_id: 'K1' }), 0);
+});
+test('scorer backstop: an opening row past the 256KB tail is still found - the walk widens (AC11)', () => {
+  const pad = Array.from({ length: 300 }, (_, i) => result(`r${i}`, 'x'.repeat(1024)));        // about 300KB of tool results
+  assert.strictEqual(scorer([typed('go'), T1('W1'), ...pad], 'done', { session_id: 'W1' }), 2);
+});
+test('scorer backstop: a T1 file_path written with backslashes, and a session id with a slash, are still a trigger (R31)', () => {
+  const w = call('t9', 'Write', { file_path: draftOf('B1').replace(/\//g, '\\'), content: 'd' });
+  assert.strictEqual(scorer([typed('go'), w], 'done', { session_id: 'B1' }), 2);
+  const odd = call('t10', 'Write', { file_path: draftOf('a_b', 'cd34ab12'), content: 'd' });
+  assert.strictEqual(scorer([typed('go'), odd], 'done', { session_id: 'a/b' }), 2);
+});
+test('scorer backstop: a Stop hook feedback row starts no cycle; the check runs before the stopHeld exit (R17)', () => {
+  assert.strictEqual(scorer([typed('go'), T1('H1'), say('a', 'x'), typed('Stop hook feedback: a sibling hook held this')], 'done', { session_id: 'H1' }), 2);
+  // this hook holds first for another reason (a prose decision ask, no trigger yet); the rewrite then writes a draft and
+  // closes plain with stop_hook_active set, so stopHeld (:1814) is true - only a check placed before it still holds
+  const tp = transcript([typed('pick one')]);
+  assert.strictEqual(closeOver(tp, 'Should I use the first option or the second one?', { session_id: 'S7' }), 2);
+  append(tp, [T1('S7')]);
+  assert.strictEqual(closeOver(tp, 'Here is the plan.', { session_id: 'S7', stop_hook_active: true }), 2);
+  assert.strictEqual(closeOver(tp, 'Here is the plan.', { session_id: 'S7', stop_hook_active: true }), 0);   // once per cycle
+});
+test('scorer backstop: all four keys unset, the switch at 0, or guard-stop-contract:scorer off - never held, nothing written (AC1, AC20)', () => {
+  for (const env of [{ ALFRED_CODE_SCORER: '' }, { ALFRED_CODE_SCORER: '0' }, { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:scorer' }])
+    assert.strictEqual(scorer([typed('go'), T1('S0'), T2], 'done', { session_id: 'S0' }, env), 0, JSON.stringify(env));
+  assert.ok(!fs.existsSync(scorerHeldFile(ROOT, 'S0')));
+});
+
+// --- the output-scorer's seal (spec 5.10): the seat's report is written to the score file its first line names, sealed,
+// from its SubagentHandback call or, with none, from SubagentStop - only inside this session's scorer folder, never twice.
+const crypto = require('node:crypto');
+const SCORECARD = path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'scripts', 'scorecard.js');
+const sha256 = (s) => crypto.createHash('sha256').update(String(s), 'utf8').digest('hex');
+const FOLDER = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 's1', 'x');
+fs.mkdirSync(FOLDER, { recursive: true });
+fs.mkdirSync(path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'a_b', 'x'), { recursive: true });
+const OUTSIDE = fs.mkdtempSync(path.join(TMP, 'outside-'));
+const seat = { agent_id: 'g1', agent_type: 'alfred-code:output-scorer', session_id: 's1' };
+const hookRun = (input, env) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify(input), encoding: 'utf8', env: { ...logEnv(), ...(env || {}) } });
+const handback = (msg, extra, env) => hookRun({ hook_event_name: 'PreToolUse', tool_name: 'SubagentHandback', tool_input: { message: msg }, ...seat, ...(extra || {}) }, env);
+const stop = (msg, extra, env) => hookRun({ hook_event_name: 'SubagentStop', last_assistant_message: msg, ...seat, ...(extra || {}) }, env);
+const cli = (args) => spawnSync(process.execPath, [SCORECARD, ...args], { cwd: ROOT, encoding: 'utf8', env: logEnv() });
+const R100_FILE = path.join(OUTSIDE, 'rubric-r100.md');
+fs.writeFileSync(R100_FILE, `# r100\n\n\`\`\`json\n${JSON.stringify({ output: 'r100', checks: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`c${i + 1}`, { points: 1, na: null }])) })}\n\`\`\`\n`);
+const CARD_BODY_100 = ['', '## Checks', '| ID | Result | Evidence or reason |', '|---|---|---|',
+  ...Array.from({ length: 100 }, (_, i) => `| c${i + 1} | yes | "quoted" |`), '', '## Findings', 'None', '', '## Positives', 'None', ''].join('\n');
+
+test('scorer seal: a report is sealed from the hand-back and, with no hand-back, from SubagentStop, stop_hook_active or not (AC18, AC22)', () => {
+  for (const [id, send] of [['aa000001', (m) => handback(m)], ['aa000002', (m) => stop(m)], ['aa000003', (m) => stop(m, { stop_hook_active: true })]]) {
+    const file = path.join(FOLDER, `${id}.score.md`); const msg = `score-file: ${file}\n## Checks\n| P1 | yes | "q" |`;
+    const r = send(msg);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), `seal: sha256 ${sha256(msg)}\n${msg}`, id);
+    if (id === 'aa000001') assert.deepStrictEqual([r.status, r.stdout.trim()], [0, '']);         // the hand-back is never delayed
+  }
+});
+test('scorer seal: a leading blank line, bold or backticks around score-file: still seal (Review Focus)', () => {
+  for (const [id, head] of [['ac000001', '\nscore-file: '], ['ac000002', '**score-file:** '], ['ac000003', '`score-file: ']]) {
+    const file = path.join(FOLDER, `${id}.score.md`);
+    handback(`${head}${file}${head.startsWith('`') ? '`' : ''}\nbody`);
+    assert.ok(fs.existsSync(file), id);
+  }
+});
+test('scorer seal: a second delivery of the same score-file never rewrites the first seal (AC22)', () => {
+  const file = path.join(FOLDER, 'ab000001.score.md');
+  handback(`score-file: ${file}\nfirst`); stop(`score-file: ${file}\nsecond`);
+  assert.match(fs.readFileSync(file, 'utf8'), /\nfirst$/);
+});
+test('scorer seal: outside the folder, another session, ../ segments, a symlinked parent, an existing file - nothing written (AC18)', () => {
+  fs.symlinkSync(OUTSIDE, path.join(FOLDER, 'link'));                       // OUTSIDE: a dir beside the project
+  fs.writeFileSync(path.join(FOLDER, 'bb000001.score.md'), 'mine');
+  for (const p of [path.join(ROOT, 'x.score.md'), path.join(FOLDER, '..', '..', 's2', 'x', 'b.score.md'),
+    path.join(FOLDER, '..', '..', '..', 'evil.score.md'), path.join(FOLDER, 'link', 'c.score.md'), path.join(FOLDER, 'bb000001.score.md')]) {
+    const before = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
+    handback(`score-file: ${p}\nbody`);
+    assert.strictEqual(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null, before, p);
+  }
+});
+test('scorer seal: a session id with a slash seals into its safe folder only (R31)', () => {
+  const safe = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'a_b', 'x', 'ae000001.score.md');
+  handback(`score-file: ${safe}\nbody`, { session_id: 'a/b' });
+  assert.ok(fs.existsSync(safe));
+});
+test('scorer seal: a project root reached through a symlink (an os.tmpdir() root on macOS) still seals', () => {
+  const link = path.join(OUTSIDE, 'root-link'); fs.symlinkSync(ROOT, link);
+  const file = path.join(link, '.alfred', 'state', 'sessions', 'scorer', 's1', 'x', 'cc000001.score.md');
+  handback(`score-file: ${file}\nbody`, {}, { CLAUDE_PROJECT_DIR: link });
+  assert.ok(fs.existsSync(file));
+});
+test('scorer seal: another agent_type, or guard-stop-contract:scorer off - nothing written', () => {
+  const file = path.join(FOLDER, 'dd000001.score.md');
+  handback(`score-file: ${file}\nbody`, { agent_type: 'alfred-code:aspnet-verifier' });
+  handback(`score-file: ${file}\nbody`, {}, { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:scorer' });
+  assert.ok(!fs.existsSync(file));
+});
+test('scorer seal: the written file passes scorecard grade, and fails with exit 3 once one character changes (AC18)', () => {
+  const file = path.join(FOLDER, 'ee000001.score.md'); handback(`score-file: ${file}\n${CARD_BODY_100}`);
+  assert.strictEqual(cli(['grade', file, '--rubric', R100_FILE, '--level', '80']).status, 0);
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('| c1 | yes |', '| c1 | no  |'));
+  assert.strictEqual(cli(['grade', file, '--rubric', R100_FILE, '--level', '80']).status, 3);
 });

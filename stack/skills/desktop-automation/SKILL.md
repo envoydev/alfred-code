@@ -1,6 +1,6 @@
 ---
 name: desktop-automation
-description: "Use when driving a native desktop app through the windows-control or macos-control server - click, type, read a Snapshot. Not for web pages or the app code."
+description: "Use when driving a native desktop app through a desktop server (Windows-MCP, MacOS-MCP) - click, type, read a Snapshot. Not for web pages or the app code."
 ---
 
 # Desktop automation - observe, one action, verify
@@ -9,20 +9,19 @@ A desktop server acts on the user's real desktop with the user's full rights: a 
 whatever window is in front, and nothing undoes it. So the run looks before every action and checks
 after it, and it drives only the UI the user asked about.
 
-Where the harness defers MCP tools (Claude Code), load them before the first call:
-`ToolSearch select:mcp__plugin_windows-control_windows-control__Snapshot,mcp__plugin_windows-control_windows-control__Click,mcp__plugin_windows-control_windows-control__Type,mcp__plugin_windows-control_windows-control__WaitFor,mcp__plugin_windows-control_windows-control__Screenshot`,
-plus the other `mcp__plugin_windows-control_windows-control__*` names the session's own listing shows, on Windows, and on macOS
-`ToolSearch select:mcp__plugin_macos-control_macos-control__Snapshot,mcp__plugin_macos-control_macos-control__Click,mcp__plugin_macos-control_macos-control__Type,mcp__plugin_macos-control_macos-control__App`,
-plus the other `mcp__plugin_macos-control_macos-control__*` names the session's own listing shows.
-Only one of the two servers is ever installed - each runs on its own OS only.
+The stack ships no desktop server: the one the user registered is the `desktop` line of the session-start tool order.
+Where the harness defers MCP tools (Claude Code), load its tools before the first call with the `ToolSearch select:` line
+that order gives - `Snapshot`, `Click`, `Type`, `WaitFor` and `Screenshot` on Windows-MCP, `Snapshot`, `Click`, `Type` and `App`
+on MacOS-MCP - plus that server's other tools the session's own listing shows. With no desktop line, no desktop app is
+driven: say so and report the check as not run. Each server runs on its own OS only.
 
 ## When to use
 
-Use when driving a native desktop app through the windows-control (Windows-MCP) or macos-control (MacOS-MCP) server - clicking, typing or checking UI in a WPF, WinForms, Win32, UWP, Office, Explorer, Java or native macOS app, or reading a Snapshot or Click result from one.
+Use when driving a native desktop app through a desktop server the user registered - Windows-MCP or MacOS-MCP - clicking, typing or checking UI in a WPF, WinForms, Win32, UWP, Office, Explorer, Java or native macOS app, or reading a Snapshot or Click result from one.
 
 Covers the observe, one action, verify loop; which app types give semantic control and which fall back to coordinates; the dialogs never to drive (elevation, credentials, payment, delete); keeping to the UI instead of shell, registry or file-system tools; and the setup failures (English display language, privilege level, Accessibility and Screen Recording).
 
-Not for a web page in a browser, which the browser server drives, or for writing the app's code or its UI tests, which the framework's own conventions cover.
+Not for a web page in a browser, which a browser tool drives, or for writing the app's code or its UI tests, which the framework's own conventions cover.
 
 ## The loop
 
@@ -61,8 +60,8 @@ screen shows.
 ## Stay in the UI, stay out of four dialogs
 
 - **Drive the UI the user named, nothing else.** The task 'change it in the app' is done in the app:
-  no shell, registry, process or file-system tool to get there. Windows-MCP enables every tool by default; the stack
-  launches it with PowerShell, Registry, Process and FileSystem excluded unless the user turned them on
+  no shell, registry, process or file-system tool to get there. Windows-MCP enables every tool by default, so it is
+  registered with PowerShell, Registry, Process and FileSystem excluded unless the user wants them
   (`references/windows.md`); its `App` tool stays on for launch, switch and resize, and MacOS-MCP's
   `Shell` stays in its list - but a house guard denies App's `launch_executable` mode (it starts any
   program) and every MacOS-MCP `Shell` call unless the user allowed it in
@@ -82,7 +81,7 @@ screen shows.
   - 'Stop the task' - the agent stops and reports where it halted
   ```
 
-  Under auto-mode (a live `AUTO` stamp) nobody is at the terminal to deal with such a prompt, so this ask
+  Under auto-run (a live `AUTO` stamp) nobody is at the terminal to deal with such a prompt, so this ask
   and the macOS grant ask below are never put: stop, quote the prompt and report where the task halted.
 
 ## Quality by app type
@@ -91,7 +90,7 @@ screen shows.
 |---|---|
 | WPF, WinForms, Win32, UWP, Office, Explorer (Windows) | full semantic control through UI Automation |
 | Native macOS apps (AppKit, SwiftUI) | full semantic control through the Accessibility API |
-| A web page in a browser on Windows | semantic through Snapshot's DOM mode (`use_dom`) - a web app is better driven by the browser server, where one is installed |
+| A web page in a browser on Windows | semantic through Snapshot's DOM mode (`use_dom`) - a web app is better driven by a browser tool, where the tool order ranks one |
 | Java SWT, Eclipse | semantic |
 | JavaFX | partial - some elements take coordinate clicks only |
 | Java Swing on Windows | screenshot and coordinate clicks only |

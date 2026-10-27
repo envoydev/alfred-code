@@ -42,10 +42,8 @@ test('install-args: the action is positional and REQUIRED - there is no default 
 test('install-args: both spellings of every valued flag mean the same thing', () =>
 {
     for (const [flag, value, key] of [
-        ['--space', 'work', 'space'],
         ['--scope', 'local', 'scope'],
         ['--docs-versioning', 'local', 'docsVersioning'],
-        ['--memory-level', 'scoped', 'memoryLevel'],
         ['--selection', '/tmp/sel.txt', 'selection'],
         ['--source', '/tmp/src', 'source'],
     ])
@@ -59,49 +57,52 @@ test('install-args: both spellings of every valued flag mean the same thing', ()
 
 test('install-args: a valued flag given LAST with no value is refused, not read as empty', () =>
 {
-    for (const flag of ['--space', '--scope',
-        '--docs-versioning', '--memory-level', '--selection', '--source'])
+    for (const flag of ['--scope',
+        '--docs-versioning', '--selection', '--source'])
         fails(['install', flag], new RegExp(`${flag}.*needs a value`));
 });
 
 test('install-args: the boolean flags take no value', () =>
 {
-    const p = ok(['install', '--github-cli', '--keep-pins', '--installed-only', '--print-plan', '--skills-only']);
-    assert.strictEqual(p.githubCli, true);
+    const p = ok(['install', '--forge-cli', '--keep-pins', '--installed-only', '--print-plan', '--skills-only']);
+    assert.strictEqual(p.forgeCli, true);
     assert.strictEqual(p.keepPins, true);
     assert.strictEqual(p.installedOnly, true);
     assert.strictEqual(p.printPlan, true);
     assert.strictEqual(p.skillsOnly, true);
 });
 
+test('install-args: --github-cli is gone - --forge-cli installs the CLI of whichever forge the origin is', () =>
+{
+    fails(['install', '--github-cli'], /unknown argument '--github-cli'/);
+    assert.strictEqual(ok(['install']).forgeCli, false);
+});
+
 test('install-args: an unknown argument is refused and the message NAMES the flags', () =>
 {
     fails(['install', '--oops'], /unknown argument '--oops'/);
-    fails(['install', '--oops'], /--memory-level/);   // the message lists what IS accepted
+    fails(['install', '--oops'], /--docs-versioning/);   // the message lists what IS accepted
 });
 
 test('install-args: the enums are lower-cased, so PowerShell casing works on both seeds', () =>
 {
     assert.strictEqual(ok(['install', '--scope', 'Local']).scope, 'local');
     assert.strictEqual(ok(['install', '--docs-versioning', 'Git']).docsVersioning, 'git');
-    assert.strictEqual(ok(['install', '--memory-level', 'Scoped']).memoryLevel, 'scoped');
 });
 
-test('install-args: --space is baked into a PATH, so its characters are checked', () =>
+// The --space profile flag is gone (the user's ruling of 2026-10-23): the account is the one CLAUDE_CONFIG_DIR names, so
+// either spelling of the flag is an unknown argument.
+test('install-args: --space is refused as unknown', () =>
 {
-    assert.strictEqual(ok(['install', '--space', 'work-2.0_x']).space, 'work-2.0_x');
-    fails(['install', '--space', '-lead'], /--space/);
-    fails(['install', '--space', 'has space'], /--space/);
-    fails(['install', '--space', 'sl/ash'], /--space/);
-    // the casing of a space IS significant - it names a directory
-    assert.strictEqual(ok(['install', '--space', 'Work']).space, 'Work');
+    fails(['install', '--space', 'work'], /unknown argument '--space'/);
+    fails(['install', '--space=work'], /unknown argument '--space=work'/);
+    assert.ok(!('space' in ok(['install'])), 'no space key is parsed');
 });
 
 test('install-args: every enum refuses a value outside its set', () =>
 {
     fails(['install', '--scope', 'repo'], /--scope must be 'project', 'user' or 'local'/);
     fails(['install', '--docs-versioning', 'svn'], /--docs-versioning must be 'git' or 'local'/);
-    fails(['install', '--memory-level', 'account'], /--memory-level must be/);
 });
 
 test('install-args: the defaults are nothing decided - scope included (I3)', () =>
@@ -114,8 +115,8 @@ test('install-args: the defaults are nothing decided - scope included (I3)', () 
     assert.strictEqual(p.scope, '');
     // '' means 'not given' - a later rule decides, and that is NOT the same as a default
     assert.strictEqual(p.docsVersioning, '');
-    assert.strictEqual(p.memoryLevel, '');
-    assert.deepStrictEqual(p.playwrightBrowsers, []);
+    assert.deepStrictEqual(p.ignored, [], 'nothing was ignored');
+    for (const key of ['memoryLevel', 'playwrightBrowsers', 'playwrightEnabled']) assert.ok(!(key in p), `${key} is still parsed`);
 });
 
 // A-M4 (final review A): a generic ambient SCOPE is another tool's variable - read as this installer's
@@ -133,55 +134,25 @@ test("install-args: 'global' is accepted as an alias of 'user' - a 1.x command b
     assert.strictEqual(ok(['install', '--scope', 'GLOBAL']).scope, 'user');
 });
 
-test('install-args: --memory-level project rides every scope - the db path is resolved per project, not baked into the registration', () =>
+// 2.10.1 took the servers out (the user's ruling of 2026-10-24), and with them the flags that configured them. A session
+// started before the update still runs the older command body against this snapshot, so each is ACCEPTED with its value,
+// in either spelling, and ignored - one line each, which the installer logs - never refused, never read as the action.
+test('install-args: the server flags 2.10.1 retired are accepted with their value and ignored, one line each', () =>
 {
-    assert.strictEqual(ok(['install', '--memory-level', 'project']).memoryLevel, 'project');
-    assert.strictEqual(ok(['install', '--memory-level', 'project', '--scope', 'user']).memoryLevel, 'project');
-    assert.strictEqual(ok(['install', '--memory-level', 'project', '--scope', 'local']).memoryLevel, 'project');
-    assert.strictEqual(ok(['install', '--memory-level', 'project', '--scope', 'global']).memoryLevel, 'project');
-});
-
-test('install-args: the browser engines come back in ONE canonical order, however they were typed', () =>
-{
-    assert.deepStrictEqual(ok(['install', '--browsers', 'webkit,chrome']).playwrightBrowsers,
-        ['chrome', 'webkit'], 'the server list depends on how the flag was typed');
-    assert.deepStrictEqual(ok(['install', '--browsers', 'MSEdge,Firefox']).playwrightBrowsers,
-        ['msedge', 'firefox']);
-    assert.deepStrictEqual(ok(['install', '--browsers', 'chrome,chrome']).playwrightBrowsers,
-        ['chrome'], 'a repeated engine produced two servers');
-});
-
-test('install-args: a browser value naming no engine is a typo, never "no flag"', () =>
-{
-    fails(['install', '--browsers', ','], /--browsers needs at least one/);
-    fails(['install', '--browsers', 'safari'], /--browsers takes chrome, msedge, firefox, webkit/);
-    fails(['install', '--browsers='], /--browsers.*needs a value/);
-});
-
-test('install-args: --browser-enabled takes the engines to ENABLE - a csv, all or none; absent is null, never a choice', () =>
-{
-    // Two choices, both the user's (R67): which engines to install, and which of those to enable.
-    // Absent means 'not asked' - a fresh install enables every engine, an update flips nothing.
-    assert.strictEqual(ok(['install']).playwrightEnabled, null);
-    assert.deepStrictEqual(ok(['install', '--browser-enabled', 'webkit,Chrome']).playwrightEnabled, ['chrome', 'webkit'],
-        'the enabled set depends on how the flag was typed');
-    assert.deepStrictEqual(ok(['install', '--browser-enabled=firefox']).playwrightEnabled, ['firefox']);
-    assert.strictEqual(ok(['install', '--browser-enabled', 'ALL']).playwrightEnabled, 'all');
-    assert.deepStrictEqual(ok(['install', '--browser-enabled', 'none']).playwrightEnabled, [], 'none is an empty set, not an absent flag');
-    assert.deepStrictEqual(ok(['install', '--browsers', 'chrome,firefox', '--browser-enabled', 'firefox']).playwrightEnabled, ['firefox']);
-    assert.ok(require('./install/args.js').FLAG_LIST.includes('--browser-enabled'), 'the usage does not list the flag');
-});
-
-test('install-args: --browser-enabled refuses an engine it cannot enable, in one line', () =>
-{
-    fails(['install', '--browser-enabled', 'safari'], /--browser-enabled takes all, none, or chrome, msedge, firefox, webkit \(got 'safari'\)/);
-    fails(['install', '--browser-enabled', ','], /--browser-enabled needs all, none, or at least one of chrome, msedge, firefox, webkit/);
-    fails(['install', '--browser-enabled', 'all,chrome'], /--browser-enabled takes all or none ALONE/);
-    fails(['install', '--browser-enabled', 'none,firefox'], /--browser-enabled takes all or none ALONE/);
-    fails(['install', '--browser-enabled'], /--browser-enabled needs a value/);
-    // Beside an explicit install set, an engine outside it is refused - it would never be installed.
-    fails(['install', '--browsers', 'chrome', '--browser-enabled', 'chrome,webkit'],
-        /^--browser-enabled names webkit, which --browsers does not install \(chrome\) - enable only an engine being installed$/);
+    for (const flag of ['--memory-level', '--browsers', '--browser-enabled', '--playwright-browsers', '--playwright-enabled'])
+    {
+        const line = new RegExp(`^${flag} ignored - the (memory|browser) servers? left the stack in 2\\.10\\.1$`);
+        for (const argv of [['update', flag, 'project'], ['update', `${flag}=chrome,firefox`], [flag, 'all', 'update']])
+        {
+            const p = ok(argv);
+            assert.strictEqual(p.action, 'update', `${argv.join(' ')}: the value was read as the action`);
+            assert.strictEqual(p.ignored.length, 1, argv.join(' '));
+            assert.match(p.ignored[0], line);
+        }
+        assert.strictEqual(ok(['update', flag]).ignored.length, 1, `${flag} given last with no value is still only ignored`);
+        assert.ok(!require('./install/args.js').FLAG_LIST.includes(flag), `the usage still lists ${flag}`);
+    }
+    assert.deepStrictEqual(ok(['install', '--browsers', 'chrome', '--memory-level', 'global']).ignored.length, 2, 'one line per flag');
 });
 
 // ------------------------------------------------------------------ the entry point
@@ -216,27 +187,14 @@ test('install-entry: a bad flag prints the usage and exits 1 - nothing is resolv
 
 test('install-entry: --print-plan prints the six resolved lists and exits 0, writing nothing', () =>
 {
-    const r = run(['install', '--source', ROOT, '--print-plan', '--memory-level', 'scoped']);
+    const r = run(['install', '--source', ROOT, '--print-plan', '--memory-level', 'project']);
     assert.strictEqual(r.code, 0, `--print-plan failed: ${r.err}`);
     assert.match(r.out, /source: .*\(provided\)/);
-    for (const list of ['skills', 'plugins', 'mcps', 'agents', 'rules', 'hooks'])
+    for (const list of ['skills', 'plugins', 'agents', 'rules', 'hooks'])
         assert.match(r.out, new RegExp(`^plan ${list}: \\S`, 'm'), `the plan named no ${list}`);
-    // The playwright row is expanded into its engines BEFORE the plan is printed, so the dry run
-    // reports the servers a real run would register, not the catalog row they come from.
-    assert.match(r.out, /^plan mcps: .*chrome-control/m);
-    assert.ok(!/^plan mcps: .*(^| )playwright\|/m.test(r.out), 'the unexpanded catalog row reached the plan');
-});
-
-test('install-entry: --browser-enabled naming an engine this run does not install is refused before anything is written', () =>
-{
-    // No --browsers: the kept set is chrome (the default), so firefox is not being installed.
-    const r = run(['install', '--source', ROOT, '--print-plan', '--browser-enabled', 'firefox']);
-    assert.strictEqual(r.code, 1, r.out.slice(0, 400));
-    assert.match(r.err, /--browser-enabled names firefox, which this run does not install \(installs: chrome\) - enable only an engine being installed/);
-    assert.ok(!/^plan /m.test(r.out), 'the refused run still printed a plan');
-    const all = run(['install', '--source', ROOT, '--print-plan', '--browsers', 'chrome,firefox', '--browser-enabled', 'all']);
-    assert.strictEqual(all.code, 0, all.err);
-    assert.match(all.out, /^plan mcps: .*chrome-control.*firefox-control/m);
+    // The stack ships no MCP server since 2.10.1: the line stays, so a reader of the six lists still finds it, empty.
+    assert.match(r.out, /^plan mcps:$/m);
+    assert.match(r.out, /--memory-level ignored - the memory server left the stack in 2\.10\.1/, 'the ignored flag was not said');
 });
 
 test('install-entry: --print-plan resolves NO runtime versions - a dry run makes no network call', () =>
@@ -316,24 +274,15 @@ function planOverSkillOnly(skill)
     return (/^plan mcps:(.*)$/m.exec(out) || [])[1].trim().split(/\s+/).filter(Boolean);
 }
 
-test('install-entry: an update over an install carrying no server plans all three locked servers in ONE run', () =>
+// 2.10.1: no server is locked, seeded or required by a skill any more, so an update plans none - on any route.
+test('install-entry: an update plans no MCP server, whatever the picks', () =>
 {
-    // The read-back adopts the locked servers only into an install that carries the mcp layer, and
-    // the closure brings that layer in AFTER it (csharp requires context7) - so the first update
-    // registered context7 alone and the second added serena and memory. One update is the fixed point.
-    const mcps = planOverSkillOnly('csharp');
-    for (const name of ['alfred-navigation', 'alfred-documentation', 'alfred-memory'])
-        assert.ok(mcps.includes(name), `${name} is not in the plan: ${mcps.join(' ')}`);
+    assert.deepStrictEqual(planOverSkillOnly('csharp'), [], 'csharp required the documentation server until 2.10.1');
+    assert.deepStrictEqual(planOverSkillOnly('markdown-style'), []);
 });
 
 // R83 a (Task 18b) supersedes dce452e's 'an install whose picks need no server still gets none': on the
 // FULL copy route the registrations come from this plan alone, so an install whose picks need no
-// server still registers the locked three - every install carries them - and nothing else.
-test('install-entry: an install whose picks need no server still plans the locked three on the full copy route (R83 a)', () =>
-{
-    assert.deepStrictEqual(planOverSkillOnly('markdown-style').sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation']);
-});
-
 // 2.0.0 cut the sentry and context7-local servers (R26, R32): their flags are refused in one line
 // naming the release, in either spelling and with any value - a command body still passing one fails
 // loudly before anything is written, instead of reading as a choice nothing honours.
@@ -375,6 +324,14 @@ test('args: --plan-out takes a file and belongs to --print-plan', () =>
     assert.throws(() => parseArgs(['update', '--plan-out', 'inv.json'], {}), /--plan-out needs --print-plan/);
 });
 
+test('args: --parent-plan takes a file - the root\'s plan-out a cascade or a walk hands a child', () =>
+{
+    assert.strictEqual(parseArgs(['update', '--installed-only', '--parent-plan', 'root.json'], {}).parentPlan, 'root.json');
+    assert.strictEqual(parseArgs(['install'], {}).parentPlan, '');
+    assert.throws(() => parseArgs(['update', '--parent-plan'], {}), /--parent-plan/);
+    assert.match(require('./install/args.js').FLAG_LIST, /--parent-plan/);
+});
+
 // The answer to update's hand-set docs-root ask (the user's answers of 2026-10-20): a move, naming the team's own entries
 // to leave where they are - no keep, since every docs file of the stack's belongs under the data root.
 test('install-args: --docs-root-leave names top-level entries and belongs to --docs-root-move move; keep is gone', () =>
@@ -397,41 +354,31 @@ test('install-entry: --print-plan --plan-out writes the inventory JSON and names
     assert.match(r.out, /^plan answered: hooks=yes agents=yes$/m);
     const got = JSON.parse(fs.readFileSync(inv, 'utf8'));
     for (const k of ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins', 'plugins_disabled']) assert.ok(Array.isArray(got[k]), k);
-    assert.ok(got.mcps.includes('browser') && !got.mcps.some((m) => m.match(/^(?:chrome|msedge|firefox|webkit)-control$/)), 'the engines fold back onto the catalog row');
+    assert.deepStrictEqual(got.mcps, [], 'no server is in the inventory');
     assert.ok(!fs.existsSync(path.join(ENTRY_CWD, '.claude')), 'the dry run wrote into the project');
 });
 
 
 // The 2.0.0 rename: --browsers / --browser-enabled are the flags; a command body from before it passes
 // --playwright-browsers / --playwright-enabled, read as the same flag for one release. Both spellings of
-// one flag in one call is ambiguous and refused.
-test('install-args: --playwright-browsers and --playwright-enabled still read, as aliases of the browser flags', () =>
-{
-    const p = ok(['install', '--playwright-browsers', 'webkit,chrome', '--playwright-enabled', 'chrome']);
-    assert.deepStrictEqual(p.playwrightBrowsers, ['chrome', 'webkit']);
-    assert.deepStrictEqual(p.playwrightEnabled, ['chrome']);
-    assert.deepStrictEqual(ok(['install', '--playwright-browsers=firefox', '--browser-enabled', 'none']).playwrightEnabled, []);
-    fails(['install', '--browsers', 'chrome', '--playwright-browsers', 'firefox'], /--browsers and --playwright-browsers are one flag - pass --browsers alone/);
-    fails(['install', '--playwright-enabled', 'all', '--browser-enabled', 'none'], /--browser-enabled and --playwright-enabled are one flag - pass --browser-enabled alone/);
-    const flags = require('./install/args.js').FLAG_LIST;
-    assert.ok(flags.includes('--browsers') && flags.includes('--browser-enabled') && !flags.includes('--playwright-'), flags);
-});
-
-// 2.2.0 (the user's ruling of 2026-10-06): each optional item - a browser engine, a desktop server, an LSP, claude-hud -
-// takes its own scope, global (every project on the account) or project (this one). The core and the three alfred-
-// servers follow --scope and take none.
+// 2.2.0 (the user's ruling of 2026-10-06): each optional item - an LSP, claude-hud - takes its own scope, global (every
+// project on the account) or project (this one); the core follows --scope and takes none. A retired server's own scope
+// (a browser engine, a desktop or mobile server, until 2.10.1) is ignored with a line - an older walk still passes it.
 test('install-args: --scope-of gives an optional item its own scope; the required ones take none', () =>
 {
     assert.deepStrictEqual(ok(['install']).scopeOf, {}, 'no choice made: the run decides');
-    const a = ok(['install', '--scope-of', 'claude-hud=global', '--scope-of=csharp-lsp=project', '--scope-of', 'Windows-Control=User']);
-    assert.deepStrictEqual(a.scopeOf, { 'claude-hud': 'user', 'csharp-lsp': 'project', 'windows-control': 'user' }, 'global and user are one, the spelling is case-free');
-    const b = ok(['install', '--scope-of', 'browser=global', '--scope-of', 'webkit-control=project']);
-    assert.deepStrictEqual(b.scopeOf, { 'chrome-control': 'user', 'firefox-control': 'user', 'msedge-control': 'user', 'webkit-control': 'project' }, 'browser is every engine; a later engine line wins for its own');
-    for (const item of ['alfred-code', 'alfred-navigation', 'alfred-memory', 'alfred-documentation', 'superpowers'])
-        fails(['install', '--scope-of', `${item}=global`], /--scope-of: '.*' has no scope of its own - one of browser, .*the core and the alfred- servers follow --scope/);
-    const c = ok(['install', '--scope-of', 'claude-hud=local', '--scope-of', 'chrome-control=Local']);
-    assert.deepStrictEqual(c.scopeOf, { 'claude-hud': 'local', 'chrome-control': 'local' }, 'local is a scope of its own');
-    assert.deepStrictEqual(ok(['install', '--scope-of', 'mobile-control=global']).scopeOf, { 'mobile-control': 'user' }, 'mobile-control takes its own scope (2026-10-13)');
+    const a = ok(['install', '--scope-of', 'claude-hud=global', '--scope-of=csharp-lsp=project', '--scope-of', 'TypeScript-LSP=User']);
+    assert.deepStrictEqual(a.scopeOf, { 'claude-hud': 'user', 'csharp-lsp': 'project', 'typescript-lsp': 'user' }, 'global and user are one, the spelling is case-free');
+    for (const item of ['alfred-code', 'superpowers'])
+        fails(['install', '--scope-of', `${item}=global`], /--scope-of: '.*' has no scope of its own - one of typescript-lsp, csharp-lsp, claude-hud; the core follows --scope/);
+    const c = ok(['install', '--scope-of', 'claude-hud=local']);
+    assert.deepStrictEqual(c.scopeOf, { 'claude-hud': 'local' }, 'local is a scope of its own');
+    for (const item of ['browser', 'chrome-control', 'webkit-control', 'windows-control', 'macos-control', 'mobile-control', 'alfred-navigation', 'alfred-memory', 'alfred-documentation'])
+    {
+        const p = ok(['update', '--scope-of', `${item}=global`]);
+        assert.deepStrictEqual(p.scopeOf, {}, `${item}: a retired server took a scope`);
+        assert.deepStrictEqual(p.ignored, [`--scope-of ${item} ignored - the server left the stack in 2.10.1`], item);
+    }
     // managed is the admin's - no run installs there, so it is no answer.
     for (const bad of ['claude-hud', 'claude-hud=managed', 'claude-hud=', '=project'])
         fails(['install', '--scope-of', bad], /--scope-of takes '<item>=<global\|project\|local>'/);
@@ -469,4 +416,18 @@ test('install-args: --instructions-seed is uninstall\'s answer for the seed - ke
     fails(['uninstall', '--instructions-seed', 'delete'], /--instructions-seed must be 'keep' or 'remove'/);
     fails(['uninstall', '--instructions-seed'], /--instructions-seed.*needs a value/);
     fails(['update', '--instructions-seed', 'remove'], /--instructions-seed is uninstall's answer/);
+});
+
+test('install-args: --memory takes default or custom, lower-cased', () =>
+{
+    assert.strictEqual(ok(['install']).memory, '');
+    assert.strictEqual(ok(['install', '--memory', 'CUSTOM']).memory, 'custom');
+    assert.strictEqual(ok(['update', '--memory=default']).memory, 'default');
+    fails(['install', '--memory'], /--memory.*needs a value/);
+    assert.deepStrictEqual(ok(['install', '--memory-level', 'project']).ignored, ['--memory-level ignored - the memory server left the stack in 2.10.1'], '--memory-level stays the retired flag');
+});
+
+test('install-args: --memory docs is refused until docs mode ships', () =>
+{
+    fails(['install', '--memory', 'docs'], /^--memory must be 'default' or 'custom'/);
 });

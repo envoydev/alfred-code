@@ -65,6 +65,16 @@ let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the paths below are spelled inline */ }
 let shellReader = null;
 try { shellReader = require(path.join(__dirname, 'shell-writes.js')); } catch { /* no reader: the shell route judges nothing */ }
+let forgeLib = null;
+// The tool order's start line (the capture-preferences tools area); null when the copy is not there.
+let toolsCache;
+const toolsLib = () => {
+  if (toolsCache === undefined) {
+    try { toolsCache = require(path.join(__dirname, '..', 'skills', 'capture-preferences', 'scripts', 'tools.js')); } catch { toolsCache = null; }
+  }
+  return toolsCache;
+};
+try { forgeLib = require(path.join(__dirname, 'forge.js')); } catch { /* no classifier: forge writes past git go unread */ }
 const prelude = () => { try { return require('./hook-prelude.js'); } catch { return null; } };
 
 const envOf = (env, suffix) => { const v = env[`ALFRED_CODE_${suffix}`]; return v === '' ? undefined : v; };
@@ -92,35 +102,39 @@ const INLINE_CAP = 7000;
 const CODE_MIN_ROOM = 1000;
 const DOC_READ_BYTES = 512 * 1024;
 const EDIT_TOOLS = /^(Write|Edit|MultiEdit|NotebookEdit)$/;
-// The navigation server's two edit tools the stack keeps on - both routes' spellings (docs-session.js NAV_EDIT).
-const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
+// A navigation server's two edit tools, by name under any registration (docs-session.js NAV_EDIT).
+const NAV_EDIT = /^mcp__.+__(?:rename_symbol|safe_delete_symbol)$/;
 // Its symbol lookups, which read code as a Read does - a seat told to locate before it reads may never call Read.
-const NAV_READ = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$/;
+const NAV_READ = /^mcp__.+__(?:find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$/;
 // The harness's own readers and the input key naming what each reads: a Grep and an LSP call read code as a Read does, so
 // a judge that greps instead of locating skips no part (the user's ruling of 2026-10-22, 'Hold both, steer off Grep').
 const READ_PATH = new Map([['Read', 'file_path'], ['Grep', 'path'], ['LSP', 'filePath']]);
-const GREP_STEER = 'Locate a symbol through the navigation server or LSP - Grep is for a literal you already located.';
+const GREP_STEER = 'Locate a symbol through the navigation tools your start line orders (LSP first) - Grep is for a literal you already located.';
 // The shell's grep words, which earn the same line.
 const SHELL_GREP = /^(?:grep|egrep|fgrep|rg|select-string|sls)$/i;
 // The main session's RUN - the last orchestration skill it started, typed (UserPromptExpansion) or called (Skill), bare
 // only: another plugin's skill is its own. A review run's first Skill call waits for the code docs, and a typed one is
 // handed them, its first reads bringing the rest (the user's ruling of 2026-10-22, 'Hold its first review skill'); the
 // architecture analyzer is handed the architecture doc only inside an architecture quality run, never the map capture's.
-const RUN_NAME = /^(?:(?:alfred-)?(?:capture|loop|task|issue)-[\w-]+|review-code|review-security|code-review|security-review)$/;
+const RUN_NAME = /^(?:(?:alfred-)?(?:capture|loop|task|issue|mode)-[\w-]+|review-code|review-security|code-review|security-review)$/;
 const REVIEW_RUN = /^(?:review-code|review-security|code-review|security-review|capture-code-quality|capture-architecture-quality|loop-code-quality|loop-architecture-quality)$/;
 const ARCH_RUN = /^(?:capture-architecture-quality|loop-architecture-quality)$/;
+// A design run in the chat ends in a plan and may never edit a scoped file, so no edit hold hands it the code docs: its
+// load is handed them beside the skill's own text and never denied (item 4 gap D, 2026-10-25). A seat has its start's.
+const DESIGN_RUN = /^(?:task-design|issue-diagnoser|task-build-from-scratch)$/;
 // A reader that prints the whole file, and the words that cut what a reader prints (a pipe into head reads a peek).
 const WHOLE_READER = /^(?:cat|bat|less|more|nl|type|get-content|gc)$/i;
 const PARTIAL_WORD = /^(?:head|tail|grep|egrep|fgrep|rg|sed|awk|wc|cut|select-string|sls|select-object)$/i;
 const PARTIAL_FLAG = /^-(?:TotalCount|Head|Tail|First|Last)$/i;
 // The shell words that print a file's text, as a Read does; `wc` and `ls` print none of it.
 const SHELL_READ = /^(?:cat|bat|less|more|nl|type|get-content|gc|head|tail|grep|egrep|fgrep|rg|sed|awk|cut|select-string|sls)$/i;
-// The read-only judges: a solution designer, a verifier, and the three seats whose findings a preference shapes - the
-// code-quality analyzer, the security auditor and the integration reviewer - handed the code docs. The architecture
+// The read-only judges: a solution designer, a verifier, the three seats whose findings a preference shapes - the
+// code-quality analyzer, the security auditor and the integration reviewer - and the output scorer, which grades a plan
+// against the docs its producer read, handed the code docs. The architecture
 // analyzer, which reports smells, is handed the architecture doc alone (the user's ruling of 2026-10-22). A bare name is
 // the stack's own only where the install stamp records its copy (the copy route); a project's own agent of the same
 // name, or another plugin's, gets nothing.
-const JUDGE = /^(?:[\w-]*solution-designer|[\w-]+-verifier|code-quality-analyzer|security-auditor|integration-reviewer)$/;
+const JUDGE = /^(?:[\w-]*solution-designer|[\w-]+-verifier|code-quality-analyzer|security-auditor|integration-reviewer|output-scorer)$/;
 const ARCH_SEAT = /^architecture-analyzer$/;
 const STAMP_BYTES = 64 * 1024;
 // The locked keys the seed carries, for an install whose seed is not beside this hook.
@@ -393,11 +407,24 @@ function codeParts(ctx, needs, room, fullRoom, label, chunked = true) {
   return { parts, named, later, laterRel, marks, used: parts.reduce((k, p) => k + p.length + 1, 0) };
 }
 
-// The edit hold's text (`change`), a seat's or a reviewing session's read hold (`read`), or a review skill's hold
-// (`review`): the same parts, worded for the work it does; `kind` names the docs a seat was handed.
+// The edit hold's text (`change`), a seat's or a reviewing session's read hold (`read`), a review skill's hold
+// (`review`), or a design load's hand-over (`design`): the same parts, worded for the work it does; `kind` names the docs a
+// seat was handed. A design load is no hold, so nothing comes with a retry: it marks only what it pasted whole and names
+// the rest, which the first scoped edit still hands over.
 function codeReason(ctx, needs, targets, room, fullRoom, mode = 'change', kind = 'code') {
   const target = targets[0] || '';
-  const c = codeParts(ctx, needs, room, fullRoom, target ? `the sections for ${target}` : '');
+  const design = mode === 'design';
+  const c = codeParts(ctx, needs, room, design ? false : fullRoom, target ? `the sections for ${target}` : '');
+  if (design) {
+    const rest = restLines(needs, c.marks);
+    const text = [
+      `Before this design, read the user's ${kind} preferences - ${PRECEDENCE}:`,
+      ...c.parts,
+      ...(rest.length ? ['', 'Not pasted here - read each before a decision it bears on:', ...rest] : []),
+      '', 'Follow them in every decision of this design.',
+    ].join('\n');
+    return { text, marks: c.marks, used: c.used };
+  }
   const sectioned = needs.find((n) => n.doc.sectioned);
   const change = mode === 'change';
   const again = mode === 'review' ? 'start the review' : `make the ${mode}`;
@@ -412,6 +439,29 @@ function codeReason(ctx, needs, targets, room, fullRoom, mode = 'change', kind =
         : mode === 'review' ? 'Follow them in every finding; now start the review again.' : 'Follow them in every decision and finding; now make the read again.',
   ].join('\n');
   return { text, marks: c.marks, used: c.used };
+}
+
+// What a design load did not paste whole, one `read <doc> '<entry>'` line each (a doc with no entries, `read <doc>`),
+// the lines capped as the named list is: past NAMED_CAP the rest is one line naming each doc to read whole.
+function restLines(needs, marks) {
+  const handed = new Set(marks);
+  const rest = [];
+  for (const n of needs) {
+    if (!n.want) { if (!handed.has(n.doc.key)) rest.push({ rel: n.doc.rel, line: `read ${n.doc.rel}` }); continue; }
+    for (const s of n.want) if (!handed.has(`${n.doc.key}#${s.mark}`)) rest.push({ rel: n.doc.rel, line: `read ${n.doc.rel} '${s.heading}'` });
+  }
+  const lines = [];
+  let size = 0;
+  for (let i = 0; i < rest.length; i += 1) {
+    if (lines.length && size + rest[i].line.length + 1 > NAMED_CAP) {
+      const left = rest.slice(i);
+      lines.push(`read ${[...new Set(left.map((r) => r.rel))].join(' and ')} whole for the other ${left.length}`);
+      break;
+    }
+    lines.push(rest[i].line);
+    size += rest[i].line.length + 1;
+  }
+  return lines;
 }
 
 // The git doc, its locked entries as the SEED states them (an edited copy named, never trusted), then the rest.
@@ -479,11 +529,11 @@ function saveMarks(files, marks) {
   return false;
 }
 const dropRecord = (files) => { for (const f of files) { try { fs.rmSync(f, { force: true }); } catch {} } };
-function blockRow(ctx, input, kind, reason) {
+function blockRow(ctx, input, kind, reason, extra = {}) {
   try {
     const dir = layout ? layout.statsPath(ctx.home, ['hook-blocks']) : path.resolve(ctx.home, dataRootRel(), 'statistics', 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `${safe(input.session_id)}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'preferences-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', kind, reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
+    fs.appendFileSync(path.join(dir, `${safe(input.session_id)}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'preferences-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', ...extra, kind, reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
   } catch {}
 }
 
@@ -542,14 +592,18 @@ function gitWrites(command, cwd) {
     if (c.sub === 'branch' && c.argv.some((a) => !a.startsWith('-')) && !c.argv.some((a) => BRANCH_LIST.test(a))) return true;
     if (c.sub === 'worktree' && c.argv[0] === 'add' && c.argv.some((a) => /^-[bB]/.test(a))) return true;
   }
+  // A forge write by concept, on any CLI or API call (forge.js): opening or merging a change request, a branch write, a
+  // release - `gh pr merge` and `glab mr create` alike. An unknown forge call is held too: it may be one of them.
   try {
-    for (const w of shellReader.commandWords(read.command, read.parsed)) {
-      if (w.name !== 'gh') continue;
-      if (w.argv[0] === 'pr' && /^(?:merge|create)$/.test(w.argv[1] || '')) return true;
-      if (w.argv[0] === 'release' && /^(?:create|edit|delete|upload|delete-asset)$/.test(w.argv[1] || '')) return true;
-    }
-  } catch { /* no word list: the git calls above decide */ }
+    for (const r of forgeLib.classifyCommand(read.command, cwd, { parsed: read.parsed }))
+      if (forgeLib.PREF_HOLD.has(r.concept)) return true;
+  } catch { /* no classifier: the git calls above decide */ }
   return false;
+}
+// The same hold on an MCP server outside the stack: the tool read by its words (`create_merge_request`, `push_files`,
+// `repo_pull_request_write {autoComplete: true}`).
+function mcpGitWrite(input) {
+  try { const r = forgeLib.classify(input); return !!r && forgeLib.PREF_HOLD.has(r.concept); } catch { return false; }
 }
 function shellTargets(command, cwd) {
   try {
@@ -751,6 +805,74 @@ function seatPush(ctx, files, seat, extra = {}) {
   ].join('\n');
 }
 
+// A chat design load's hand-over (DESIGN_RUN): the code docs in one room as additionalContext, no permission decision, the
+// marks only what was pasted whole, so the actor's first scoped edit still hands the rest.
+function designPush(ctx, files, marks, event) {
+  const needs = codeNeeds(CODE_DOCS.map((d) => readDoc(ctx, d)).filter(Boolean), marks, [], true);
+  if (!needs.length) return;
+  const c = codeReason(ctx, needs, [], INLINE_CAP, true, 'design');
+  for (const k of c.marks) marks[k] = true;
+  saveMarks(files, marks);
+  emit(event, { additionalContext: c.text });
+}
+
+// The seats that never touch the project's code - Claude Code's guides - are told no tool order.
+const NO_ORDER_SEAT = /^(?:claude-code-guide|statusline-setup)$/;
+
+// THE HOST'S SHELL TRAPS (audit 2026-10-14 RU13, the user's ruling; moved here from the retired memory-session.js on
+// 2026-10-24, the one other hook that spoke at every start). The always-on navigation rule carried the Windows Git Bash line
+// into every macOS / Linux session and the zsh lines into every bash one; each host now gets only its own, at the
+// session's and every seat's start. Keyed on this process's platform and $SHELL - the shell the Bash tool runs
+// (shell-guards.js reads the same variable for its zsh rewrite). A per-host line is no per-OS rule copy (rule-prose.test.js
+// M68), and the rule keeps a one-line pointer here.
+const ZSH_LINES = [
+  "- zsh aborts the WHOLE command on an unmatched bare path glob, status 1 like a genuine no-match, so an aborted scan reads as 'nothing there': list a path glob that may match nothing with `find <dir> -name '<pat>'`.",
+  '- zsh never word-splits `$VAR`, so a command plus flags held in one variable runs as one word - use a function or an array.',
+];
+const WINDOWS_LINES = [
+  "- On Windows (Git Bash): pass a `/tmp/x` path to native `node` through `cygpath -w` (or write under `$TEMP`); prefix a `git show <rev>:<path>` with `MSYS2_ARG_CONV_EXCL='*'`, or path conversion rewrites it; run PowerShell as a quoted-heredoc (`<<'EOF'`) `.ps1` via `-File \"$(cygpath -w <file>)\"`, never a double-quoted `-Command` (Bash expands its `$_`).",
+];
+function hostLines(platform = process.platform, shell = process.env.SHELL) {
+  const name = String(shell || '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
+  const lines = [...(platform === 'win32' ? WINDOWS_LINES : []), ...(name === 'zsh' ? ZSH_LINES : [])];
+  return lines.length ? ['Shell commands on this host:', ...lines] : [];
+}
+// `preferences-session:host` in the off-list drops them and nothing else.
+function hostText() {
+  try { if (prelude().partOff('preferences-session', 'host')) return ''; } catch { /* no prelude: on */ }
+  return hostLines().join('\n');
+}
+// What the tool order resolves a seat against: its definition's frontmatter where the file is found - the core's own seat
+// beside this hook (`alfred-code:<seat>`), else the project's copy - and 'other' (the main session's reach) where not.
+function seatOf(ctx, type) {
+  const m = /^(alfred-code:)?([\w-]+)$/.exec(String(type || ''));
+  if (!m) return 'other';
+  const files = [...(m[1] ? [path.join(__dirname, '..', 'agents', `${m[2]}.md`)] : []), path.join(ctx.home, '.claude', 'agents', `${m[2]}.md`)];
+  for (const file of files) {
+    try {
+      const fd = fs.openSync(file, 'r');
+      try { const buf = Buffer.alloc(STAMP_BYTES); return { frontmatter: buf.toString('utf8', 0, fs.readSync(fd, buf, 0, STAMP_BYTES, 0)) }; } finally { fs.closeSync(fd); }
+    } catch { /* the next place */ }
+  }
+  return 'other';
+}
+// The tool order an actor is told at its start, or '' with the part switched off or the tools script absent. Only the
+// main session's start may spend the one suggestion, and only once the part is on.
+function toolsText(ctx, seat) {
+  try { if (prelude().partOff('preferences-session', 'tools')) return ''; } catch { /* no prelude: on */ }
+  const lib = toolsLib();
+  if (!lib) return '';
+  try {
+    const suggest = seat === null && lib.suggestOnce(ctx.home);
+    const line = lib.toolsLine({ projectRoot: ctx.home, env: process.env, seat, suggest });
+    // Custom memory with nothing to hold the lessons: the main session is told, a seat is not.
+    const none = seat === null && lib.memoryMode({ projectRoot: ctx.home, env: process.env }) === 'custom'
+      && !lib.jobOrder({ projectRoot: ctx.home, env: process.env, job: 'memory' }).ranks.length;
+    return [line, none ? MEMORY_NONE : ''].filter(Boolean).join('\n');
+  } catch { return ''; }
+}
+const MEMORY_NONE = 'Memory: custom, but no memory tool is reachable here - nothing is stored this session; rank one with /capture-preferences tools, or /alfred-code:configure switches to native.';
+
 function emit(event, extra) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...extra } }));
 }
@@ -802,16 +924,27 @@ function main() {
       dropRecord(files);
       if (Object.keys(kept).length) saveMarks(files, kept);
     }
-    if (input.agent_id) return;   // a seat's own compaction: the personal doc is the main session's
-    const text = personalPush(ctx);
+    if (input.agent_id) {
+      // a seat's own compaction: the personal doc is the main session's, the seat's tool order is its own
+      const tools = input.agent_type && !NO_ORDER_SEAT.test(String(input.agent_type)) ? toolsText(ctx, seatOf(ctx, input.agent_type)) : '';
+      const text = [tools, hostText()].filter(Boolean).join('\n\n');
+      if (text) emit('SessionStart', { additionalContext: text });
+      return;
+    }
+    // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose; the host lines are short.
+    const personal = personalPush(ctx);
+    const text = [personal, toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    // A measurement, never a block (`mode`): the usage analyzer's preferences claim reads it (item 7, 2026-10-25).
+    if (personal) blockRow(ctx, input, 'preferences-push', `probe: preferences-push - ${PERSONAL_DOC.file}, ${personal.length} chars`, { mode: 'probe' });
     if (text) emit('SessionStart', { additionalContext: text });
     return;
   }
   if (input.hook_event_name === 'SubagentStart') {
+    const tools = NO_ORDER_SEAT.test(String(input.agent_type || '')) ? '' : toolsText(ctx, seatOf(ctx, input.agent_type));
     const main = loadMarks(recordFiles(ctx, input.session_id, 'main'));
     const seat = seatDocs(ctx, input.agent_type, ARCH_RUN.test(String(main.run || '')) && runLive(main));
-    if (!seat) return;
-    const text = seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {});
+    const docs = seat ? seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {}) : '';
+    const text = [docs, tools, hostText()].filter(Boolean).join('\n\n');
     if (text) emit('SubagentStart', { additionalContext: text });
     return;
   }
@@ -822,6 +955,7 @@ function main() {
     const was = loadMarks(files);
     recordRun(was, run, input);
     saveMarks(files, was);
+    if (DESIGN_RUN.test(run)) { designPush(ctx, files, was, 'UserPromptExpansion'); return; }
     if (!REVIEW_RUN.test(run)) return;
     const text = seatPush(ctx, files, { defs: CODE_DOCS, kind: 'code' });
     if (text) emit('UserPromptExpansion', { additionalContext: text });
@@ -842,6 +976,7 @@ function main() {
     if (!run) return;
     recordRun(marks, run, input);
     saveMarks(files, marks);
+    if (DESIGN_RUN.test(run)) { designPush(ctx, files, marks, 'PreToolUse'); return; }
     if (!REVIEW_RUN.test(run)) return;
     const needs = codeNeeds(CODE_DOCS.map((d) => readDoc(ctx, d)).filter(Boolean), marks, [], true);
     if (!needs.length) return;
@@ -890,6 +1025,9 @@ function main() {
     if (reads && seatHold(ctx, input, files, marks, seat, reads.grep)) return;
     editTargets = targets;
     gitWrite = gitWrites(command, cwd);
+  } else if (/^mcp__/.test(name) && forgeLib) {
+    gitWrite = mcpGitWrite(input);
+    if (!gitWrite) return;
   } else return;
 
   const editing = editTargets.filter((p) => !exempt(ctx, p)).map((p) => relOf(ctx, p));
@@ -925,7 +1063,7 @@ function main() {
   emit('PreToolUse', { permissionDecision: 'deny', permissionDecisionReason: reasons.join('\n\n') });
 }
 
-module.exports = { parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP };
+module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP };
 if (require.main === module) {
   try { main(); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
 }

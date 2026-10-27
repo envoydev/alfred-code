@@ -30,7 +30,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
   the rm, secret, force-push and desktop exec guards stay live, writing no row - R54, R86 - plus the dispatch guard's
-  implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,532 characters of
+  implementer gate, M9. Known ceiling: such a repo still lists all 45 core seats, 13,008 characters of
   descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
   stack never touched - revisit when a plugin's agents can be scoped per project); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret, force-push and desktop exec guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
   The csv opt-out reads a hook's OLD name too (`HOOK_RENAMED`, the manifest's `renamed.hooks` copied inline and held equal
@@ -53,24 +53,43 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   instead), no fresh-session offer, and the credential rotation ask becomes one
   `mode: unattended` row per exposure (it replaced 2 of 12 pilot-3 finals). Every protective denial is
   unchanged; a missing, empty or torn-last-row transcript reads as a person.
-  **auto-mode** (the user's ruling, 2026-10-14): `--auto-mode` as the FIRST word after a `task-*`, `capture-*`, `loop-*` or
-  `issue-*` command (the user's ruling of 2026-10-15, which added the issue family and dropped every other place: '/task-solve fix
-  the auto-mode banner' had started a run, and so could a mid-task question naming the word; 2026-10-17 added the capture
-  family and spelled it as the flag `--auto-mode` - the bare word starts nothing now, and the OFF banner names the miss) - typed
-  (`UserPromptExpansion`, `command_args` opening with it, `AUTO_FIRST_RE`; the matcher takes every `task-*` / `capture-*` /
-  `loop-*` / `issue-*` name, audit 2026-10-14 HK06) or the model's `Skill` call (`args`) only when the user's newest TYPED prompt in
-  the transcript is itself such a command opening with the word (`typedAutoCommand`: the `<command-name>` /
-  `<command-args>` row a typed slash command leaves, or a raw `/name args` line - a prose ask starts nothing; audit HK04:
-  a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt; a refused start writes an
-  `auto-start-refused` row), never a seat's - makes
-  `guard-fresh-session-start.js` write that session-named AUTO stamp (`AUTO - "<the typed words>"`, `session:`, `skill:`,
-  `at:`) before the run's first step, inject the contract as `additionalContext` and leave, so its own offers and every
-  person-directed hook read the session as unattended; a stamp already live for the session is kept, and another
-  session's stamp is never overwritten while that session is still RUNNING (its transcript beside this one written in
-  the last 10 minutes) - that run starts without auto-mode, its mode banner says why and how to take over (delete the
-  stamp), and it writes an `auto-start-refused` row (audit 2026-10-20, the hooks track's minor list: a second session on
-  one checkout took the first's approval; narrowed the same day from 'under 8h', which silently cost a fresh-session
-  hand-off, or any start after a run that left its stamp, its auto-mode). `guard-stop-contract.js`
+  **auto-run** (the stack-modes spec of 2026-10-27, the user's rulings of 2026-10-25/26; it was auto-mode, a per-run
+  `--auto-mode` first after the command, from the rulings of 2026-10-14 to 2026-10-17): four mode flags,
+  `--mode-auto-run-on|off` and `--mode-output-scorer-on|off`, count only in the LEADING RUN right after a `task-*`,
+  `capture-*`, `loop-*`, `issue-*` or `mode-*` command group (`hook-prelude.js modeFlags`, the ONE parser every reader
+  calls - the start and end hooks, the scorer switch, the ON line, the banner, the dispatch guard and the stop contract's
+  solve-flow mark; a flag later in the request only marks the line `late`, a prose mention starts nothing, off wins over
+  on; the expansion matcher takes every family name, audit 2026-10-14 HK06). Two files. The MODE STAMP
+  `<data root>/state/approvals/APPROVAL` (`AUTO - "<the typed words>"`, `session:`, `skill:`, `at:`, `taken-from:` on a
+  takeover) is written by the first `--mode-auto-run-on` or `/mode-auto-run <request>` (its typed request is its own
+  `-on`), kept while live for the session and deleted only by `--mode-auto-run-off`. The RUN MARKER
+  `<data root>/state/sessions/AUTO-RUN-<session>` (`skill:`, `prompt:` the typed line's 12-hex sha1, `at:`) is written by
+  each typed family command while the stamp is live - none by a flag-only `mode-` line; a writer finding the same
+  `skill:` and `prompt:` leaves the file and its mtime - and deleted by that run's close or `-off`. The typed route is
+  `UserPromptExpansion`; the model's `Skill` call writes or keeps the stamp only, never a marker, and only when its own
+  args lead with the flag and the user's newest TYPED prompt's `modeFlags` gives `family` and `autoRun: 'on'` (audit
+  HK04: a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt); a seat never starts one.
+  ONE refusal check, `autoRunRefusal` - another session RUNNING a stamped run here (its transcript beside this one
+  written in the last 10 minutes), a data root that cannot be written, an empty `/mode-auto-run`, a seat - is asked by
+  the start hook and the ON line alike; a refused start writes an `auto-start-refused` row and its banner says why. A
+  start over another session's idle stamp writes `taken-from:` and an `auto-takeover` row, and the losing session's next
+  typed prompt gets the takeover notice once (`AUTO-TAKEN-<session>`). Each run under the mode gets the full contract as
+  `additionalContext`, naming its marker, so its own offers and every person-directed hook read the session as
+  unattended. `/mode-auto-run <request>`'s ON contract carries a `Solve flow:` line naming the library copy of
+  `task-solve/SKILL.md` (`skillCopyState`: personal, then project, `on` or `user-invocable-only`; `switched off here` when
+  `skillOverrides` turns it off and `not installed here` only when absent, M8; never the plugin cache's source). A code
+  change READS that body and follows it, because Claude Code refuses the model's own `Skill` call of a
+  `disable-model-invocation` flow whatever a hook says (code.claude.com/docs/en/skills); `flowLine` in the stop contract
+  marks the solve run on the first Read of a `task-solve/SKILL.md` after a typed `/mode-auto-run` row with a request, and
+  the next typed prompt disarms it (M1). A refused `/mode-auto-run` start gets no fresh-session offer (M7), nor does a `/mode-auto-run` line with no request, which
+  only flips a switch; an `-on` line that opens no run but carries a request (`/mode-output-scorer --mode-auto-run-on <request>`)
+  is told the request runs under the mode, the flag-only one that nothing else happens (final review 2026-10-27, I2 / I3). An old flag
+  (`--auto-mode`, `--score-on`, `--score-off`) is stripped with a pointer line - the auto one says the run is attended,
+  for the skew window where a flow skill copied before the update still reads the old flag - an unknown `--mode-*` gets
+  its reason line, and a flag run after a non-family command switches nothing and gets the 'count only after' line
+  (`mode-flag-old` / `mode-flag-unknown` rows); a prompt opening on a mode flag with no command before it switches nothing
+  and gets the pointer to `/mode-auto-run --mode-auto-run-off` (`mode-flag-bare`, final review m9).
+  `guard-stop-contract.js`
   then answers - under a stamp naming THIS session only, never a hand-written one (audit HK02: it answered a second
   session's asks) - each `AskUserQuestion` whose every question marks ONE `(Recommended)` option - `allow` with the questions
   echoed and an `answers` map in `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), a
@@ -81,22 +100,22 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
   in real transcripts the narrowed pattern drops 91 hits, all of those shapes or a `/purchases/` path, and adds none);
-  under a live auto-mode stamp of this session (`autoRun`) the new-cycle fresh-option deny and the fresh-session note
+  under a live auto-run stamp of this session (`autoRun`) the new-cycle fresh-option deny and the fresh-session note
   route stand down too, so no deny turns an auto-answered ask into one that waits;
-  and it sends a Stop back to the run while the stamp stands (`auto-continue`, bounded by the Stop chain's `workSince`:
-  held again only after a tool call; counted per stamp beside the chain marker, `<marker>.auto` keyed on the stamp's
-  session and mtime, and the 50th Stop passes with one `auto-continue-cap` row - audit HK05: Claude Code's own
-  8-continuation cap resets on every tool call; a Stop while the Stop input's `background_tasks` shows the run's own work
-  out passes with one `auto-wait` row, and so does the `auto-fields` hold - audit 2026-10-20 C02: 7 of 7 holds in one
-  session sent back a turn that could only wait, ~3.4M across three sessions), until the run's close deletes the stamp - or the user's word to stop it
-  (`UserPromptSubmit`, `autoModeEnd`; the user's ruling of 2026-10-15: a message typed mid-run is INPUT to the run, kept
-  with an `auto-input` row and a note saying so - ending on any typed prompt, the 2026-10-14 rule, sent every later ask
-  of a run the user had only added a remark to back to them). It ends on 'stop auto-mode' / 'auto-mode off'
-  (`AUTO_OFF_RE`, audit HK13), a bare 'stop' (`BARE_STOP_RE`; 'stop using X' is input), or a typed task,
-  capture, loop or issue command that starts no new auto-mode run - `--auto-mode` not its first word (its banner says OFF); a harness prompt - a task
-  notice, a command's output, a seat's hand-back, `hook-prelude.js` `harnessPrompt`, HK14 - and any other slash command
-  leave it, and a stop asked in other words, or a run already finished, is the model's to end by deleting the stamp, as
-  the note says. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
+  and it sends a Stop back to the run while the stamp is live for this session AND its run marker stands
+  (`auto-continue`, bounded by the Stop chain's `workSince`: held again only after a tool call; counted per marker beside
+  the chain marker, `<marker>.auto` keyed `<session>@<marker mtime>`, and the 50th Stop passes with one
+  `auto-continue-cap` row - audit HK05: Claude Code's own 8-continuation cap resets on every tool call; a Stop while the
+  Stop input's `background_tasks` shows the run's own work out passes with one `auto-wait` row, and so does the
+  `auto-fields` hold - audit 2026-10-20 C02: 7 of 7 holds in one session sent back a turn that could only wait, ~3.4M
+  across three sessions), until the run's close deletes the marker. Between runs, with the mode on, Stop is not held:
+  asks are still answered and the session waits for the next prompt. A message typed mid-run is INPUT to the run
+  (`UserPromptSubmit`, `modePrompt`; the user's ruling of 2026-10-15), kept with an `auto-input` row and a note saying so;
+  when it asks to stop the run, the model prints the close and deletes the marker, and the mode stays on. Only
+  `--mode-auto-run-off` after a command ends the mode: it deletes this session's stamp and the marker, writes an
+  `auto-end` row and injects 'auto-run is OFF for this session' ('stop auto-mode' and a bare 'stop' are plain input
+  since 2026-10-27). A harness prompt - a task notice, a command's output, a seat's hand-back, `hook-prelude.js`
+  `harnessPrompt`, HK14 - is no input. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
   session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
   compacted at 76k of a 100k window), so the installer seeds it per model where the project compacts instead
   (`ALFRED_CODE_AUTO_COMPACT=1`; `settings.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
@@ -105,11 +124,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   orchestration run and at an automatic compaction's start (the summary's 'continue' line stands there, no hold), and
   `guard-stop-contract.js` denies an `AskUserQuestion` still carrying a fresh-session option (check 13, once per ask
   text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left).
-  **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*` or `issue-*` command
-  (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
-  expansion fires once per typed command and the lines forbid a repeat: `**Auto-mode: ON**` (each ask answered with its
-  Recommended option, an outward one or an unmarked one still waiting) or `**Auto-mode: OFF**` (each ask waits; the flag
-  past the first argument, or the bare pre-2026-10-17 word first, is said to start a run only as `--auto-mode` first), then `**Context:**` - auto-mode or
+  **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*`
+  command (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
+  expansion fires once per typed command and the lines forbid a repeat: `**Auto-run: ON**` (each ask answered with its
+  Recommended option, an outward one or an unmarked one still waiting; on for the session until `--mode-auto-run-off`)
+  or `**Auto-run: OFF**` (each ask waits; a refused start says why, and a flag past the leading run is said to count only
+  right after the command), then `**Context:**` - auto-run or
   `COMPACT_INSTEAD` compacts (at the seeded `autoCompactWindow` when one is set, else Claude Code's own point), offers off
   compact too, and otherwise the fresh-session refresh past `ctxThreshold()` - with the window and model the engine read,
   no number invented for an unknown window, and an auto-compact window past the model's capacity (a `/model` switch to a
@@ -353,21 +373,22 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     file minus its matches and is judged like `cat`; a loop whose `cat` reads its variable over literal paths or a
     one-folder glob is sized per file (no sweep while all of them print at most THRESHOLD lines and BIG_BYTES); a
     relative target with no file at any anchor prints nothing unless a `cd` the guard cannot follow came first; a
-    `.md` under the docs root's `work/plans/` (or the pre-2.8.0 `plans/`) reads whole; a markup template's denial names `grep -n`, never the symbol
+    `.md` under the docs root's `work/plans/` (or the pre-2.8.0 `plans/`) reads whole, and so does one under `<data root>/state/sessions/scorer/` - the output scorer's draft, the grader's mandated input (`guard-read-write.test.js`); a markup template's denial names `grep -n`, never the symbol
     overview; and the convention-rule notice reads no `>` inside quotes and no write target outside the project. Audit
     2026-10-20 H7: a `find <dirs> -name <one literal name> -exec cat` (or `| xargs cat`) is a sweep of whatever files that
     name matches - a bounded walk from the find's start points (`NAMED_FIND_CAP`, 20,000 entries) sizes each match, and
     one over THRESHOLD lines (a gated extension) or BIG_BYTES (any other) blocks as `named-find-dump`; a name with a glob
     character stays the sweep rule's.
-    Every denial on a file the navigation server indexes carries the
-    `ToolSearch select:` line that loads the navigation server's tools (a size denial on another extension and a tree it
+    Every denial on a source file names the navigation line of the session-start tool order and the LSP
+    `documentSymbol` / `goToDefinition` / `findReferences` calls (a size denial on another extension and a tree it
     never indexes name grep instead - a file outside `CLAUDE_PROJECT_DIR` among them, and a range-cap denial states how many
     of the file's lines the cap still leaves; audit 2026-10-11 SD16, 5984019e). Its convention-rule announcement
     names only a rule in the project's own `.claude/rules` - a plugin-launched hook's sibling `rules/` is
     the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot); with no rules
     directory anywhere it cannot tell and names the rule (a recorded choice, pinned in `guard-read-write.test.js`); a
     target is resolved where the shell stands after a `cd` (`cd /tmp && cat > x.ts` names no rule - audit 2026-10-10).
-  - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + the browser servers' `browser_file_upload`, whose
+  - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + a Playwright server's `browser_file_upload` under any
+    registration name (N6), whose
     `tool_input.paths` each take the Read judgement - a page asking for an upload got any workspace file, audit 2026-10-14
     PL3) - credentials are read for PRESENCE, never
     value. A leading `NAME=value` word and every `$(...)` / backtick body are judged as commands of their own, quote-
@@ -504,11 +525,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the block rate skips like the probe rows (2.1.5 M17). The row carries the payload's `permissionMode` when it has one
     (audit 2026-10-10 C09: an auto-mode classifier gave one rewritten call no verdict and stalled it 80s, 1 of 89
     rewrites in that session) - the rate a denial-in-auto would be decided on; the dispatcher's `zsh-quote` row does too.
-    THE PROJECT'S SENSITIVE DATA (the user's ruling of 2026-10-13: per project, model-blind): `<data root>/.sensitive-data`,
-    a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
+    THE PROJECT'S SENSITIVE DATA (the user's ruling of 2026-10-13: per project, model-blind): `<data root>/.secrets`
+    (`.sensitive-data` before item 3, 2026-10-25: both names read for 2.x, `.secrets` first; a `.secrets` is the store only
+    where its path, as written or real, ends in `<data root>/.secrets`, so a project's own one elsewhere - nektos/act's
+    default `--secret-file` - is neither masked by name nor refused by mention, `isDataRootSecrets`; both names and the data root
+    in any letter case, since a case-insensitive disk opens `.ALFRED/.SECRETS` too - final review 2026-10-25 C2), a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
     `projectRootOf`; the root from `ALFRED_CODE_DATA_PATH`, relative and `..`-free, else `.alfred`). Its kind is `sensitive` by
     NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and a dump
-    becomes the redacted view with every value masked; the stream masker reads a line out of it - a walk's `<path>/.sensitive-data:N:`
+    becomes the redacted view with every value masked; the stream masker reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
     prefix, `git grep`'s, a diff header naming it - by the same rule, a line that is no `KEY=value` pair masked whole (audit
     2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw), so the probe finds it
     and the stage is piped. A shell command NAMING it is refused unless it only looks
@@ -526,17 +550,24 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (not its destination), a forced `git add` - is refused on any folder above the store too, unless the command excludes
     the store or a folder on its way (`--exclude`, zip's `-x`, matched as globs); a tar or 7z extract and a copy into the
     project pass (deep hooks review 2026-10-16, the user's ruling: `cp -R . x` and `rsync -a ./ x` copied it and passed).
+    Final review 2026-10-25 C1: the name also counts as TEXT, between any two non-name characters - `.sensitive-data`
+    anywhere, `.secrets` behind its data root (`"$(pwd)/.alfred/.secrets"`, `$R/...`, a script's `open('<path>', 'r')`, which
+    no resolver follows) or bare in a pipe whose stages name the data root (`ls -a .alfred | grep .secrets | xargs ...`) -
+    and a `find` handing what it finds to a reader (an `-exec` / `-ok` action, a pipe on, a `$(...)` around it) is refused
+    when its walk reaches the store and a `-name` / `-path` test matches the store's name, or, from the data root itself,
+    no name test narrows it; a `-maxdepth` short of the store passes. The same day the dump half took `$(pwd)` / a backtick
+    `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
+    `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
+    path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged.
     The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and
     stderr, line-buffered - its EXACT text only: an encoded, split or reversed print is not caught, so it is leak protection
     against accidents, never a wall against a deliberate read (the session-start line says so and forbids the transform); the exit code is the command's. SessionStart (its own manifest row, silent with no store, an
     empty or an unparseable one) says the KEYS and that command line, plus a warning when `git check-ignore` exits 1 (not
-    ignored, or tracked). The browser launcher passes the file itself to Playwright MCP (`--secrets`: a KEY name typed in
-    `browser_type` / `browser_fill_form` is filled with its value, and each value prints as `<secret>KEY</secret>`), and
-    mobile-control reads only the keys appium-mcp documents through `data-root.js readSensitive` (a twin parser - the hooks
-    ship apart from `stack/mcp` on the copy route; `guard-sensitive-data.test.js` holds both to one fixture), where the
-    shell and a settings file's env win; no other server gets a value (audit 2026-10-14 PL2, repo-memory-data.md).
+    ignored, or tracked). No server gets a value: the stack ships none since 2.10.1 (the browser and mobile launchers that read the store
+    left with them); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
+    through its own parser, `guard-sensitive-data.test.js` holding both to one fixture.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without its plan's gate file (written on explicit approval or an AUTO waiver) -
     PER PLAN since 2.8.0 (spec Part 4, the user's ruling of 2026-10-20: two sessions on two plans shared one stamp): the brief
@@ -560,7 +591,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     passes a generic dispatch; another session's or a hand-written stamp naming no session is no exemption, and the
     generic denial ends in one AskUserQuestion and says never to delete or edit the stamp (one session ran `rm .../APPROVAL`
     on the old 'clear the stamp file' escape). Ruling S1 (2026-10-20): the implementer denial names a no-stops run as the
-    user's `--auto-mode` first after the command; a hand-written AUTO waiver belongs to task-solve and task-solve-cross
+    user's `--mode-auto-run-on` right after the command; a hand-written AUTO waiver belongs to task-solve and task-solve-cross
     alone. Ruling S3: an implementer dispatch on an APPROVED or AUTO stamp written after an ask the idle timeout closed
     (the answer hook's marker, under the hook temp dir) is denied once - 'the question timed out - re-ask' - and the
     marker is spent; a stamp older than the timeout stands.
@@ -570,7 +601,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
     In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
     then the implementer gate - and no block row is written (M9, `standDown(..., { setUp: false })`).
-  - `guard-ungated-commit.js` (PreToolUse, the shell route) - blocks a non-trivial `git commit` without the
+  - `guard-ungated-commit.js` (PreToolUse, the shell route) and the same gate on every MCP server (`^mcp__.*` - the stack's own
+    exemption went with its servers, 2026-10-24) - blocks a non-trivial `git commit` without the
     `<data root>/state/approvals/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `guard-ungated-commit:push` in `ALFRED_CODE_HOOKS_OFF` turns the push half off
     (`hook-prelude.js partOff`, the env audit of 2026-10-21; the old `ALFRED_CODE_PUSH_GATE=0` is still read for the 2.x
@@ -723,7 +755,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     merge: 'merge it once CI is green' consents), the user keeping the act ('I'll push it myself') or a
     statement about the verb refuses it, and only its own gate. Opening a pull request ('open the PR') is
     consent; a question, a negation or the PR's description / template / page is not (H3).
-  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
+  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `SubagentHandback` - the output-scorer seal, below; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
     moment ('the ask just answered ... verify, re-ask if it moved'); the ask's own SHAPE is FIXED IN PLACE when every reason is
     mechanical (the 2026-10-17 usage audit: a deny for missing numbers cost a red block and a re-sent ask) - the corrected
@@ -898,6 +930,28 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off). The offer waits
     while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).
+    THE SCORER BACKSTOP (mode-output-scorer, spec 2026-10-24 5.9): while `scorerState` is usable (a loadable skill copy,
+    neither hook nor its `scorer` part off), a close that owes a `Scored:` line and lacks it is held ONCE per typed prompt.
+    One `walkBack` pass reads back to the cycle's opening row - the newest typed row that is no harness prompt, compaction
+    summary or `Stop hook feedback:` row - so a grader's notification turn stays in the cycle. The evidence: T1 a Write of a
+    `.draft.md` in this session's scorer folder (on, or the cycle stacked); T2 a plan Write under the docs root's
+    `work/plans/` (on, `designer-plan` listed; not where a draft was written, a plan reader - `task-implement`,
+    `task-verify-plan`, `task-verify-code` - ran, or the loop released that `target:`); T3 a findings write whose `Cause:`
+    is set, or a diagnoser seat that settled (on, `root-cause` listed); T4 a typed stack naming `mode-output-scorer` (on
+    or off; a flag-only `/mode-output-scorer --mode-output-scorer-off` line is no stack, the stack-modes spec section 4). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
+    holds a `released` / `final` line written since the cycle opened (2s slack); a typed one is no receipt and writes one
+    `scorer-receipt-unbacked` row. The `SCORER-HELD-<session>` marker holds the cycle's key (the row's uuid, else its
+    timestamp, else its hash), and the check sits BEFORE the `stopHeld` exit, so a rewrite after this hook's own hold for
+    another reason is still judged while the marker keeps it to one hold. A live `output-scorer` seat in
+    `background_tasks` is the loop's own wait, never held; a seat's Stop and a transcript-less Stop judge nothing; no
+    opening row writes one `scorer-cycle-unread` row. The hold's block row names `branch: scorer` (AC11, AC14, AC16, AC17,
+    AC19, AC24, AC25; `guard-stop-closes.test.js`, 'scorer backstop'). THE SEAL (5.10): an `output-scorer` seat's report
+    names its score file on its first line (`*` and backticks dropped); PreToolUse `SubagentHandback` - or SubagentStop's
+    `last_assistant_message` for a run with no hand-back, before that route's `stop_hook_active` exit - writes it as
+    `seal: sha256 <hex>` then the report as delivered, only into this session's scorer folder (both sides realpathed, so
+    macOS's `/var` is `/private/var` and a symlinked parent leads nowhere), only a `.score.md` that does not exist yet
+    (`wx` - a second delivery never rewrites it), one `scorer-seal` probe row either way; the hand-back is never delayed
+    or denied, and `scorecard.js grade` fails a card whose seal is missing or broken with exit 3 (AC18, AC22).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
     running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;
@@ -967,7 +1021,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     anchored at the payload's `cwd` (the Bash tool's persisted cwd, as the rm and config guards read it; a missing,
     relative or vanished one is the project root), a file-tool path at the project root (audit 2026-10-08). Session
     scratch (the harness root `/tmp/claude-<uid>` listed on its own, so a project kept under `/tmp` still reaches it),
-    `~/.claude` / `~/.claude-<space>`, a relocated `CLAUDE_CONFIG_DIR` and `/dev` stay writable; paths compared as REAL paths in their on-disk
+    `~/.claude` / `~/.claude-<name>`, a relocated `CLAUDE_CONFIG_DIR` and `/dev` stay writable; paths compared as REAL paths in their on-disk
     letter case (the native realpath, and on win32 a case-folded compare as well - M9); a Git Bash mount path (`/c/...`,
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the
@@ -1012,12 +1066,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     A lockfile, a migration, the central
     package file and a solution file are a recorded DECLINE (2.1.5 M13, in its header): legitimate work edits each, and
     whether a migration was applied lives in a database no hook reads.
-  - `guard-desktop-exec.js` (PreToolUse on the desktop servers' two process launchers, both routes' spellings, one
-    anchored pattern each - the copy route's bare server spelling is never literal text, lint check 54) - the
+  - `guard-desktop-exec.js` (PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any
+    registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
+    (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server
+    type's code runner `browser_run_code_unsafe` the same way, `|^mcp__.+__browser_run_code_unsafe$`: Playwright's README
+    calls it 'RCE-equivalent' and no flag switches it off, so the settings deny 2.5.0 to 2.10.0 wrote under the stack's own
+    server names is lifted and this gate holds it under any name, its block row keeping `from: code|file`, never the code
+    (2026-10-24, ruling N9, a side note's finding: an add-back under the record name ran it unjudged)) - the
     user's ruling of 2026-09-29 (I10): Windows-MCP's `App` with `mode: launch_executable` (any executable, caller-given
     args - the server excludes tools by NAME, never by mode) and every MacOS-MCP `Shell` call (a shell command no
     shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. 'Allow' is honoured through
-    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, one executable's FULL path - either slash, and either case on
+    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
     a Windows path - or `*`; a bare file name opens only a call naming it bare, never that name in every directory - audit
     2026-10-20, the hooks track's minor list); the denial suggests the full path - and names a live bare line that
     missed it, with the full path to write in its place - and a Shell block row keeps
@@ -1056,15 +1115,31 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the test the analyzer shares, `correction-turn-test`; the weak 'it should' inside a wh-clause - 'what type of a
     ticket it should be' - is a request, audit 2026-10-11 SD14, session 5f9fec85; so is 'why you' after an explain / tell me
     verb and a 'not working' inside a because-clause, audit 2026-10-20 C20) writes one `correction` probe row;
-    `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line with the `ToolSearch select:`
-    line that loads the deferred `memory_store` (M11) - the line names a project fact the correction states as a
-    `reference` memory beside the `user_correction` (audit 2026-10-10, T5 cross-track), and a stated preference as
-    `preference_signal` (audit 2026-10-11 SD16, ce9d4811) - `0` is off. Its `PostToolUse` `AskUserQuestion` half reads an
+    `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the save line (`SAVE_LINE`) - a stated preference into the preferences docs
+    (`/capture-preferences`, audit 2026-10-11 SD16, ce9d4811), the lesson or a project fact the correction states into
+    Claude Code's own memory (audit 2026-10-10, T5 cross-track); no memory server since 2.10.1 - `0` is off. Its `PostToolUse` `AskUserQuestion` half reads an
     answer typed into an ask (matching no offered label): one `ask-answer-typed` probe row, the same correction test and
     row over a short one, and a note to open a path it names and restate what it changes (audit 2026-10-10 C15 / C07).
     An ask the idle timeout closed (ruling S3, `hook-prelude.js` `askTimedOut`) gets one `ask-timeout` probe row, the
     session's timeout marker and a note that it is no answer - no approval, consent or pick, re-ask when the user is
     back; the next answered ask or typed prompt clears the marker.
+    THE SCORER'S LINES (mode-output-scorer, spec 2026-10-24 5.2 / 5.12; the flags by the stack-modes spec of 2026-10-27):
+    `--mode-output-scorer-on` / `-off` in a family command's leading run (`modeFlags`; off wins when both are typed) write
+    the session's `SCORER-<session>` file, which outranks `ALFRED_CODE_SCORER`, and count for their own prompt even where
+    the file cannot be written; while on, every typed prompt - and a compaction's start, which drops injected text -
+    carries one `scorer: on (level, rounds, source[, auto-run]) ...` line naming the listed
+    outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scorer: off for this
+    session`. A typed stack - the skill's slash name as a word of the prose, a `<command-args>` row included, or the bare name
+    right after a usage word (`using`, `with`, `via`, `run`, `stack`, `through`; final review 4) -
+    adds `scorer: stacked for this request ...` with the switch off too, and on a `user-invocable-only` copy. All of it
+    needs `scorerState` usable: either hook or its `scorer` part in `ALFRED_CODE_HOOKS_OFF`, or no loadable copy, and no
+    line is injected, so nothing is graded and the backstop owes nothing (AC1-AC6, AC13, AC19, AC20, AC23-AC25;
+    `guard-answer.test.js`). A flag-only line is no stack. While auto-run is on, the context also carries `auto-run: on
+    for this session - ...`. THE ON LINE (the stack-modes spec section 3): every typed prompt while a mode is on gets one
+    user-visible `systemMessage`, `Modes ON: auto-run, output-scorer (level N)`, listing only the modes on - each computed
+    from the prompt's own flag (auto-run's `-on` only when `autoRunRefusal` says nothing), else the stored state, never read
+    back after the start hook's write, since the two run in parallel; a compaction's start re-emits both context lines and
+    no `systemMessage`. A seat's prompt carries none: the session that receives its report grades what it acts on.
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is exactly "1". It runs `async: true` on both routes (`settings.js asyncFor`, the one async hook since the stop contract's shell-result halves went in the deep hooks review 2026-10-16 - a log never
     blocks or decides, so no call waits on its spawn; code.claude.com/docs/en/hooks, 'Run hooks in the background').
@@ -1072,11 +1147,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     hook runs under PowerShell where Git Bash is absent ('Exec form and shell form') and the test would fail every
     call there. A `detail` hint (a description, a pattern) is masked with the pinned credential shapes before it is
     cut (audit 2026-10-08).
-  - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep (no Glob since 2026-10-16: it did nothing there), the shell route and the navigation server's two kept edit tools `rename_symbol` / `safe_delete_symbol` - held like an Edit, the file in `relative_path`, both routes' spellings (I12); a rename is credited to that declaring file alone - the references it rewrote in other files fall to the Stop ask's 'no actor claimed' bucket and outside the turn check's root, an accepted gap (final review R9) - PreToolUse `SubagentHandback`, `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `ALFRED_CODE_DOCS_VERSIONING` (`--docs-versioning` writes it; absent, ONE rule seeds it and is the engine's fallback, in three homes - `install/docs.js`, `stamp-docs-root.js`, `docs.js` - pinned by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md`, cut at 4KB with a note so the read lines after it survive the harness's 10,000-character context cap (audit 2026-10-08), each branch list after it (conflicts, deleted-unmerged, on-mainline, overrides, stranded) cut at six names with a count (audit 2026-10-20, the hooks track's minor list), less any line that copies the hook's own footer (`docs.js HOOK_FOOTER`; one project's file carried a stale copy into 310 starts, and `docs.js lint` now names it - deep hooks review 2026-10-16); `SubagentStart` skips Claude Code's own seats that write no project code (`Explore`, `Plan`, `claude-code-guide`, `statusline-setup`: no block, no snapshot, never asked - the block was 27% of all hook text, 40 of its starts on those seats), and names conflict markers and duplicate ids from the engine's `integrity()` (one parse per file, never the whole lint) - a PROVISIONAL one (the first-look scan's, `scan-evidence.js --orientation`) with a stale warning, and `status` / `stale` call it stale by definition; the first change under a source root waits for a section read, per actor - a section handed to a seat never reached the main context, nor the main session's read a seat (loading audit 2026-10-21 G4) - (two holds, then a logged bypass; no hold when no doc file can be read by section) - a `docs.js show` the shell RUNS of a ref the engine resolves, or a Read, Grep or reading shell command of a `.md` under a domain; a Glob, an `ls`, a `watch.json` read, an echoed show line and a show of a missing ref are no read (audit 2026-10-08), and a read of a plan under `<docs-path>/work/plans/` credits the sections its `Oriented:` line names when the engine resolves them (audit 2026-10-20 C25: the first edit of every /clear resume was held); the hold pastes only a section that DECLARES a cover of the target, as 'the documented context for this path', and never one of the preferences domain - preferences-session hands those over, so one denial never carries a section twice (2026-10-21; a covering code-style section was pasted first, as 'the convention this change follows', before); word-only hits are named as candidates with their `show` line and the hold does not repeat (audit 2026-10-10 C03 / C23: a cover-less section matched on words was pasted as the convention for a test helper); a path git ignores, or one under a `TestResults/` folder, is a run artifact and leaves the hold's targets (audit 2026-10-11 SD09, session 5f9fec85: `rm -f` of an ignored `.trx` was held); the FINISH ask fires only when a changed file hits the capture's `watch.json` - for what a seat WROTE at its first `SubagentHandback`, denied once with the ask so the report it sends again carries the docs line (deep hooks review 2026-10-16: asked at `SubagentStop`, 48 of 48 asks came after the hand-back had delivered the report and 41 were the transcript's last row; PreToolUse fires on that tool, 35 runs recorded), else at `SubagentStop` for a seat that stopped without one (a harness with no such tool, Cursor among them) (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed - that bucket only once the main session ran a shell command that may write (`recordRun`: any step outside `READ_STEP`, or a redirect; the 2026-10-17 usage audit: a session that only read was asked about another session's uncommitted diff no claim named; a `changed-unclaimed` row instead; a `git stash` push / pop / apply records the files it moves as `moved`, claimed against sibling sessions and never asked of the session that only moved them, and the Stop ask is deferred - at most three times, an `ask-deferred` row each - while the payload's `background_tasks` shows unsettled work: audit 2026-10-20 C25) (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash> < <file holding its new text>` that refuses a rewrite of a section another agent moved meanwhile, with a line saying the new text is the section as `show` prints it, from a file or piped in (audit 2026-10-11 SD09, session 2ca8e8ee). A section whose own text names a hit file verbatim (`docs.js` `namingSections`) is asked about before the watch entry's sections, and 'changed' counts only the commits made since the snapshot (merges aside) within the tree diff, so a checkout or merge bringing another branch's commit in is not the session's change (audit 2026-10-10 C23: sessions f6c591fa and 349e4825). HEAD's reflog since the snapshot says how each commit arrived (audit 2026-10-11 SD09, sessions cc87fa6c / e7c8cbb6): a `commit` entry (amend, initial) is the session's own, a rebase or cherry-pick pick is its own only when AUTHORED after the snapshot, and a pull, merge or checkout brings commits no entry names; with no entry since the snapshot the committer clock decides. An unclaimed change whose file was last written inside an idle span of the transcript (10 minutes or more between rows, 30s off each edge, newest 32MB) is the user's own: logged as `changed-outside-session`, never asked (session fdce35ae: a version bump made in the IDE during a 4h33m gap). So is a change another session on the same checkout recorded as its own write: each actor file carries the project `root` beside `wrote`, and one written after this session's snapshot claims its paths for that session - logged as `changed-by-other-session`, never asked; a file this session wrote too stays its own, and a claim with no `root`, another root, an older write or an unreadable file claims nothing (2026-10-16: a read-only session was asked about a parallel session's migration). At `Stop` the ask also says its reply is the session's last message: the docs line, then the task summary in at most three lines (pilot 4: all 8 flow cells ended on 'docs ok'); a seat's `SubagentStop` ask closes on its reply being what the caller receives - the docs line, then the report its brief asks for, its `status:` / `contract_version:` lines unchanged (audit 2026-10-08 row 25) - and the hand-back ask on the report not being delivered: answer, then `SubagentHandback` again with the docs line first and the report unchanged; that retry passes and writes the `ask-answer` row (`via: handback`). With nobody at the terminal the hold and the Stop ask each write one `mode: unattended` row - once per kind per session, an exclusive `alfred-docs-unattended-<session>-<kind>` marker in the hook temp dir (audit 2026-10-20 H11: one per Stop and per held write, 61 in one session); with no watch entry and no new-module rule in any domain neither stop diffs the tree; the per-session state is written through a temp file and a rename, so a parallel call never reads it half-written; and past 2,000 dirty paths the ones a watch glob or a source root names are kept first. At `SessionStart`, before any domain check, it writes `<data root>/state/sessions/untracked-at-start-<HEAD sha>` ONCE per HEAD - the paths untracked when the change began, at most 20,000 (past the cap a path reads as the change's own), which the commit guard and `habits-commit-checkpoint` keep out of the change. Every later session on that HEAD (a resume, a compact start, a fresh-session hand-off, a `/clear`) reuses it, so an earlier session's new files stay the change's own; a commit moves HEAD, the next session takes a fresh one, and the guard falls back to the newest record until then. Only a first start (`source` startup, clear or none) snapshots, and it names the record in `<data root>/state/sessions/untracked-session-<sid>`: a compact or resume start reuses that record and never snapshots a HEAD the session itself moved (audit 2026-10-10 C09, session c6142301: a compact start after a checkout listed 7 of the session's own new files), and the commit guard reads the session's pointer first. Writing a record sweeps the ones past 7 days. It is named in one start line when it is not empty. Also at PreToolUse, before any domain check: a write to `<docs-path>/work/plans/<name>.md` stamped `Completed:` is denied unless every line it adds or removes is a stamp line (Gated, Approved, Conformance, Completed, Status, Deviations, Result) - an Edit by its strings, a Write against the file, a shell write always - except the close that ADDED the stamp: its own actor's writes to that plan pass until an ask is answered or a prompt typed after it (`closeStillOpen`, a temp-dir marker holding the transcript's size; the 2026-10-17 usage audit: the memories line written right after the stamp was denied) - since new scope after the stamp is a new plan file or a stated `ungated: <why>` (audit 2026-10-10, session 84eedb4b). Beside it (the user's ruling S3, 2026-10-20): while this session's ask-timeout marker stands (the answer hook writes it when an AskUserQuestion closes on Claude Code's idle timeout and clears it on the next answer or typed prompt), a main-session write that puts an `APPROVED` / `AUTO` line into `<data root>/state/approvals/APPROVAL` - a file tool, or a shell write carrying the word - is denied 'the question timed out - re-ask'; a delete of the stamp and every other flow file pass. Also before any domain check (a first capture writes before one exists): a main-session write under `<docs-path>/architecture/` - a file tool, a shell write, a `docs.js set` of an architecture ref - is denied while a capture analyzer seat (`architecture` / `code-quality` / `code-style` / `related-project` / `test-coverage-analyzer`, bare or `alfred-code:`) this session dispatched has not handed back: its tool_result, or for a background seat a DELIVERED task notification with a status, its `[Subagent hand-back]` message or a TaskStop naming it, read only on such a write and only past where the last read stopped (`seatsOut`, newest 8MB); held once per dispatch (the write sent again passes, a `seat-bypass` row), never for a seat's own call, an unreadable transcript or `_GATE=0` (audit 2026-10-20 C43, add5a91e: 42 reference Edits landed while a sixth analyzer ran; a replay of the 130 audit transcripts holds that one write and no other). `docs-session:block` / `:gate` / `:ask` in `ALFRED_CODE_HOOKS_OFF` switch the parts off (the old
+  - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep (no Glob since 2026-10-16: it did nothing there), the shell route and a navigation server's two edit tools `rename_symbol` / `safe_delete_symbol` under any registration name (N6) - held like an Edit, the file in `relative_path` (I12); a rename is credited to that declaring file alone - the references it rewrote in other files fall to the Stop ask's 'no actor claimed' bucket and outside the turn check's root, an accepted gap (final review R9) - PreToolUse `SubagentHandback`, `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `ALFRED_CODE_DOCS_VERSIONING` (`--docs-versioning` writes it; absent, ONE rule seeds it and is the engine's fallback, in three homes - `install/docs.js`, `stamp-docs-root.js`, `docs.js` - pinned by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md`, cut at 4KB with a note so the read lines after it survive the harness's 10,000-character context cap (audit 2026-10-08), each branch list after it (conflicts, deleted-unmerged, on-mainline, overrides, stranded) cut at six names with a count (audit 2026-10-20, the hooks track's minor list), less any line that copies the hook's own footer (`docs.js HOOK_FOOTER`; one project's file carried a stale copy into 310 starts, and `docs.js lint` now names it - deep hooks review 2026-10-16); `SubagentStart` skips Claude Code's own seats that write no project code (`Explore`, `Plan`, `claude-code-guide`, `statusline-setup`: no block, no snapshot, never asked - the block was 27% of all hook text, 40 of its starts on those seats), and names conflict markers and duplicate ids from the engine's `integrity()` (one parse per file, never the whole lint) - a PROVISIONAL one (the first-look scan's, `scan-evidence.js --orientation`) with a stale warning, and `status` / `stale` call it stale by definition; the first change under a source root waits for a section read, per actor - a section handed to a seat never reached the main context, nor the main session's read a seat (loading audit 2026-10-21 G4) - (two holds, then a logged bypass; no hold when no doc file can be read by section) - a `docs.js show` the shell RUNS of a ref the engine resolves, or a Read, Grep or reading shell command of a `.md` under a domain; a Glob, an `ls`, a `watch.json` read, an echoed show line and a show of a missing ref are no read (audit 2026-10-08), and a read of a plan under `<docs-path>/work/plans/` credits the sections its `Oriented:` line names when the engine resolves them (audit 2026-10-20 C25: the first edit of every /clear resume was held); the hold pastes only a section that DECLARES a cover of the target, as 'the documented context for this path', and never one of the preferences domain - preferences-session hands those over, so one denial never carries a section twice (2026-10-21; a covering code-style section was pasted first, as 'the convention this change follows', before); word-only hits are named as candidates with their `show` line and the hold does not repeat (audit 2026-10-10 C03 / C23: a cover-less section matched on words was pasted as the convention for a test helper); a path git ignores, or one under a `TestResults/` folder, is a run artifact and leaves the hold's targets (audit 2026-10-11 SD09, session 5f9fec85: `rm -f` of an ignored `.trx` was held); the FINISH ask fires only when a changed file hits the capture's `watch.json` - for what a seat WROTE at its first `SubagentHandback`, denied once with the ask so the report it sends again carries the docs line (deep hooks review 2026-10-16: asked at `SubagentStop`, 48 of 48 asks came after the hand-back had delivered the report and 41 were the transcript's last row; PreToolUse fires on that tool, 35 runs recorded), else at `SubagentStop` for a seat that stopped without one (a harness with no such tool, Cursor among them) (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed - that bucket only once the main session ran a shell command that may write (`recordRun`: any step outside `READ_STEP`, or a redirect; the 2026-10-17 usage audit: a session that only read was asked about another session's uncommitted diff no claim named; a `changed-unclaimed` row instead; a `git stash` push / pop / apply records the files it moves as `moved`, claimed against sibling sessions and never asked of the session that only moved them, and the Stop ask is deferred - at most three times, an `ask-deferred` row each - while the payload's `background_tasks` shows unsettled work: audit 2026-10-20 C25) (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash> < <file holding its new text>` that refuses a rewrite of a section another agent moved meanwhile, with a line saying the new text is the section as `show` prints it, from a file or piped in (audit 2026-10-11 SD09, session 2ca8e8ee). A section whose own text names a hit file verbatim (`docs.js` `namingSections`) is asked about before the watch entry's sections, and 'changed' counts only the commits made since the snapshot (merges aside) within the tree diff, so a checkout or merge bringing another branch's commit in is not the session's change (audit 2026-10-10 C23: sessions f6c591fa and 349e4825). HEAD's reflog since the snapshot says how each commit arrived (audit 2026-10-11 SD09, sessions cc87fa6c / e7c8cbb6): a `commit` entry (amend, initial) is the session's own, a rebase or cherry-pick pick is its own only when AUTHORED after the snapshot, and a pull, merge or checkout brings commits no entry names; with no entry since the snapshot the committer clock decides. An unclaimed change whose file was last written inside an idle span of the transcript (10 minutes or more between rows, 30s off each edge, newest 32MB) is the user's own: logged as `changed-outside-session`, never asked (session fdce35ae: a version bump made in the IDE during a 4h33m gap). So is a change another session on the same checkout recorded as its own write: each actor file carries the project `root` beside `wrote`, and one written after this session's snapshot claims its paths for that session - logged as `changed-by-other-session`, never asked; a file this session wrote too stays its own, and a claim with no `root`, another root, an older write or an unreadable file claims nothing (2026-10-16: a read-only session was asked about a parallel session's migration). At `Stop` the ask also says its reply is the session's last message: the docs line, then the task summary in at most three lines (pilot 4: all 8 flow cells ended on 'docs ok'); a seat's `SubagentStop` ask closes on its reply being what the caller receives - the docs line, then the report its brief asks for, its `status:` / `contract_version:` lines unchanged (audit 2026-10-08 row 25) - and the hand-back ask on the report not being delivered: answer, then `SubagentHandback` again with the docs line first and the report unchanged; that retry passes and writes the `ask-answer` row (`via: handback`). With nobody at the terminal the hold and the Stop ask each write one `mode: unattended` row - once per kind per session, an exclusive `alfred-docs-unattended-<session>-<kind>` marker in the hook temp dir (audit 2026-10-20 H11: one per Stop and per held write, 61 in one session); with no watch entry and no new-module rule in any domain neither stop diffs the tree; the per-session state is written through a temp file and a rename, so a parallel call never reads it half-written; and past 2,000 dirty paths the ones a watch glob or a source root names are kept first. At `SessionStart`, before any domain check, it writes `<data root>/state/sessions/untracked-at-start-<HEAD sha>` ONCE per HEAD - the paths untracked when the change began, at most 20,000 (past the cap a path reads as the change's own), which the commit guard and `habits-commit-checkpoint` keep out of the change. Every later session on that HEAD (a resume, a compact start, a fresh-session hand-off, a `/clear`) reuses it, so an earlier session's new files stay the change's own; a commit moves HEAD, the next session takes a fresh one, and the guard falls back to the newest record until then. Only a first start (`source` startup, clear or none) snapshots, and it names the record in `<data root>/state/sessions/untracked-session-<sid>`: a compact or resume start reuses that record and never snapshots a HEAD the session itself moved (audit 2026-10-10 C09, session c6142301: a compact start after a checkout listed 7 of the session's own new files), and the commit guard reads the session's pointer first. Writing a record sweeps the ones past 7 days. It is named in one start line when it is not empty. Also at PreToolUse, before any domain check: a write to `<docs-path>/work/plans/<name>.md` stamped `Completed:` is denied unless every line it adds or removes is a stamp line (Gated, Approved, Conformance, Completed, Status, Deviations, Result) - an Edit by its strings, a Write against the file, a shell write always - except the close that ADDED the stamp: its own actor's writes to that plan pass until an ask is answered or a prompt typed after it (`closeStillOpen`, a temp-dir marker holding the transcript's size; the 2026-10-17 usage audit: the memories line written right after the stamp was denied) - since new scope after the stamp is a new plan file or a stated `ungated: <why>` (audit 2026-10-10, session 84eedb4b). Beside it (the user's ruling S3, 2026-10-20): while this session's ask-timeout marker stands (the answer hook writes it when an AskUserQuestion closes on Claude Code's idle timeout and clears it on the next answer or typed prompt), a main-session write that puts an `APPROVED` / `AUTO` line into `<data root>/state/approvals/APPROVAL` - a file tool, or a shell write carrying the word - is denied 'the question timed out - re-ask'; a delete of the stamp and every other flow file pass. Also before any domain check (a first capture writes before one exists): a main-session write under `<docs-path>/architecture/` - a file tool, a shell write, a `docs.js set` of an architecture ref - is denied while a capture analyzer seat (`architecture` / `code-quality` / `code-style` / `related-project` / `test-coverage-analyzer`, bare or `alfred-code:`) this session dispatched has not handed back: its tool_result, or for a background seat a DELIVERED task notification with a status, its `[Subagent hand-back]` message or a TaskStop naming it, read only on such a write and only past where the last read stopped (`seatsOut`, newest 8MB); held once per dispatch (the write sent again passes, a `seat-bypass` row), never for a seat's own call, an unreadable transcript or `_GATE=0` (audit 2026-10-20 C43, add5a91e: 42 reference Edits landed while a sixth analyzer ran; a replay of the 130 audit transcripts holds that one write and no other). `docs-session:block` / `:gate` / `:ask` in `ALFRED_CODE_HOOKS_OFF` switch the parts off (the old
     `ALFRED_CODE_DOCS_BLOCK` / `_GATE` / `_ASK` at `0` are read for the 2.x line, and an update folds them in). The engine's `ceilings [--prune]` lists the map's Known-ceilings rows that are closed (a revisit cell opening on lifted / closed / resolved / done) and moves them to `architecture/history/known-ceilings-closed.md`, one appended table, through `set` with the section's own hash - the register only grew before (audit 2026-10-20 C27, the user's ruling 'prune only'); a row whose `where` path (holding a '/') is gone is named `stale` and kept, never moved, since a rename or move in a refactor leaves the shortcut in the code.
-  - `preferences-session.js` (PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep, the navigation server's two edit tools
-    and five lookups, LSP, Skill and the shell route, the file and shell rows run inside their dispatchers; `SessionStart`, every
-    source; `SubagentStart`; `UserPromptExpansion` on the run names) - the user's
+  - `preferences-session.js` (PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep, every MCP call (a navigation server's
+    two edit tools and five lookups read by tool name, N6), LSP, Skill and the shell route, the file and shell rows run inside
+    their dispatchers; `SessionStart`, every source; `SubagentStart`; `UserPromptExpansion` on the run names) - the user's
     preferences docs under `<docs-path>/preferences/` bind every actor, and a rule only asks for the read (the user's rulings
     of 2026-10-21: `alfred-preferences.md` is a read-on-trigger pointer, this hook makes the read happen). The FIRST file edit
     of each actor (the main session, and each seat by `agent_id`) is held until the code docs that exist were read -
@@ -1101,13 +1176,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `preferences/watch.json` are there, else a Read line). Only a WHOLE read marks a doc read (audit 2026-10-21 H-Q1): a Read
     with no range or one reaching its last line, a whole-file shell reader naming it (no `head`, `grep` or pipe into one), a
     `docs.js show` of each of its sections. A judge (`JUDGE`: an `agent_type` ending `solution-designer` or `-verifier`, or
-    one of the three finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer` - `alfred-code:<seat>`
+    one of the four finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer`, `output-scorer` (the grader is handed the code docs it grades a plan against, AC27) - `alfred-code:<seat>`
     always, a BARE name only where the install stamp's `library-agents:` line records its copy (`copiedSeats`: the copy
     route; none on the plugin route), so another plugin's or the project's own `security-auditor` is no judge: side notes
     of 2026-10-22, the user's rulings 'Alfred's own, all judges' and 'drop the names') holds no edit tool (checked against `meta/seat-tools.json`), so no edit hold reaches it: `SubagentStart` hands it the code
     docs, every project-doc section the room fits, and marks them in its record; the entries one room could not hold come
     with its first reads (the user's ruling of 2026-10-22) - each Read, Grep (`path`) or LSP call (`filePath`) outside the preferences folder - a held Grep's denial adds
-    `GREP_STEER`, locate through the navigation server or LSP, Grep only for a literal already located (the user's
+    `GREP_STEER`, locate through the navigation tools (the LSP), Grep only for a literal already located (the user's
     ruling 'Hold both, steer off Grep'; Grep rides `file-guards.js`, LSP its own row) - and each
     navigation-server symbol lookup (`NAV_READ`: `find_symbol`, `find_referencing_symbols`, `get_symbols_overview`,
     `find_declaration`, `find_implementations` - a seat told to locate before it reads may never call Read), and each
@@ -1126,7 +1201,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     A review run (`REVIEW_RUN`: `review-code`, `review-security`, the two built-in reviews and the code and architecture quality captures and loops) is the
     main session reviewing without an edit, which no edit hold reached (the user's ruling 'Hold its first review skill'):
     its first Skill call is denied with the code docs in parts, a typed one is handed them at its expansion, and the main
-    session's reads then hold like a judge's until every entry has come. The architecture analyzer is handed
+    session's reads then hold like a judge's until every entry has come. A design run (`DESIGN_RUN`: `task-design`, `issue-diagnoser`,
+    `task-build-from-scratch`; item 4, 2026-10-25) ends in a plan and may never make a scoped edit, so its chat load - the
+    Skill call or the typed expansion - is handed the code docs as `additionalContext` beside the skill's text and never
+    denied: one room (`INLINE_CAP`), the rest named one `read <doc> '<entry>'` line each (capped at `NAMED_CAP`), only what
+    was pasted whole marked, so the actor's first scoped edit still hands the rest; a seat's load gets nothing new. The architecture analyzer is handed
     `ARCHITECTURE-PREFERENCES.md` alone at its start, told to report a departure as a smell by id, only inside an
     architecture quality run (`ARCH_RUN`; the user's ruling 'Hook pushes the arch doc', which replaced the brief's
     hand-listed entries) - the map capture, the solve flow's scoping pass and the version upgrade dispatch the same seat
@@ -1156,7 +1235,39 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     preferences.js lints the doc at 3,000) with a Read line naming the rest; a resume or fork pushes it again (ruling G7: the
     duplicate is cheaper than a session without it); a missing doc, an empty one or one with no `##` entry pushes nothing, and
     the rule says to read it before the first reply when the push is missing (the hook off, `minimal`). A seat answers the
-    main session, never the user: nothing is pushed into one. Each doc is read where it first sits - the session's folder,
+    main session, never the user: nothing is pushed into one.
+    THE TOOL ORDER (tool preferences phase 1, 2026-10-24; spec `docs/superpowers/specs/2026-10-23-tool-preferences-design.md`,
+    machine-local): after the personal doc, every main SessionStart pushes the capture-preferences script's `toolsLine`
+    (`stack/skills/capture-preferences/scripts/tools.js`, required from `../skills/` beside the hook; absent, the line is
+    absent and every other push stands) - one line per job, its ranks from `TOOLS-PREFERENCES.md` or, for a job the doc
+    leaves out, the adapter table's defaults (`tool-adapters.json`, built from `meta/tool-adapters.json`), each rank the
+    doc chose that this machine cannot reach named once and left out - a DEFAULT rank the actor cannot reach is left out
+    unnamed, the normal state once the stack shipped no server (no-MCP plan Task 11, 2026-10-24: the line named two or three
+    servers the user never had at every start) - each job with its `ToolSearch select:` load line (the memory tools' line
+    lives here alone since memory-session retired, 2026-10-24). A malformed doc - its shape, never a tool this machine or this pin lacks, which only skips that rank - states only the entries
+    that resolve plus three of its problems, never a default; an over-cap one states nothing but its problem. The line has its own
+    cap (`TOOLS_LINE_CAP`, 4,000 chars): past it the Load clauses go, then the tail, so the personal push before it and the
+    line together stay well under Claude Code's hook-output cap. Once
+    per project with no doc it suggests `/capture-preferences tools` (`suggestOnce`, a `<data root>/state/tool-preferences/
+    suggested` marker; one that cannot be written says it again). Every SubagentStart but Claude Code's two guides
+    (`claude-code-guide`, `statusline-setup`) gets the seat's own order after any doc push: a seat whose definition the hook
+    finds - the core's `stack/agents/<seat>.md` for `alfred-code:<seat>`, else the project's `.claude/agents/<name>.md` -
+    only the ranks its `tools:` / `disallowedTools:` grant, with no load line when it has a `tools:` line; any other seat
+    the main session's, no suggestion; a seat's own compaction re-sends its order. `preferences-session:tools` in
+    `ALFRED_CODE_HOOKS_OFF` switches the line off and nothing else. Measured on a default install (no doc, no
+    server, 2026-10-24): 364 chars at a main start - LSP and WebFetch are deferred built-ins (`deferred` in
+    meta/tool-adapters.json), so each carries its own `Load: ToolSearch select:` clause, the one the navigation rule and
+    LOAD_NAV point at (final review B2; 303 before it) - 303 at a verifier's or an implementer's, which load none, 225 at
+    the evidence gatherer's; 846 at a main start with the record's serena, context7 and memory-service registered (1,104 /
+    603 / 450 with 2.10.0's three stack plugins, against the 207 / 321 chars of the memory line it replaced).
+    THE HOST'S SHELL TRAPS (audit 2026-10-14 RU13, the user's ruling; here since memory-session.js retired on 2026-10-24): every
+    push it makes at a start - a main session's, every seat's (the guides' too) and a seat's own compaction - ends on THIS host's
+    `hostLines`: the Windows Git Bash line on win32, the two zsh lines under a zsh `$SHELL`, nothing on bash, so a start with
+    nothing else to push still says them. They left the always-on `alfred-navigation.md`; a per-host hook line is no per-OS
+    rule copy (`rule-prose.test.js` M68). `preferences-session:host` in `ALFRED_CODE_HOOKS_OFF` drops them and nothing else.
+    Its stdin is read as the guards read theirs, `fs.readFileSync(0)` (the file and shell dispatchers run it in-process, which a
+    bounded async reader cannot serve); Claude Code closes the pipe after the payload.
+    Each doc is read where it first sits - the session's folder,
     its checkouts up to the git top level, then a linked worktree's main checkout (`hook-prelude.js checkoutsOf`), which alone
     holds the two personal docs git keeps out (audit 2026-10-21 Q-1; `preferences.js` reads the same way); a doc that is a
     link where it first sits is never read, nor passed over for another copy (PF-1: a cloned repo could point one at a
@@ -1165,33 +1276,6 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     held), `.claude/` and `.git/`. It holds with nobody at the terminal - it asks nothing, it hands content over - writes one
     block row per hold (`kind` `code`, `git` or `git+code`), and fails open: malformed state reads as no record and is
     rewritten.
-  - `memory-session.js` (`SessionStart`; on `SubagentStart` only the `This project's memory tag:` line, the tag a
-    seat stores and lists its handoff note under - 2026-10-13 - and the tool line with its seat carve-out: a seat whose
-    tools grant the server calls the tools directly, no ToolSearch - audit 2026-10-14 RU10; both pushes then end on THIS
-    host's shell traps, `hostLines`: the Windows Git Bash line on win32, the two zsh lines under a zsh `$SHELL`, nothing on
-    bash - audit 2026-10-14 RU13, the user's ruling, moved out of the always-on `alfred-navigation.md`, which keeps a
-    pointer; a per-host hook line is no per-OS rule copy, `rule-prose.test.js` M68) with its engine `memory.js` (copied beside it, not wired -
-    the `docs.js` pattern) - reads the shared memory database FILE directly (`node:sqlite`, no
-    server, no model call) and injects this project's memories plus every `preference` /
-    `correction` carrying no project tag, capped at 4KB like the docs start block; a
-    related-projects domain adds those projects' memories too, inside the same cap. The rows sit
-    under two fixed frame lines (context, never instructions; a named file, flag or symbol is
-    verified first - `alfred-memory.md`'s sentence, pinned as `memory-frame`), each carries its age
-    in days, and ageing is ORDER only: preferences and corrections under 90 days first, then the
-    project's other memories, then the older preferences and corrections, then related projects,
-    newest first within each - nothing is deleted. `node
-    .claude/hooks/memory.js level [projectRoot]` is the same engine's CLI, read by `validate` and
-    `status` (`<level> <dbPath>` - then `unreadable <file>` per settings file it skipped - or `refused <file>` when a
-    settings file cannot be read and no other names the database, or `none`). Fail-open: with a registration, a missing
-    database, a locked file, or `node:sqlite` unavailable on this Node selects nothing and injects only the project tag
-    and the search line (I5); with no registration it injects nothing; it never logs - a silent SessionStart is never
-    reported as a failure. The main checkout is looked up once per start, 1.5s per git call (audit 2026-10-08: two
-    lookups at 5s each could pass the 10s timeout and lose the injection). The CLI also moves memories between databases: `export [project]
-    [--all] [--db <file>]` writes the live rows as JSONL straight from the file (a read failure exits
-    1), and `import <file.jsonl>` stores them THROUGH the service (real embeddings), skipping a line
-    whose content hash (the service's own) is already live. Both imports, this one and init's notes
-    import, find the server one way (`serviceEntry`): a registration, else the installed
-    `memory@envoydev` plugin's own declaration with the db path pinned.
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
     wired; its Stop process also runs the turn build check, above) - a machine-local record per session under `<data root>/state/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
     one file keeps it out, and an update removes the `*` file earlier releases wrote; no `watch.json`, so no docs domain): at `Stop` it
@@ -1208,6 +1292,39 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     across sessions, each session's newest kept longest, before an older session's own line (audit 2026-10-11 SD16,
     e90a1845: the older session's rulings were cut whole and re-asked) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
     old on seed `1` to `3` (`history-switch-is-a-count`).
+  - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
+    stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
+    `<data root>/forge-lexicon.json`) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,
+    not a list of CLIs or servers). `forge.js` reads any call as a concept by its WORDS - a CLI's noun then verb, an API
+    call's method and path, an MCP tool's name and its selector values - so `guard-ungated-commit.js` gates a merge or a
+    branch write on every transport and `preferences-session.js` holds the first one; a forge noun with no known verb is
+    `unknown` (an ask, a deny when unattended). On the MCP route a branch, tag, file or release word counts only on a
+    FORGE-SHAPED server (repo coordinates in the input, a forge word in the key with no local `repo_path`, or launched as
+    a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). Every publish
+    the gate allows, the push half off included, is ledgered in `<data root>/state/forge/ACTS-<session>.jsonl` under the
+    REPOSITORY's root (`forge.js ledgerRoot` - a worktree and its main checkout share one), a `git push` one row per
+    ref it names (`forge.js pushTargets`), each with its `tool_use_id`; the watch trusts a row once its PostToolUse
+    confirmed it.
+    The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
+    servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
+    a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,
+    `GIT_TERMINAL_PROMPT=0`, ssh BatchMode, 6s cap); PostToolUse after a merge, branch write, release or unknown call
+    re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read
+    (an allowlist of read tools), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
+    running. An act covers the ref it aims at; one naming no ref lands ONE move (at its head, else the single loud
+    candidate - with several it covers none and says so); an armed auto-merge persists across turns until it lands.
+    Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit a local branch holds, any
+    tag - blocked once per cycle; the rest is one summary `systemMessage`. An ASKED act covers nothing (Task 6 ruling,
+    revising Task 2's). `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
+    asked call. Unreachable is `not checked (<why>)`, never clean. `forge-session:watch` in `ALFRED_CODE_HOOKS_OFF` off,
+    `ALFRED_CODE_FORGE_WATCH=loud-only` drops the summary (the session line says so). A check that fails or takes over 3 s
+    (a key waiting for a touch, an approval dialog) pauses the catch-all for 30 min (`PAUSE-<session>.json`, said once);
+    a turn marked `strong` (a forge call, a gated push PostToolUse confirmed) still checks, an answer within 3 s lifts
+    it, and `publish-only` holds the catch-all to those turns. A held turn marks the baseline `skipped`, so the next
+    diff says `since the last check`. A quick key tap never trips the pause (timing cannot tell it from the network), so
+    the first check over an SSH remote names `publish-only` once per repo (`SSH-NOTICE.json`). The start snapshot reads
+    HEAD and the refs in ONE call. Evidence: `docs/forge-routes-evidence.md`, 'The pause and publish-only'. The verified routes it is tested
+    against are `scripts/fixtures/forge-corpus.js`.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
     own edits, so the next `old_string` misses.

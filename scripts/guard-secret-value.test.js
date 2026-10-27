@@ -664,6 +664,37 @@ test('guard-secret-value: a bare file name a dump verb reads is judged where the
   }
 });
 
+test('guard-secret-value: a credential file behind $(pwd), `pwd` or $(git rev-parse --show-toplevel) is the file it names (final review)', () => {
+  // The gap the 2026-10-25 final review left out of model: the dump half resolved no `$(...)`, so `cat "$(pwd)/.env"` printed it.
+  const top = fs.mkdtempSync(path.join(TMP, 'pwd-top-'));
+  fs.mkdirSync(path.join(top, '.git'));
+  fs.mkdirSync(path.join(top, 'src', 'deep'), { recursive: true });
+  fs.writeFileSync(path.join(top, '.env'), 'DB_HOST=localhost\nAPI_KEY=abc123\n');
+  fs.writeFileSync(path.join(top, 'notes.txt'), 'nothing secret here\n');
+  const at = (command, cwd) => verdict(run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }, { CLAUDE_PROJECT_DIR: top }));
+  try {
+    const dumps = [
+      ['$(pwd) quoted', 'cat "$(pwd)/.env"', top],
+      ['$(pwd) bare', 'cat $(pwd)/.env', top],
+      ['backtick pwd', 'cat "`pwd`/.env"', top],
+      ['$(pwd -P)', 'cat "$(pwd -P)/.env"', top],
+      ['$(pwd) after a cd', 'cd src && cat "$(pwd)/../.env"', top],
+      ['$(git rev-parse --show-toplevel) from a subfolder', 'cat "$(git rev-parse --show-toplevel)/.env"', path.join(top, 'src', 'deep')],
+      ['the same with stderr dropped', 'cat "$(git rev-parse --show-toplevel 2>/dev/null)/.env"', path.join(top, 'src', 'deep')],
+      ['head behind $(pwd)', 'head -n 5 "$(pwd)/.env"', top],
+    ];
+    for (const [what, command, cwd] of dumps) assert.equal(at(command, cwd), REWRITE, `dump: ${what}`);
+    const pass = [
+      ['a clean file behind $(pwd)', 'cat "$(pwd)/notes.txt"', top],
+      ['pwd printed', 'echo "$(pwd)"', top],
+      ['a substitution it cannot know', 'cat "$(whoami)/.env"', top],
+    ];
+    for (const [what, command, cwd] of pass) assert.equal(at(command, cwd), 0, `pass: ${what}`);
+  } finally {
+    fs.rmSync(top, { recursive: true, force: true });
+  }
+});
+
 test('guard-secret-value: the routes that print a file without a dump verb\'s name are judged too (2.1.6)', () => {
   // Review item 5 of 2.1.6: each of these printed ~/.aws/credentials or a dotenv whole on base and on the first 2.1.6 tree.
   const home = fs.mkdtempSync(path.join(TMP, 'home-routes-'));
@@ -2546,7 +2577,7 @@ test('browser_file_upload: a credential file or the sensitive-data store is refu
   const png = path.join(dir, 'fixture.png');
   fs.writeFileSync(png, Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
   const upload = (tool, paths) => run({ tool_name: tool, tool_input: { paths }, cwd: dir, session_id: 'up' });
-  const plugin = 'mcp__plugin_chrome-control_chrome-control__browser_file_upload';
+  const plugin = 'mcp__plugin_chrome-control_chrome-control__browser_file_upload'; // mcp-fixture
   const copyRoute = `mcp__${'webkit-control'}__browser_file_upload`; // mcp-fixture: the copy route's spelling
   for (const tool of [plugin, copyRoute]) {
     const r = upload(tool, [env]);
@@ -2558,7 +2589,7 @@ test('browser_file_upload: a credential file or the sensitive-data store is refu
   }
   assert.strictEqual(upload(plugin, []).status, 0, 'no paths cancels the chooser');
   assert.strictEqual(run({ tool_name: plugin, tool_input: {}, cwd: dir, session_id: 'up' }).status, 0, 'paths omitted');
-  assert.strictEqual(upload('mcp__plugin_chrome-control_chrome-control__browser_click', [env]).status, 0, 'another browser tool is not judged here');
+  assert.strictEqual(upload('mcp__plugin_chrome-control_chrome-control__browser_click', [env]).status, 0, 'another browser tool is not judged here'); // mcp-fixture
   // the manifest wires the guard on that tool, both spellings, every engine
   const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
     .find((h) => h.file === 'guard-secret-value.js' && /browser_file_upload/.test(h.matcher));
@@ -2568,7 +2599,7 @@ test('browser_file_upload: a credential file or the sensitive-data store is refu
     assert.ok(re.test(`mcp__plugin_${engine}-control_${engine}-control__browser_file_upload`), engine);
     assert.ok(re.test(`mcp__${engine}-control__browser_file_upload`), `${engine} (copy route)`); // mcp-fixture
   }
-  assert.ok(!re.test(`mcp__plugin_chrome-control_chrome-control__browser_file_upload${'_x'}`), 'anchored at the end');
+  assert.ok(!re.test(`mcp__plugin_chrome-control_chrome-control__browser_file_upload${'_x'}`), 'anchored at the end'); // mcp-fixture
   // mcps track T1-1: a retired 2.4.0 alias runs the same server under its old name, and the guard holds it there too.
   for (const engine of ['chrome', 'msedge', 'firefox', 'webkit']) {
     const alias = `browser-${engine}`;
@@ -2808,4 +2839,21 @@ test('guard-secret-value: a long run of spaces in one stage is judged in bounded
   const docs = once(`cat ${'<<E '.repeat(10000)}\n${'E\n'.repeat(10000)}`);
   assert.ok(docs.work > 40000, `the heredoc lines read are charged (${docs.work})`);
   assert.ok(docs.ms < 1500, `a line of 10,000 heredocs judged in ${Math.round(docs.ms)}ms`);
+});
+
+test('both store names are all-secret; the project\'s own .secrets passes, the data-root store does not (item 3, Review Focus 1)', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'secrets-names-'));
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }));
+  const readOf = (file) => run({ tool_name: 'Read', tool_input: { file_path: file }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }).status;
+  fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+  for (const name of ['.secrets', '.sensitive-data']) {
+    fs.writeFileSync(path.join(dir, '.alfred', name), 'DB_HOST=db.internal\n');
+    assert.strictEqual(readOf(path.join(dir, '.alfred', name)), 2, `${name}: a Read of the store is refused`);
+    assert.notStrictEqual(at(`cat .alfred/${name}`), 0, `${name}: a dump is rewritten or refused, never run as written`);
+    assert.strictEqual(at(`source .alfred/${name}`), 2, `${name}: a command naming the store is refused`);
+  }
+  fs.writeFileSync(path.join(dir, '.secrets'), '# the project\'s own act secrets\n');
+  for (const cmd of ['act --secret-file .secrets', 'docker run --env-file .secrets img', 'cp .secrets.example .secrets', 'git rm --cached .secrets'])
+    assert.notStrictEqual(at(cmd), 2, cmd);
+  assert.strictEqual(at('tar cf - .'), 2, 'a tree above the data-root store is still refused');
 });

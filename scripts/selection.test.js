@@ -26,7 +26,8 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     // 'absolute-path' is a resolved filesystem path the install WRITES rather than asks -
     // ALFRED_CODE_MEMORY_DB, the channel a plugin MCP entry cannot expand and its launcher reads.
     // 'hours' is a duration the idle-gap offer reads with parseFloat: decimals allowed, 0 meaning off.
-    const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv', 'hours']);
+    // 'int' is a whole number in min..max - a count, never a percent (ALFRED_CODE_SCORER_ROUNDS).
+    const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv', 'hours', 'int']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
     {
@@ -38,12 +39,24 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
         // it is never asked on the environment screen - the question that owns it is elsewhere
         // (--memory-level), and asking twice would let the two answers disagree.
         if (row.written) { assert.strictEqual(row.ask, false, `${row.key} is written by the install, so it is not asked`); }
+        // A seed:false row is never written into a project, so an answer to it would land nowhere.
+        if (row.seed === false) { assert.strictEqual(row.ask, false, `${row.key} is never written, so it is not asked`); }
         if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
         if (row.validate.type === 'percent')
         {
             const n = Number(row.default);
             const inRange = n >= row.validate.min && n <= row.validate.max;
             assert.ok(inRange || row.default === row.validate.off, `${row.key} default is inside its own range (or is its off value)`);
+        }
+        if (row.validate.type === 'int')
+        {
+            const n = Number(row.default);
+            assert.ok(Number.isInteger(n) && n >= row.validate.min && n <= row.validate.max, `${row.key} default is a whole number in its own range`);
+        }
+        if (row.validate.type === 'csv' && row.validate.values)
+        {
+            for (const item of row.default.split(',').map((s) => s.trim()).filter(Boolean))
+                assert.ok(row.validate.values.includes(item), `${row.key} default item ${item} is one of its own values`);
         }
         // a token count is an absolute trigger the hook reads with parseInt: anything negative or
         // unparseable falls back to the default, and 0 is the real answer 'this tier is off' - so
@@ -80,6 +93,17 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
             for (const r of riders) { assert.ok(!r.validate || r.validate.off === row.group_off, `${r.key} reads ${row.group_off} as off, like the row it rides with`); }
         }
     }
+});
+
+test('catalog: the scorer rows carry the validate shapes the walks check', () =>
+{
+    const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
+    const v = (k) => cat.env.find((r) => r.key === k).validate;
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORER'), { type: 'enum', values: ['0', '1'] });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_LEVEL'), { type: 'percent', min: 60, max: 100 });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_OUTPUTS'), { type: 'csv', values: ['designer-plan', 'root-cause', 'inline-plan'] });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_ROUNDS'), { type: 'int', min: 1, max: 10 });
+    assert.ok(!('values' in v('ALFRED_CODE_HOOKS_OFF')), 'the one csv row of today is unchanged');
 });
 
 test('environment catalog: a renamed key is declared on both sides', () =>

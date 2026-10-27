@@ -59,14 +59,15 @@ rows` when none). A close with no receipt is a step 6 that did not run (audit 20
 ## 7. Post-check
 
 Every line below is READ from something already in context - step 2's output, the one post-install grep, and the
-step-3 `--log` call. Nothing here is stated from memory, and nothing needs another call but the hygiene check.
+step-3 `--log` call. Nothing here is stated from memory, and nothing needs another call but the hygiene check and,
+after a cascade, the load check.
 
 Report the version delta, then what THIS install refreshed: step 2's `changed-here:` line (the release's own
 `changed:` beside it when they differ - 'skills 9 here of the release's 10'), naming the paths from the compare's own
 `status<TAB>path` rows - never the installer's `installed/refreshed this run` counts, which are the SELECTION size.
 Then the `--log` call's `renamed:` and `pruned:` lines VERBATIM (never a count from memory - measured: a close said
 'Renamed: 35' against 34 in the log), each `taking over a copy the stamp did not record` line (an older stack copy
-the run refreshed), the REPAIRED line (`mcp repaired:` rows and the plugin version moves), the ENVIRONMENT line, the
+the run refreshed), the PLUGINS line (the plugin version moves), the ENVIRONMENT line, the
 NEW-ITEMS line (what arrived, what was taken, what stays off - say where that switch lives - or was left, and any
 `unknown`), the release notes step 2 printed, step 6's `agents-md:` receipt, and the restart line.
 
@@ -105,9 +106,18 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   and apply the answer with `--apply gitignore` or `--apply exclude`, reporting its `applied` /
   `current` line. A `none (...)` line is not reported. Unattended, take the Recommended option and log
   it.
-- **MEMORY** - the `memory:` line and the importer's own `memory import:` line, verbatim, when the grep caught them.
-  A first-time adoption switches Claude's own memory off only once the import succeeds; never assert the switch-off
-  from the flag or the adoption alone. No memory line: say nothing.
+- **WORKSPACE** - read only when `$TMP/cascade.txt` exists (`update-workspace.md` ran the cascade): append
+  `; [ -f "$TMP/cascade.txt" ] && cat "$TMP/cascade.txt"` to the hygiene call. A `cascade.txt` with no
+  `cascade: done` line is a cascade still running: wait for its completion notice and read it again. One row per
+  project from its `cascade: <rel><TAB><state>` line - `<rel>`, its version from step 2's plan row, and `updated` /
+  `unchanged` / `failed` / `skipped` / `gone` - each `!!` line under it verbatim, then the `cascade: done ...` line.
+  Then ONE call,
+  `node "$TMP/repo/scripts/workspace.js" check-loads --root <rel>` for each `updated` child, joined by ` ; ` (each is
+  one logged-out `claude -p` in a throwaway account, up to 90 s), and paste every `!!` line it prints. A `loaded twice`
+  line, and each `failed` or `skipped` child, puts `/alfred-code:update in <rel>` on the follow-ups card.
+- **SERVERS** - the `mcp servers:` block the grep caught (an install an earlier release gave MCP servers, on its
+  first update onto 2.10.1 or later), verbatim: the removed line, each `add it back:` line, any `mcp <name>: kept` line and the
+  `mcp data:` line. No block: say nothing.
 - **RESTART / WARN** - the `--log` call's `restart: yes|no` (a report LINE, not a question) and every `warn: <line>` (a
   fail-soft that fell back and continued - not a re-run trigger), verbatim.
 - **FOLLOW-UPS** - the `context7-local removed` and `claude-hud has no status line yet` lines, verbatim when caught,
@@ -120,20 +130,13 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
 The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name `/capture-awareness` (when
 installed) as the USER's next step when step 2's `changed-here:` line shows `skills=` or `agents=` above 0 - gated on
 THAT number alone (the installer re-copies every file every run, so any other gate is always true; the generated
-inventory stamps each skill's first sentence, which drifts with content-only updates). When the navigation server is
-installed, name the one-off re-index as a next step whenever this run re-seeded serena's `project.yml` (the grep's
-`serena project index` line): `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-10-20T23:59:59Z
---from serena-agent@2.1.0 serena project index` (the release pin and cut-off from `meta/mcp-pins.json`; the data
-root's own folder in place of `.alfred`, `.serena/home` while a 2.0.0 folder has not moved; Windows PowerShell:
-`$env:SERENA_HOME='.alfred\serena\home'`, and on Windows on ARM `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
-Skill call is DENIED by `guard-fresh-session-start.js`; the report line is the mechanism.
+inventory stamps each skill's first sentence, which drifts with content-only updates). Never invoke it from this
+run - the skill is manual-only (`disable-model-invocation`), so a Skill call is DENIED by
+`guard-fresh-session-start.js`; the report line is the mechanism.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the follow-ups that are the
-USER's to run - restart for an MCP change, `/capture-awareness` (when the gate above fires), a manual-only capture whose
-output is stale, the navigation-server re-index, a credential to rotate or set by hand - as `Suggested next steps`,
-the recommended one first and each with the one reason it matters. **When step 3's `--log` call printed `restart: yes`, the RESTART is row one** - with
-`claude mcp list` named beside it as the one command that confirms the servers actually connected (a registration is
-not a connection) - every other follow-up runs against the session still holding the OLD ones. A follow-up that is
+USER's to run - the restart, `/capture-awareness` (when the gate above fires), a manual-only capture whose output is
+stale, a server's data to delete (the `mcp data:` line) - as `Suggested next steps`, the recommended one first and each with the one reason it matters. **When step 3's `--log` call printed `restart: yes`, the RESTART is row one** - every other follow-up runs against the session still holding the OLD hooks and plugins. A follow-up that is
 itself a deliberate run - any capture, a loop - carries a fresh-session note beside it: 'run it in a fresh session;
 started here it re-sends this walk's history on every one of its turns'. Under a restart row the note reads 'run it
 in the session the restart opens' instead - one action, not two the user can order wrongly. No AskUserQuestion over

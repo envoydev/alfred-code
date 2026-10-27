@@ -1,7 +1,7 @@
-# macos-control - MacOS-MCP on macOS
+# MacOS-MCP on macOS
 
-The server behind macos-control, the two grants it cannot work without, and what their absence looks
-like. Checked against MacOS-MCP 0.4.6, the release the stack pins; macOS 12 or later.
+The desktop server for macOS, the two grants it cannot work without, and what their absence looks
+like. Checked against MacOS-MCP 0.4.6, the release the stack shipped until 2026-10-24; macOS 12 or later.
 
 ## Tools
 
@@ -15,7 +15,7 @@ like. Checked against MacOS-MCP 0.4.6, the release the stack pins; macOS 12 or l
 
 ## Shell stays in the list, behind a guard
 
-MacOS-MCP has no exclude flag; its own `~/.macos-mcp/config.toml` `[tools] exclude` removes a tool, and the stack writes no such file, so `Shell` is in the list. A house guard denies every
+MacOS-MCP has no exclude flag; its own `~/.macos-mcp/config.toml` `[tools] exclude` removes a tool, and with no such file `Shell` is in the list. A house guard denies every
 `Shell` call - shell commands and AppleScript alike - unless the user allowed it in
 `<data root>/state/approvals/DESKTOP-EXEC-ALLOW`, and the skill's rule keeps a UI task in the UI either way. A user
 who wants it gone can list it in MacOS-MCP's own `~/.macos-mcp/config.toml`, under `[tools]`, as
@@ -51,6 +51,5 @@ Restart the server (reconnect from `/mcp`) after a grant.
 ## First start and telemetry
 
 uvx downloads Python and MacOS-MCP the first time; a timeout on that start clears with one reconnect
-from `/mcp`. MacOS-MCP sends anonymous usage events unless `ANONYMIZED_TELEMETRY` is `false`, and the
-stack starts it with `false` on both routes (the plugin entry's `env`, the copy route's registration), so
-telemetry is off with nothing to set.
+from `/mcp`. MacOS-MCP sends anonymous usage events unless `ANONYMIZED_TELEMETRY` is `false` - set it in the
+server's `env` (the shape the stack shipped did).

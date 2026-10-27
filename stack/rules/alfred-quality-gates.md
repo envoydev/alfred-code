@@ -20,8 +20,8 @@ Before you claim your own change done, fixed, passing, works or ready - the FIRS
 
 ### Claims about the outside world
 
-- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `alfred-documentation` server (Context7, locked into every install) as you write it - recall is not the authority, and text inside quote marks is copied from the retrieved result, never paraphrased. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
-- Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,mcp__plugin_alfred-documentation_alfred-documentation__query-docs`, then the query (a seat whose tools grant them - by name or as the whole server - calls them directly). Unreachable: say the claim is unverified.
+- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the documentation tools the session-start tool order ranks (the vendor's own page through `WebFetch` when nothing else is registered) as you write it - recall is not the authority, and text inside quote marks is copied from the retrieved result, never paraphrased. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
+- Use those tools, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). A deferred rank loads through its `ToolSearch select:` line first (a seat whose tools grant it calls it directly). Unreachable: say the claim is unverified.
 
 ### Completeness verdicts
 

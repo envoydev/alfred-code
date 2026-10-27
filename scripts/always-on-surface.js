@@ -13,7 +13,7 @@ const STACK = path.join(ROOT, 'stack');
 // context, and `when_to_use` is appended to the description in the listing
 // (code.claude.com/docs/en/skills). Counting whole files over-counted the rules by their frontmatter
 // and maintainer notes, and the manual-only descriptions besides, while the fixed text every
-// generated capabilities rule carries - its usage policy and the locked-server row - went uncounted.
+// generated capabilities rule carries - its usage policy - went uncounted.
 function frontmatterOf(text)
 {
     const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text));
@@ -69,8 +69,9 @@ function injectedRuleText(text)
 }
 
 // The fixed text every generated capabilities rule carries: the usage-policy section of the skill's
-// copy target (its policy-rev stamp is a comment, stripped) and the one row the locked servers share.
-function capabilitiesFixedText(skillText, templateText)
+// copy target (its policy-rev stamp is a comment, stripped). The locked servers' shared routing row left with the
+// servers (2026-10-24, the stack ships no MCP server); every row now is one server's, paid only where it is registered.
+function capabilitiesFixedText(skillText)
 {
     const skill = String(skillText || '').split(/\r?\n/);
     const at = skill.findIndex((l) => l.startsWith('## Usage policy (fixed'));
@@ -80,16 +81,7 @@ function capabilitiesFixedText(skillText, templateText)
         if (i > at && (/^## /.test(skill[i]) || /^```/.test(skill[i]))) break;
         policy.push(skill[i]);
     }
-    const tpl = String(templateText || '').split(/\r?\n/);
-    const from = tpl.findIndex((l) => /^The routing map/.test(l));
-    let locked = '';
-    for (let i = from + 1; from !== -1 && i < tpl.length && !/^#{1,6} /.test(tpl[i]); i++)
-    {
-        if (locked && !/^[ \t]+\S/.test(tpl[i])) break;
-        if (locked) locked += ` ${tpl[i].trim()}`;
-        else if (/^- `(?:alfred-)?navigation`/.test(tpl[i])) locked = tpl[i].trim();
-    }
-    return { policy: injectedRuleText(policy.join('\n')), locked };
+    return { policy: injectedRuleText(policy.join('\n')) };
 }
 
 // The generated awareness rule's own text: SKILL.md's copy target as injected, its import slot left out - the docs it
@@ -140,10 +132,9 @@ function alwaysOnSurface({
         skills += frontmatterValue(fm, 'description').length + frontmatterValue(fm, 'when_to_use').length;
     }
     const readSoft = (file) => { try { return read(file); } catch { return ''; } };
-    // The agents reference holds both: the stamped usage policy in its copy target and the routing map's locked row.
-    const agentsRef = readSoft(path.join(capabilitiesDir, 'references', 'agents.md'));
-    const fixed = capabilitiesFixedText(agentsRef, agentsRef);
-    const generated = fixed.policy.length + fixed.locked.length + awarenessRuleText(readSoft(path.join(capabilitiesDir, 'SKILL.md'))).length;
+    // The agents reference holds the stamped usage policy in its copy target.
+    const fixed = capabilitiesFixedText(readSoft(path.join(capabilitiesDir, 'references', 'agents.md')));
+    const generated = fixed.policy.length + awarenessRuleText(readSoft(path.join(capabilitiesDir, 'SKILL.md'))).length;
     return { rules, agents, agentTools, skills, manualOnly, generated, total: rules + agents + agentTools + skills + generated };
 }
 

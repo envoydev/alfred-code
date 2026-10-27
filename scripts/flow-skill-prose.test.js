@@ -62,7 +62,7 @@ test('M79: a generated rule survives update because no ledger records it, not be
 
 // ---- M80: the plugin cache can be newer than the library copy -------------------------------------------------
 test('M80: the newest cache entry is not claimed to be the release these copies came from', () => {
-    for (const name of ['capture-first-look', 'habits-adjust-agents-md', 'capture-awareness']) {
+    for (const name of ['habits-adjust-agents-md', 'capture-awareness']) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /(NEWEST|newest plugin-cache entry) is the one this skill came from/i, `${name}: the skew window makes it false`);
         assert.match(text, /after a core update it can be newer/, `${name}: says when it differs`);
@@ -101,9 +101,6 @@ test('M84: stack-usage finds the transcript folder under the config dir, by list
     assert.match(text, /`\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/<encoded-project-path>\/`/);
     assert.match(text, /every non-alphanumeric character replaced by a dash/);
     assert.match(text, /List `\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/`/);
-    // The rule the prose states is the one the stack's own importer computes.
-    const { slugify } = require('./memory-import.js');
-    assert.strictEqual(slugify('/Users/x/my.repo/.claude/worktrees/a_b'), '-Users-x-my-repo--claude-worktrees-a-b');
 });
 
 // ---- M86: the coverage loop keeps a declined set like its two siblings ----------------------------------------
@@ -276,7 +273,7 @@ test('M99: task-solve-cross\'s body is under 18,000 chars with its stops, ledger
     // Nothing was deleted: the close-out detail and the lookup moved to references the body names at their step.
     assert.match(flat(b), /Before the close report, Read `references\/close-out\.md`/);
     const close = flat(read('stack/skills/task-solve-cross/references/close-out.md'));
-    for (const piece of [/## Doc-drift/, /`\/capture-architecture` named in the close report/, /docs\.js set architecture\/ARCHITECTURE\.md#known-ceilings/, /memories purged: <names\|none>/])
+    for (const piece of [/## Doc-drift/, /`\/capture-architecture` named in the close report/, /docs\.js set architecture\/ARCHITECTURE\.md#known-ceilings/, /notes purged: <names\|none>/])
         assert.match(close, piece);
     assert.match(read('stack/skills/task-solve-cross/references/full-spec.md'), /node "\$SPEC" <<'REQUEST'/);
 });
@@ -378,19 +375,19 @@ test('a status-less seat return is a seat death in every orchestrator that route
 
 // 2.1.6 review B3: a solve run lists its own feature's notes at resume, never the whole store, and its close
 // purges the whole feature and counts what is left with the trio protocol's own line, kept in the step mechanics
-// (read at step 3) since the body sits at its cap. Since the user's 2026-10-13 ruling the notes are alfred-memory
-// rows, so the resume and the purge go by the `handoff:<feature>` tag plus the project tag.
-test('solve resumes by the feature tag and closes on the counted purge', () =>
+// (read at step 3) since the body sits at its cap. Since 2026-10-24 the notes live on the handoff bus, so the resume
+// and the purge go by the feature through `node .claude/hooks/handoff.js`.
+test('solve resumes by the feature and closes on the counted purge', () =>
 {
     const solve = flat(skill('task-solve'));
-    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `memory_list` with the tags `handoff:<feature>` and the project tag, `tag_match: 'all'`/);
-    assert.doesNotMatch(solve, /Delete or archive the cycle note/);
-    assert.match(solve, /`mcp__plugin_alfred-memory_alfred-memory__memory_delete` with `tags: \['handoff:<feature>', 'project:<name>'\]`, `tag_match: 'all'` - then the purge count \(`references\/step-mechanics\.md`\)/);
+    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `node \.claude\/hooks\/handoff\.js left <feature>`/);
+    assert.doesNotMatch(solve, /Delete or archive the cycle note|memory_list|memory_delete/);
+    assert.match(solve, /Purge the notes - `node \.claude\/hooks\/handoff\.js purge <feature>` - then the purge count \(`references\/step-mechanics\.md`\)/);
     // Usage audit 2026-10-10 (C20): the receipt rides the close stop's Result field, where the stop check reads.
-    assert.match(solve, /The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names\|none>`/);
+    assert.match(solve, /The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names\|none>`/);
     const line = (text) => (/The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(text) || [])[1];
     const own = line(flat(read('stack/skills/task-solve/references/step-mechanics.md')));
-    assert.strictEqual(own, 'node .claude/hooks/memory.js handoff <feature>', 'the step mechanics carry the purge count line');
+    assert.strictEqual(own, 'node .claude/hooks/handoff.js left <feature>', 'the step mechanics carry the purge count line');
     assert.strictEqual(own, line(flat(read('stack/skills/task-solve-cross/references/domain-trio-protocol.md'))), 'the same line as the trio protocol');
 });
 
@@ -412,4 +409,25 @@ test('capture-architecture names where ORIENTATION.md and watch.json go, lints i
     assert.match(engine, /const DOCS = path\.join\(DOCS_ROOT, 'architecture'\);/);
     assert.match(engine, /const BLOCK_FILE = path\.join\(DOCS, 'ORIENTATION\.md'\);/);
     assert.match(engine, /path\.join\(domainDir\(domain\), 'watch\.json'\)/);
+});
+
+// ---- item 4 (2026-10-25): the card carries recorded weaknesses, task-design orients on awareness ------------------
+test('item 4: the card names recorded weaknesses by title and path:line; task-design orients on awareness; M94 holds', () => {
+    assert.match(flat(skill('habits-plan-writing')), /each recorded weakness in the files this slice touches - the assessment entry's title and its path:line/);
+    const b = body(skill('task-design'));
+    assert.match(flat(b), /related-projects awareness doc/);
+    assert.match(flat(section(b, 'Output')), /`Oriented:`[^.]*awareness/);
+    assert.match(flat(b), /A bug seen only on the customer's side - read `references\/design-rules\.md`/);
+    assert.match(read('stack/skills/task-design/references/design-rules.md'), /A bug seen only on the customer's side/);
+    assert.ok(b.length < 12000, `${b.length}`);
+});
+
+test('item 4: designers orient per task-design step 1; the greenfield design reads the two preference docs first', () => {
+    const seats = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((n) => n.endsWith('-solution-designer.md'));
+    assert.strictEqual(seats.length, 10);
+    for (const f of seats) assert.match(flat(read(`stack/agents/${f}`)), /orient per task-design step 1 \(architecture, preferences, assessments, awareness\), then judge the fit/, f);
+    const b = body(skill('task-build-from-scratch'));
+    const design = b.slice(b.indexOf('### 1. DESIGN'), b.indexOf('### 2.'));
+    assert.ok(design.length > 0, 'the DESIGN step is found');
+    assert.match(flat(design), /`PERSONAL-CODE-PREFERENCES\.md` and `ARCHITECTURE-PREFERENCES\.md`[^.]*before/);
 });

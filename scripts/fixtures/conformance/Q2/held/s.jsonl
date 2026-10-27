@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-10-25T10:00:25.000Z","message":{"role":"user","content":"what does cartTotal do"}}
+{"type":"assistant","timestamp":"2026-10-25T10:00:26.000Z","message":{"id":"m44","role":"assistant","content":[{"type":"text","text":"It sums the line totals and applies the discount once."}]}}

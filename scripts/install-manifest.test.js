@@ -50,17 +50,6 @@ test('manifest: a hook wired on two events is two entries and one file', () =>
     assert.ok(stop.some((h) => /::AskUserQuestion::/.test(h)), stop.join(' | '));
 });
 
-test('manifest: every MCP entry keeps its install-time placeholders intact', () =>
-{
-    // JSON has no `$` expansion, so an install-time shell variable became an @PLACEHOLDER@ token the
-    // argv resolver already understands. A row that lost one would register a literal.
-    const m = loadManifest(ROOT);
-    const serena = m.mcps.find((e) => e.startsWith('alfred-navigation|'));
-    assert.match(serena, /@SERENA_CONTEXT@/);
-    const memory = m.mcps.find((e) => e.startsWith('alfred-memory|'));
-    assert.match(memory, /@MEMORY_DB_PATH@/);
-});
-
 test('manifest: a manifest with no retired block, or a partial one, prunes nothing it does not name', () =>
 {
     const fs = require('node:fs');

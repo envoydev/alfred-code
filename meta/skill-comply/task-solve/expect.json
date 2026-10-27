@@ -3,13 +3,12 @@
   "skill": "task-solve",
   "sources": ["stack/skills/task-solve/SKILL.md"],
   "extracted": "2026-09-23",
-  "note": "The skill is manual-only, so every level invokes it by its slash command and only the words after it change. A headless run cannot answer a stop, so the steps graded are the ones before and AT the first stop: the resume check, the size line (re-proving the Size first section - input parsing is on the floor, so the fixture task is standard), the design step, its plan file, and a stop that carries its three fields without approving or building anything.",
+  "note": "The skill is manual-only, so every level invokes it by its slash command and only the words after it change. A headless run cannot answer a stop, so the steps graded are the ones before and AT the first stop: the resume check, the size line (re-proving the Size first section - input parsing is on the floor, so the fixture task is standard), the design step, its plan file, and a stop that carries its three fields without approving or building anything. In a real session (conformance.js) the steps run on the size the run stated: the design steps on `Size: standard` alone, the stop fields on a size that stops, the floor never - it is this fixture task's.",
   "run": {
     "max_turns": 40,
     "stacks": ["javascript"],
     "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
-      "mcp__plugin_alfred-memory_alfred-memory__memory_list", "mcp__plugin_alfred-memory_alfred-memory__memory_store", "mcp__plugin_alfred-memory_alfred-memory__memory_delete",
-      "mcp__plugin_alfred-navigation_alfred-navigation__find_symbol", "mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview", "mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols"],
+      "LSP"],
     "selection": {
       "skills": ["task-solve", "task-design", "task-verify-plan", "task-implement", "task-verify-code", "javascript"],
       "rules": ["javascript-conventions"]
@@ -27,6 +26,7 @@
   "steps": [
     {
       "id": "resume-first",
+      "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
       "quote": "On invocation, resume before starting:",
       "graders": [
@@ -34,8 +34,7 @@
           "type": "tool_order",
           "name": "the cycle note looked up before the design step",
           "before": { "any": [
-            { "tool": "mcp__plugin_alfred-memory_alfred-memory__memory_list" },
-            { "field": "command", "text_match": "memory\\.js handoff" }
+            { "field": "command", "text_match": "handoff\\.js (left|list)" }
           ] },
           "after": { "ref": "design" }
         }
@@ -56,6 +55,7 @@
     },
     {
       "id": "size-floor",
+      "session": false,
       "from": "stack/skills/task-solve/SKILL.md",
       "quote": "Floor: auth, secrets, input parsing, permissions, a public contract or a migration is never below standard",
       "graders": [
@@ -77,6 +77,7 @@
     },
     {
       "id": "design-invoked",
+      "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
       "quote": "**DESIGN** - run `task-design`",
       "graders": [
@@ -85,6 +86,7 @@
     },
     {
       "id": "plan-file",
+      "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
       "quote": "The plan file** (`<docs-path>/work/plans/<feature>.md`) is the durable truth",
       "graders": [
@@ -99,6 +101,7 @@
     },
     {
       "id": "stop-after-design",
+      "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
       "quote": "A stop IS one AskUserQuestion call",
       "graders": [
@@ -112,6 +115,7 @@
     },
     {
       "id": "stop-fields",
+      "session": { "said": "\\bSize:\\**\\s*\\**(small|standard)\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
       "quote": "report THREE named fields",
       "graders": [
@@ -142,6 +146,7 @@
     },
     {
       "id": "nothing-builds",
+      "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
       "quote": "Never dispatch a seat the user did not choose at a stop",
       "graders": [

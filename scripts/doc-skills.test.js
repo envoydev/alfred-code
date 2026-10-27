@@ -38,7 +38,7 @@ test('audit 2026-10-08: docs-as-code has a parse step the run can perform, spell
     assert.ok(dac.includes('## Mermaid ground rules (every Mermaid diagram)'), 'three diagram types route here');
     // the spelling is the package README's own (github.com/mermaid-js/mermaid-cli: `npx -p @mermaid-js/mermaid-cli mmdc -h`)
     assert.ok(dac.includes('`npx -p @mermaid-js/mermaid-cli mmdc -i <file>.mmd -o <tmp>/out.svg`'), 'the local parse');
-    assert.ok(dac.includes('confirm the package and flags through the documentation server first'), 'the flags are confirmed at use');
+    assert.ok(dac.includes('confirm the package and flags through the documentation tools first'), 'the flags are confirmed at use');
     assert.doesNotMatch(dac, /preview on mermaid\.live/, 'the browser preview is no longer the only proof');
     assert.doesNotMatch(squash(read('stack/skills/docs-as-code/references/adr.md')), /is `capture-architecture`'s protocol/, 'no ownership breadcrumb');
 });

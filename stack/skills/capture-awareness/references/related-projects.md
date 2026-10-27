@@ -70,12 +70,12 @@ Captured: <branch>@<short-sha>, <date>
 # Related projects
 
 This repo is one of several that make up a product: the siblings, and the edges that bind them. Dynamic
-cross-repo findings go to the shared `alfred-memory` MCP, tagged with the sibling's own name, never here.
+cross-repo findings go to Claude Code's own memory, naming the sibling, never here.
 
 - A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's
   `work/cross-project-tasks/<this repo>.md` (a sibling not yet on 2.8.0: `cross-project-tasks/` at its root) - search
   both before calling a named card absent.
-- The navigation server binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
+- The navigation tools bind to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
 - An entry's `captured:` names the branch it was read on: on any other branch, verify its seam exists before
   relying on it.

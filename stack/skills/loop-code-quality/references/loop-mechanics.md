@@ -11,13 +11,13 @@ the step. The staged run has its own mechanics (`stage-close.md`) and never uses
 - **small-tier implementer brief** - ONE brief per module batching its small findings: per finding the
   file:line, the rule it breaks, the smallest correct change already decided and the check that proves
   it; then the `0.`-numbered fix discipline's text folded in whole; then the line `plan: loop-code-quality` (the small-tier
-  stamp's own id - the dispatch hook passes a brief only on its own plan's stamp); then `memory: none` - a scoped fix
+  stamp's own id - the dispatch hook passes a brief only on its own plan's stamp); then `note: none` - a scoped fix
   has no memory hand-off. A brief that does hand a note names it literally, read side included (memory
   hygiene: `references/domain-trio-protocol.md`).
 - **substantial-tier designer brief** - the finding, its assessment entry (rule, severity, remediation)
   as the requirement, and the fix discipline; the designer returns the decomposition, and the body's
   step 2 gates and approves it before any implementer runs.
-- **Before any brief** - trace each finding to its exact line with a deterministic locator (the navigation server for a
+- **Before any brief** - trace each finding to its exact line with a deterministic locator (the navigation tools for a
   symbol, grep for a text pattern) and note the sibling pattern the fix must mirror; a brief written
   from an untraced finding ships the capture's guess. A finding whose seat already quoted the locator
   and its reproducing output is traced - do not re-derive it.
@@ -63,7 +63,7 @@ and the answer budget caps prose; tables are exempt.
   commits exist.
 - **Anti-gaming** - the sweep over the cumulative diff against the sweep baseline: clean, or what was
   reverted and which fix gamed it; `not run - nothing shipped` when the run changed nothing.
-- **Memories** - `memories purged: <names|none>`, fold-first per `references/domain-trio-protocol.md`.
+- **Notes** - `notes purged: <names|none>`, fold-first per `references/domain-trio-protocol.md`.
 - **Next actions** - when Deferred items wait on the operator, a ranked what-to-do list ships IN this
   report, not on request.
 - **Mechanics** - `loop-mechanics.md: read`, then `bootstrap.md: <yes|n/a>` - the receipt that this file was read this step (`bootstrap.md: yes` when the run seeded the loops folder, else `n/a`).

@@ -20,7 +20,7 @@ never mixed:
 
 - A project's AGENTS.md written, filled in or brought up to date: the seeded `.claude/AGENTS.md` still unfilled, an AGENTS.md gone stale against the code (a moved path, a changed build or test command, a missing setup step), an audit or improvement of the instruction file, a separate part of the repo (web/, api/, a package) that needs its own AGENTS.md, or what the AGENTS.md check reported.
 - Covers setup, commands, key files and architecture sections, what to keep out, and the deterministic check that closes it.
-- Not for a skill, a rule or a hook, nor a README, nor a preference or lesson, which the shared memory server keeps.
+- Not for a skill, a rule or a hook, nor a README, nor a preference or lesson, which Claude Code's own memory or the preferences docs keep.
 
 ## 1. Resolve the stack's files
 
@@ -179,11 +179,11 @@ Either way the report names every file written with its line count.
 Hold every line to the template's keep-out test and its five shapes. On top of them, three things
 this file is never the home of:
 
-- **A session's learnings, a correction or a personal preference** - the shared memory server keeps
-  them (`alfred-memory.md`), searchable and shared across accounts; an AGENTS.md line is neither. A
+- **A session's learnings, a correction or a personal preference** - Claude Code's own memory keeps
+  them; an AGENTS.md line is neither. A
   code, architecture or git preference is the user's to record with `/capture-preferences` instead -
   the template's wishlist shape.
-- **A `CLAUDE.local.md` of personal notes** - the same server, for the same reason; it also makes Claude Code stop reading AGENTS.md, unless the user sets Project instructions to 'claude-md-and-agents-md' in `/config`.
+- **A `CLAUDE.local.md` of personal notes** - the same memory, for the same reason; it also makes Claude Code stop reading AGENTS.md, unless the user sets Project instructions to 'claude-md-and-agents-md' in `/config`.
 - **A score or a grade** of the file - a judgment no check can hold it to; the check's rows are the
   verdict.
 

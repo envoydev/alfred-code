@@ -75,7 +75,7 @@ test('capture-awareness documents every MCP without pulling a single edge (doc-m
 
 test('the hook catalog carries the installer HOOKS block basenames', () => {
     assert.deepStrictEqual(graph.catalog.hooks,
-        ['check-turn-build', 'docs-session', 'guard-answer', 'guard-catastrophic-rm', 'guard-config-protection', 'guard-cross-project-write', 'guard-desktop-exec', 'guard-fresh-session-start', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-secret-value', 'guard-stop-contract', 'guard-unapproved-dispatch', 'guard-ungated-commit', 'history-session', 'instrument-tool-usage', 'memory-session', 'preferences-session'],
+        ['check-turn-build', 'docs-session', 'forge-session', 'guard-answer', 'guard-catastrophic-rm', 'guard-config-protection', 'guard-cross-project-write', 'guard-desktop-exec', 'guard-fresh-session-start', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-secret-value', 'guard-stop-contract', 'guard-unapproved-dispatch', 'guard-ungated-commit', 'history-session', 'instrument-tool-usage', 'preferences-session'],
         'catalog.hooks mirrors HOOKS=( ... ) sans .js, sorted');
 });
 
@@ -157,6 +157,7 @@ test('a backticked `browser` is no MCP edge - the word is too common to prove a 
     for (const kind of ['skills', 'agents', 'rules'])
         for (const [name, node] of Object.entries(graph[kind]))
             assert.ok(!(node.mcps || []).includes('browser'), `${kind} ${name} pulls the browser server by a mention`);
-    assert.ok(graph.catalog.mcps.includes('browser'), 'the browser server stays in the catalog');
-    assert.ok(graph.rules['alfred-navigation'].mcps.includes('alfred-navigation'), 'a role name that is no common word still makes its edge');
+    assert.deepStrictEqual(graph.catalog.mcps, [], 'the catalog holds no server - the stack ships none (2026-10-24)');
+    // Since 2026-10-24 no shipped rule names a server, the navigation rule included: it describes the job instead.
+    assert.deepStrictEqual(graph.rules['alfred-navigation'].mcps || [], [], 'the navigation rule names no server');
 });

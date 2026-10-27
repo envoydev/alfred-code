@@ -149,7 +149,7 @@ test('agents #8 C7: task-design turns its asks into NEEDS_CONTEXT / user_decisio
 // HAND-OFF note too, so the set is every seat whose body stores one - read off the body, never a hand list.
 test('agents #6: every seat that stores a hand-off note writes it before the report, pinned', () =>
 {
-    const writers = seats.filter((s) => /At HAND-OFF, `mcp__plugin_alfred-memory_alfred-memory__memory_store`/.test(body(s)));
+    const writers = seats.filter((s) => /At HAND-OFF, store one compact note - `node \.claude\/hooks\/handoff\.js put /.test(body(s)));
     const pinned = listedIn('verifier-memory-before-report');
     for (const s of [...of('-implementer'), ...of('-resolver'), ...of('-solution-designer'), 'integration-reviewer',
         'issue-diagnoser-ci', 'issue-diagnoser-runtime', 'security-auditor'])
@@ -158,7 +158,7 @@ test('agents #6: every seat that stores a hand-off note writes it before the rep
     {
         assert.ok(pinned.has(`stack/agents/${s}.md`), `${s}: a copy of verifier-memory-before-report`);
         const r = report(s);
-        assert.ok(r.includes('Memory writes come BEFORE the report'), `${s}: the ordering sits in its Report`);
+        assert.ok(r.includes('Handoff writes come BEFORE the report'), `${s}: the ordering sits in its Report`);
     }
     assert.strictEqual(writers.length, 38, 'the hand-off writers');
     assert.strictEqual(pinned.size, 41, 'the writers plus the three support seats whose report is the deliverable');

@@ -51,19 +51,27 @@ const ROUTES = [
   { hook: 'guard-secret-value.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Monitor', 'Grep'], deny: true },
   { hook: 'guard-unapproved-dispatch.js', event: 'PreToolUse', tools: ['Task', 'Agent'], deny: true },
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
+  // Every MCP server (a forge merge under any server key or plugin), replayed on forge tool names.
+  { hook: 'guard-ungated-commit.js', event: 'PreToolUse', deny: true, pattern: '^mcp__.*',
+    tools: ['mcp__github__merge_pull_request', 'mcp__work_forge__accept_merge_request', 'mcp__plugin_acme_ado__repo_pull_request_write'] }, // mcp-fixture
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
+  // The output-scorer's seal (mode-output-scorer): a seat's hand-back is written to its score file, logged, never decided.
+  { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['SubagentHandback'], deny: false, probe: 'scorer-seal' },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
-  // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on the four tool names it
-  // matches: both desktop servers' launchers on both routes. The copy route's bare server spelling is built here,
-  // never written - lint check 54 fails on it as literal text.
+  // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on tool names it matches: the desktop
+  // server types' two launchers and the browser server type's code runner under any registration (N6 and N9, 2026-10-24 -
+  // the stack ships no server, so the name is the user's). A bare server spelling is built here, never written - lint
+  // check 54 fails on it as literal text.
   { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__(plugin_windows-(control|desktop)_)?windows-(control|desktop)__App$|^mcp__(plugin_macos-(control|desktop)_)?macos-(control|desktop)__Shell$',
-    tools: ['control', 'desktop'].flatMap((k) => [`mcp__plugin_windows-${k}_windows-${k}__App`, `mcp__windows-${k}__App`, `mcp__plugin_macos-${k}_macos-${k}__Shell`, `mcp__macos-${k}__Shell`]) },
-  // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): every engine, both routes.
+    pattern: '^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$',
+    tools: ['control', 'desktop'].flatMap((k) => [`mcp__plugin_windows-${k}_windows-${k}__App`, `mcp__windows-${k}__App`, `mcp__plugin_macos-${k}_macos-${k}__Shell`, `mcp__macos-${k}__Shell`])
+        .concat(['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `playwright-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_run_code_unsafe`, `mcp__${s}__browser_run_code_unsafe`])) },
+  // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): a Playwright server under any
+  // registration name (N6), replayed on the names the stack once shipped.
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__(plugin_((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))_)?((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))__browser_file_upload$',
+    pattern: '^mcp__.+__browser_file_upload$',
     tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `browser-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_file_upload`, `mcp__${s}__browser_file_upload`]) },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
@@ -90,6 +98,10 @@ const ROUTES = [
 // the point - it costs one line and a reason, and it keeps every UNDECLARED silence loud.
 // The evidence a declared route needs is proof the gate CAN fire: its own unit coverage.
 const UNEXERCISED = {
+  // Wired 2026-10-25 (mode-output-scorer). The seal acts only on an output-scorer seat's hand-back, a seat the corpus
+  // predates; what it writes is pinned in guard-stop-closes.test.js ('scorer seal').
+  'guard-stop-contract.js::PreToolUse:SubagentHandback':
+    'the corpus predates the output-scorer seat; the seal is pinned in guard-stop-closes.test.js',
   // Replayed 2026-09-23 over 820 transcripts: 29,058 Bash and 1,523 Write payloads, none aimed at a
   // check config that already existed - the sessions never shell-edited or overwrote one. The gate
   // fires on both routes in guard-hooks.test.js.

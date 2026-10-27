@@ -218,7 +218,12 @@ const NETRC_FILE = /(?:^|[\\/])[._]netrc$/i;
 const NPMRC_FILE = /(?:^|[\\/])\.npmrc$/i;
 const NAMES_A_KEY = /(?:^|[._-])(?:signing|public|pub)[_-]?key$|publickeytoken$/i;
 const KEY_STORE = 'key store';
-const SENSITIVE_FILE = '.sensitive-data';
+// The project's secret store has two names (item 3, 2026-10-25): `.secrets` from this release, `.sensitive-data` until
+// every install has moved (stack/mcp/data-root.js, pinned as secret-file-names). `.sensitive-data` is the store by its
+// name alone; `.secrets` only directly under the data root (isDataRootSecrets), since a project keeps a `.secrets` of
+// its own too - the file nektos/act reads.
+const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);
+const [SECRETS_FILE, LEGACY_SECRETS_FILE] = SECRET_FILES;
 const KEYSTORE_FILE = /\.(?:p12|pfx|jks|jceks|keystore|bks|kdbx)$|^\.mylogin\.cnf$|^(?:credentials|access_tokens)\.db$/i;
 const PEM_BEGIN_LINE = /^\s*-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----\s*$/;
 const GPG_PRIVATE = /^\s*(?:Key:\s*)?\((?:\d+:)?(?:protected-)?private-key\b/m;
@@ -234,7 +239,7 @@ function kindByName(file) {
   if (/(?:^|\.)htpasswd$/.test(b)) return 'htpasswd';
   if (NETRC_FILE.test(String(file))) return 'netrc';
   if (b === '.vault-token') return 'token';
-  if (b === SENSITIVE_FILE) return 'sensitive';
+  if (b === LEGACY_SECRETS_FILE || (b === SECRETS_FILE && isDataRootSecrets(file))) return 'sensitive';
   if (b === '.yarnrc') return 'spaced';
   if (NPMRC_FILE.test(String(file))) return 'ini';
   if (/^(?:\.terraformrc|terraform\.rc)$/.test(b) || /^(?:tf|tfvars|hcl)$/.test(e)) return 'hcl';
@@ -473,7 +478,7 @@ function hclPairs(lines) {
   }
   return out;
 }
-// The project's own secret store (`<data root>/.sensitive-data`, the user's ruling of 2026-10-13): a dotenv whose EVERY
+// The project's own secret store (`<data root>/.secrets`, `.sensitive-data` before; the user's ruling of 2026-10-13): a dotenv whose EVERY
 // value is a credential, whatever its key is called - DB_HOST and API_URL included, since the user put them there.
 const sensitivePairs = (lines) => lines.map((l) => l.match(DOTENV_LINE)).filter(Boolean).map((m) => [m[1], unquote(m[2]), 'always']);
 const READERS = {
@@ -584,10 +589,22 @@ function assignedValue(word) {
 // (`const D = process.env.CLAUDE_CONFIG_DIR` then `${D}` spelled with that name); null everywhere else.
 let verbatimVars = null;
 const expands = (name) => !verbatimVars || verbatimVars.has(name);
+// `$(pwd)` / a backtick `pwd` is where the shell stands, and `$(git rev-parse --show-toplevel)` the work tree holding it
+// (final review 2026-10-25: `cat "$(pwd)/.env"` printed the file - no `$(...)` resolved). Any other substitution keeps its
+// `$` and the token is skipped, as before. The work tree is found by walking up to a `.git` - no git spawned per call.
+const PWD_SUBST = /\$\(\s*pwd(?:\s+-[LP])?\s*\)|`\s*pwd(?:\s+-[LP])?\s*`/g;
+const GIT_TOP_SUBST = /\$\(\s*git\s+rev-parse\s+--show-toplevel(?:\s+2>\s*\/dev\/null)?\s*\)/g;
+function gitTop(dir) {
+  for (let d = pathMod.resolve(String(dir)); ; d = pathMod.dirname(d)) {
+    try { fs.statSync(pathMod.join(d, '.git')); return d; } catch { /* up one */ }
+    if (pathMod.dirname(d) === d) return null;
+  }
+}
 function expandPath(token) {
   const known = KNOWN_VARS();
   if (known.PWD == null) known.PWD = cwdAnchor || (payload && payload.cwd) || process.cwd(); // where the shell stands
   let p = String(token).replace(/^["'`]|["'`]$/g, '').replace(/^~(?=\/|$)/, HOME);
+  p = p.replace(PWD_SUBST, () => known.PWD).replace(GIT_TOP_SUBST, (m) => gitTop(known.PWD) || m);
   p = p.replace(/\$\{(\w+)(?::-[^}]*)?\}|\$(\w+)/g, (m, a, b) => (expands(a || b) && known[a || b] != null ? known[a || b] : m));
   // `my\ dir/settings.json` is one token the shell hands over with the space intact.
   return /\$/.test(p) ? null : nativePath(p.replace(/\\ /g, ' '));
@@ -915,29 +932,98 @@ function maskFormatText(text, file, mask, count) {
 
 
 // ---- the project's sensitive data: where it is, and the run that uses it -------------------------
-// `<data root>/.sensitive-data` (ALFRED_CODE_DATA_PATH, default .alfred) in the checkout the command runs in, else in the
+// `<data root>/.secrets`, else `.sensitive-data` (ALFRED_CODE_DATA_PATH, default .alfred) in the checkout the command runs in, else in the
 // main worktree beside it - a gitignored file a new worktree does not have. Its values are kept out of the chat by accident:
 // a Read is blocked and a shell dump is masked (the 'sensitive' kind above), and a command that needs them runs through
 // --with-sensitive, which puts them in that command's environment and masks each one's EXACT text in its output - an
 // encoded, split or reversed print is not caught, so this is leak protection, never a wall against a deliberate read.
-function sensitiveFile(start = process.cwd()) {
+// The data root as the settings name it: relative and `..`-free, else `.alfred`.
+function dataRootRel() {
   const raw = String(envOf(process.env, 'DATA_PATH') || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  const root = raw && !pathMod.isAbsolute(raw) && !raw.split('/').includes('..') ? raw : '.alfred';
+  return raw && !pathMod.isAbsolute(raw) && !raw.split('/').includes('..') ? raw : '.alfred';
+}
+// A `.secrets` is the store when it sits directly in a folder whose path ends in the data root (`.alfred/.secrets`, a
+// custom root's `var/data/.secrets`) - by the path as written, a diff header's or a walk's line included, or by its real
+// path. A project's own `.secrets` beside its sources is not. In any letter case (final review 2026-10-25 C2): a
+// case-insensitive disk - macOS, Windows - opens the store as `.alfred/.SECRETS` or `.ALFRED/.secrets` too.
+// A workspace ancestor's `.secrets` at its own data root is the store too (release 2), by real path - only a file of that
+// name reads the chain.
+function isDataRootSecrets(file) {
+  const tail = `${dataRootRel()}/${SECRETS_FILE}`.toLowerCase();
+  const ends = (p) => { const s = String(p).replace(/\\/g, '/').toLowerCase(); return s === tail || s.endsWith(`/${tail}`); };
+  if (ends(file)) return true;
+  let real;
+  try { real = fs.realpathSync(file); } catch { return false; }
+  if (ends(real)) return true;
+  if (baseOf(real).toLowerCase() !== SECRETS_FILE) return false;
+  const at = real.toLowerCase();
+  return sensitiveStores().some((s) => s.toLowerCase() === at);
+}
+function sensitiveFile(start = process.cwd()) {
+  const root = dataRootRel();
   let places = [start];
   try {
-    const { projectRootOf } = require(pathMod.join(__dirname, 'memory.js'));
+    const { projectRootOf } = require(pathMod.join(__dirname, 'layout.js'));
     const r = projectRootOf(start);
     places = [...new Set([r.checkout, r.project])];
-  } catch { /* no engine beside the hook: the start directory alone */ }
-  const at = places.map((p) => pathMod.join(p, ...root.split('/'), SENSITIVE_FILE));
+  } catch { /* no layout.js beside the hook: the start directory alone */ }
+  // the checkout's own store before its main worktree's, `.secrets` before `.sensitive-data` in each
+  const at = places.flatMap((p) => SECRET_FILES.map((name) => pathMod.join(p, ...root.split('/'), name)));
   return at.find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || at[0];
 }
-// The project's store as a real path, or null when it does not exist - what a tree-taking verb on a folder above it carries.
-function sensitiveStore() {
-  try {
-    const f = sensitiveFile((payload && typeof payload.cwd === 'string' && payload.cwd) || process.cwd());
-    return fs.statSync(f).isFile() ? realOf(f) : null;
-  } catch { return null; }
+// The workspace chain (release 2): secret-chain.js beside the hook reads the project's own store and each linked
+// ancestor's at its own data root; without it (an older copy route) the project's own store alone.
+function secretChain() {
+  if (secretChain.mod === undefined) {
+    try { secretChain.mod = require(pathMod.join(__dirname, 'secret-chain.js')); } catch { secretChain.mod = null; }
+  }
+  return secretChain.mod;
+}
+const isStoreFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
+// The values a run in `start` gets: { values, from: { KEY: rel }, files: { rel: file } } - '.' is the project's own store,
+// '..' and up an ancestor's; the nearest value of a key wins.
+function sensitiveChain(start = process.cwd()) {
+  const mod = secretChain();
+  if (mod) {
+    try {
+      const c = mod.chainOf(start, { env: process.env });
+      return { values: c.values, from: c.from, files: Object.fromEntries(c.stores.map((s) => [s.rel, s.file])) };
+    } catch { /* the project's own store below */ }
+  }
+  const file = sensitiveFile(start);
+  if (!isStoreFile(file)) return { values: {}, from: {}, files: {} };
+  let values = {};
+  try { values = sensitiveValues(file); } catch { /* unreadable: no values */ }
+  return { values, from: Object.fromEntries(Object.keys(values).map((k) => [k, '.'])), files: { '.': file } };
+}
+// Every store a deny covers, from where the call runs: the project's own and each linked ancestor's, whatever the kill
+// switch says - it stops the values, never the deny. [{ file, root, real }], read once per run.
+function denyStores() {
+  if (denyStores.list) return denyStores.list;
+  let start = process.cwd();
+  try { if (payload && typeof payload.cwd === 'string' && payload.cwd) start = payload.cwd; } catch { /* a CLI mode */ }
+  let list = null;
+  const mod = secretChain();
+  if (mod) { try { list = mod.storesOf(start, { env: process.env, forDeny: true }); } catch { list = null; } }
+  if (!list) {
+    const f = sensitiveFile(start);
+    list = isStoreFile(f) ? [{ file: f, root: null, real: realOf(f) }] : [];
+  }
+  return (denyStores.list = list);
+}
+// Those stores as real paths - what a tree-taking verb on a folder above one, or a find reaching one, carries.
+function sensitiveStores() {
+  return [...new Set(denyStores().map((s) => s.real))];
+}
+// The data roots those stores sit under, relative to their own project ('.alfred', 'var/data') - the mention pass's words.
+function sensitiveRoots() {
+  const out = new Set();
+  for (const s of denyStores()) {
+    if (!s.root) continue;
+    const rel = pathMod.relative(s.root, pathMod.dirname(s.file)).split(pathMod.sep).join('/');
+    if (rel && !rel.startsWith('..') && !pathMod.isAbsolute(rel)) out.add(rel);
+  }
+  return [...out];
 }
 function sensitiveValues(file) {
   const out = {};
@@ -964,13 +1050,19 @@ if (process.argv[2] === '--with-sensitive') {
   }
   const quote = (w) => (process.platform === 'win32' ? (/[\s"&|<>^]/.test(w) ? `"${w.replace(/"/g, '\\"')}"` : w) : (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`));
   const line = words.length === 1 ? words[0] : words.map(quote).join(' ');
-  const file = sensitiveFile();
-  let values = {};
-  try { values = sensitiveValues(file); } catch { process.stderr.write(`# with-sensitive: ${file} not found - the command runs without it\n`); }
+  // the workspace chain's values, nearest first (release 2, AC20) - a parent's value is masked like the project's own
+  const chain = sensitiveChain(process.cwd());
+  const values = chain.values;
+  if (!Object.keys(chain.files).length) process.stderr.write(`# with-sensitive: ${sensitiveFile()} not found - the command runs without it\n`);
   const keys = Object.keys(values);
   const masks = Object.entries(values).filter(([, v]) => v.length >= MASK_MIN).sort((a, b) => b[1].length - a[1].length);
-  const maskLine = (s) => masks.reduce((acc, [k, v]) => acc.split(v).join(`<${k}>`), s);
-  if (keys.length) process.stderr.write(`# with-sensitive: ${keys.length} value(s) from ${file} in the environment (${keys.join(', ')}), each shown as <KEY> in this output\n`);
+  const maskLine = secretChain() ? secretChain().masker(values, MASK_MIN) : (s) => masks.reduce((acc, [k, v]) => acc.split(v).join(`<${k}>`), s);
+  const sources = Object.keys(chain.files).map((rel) => [rel, keys.filter((k) => chain.from[k] === rel)]).filter(([, ks]) => ks.length);
+  if (sources.length === 1 && sources[0][0] === '.') process.stderr.write(`# with-sensitive: ${keys.length} value(s) from ${chain.files['.']} in the environment (${keys.join(', ')}), each shown as <KEY> in this output\n`);
+  else if (sources.length) {
+    const shown = (f) => pathMod.relative(process.cwd(), f).split(pathMod.sep).join('/');
+    process.stderr.write(`# with-sensitive: ${keys.length} value(s) in the environment (${sources.map(([rel, ks]) => `${shown(chain.files[rel])}: ${ks.join(', ')}`).join('; ')}), each shown as <KEY> in this output\n`);
+  }
   const { spawn } = require('child_process');
   const child = spawn(line, { shell: true, env: { ...process.env, ...values }, stdio: ['inherit', 'pipe', 'pipe'] });
   const pipe = (from, to) => {
@@ -1127,7 +1219,7 @@ if (process.argv[2] === '--redacted') {
       body = maskFormatText(text, file, mask, () => { masked++; });
     }
     // The runnable presence command, absolute: the guard ships inside the plugin, and pilot 3's first presence call
-    // guessed `.claude/hooks/`, where only the docs, memory and history engines are copied.
+    // guessed `.claude/hooks/`, where only the docs and history engines are copied.
     const note = noteLine(`redacted view of ${file} - ${masked} credential value(s) shown as <set (N chars)>, everything else as written` +
       (filtered ? '; piped through the command\'s own filter, so line numbers count the view, not the file.' : '.') +
       ` Presence of one key: node "${__filename}" --presence "${file}" KEY (A.B.C reads a nested key).`, receipt);
@@ -1186,7 +1278,7 @@ function lineRedactor(grep = false, literals = false) {
   // raw, though the start line says a printed value is masked): every live value whatever its key, and a line that is no
   // `KEY=value` pair whole - the store is the user's, its format no promise.
   const SENSITIVE_PAIR = /^(\s*(?:export\s+)?[A-Za-z_][\w.-]*\s*=\s*)(.*?)\s*$/;
-  const SENSITIVE_PREFIX = /^(?:[A-Za-z]:)?(?:[^\s:]*:)?(?:[^\s:]*[\\/])?\.sensitive-data(?::\d+){0,2}[:-]/;
+  const SENSITIVE_PREFIX = /^(?:[A-Za-z]:)?(?:[^\s:]*:)?(?:[^\s:]*[\\/])?(?:\.sensitive-data|\.secrets)(?::\d+){0,2}[:-]/;
   const sensitiveBody = (body) => {
     if (!body.trim() || COMMENT_LINE.test(body)) return body;
     const p = body.match(SENSITIVE_PAIR);
@@ -1336,20 +1428,27 @@ try {
 if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
 // SessionStart: the project's sensitive data by KEY only, and the run that uses it - nothing when there is none.
 if (payload.hook_event_name === 'SessionStart') {
-  const file = sensitiveFile(payload.cwd || process.cwd());
-  let keys = [];
-  try { keys = Object.keys(sensitiveValues(file)); } catch { /* none: nothing to say */ }
+  const cwd = payload.cwd || process.cwd();
+  // the workspace chain's KEYS by source (release 2): '<own store> holds A; from ..: B; from ../..: C', the project's own
+  // first, an ancestor's by its folder; never a value
+  const chain = sensitiveChain(cwd);
+  const keys = Object.keys(chain.values);
   if (keys.length) {
-    const rel = pathMod.relative(payload.cwd || process.cwd(), file).split(pathMod.sep).join('/');
+    const file = chain.files['.'];
+    const rel = file ? pathMod.relative(cwd, file).split(pathMod.sep).join('/') : null;
+    const holds = Object.keys(chain.files).map((at) => [at, keys.filter((k) => chain.from[k] === at)]).filter(([, ks]) => ks.length)
+      .map(([at, ks]) => (at === '.' ? `${rel} holds ${ks.join(', ')}` : `from ${at}: ${ks.join(', ')}`)).join('; ');
     // The data root's own .gitignore covers the file; one a user wrote elsewhere, or tracked by hand, is said here -
     // a commit would publish every value. git's status 1 is 'not ignored' (a tracked file too); 128 is no repository.
     let exposed = '';
     try {
-      const r = require('child_process').spawnSync(...require('./hook-prelude.js').gitSafe(['check-ignore', '-q', '--', pathMod.basename(file)], { cwd: pathMod.dirname(file), timeout: 5000, stdio: 'ignore' }));
-      if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
+      if (file) {
+        const r = require('child_process').spawnSync(...require('./hook-prelude.js').gitSafe(['check-ignore', '-q', '--', pathMod.basename(file)], { cwd: pathMod.dirname(file), timeout: 5000, stdio: 'ignore' }));
+        if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
+      }
     } catch { /* no git: nothing to commit it with */ }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
-      `Sensitive data: ${rel} holds ${keys.join(', ')} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output. In the browser, type a KEY name in browser_type / browser_fill_form: the browser server fills its value and shows it as <secret>KEY</secret>.${exposed}` } }));
+      `Sensitive data: ${holds} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output. In the browser, type a KEY name in browser_type / browser_fill_form: the browser server fills its value and shows it as <secret>KEY</secret>.${exposed}` } }));
   }
   process.exit(0);
 }
@@ -3006,6 +3105,8 @@ if (isShellTool(payload.tool_name)) {
   const command = stripHeredocsOf(raw, code);
   judged = command;
   runBodies = code;
+  // the secrets engines by name (R9), before a rewrite below ends the run
+  refuseEngineMention([command, ...code.map((h) => h.body)].join('\n'));
   // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
   // result is judged like any command, so a credential printed elsewhere still takes its own form.
   // A git command that prints file content gets the stream redactor piped in the same way (redactGitStages).
@@ -3035,11 +3136,55 @@ if (isShellTool(payload.tool_name)) {
       `credential, so it is judged the safe way. Split it into smaller commands, or flatten the nesting.\n`);
   }
   // a data heredoc's body is text the command writes (a plan line naming the store), never a step (the 2026-10-17 usage
-  // audit); a body a shell or runtime runs is still read for the name
-  refuseSensitiveMention([judged, ...runBodies.map((h) => h.body)].join('\n'), judged);
+  // audit); a body a shell or runtime runs is still read for the name, and a shell's body is steps too - `.secrets` is
+  // refused only by what an operand resolves to (item 3)
+  refuseSensitiveMention([judged, ...runBodies.map((h) => h.body)].join('\n'), [judged, ...runBodies.filter((h) => !h.runtime).map((h) => h.body)].join('\n'));
   process.exit(0);
 }
 
+// A stage that only LOOKS at a named store (or engine), reading no value. The 2026-10-17 usage audit's false refusals:
+// git's own looks at a path (is it ignored, tracked, which attributes - `git check-ignore -q` is the check the
+// session-start warning itself runs), a count-only or quiet grep or another reducer (isReducer: a count, a key-name
+// list), and an echo / printf whose words NAME the store - text, unless a substitution in it runs something or its
+// output is redirected onto the store. Each only as the LAST stage of its pipe: a name printed into `| xargs cat` is a read.
+function sensitiveLooks(words, stage, pipedOn) {
+  const SENSITIVE_LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
+  const GIT_LOOKS = /^(?:check-ignore|check-attr|ls-files|status)$/;
+  const v = baseOf(words[0] || '');
+  if (SENSITIVE_LOOKS.has(v)) return true;
+  if (pipedOn) return false;
+  if (v === 'git') {
+    let i = 1;
+    while (i < words.length && words[i].startsWith('-')) i += /^-[Cc]$|^--(?:git-dir|work-tree)$/.test(words[i]) ? 2 : 1;
+    return GIT_LOOKS.test(words[i] || '');
+  }
+  if (/^(?:grep|rg|egrep|fgrep|cut|awk|sed|jq)$/.test(v)) return isReducer(String(stage).trim());
+  if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*(?:\.sensitive-data|\.secrets)\b/i.test(stage);
+  return false;
+}
+// R9 (workspace layering, release 2, AC21): a command line NAMING secrets-run.js or secret-chain.js, whatever its path,
+// is refused and pointed to --with-sensitive - the runner passes a server's stdout unmasked and the chain reader returns
+// the values raw, so either hands the chain over. Read in the command and in the heredoc bodies a shell or runtime runs,
+// before any rewrite; only the looks above pass. A script FILE a runtime runs is not read - the store's residual too.
+function refuseEngineMention(text) {
+  if (allowAll) return;
+  const ENGINE = /(?:^|[^\w.-])(secrets-run|secret-chain)\.js(?![\w.-])/i;
+  const parts = String(text).split(/(\|\||&&|[;&|\n])/);
+  for (let i = 0; i < parts.length; i += 2) {
+    const joined = parts[i].replace(/(["'])([^"'\n]*)\1/g, '$2');
+    const m = joined.match(ENGINE);
+    if (!m || /guard-secret-value\.js/.test(parts[i])) continue;
+    const words = joined.trim().split(/\s+/).filter((w) => !/^[A-Za-z_]\w*=/.test(w) && w !== 'sudo' && w !== '!');
+    // every look only as the LAST stage, `ls` and `test` too: `ls <runner> | xargs -I{} node {}` runs it
+    if (parts[i + 1] !== '|' && sensitiveLooks(words, joined, false)) continue;
+    global.BLOCK_DETAIL = { branch: 'secrets-engine', matched: `${m[1]}.js` };
+    block(`Blocked: this command names ${m[1]}.js, the workspace secrets engine - the MCP launcher passes a server's stdout\n` +
+      'unmasked and the chain reader returns every value raw, so neither runs from a shell the chat can read. A command\n' +
+      'that needs the values gets them in its own environment, both streams masked, each value printed as <KEY>:\n' +
+      `  node "${__filename}" --with-sensitive -- "<command line>"\n` +
+      'An MCP server gets them through its registration (/alfred-code:configure offers the wrap), never a shell run.\n');
+  }
+}
 // The project's .sensitive-data named by a command the judge above let through unchanged: a `source` of it (every value
 // then sits in the shell, where a print of a key no credential pattern names - DB_HOST - shows it), a copy under another
 // name (which no longer reads as the store), a move or a delete. An existence check (test, [, [[, ls, stat, wc) and the
@@ -3054,32 +3199,23 @@ if (isShellTool(payload.tool_name)) {
 // Its tables live inside the function: the shell branch above runs at load, before a module-level const below it exists.
 function refuseSensitiveMention(text, steps = text) {
   if (allowAll) return;
-  const MENTION = /(?:^|[\s"'=/\\])\.sensitive-data(?=$|[\s"';&|)<>])/;
-  const SENSITIVE_LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
-  // The 2026-10-17 usage audit's false refusals, each reading no value: git's own looks at a path (is it ignored, tracked,
-  // which attributes - `git check-ignore -q` is the check the session-start warning itself runs), a count-only or quiet
-  // grep or another reducer (isReducer: a count, a key-name list), and an echo / printf whose words NAME the store - text,
-  // unless a substitution in it runs something or its output is redirected onto the store. Each only as the LAST stage of
-  // its pipe: a name printed into `| xargs cat` is a read.
-  const GIT_LOOKS = /^(?:check-ignore|check-attr|ls-files|status)$/;
-  const looks = (words, stage, pipedOn) => {
-    const v = baseOf(words[0] || '');
-    if (SENSITIVE_LOOKS.has(v)) return true;
-    if (pipedOn) return false;
-    if (v === 'git') {
-      let i = 1;
-      while (i < words.length && words[i].startsWith('-')) i += /^-[Cc]$|^--(?:git-dir|work-tree)$/.test(words[i]) ? 2 : 1;
-      return GIT_LOOKS.test(words[i] || '');
-    }
-    if (/^(?:grep|rg|egrep|fgrep|cut|awk|sed|jq)$/.test(v)) return isReducer(String(stage).trim());
-    if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*\.sensitive-data\b/.test(stage);
-    return false;
-  };
-  const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
+  // The name as text, in any case and between any two non-name characters (final review 2026-10-25 C1: `open('<path>',
+  // 'r')` ended on a comma): `.sensitive-data` anywhere; `.secrets` behind its data root, which no resolver need follow
+  // (`"$(pwd)/.alfred/.secrets"`, `$R/...`, a script's own string), or bare in a pipe whose stages name the data root
+  // (`ls -a .alfred | grep .secrets | xargs ...`) - a project's own `.secrets` elsewhere is no store.
+  // Each workspace ancestor's data root counts as well (release 2: `../var/data/.secrets`), read only when the text names
+  // a store at all.
   const joinQuoted = (s) => String(s).replace(/(["'])([^"'\n]*)\1/g, '$2');
+  const roots = [...new Set([dataRootRel(), ...(/\.(?:secrets|sensitive-data)/i.test(joinQuoted(text)) ? sensitiveRoots() : [])])];
+  const ROOT = `(?:${roots.map((r) => r.split('/').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]')).join('|')})`;
+  const MENTION = new RegExp(`(?:^|[^\\w.-])(?:\\.sensitive-data|${ROOT}[\\\\/]\\.secrets)(?![\\w.-])`, 'i');
+  const BARE = /(?:^|[^\w.-])\.secrets(?![\w.-])/i;
+  const ROOT_WORD = new RegExp(`(?:^|[^\\w.-])${ROOT}(?![\\w.-])`, 'i');
+  const looks = sensitiveLooks;
+  const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
   const refuse = (verb) => {
     global.BLOCK_DETAIL = { branch: 'sensitive-data', matched: String(verb || '').slice(0, 40) };
-    block('Blocked: this command names the project\'s sensitive data (.sensitive-data under the data root). Its values never\n' +
+    block('Blocked: this command names the project\'s sensitive data (.secrets under the data root, .sensitive-data before). Its values never\n' +
       'enter a shell or a file the chat can read - a source, a copy or a print would put them there. Its keys:\n' +
       `  node "${__filename}" --presence <that file>\n` +
       'A command that needs the values gets them in its own environment, each printed as <KEY>:\n' +
@@ -3092,19 +3228,58 @@ function refuseSensitiveMention(text, steps = text) {
   // is no mention and no path.
   const EXCLUDE_FLAG = /^--exclude(?:-from|-dir)?$/;
   const EXCLUDED = /(^|\s)--exclude(?:-from|-dir)?(?:=|\s+)("[^"]*"|'[^']*'|\S+)/g;
-  // the literal name, quoted spans joined
+  // the literal name, quoted spans joined; a pipe is the stages `|` joins, and one naming the data root lets a bare
+  // `.secrets` in any of them count
   const parts = String(text).split(/(\|\||&&|[;&|\n])/);
+  const joinedOf = (seg) => joinQuoted(seg.replace(EXCLUDED, '$1'));
+  const pipeOf = [];
+  const pipeAtRoot = [];
+  for (let i = 0, p = -1; i < parts.length; i += 2) {
+    if (i === 0 || parts[i - 1] !== '|') pipeAtRoot[++p] = false;
+    pipeOf[i] = p;
+    if (ROOT_WORD.test(joinedOf(parts[i]))) pipeAtRoot[p] = true;
+  }
   for (let i = 0; i < parts.length; i += 2) {
     const seg = parts[i];
-    const joined = joinQuoted(seg.replace(EXCLUDED, '$1'));
-    if (!MENTION.test(joined) || /guard-secret-value\.js/.test(seg)) continue;
+    const joined = joinedOf(seg);
+    if (!(MENTION.test(joined) || (pipeAtRoot[pipeOf[i]] && BARE.test(joined))) || /guard-secret-value\.js/.test(seg)) continue;
     const words = joined.trim().split(/\s+/).filter(plain);
     if (looks(words, joined, parts[i + 1] === '|')) continue;
     refuse(words[0]);
   }
   // the spelled name: each operand resolved the way the dump half resolves it
   let budget = 64;
-  const isStore = (p) => baseOf(p) === SENSITIVE_FILE || baseOf(realOf(p)) === SENSITIVE_FILE;
+  // `.sensitive-data` by its name, `.secrets` only under the data root (a project's own `.secrets` is no store)
+  const legacy = (p) => baseOf(p).toLowerCase() === LEGACY_SECRETS_FILE;
+  const isStore = (p) => legacy(p) || legacy(realOf(p)) || isDataRootSecrets(p) || isDataRootSecrets(realOf(p));
+  // A find that hands what it finds to a reader - an -exec / -ok action, a pipe on (`| xargs cat`), a `$(...)` around it
+  // (final review 2026-10-25 C1) - is refused when its walk reaches the store (a -maxdepth short of it does not) and a
+  // -name / -path test of it matches the store's name, or, from the folder holding the store, no name test narrows it.
+  const FIND_ACT = /^-(?:exec|execdir|ok|okdir)$/;
+  const globOf = (g, flags) => new RegExp(`^${String(g).split('').map((ch) => (ch === '*' ? '.*' : ch === '?' ? '.' : ch.replace(/[.+^${}()|[\]\\]/g, '\\$&'))).join('')}$`, flags);
+  const judgeFind = (args, fed) => {
+    if (!fed && !args.some((w) => FIND_ACT.test(w))) return;
+    const stores = sensitiveStores();
+    if (!stores.length) return;
+    let k = 0;
+    while (k < args.length && /^-[HLPEXdsx]$/.test(args[k])) k++;
+    const first = args.findIndex((w, j) => j >= k && /^[-(!]/.test(w));
+    const starts = args.slice(k, first < 0 ? args.length : first);
+    const tests = [];
+    let depth = Infinity;
+    for (let j = 0; j < args.length; j++) {
+      if (/^-i?(?:name|path|wholename)$/.test(args[j])) tests.push({ re: globOf(args[j + 1] || '', /^-i/.test(args[j]) ? 'i' : ''), path: !/name$/.test(args[j]) || /wholename$/.test(args[j]) });
+      else if (args[j] === '-maxdepth' && /^\d+$/.test(args[j + 1] || '')) depth = Number(args[j + 1]);
+    }
+    for (const s of starts.length ? starts : ['.']) for (const p of candidatePaths(s)) for (const hit of statAll(p)) for (const store of stores) {
+      const rel = hit.dir ? pathMod.relative(realOf(hit.at), store) : '';
+      if (!rel || rel.startsWith('..') || pathMod.isAbsolute(rel)) continue;
+      const segs = rel.split(pathMod.sep);
+      if (segs.length > depth) continue;
+      const shown = `${s.replace(/[\\/]+$/, '')}/${segs.join('/')}`;
+      if (tests.length ? tests.some((t) => t.re.test(t.path ? shown : segs[segs.length - 1])) : segs.length === 1) refuse('find');
+    }
+  };
   // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
   // cwd's hid the cwd's store from a tree-taking verb.
   const statAll = (p) => {
@@ -3115,6 +3290,9 @@ function refuseSensitiveMention(text, steps = text) {
     return out;
   };
   const judgeStage = (stage, depth, pipedOn) => {
+    // a `$(...)` or backtick body runs as steps of its own (item 3: `echo "$(source .alfred/.secrets; ...)"` named no
+    // literal the mention pass reads)
+    if (depth < 2) for (const body of substitutions(stage)) judgeAll(body, depth + 1);
     // an assignment-only step binds its name for the steps after it, in order (assignedValue)
     const toks = shellTokens(stage.trim());
     if (toks.length && toks.every((t) => /^[A-Za-z_]\w*=/.test(t))) {
@@ -3136,6 +3314,7 @@ function refuseSensitiveMention(text, steps = text) {
     const c = words.indexOf('-c');
     if (/^(?:ba|z|da|k)?sh$/.test(verb) && c > 0 && words[c + 1] && depth < 2) { judgeAll(words[c + 1], depth + 1); return; }
     const args = words.slice(1);
+    if (verb === 'find') judgeFind(args, pipedOn || depth > 0);
     const sub = args.find((w) => !w.startsWith('-'));
     const recursive = args.some((w) => /^-[A-Za-z]*[rRa][A-Za-z]*$|^--(?:recursive|archive)$|^-recurse$/i.test(w));
     const copies = /^(?:cp|copy-item|cpi|copy|xcopy|robocopy|ditto|rsync|scp)$/i.test(verb);
@@ -3174,7 +3353,7 @@ function refuseSensitiveMention(text, steps = text) {
     const takesTree = creates && (SENSITIVE_ARCHIVE.test(verb) && !copies ? true
       : copies ? (recursive || /^(?:ditto|robocopy|xcopy)$/i.test(verb))
       : verb === 'git' && sub === 'add' && args.some((w) => /^--force$|^-[A-Za-z]*f[A-Za-z]*$/.test(w)));
-    const storeAt = takesTree ? sensitiveStore() : null;
+    const storesAt = takesTree ? sensitiveStores() : [];
     for (let i = 0; i < args.length; i++) {
       const raw = args[i];
       if (EXCLUDE_FLAG.test(raw)) { i++; continue; }
@@ -3186,11 +3365,17 @@ function refuseSensitiveMention(text, steps = text) {
       budget--;
       for (const p of candidatePaths(value)) for (const hit of statAll(p)) {
         if (!hit.dir && isStore(hit.at)) refuse(verb);
-        if (hit.dir && bundles && !excludes([SENSITIVE_FILE])) { try { if (fs.statSync(pathMod.join(hit.at, SENSITIVE_FILE)).isFile()) refuse(verb); } catch { /* not here */ } }
-        if (hit.dir && storeAt && raw !== destination) {
+        if (hit.dir && bundles) for (const name of SECRET_FILES) {
+          const f = pathMod.join(hit.at, name);
+          if (excludes([name]) || (name === SECRETS_FILE && !isDataRootSecrets(f))) continue;
+          try { if (fs.statSync(f).isFile()) refuse(verb); } catch { /* not here */ }
+        }
+        if (hit.dir && storesAt.length && raw !== destination) {
           const d = realOf(hit.at);
-          const rel = pathMod.relative(d, storeAt);
-          if (rel && !rel.startsWith('..') && !pathMod.isAbsolute(rel) && !excludes(rel.split(pathMod.sep))) refuse(verb);
+          for (const storeAt of storesAt) {
+            const rel = pathMod.relative(d, storeAt);
+            if (rel && !rel.startsWith('..') && !pathMod.isAbsolute(rel) && !excludes(rel.split(pathMod.sep))) refuse(verb);
+          }
         }
       }
     }
@@ -3934,10 +4119,10 @@ if (payload.tool_name === 'Read') {
 // The FOURTH read route (audit 2026-10-14 PL3): Playwright MCP's `browser_file_upload` hands each file in
 // `tool_input.paths` (absolute paths, its schema) to whatever page asked for it - and the server reaches every file in the
 // workspace, `<data root>/.sensitive-data` and a `.env` included, so a page's injected 'upload your config' would get them.
-// Each path takes the Read judgement above; both routes' spellings of the four engine servers.
-// The four engine servers and their retired 2.4.0 aliases (`browser-<engine>`, the same server under the old name - mcps
-// track T1-1, 2026-10-21).
-if (/^mcp__(?:plugin_(?:(?:chrome|msedge|firefox|webkit)-control|browser-(?:chrome|msedge|firefox|webkit))_)?(?:(?:chrome|msedge|firefox|webkit)-control|browser-(?:chrome|msedge|firefox|webkit))__browser_file_upload$/.test(String(payload.tool_name || ''))) {
+// Each path takes the Read judgement above. The stack ships no browser server (2026-10-24), so the tool is matched by its
+// name under whatever server the user registered it (one per engine, a plugin's, any name) - a user server with a tool of
+// the same name takes the same judgement, the accepted cost.
+if (/^mcp__.+__browser_file_upload$/.test(String(payload.tool_name || ''))) {
   for (const p of (Array.isArray(input.paths) ? input.paths : []).slice(0, 50)) {
     const file = resolveFile(String(p || ''));
     const key = file && secretInUnlessAllowed(file);

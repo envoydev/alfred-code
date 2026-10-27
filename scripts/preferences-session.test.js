@@ -26,23 +26,33 @@ const GIT = '# Git preferences\n\nUpdated: 2026-10-21\n\n## G1 - Branch names\n<
 let n = 0;
 const sid = () => `prefs-test-${process.pid}-${++n}`;
 
-function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE, 'PROJECT-CODE-PREFERENCES.md': PROJECT, 'GIT-PREFERENCES.md': GIT }, watch = true } = {})
+// `tools` keeps the tool-order start line on: off, the hook's every other push is tested as it was before the line came.
+// `host` keeps the host's shell lines on: off, a push does not depend on the $SHELL or the OS the suite runs on, even where a
+// case names its own off-list.
+// The account config is a folder of the test's own, so this machine's enabled plugins never reach the line.
+function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE, 'PROJECT-CODE-PREFERENCES.md': PROJECT, 'GIT-PREFERENCES.md': GIT }, watch = true, tools = false, host = false } = {})
 {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-hook-')));
+    const config = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-config-'));
     const write = (rel, text) => { const p = path.join(root, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); };
     const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
     git('init', '-q', '-b', 'develop');
     write('.gitignore', '.alfred/\n');
     write('src/app.ts', 'export const x = 1;\n');
+    write('.claude/settings.json', JSON.stringify({ enabledPlugins: { 'alfred-navigation@envoydev': true, 'alfred-documentation@envoydev': true, 'alfred-memory@envoydev': true } }));
     for (const [name, text] of Object.entries(docs)) write(path.join(PREFS, name), text);
     if (watch && Object.keys(docs).length) write(path.join(PREFS, 'watch.json'), '{}\n');
-    const env = (extra) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, ...extra });
+    const env = (extra = {}) =>
+    {
+        const off = ['ALFRED_CODE_HOOKS_OFF' in extra ? extra.ALFRED_CODE_HOOKS_OFF : (tools ? '' : 'preferences-session:tools'), host ? '' : 'preferences-session:host'].filter(Boolean).join(',');
+        return { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ...extra, ...(off ? { ALFRED_CODE_HOOKS_OFF: off } : {}) };
+    };
     const hook = (payload, extra = {}, file = HOOK) => spawnSync(process.execPath, [file], { cwd: root, input: typeof payload === 'string' ? payload : JSON.stringify({ cwd: root, ...payload }), encoding: 'utf8', env: env(extra) });
     return {
         root, write, hook,
         read: (rel) => fs.readFileSync(path.join(root, rel), 'utf8'),
         exists: (rel) => fs.existsSync(path.join(root, rel)),
-        rm: () => fs.rmSync(root, { recursive: true, force: true }),
+        rm: () => { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(config, { recursive: true, force: true }); },
     };
 }
 const pre = (tool, input, session, extra = {}) => ({ hook_event_name: 'PreToolUse', session_id: session, tool_name: tool, tool_input: input, ...extra });
@@ -763,6 +773,24 @@ test('PF-13: a release and a worktree branch are git writes', () =>
     finally { p.rm(); }
 });
 
+test('a forge write on any transport is a git write: other CLIs and MCP servers, by concept', () =>
+{
+    const p = project();
+    const mcpCall = (tool, input, s) => ({ ...bash('true', s), tool_name: tool, tool_input: input });
+    try
+    {
+        for (const cmd of ['glab mr create --fill', 'glab mr merge 4', 'tea releases create --tag v1', 'az repos pr update --id 3 --status completed'])
+            assert.ok(denied(p.hook(bash(cmd, sid()))), cmd);
+        for (const [tool, input] of [['mcp__gitlab__create_merge_request', { title: 't' }], ['mcp__ado__repo_pull_request_write', { action: 'update', autoComplete: true }], ['mcp__github__push_files', { branch: 'main', files: [] }], ['mcp__gitlab__create_release', { tag_name: 'v1' }]])
+            assert.ok(denied(p.hook(mcpCall(tool, input, sid()))), tool);
+        for (const [tool, input] of [['mcp__gitlab__get_merge_request', { merge_request_iid: 4 }], ['mcp__github__pull_request_read', { method: 'get_diff' }], ['mcp__fs__write_file', { path: 'a', content: 'b' }], ['mcp__github__add_issue_comment', { body: 'x' }]])
+            assert.ok(!denied(p.hook(mcpCall(tool, input, sid()))), tool);
+        for (const cmd of ['glab mr view 4', 'glab ci status --live', 'echo glab mr merge 4'])
+            assert.ok(!denied(p.hook(bash(cmd, sid()))), cmd);
+    }
+    finally { p.rm(); }
+});
+
 test('H-Q1: only a whole read marks a doc - a ranged Read, head, grep -c, a name in an echo and a docs.js toc do not', () =>
 {
     const p = project({ docs: { 'GIT-PREFERENCES.md': GIT } });
@@ -800,6 +828,19 @@ test('G6: a second language\'s project section is handed over at its first edit'
         assert.doesNotMatch(reason(cs), /put behaviour on the type|Single quotes/, 'what was handed stays handed');
         assert.ok(!denied(p.hook(edit('api/Orders.cs', s))));
         assert.ok(!denied(p.hook(edit('README.md', s))), 'a file no section covers waits for nothing more');
+    }
+    finally { p.rm(); }
+});
+
+test('G5b: the output-scorer seat is handed the code docs at its start, like a designer (AC27)', () =>
+{
+    const p = project();
+    try
+    {
+        const r = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-9', agent_type: 'alfred-code:output-scorer' });
+        assert.match(String(out(r).additionalContext || ''), /a handler validates/);
+        assert.match(String(out(r).additionalContext || ''), /put behaviour on the type/);
+        assert.doesNotMatch(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-8', agent_type: 'other:output-scorer' })).additionalContext || ''), /a handler validates/);
     }
     finally { p.rm(); }
 });
@@ -923,11 +964,11 @@ test('a navigation lookup is a read: a designer\'s or verifier\'s first symbol l
     try
     {
         const lookups = [
-            ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path_pattern: 'x', include_body: true }],
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path_pattern: 'x', include_body: true }], // mcp-fixture
             ['mcp__alfred-navigation__get_symbols_overview', { relative_path: 'src/app.ts' }], // mcp-fixture: the copy route spells the server bare
-            ['mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols', { name_path: 'x', relative_path: 'src/app.ts' }],
-            ['mcp__plugin_alfred-navigation_alfred-navigation__find_declaration', { name_path: 'x' }],
-            ['mcp__plugin_alfred-navigation_alfred-navigation__find_implementations', { name_path: 'x' }],
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols', { name_path: 'x', relative_path: 'src/app.ts' }], // mcp-fixture
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_declaration', { name_path: 'x' }], // mcp-fixture
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_implementations', { name_path: 'x' }], // mcp-fixture
         ];
         for (const [tool, input] of lookups)
         {
@@ -958,7 +999,7 @@ test('a Grep or an LSP call is a read: a judge\'s first one is held like its fir
 {
     const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
     const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
-    const STEER = /^Locate a symbol through the navigation server or LSP - Grep is for a literal you already located\.$/m;
+    const STEER = /^Locate a symbol through the navigation tools your start line orders \(LSP first\) - Grep is for a literal you already located\.$/m;
     try
     {
         const calls = [
@@ -1028,7 +1069,7 @@ test('a judge\'s first shell read of code is held like its first Read; the docs,
 {
     const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
     const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
-    const STEER = /^Locate a symbol through the navigation server or LSP - Grep is for a literal you already located\.$/m;
+    const STEER = /^Locate a symbol through the navigation tools your start line orders \(LSP first\) - Grep is for a literal you already located\.$/m;
     try
     {
         const who = { agent_id: 's1', agent_type: 'alfred-code:aspnet-verifier' };
@@ -1180,7 +1221,7 @@ test('a typed review is handed the code docs at its expansion; past one room the
         assert.match(texts[0], /Not pasted yet/);
         let r = big.hook(pre('Grep', { pattern: 'Order', path: path.join(big.root, 'src') }, s));
         assert.ok(denied(r), 'its first read brings the next part');
-        assert.match(reason(r), /^Locate a symbol through the navigation server or LSP/m, 'a Grep earns the steer');
+        assert.match(reason(r), /^Locate a symbol through the navigation tools your start line orders/m, 'a Grep earns the steer');
         for (; denied(r); r = big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s))) { texts.push(reason(r)); assert.ok(texts.length < 7, 'the holds end'); }
         const seen = texts.flatMap((t) => [...t.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
         assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every entry once');
@@ -1264,6 +1305,351 @@ test('a run ends at the user\'s next typed turn: the analyzer and a reviewing ma
         assert.ok(denied(call('review-code', s, 'rv1')), 'the first review call is refused to hand the docs over');
         result('rv1', true);
         assert.ok(denied(read(s)), 'that refusal is this hook\'s own: the next read still brings the next part');
+    }
+    finally { p.rm(); }
+});
+
+// ---- tool preferences, phase 1: the tool-order start line ----------------------------------------------------------
+const NAV_LOAD = 'Load: ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,'; // mcp-fixture
+const seatStart = (type, extra = {}) => ({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-t1', agent_type: type, ...extra });
+const seatText = (r) => String(out(r).additionalContext || '');
+const suggested = (p) => p.exists('.alfred/state/tool-preferences/suggested');
+
+// The personal doc leads: the tools line is the part a capped hook output can lose (the final review, I2).
+test('the main session start carries the personal doc, then the tools line', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS }, tools: true });
+    try
+    {
+        const r = p.hook(start(sid(), 'startup'));
+        assert.strictEqual(r.status, 0, r.stderr);
+        const text = pushed(r);
+        assert.ok(text.includes('\n\nTool order - the stack\'s defaults (no TOOLS-PREFERENCES.md)'), text);
+        assert.ok(text.includes(NAV_LOAD), text);
+        assert.ok(text.includes('mcp__plugin_alfred-memory_alfred-memory__memory_store'), 'the memory load line rides here now'); // mcp-fixture
+        assert.ok(text.indexOf('lead with the verdict') < text.indexOf('Tool order'), 'the personal doc comes first');
+        assert.match(text, /lead with the verdict/);
+    }
+    finally { p.rm(); }
+});
+
+test('the suggestion is sent once per project, and never once a doc exists', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        const first = pushed(p.hook(start(sid(), 'startup')));
+        assert.ok(first.endsWith('\nThe user can rank their own with /capture-preferences tools.'), first);
+        assert.ok(suggested(p), 'the marker is written');
+        for (const source of ['startup', 'compact'])
+        {
+            const again = pushed(p.hook(start(sid(), source)));
+            assert.match(again, /^Tool order/, source);
+            assert.ok(!again.includes('/capture-preferences'), source);
+        }
+    }
+    finally { p.rm(); }
+    const q = project({ docs: { 'TOOLS-PREFERENCES.md': '# Tools preferences\n\nUpdated: 2026-10-24\n\n## T1 - Code navigation\n<!-- id: t1 -->\n- Job: navigation\n- Order: LSP > Grep\n' }, tools: true });
+    try
+    {
+        const text = pushed(q.hook(start(sid(), 'startup')));
+        assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md/);
+        assert.ok(text.includes('- navigation (locate symbols, callers and types before reading or editing code): LSP > Grep.'), text);
+        assert.ok(!text.includes('/capture-preferences'));
+        assert.ok(!suggested(q));
+    }
+    finally { q.rm(); }
+});
+
+test('an unwritable state folder still prints the line', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        p.write('blocked', 'a file where the data root would be\n');
+        const r = p.hook(start(sid(), 'startup'), { ALFRED_CODE_DATA_PATH: 'blocked' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        const text = pushed(r);
+        assert.match(text, /^Tool order/);
+        assert.ok(text.endsWith('/capture-preferences tools.'), 'the suggestion prints with no marker to keep');
+    }
+    finally { p.rm(); }
+});
+
+test('every seat start carries its tools line; a judge also gets its code docs', () =>
+{
+    const p = project({ tools: true });
+    try
+    {
+        const v = seatText(p.hook(seatStart('alfred-code:aspnet-verifier')));
+        assert.ok(v.includes('Tool order - the stack\'s defaults'), v);
+        assert.ok(!v.includes('ToolSearch'), 'a stack seat calls what its tools grant');
+        // built-in tools only since 2026-10-24: the LSP and grep navigate, WebFetch reads a library's docs
+        assert.match(v, /- navigation \([^)]*\): LSP > Grep\./, v);
+        assert.match(v, /- documentation \([^)]*\): WebFetch\./, v);
+        assert.match(v, /put behaviour on the type/, 'the judge is still handed the code docs');
+        assert.ok(v.indexOf('put behaviour') < v.indexOf('Tool order'), 'the code docs come first');
+        const e = seatText(p.hook(seatStart('alfred-code:evidence-gatherer')));
+        assert.match(e, /^Tool order/);
+        assert.doesNotMatch(e, /put behaviour on the type/, 'a gatherer gets the tools line only');
+        assert.ok(!e.includes('- documentation'), 'its tools grant no documentation rank');
+        p.write('.claude/agents/my-seat.md', '---\nname: my-seat\ntools: Grep, Read\n---\nbody\n');
+        const own = seatText(p.hook(seatStart('my-seat')));
+        assert.ok(own.includes('- navigation (locate symbols, callers and types before reading or editing code): Grep.'), `a project seat reads its own file: ${own}`);
+    }
+    finally { p.rm(); }
+});
+
+test('a built-in seat gets the main session\'s line without the suggestion; the guide seats get none', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        const text = seatText(p.hook(seatStart('general-purpose')));
+        assert.ok(text.includes('Load: ToolSearch select:'), text);
+        assert.ok(!text.includes('/capture-preferences'), text);
+        assert.ok(!suggested(p), 'a seat never spends the suggestion');
+        assert.ok(seatText(p.hook(seatStart('other-plugin:helper'))).includes(NAV_LOAD), 'another plugin\'s seat');
+        for (const type of ['claude-code-guide', 'statusline-setup']) assert.strictEqual(p.hook(seatStart(type)).stdout, '', type);
+    }
+    finally { p.rm(); }
+});
+
+test('a seat\'s own compaction re-sends its tools line', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS }, tools: true });
+    try
+    {
+        const text = pushed(p.hook({ ...start(sid(), 'compact'), agent_id: 'agent-t4', agent_type: 'alfred-code:evidence-gatherer' }));
+        assert.match(text, /^Tool order/);
+        assert.ok(!text.includes('lead with the verdict'), 'the personal doc stays the main session\'s');
+        assert.ok(!text.includes('/capture-preferences'));
+        assert.strictEqual(p.hook({ ...start(sid(), 'compact'), agent_id: 'agent-t4' }).stdout, '', 'no agent type: nothing to resolve');
+    }
+    finally { p.rm(); }
+});
+
+test('preferences-session:tools switches the line off and nothing else', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL }, tools: true });
+    try
+    {
+        const off = { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' };
+        const text = pushed(p.hook(start(sid(), 'startup'), off));
+        assert.match(text, /^The user's personal preferences/);
+        assert.ok(!suggested(p), 'nor is the suggestion spent');
+        const v = seatText(p.hook(seatStart('alfred-code:aspnet-verifier'), off));
+        assert.match(v, /^The user's code preferences/);
+        assert.strictEqual(p.hook(seatStart('alfred-code:evidence-gatherer'), off).stdout, '');
+    }
+    finally { p.rm(); }
+});
+
+test('a missing tools.js leaves every other push as it was', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL }, tools: true });
+    const lone = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-lone-'));
+    try
+    {
+        // the hook with no ../skills beside it: an install whose capture-preferences copy is gone
+        const file = path.join(lone, 'hooks', 'preferences-session.js');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.copyFileSync(HOOK, file);
+        const r = p.hook(start(sid(), 'startup'), {}, file);
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(pushed(r), /^The user's personal preferences/);
+        assert.match(seatText(p.hook(seatStart('alfred-code:aspnet-verifier'), {}, file)), /^The user's code preferences/);
+    }
+    finally { p.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
+});
+
+// ---- the host's shell traps (audit 2026-10-14 RU13; from the retired memory-session.js, 2026-10-24) -----------------
+// The always-on navigation rule carried the Windows Git Bash line into every macOS / Linux session and the zsh lines into
+// every bash one. The hook appends only this host's own, keyed on process.platform and $SHELL, at every session and seat
+// start. Each case below mocks one host.
+const { hostLines } = require(HOOK);
+const WIN_LINE = /^- On Windows \(Git Bash\): pass a `\/tmp\/x` path to native `node` through `cygpath -w`/m;
+const ZSH_LINE = /^- zsh aborts the WHOLE command on an unmatched bare path glob/m;
+const SPLIT_LINE = /^- zsh never word-splits `\$VAR`/m;
+
+test('RU13: win32 gets the Windows line, a zsh $SHELL the zsh lines, bash neither', () =>
+{
+    const text = (platform, shell) => hostLines(platform, shell).join('\n');
+    assert.deepStrictEqual(hostLines('linux', '/bin/bash'), [], 'bash on Linux: nothing');
+    assert.deepStrictEqual(hostLines('darwin', '/usr/local/bin/bash'), [], 'bash on macOS: nothing');
+    assert.deepStrictEqual(hostLines('darwin', ''), [], 'no $SHELL: nothing');
+    for (const zsh of ['/bin/zsh', '/usr/local/bin/zsh', 'zsh'])
+    {
+        const t = text('darwin', zsh);
+        assert.match(t, /^Shell commands on this host:$/m, zsh);
+        assert.match(t, ZSH_LINE, zsh);
+        assert.match(t, SPLIT_LINE, zsh);
+        assert.doesNotMatch(t, WIN_LINE, `${zsh}: no Windows line off win32`);
+    }
+    for (const bash of ['C:\\Program Files\\Git\\usr\\bin\\bash.exe', '/usr/bin/bash', ''])
+    {
+        const t = text('win32', bash);
+        assert.match(t, WIN_LINE, `win32 ${bash}`);
+        assert.doesNotMatch(t, ZSH_LINE, `win32 ${bash}: no zsh line`);
+    }
+    assert.match(text('win32', '/usr/bin/zsh'), ZSH_LINE, 'a zsh on win32 gets both');
+    assert.strictEqual(hostLines('win32', 'C:\\msys64\\usr\\bin\\zsh.exe').length, 4, 'the header, the Windows line, the two zsh lines');
+});
+
+// Each host drives the real entry: $SHELL through the env, process.platform through a preload that sets it before the hook runs.
+function driveHost(p, payload, { shell, platform, off = 'preferences-session:tools' })
+{
+    const pre = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-platform-'));
+    const config = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-host-config-'));
+    try
+    {
+        fs.writeFileSync(path.join(pre, 'platform.js'), `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(platform)} });\n`);
+        const r = spawnSync(process.execPath, ['-r', path.join(pre, 'platform.js'), HOOK], {
+            cwd: p.root, encoding: 'utf8', input: JSON.stringify({ cwd: p.root, ...payload }),
+            env: { ...process.env, SHELL: shell, CLAUDE_PROJECT_DIR: p.root, CLAUDE_CONFIG_DIR: config, ALFRED_CODE_HOOKS_OFF: off },
+        });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return r.stdout ? String(JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '') : '';
+    }
+    finally { fs.rmSync(pre, { recursive: true, force: true }); fs.rmSync(config, { recursive: true, force: true }); }
+}
+
+test('RU13: a zsh host\'s session and seat starts end on the zsh lines, a bash host\'s on none', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL } });
+    try
+    {
+        const cases = [['a main start', start(sid(), 'startup'), /^The user's personal preferences/],
+            ['a judge\'s start', seatStart('alfred-code:aspnet-verifier'), /^The user's code preferences/],
+            ['a seat\'s own compaction', { ...start(sid(), 'compact'), agent_id: 'agent-h1', agent_type: 'alfred-code:evidence-gatherer' }, /^Shell commands/]];
+        for (const [label, payload, opens] of cases)
+        {
+            const zsh = driveHost(p, payload, { shell: '/bin/zsh', platform: 'darwin' });
+            assert.match(zsh, opens, `${label}: the push it had comes first`);
+            assert.match(zsh, /(^|\n\n)Shell commands on this host:\n- zsh aborts/, `${label}: the host block closes the push`);
+            assert.match(zsh, /word-splits .*array\.$/, `${label}: and ends it`);
+            assert.doesNotMatch(zsh, WIN_LINE, `${label}: no Windows line on macOS`);
+            const bash = driveHost(p, payload, { shell: '/bin/bash', platform: 'linux' });
+            assert.doesNotMatch(bash, /Shell commands on this host|zsh|cygpath/, `${label}: a bash host gets neither`);
+        }
+        const off = driveHost(p, start(sid(), 'startup'), { shell: '/bin/zsh', platform: 'darwin', off: 'preferences-session:tools,preferences-session:host' });
+        assert.match(off, /^The user's personal preferences/, 'preferences-session:host drops the lines');
+        assert.doesNotMatch(off, /Shell commands on this host/, 'and nothing else');
+    }
+    finally { p.rm(); }
+});
+
+test('RU13: a win32 host\'s session and seat starts end on the Windows line, with no zsh line under Git Bash', () =>
+{
+    const p = project({ docs: {} });
+    try
+    {
+        for (const payload of [start(sid(), 'startup'), seatStart('alfred-code:evidence-gatherer'), seatStart('claude-code-guide')])
+        {
+            const win = driveHost(p, payload, { shell: 'C:\\Program Files\\Git\\usr\\bin\\bash.exe', platform: 'win32' });
+            assert.match(win, /^Shell commands on this host:\n- On Windows \(Git Bash\)/, payload.agent_type || payload.hook_event_name);
+            assert.match(win, /`MSYS2_ARG_CONV_EXCL='\*'`/, payload.hook_event_name);
+            assert.doesNotMatch(win, ZSH_LINE, `${payload.hook_event_name}: Git Bash is no zsh`);
+        }
+    }
+    finally { p.rm(); }
+});
+
+// Custom memory with nothing to hold the lessons (spec section 3): the main start says so, once per start.
+const MEMORY_NONE = 'Memory: custom, but no memory tool is reachable here - nothing is stored this session; rank one with /capture-preferences tools, or /alfred-code:configure switches to native.';
+
+test('custom memory with no reachable memory rank: the main start says nothing is stored this session', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        p.write('.claude/settings.json', JSON.stringify({ enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'custom' } }));
+        const text = pushed(p.hook(start(sid(), 'startup')));
+        assert.ok(text.split('\n').includes(MEMORY_NONE), text);
+        const seat = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a1', agent_type: 'general-purpose' });
+        assert.ok(!String(out(seat).additionalContext || '').includes('Memory: custom'), 'a seat is not told');
+        const off = pushed(p.hook(start(sid(), 'startup'), { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' }));
+        assert.ok(!off.includes('Memory: custom'), 'the tools part switched off silences it');
+    }
+    finally { p.rm(); }
+});
+
+test('custom memory with a rank, and default memory: no memory line', () =>
+{
+    for (const settings of [{ enabledPlugins: { 'alfred-memory@envoydev': true }, env: { ALFRED_CODE_MEMORY: 'custom' } }, { enabledPlugins: {} }])
+    {
+        const p = project({ docs: {}, tools: true });
+        try
+        {
+            p.write('.claude/settings.json', JSON.stringify(settings));
+            const text = pushed(p.hook(start(sid(), 'startup')));
+            assert.ok(!text.includes('Memory: custom'), `${JSON.stringify(settings)}\n${text}`);
+        }
+        finally { p.rm(); }
+    }
+});
+
+// Item 4 gap D (2026-10-25): a design that ends in a plan never edits a scoped file, so no edit hold handed the main
+// session the preference docs. A chat design load is handed them beside the skill's text - never denied, nothing retried.
+test('DESIGN_RUN: a chat design load is handed the preference docs and never denied (item 4 gap D)', () =>
+{
+    const p = project();
+    try
+    {
+        const s = sid();
+        const r = p.hook(pre('Skill', { skill: 'task-design' }, s));
+        const ctx = String(out(r).additionalContext || '');
+        assert.ok(!denied(r));
+        assert.strictEqual(out(r).permissionDecision, undefined);
+        assert.match(ctx, /^Before this design, read the user's code preferences/);
+        assert.match(ctx, /never in a static helper class/);
+        assert.match(ctx, /Follow them in every decision of this design\.$/);
+        assert.doesNotMatch(ctx, /again|retry/i);
+        assert.strictEqual(out(p.hook(typed('task-solve', sid()))).additionalContext, undefined, 'task-solve is no design run');
+        assert.match(String(out(p.hook(typed('issue-diagnoser', sid()))).additionalContext || ''), /^Before this design, read/);
+        const seat = p.hook(pre('Skill', { skill: 'task-design' }, sid(), { agent_id: 'a1', agent_type: 'alfred-code:aspnet-solution-designer' }));
+        assert.doesNotMatch(String(out(seat).additionalContext || ''), /Before this design/, 'a seat is handed the docs at its start');
+    }
+    finally { p.rm(); }
+});
+
+test('DESIGN_RUN: past one room the rest is named, never held, and the first scoped edit hands it (Review Focus 5)', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const s = sid();
+        const r = p.hook(pre('Skill', { skill: 'task-design' }, s));
+        const ctx = String(out(r).additionalContext || '');
+        assert.ok(!denied(r));
+        assert.ok(ctx.length <= 10000, `${ctx.length} chars - Claude Code's hook-output cap`);
+        assert.match(ctx, /^read \S+PREFERENCES\.md /m, 'the rest is named');
+        const handed = new Set([...ctx.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
+        assert.ok(handed.size > 0, 'the design load hands the first entries itself - an empty set would pass both checks below');
+        const held = p.hook(edit('src/app.ts', s));
+        assert.ok(denied(held), 'the first scoped edit still hands the rest');
+        const rest = new Set([...reason(held).matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
+        assert.ok([...rest].some((n) => !handed.has(n)), 'the hold carries entries the design load did not');
+        assert.ok(![...rest].some((n) => handed.has(n)), 'and none it already handed');
+    }
+    finally { p.rm(); }
+});
+
+// Item 7 (2026-10-25): the usage analyzer's preferences claim needs a record that the session-start push happened.
+test('the session-start push writes one preferences-push probe row (item 7)', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS } });
+    try
+    {
+        const s = sid();
+        p.hook({ hook_event_name: 'SessionStart', source: 'startup', session_id: s });
+        const rows = p.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map(JSON.parse);
+        assert.deepStrictEqual(rows.filter((r) => r.kind === 'preferences-push').length, 1);
+        assert.strictEqual(rows.find((r) => r.kind === 'preferences-push').mode, 'probe', 'a measurement, never counted as a block');
+        const none = project({ docs: {} });
+        try { none.hook({ hook_event_name: 'SessionStart', source: 'startup', session_id: s }); assert.ok(!none.exists(`.alfred/statistics/hook-blocks/${s}.jsonl`), 'nothing pushed, no row'); }
+        finally { none.rm(); }
     }
     finally { p.rm(); }
 });

@@ -70,3 +70,12 @@ test('the shipped history: every heading places, the newest release owes nothing
     const versions = dated.map((x) => x.version);
     assert.deepEqual([...versions].sort(compareVersions), versions, 'sections run oldest first');
 });
+
+test('a 2.10.0 install owes the modes section, and it names the four flags and the old ones', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const modes = owed(s, '2.10.0').find((x) => x.text.startsWith('## after 2.10.1 - modes: four flags that last the session'));
+    assert.ok(modes, 'owed to a 2.10.0 install');
+    for (const flag of ['--mode-auto-run-on', '--mode-auto-run-off', '--mode-output-scorer-on', '--mode-output-scorer-off', '--auto-mode', '/mode-auto-run'])
+        assert.ok(modes.text.includes(flag), flag);
+});

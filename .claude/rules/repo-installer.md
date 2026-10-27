@@ -12,7 +12,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
 
 - `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one module
   per layer beside it (`args`, `brand`, `source`, `manifest`, `selection`, `library`, `copy`,
-  `settings`, `env-migrations`, `plugins`, `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`,
+  `settings`, `env-migrations`, `plugins`, `mcp` (the retire path alone), `docs`, `seeds`, `pins`,
   `stamp`, `uninstall`, `tool-ignores`, `runtime`, `json-file` - the one JSON reader, below). One `node` command on every OS, so no OS branch in the command bodies. The
   frozen shell twins are deleted (2.0.0) and `ALFRED_CODE_SEED=shell` refuses with one line.
   `meta/stack-manifest.json`, hand-edited, is the one source of the six lists the seed reads;
@@ -26,9 +26,8 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     call (`stamp.js state`) routes. `not-installed` runs the INSTALL phase (`references/init-install.md` - the selection
     walk and the install, reporting `derive-state.js`'s `written` block first), which ends on 'restart, then
     /alfred-code:init again'; `installed` / `initialised` runs the BOOTSTRAP phase (`references/init-bootstrap.md`) - the
-    one-time set-up in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
-    - `scripts/install/memory.js init` imports Claude's old notes, switches its own memory off and
-    writes the stamp's `initialised:` line - the captures, the AGENTS.md fill through
+    one-time set-up in the new session (`init-plan.js`: the machine installs behind one ask, `stamp.js mark` dating the stamp's
+    `initialised:` line - Claude's own memory is left as it is - the captures, the AGENTS.md fill through
     `habits-adjust-agents-md`). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
     settings value would apply over a launcher's) runs init's bootstrap with nobody answering (the install phase
     refuses it): each ask takes its
@@ -54,7 +53,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
     grants, hook wirings and credential literals, pasted before one ask, never auto-fixed, and the
     AGENTS.md check - `agents-md-check.js` rows offered to the skill's improve mode, 'Leave them' recommended and first), `/alfred-code:uninstall`
-    (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run; the
+    (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and an older release's MCP registrations printed, never run; the
     unedited instruction-file seed goes only on its own question, the user's ask of 2026-10-23 - `uninstall.js seed .` previews
     it, `--instructions-seed remove|keep` carries the answer, and with none the seed stays and the log names the flag). In a git
     worktree of an installed checkout every command stops and names the main checkout. A legacy copy-route install that never
@@ -68,12 +67,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
     items of a parked retired entry - and `parked_plugins`, so the walk's closure cannot switch either
     back on), and they apply as `derive-state.js --delta` lines turned into `--add` / `--drop` over the same
-    read-back. A drop runs BEFORE the closure: one something kept requires, or a locked always-on rule
-    or server, is logged 'not applied'; a dropped seat is denied, a dropped hook named off, a
-    dropped library copy deleted (a copy-route hook unwired too), and an MCP entry nothing kept needs
-    is disabled at the run's own scope and route - on the copy route its registration removed where the ledger records it
-    (at local and user scope with no row there, in the release template's exact shape) and its row with it, the user's own server under the name kept (review 2.1.6 M2) - never the core (which carries the
-    hooks) or the three locked servers.
+    read-back. A drop runs BEFORE the closure: one something kept requires, or a locked always-on rule,
+    is logged 'not applied'; a dropped seat is denied, a dropped hook named off, a
+    dropped library copy deleted (a copy-route hook unwired too) - never the core, which carries the hooks.
   - The seed prunes only the names in `meta/stack-manifest.json`'s `retired` block (skills, agents,
     rules, hooks, mcps, plugins), and a skill, seat, rule or hook copy only where the stack's own record holds it
     (the stamp's library hash, the ledger's row, or a name only the stack uses) and it still hashes to it - any other is the
@@ -101,8 +97,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
   - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
     (up to 3 times per table since the last answered ask; it waits for the ask's own transcript row - only when a table call sits in the tail since the typed prompt, M15 - and fails open) whose decision table was run but never pasted - a `stack-select.js
     --table` catalog, the `plugin-settings.js` report or validate's install audit - and, inside an init / configure walk
-    holding a `stack-select.js` call, a layer's own selection ask (`Agents: ...`, `Add to the installed skills?` / `MCP
-    servers?`) whose `--table <layer>` never ran (validate's `<Layer>: ...` consent asks are no walk ask - commands track
+    holding a `stack-select.js` call, a layer's own selection ask (`Agents: ...`, `Add to the installed skills?`) whose `--table <layer>` never ran (validate's `<Layer>: ...` consent asks are no walk ask - commands track
     T2-03, 2026-10-21) (2.1.7, the user's report of 2026-10-06; its own valve of three per layer). Audit 2026-10-11 added
     configure step 1's `update-preflight.js --inventory` table (proof: its `total:` line) with its closing ask, which needs that
     call to have run, and - inside a typed init / configure / validate run that printed a banner - a gap in the `[step n/N`
@@ -110,7 +105,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     the hooks table and moved on, and rendered the plugins table through `node -e`), so it also rides PreToolUse `Bash`
     behind `if: Bash(node *)` and judges the walk's NEXT step - a `stack-select.js`, `plugin-settings.js` or installer
     call - inside a typed init / configure run: denied while the latest `--table` has no answered ask after it (a re-run
-    of that same table passes), and in init, which walks all six layers in order, while an earlier layer's table never
+    of that same table passes), and in init, which walks all five layers in order, while an earlier layer's table never
     ran before a later table, `--emit` or `install`; configure skips areas by design, so only the first check. Each has
     its own valve of three; any other node call leaves before the prelude loads. Step 6.5 (2026-10-21): both walk checks
     read the span back to the newest typed init / configure command (a 2MB tail; past it nothing is judged) - a typed
@@ -136,14 +131,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Surface | Delivery |
 |---|---|
 | Skills | LIBRARY copies of every pick in `.claude/skills`, the always ones included (2.1.0 - no plugin carries a stack skill; the core carries only the `/alfred-code` router), hashed in the stamp; `library-check.js` reports drift and staleness |
-| MCP | the 10 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`), (the 2.0.0 and 2.2.0 renamed ids unlisted in 2.2.1, the six 2.4.0 ids listed again as RETIRED aliases - audit 2026-10-14 PL5; update swaps an old row for its successor and removes an old key no record reaches from the project's settings); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 2 OPTIONAL third-party picks (`claude plugin install`), the `*-lsp` pair, each suggested on evidence (`meta/evidence.json`) (`superpowers` left them in 2.0.0, never touched - R109; claude-md-management and security-guidance were RETIRED in 2.0.0 on the user's call, 2026-09-26, superseding R27 - `meta/retired-plugins.json`: the first update past 2.0.0 uninstalls each as `name@claude-plugins-official` at this run's scope and prints its add-back line, a row at another scope kept and named; a row put back after it is the user's own, `plugins.retirementDue`) - plus `claude-hud`, an OPTIONAL pick every walk marks recommended (2.2.0, the user's ruling of 2026-10-06 - it was required and user-scope before; `CORE_DEP_PLUGINS` is empty, lint 51 accepts that), never re-enabled once the user disables it (`install` would - measured on 2.1.282), statusLine + compact layout set by `/alfred-code:init` (`hud-statusline.js` - the account `settings.json` for a user-scope claude-hud, the project's `settings.local.json` for one installed for this project alone) - plus the core. **Per-item scope (2.2.0):** every optional item - each `<engine>-control`, the desktop pair, mobile-control, the LSP pair, claude-hud (`args.js SCOPED_ITEMS`) - goes where the user chose, `--scope-of <item>=<global|project|local>` (default: this project, the run's scope; `project` on a user-scope run); the core and the three `alfred-` servers follow `--scope`. An existing row is KEPT where it is on every run (`scopeFor` reads the listing first) - only an explicit `--scope-of` that names another scope moves it (`plugins.moveScoped`: installed at the new scope first, then the row this project loads uninstalled, plus any narrower than the target; a broader row at a third scope stays and is named; leaving `user` said `!!` with the line that puts it back); the read-back's `scopes` map (`selection.itemScopes`: `global`, `project`, `local`, `managed`, the narrowest where an item sits at several) is what configure's walk shows. The full copy route registers engines and desktop servers at the run's scope - `--scope-of` reaches only their plugins. The core declares NO `dependencies`: `plugin update` installs none a release adds, a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once, reads each plugin as `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at EVERY scope `claude plugin list --json` reports (`plugins.scopesOf`); `--installed-only` reads back only ENABLED stack entries (the core always is), each row's on/off the narrowest settings file that names it (`plugins.withEffective`) |
-| Hooks | folded into the core `alfred-code@envoydev` plugin (all eighteen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
-| Agents | all 44 in the core plugin (2.1.0), every one the selection did not pick denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` - measured to leave the listing and the bill (spike S3) - wherever the core loads, the skills copy route included; the full copy route (no core) writes none and copies the picked seats into `.claude/agents` (absence is off). An update reads the seats back off the core minus the denied, gated by the stamp's picks and the ledger's `managed-deny`, so a seat a release adds is offered, never on by itself; a renamed seat's deny is re-spelled under its new name, so the seat stays off |
-| Memory tools | the 23 `alfred-memory` tools the stack never calls - `meta/mcp-tools.json`'s 28 minus `MEMORY_TOOLS_USED` (store, search, list, the issue diagnoser's cursor delete, the notes import's update) - denied by bare name in the run's settings file, spelled for the route that serves the server (`mcp__plugin_alfred-memory_alfred-memory__<tool>`, `mcp__alfred-memory__<tool>` on the full copy route): a bare tool name 'removes the tool from Claude's context entirely' (code.claude.com/docs/en/permissions, re-read 2026-10-14). ADD-ONLY (audit 2026-10-14 PL8, the user's ruling): written once and ledgered in `managed-deny` (`settings.js toolDeny`); one the user takes out stays out on every later run - its record is carried, in either spelling - a route switch re-spells the rest, uninstall removes what the ledger holds, and a test fails when a shipped file names a denied tool |
-| Browser unsafe tool | Playwright MCP's `browser_run_code_unsafe` (any code in the browser process, on by default) - denied the memory tools' way, add-only and ledgered (audit 2026-10-21 mcps T1-2, ruling M-A1), once per kept engine in the route's spelling (`mcp__plugin_<engine>-control_<engine>-control__browser_run_code_unsafe`, bare on the full copy route) and once in its retired `browser-<engine>` alias spelling (`browserToolDeny`); a dropped engine's goes through the ledger, and the seats' grants already remove it (`seat-tools.js`) |
+| MCP | none since 2.10.1 - the stack ships, registers and launches no server; the first update onto 2.10.1 or later takes out what an earlier release left (its server plugins, its copy-route registrations, Claude's memory switch-off, the `deniedMcpServers` rows) and prints one add-back line per server (`repo-mcp.md`) |
+| Plugins | 2 OPTIONAL third-party picks (`claude plugin install`), the `*-lsp` pair, each suggested on evidence (`meta/evidence.json`) (`superpowers` left them in 2.0.0, never touched - R109; claude-md-management and security-guidance were RETIRED in 2.0.0 on the user's call, 2026-09-26, superseding R27 - `meta/retired-plugins.json`: the first update past 2.0.0 uninstalls each as `name@claude-plugins-official` at this run's scope and prints its add-back line, a row at another scope kept and named; a row put back after it is the user's own, `plugins.retirementDue`) - plus `claude-hud`, an OPTIONAL pick every walk marks recommended (2.2.0, the user's ruling of 2026-10-06 - it was required and user-scope before; `CORE_DEP_PLUGINS` is empty, lint 51 accepts that), never re-enabled once the user disables it (`install` would - measured on 2.1.282), statusLine + compact layout set by `/alfred-code:init` (`hud-statusline.js` - the account `settings.json` for a user-scope claude-hud, the project's `settings.local.json` for one installed for this project alone) - plus the core. **Per-item scope (2.2.0):** every optional item - the LSP pair and claude-hud (`args.js SCOPED_ITEMS`; a server's `--scope-of` from an older walk is ignored with a line, `RETIRED_SCOPED`) - goes where the user chose, `--scope-of <item>=<global|project|local>` (default: this project, the run's scope; `project` on a user-scope run); the core follows `--scope`. An existing row is KEPT where it is on every run (`scopeFor` reads the listing first) - only an explicit `--scope-of` that names another scope moves it (`plugins.moveScoped`: installed at the new scope first, then the row this project loads uninstalled, plus any narrower than the target; a broader row at a third scope stays and is named; leaving `user` said `!!` with the line that puts it back); the read-back's `scopes` map (`selection.itemScopes`: `global`, `project`, `local`, `managed`, the narrowest where an item sits at several) is what configure's walk shows. The core declares NO `dependencies`: `plugin update` installs none a release adds, a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once, reads each plugin as `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at EVERY scope `claude plugin list --json` reports (`plugins.scopesOf`); `--installed-only` reads back only ENABLED stack entries (the core always is), each row's on/off the narrowest settings file that names it (`plugins.withEffective`) |
+| Hooks | folded into the core `alfred-code@envoydev` plugin (all eighteen, generated from the manifest's `hooks[]`); only the engines `docs.js` / `history.js` / `layout.js` / `handoff.js` and `model-windows.json` are copied (`HOOK_ENGINES`); instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
+| Agents | all 45 in the core plugin (2.1.0), every one the selection did not pick denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` - measured to leave the listing and the bill (spike S3) - wherever the core loads, the skills copy route included; the full copy route (no core) writes none and copies the picked seats into `.claude/agents` (absence is off). An update reads the seats back off the core minus the denied, gated by the stamp's picks and the ledger's `managed-deny`, so a seat a release adds is offered, never on by itself; a renamed seat's deny is re-spelled under its new name, so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update|uninstall>` from the snapshot, one command on every OS |
-| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `installed:` and `installed-ms:` (the write to the millisecond, which the account-file loss check compares a CLI backup with), `picked-skills` / `picked-agents` (only the PICKS, as `name@home` - a skill plain since 2.1.0, a seat `@alfred-code`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `seats-route` (`plugin` or `copy` - how the run delivered the seats; a stamp WITHOUT it is from before 2.1.0, and its first update reads the core as the always closure it then carried: the always skills become copies, a library seat copy is pruned - one edited since, or TUNED (a `model` / `effort` other than the stack's, which no setting can give the core's seat), is kept, its hash carried, and dispatched by its bare name: the capabilities rule's seats line is re-spelled to match (`selection.respellRosterSeats` - `alfred-code:<seat>`, bare for a kept copy) and its inventory lets a project copy win its name - and every seat the install never ran is denied), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), `mcp-held` (the copy route's MCP picks a local-, project- or user-scope registration of the user's own held back, `<scope>:<name>` - read back as picks, so the update after the name frees registers the stack's; re-verify 4 T7), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash and in the FILE it was recorded for - a move off `local` carries a deny row into settings.json only where that file did not hold it before, and with no ledger a secret-file deny is never claimed; `-mcp` records the copy route's local- and user-scope registrations with their scope; a settings or account file the run could not read keeps its rows as recorded. The CLI replaces an account `.claude.json` it cannot parse (a 0-byte one too; an array it rewrites in place) at its first plugin or mcp call - which every command's source step makes before the installer - keeping the old one as `backups/.claude.json.corrupted.<ms>` (measured on 2.1.284), so the ledger's rows at the copy route's registration scope stand, and are read back as picks, when the file is unreadable at the run's start, a corrupted backup is newer than the stamp (to the millisecond its `installed-ms:` line records; an older stamp's whole second otherwise), or the file holds none of them and is a rewritten one - no entry for this project, or a fresh file with no `firstStartTime` from before the stamp - so the user's own removal of every registration stands (`mcp.accountLoss`, matrix 2.1.5 F1, review 2.1.6 B1 and re-verify), said in one line before the first registration. An unreadable one is met at the start by a recovery call nothing reads (the call that meets it answers with the CLI's notice and none of its own output), trusted only when it leaves a new backup. A registration the ledger does not record is taken back only as an earlier release's loss, every sign together (review 2.1.6 re-verify 2 R1): a stamp from a release that could lose rows (no `installed-ms:` - so a configure drop made since is never undone), a corrupted backup newer than the project's set-up - its `initialised:` time, or for a stamp init never dated the stamp file's own birth, since the stamp is rewritten in place (the lossy run wrote its own `installed:` just after the backup it made), the release template's exact shape (`mcp.exactStack` - its words and env keys, free only in a pin, the cut-off date, the python and a path; re-verify 3 S1) carrying the stack's marks (`mcp.stackAuthored` - the release's cut-off with a pinned package, a desktop server's telemetry off, an engine's profile with `--no-webmcp` where `control-engines:` lists it), and a server whose skill or engine the stamp records. The CLI keeps every corrupted copy it makes (none pruned, and none made for content it already backed up - measured on 2.1.284); with any sign missing nothing is adopted, and a registration of the stack's own package and marks is named with `/alfred-code:configure` as the way back. Update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these - a local-scope registration through the CLI, a user-scope one printed; over an account file unreadable at its start, or replaced since the stamp, it refuses before any change while the file holds none of the recorded registrations, naming the backup that holds them and `/alfred-code:update` as the other way out - a copy put back ends the refusal (review 2.1.6 m3, re-verify N1); at user scope the seat denies and `ALFRED_CODE_HOOKS_OFF` stay, the core still loading - and refuses a stamp with none, or a plugin listing it cannot read, before any change), `data-root:` / `data-pending:` / `data-move: kept` (the data root in effect, the server-data moves owed to a launcher, a kept layout - below), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). No reader looks for a stamp in the account dir. |
+| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `installed:` and `installed-ms:` (the write to the millisecond, which the account-file loss check compares a CLI backup with), `picked-skills` / `picked-agents` (only the PICKS, as `name@home` - a skill plain since 2.1.0, a seat `@alfred-code`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `seats-route` (`plugin` or `copy` - how the run delivered the seats; a stamp WITHOUT it is from before 2.1.0, and its first update reads the core as the always closure it then carried: the always skills become copies, a library seat copy is pruned - one edited since, or TUNED (a `model` / `effort` other than the stack's, which no setting can give the core's seat), is kept, its hash carried, and dispatched by its bare name: the capabilities rule's seats line is re-spelled to match (`selection.respellRosterSeats` - `alfred-code:<seat>`, bare for a kept copy) and its inventory lets a project copy win its name - and every seat the install never ran is denied), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash and in the FILE it was recorded for - a move off `local` carries a deny row into settings.json only where that file did not hold it before, and with no ledger a secret-file deny is never claimed; `-mcp` holds an older release's copy-route registrations with their scope, read only by the retire path and uninstall (no run writes a row since 2.10.1; `mcp-held:` and `installed-always-mcps:` are dropped on the next write); a settings or account file the run could not read keeps its rows as recorded. The account `.claude.json` an earlier release registered into is read the retire path's way (`mcp.accountLoss`, `repo-mcp.md`). Update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these - an older release's local-scope registration through the CLI, a user-scope one printed; over an account file unreadable at its start, or replaced since the stamp, it refuses before any change while the file holds none of the recorded registrations, naming the backup that holds them and `/alfred-code:update` as the other way out - the update drops the record of rows the file no longer holds - and a copy put back ends the refusal (review 2.1.6 m3, re-verify N1); at user scope the seat denies and `ALFRED_CODE_HOOKS_OFF` stay, the core still loading - and refuses a stamp with none, or a plugin listing it cannot read, before any change), `data-root:` / `data-pending:` / `data-move: kept` (the data root in effect, a sensitive-data move a run could not make, a kept layout - `repo-memory-data.md`), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). No reader looks for a stamp in the account dir. |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Code review | `/review-code` (always installed; a change no plan built) + `task-verify-code` (a planned build) + the `<stack>-verifier` seats; Claude Code's built-in `/code-review` is denied to the model (`guard-fresh-session-start.js`) |
 | Security review | `/review-security` (always installed) + the `security-auditor` agent + the pre-commit checkpoint's security half (`habits-commit-checkpoint`), which runs `review-security`; the built-in `/security-review` is denied to the model |
@@ -152,26 +145,19 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 - **The scope rules (the user's spec of 2026-10-08, checked against code.claude.com/docs/en/plugins/cli-reference,
   /plugins/loading, /mcp and /managed-mcp; `scripts/install-scope-rules.test.js`).** Every scope Claude Code
-  offers - `local`, `project`, `user`, and `managed` (the admin's). (1) The three `alfred-` servers install at
-  the core's scope; a core whose only row is managed sends them to user scope with one `!!` line
-  (`plugins.requiredScopes`, the user's ruling). (2) A plugin at several scopes reads its narrowest row
+  offers - `local`, `project`, `user`, and `managed` (the admin's). (1) The core installs at the run's scope (the three `alfred-` servers that followed it until 2.10.1 are retired). (2) A plugin at several scopes reads its narrowest row
   (`parsePluginList` ranks local, project, user, managed). (3) An uninstall or a move takes one scope's row; a
   broader row stays, named. (4) An update refreshes every scope a plugin is installed at (`updateEvery`) - a stack
   row already at the snapshot's release is skipped (`atRelease`, `plugin current [<scope>]`: the source step updated
-  it, audit 2026-10-11) - and on
-  the MCP copy route the stack's registration at the other account-file scope (`refreshElsewhere`; a user-scope
-  full-copy run leaves C10's user-scope leftovers to their named remove line). (5) A narrower scope switches a
+  it, audit 2026-10-11). (5) A narrower scope switches a
   broader row off for itself alone: a plugin through `claude plugin disable --scope <run scope>`
-  (`plugins.overrideScope` - configure's drop and both copy-route stand-downs), an MCP server through a
-  `deniedMcpServers` `{ serverName }` row in the run's own settings file (`settings.applyMcpDeny`, the stamp's
-  `mcp-denied:` line, lifted when it is picked again and by uninstall) - never the account `.claude.json`,
-  which the installer does not hand-edit. (6) Moves and removals come from init and configure; update removes
+  (`plugins.overrideScope` - configure's drop and both copy-route stand-downs), and the `deniedMcpServers` `{ serverName }` rows an earlier release wrote for an MCP server (the stamp's `mcp-denied:`
+  line) are only lifted now - by the retire step and by uninstall (`settings.applyMcpDeny`) - never the account
+  `.claude.json`, which the installer does not hand-edit. (6) Moves and removals come from init and configure; update removes
   only what the release retired or renamed. (7) Every mutating `claude plugin` / `claude mcp` call names its
-  scope - plugins default to `user`, MCP servers to `local`. (8) A managed row is updated (`--scope managed`,
+  scope - plugins default to `user`, MCP servers to `local` (the retire path's removes). (8) A managed row is updated (`--scope managed`,
   the one call that scope takes) and never installed beside, uninstalled, disabled, moved or named with a
-  `--scope managed` command (`plugins.leftAt`); on MCP, `mcp.adminMcp` reads `managed-mcp.json` and
-  `managedMcpServers` from the managed folder (`ALFRED_CODE_MANAGED_DIR` overrides it): a server it provides is
-  never registered over, and an exclusive `managed-mcp.json` is said `!!` - it suppresses every plugin server.
+  `--scope managed` command (`plugins.leftAt`).
 - **The auto-compact window per model (after 2.4.0, the user's rulings of 2026-10-14).** While the project compacts
   instead of offering a fresh session - `ALFRED_CODE_AUTO_COMPACT=1`, seeded `0`, which init's install phase asks with the fresh-session
   triggers and passes as `--auto-compact on|off` (written over the value there, `applyEnv` 3d) and configure's env step
@@ -201,53 +187,51 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   leaves the file), an edit inside the block is rewritten, and uninstall takes the block back - and a file the stack
   made, once nothing else is left in it. An ESLint flat config is code the installer never edits: `loop-code-quality`
   leaves a finding under either folder out of its gate and report instead.
-- **`.mcp.json` is the COPY ROUTE only** (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); on the default
-  plugin route the installer registers nothing and prunes every stack name it ever wrote, including
-  the four `browser-<engine>` spellings of 2.0.0-2.3.x and the pre-2.0.0 names (`serena`, `context7`, `playwright-*`), out of `.mcp.json` and out of `enabledMcpjsonServers`. On that
-  copy route it is **registered by the CLI and VERIFIED by the installer - fix the manifest, not the
-  output.** `claude mcp add` over an existing name prints 'already exists' and exits 0, so a failed
-  `remove` looks like success. `verifyProject` / `verifyUser` (`scripts/install/mcp.js`) read the result
-  back: at project scope `.mcp.json` is parsed and drifted entries rewritten (`mcp repaired: <name>`);
-  at user and local scope the shape comes from `claude mcp get`, a mismatch is retried once through the CLI, then
-  reported (the account config is never hand-edited). A manual registration that takes a stack MCP plugin's place
-  (the Context7 url under any name, or a plugin-carried server's own name at local, project or user scope) - or runs a
-  second copy of one under another name, launching the package a carried plugin starts (`same-package`, audit
-  2026-10-14 PL11: `mcp.pluginIdentities` reads the catalog row's pinned package and an old name's; the picked desktop and
-  mobile servers count as carried) - gets one line naming its `claude mcp remove` command and is never removed by the
-  run: plugins rank below those scopes
-  (measured, 2.1.282), so the warning is the only signal. The expected shape is built from the same
-  manifest words; a server the project added by hand is never touched. At local and user scope the run removes or
-  re-registers only a registration it vouches for (`vouchedAt`: the ledger's row there at its hash, or with no row at
-  that scope the release template's exact shape, `mcp.exactStack`), so the user's own server under a picked or left-off
-  name is kept and named with `claude mcp remove <name> -s <scope>` - a fresh local install included (re-verify 3 S4,
-  S7). A PICKED name held that way stays a pick: the stamp's `mcp-held:` line records it (`<scope>:<name>`, the ledger
-  lists only what the stack wrote), the read-back takes it as a pick, and its one line says the first
-  `/alfred-code:update` after the user removes theirs registers the stack's (re-verify 4 T7). `verifyUser` names the run's
-  scope in its lines (S8); an unreadable settings or `.mcp.json` file is said as `could not be read (<code>)`, a parse
-  error as 'not valid JSON' (S9), and a settings file whose `hooks` block leaves Claude Code's shape (a list for the block,
-  an event that is no list, a null group or hook) as 'hooks block is not the shape Claude Code reads (<where>)' - left
-  untouched like bad JSON (`settings.js hooksShapeError`; the 2026-10-16 matrix: the writer threw half-way through it). At project scope (`.mcp.json`) the same held rule applies, judged by the ledger's `mcp` row
-  rather than a hash: a name the ledger LISTS is the stack's whatever the row holds now (an edit to it is still repaired -
-  the documented drift repair), and one it does not list, or with no ledger one that is not the release template's exact
-  shape, is the user's own - kept, named with `claude mcp remove <name> -s project`, recorded as `project:<name>` in
-  `mcp-held:`, never ledgered and never named in `enabledMcpjsonServers` (matrix F-OWN, 2.1.6; a `.mcp.json` row of the
-  older shape with no ledger is held the same way until its owner removes it). At local scope (and user scope on the MCP copy route), where the stack registers in the account file, a project `.mcp.json` row of the
-  user's own under a picked name is held the same way (`project:<name>`, the `-s project` hint) - it outranks the account row, so nothing is
-  registered over it. A held row is never ledgered (`ledgerOf`'s no-ledger adoption skips it) and stays held on every later update until it is
-  exactly the stack shape or the user removes it (delta F-LOCAL, F-LEDGER). A `.mcp.json` that cannot be read (garbage, EACCES) is no empty
-  selection: the read-back keeps the picks the ledger recorded, the ledger and the `mcp-held:` line stand as recorded, one line says so, and
-  restoring the file restores the install; a MISSING file is still empty (delta F-UNREAD). The plugin route writes
-  nothing there, so an own row under a picked name is only named (`mayPrune`'s line). Every JSON file the installer parses
+- **`.mcp.json` is never written since 2.10.1** - the stack registers no server. The retire path only takes an older
+  release's rows out, where the ledger or the exact shipped shape vouches for them, and gives the file back its bytes
+  (`repo-mcp.md`). Every JSON file the installer parses
   that a person may edit (`.mcp.json`, `settings*.json`, the account's `.claude.json`) goes through ONE reader,
   `install/json-file.js` (`parseJson` / `readJson`; the scripts that read the same files - `stack-select.js`, `plugin-settings.js`,
   `analyze-usage.js`, `library-check.js`, `audit-install.js`, `hud-statusline.js`, `agents-md-check.js` - use it too, and all run from
   the whole tree, so it ships beside them): a leading BOM is stripped, and anything else wrong - a BOM plus
   garbage included - still throws, so it is still unreadable. A BOM'd `.mcp.json` read as empty before (a bare
   `JSON.parse`), and once `keepMcpOrder` kept the BOM every update dropped a pick and its `enabledMcpjsonServers` entry
-  (matrix F-BOM, 2.1.6); a new reader of such a file uses the helper, never a bare parse. At project scope, after the CLI writes `.mcp.json`, the file gets its own bytes back when
+  (matrix F-BOM, 2.1.6); a new reader of such a file uses the helper, never a bare parse. At project scope, after the retire step's `claude mcp remove` writes `.mcp.json`, the file gets its own bytes back when
   its content did not change, and otherwise keeps its BOM, line ending, indent and key order and every top-level key
-  besides `mcpServers` (`mcp.keepMcpOrder`, re-verify 4 T4). `scripts/install-mcp.test.js` pins it on the seed.
+  besides `mcpServers` (`mcp.keepMcpOrder`, re-verify 4 T4). `scripts/install-mcp-retire.test.js` pins it.
 
+- **Workspace layering (release 1, 2026-10-26, unreleased).** A project installed inside an installed folder can join it as a CHILD: it takes the parent's set and
+  env, adds its own picks and can ignore any inherited item. The record is `<data root>/workspace` (`repo-memory-data.md`)
+  - `parent <rel>` here and `child <rel>` in the parent; a parent counts only while its `child` line points back (hop
+  rule N1, `install/workspace.js chain`), and the walk stops at depth 8. The installer touches it at TWO points:
+  `workspace.prepare` before the run reads its own set (the parent's lines from `--parent-plan`, or from the parent's own
+  `update --installed-only --print-plan`; any doubt - a failed or blind read-back, a plan from another folder - leaves
+  `parentLines` null, so nothing inherited is added or dropped) with `envStep` seeding and forcing the parent's env
+  (`childEnv`: never the data root, the docs mode or a `seed: false` row), and `workspaceStep` after the settings pass -
+  the `claudeMdExcludes` rows for every stamped folder above (linked or not) in `settings.local.json`, ledgered as array
+  members, and the stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits. A child's
+  `--drop` of a line its parent holds writes that `ignore` line and an `--add` of an ignored one lifts it
+  (`recordWord`, never on `--print-plan`), so validate and a hand-run update stick; an install with `--parent-plan`
+  adds the parent's set minus the ignores itself, whatever rows the walk's selection kept. It never
+  writes a `child` line into a parent: only `workspace.js register` / `join` do, the back-reference being the consent.
+  `scripts/workspace.js` is the one CLI the bodies call (`parent`, `register`, `join`, `ignore`, `children`, `status`,
+  `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`): init reads `references/init-child.md` only on
+  `child=yes`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
+  child or a rescan row, and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
+  skips its subtree, a run is failed on its summary line since the installer exits 0). `workspace.js` writes each
+  line as it is made, so a cascade that outruns the Bash call's 10 minutes leaves the rows it finished, and the walk
+  waits for a backgrounded one instead of starting a second. `check-loads` proves the excludes
+  with one logged-out `claude -p` in a throwaway account: rules by the `InstructionsLoaded` events, AGENTS.md by the
+  built-in plugin's debug lines - a `', '`-separated `loaded:` list in the default mode, and with the account key set
+  only a kept count, checked against the files on disk (`docs/workspace-layering-evidence.md`). A local-scope child's
+  init hygiene ask passes `git-hygiene.js --local-child`, which offers the data root whatever the docs mode and a
+  `.prettierignore` the run created; update and configure pass no flag. Every workspace spawn of `process.execPath`
+  goes through `rt.spawnCommand`, which on Windows takes a full path as that file (`resolveWin`, the release 1
+  matrix). D5, the account's `instructionFiles` key, is asked once per
+  account and ledgered as `managed-account:`; the last uninstall that records it removes it (`lastHolder`). The switch
+  is `ALFRED_CODE_WORKSPACE` (`seed: false`, never written), OFF until 3.0.0 (the user's answer of 2026-10-27): a launch
+  `0` freezes it whatever the settings say, else the project's settings `env` value decides, else the launch value, and
+  only a `1` turns it on; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
 - **Everything installs from ONE source snapshot** per run (`install/source.js`, `createSource`), resolved in
   this order: a handed `--source`; the PLUGIN CACHE; the release archive
   (`releases/latest/download`, with a `RELEASE-SOURCE` file naming commit + version); a shallow clone

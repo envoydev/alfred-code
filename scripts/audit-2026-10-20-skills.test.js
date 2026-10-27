@@ -129,7 +129,7 @@ test('C43: one vocabulary cell per role, no probe after the first write, one san
 test('C44: the run book names the reconnect, the setup scripts and each flow\'s data', () =>
 {
     const book = flat(read('stack/skills/capture-awareness/references/project.md'));
-    assert.match(book, /a key added after the browser server started needs a reconnect \(`\/mcp`\) first/);
+    assert.match(book, /a key added after the server started needs a reconnect \(`\/mcp`\) first/);
     assert.match(book, /the setup, start and run scripts and task-runner files/);
     assert.match(book, /; needs: <the account, record or setting holding the data it reads - or 'any'>/);
 });

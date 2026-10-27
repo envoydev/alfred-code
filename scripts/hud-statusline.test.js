@@ -239,25 +239,23 @@ test('a malformed account settings.json blocks: nothing is written, exit 1 throu
     assert.strictEqual(read(empty, 'settings.json').statusLine.type, 'command');
 });
 
-test('the account dir: --config-dir, else CLAUDE_CONFIG_DIR, else ~/.claude-<space>, else ~/.claude - the installer\'s rule', () =>
+test('the account dir: --config-dir, else CLAUDE_CONFIG_DIR, else ~/.claude - the installer\'s rule', () =>
 {
     const home = path.join(TMP, 'home');
-    assert.strictEqual(resolveConfigDir({ flag: '/x/acct', space: 'work', env: { CLAUDE_CONFIG_DIR: '/y', HOME: home } }), path.resolve('/x/acct'));
-    assert.strictEqual(resolveConfigDir({ space: 'work', env: { CLAUDE_CONFIG_DIR: '/y', HOME: home } }), '/y');
-    assert.strictEqual(resolveConfigDir({ space: 'work', env: { HOME: home } }), path.join(home, '.claude-work'));
+    assert.strictEqual(resolveConfigDir({ flag: '/x/acct', env: { CLAUDE_CONFIG_DIR: '/y', HOME: home } }), path.resolve('/x/acct'));
+    assert.strictEqual(resolveConfigDir({ env: { CLAUDE_CONFIG_DIR: '/y', HOME: home } }), '/y');
     assert.strictEqual(resolveConfigDir({ env: { HOME: home } }), path.join(home, '.claude'));
-    assert.throws(() => resolveConfigDir({ space: '../x', env: { HOME: home } }), /--space/);
 });
 
-test('CLI: --space writes into that profile\'s own dir and nowhere else', { skip: process.platform === 'win32' && 'posix shape' }, () =>
+test('CLI: a second account\'s CLAUDE_CONFIG_DIR is written and the default account never is', { skip: process.platform === 'win32' && 'posix shape' }, () =>
 {
     const home = path.join(TMP, `home-${seq++}`);
-    const profile = path.join(home, '.claude-work');
+    const second = path.join(home, '.claude-work');
     fs.mkdirSync(home, { recursive: true });
-    fs.cpSync(account(), profile, { recursive: true });
-    const r = spawnSync(process.execPath, [SCRIPT, '--space', 'work'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home } });
+    fs.cpSync(account(), second, { recursive: true });
+    const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: second } });
     assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-    assert.strictEqual(read(profile, 'settings.json').statusLine.type, 'command');
+    assert.strictEqual(read(second, 'settings.json').statusLine.type, 'command');
     assert.ok(!fs.existsSync(path.join(home, '.claude')), 'the default account is never touched');
 });
 
@@ -486,18 +484,16 @@ test('claude-hud registered twice with one row switched off is still installed -
 
 // I-4: a malformed flag never falls back to the env account. CLAUDE_CONFIG_DIR names an installed
 // stand-in account; each shape exits 2 and neither account is written. The run's cwd is an empty dir
-// that must stay empty: read as a value, a flag is a relative path (C14 - '--config-dir --space'
+// that must stay empty: read as a value, a flag is a relative path (C14 - '--config-dir --project'
 // parses cleanly without the value guard, so it is the shape that proves the guard).
 for (const [name, args] of [
     ['an unknown argument', (iso) => ['--confg-dir', iso]],
     ['a stray positional', (iso) => ['--config-dir', iso, 'extra']],
     ['--config-dir with an empty value', () => ['--config-dir', '']],
     ['--config-dir with no value', () => ['--config-dir']],
-    ['--config-dir followed by another flag', () => ['--config-dir', '--space']],
-    ['--space with an empty value', () => ['--space', '']],
-    ['--space with no value', () => ['--space']],
+    ['--config-dir followed by another flag', () => ['--config-dir', '--project']],
     ['the --config-dir=<dir> form', (iso) => [`--config-dir=${iso}`]],
-    ['the --space=<name> form', () => ['--space=work']],
+    ['the removed --space flag (2026-10-23)', () => ['--space', 'work']],
     ['a flag given twice', (iso) => ['--config-dir', iso, '--config-dir', iso]],
     ['an unreadable --catalog', (iso) => ['--config-dir', iso, '--catalog', path.join(TMP, 'no-such-catalog.json')]],
 ])

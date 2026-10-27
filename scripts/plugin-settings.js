@@ -22,8 +22,7 @@
 // /alfred-code:init applies the claude-hud row through hud-statusline.js, after writing the
 // statusLine block it gates.
 //
-// Paths resolve against the ACCOUNT config dir (~/.claude, or ~/.claude-<space> under a
-// profile), which is where a plugin's config lives whichever scope the plugin was installed at.
+// Paths resolve against the ACCOUNT config dir (CLAUDE_CONFIG_DIR, else ~/.claude), which is where a plugin's config lives whichever scope the plugin was installed at.
 
 const fs = require('node:fs');
 const os = require('node:os');

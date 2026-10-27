@@ -1,23 +1,16 @@
 'use strict';
-// NO MCP SERVER FLOATS. Every npm / PyPI server the stack ships launches the version the release
-// committed in meta/mcp-pins.json - on the plugin route through the generated entries, on the copy
-// route and for the browser download through the seed, which asks no registry (R35). Two servers the
-// 2.0.0 cut removed ran `@latest` on both routes until 1.1.0, and until 2.0.0 the seed resolved the
-// registry's latest at install - either way two installs a week apart ran different server code from
-// one stack release; playwright, the npm server left, is the witness.
+// THE RECOGNITION PINS. The stack ships no MCP server since 2.10.1; meta/mcp-pins.json and meta/mcp-tools.json stay as
+// the adapter table's recognition data (spec N7) - each known server's package at a release, and its tool names there -
+// refreshed by refresh-mcp-pins.js. Until 2.10.1 they were also the versions the stack launched, which is why no shipped
+// launch line may float on `@latest` still holds as a guard.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const mcp = require('./install/mcp.js');
-const { mcpServerShapes } = require('./build-marketplace.js');
-const { PACKAGES } = require('./refresh-mcp-pins.js');
-const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const FLOATING = /[\w@/.-]+@latest\b/;
-const PINNED = { browser: '@playwright/mcp', 'alfred-navigation': 'serena-agent', 'alfred-memory': 'mcp-memory-service', 'windows-control': 'windows-mcp', 'macos-control': 'macos-mcp', 'mobile-control': 'appium-mcp' };
 
 test('no shipped MCP launch line runs a package on @latest - manifest or generated plugin entries', () =>
 {
@@ -31,122 +24,9 @@ test('no shipped MCP launch line runs a package on @latest - manifest or generat
     assert.deepStrictEqual(floatingEntries, [], 'a generated plugin entry still launches a floating package');
 });
 
-test('the release pins cover every package server, and the generator spells a pin or ships unpinned - never @latest', () =>
-{
-    assert.deepStrictEqual(Object.keys(PACKAGES).sort(), Object.keys(PINNED).sort(), 'refresh-mcp-pins resolves a different set');
-    const pins = JSON.parse(read('meta/mcp-pins.json')).pins;
-    assert.deepStrictEqual(Object.keys(pins).sort(), Object.keys(PINNED).sort(), 'meta/mcp-pins.json pins a server the stack no longer ships');
-    for (const [name, pkg] of Object.entries(PINNED))
-    {
-        assert.strictEqual(PACKAGES[name].package, pkg, `refresh-mcp-pins resolves the wrong package for ${name}`);
-        assert.ok(pins[name].package === pkg && /^\d+\.\d+\.\d+/.test(pins[name].version || ''), `meta/mcp-pins.json has no committed pin for ${name}`);
-    }
-    // The entry starts the browser launcher (the profile's place is the project's data root), which hands
-    // npx the package it is given.
-    const args = (pins) => { const a = mcpServerShapes({ pins })['chrome-control'].servers['chrome-control'].args; return a.slice(a.indexOf('--package'), a.indexOf('--package') + 2); };
-    assert.deepStrictEqual(args({ browser: { version: '9.8.7', spelling: '@<v>' } }), ['--package', '@playwright/mcp@9.8.7']);
-    // A pin that never resolved ships unpinned - npx then takes the newest, which is what @latest
-    // said out loud; the fallback is the same, only the default moved.
-    assert.deepStrictEqual(args({ browser: { version: null } }), ['--package', '@playwright/mcp']);
-    // mobile-control starts its launcher with the npx package at the pin; the copy route's row spells the same token.
-    const mobile = mcpServerShapes({ pins: { 'mobile-control': { version: '1.2.3', spelling: '@<v>' } } })['mobile-control'].servers['mobile-control'].args;
-    assert.deepStrictEqual(mobile.slice(1), ['--package', 'appium-mcp@1.2.3']);
-    assert.match(mobile[0], /\/stack\/mcp\/mobile-launch\.js$/);
-    const row = JSON.parse(read('meta/stack-manifest.json')).mcps.find((r) => r.name === 'mobile-control');
-    assert.match(row.args, /npx -y appium-mcp@MOBILE_CONTROL_PIN@$/);
-    assert.strictEqual(mcp.resolvePins({ pins: { 'mobile-control': { version: '1.2.3', spelling: '@<v>' } } }).MOBILE_CONTROL_PIN, '@1.2.3');
-});
-
-// Audit 2026-10-14 PL4: appium-mcp's caret-ranged tree is held to its pin's OWN day - npx honours npm_config_before for
-// the whole tree (measured on npm 11.6.1), and refuses an exact pin published after it (ETARGET), so the shared uvx day
-// (older than an --only pin) cannot serve. Both routes take it: the entry hands the launcher `--before`, the copy route
-// registers `-e npm_config_before=`. The browser's deps are exact and leaf, so it takes none.
-test('PL4 mobile-control takes its pin\'s own cut-off day on both routes; a row with no day takes none', () =>
-{
-    const pins = JSON.parse(read('meta/mcp-pins.json'));
-    const day = pins.pins['mobile-control'].refreshed;
-    assert.match(day, /^\d{4}-\d{2}-\d{2}$/, 'the committed mobile-control row records its own day');
-    // An --only pin is newer than the shared uvx day, which would not resolve it; a whole refresh (PL10) sets both to one day.
-    assert.ok(day >= pins.refreshed, 'the row\'s own day is never older than the shared uvx day');
-    const shipped = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'mobile-control').mcpServers['mobile-control'].args;
-    assert.deepStrictEqual(shipped.slice(-2), ['--before', `${day}T23:59:59Z`]);
-    const shape = (row) => mcpServerShapes({ pins: { 'mobile-control': row } })['mobile-control'].servers['mobile-control'].args;
-    assert.deepStrictEqual(shape({ version: '1.2.3', spelling: '@<v>' }).slice(1), ['--package', 'appium-mcp@1.2.3'], 'no day, no flag');
-    assert.deepStrictEqual(shape({ version: '1.2.3', spelling: '@<v>', refreshed: '2026-10-20' }).slice(-2), ['--before', '2026-10-20T23:59:59Z']);
-    assert.ok(!require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'chrome-control').mcpServers['chrome-control'].args.includes('--before'), 'the browser takes no npm cut-off');
-    const row = JSON.parse(read('meta/stack-manifest.json')).mcps.find((r) => r.name === 'mobile-control');
-    assert.match(row.args, / -e npm_config_before=@MOBILE_BEFORE@ -- /);
-    assert.strictEqual(mcp.resolvePins({ pins: { 'mobile-control': { version: '1.2.3', refreshed: '2026-10-20' } } }).MOBILE_BEFORE, '2026-10-20T23:59:59Z');
-    assert.strictEqual(mcp.resolvePins({ pins: { 'mobile-control': { version: '1.2.3' } } }).MOBILE_BEFORE, '', 'no day: an empty value, which npm reads as none');
-});
-
-test('the seed takes each pin from the release, never from a registry', () =>
-{
-    const release = JSON.parse(read('meta/mcp-pins.json')).pins;
-    const found = mcp.resolvePins({ pins: release });
-    assert.strictEqual(found.PW_PIN, `@${release.browser.version}`);
-    // Every module of the seed, not only its entry: a lookup moved into a layer is the same lookup.
-    const modules = fs.readdirSync(path.join(ROOT, 'scripts', 'install')).filter((f) => f.endsWith('.js'));
-    assert.ok(modules.includes('alfred-code.js') && modules.includes('mcp.js'), `the seed's modules were not found: ${modules.join(',')}`);
-    for (const file of modules)
-        assert.ok(!/npmLatest|pypiLatest|npm', \['view'|pypi\.org/.test(read(`scripts/install/${file}`)), `scripts/install/${file} still carries a registry lookup`);
-});
-
-// End to end on the MCP copy route: the manifest row's placeholder must reach .mcp.json as the
-// release's version - a literal `@PW_PIN@` is a package name npx cannot find. The registry answers a
-// NEWER version and records every call, so a lookup that still happened shows twice.
-const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-const SELECTION = 'skill markdown-style\nmcp browser\n';
-const RECORD = (tool) => `printf '${tool} %s\\n' "$*" >> "$HOME/registry.log"; echo 9.9.9`;
-const REGISTRY = { npm: RECORD('npm'), curl: RECORD('curl') };
-const PW = `@playwright/mcp@${JSON.parse(read('meta/mcp-pins.json')).pins.browser.version}`;
-const servers = (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers;
-// The row starts through the project-root anchor (`node -e <ROOT_BOOT> -- checkout`, re-verify 3 S2/S3); the launch is what it runs.
-const launch = (repo) =>
-{
-    const { command, args = [] } = servers(repo)['chrome-control'] || {};
-    const words = command === 'node' && args[0] === '-e' && args[2] === '--' ? args.slice(4) : [command, ...args];
-    return words.slice(0, 3);
-};
-const asked = (repo) => { try { return fs.readFileSync(path.join(path.dirname(repo), 'registry.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
-
-test('seed install on the MCP copy route writes the server at the release pin and asks no registry', POSIX_ONLY, () =>
-{
-    const { result } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, inspect: (repo) => ({ launch: launch(repo), asked: asked(repo) }) });
-    assert.deepStrictEqual(result.launch, ['npx', '-y', PW]);
-    assert.deepStrictEqual(result.asked, [], 'the seed asked a registry for a version');
-});
-
-test('seed install with the registry unreachable writes the same release pin, never a placeholder or @latest', POSIX_ONLY, () =>
-{
-    const { result, out } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: { npm: 'exit 1', curl: 'exit 1' }, inspect: launch });
-    assert.deepStrictEqual(result, ['npx', '-y', PW]);
-    assert.doesNotMatch(out, /could not resolve|installing unpinned/);
-});
-
-test('seed update over an install still on @latest rewrites the row to the pin', POSIX_ONLY, () =>
-{
-    const old = { mcpServers: {
-        'chrome-control': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--browser', 'chrome'], env: {} },
-        'my-browser': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--isolated'], env: {} },
-    } };
-    // A 2.x install has its ledger (managed-mcp), which is what says the row is the stack's: with no ledger, a project-scope
-    // row that is not the release's exact shape is the user's own (matrix F-OWN) - `my-browser` is not listed, so it stays theirs.
-    const prepare = (repo) =>
-    {
-        fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');
-        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
-        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `sha: abc\nversion: 2.0.0\nmanaged-mcp: chrome-control=${require('./install/stamp.js').entryHash(old.mcpServers['chrome-control'])}\n`);
-    };
-    const inspect = (repo) => ({ pw: launch(repo), mine: servers(repo)['my-browser'] });
-    const { result } = seedRun('update', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, prepare, inspect });
-    assert.deepStrictEqual(result.pw, ['npx', '-y', PW]);
-    assert.deepStrictEqual(result.mine, old.mcpServers['my-browser'], "the user's own server was touched");
-});
-
-// A PyPI refresh takes the newest release the stack's PINNED Python can install (uv-python.js). The
-// launchers start every uvx server on it, so a pin past its floor fails at launch - windows-mcp 0.8.6
-// (2026-09-26) needs Python 3.14 while 0.8.5 runs on 3.12 and up.
+// A PyPI refresh takes the newest release the Python each server ran on can install (refresh-mcp-pins.js pythonFor - the
+// stack's launchers started every uvx server on it until 2.10.1, so a pin past its floor failed at launch): windows-mcp
+// 0.8.6 (2026-09-26) needs Python 3.14 while 0.8.5 runs on 3.12 and up.
 test('refresh-mcp-pins: a PyPI pin never moves past what the pinned Python can install', () =>
 {
     const { newestFor, admits } = require('./refresh-mcp-pins.js');
@@ -163,14 +43,11 @@ test('refresh-mcp-pins: a PyPI pin never moves past what the pinned Python can i
         assert.strictEqual(admits(spec, '3.13'), ok, spec);
 });
 
-// M38: a by-hand `serena project index` in the shipped docs ran the newest serena-agent while the server ran the
-// pin - the next release would index with one version and serve with another. Every shipped spelling names the
-// release pin and its dependency cut-off (M24), the same the server starts on; this test goes red on a pin bump
-// until the docs follow.
-test('M38 every shipped serena index command names the release pin and the cut-off', () =>
+// M38: a by-hand `serena project index` in the shipped docs once ran the newest serena-agent while the server ran the
+// pin. Since 2.10.1 the stack ships no navigation server (the user's ruling of 2026-10-24), so no shipped body indexes
+// one at all - an index line that came back would run a server nobody registered.
+test('M38 no shipped body runs a serena index command - the stack ships no navigation server', () =>
 {
-    const file = JSON.parse(read('meta/mcp-pins.json'));
-    const want = `--exclude-newer ${file.refreshed}T23:59:59Z --from serena-agent@${file.pins["alfred-navigation"].version} serena project index`;
     const sites = [];
     const walk = (dir) =>
     {
@@ -182,17 +59,13 @@ test('M38 every shipped serena index command names the release pin and the cut-o
         }
     };
     for (const dir of ['setup-plugin', 'stack']) walk(dir);
-    assert.ok(sites.length >= 4, `the post-install and update index lines are found: ${sites.length}`);
-    for (const [rel, line] of sites) assert.ok(line.endsWith(want), `${rel}: ${line}`);
+    assert.deepStrictEqual(sites, []);
 });
 
-// The same drift outside the index line: post-install's pre-warm ran `uvx --from serena-agent serena --help`, which
-// cached the newest serena-agent while the server started on the pin (MCP track 2026-10-20b). Every shipped
-// `--from serena-agent` names the release pin and its cut-off.
-test('every shipped serena-agent launch names the release pin and the cut-off', () =>
+// The same outside the index line: post-install's pre-warm once ran `uvx --from serena-agent serena --help` (MCP track
+// 2026-10-20b). No shipped body launches serena-agent since 2.10.1.
+test('no shipped body launches serena-agent - the stack ships no navigation server', () =>
 {
-    const file = JSON.parse(read('meta/mcp-pins.json'));
-    const want = `--exclude-newer ${file.refreshed}T23:59:59Z --from serena-agent@${file.pins["alfred-navigation"].version}`;
     const bad = [];
     const walk = (dir) =>
     {
@@ -200,7 +73,7 @@ test('every shipped serena-agent launch names the release pin and the cut-off', 
         {
             const rel = path.join(dir, d.name);
             if (d.isDirectory()) walk(rel);
-            else if (/\.md$/.test(d.name)) for (const m of read(rel).matchAll(/(?:--exclude-newer\s+\S+\s+)?--from\s+serena-agent\S*/g)) if (m[0].replace(/\s+/g, ' ') !== want) bad.push(`${rel}: ${m[0]}`);
+            else if (/\.md$/.test(d.name)) for (const m of read(rel).matchAll(/--from\s+serena-agent\S*/g)) bad.push(`${rel}: ${m[0]}`);
         }
     };
     for (const dir of ['setup-plugin', 'stack']) walk(dir);
@@ -210,7 +83,7 @@ test('every shipped serena-agent launch names the release pin and the cut-off', 
 // R7: the stack's serena context copies serena-agent's own claude-code.yml at the pin, and a later serena could add
 // an editing tool that context would then serve unwatched. The shipped YAML records the upstream file's sha256; the
 // refresh keeps the navigation pin where it is until the new release's claude-code.yml hashes the same - i.e. until
-// someone re-diffs the stack's file against it and records the new hash.
+// someone re-checks the serena adapter row's `off` list against it and records the new hash on its `upstream` line.
 async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {}, pinsRaw = null, committed = {}, argv = ['--write'], npm = {}, audit = () => null } = {})
 {
     const os = require('node:os');
@@ -218,18 +91,18 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-pins-'));
     const pinsFile = path.join(dir, 'mcp-pins.json');
     const toolsFile = path.join(dir, 'mcp-tools.json');
-    const contextFile = path.join(dir, 'navigation-context.yml');
+    const adaptersFile = path.join(dir, 'tool-adapters.json');
     if (pinsRaw === null) fs.copyFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), pinsFile); else fs.writeFileSync(pinsFile, pinsRaw);
     fs.writeFileSync(toolsFile, JSON.stringify({ servers: { "alfred-memory": { version: 'old', tools: ['kept_tool'] }, ...committed } }));
     const upstream = 'name: claude-code\nexcluded_tools: []\n';
     const sha = require('node:crypto').createHash('sha256').update(upstream).digest('hex');
-    fs.writeFileSync(contextFile, `${recorded ? `# upstream: serena-agent 1.7.0 claude-code.yml sha256 ${sha}\n` : ''}name: alfred-code\n`);
+    fs.writeFileSync(adaptersFile, JSON.stringify({ types: { serena: { pin: 'alfred-navigation', ...(recorded ? { upstream: `serena-agent 1.7.0 claude-code.yml sha256 ${sha}` } : {}) } } }));
     const out = [];
     const current = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const listed = [];
     const asked = [];
     const rc = await main(argv, {
-        pinsFile, toolsFile, contextFile, log: (l) => out.push(l), today: () => '2026-10-01',
+        pinsFile, toolsFile, adaptersFile, log: (l) => out.push(l), today: () => '2026-10-01',
         npmLatest: (pkg) => (Object.hasOwn(npm, pkg) ? npm[pkg] : Object.values(current).find((r) => r.package === pkg).version),
         pypiLatest: (pkg, python) => { asked.push([pkg, python]); return pkg === 'serena-agent' ? navigation : Object.values(current).find((r) => r.package === pkg).version; },
         upstreamContext: () => (context === 'same' ? upstream : context),
@@ -255,7 +128,7 @@ test('R7 refresh-mcp-pins: a serena bump whose claude-code context changed is re
     const was = JSON.parse(read('meta/mcp-pins.json')).pins["alfred-navigation"].version;
     const changed = await refreshRun({ context: 'name: claude-code\nexcluded_tools: []\nnew_tool: yes\n' });
     assert.strictEqual(changed.pins.pins["alfred-navigation"].version, was, 'the navigation pin stays');
-    assert.match(changed.text, /alfred-navigation: .* -> 9\.9\.9 REFUSED - serena-agent 9\.9\.9's claude-code\.yml is not the one stack\/mcp\/navigation-context\.yml was diffed against/);
+    assert.match(changed.text, /alfred-navigation: .* -> 9\.9\.9 REFUSED - serena-agent 9\.9\.9's claude-code\.yml is not the one meta\/tool-adapters\.json's serena row was checked against/);
     assert.strictEqual(changed.rc, 1, 'a refused bump is a failed refresh');
     const none = await refreshRun({ recorded: false });
     assert.strictEqual(none.pins.pins["alfred-navigation"].version, was, 'no recorded hash refuses too');
@@ -279,8 +152,8 @@ test('R7 refresh-mcp-pins: an unreadable pins file does not skip the serena gate
     assert.doesNotMatch(grown.text, /!! alfred-navigation: new tool find_symbol/);
 });
 
-// M31: the refresh records each pinned server's tool names beside the pins (meta/mcp-tools.json), which lint check 62
-// reads; a server it cannot list keeps its committed list and is said NOT CHECKED - a refresh on a plane changes nothing.
+// M31: the refresh records each pinned server's tool names beside the pins (meta/mcp-tools.json), which the adapter
+// table reads; a server it cannot list keeps its committed list and is said NOT CHECKED - a refresh on a plane changes nothing.
 test('M31 refresh-mcp-pins: --write records each server\'s tool names, and keeps a list it could not read', async () =>
 {
     const got = await refreshRun({ lists: { browser: ['browser_navigate', 'browser_click'] } });
@@ -318,7 +191,7 @@ test('refresh-mcp-pins --only: the named npm row moves alone; a PyPI row is refu
     assert.deepStrictEqual(refused.pins, committed, 'nothing was written');
 });
 
-test('M31 meta/mcp-tools.json lists every pinned server at its pin, and the desktop launcher\'s gate names the same Windows tools', () =>
+test('M31 meta/mcp-tools.json lists every pinned server at its pin', () =>
 {
     const pins = JSON.parse(read('meta/mcp-pins.json')).pins;
     const tools = JSON.parse(read('meta/mcp-tools.json')).servers;
@@ -328,8 +201,6 @@ test('M31 meta/mcp-tools.json lists every pinned server at its pin, and the desk
         assert.strictEqual(tools[name].version, row.version, `${name}'s list is for the pinned version`);
     }
     assert.ok(tools["alfred-documentation"] && tools["alfred-documentation"].tools.includes('query-docs'), 'the hosted documentation server is listed');
-    const { WINDOWS_TOOLS } = require('../stack/mcp/desktop-launch.js');
-    assert.deepStrictEqual([...WINDOWS_TOOLS].sort(), [...tools['windows-control'].tools].sort());
 });
 
 // Audit 2026-10-21 mcps T1-3 (ruling M-A2): appium-mcp 1.97.1 resolves 20 critical npm advisories its upstream pins, and

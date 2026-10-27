@@ -71,7 +71,7 @@ const { spawnSync } = require('child_process');   // `node --check` only - node 
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const yaml = require('js-yaml');
 const { SIGNAL_KINDS } = require('./scan-evidence.js');
-const { lintMcpToolNames, lintStaleMcpToolNames, lintMcpToolsAtPin } = require('./lint-mcp-tools.js');  // checks 54, 59, 62
+const { lintMcpToolNames, lintStaleMcpToolNames, lintServerFreeBodies } = require('./lint-mcp-tools.js');  // checks 54, 59, 67
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_DIR = path.join(ROOT, 'stack', 'skills');
@@ -93,12 +93,16 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
+    // the tools preferences' known MCP server types (meta/tool-adapters.json) - a doc's rank names them, not skills.
+    'memory-service', 'windows-mcp', 'macos-mcp',
     // the AGENTS.md check's row kind for an older seed's rules list (scripts/agents-md-check.js) - a row kind, not a skill.
     'stack-rules',
-    // habits-explain-topic's diagram rules: a CSS media feature and an SVG accessibility attribute - not skills.
+    // habits-explain-topic's diagram and page rules: a CSS media feature, an SVG accessibility attribute and the page's
+    // right-answer attribute - not skills.
     'prefers-color-scheme',
     'aria-labelledby',
-    // the old bare mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --auto-mode` is the flag) - not a skill.
+    'data-right',
+    // the old mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --mode-auto-run-on` is the flag now) - not a skill.
     'auto-mode',
     // the commit-gate hook, referenced by name from the git preferences seed and task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
@@ -158,11 +162,16 @@ const NON_SKILL_TOKENS = new Set([
     // file-naming style term backticked in the typescript style reference - a
     // convention name, not a house skill.
     'kebab-case',
-    // the desktop and mobile MCP server names, keyed in the capability capture's routing map (a row is found by
-    // its backticked name) - servers, not skills.
-    'windows-control',
-    'macos-control',
-    'mobile-control',
+    // the desktop and mobile MCP server names of the record of the servers the stack shipped (stack/mcp/original-mcps.json),
+    // keyed in the capability capture's routing map (a row is found by its backticked name) - servers, not skills.
+    'windows-desktop',
+    'macos-desktop',
+    'appium-mcp',
+    // mode-output-scorer's output ids (scorecard.js OUTPUTS), three of the moves its `next` prints, and the two diagnoser
+    // seats its outputs table names - outputs, script words and seats, not skills.
+    'designer-plan', 'root-cause', 'inline-plan', 'topic-explainer', 'upgrade-plan',
+    'ask-continue', 'withhold-final', 'offer-fix',
+    'issue-diagnoser-ci', 'issue-diagnoser-runtime',
 ]);
 
 const findings = [];
@@ -791,7 +800,7 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 // A cite is matched backticked OR bare: every measured miss in the descriptions is bare
 // (`Companions: dotnet-testing (the test-suite host)`), and a description is where a name costs the
 // most - it is read by a model choosing between installed skills. A path or a longer identifier is
-// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`).
+// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`). (mcp-fixture)
 // A BARE match is taken only for a HYPHENATED name, though: single-word rosters entries (`mobile`,
 // `dotnet`, `npm`, `frontend`) are ordinary English, and the trial flagged 14 sentences that merely
 // used the word - 'the mobile stack', 'npm audit'. Those still count backticked, which is how the
@@ -1139,27 +1148,23 @@ function lintSkillHeadings(root = ROOT)
     return out;
 }
 
-// 43. Every agent's `tools:` allowlist must grant the shared memory MCP's store, search and list
-// tools. The memory MCP is the required shared memory (CLAUDE.md's MCP catalog): a seat that can
-// search but not save, or save but not search, defeats the point - the spec gives every seat both,
-// read-only support seats included (the rule that scopes what gets SAVED to lessons lives beside
-// the grant, not instead of it). An agent with no `tools:` line inherits every tool, memory
-// included, so it has nothing to fix. What a seat holds is read as Claude Code resolves it - a whole-server grant
-// is every pinned tool of that server, minus its `disallowedTools` (scripts/seat-tools.js, check 63).
-const MEMORY_TOOLS = ['mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list'];
-
-function lintAgentMemoryTools(label, text)
+// 43. A seat grants no MCP server, and a seat that runs the handoff bus holds Bash. The user's ruling of 2026-10-24:
+// the stack depends on no MCP server - a seat navigates with the LSP and grep, checks docs with WebFetch, and hands off
+// through `node .claude/hooks/handoff.js`, which needs Bash (the alfred-memory grant this check required before is
+// gone). Tool preferences phase 4 is where a seat may hold a server again, behind its own gate. An agent with no
+// `tools:` line inherits every tool, so it has nothing to fix.
+function lintAgentServerFree(label, text)
 {
+    const out = [];
     const line = /^tools:\s*(.+)$/m.exec(text || '');
-    if (!line) return [];
-
+    if (!line) return out;
     const removed = /^disallowedTools:\s*(.+)$/m.exec(text || '');
-    const tools = require('./seat-tools.js').effectiveTools(line[1], removed ? removed[1] : '');
-    const missing = MEMORY_TOOLS.filter(t => !tools.has(t));
-    if (missing.length === 0) return [];
-
-    return [`${label} tools: allowlist is missing ${missing.join(', ')} - every seat must be able to `
-        + `search and save the shared memory`];
+    const servers = [line[1], removed ? removed[1] : ''].join(',').split(',').map(s => s.trim()).filter(s => s.startsWith('mcp__'));
+    if (servers.length) out.push(`${label} names MCP server tools (${servers.join(', ')}) - the stack depends on no MCP server, so a seat holds built-in tools only`);
+    const tools = line[1].split(',').map(s => s.trim());
+    if (/handoff\.js (put|list)/.test(text) && !tools.includes('Bash'))
+        out.push(`${label} runs \`node .claude/hooks/handoff.js\` but its tools: allowlist holds no Bash - the handoff bus runs through it`);
+    return out;
 }
 
 // 41. A reference over 100 lines opens with a table of contents, inside the first 15 lines. Without
@@ -1217,12 +1222,16 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 const SETUP_ASK_TEMPLATES = {
     // +1: the mobile-control ask (2026-10-13).
     // +1: the plugin settings ask (audit 2026-10-21 commands T2-12).
-    'setup-plugin/references/walk.md': 14,
+    // -4: the MCPs layer's browser, engine, desktop and mobile-control asks, with the layer (the no-MCP stack, 2026-10-24).
+    'setup-plugin/references/walk.md': 10,
     // +1: screen B's compact-or-fresh-session ask (2026-10-14). The install phase of /alfred-code:init since setup merged
     // into it (2026-10-17).
-    // +7: screen A's scope, root, profile and GitHub CLI asks, step 2's permission mode, step 10's blockers and the
-    // git-hygiene ask (audit 2026-10-21 commands T2-12).
-    'setup-plugin/references/init-install.md': 10,
+    // +7: screen A's scope, root, profile and forge CLI asks (the GitHub CLI ask until 2026-10-23), step 2's permission mode, step 10's blockers and the
+    // git-hygiene ask (audit 2026-10-21 commands T2-12). -1: the profile ask, with --space (the user's ruling of 2026-10-23).
+    'setup-plugin/references/init-install.md': 9,
+    // a child install's scope ask and its local-scope git-hygiene ask, read only on `child=yes` (workspace layering,
+    // 2026-10-26 - init-install.md is already past the Bash output cap, so a standalone install carries neither).
+    'setup-plugin/references/init-child.md': 2,
     // the instruction files' place, one template per `instructions:` case - read by init's step 1 and configure's step 12
     // (2026-10-21); +3: the name, one per `instructions-file:` files= case (the user's ask of 2026-10-21, after 2.9.0);
     // +1: update's rename-first name ask for a never-asked .claude/CLAUDE.md install (the user's rulings of 2026-10-22).
@@ -1234,7 +1243,9 @@ const SETUP_ASK_TEMPLATES = {
     // its table inline (audit 2026-10-21 commands T2-04: it pointed at init's table, which configure never loads).
     // +3: step 2's areas, step 10's permission mode and step 11's pins (audit 2026-10-21 commands T2-12).
     // -1: step 12's old-seed rename ask, folded into instructions-place.md's name ask (2026-10-22).
-    'setup-plugin/commands/configure.md': 9,
+    // -1: the memory level ask, with the memory server (the no-MCP stack, 2026-10-24).
+    // +2: step 8's memory and navigation asks (spec P1 + P2, 2026-10-24).
+    'setup-plugin/commands/configure.md': 10,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -1242,7 +1253,10 @@ const SETUP_ASK_TEMPLATES = {
     // +1: the hand-set docs root ask (the user's answer of 2026-10-20).
     // +2: the new-items ask, one template per case (audit 2026-10-21 commands T2-12).
     // -1: the old-seed rename ask - the walk asks instructions-place.md's name templates instead (2026-10-22).
-    'setup-plugin/references/update-walk.md': 4,
+    // +2: the workspace join ask and the account's both-instruction-files ask (workspace layering, 2026-10-26).
+    'setup-plugin/references/update-walk.md': 6,
+    // the children's asks and the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26).
+    'setup-plugin/references/update-workspace.md': 2,
     'setup-plugin/references/update-close.md': 2,
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
     // area pick; init's machine-install ask.
@@ -1250,7 +1264,9 @@ const SETUP_ASK_TEMPLATES = {
     // +1: the unedited instruction-file seed's own delete question (the user's ask of 2026-10-23).
     'setup-plugin/commands/uninstall.md': 2,
     'setup-plugin/commands/status.md': 1,
-    'setup-plugin/references/init-bootstrap.md': 1,
+    // +2: step 4's memory and navigation asks (spec P1 + P2, 2026-10-24). +1: the account's both-instruction-files ask
+    // in a joined child (workspace layering, 2026-10-26).
+    'setup-plugin/references/init-bootstrap.md': 4,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's
     // detection confirm and its dispute follow-up, which was asked in plain text (audit 2026-10-21 commands T2-08).
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).
@@ -1380,22 +1396,6 @@ function lintPluginComponents(manifest, listings)
 
 // Check 19: every disable-model-invocation skill carries the "manual" row flag and every user-invocable: false
 // skill the "model-only" one (2.1.6 M128 part 3), and no row claims a state its SKILL.md does not set.
-// Check 12a: the word the README's headline MCP row describes each opt-in MCP server (manifest `active: false`) by. A new
-// opt-in server has no word here, so it fails until the row describes it (audit 2026-10-14 PL12 - mobile-control shipped
-// with the row silent about it).
-const OPT_IN_README_WORDS = { 'windows-control': 'desktop', 'macos-control': 'desktop', 'mobile-control': 'mobile' };
-function lintReadmeOptInMcps(row, optInNames)
-{
-    const out = [];
-    for (const name of optInNames)
-    {
-        const word = OPT_IN_README_WORDS[name];
-        if (!word) out.push(`README.md: opt-in MCP server '${name}' has no README word - add it to OPT_IN_README_WORDS in scripts/lint-skills.js and describe it in the '| **MCP servers** |' row`);
-        else if (!new RegExp(`\\b${word}\\b`, 'i').test(row)) out.push(`README.md: the '| **MCP servers** |' row does not describe the opt-in ${name} (no '${word}')`);
-    }
-    return out;
-}
-
 function lintInvocationFlags(skills, html)
 {
     const out = [];
@@ -1799,7 +1799,6 @@ function main()
     //     array sizes; the Rules count is validated against CLAUDE_RULES.
     const skillCount = primary.active.size;
     const pluginCount = pluginsManifest.active.size;
-    const mcpCount = mcpsManifest.active.size;
     // Count unique hook FILES, not matcher entries - one hook wired on two tools
     // (guard-read-whole-file on Read + Bash) is still one hook.
     const claudeHookCount = new Set(manifestFileList(raw.hooks)).size;
@@ -1853,7 +1852,6 @@ function main()
 
     for (const [rowLabel, expected] of [
         ['Skills', skillCount],
-        ['MCP servers', mcpCount],
         ['Plugins', pluginCount],
         ['Hooks', claudeHookCount],
         ['Agents', claudeAgentCount],
@@ -1865,12 +1863,6 @@ function main()
         {
             flag(`README.md: headline ${rowLabel} count is ${got} but the installer holds ${expected}`);
         }
-    }
-
-    // 12a. Every opt-in MCP server is described in the README's headline MCP row (lintReadmeOptInMcps).
-    {
-        const row = (fs.readFileSync(CLAUDE_README, 'utf8').match(/^\| \*\*MCP servers\*\* \|.*$/m) || [''])[0];
-        for (const finding of lintReadmeOptInMcps(row, (raw.mcps || []).filter((r) => r && r.active === false).map((r) => r.name))) flag(finding);
     }
 
     // 12b. The on-disk agents/*.md set must equal the agents the manifest carries. A drift means a
@@ -2022,8 +2014,8 @@ function main()
             // 40. ... and every name in that allowlist resolves to a real tool.
             for (const finding of lintAgentTools(`agents/${agentFile}`, text)) flag(finding);
 
-            // 43. ... and every allowlist grants the shared memory MCP's store, search and list tools.
-            for (const finding of lintAgentMemoryTools(`agents/${agentFile}`, text)) flag(finding);
+            // 43. ... and no allowlist names an MCP server, and a seat running the handoff bus holds Bash.
+            for (const finding of lintAgentServerFree(`agents/${agentFile}`, text)) flag(finding);
         }
     }
 
@@ -2567,8 +2559,8 @@ function main()
     for (const finding of lintMcpToolNames()) flag(finding);
     // 59. No shipped file names a plugin tool whose plugin carries no server - a renamed server's old spelling.
     for (const finding of lintStaleMcpToolNames()) flag(finding);
-    // 62. No shipped file names a tool its pinned server does not have (meta/mcp-tools.json).
-    for (const finding of lintMcpToolsAtPin()) flag(finding);
+    // 67. No shipped skill, rule, seat or command body names an MCP tool or a server the stack retired (spec N8).
+    for (const finding of lintServerFreeBodies()) flag(finding);
     // 63. Every seat's tools: / disallowedTools: lines are what meta/seat-tools.json generates (scripts/seat-tools.js):
     // a server granted whole, the tools the seat must not hold removed - so a hand edit, a new seat with no row, or a
     // pin that adds a tool (which reaches no seat until the json names it) is a finding until --write runs.
@@ -2576,6 +2568,18 @@ function main()
     try { seatDrift = require('./seat-tools.js').drift(); }
     catch (err) { seatDrift = [`meta/seat-tools.json or meta/mcp-tools.json could not be read (${err.message}), so no seat's tool lines were checked`]; }
     for (const finding of seatDrift) flag(finding);
+    // 66. The adapter table the capture skill and the hooks read is what meta/tool-adapters.json builds
+    // (scripts/tool-adapters.js): a stale copy, or a job or edit tool its pinned server does not have, is a finding.
+    let adapterDrift;
+    try { adapterDrift = require('./tool-adapters.js').drift(); }
+    catch (err) { adapterDrift = [`meta/tool-adapters.json or meta/mcp-tools.json could not be read (${err.message}), so the adapter table was not checked`]; }
+    for (const finding of adapterDrift) flag(finding);
+    // 68. Every claim of meta/conformance.json cites the line that states its behaviour (scripts/conformance.js): a marker
+    // that left its file sends the claim to review with the change that moved it.
+    let conformanceDrift;
+    try { const cf = require('./conformance.js'); conformanceDrift = cf.lintConformance(cf.loadClaims()); }
+    catch (err) { conformanceDrift = [`meta/conformance.json could not be read (${err.message}), so no claim's marker was checked (check 68)`]; }
+    for (const finding of conformanceDrift) flag(finding);
     // 64. meta/skill-headings.json holds every stack skill's CURRENT heading, so the next description change still knows
     // this one (the installer's M3 claim of an older copy the stamp does not record, scripts/install/skill-headings.js).
     for (const finding of lintSkillHeadings()) flag(finding);
@@ -2766,102 +2770,21 @@ function lintNoPluginBin(root)
     return out;
 }
 
-// 53. The MCP plugin entries are GENERATED from meta/mcp-pins.json plus the shapes in
-// build-marketplace.js, and the installer's MCPS catalog still owns the NAMES. Three ways this can
-// rot, one check: the live marketplace drifting from the generator, a catalog server with no plugin
-// to carry it (it would silently stop being installable), and a plugin naming a launcher or helper
-// script that is not in the tree (the server would fail at start-up with no clue why).
+// 53. The stack ships NO MCP server (2026-10-24, the user's ruling - the record of what it shipped is
+// stack/mcp/shipped-mcps.json): no marketplace entry declares `mcpServers`, and the manifest's `mcps` list is
+// empty, every name it held in `retired.mcps`, so an update prunes what an older release installed.
 function lintMcpEntries()
 {
     const out = [];
-    let build;
-    try { build = require('./build-marketplace.js'); }
-    catch (err) { return [`the marketplace generator could not be loaded: ${err.message}`]; }
-
-    let wanted;
-    try { wanted = build.mcpPlugins(); }
-    catch (err) { return [`the MCP entries could not be generated: ${err.message}`]; }
-
     let mkt;
     try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
     catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
-
-    // The ids 2.4.0 renamed are listed again as RETIRED aliases (build-marketplace.js mcpAliasEntries, audit 2026-10-14
-    // PL5): generated like the entries, held to the generator the same way, and outside the catalog checks below.
-    let aliases = [];
-    try { aliases = build.mcpAliasEntries({ entries: wanted }); }
-    catch (err) { out.push(`the retired MCP aliases could not be generated: ${err.message}`); }
-    for (const entry of wanted.concat(aliases))
-    {
-        const live = (mkt.plugins || []).find(p => p && p.name === entry.name);
-        if (!live)
-        {
-            out.push(`.claude-plugin/marketplace.json has no \`${entry.name}\` MCP entry - run \`node scripts/build-marketplace.js --mcp-entries\`.`);
-            continue;
-        }
-        if (JSON.stringify(live) !== JSON.stringify(entry))
-            out.push(`the \`${entry.name}\` MCP entry is STALE against the generator - run \`node scripts/build-marketplace.js --mcp-entries\`.`);
-    }
-
-    // ONE PLUGIN, ONE SERVER, SAME NAME. A plugin server's tools are addressed
-    // `mcp__plugin_<plugin>_<server>__<tool>`, so this invariant is what makes every shipped tool
-    // name `mcp__plugin_<n>_<n>__<tool>` for a single `<n>`. It is also what keeps a project from
-    // loading schemas it did not pick: all of a plugin's servers load together, so a second server
-    // in an entry is a second set of tool schemas in every session of every project that enabled it.
-    for (const entry of wanted)
-    {
-        const servers = Object.keys(entry.mcpServers || {});
-        if (servers.length !== 1 || servers[0] !== entry.name)
-            out.push(`the \`${entry.name}\` MCP entry declares [${servers.join(', ')}] - one plugin carries exactly ONE server, named like the plugin, or the tool names stop being mcp__plugin_<n>_<n>__<tool> and every session pays the extra schemas.`);
-    }
-
-    // Every catalog server has a plugin, and every plugin serves a catalog server. The catalog is
-    // meta/stack-manifest.json's `mcps` list, which stays the one home for the NAMES even after the
-    // registrations move - 28 call sites read a name out of it.
-    const catalog = manifestFlatSet(readStackManifest().mcps, (r) => r.name);
-    const carried = new Set();
-    for (const entry of wanted) for (const server of Object.keys(entry.mcpServers)) carried.add(server);
-    // browser expands into one plugin per engine; each maps back to its catalog name, the way
-    // every installed-name reader already maps `<engine>-control`.
-    const family = name => name.replace(/^(?:chrome|msedge|firefox|webkit)-control$/, 'browser');
-    const families = new Set([...carried].map(family));
-    for (const name of catalog.active)
-        if (!families.has(name))
-            out.push(`MCP '${name}' is in the installer catalog but no plugin entry carries it - add a shape in build-marketplace.js.`);
-    for (const name of families)
-        if (!catalog.active.has(name) && !catalog.commented.has(name))
-            out.push(`the marketplace carries MCP '${name}', which is in neither the active nor the commented installer catalog.`);
-
-    // S14: an unset `${VAR}` with no default stays LITERAL in a plugin entry - it does not become
-    // empty. So a placeholder without a `:-` default only ships where the literal is the lesser
-    // evil, and each such case is named here rather than left to read as an oversight. The two
-    // left are Claude Code's own variables, which the harness supplies to a plugin server itself.
-    const LITERAL_OK = new Set(['CLAUDE_PLUGIN_ROOT', 'CLAUDE_PROJECT_DIR']);
-    for (const entry of wanted)
-        for (const [server, spec] of Object.entries(entry.mcpServers))
-        {
-            const text = JSON.stringify(spec);
-            for (const m of text.matchAll(/\$\{([A-Z_][A-Z0-9_]*)(:-[^}]*)?\}/g))
-            {
-                if (m[2] || LITERAL_OK.has(m[1])) continue;
-                out.push(`MCP server '${server}' expands \${${m[1]}} with no \`:-\` default - an unset variable stays LITERAL in a plugin entry (spike S14), so give it a default or add it to LITERAL_OK with the reason.`);
-            }
-        }
-
-    // A launcher or headers helper the entry names must exist, or the server dies at start-up with
-    // a message no user can act on.
-    for (const entry of wanted)
-        for (const [server, spec] of Object.entries(entry.mcpServers))
-        {
-            const words = [...(spec.args || []), spec.command || '', spec.headersHelper || ''];
-            for (const word of words)
-            {
-                const m = String(word).match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"\s]+)/);
-                if (!m) continue;
-                if (!fs.existsSync(path.join(ROOT, m[1])))
-                    out.push(`MCP server '${server}' points at ${m[1]}, which is not in the tree.`);
-            }
-        }
+    for (const p of mkt.plugins || [])
+        if (p && p.mcpServers)
+            out.push(`the \`${p.name}\` marketplace entry declares mcpServers - the stack ships no MCP server; run \`npm run marketplace\`, which drops a server entry.`);
+    const manifest = readStackManifest();
+    for (const row of manifest.mcps || [])
+        out.push(`meta/stack-manifest.json lists MCP '${(row && row.name) || row}' - the stack ships no MCP server; move it to retired.mcps.`);
     return out;
 }
 
@@ -3094,7 +3017,7 @@ function lintHooksEntry(liveIn)
         out.push(`the \`${wanted.name}\` core entry's hooks are STALE against the manifest's hooks table - run \`npm run marketplace\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'layout.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js']);
+    const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js']);
     const wired = new Set();
     for (const blocks of Object.values(stack))
         for (const block of blocks)
@@ -3198,14 +3121,10 @@ function lintMarketplaceEntries(liveIn)
     const generated = new Set(wanted.map(e => e.name));
     if (live && Object.prototype.hasOwnProperty.call(live, 'renames'))
         findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands an install with no hooks and no skills (docs/plugin-cli-evidence.md S11, S16); update migrates a renamed id instead - run `npm run marketplace`');
-    // The MCP plugins are generated by ANOTHER table and have their own check (53, from
-    // meta/mcp-pins.json plus the shapes in build-marketplace.js). Placement never produces them, so
-    // they are not drift.
-    const elsewhere = new Set();
-    try { for (const e of build.mcpPlugins().concat(build.mcpAliasEntries())) elsewhere.add(e.name); } catch { /* 53 reports it */ }
+    // An MCP server entry has its own check (53: the stack ships none).
     for (const p of live.plugins || [])
     {
-        if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;
+        if (!p || generated.has(p.name) || build.mcpEntry(p)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
         else if (Object.hasOwn(require('./install/manifest.js').loadManifest(ROOT).renamed.mcps, p.name))
@@ -3272,6 +3191,8 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
         keys.add(row.key);
         if (typeof row.default !== 'string') { out.push(`environment.json ${row.key} has no string \`default\` - the seed value and the walk's shown default come from it`); }
         if (!row.what) { out.push(`environment.json ${row.key} has no \`what\` - the walks print it, so a row without one cannot be asked about`); }
+        if (Object.hasOwn(row, 'seed') && typeof row.seed !== 'boolean') { out.push(`environment.json ${row.key} has a \`seed\` that is not true or false - the installers skip a row only on \`seed: false\``); }
+        if (row.seed === false && row.ask) { out.push(`environment.json ${row.key} is never written (seed: false), so it cannot be asked - init would write the answer nowhere`); }
         if (row.written && !namedInSeed.has(row.key)) { out.push(`environment.json ${row.key} is marked written, but scripts/install/settings.js never names it literally - the Node seed would never set it`); }
     }
     // The two DECISIONS are special-cased by literal key name, never fed through the generic loop -
@@ -3310,6 +3231,7 @@ module.exports = {
     lintMcpEntries,
     lintMcpToolNames,
     lintStaleMcpToolNames,
+    lintServerFreeBodies,
     lintPageScripts,
     lintRetiredNames,
     stackTextFiles,
@@ -3321,7 +3243,6 @@ module.exports = {
     lintMarketplaceEntries,
     lintAgentPreloads,
     lintInvocationFlags,
-    lintReadmeOptInMcps,
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,
@@ -3349,8 +3270,7 @@ module.exports = {
     lintSkillDescription,
     SKILL_DESC_LIMIT,
     lintAgentTools,
-    lintAgentMemoryTools,
-    MEMORY_TOOLS,
+    lintAgentServerFree,
     lintReferencePointers,
     lintReferenceContents,
     lintAskTemplates,

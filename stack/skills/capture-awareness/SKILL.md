@@ -28,13 +28,13 @@ to the skill that writes it).
 - The deliberate awareness capture: after an install, an update, a configure run or a trim (the inventory moved), when the run book is missing or stale, or to add or refresh a sibling repo.
 - Arguments: sibling locations - local paths that exist or git URLs, each with an optional relation hint (`../backend`, `git@github.com:org/contracts.git provides-to`) - add or refresh those related projects; `refresh` re-asks the run book and rewrites the inventory even when nothing on disk moved. Any other text is a NOTE - a fact the user typed for the run book (step 2).
 - A re-run is cheap: the inventory is one script call, the run book is asked again only when it is missing, stale or `refresh` was passed, and the related projects only when siblings are passed or none were ever recorded.
-- Not for the architecture map (capture-architecture), the code style (capture-project-code-style), or dynamic cross-repo findings - those go to the shared `alfred-memory` MCP, tagged with the sibling's name.
+- Not for the architecture map (capture-architecture), the code style (capture-project-code-style), or dynamic cross-repo findings - those go to Claude Code's own memory, naming the sibling.
 
 The four files are generated: a re-run refreshes them in place, and nobody edits them by hand. The rule stays out
 of the installer's catalog and no installer ledger records any of them, so `/alfred-code:update` never overwrites
 them - it only moves an older install's files into this layout.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
 
 ## The run
 
@@ -99,7 +99,7 @@ How is the app started and reached for a manual check? The repo shows: <start co
 
 ```ask
 How does an agent log in? The repo shows: <a login route, an auth config - or no login>. Never type a password here - via Other, type the login steps, the account's role and WHERE its credentials already live (an env var, a file and key, a vault item).
-- 'A test account - name its keys and I add them to the sensitive data (Recommended)' - the report hands one `KEY=` line per key for `<data root>/.sensitive-data`; the doc points at them
+- 'A test account - name its keys and I add them to the sensitive data (Recommended)' - the report hands one `KEY=` line per key for `<data root>/.secrets`; the doc points at them
 - 'No login - the app is open' - the section says so
 - 'Unknown for now' - the section says unknown; the next capture asks again
 ```
@@ -177,7 +177,7 @@ Project:     <created | refreshed | appended | current | kept> - <docs-path>/awa
 From repo:   <the files DISCOVER read the facts from, or not run>
 Asked:       <each question asked with the answer's label, or none>
 Unknown:     <the run-book sections or lines still unknown, or none>
-Credentials: <where each account's credentials live, by name only | keys in <data root>/.sensitive-data, ignored: yes | no login>
+Credentials: <where each account's credentials live, by name only | keys in <data root>/.secrets, ignored: yes | no login>
 Value check: <no hit | <n> hit(s) replaced with where the value lives | not run>
 Watch:       <the cited file> -> <the sections it names, or not run>
 Related:     <created | refreshed | kept | none recorded> - <n> entries, rewritten <names>, kept <names>; first_read <n> of <n> verified; skipped <locations, or none>

@@ -12,7 +12,9 @@ const { hashItem } = require('./install/library.js');
 const seeds = require('./install/seeds.js');
 
 // alfred-git retired on 2026-10-21 (its lines are the seeded GIT-PREFERENCES.md); baseline-git's successor is the preferences rule.
-const SHIPPED = ['docs-root', 'interaction', 'memory', 'navigation', 'preferences', 'quality-gates', 'security'];
+// alfred-memory retired on 2026-10-24 (the stack depends on no MCP server): baseline-memory's successor is gone, so its old
+// copy goes on its shipped text alone.
+const SHIPPED = ['docs-root', 'interaction', 'navigation', 'preferences', 'quality-gates', 'security'];
 const SEL = `skill markdown-style\nrule markdown-docs\n${SHIPPED.map((n) => `rule alfred-${n}`).join('\n')}\n`;
 // The install is the walk's; the update is what /alfred-code:update runs - the read-back of what is on disk.
 const UPDATE = (scope = 'project') => ['--scope', scope, '--installed-only'];
@@ -45,16 +47,20 @@ function makeOld(repo, { edit = [] } = {})
     const rows = Object.entries(stampRules(repo));
     const moved = rows.map(([name, hash]) =>
     {
-        const m = /^alfred-(docs-root|interaction|memory|navigation|quality-gates|security)$/.exec(name);
+        const m = /^alfred-(docs-root|interaction|navigation|quality-gates|security)$/.exec(name);
         if (!m) return [name, hash];
         const old = `baseline-${m[1]}`;
         fs.renameSync(path.join(dir, `${name}.md`), path.join(dir, `${old}.md`));
         return [old, hashItem(path.join(dir, `${old}.md`))];
     }).filter(([name]) => name !== 'alfred-preferences');
-    // 2.1.5 had no preferences rule and shipped the git rule as baseline-git: its real text, recorded.
+    // 2.1.5 had no preferences rule and shipped the git rule as baseline-git, and the memory rule as baseline-memory:
+    // their real texts, recorded.
     fs.rmSync(path.join(dir, 'alfred-preferences.md'));
-    fs.writeFileSync(path.join(dir, 'baseline-git.md'), SHIPPED_OLD['baseline-git']);
-    moved.push(['baseline-git', hashItem(path.join(dir, 'baseline-git.md'))]);
+    for (const old of ['baseline-git', 'baseline-memory'])
+    {
+        fs.writeFileSync(path.join(dir, `${old}.md`), SHIPPED_OLD[old]);
+        moved.push([old, hashItem(path.join(dir, `${old}.md`))]);
+    }
     fs.writeFileSync(stampOf(repo), text.replace(/^library-rules: .*$/m, `library-rules: ${moved.map(([n, h]) => `${n}=${h}`).join(',')}`));
     for (const g of GENERATED) fs.writeFileSync(path.join(dir, `baseline-project-${g}.md`), body(g));
     fs.writeFileSync(path.join(dir, 'project-code-style.md'), body('code-style'));
@@ -95,6 +101,9 @@ for (const scope of ['project', 'user', 'local'])
         assert.strictEqual(r.files['project-code-style.md'], body('code-style'));
         assert.ok(!/not found in the stack source|drift|unlisted/.test(out), `noise from the update: ${out}`);
         assert.ok(/rule pruned \(retired upstream\): baseline-git\.md/.test(out), `no prune line: ${out}`);
+        assert.ok(!('baseline-memory.md' in r.files) && !('alfred-memory.md' in r.files), 'a memory rule survived');
+        assert.ok(!('baseline-memory' in r.stamp) && !('alfred-memory' in r.stamp), 'the stamp still names a memory rule');
+        assert.ok(/rule pruned \(retired upstream\): baseline-memory\.md/.test(out), `no memory prune line: ${out}`);
         assert.ok(/alfred-project-awareness\.md/.test(out), `no move line: ${out}`);
     });
 }
@@ -154,7 +163,7 @@ for (const [label, unstamp] of [['a garbled library-rules line', (t) => t.replac
             },
         });
         for (const n of SHIPPED) assert.ok(`alfred-${n}.md` in r.files, `alfred-${n}.md missing`);
-        for (const n of SHIPPED.filter((x) => x !== 'security')) assert.ok(!(`baseline-${n}.md` in r.files), `baseline-${n}.md survived: ${outs[1]}`);
+        for (const n of [...SHIPPED.filter((x) => x !== 'security'), 'memory']) assert.ok(!(`baseline-${n}.md` in r.files), `baseline-${n}.md survived: ${outs[1]}`);
         assert.strictEqual(r.files['baseline-security.md'], '# My own security notes\n', 'a copy that opens otherwise is the project\'s');
         assert.match(outs[1], /!! rule kept: baseline-security\.md.*yours/, 'the kept copy is named');
         assert.match(outs[1], /rule pruned \(retired upstream\): baseline-git\.md/, outs[1]);

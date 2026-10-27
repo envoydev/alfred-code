@@ -31,10 +31,10 @@ The first argument picks what is read; everything else is out of scope. Never an
 
   Name every file; never a loop or `xargs` over the list - the secret guard masks only a `git diff` whose path it can read. Never `git add -N` and never `git reset` in a review or scope read.
 - **A branch.** `git diff <base>...<branch>`, `<base>` the remote's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`, e.g. `origin/main`), else whichever of `main` and `master` exists - never the branch's own upstream, which holds the same commits and diffs to nothing.
-- **A pull request number.** `gh pr diff <n>`.
+- **A change request number** (a PR or an MR). Read with plain git first, the same on every forge: `git fetch <remote> refs/pull/<n>/head` (GitHub, Gitea) or `refs/merge-requests/<n>/head` (GitLab), its head the sha `git rev-parse FETCH_HEAD` prints right after, then `git diff <base>...<head>`. Only when the remote publishes no such ref (Azure DevOps, Bitbucket) read it through the forge tool the session's `Forge:` line names - `gh pr diff <n>`, `glab mr diff <n>`, an MCP diff read.
 - **One or more paths.** The change set under them: `git diff HEAD -- <path-1> <path-2>`, and each untracked file under them through `--no-index` as above; a path named here is in scope even when the start record lists it. The commit checkpoint hands over the paths its commit takes in this way.
 
-Code is read where the target lives. The change set and a path are the checkout. A branch or a pull request is read at its head: the checkout only when that head is checked out (`git rev-parse HEAD` equals it), otherwise each file as `git show <head>:<path>` - a branch's head is `<branch>`, a PR's `gh pr view <n> --json headRefOid -q .headRefOid`, fetched with `git fetch origin pull/<n>/head` when `git show` cannot find it - since the navigation server, the LSP and Read see only the checkout.
+Code is read where the target lives. The change set and a path are the checkout. A branch or a pull request is read at its head: the checkout only when that head is checked out (`git rev-parse HEAD` equals it), otherwise each file as `git show <head>:<path>` - a branch's head is `<branch>`, a change request's the fetched sha above (with no such ref, the forge tool's head field - `gh pr view <n> --json headRefOid -q .headRefOid` - then `git fetch <remote> <head>` when `git show` cannot find it) - since the navigation tools, the LSP and Read see only the checkout.
 
 ## Depth
 
@@ -46,7 +46,7 @@ Code is read where the target lives. The change set and a path are the checkout.
 
 ## Dispatch
 
-Run inline. First count the target from its own diff: changed lines (the change set `git diff HEAD --shortstat` plus each untracked file's lines, a path the same under `-- <path>`, a branch `git diff --shortstat <base>...<branch>`, a PR `gh pr view <n> --json additions,deletions`) and touched stacks (the convention rules the changed files attach - C# and TypeScript are two). Over 600 changed lines, or two or more stacks, and the roster lists a `<stack>-verifier` for every touched stack, open with one ask:
+Run inline. First count the target from its own diff: changed lines (the change set `git diff HEAD --shortstat` plus each untracked file's lines, a path the same under `-- <path>`, a branch `git diff --shortstat <base>...<branch>`, a change request `git diff --shortstat <base>...<head>` over its fetched head, the forge tool's own counts - `gh pr view <n> --json additions,deletions` - only when no ref exists) and touched stacks (the convention rules the changed files attach - C# and TypeScript are two). Over 600 changed lines, or two or more stacks, and the roster lists a `<stack>-verifier` for every touched stack, open with one ask:
 
 ```ask
 This change is <n> changed lines over <stacks> - review it in a seat to keep this context light?

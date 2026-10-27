@@ -28,22 +28,6 @@ test('rules T1-1: repo-audit-claude-md names the AGENTS.md seed and the always-o
     assert.match(t, new RegExp(`at ${Number(cap).toLocaleString('en-US')} chars`), 'the principles quote the cap lint check 33 holds');
 });
 
-// mcps T2-1: windows-control runs on Python 3.14 since the 2026-10-14 ruling, yet its marketplace description, its
-// retired alias's and the HTML row said 'pins the Python (3.13)'. Every description that names the Python names the one
-// uv-python.js launches that server on.
-test('mcps T2-1: each server description names the Python its launcher runs it on', () => {
-    const { pythonFor } = require('../stack/mcp/uv-python.js');
-    const renamed = JSON.parse(read('meta/stack-manifest.json')).renamed.mcps;
-    const said = [];
-    for (const p of JSON.parse(read('.claude-plugin/marketplace.json')).plugins) {
-        const m = /pins the Python[^(]*\((\d+\.\d+)/.exec(p.description || '');
-        if (m) said.push([`marketplace ${p.name}`, renamed[p.name] || p.name, m[1]]);
-    }
-    for (const m of read('docs/alfred-code.html').matchAll(/^\s*\["([\w-]+)", "MCP server",[^\n]*?pins the Python \((\d+\.\d+)/gm)) said.push([`HTML ${m[1]}`, m[1], m[2]]);
-    assert.ok(said.some(([, n]) => n === 'windows-control'), 'the windows-control rows are read');
-    for (const [where, server, py] of said) assert.strictEqual(py, pythonFor(server), `${where} says Python ${py}`);
-});
-
 // agents T2-9: a forced user choice went 'to the report' (7 designers) or back as NEEDS_CONTEXT (data), while the report
 // carries a literal `user_decisions:` line the orchestrator puts to the user before the build.
 test('agents T2-9: every designer puts a user-level decision on the user_decisions: line', () => {
@@ -82,9 +66,10 @@ test('agents T2-12: integration-reviewer reports its items first and ends on the
     assert.doesNotMatch(t, /End with literal `status:`, `contract_version:`, and `commit_allowed:` lines/);
 });
 
-// agents T2-14: the devops designer preloads task-design, whose no-docs fallback calls get_symbols_overview
-test('agents T2-14: the devops designer is granted the overview task-design prescribes', () => {
-    assert.ok(JSON.parse(read('meta/seat-tools.json')).seats['devops-solution-designer'].includes('alfred-navigation:get_symbols_overview'));
+// agents T2-14: the devops designer preloads task-design, whose no-docs fallback outlines a file - the LSP's documentSymbol
+// since the stack left its navigation server (2026-10-24)
+test('agents T2-14: the devops designer is granted the outline task-design prescribes', () => {
+    assert.ok(JSON.parse(read('meta/seat-tools.json')).seats['devops-solution-designer'].includes('LSP'));
 });
 
 // agents T2-15: the turn build check reads git status at Stop, so no edit-route line names it among the edit hooks
@@ -139,14 +124,15 @@ test('skills S-10 / S-11 / S-14 / S-19 / S-25: the flow and convention lines say
 });
 
 // commands T2-09: status's Environment table was a hand-copied list of 10 catalog rows that had drifted (14 in the
-// catalog); it reads the catalog the way configure's step 8 does, keeping only the two rows the catalog cannot carry.
+// catalog); it reads the catalog the way configure's step 8 does. The two rows the catalog could not carry left in 2.10.1:
+// Claude's own memory is no longer the stack's to switch, and no stack server reads a Context7 key.
 test('commands T2-09: status prints the Environment rows from meta/environment.json, never a copied list', () => {
     const t = read('setup-plugin/commands/status.md');
     const env = t.slice(t.indexOf('**Environment**'), t.indexOf('Mark `(default)`'));
     assert.match(env, /`\$\{CLAUDE_PLUGIN_ROOT\}\/meta\/environment\.json`/);
     for (const row of JSON.parse(read('meta/environment.json')).env) assert.doesNotMatch(env, new RegExp(`^\\| ${row.key} \\|`, 'm'), `${row.key} is copied`);
-    assert.match(env, /^\| autoMemoryEnabled \|/m);
-    assert.match(env, /^\| CONTEXT7_API_KEY \(account env\) \|/m);
+    assert.doesNotMatch(env, /^\| autoMemoryEnabled \|/m);
+    assert.doesNotMatch(env, /^\| CONTEXT7_API_KEY \(account env\) \|/m);
 });
 
 // commands T2-13: validate's step 2 carried a near-verbatim copy of init's stack-marker list, a second home that drifts.

@@ -432,10 +432,10 @@ test('the navigation server\'s two kept edit tools are held like an Edit, on bot
         assert.ok(denied(r.hook(pre(name, { name_path: 'Refund/Apply', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Run' }, sid()))), `${name} is held`);
       }
     }
-    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'a lookup is never held');
+    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'a lookup is never held'); // mcp-fixture
     const s = sid();
     r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show patterns#orders' }, s));
-    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Refund2' }, s))), 'a section read unlocks it');
+    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Refund2' }, s))), 'a section read unlocks it'); // mcp-fixture
   } finally { r.rm(); }
 });
 
@@ -726,7 +726,8 @@ test('deep review: the manifest wires docs-session on SubagentHandback as its ow
   const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'alfred-code');
   const pre = (entry.hooks.PreToolUse || []).filter((g) => g.matcher === 'SubagentHandback');
   assert.strictEqual(pre.length, 1);
-  assert.match(pre[0].hooks[0].command, /stack\/hooks\/docs-session\.js"$/);
+  // the group also carries the output-scorer's seal (guard-stop-contract, 2026-10-25); docs-session is its own command in it
+  assert.strictEqual(pre[0].hooks.filter((h) => /stack\/hooks\/docs-session\.js"$/.test(h.command)).length, 1, pre[0].hooks.map((h) => h.command).join(' | '));
 });
 
 // Task 6b review, finding 7: a warning-only ask-answer row reads sections: [], outcome: 'unchanged' - the
@@ -1573,7 +1574,7 @@ test('CLAUDE.md says a navigation rename is credited to its declaring file alone
   // serena's rename_symbol carries the declaring file in `relative_path`; the reference edits in other files are not
   // in the call, so they fall to the Stop ask's unclaimed bucket and outside the turn check's root - accepted, and said.
   const md = require('./claude-docs.js').readClaudeDocs();
-  const entry = md.slice(md.indexOf('  - `docs-session.js` ('), md.indexOf('  - `memory-session.js` ('));
+  const entry = md.slice(md.indexOf('  - `docs-session.js` ('), md.indexOf('  - `preferences-session.js` ('));
   assert.match(entry, /a rename is credited to that declaring file alone/);
   assert.match(entry, /'no actor claimed' bucket and outside the turn check's root/);
 });

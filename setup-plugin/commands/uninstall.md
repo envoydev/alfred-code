@@ -1,5 +1,5 @@
 ---
-description: "Remove the Alfred Code stack from THIS project, and nothing of the user's with it. The install ledger in the stamp (every env key, deny entry, hook wiring, MCP registration and copied file the installer wrote, each at the hash it wrote it with) is the whole list: an item still matching its hash goes, one changed since is the user's and is kept and named, and anything the ledger does not name (the user's own hook, server or key) is never touched. The stack's plugin rows and MCP registrations at project or local scope are removed; a user-scope one serves every project on the account, so its commands are printed and never run, like a third-party pick's and the marketplace's. One confirmation first, which also asks before the instruction file the stack seeded (AGENTS.md or CLAUDE.md, still unedited) is deleted. A stamp from before the ledger is refused with the route (one /alfred-code:update records it). NOT for dropping some items - that is the sibling configure command."
+description: "Remove the Alfred Code stack from THIS project, and nothing of the user's with it. The install ledger in the stamp (every env key, deny entry, hook wiring, MCP registration and copied file the installer wrote, each at the hash it wrote it with) is the whole list: an item still matching its hash goes, one changed since is the user's and is kept and named, and anything the ledger does not name (the user's own hook, server or key) is never touched. The stack's plugin rows at project or local scope are removed, and so is an MCP registration an earlier release recorded there (the stack ships no server since 2.10.1); a user-scope one serves every project on the account, so its commands are printed and never run, like a third-party pick's and the marketplace's. Claude's own memory switch-off a pre-2.10.1 release wrote is lifted. One confirmation first, which also asks before the instruction file the stack seeded (AGENTS.md or CLAUDE.md, still unedited) is deleted. A stamp from before the ledger is refused with the route (one /alfred-code:update records it). NOT for dropping some items - that is the sibling configure command."
 disable-model-invocation: true
 ---
 
@@ -29,7 +29,10 @@ worktree), before anything is downloaded:
 First the instruction file, read only: `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/uninstall.js" seed .` writes nothing
 and prints one line per seed the ledger records (one on almost every install) - `instructions-seed: <path> unedited` (the
 AGENTS.md or CLAUDE.md the stack seeded, still exactly as it wrote it), `instructions-seed: <path> edited` (the project's
-own now, kept unasked) - or `instructions-seed: none`.
+own now, kept unasked) - or `instructions-seed: none`. The same call reads the workspace, also writing nothing: append
+`; node "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" children --root . ; node "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js"
+status --root . | grep '^workspace: parent '`. Each `child: <rel><TAB>ok` is a project installed as this one's child, and
+`workspace: parent <rel>` the folder this one is a child of.
 
 Then put ONE AskUserQuestion - the confirmation, and on any `unedited` line the seed question as a second question in the same
 call (the user's ask of 2026-10-23: an uninstall asks before it deletes the file the project reads as its instructions):
@@ -50,12 +53,13 @@ Delete <path> too? The stack seeded it and it is unedited since, so nothing of y
 file' -> `--instructions-seed keep`. With no `unedited` line there is no second question and neither flag - an edited file
 is kept either way, and with no answer the seed keeps an unedited one too.
 
-The confirmation names what goes (the stack's plugin rows and MCP registrations at this project's scope, its
-settings entries, hook wirings and copied files, the stamp) and what stays (anything the user added or
-changed since the stack wrote it, a user-scope plugin row or MCP registration, the data root (the
-docs, the navigation index, the browser profiles - `.alfred/` by default, or a 2.0.0 `.serena/` /
-`.playwright/`), the memory database; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
-since the user-scope core stays loaded). Its 'Keep it' -> end the turn, nothing downloaded, whatever the seed answer.
+The confirmation names what goes (the stack's plugin rows at this project's scope and any MCP registration an
+earlier release recorded there, its settings entries, hook wirings and copied files, the stamp) and what stays
+(anything the user added or changed since the stack wrote it, a user-scope plugin row or MCP registration, the
+data root - `.alfred/` by default: the docs, and whatever an earlier release's servers left in it; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
+since the user-scope core stays loaded). In a workspace it names both sides: each `ok` child is released - its parent
+line and its own-picks record go, and it keeps its install, every item it holds its own - and a `workspace: parent
+<rel>` line means this project leaves `<rel>`, whose child line for it comes out. Its 'Keep it' -> end the turn, nothing downloaded, whatever the seed answer.
 
 ## 3. Resolve the snapshot, then run the seed
 
@@ -81,8 +85,9 @@ makes a bare `$?` `tee`'s, and `${PIPESTATUS[0]}` reads empty in zsh. Exit 1 car
 
 ## 4. Report the seed's own lines
 
-One `grep -E 'removed|uninstalled|kept|claude plugin|claude mcp|stamp|!!' "$TMP/install.log"`, then a short
-report in three parts:
+One `grep -E 'removed|uninstalled|kept|claude plugin|claude mcp|stamp|workspace:|!!' "$TMP/install.log"`, then a short
+report in three parts, every `workspace:` line (a child released, this project's lines out of its parent) verbatim
+under Removed:
 
 - **Removed** - a count per kind (plugin rows, env keys, deny entries, hook wirings, servers, files).
 - **Kept as yours** - every `kept` line, verbatim: a value or file changed since the stack wrote it.

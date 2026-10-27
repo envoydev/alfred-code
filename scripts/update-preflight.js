@@ -28,12 +28,10 @@
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
-//   data-move: offer <root>\tfrom=<places>\tserena=yes|no browser=<engines|none> memory=yes|no[\tconflicts=<n>]
-//            | none (<why>)
-//                                           (the project's server data outside its data root - the 2.0.0
-//                                           layout or an earlier root: serena's folder, the browser
-//                                           profiles, a project memory database; a project install only.
-//                                           The docs move unasked since 2.8.0, so they are no part of it)
+//   data-move: offer <root>\tfrom=<places>[\tconflicts=<n>] | none (<why>)
+//                                           (the project's secrets file under an earlier data root;
+//                                           a project install only. The docs move unasked since 2.8.0, and
+//                                           the stack ships no server whose data could move since 2.10.1)
 //   docs-move: offer <from> -> <to>\tmoves=<names>\tstack=<n>\town=<names|none> | none (<why>)
 //                                           (a leftover ALFRED_CODE_DOCS_PATH the user set by hand - no release seeded
 //                                           it and the ledger does not record it - holding the stack's docs: it moves
@@ -44,6 +42,8 @@
 //                                           answer, a CLAUDE.local.md, and what the update does - seeds.js
 //                                           instructionsFileLine; a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
+//   workspace: join <rel>[\trejoin]          (a checkout below an installed folder it has not joined, or whose parent
+//                                           no longer lists it - workspace.js joinLine; a project install only)
 //   unattended: on                          (only with ALFRED_CODE_UNATTENDED=1)
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
@@ -54,6 +54,9 @@
 // asks, a project install only):
 //   instructions: none | <claude|root|split> <file> ...   (the AGENTS.md / CLAUDE.md files at the root and in .claude/)
 //   instructions-file: ...                  (the full read's line above)
+//
+// `--asks` prints the per-project ask lines alone (data-move, docs-move, instructions-file, instructions-both, workspace
+// join - no --snapshot, no compare): the workspace cascade's plan, one call per project.
 //
 // `--log <installer-log>` is a SEPARATE post-install mode (no --snapshot needed): it reads the
 // installer's own log - the command already captures it via the fixed `tee "$TMP/install.log"`
@@ -86,7 +89,7 @@
 //
 //   | category | count | items |
 //   |---|---|---|
-//   | rules | <n> | <name>, ... |        (rules, agents, skills, hooks, mcps, plugins - always these six, in order)
+//   | rules | <n> | <name>, ... |        (rules, agents, skills, hooks, plugins - always these five, in order)
 //   total: <n> installed[, <n> switched off][, <n> plugin(s) parked]
 const fs = require('node:fs');
 const path = require('node:path');
@@ -395,8 +398,8 @@ function policyRevLine(root, snapshot)
 //
 // A session holds what it loaded at its start, so a restart is owed only for what this run CHANGED under it (audit
 // 2026-10-10, session 229e2715). The summary's `mcps=<n>` is the selection's size, printed on every run, so it said
-// restart on every update; a line that changed a registration or a plugin is the signal - the plugin route carries the
-// servers. `--running "${CLAUDE_PLUGIN_ROOT}"` names the release the session loaded: another release than this
+// restart on every update; a line that changed a registration or a plugin is the signal - a retired server's
+// registration the update removed included. `--running "${CLAUDE_PLUGIN_ROOT}"` names the release the session loaded: another release than this
 // snapshot's means its hooks, commands and server plugins are all older, and the same release means the hooks a
 // plugin-route stamp names are already live, so step 2's `--hooks` delta owes nothing.
 const SESSION_CHANGED = [
@@ -448,14 +451,13 @@ function runLogMode(logFile)
     const root = arg('--root', '.');
     const stamp = arg('--stamp', stampIn(path.join(root, '.claude')).read || stampIn(root).read);
     const hooksLive = Boolean(running) && running === snapshot && require('./install/stamp.js').readHooksRoute(stamp) === 'plugin';
-    // A moved docs root: the session's loaded alfred-docs-root rule still names the old one. A data move
-    // a server's launcher makes at its next start waits for that start.
-    const docsMoved = /docs root: moved /.test(text) || /^==> data root: .* (moved now|waiting for a server's next start)/m.test(text);
+    // A moved docs root: the session's loaded alfred-docs-root rule still names the old one.
+    const docsMoved = /docs root: moved /.test(text) || /^==> data root: .* moved now/m.test(text);
     console.log(`restart: ${(changed || otherRelease || (hooks > 0 && !hooksLive) || docsMoved) ? 'yes' : 'no'}`);
 }
 
-// The data move, from the rules the installer applies (docs.dataOffer): every server's data outside the root - the kept
-// engines the stamp names, the memory folder at the project level.
+// The data move, from the rules the installer applies (docs.dataOffer): the secrets file a root change left under
+// the earlier root.
 function dataMoveLine({ root, claudeDir, stampFile })
 {
     const settingsLib = require('./install/settings.js');
@@ -469,13 +471,10 @@ function dataMoveLine({ root, claudeDir, stampFile })
     const checked = dataRoot.checkDataPath(env.ALFRED_CODE_DATA_PATH || '');
     const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const dataRootNow = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
-    const db = env.ALFRED_CODE_MEMORY_DB || '';
     return docs.dataOfferLine(docs.dataOffer({
         projectRoot, stampText, root: dataRootNow,
         // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take.
         stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root),
-        engines: stampLib.readBrowserLines(stampFile).browsers || [],
-        memoryProject: dataRoot.memoryLevelOf(db, { home: require('node:os').homedir(), projectRoot }) === 'project',
     }));
 }
 
@@ -511,9 +510,8 @@ function runRespellMode()
     const root = path.resolve(arg('--root', '.'));
     const snapshot = path.join(__dirname, '..');
     const renamed = (readJson(path.join(snapshot, 'meta', 'stack-manifest.json')) || {}).renamed || {};
-    const engines = require('./install/stamp.js').readPlaywright(stampIn(path.join(root, '.claude')).read || '') || [];
     const selection = require('./install/selection.js');
-    const plan = selection.respellOwnPlan({ projectRoot: root, renamed, engines });
+    const plan = selection.respellOwnPlan({ projectRoot: root, renamed });
     if (!plan.length) { console.log('respell: none'); return; }
     for (const row of plan)
     {
@@ -532,7 +530,7 @@ function runInventoryMode(file)
     const inv = readJson(file);
     if (!inv || typeof inv !== 'object' || Array.isArray(inv)) { console.log(`inventory: ${file} could not be read - re-run the step-1 read-back`); process.exitCode = 1; return; }
     const list = (v) => (Array.isArray(v) ? v : []).map((x) => (x && typeof x === 'object' ? `${x.name}${x.scope ? ` [${x.scope}]` : ''}` : String(x)));
-    const rows = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'].map((c) => [c, list(inv[c])]);
+    const rows = ['rules', 'agents', 'skills', 'hooks', 'plugins'].map((c) => [c, list(inv[c])]);
     console.log('| category | count | items |');
     console.log('|---|---|---|');
     for (const [c, items] of rows) console.log(`| ${c} | ${items.length} | ${items.join(', ') || '-'} |`);
@@ -551,9 +549,9 @@ function main()
 
     const snapshot = arg('--snapshot');
     const offerOnly = process.argv.includes('--offers');
-    if (!snapshot && !offerOnly)
+    if (!snapshot && !offerOnly && !process.argv.includes('--asks'))
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>]\n       update-preflight.js --inventory <installed.json>');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --asks [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>]\n       update-preflight.js --inventory <installed.json>');
         process.exit(1);
     }
     const root = arg('--root', '.');
@@ -573,6 +571,22 @@ function main()
     const stampScope = readStampScope(stampFile);
     const settingsFile = arg('--settings', accountDir ? path.join(claudeDir, 'settings.json') : settingsLib.settingsTarget(claudeDir, stampScope === 'local' ? 'local' : 'project'));
     const layered = arg('--settings') || accountDir ? null : settingsLib.readBackSettings(claudeDir, 'local');
+    // The workspace cascade's per-project asks (workspace.js plan), one child at a time - no compare, no network: the
+    // release-added items are the root's one ask, which the children inherit.
+    if (process.argv.includes('--asks'))
+    {
+        if (accountDir) return;
+        const ws = require('./install/workspace.js');
+        const seeds = require('./install/seeds.js');
+        console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
+        console.log(docsMoveLine({ root, claudeDir, stampFile }));
+        console.log(seeds.instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
+        const both = ws.instructionsBothLine(ws.instructionsBothState({ projectRoot: path.resolve(root), env: process.env, ...ws.accountPaths(process.env) }));
+        if (both) console.log(both);
+        const join = fs.existsSync(stampFile) ? ws.joinLine(path.resolve(root), { env: process.env }) : null;
+        if (join) console.log(join);
+        return;
+    }
     // configure reads the two offers alone - no compare, no network.
     if (offerOnly)
     {
@@ -634,6 +648,12 @@ function main()
         console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
         console.log(docsMoveLine({ root, claudeDir, stampFile }));
         console.log(require('./install/seeds.js').instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
+        // D5 (workspace layering): a joined child with a CLAUDE.md on its path, asked once per account.
+        const ws = require('./install/workspace.js');
+        const both = ws.instructionsBothLine(ws.instructionsBothState({ projectRoot: path.resolve(root), env: process.env, ...ws.accountPaths(process.env) }));
+        if (both) console.log(both);
+        const join = fs.existsSync(stampFile) ? ws.joinLine(path.resolve(root), { env: process.env }) : null;
+        if (join) console.log(join);
     }
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];

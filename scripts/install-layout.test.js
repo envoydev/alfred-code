@@ -240,3 +240,20 @@ test('a docs root outside the data root - the state follows the data root', () =
     assert.ok(has(root, 'docs/work/plans/a.md'));
     assert.ok(!has(root, 'docs/flow') && !has(root, 'docs/hook-blocks'));
 });
+
+test('tutorial/ moves to explanations/ (item 6); a file where a folder move expects a folder is left and named', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/tutorial/x.html', '<svg/>\n');
+    const r = migrate(root);
+    assert.strictEqual(text(root, '.alfred/docs/explanations/x.html'), '<svg/>\n');
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'docs', 'tutorial')), 'the emptied folder goes');
+    assert.ok(r.logs.some((m) => m.includes('layout: .alfred/docs/tutorial -> .alfred/docs/explanations (1 file)')), r.logs.join('\n'));
+    const file = repo();
+    put(file, '.alfred/docs/tutorial', 'a file, not a folder\n');
+    const f = migrate(file);
+    assert.strictEqual(text(file, '.alfred/docs/tutorial'), 'a file, not a folder\n', 'left as it is');
+    assert.deepStrictEqual(f.kept, ['.alfred/docs/tutorial']);
+    assert.ok(f.logs.some((m) => m.includes('layout: kept .alfred/docs/tutorial - a file where a folder moving to .alfred/docs/explanations belongs')), f.logs.join('\n'));
+    assert.ok(!f.logs.some((m) => m.includes('layout: current')), 'a kept file is no current layout');
+});

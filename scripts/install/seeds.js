@@ -8,62 +8,13 @@
 //     instructions. A root instruction file is the project's own: checked and improved in place, never overwritten -
 //     only moved or renamed, on the user's answer to the place or the name question (`placeInstructionFiles`,
 //     `renameInstructionFiles`).
-//   - The ACCOUNT settings.json `env` keys. At project scope too, deliberately: the account file is
-//     the one whose env reaches `.mcp.json` URL and header expansion (measured on 2.1.266 - a
-//     project `.claude/settings.json` leaves the 'Missing environment variables' warning in place).
-//     A value the run was HANDED is explicit and overwrites; a key it was not handed is never
-//     touched, let alone cleared, and a credential-shaped key is logged BY LENGTH, never by value.
-//   - The playwright engine builds. firefox and webkit are Playwright's own builds, not a browser
-//     the machine already has, so each kept one is downloaded through the server's OWN bundled
-//     playwright and matches the version the server launches. Fail-soft.
+//   No ACCOUNT env key since 2.10.1: the one it wrote (CONTEXT7_API_KEY) served the documentation server the stack
+//   no longer ships, and a key already there is the user's account, left as it is.
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseJson } = require('./json-file.js');
 
-// The same pattern meta/environment.json calls secret_key_pattern.
-const SECRET_KEY = /(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$/;
 const PROJECT_NAME_TOKEN = '__PROJECT_NAME__';
-const DOWNLOADED_ENGINES = ['firefox', 'webkit'];
-
-// Written to the account file, never to argv: argv is readable by every process on the box.
-function seedAccountEnv({ configDir, key, value, log = () => {}, note = () => {} })
-{
-    const file = path.join(configDir, 'settings.json');
-    let data = {};
-    try { data = parseJson(fs.readFileSync(file, 'utf8')); }
-    catch (err)
-    {
-        if (err.code !== 'ENOENT') { note(`could not write ${key} into ${file} (${err.message})`); return false; }
-    }
-    if (!data || typeof data !== 'object' || Array.isArray(data)) { note(`could not write ${key} into ${file} (top level is not an object)`); return false; }
-    data.env = data.env || {};
-    const before = data.env[key];
-    const shown = SECRET_KEY.test(key) ? `set (${String(value).length} chars)` : value;
-    if (before === value) { log(`  ${key} already ${shown} in ${file}`); return false; }
-    data.env[key] = value;
-    try
-    {
-        fs.mkdirSync(configDir, { recursive: true });
-        fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-    }
-    catch (err) { note(`could not write ${key} into ${file} (${err.message})`); return false; }
-    log(`  ${key}=${shown} written to ${file} env`);
-    return true;
-}
-
-// Every key the stack knows that THIS RUN was handed, from the launch environment - since 2.0.0 cut
-// the sentry server, only context7's key. A value never goes through a chat. The SENTRY_* keys an
-// older run wrote are the user's credentials: never read here, never removed.
-function seedAccountKeys({ configDir, env = {}, log, note })
-{
-    const written = [];
-    const values = {
-        CONTEXT7_API_KEY: env.CONTEXT7_API_KEY || '',
-    };
-    for (const [key, value] of Object.entries(values))
-        if (value && seedAccountEnv({ configDir, key, value, log, note })) written.push(key);
-    return written;
-}
 
 // INSTALL only, once. The H1 placeholder is stamped with the repo folder name - the same __TOKEN__
 // convention as the docs-root rule, and because the seed runs once a hand-written title is never
@@ -165,7 +116,7 @@ function refreshSeededAgentsMd({ projectRoot, sourceDir, kind = 'agents', file =
     let now;
     try { now = fs.readFileSync(dest, 'utf8'); } catch { return false; }
     // The name the seed was stamped with, not this folder's: a second checkout under another folder name rewrote the
-    // committed file's H1 on every update (install-memory.test.js). A seed whose H1 is gone is not refreshed.
+    // committed file's H1 on every update (install-seeds.test.js). A seed whose H1 is gone is not refreshed.
     const h1 = /^# (.*)\r?\n/.exec(now);
     if (!h1) return false;
     const body = agentsMdBody({ projectRoot, sourceDir, name: h1[1] });
@@ -254,7 +205,6 @@ function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tra
     return 'moved';
 }
 
-// Only the engines whose build Playwright ships itself; chrome and msedge use the installed browser.
 // The user's answer to init's / configure's place question (--instructions-at): each instruction file at the other place
 // moves - `git mv` where git tracks it, so history follows. A destination already holding one is never overwritten:
 // both are named and left. CLAUDE.local.md stays at the root, the one place Claude Code reads it. A file moved into
@@ -388,17 +338,4 @@ function instructionsLine(projectRoot)
     return `instructions: ${inClaude === have.length ? 'claude' : inClaude ? 'split' : 'root'} ${have.join(' ')}`;
 }
 
-function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
-{
-    const done = [];
-    for (const engine of browsers)
-    {
-        if (!DOWNLOADED_ENGINES.includes(engine)) continue;
-        log(`browser: downloading the ${engine} build the server launches`);
-        if (run(engine)) { done.push(engine); continue; }
-        log(`  !! could not download ${engine} - run by hand: npx -y -p @playwright/mcp${pin} playwright install ${engine}`);
-    }
-    return done;
-}
-
-module.exports = { seedAccountEnv, seedAccountKeys, seedAgentsMd, seededAgentsMdPath, locateSeed, refreshSeededAgentsMd, agentsMdBody, moveSeededClaudeMd, respellReinclude, seedRowAfterRename, placeInstructionFiles, renameInstructionFiles, instructionName, instructionsLine, instructionsFileLine, playwrightDownloads };
+module.exports = { seedAgentsMd, seededAgentsMdPath, locateSeed, refreshSeededAgentsMd, agentsMdBody, moveSeededClaudeMd, respellReinclude, seedRowAfterRename, placeInstructionFiles, renameInstructionFiles, instructionName, instructionsLine, instructionsFileLine };

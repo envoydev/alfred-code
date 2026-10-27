@@ -1,6 +1,6 @@
 # The security method
 
-The six steps `review-security` runs, in order, over the target only. Locate a symbol through the navigation server (`find_symbol` with its body, `find_referencing_symbols`, `get_symbols_overview`) or the LSP before you read code; Read is for code already located.
+The six steps `review-security` runs, in order, over the target only. Locate a symbol through the navigation tools (the symbol with its body, its callers, a file's outline) before you read code; Read is for code already located.
 
 1. **Repo context.** Before judging the change, learn what the project already uses: its validators, sanitisers, encoders, authentication and authorization helpers, crypto wrappers, secret store and query builders. Name each one found with its `file:line`. A finding later cites the helper the change should have used.
 2. **Departures.** A change that does the job one of those helpers does, without it: a hand-built query beside the project's parameterised builder, a hand-rolled token check beside the auth middleware, a new endpoint missing the policy every sibling carries. A departure is a candidate even before a taint trace proves it.

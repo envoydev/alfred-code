@@ -49,7 +49,7 @@ function routingMapText()
 }
 
 // A project the script can inventory with no CLI on PATH: its servers come from .mcp.json.
-function project(name, { servers = ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'chrome-control'], settings, local, account } = {})
+function project(name, { servers = ['playwright-chrome', 'windows-desktop'], settings, local, account } = {})
 {
     const root = path.join(TMP, name);
     write(path.join(root, '.claude', 'skills', 'capture-awareness', 'SKILL.md'), '---\nname: capture-awareness\ndescription: "x"\ndisable-model-invocation: true\n---\n');
@@ -89,21 +89,22 @@ test('I19: alfred-security says a Read deny covers the shell file commands Claud
 
 // ------------------------------------------------------------------ I20
 
-test('I20: the browser row names the resolved data root and engine, never the slots', () =>
+test('I20: the rows name the resolved data root, never the slots', () =>
 {
-    const { root, home } = project('data-root-default', { servers: ['chrome-control', 'firefox-control'] });
+    const { root, home } = project('data-root-default', { servers: ['playwright-chrome', 'playwright-firefox', 'windows-desktop'] });
     const rows = rowsOf(run([], { cwd: root, home }).out);
-    assert.equal(rows.length, 2, rows.join('\n'));
-    assert.ok(rows[0].includes('`.alfred/chrome-control/output/`'), rows[0]);
-    assert.ok(rows[1].includes('`.alfred/firefox-control/output/`'), rows[1]);
+    assert.equal(rows.length, 3, rows.join('\n'));
+    assert.ok(rows[0].startsWith('- `playwright-chrome` - the browser server') && rows[1].startsWith('- `playwright-firefox` - the browser server'), rows.join('\n'));
+    for (const row of rows.slice(0, 2)) assert.ok(row.includes("the server's `--output-dir`"), row);
+    assert.ok(rows[2].includes('`.alfred/state/approvals/DESKTOP-EXEC-ALLOW`'), rows[2]);
     for (const row of rows) assert.doesNotMatch(row, /<data root>|<engine>|<server>|<docs-path>/, row);
 });
 
 test('I20: the data root follows ALFRED_CODE_DATA_PATH, settings.local.json over settings.json', () =>
 {
-    const { root, home } = project('data-root-local', { servers: ['chrome-control'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } } });
+    const { root, home } = project('data-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } } });
     const [row] = rowsOf(run([], { cwd: root, home }).out);
-    assert.ok(row.includes('`data/mine/chrome-control/output/`'), row);
+    assert.ok(row.includes('`data/mine/state/approvals/DESKTOP-EXEC-ALLOW`'), row);
 });
 
 test('I20: the script resolves the data root the way stack/mcp/data-root.js does', () =>
@@ -138,21 +139,21 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
     const map = routingMap();
     const slots = { dataRoot: 'data/x', docsRoot: 'data/x/docs' };
     const rows = [
-        routingRow('webkit-control', map, slots),
-        pluginRoutingRow('msedge-control', 'msedge-control', map, slots),
-        routingRow('windows-control', map, slots),
-        pluginRoutingRow('macos-control', 'macos-control', map, slots),
+        routingRow('playwright-webkit', map, slots),
+        pluginRoutingRow('playwright', 'playwright', map, slots),
+        routingRow('windows-desktop', map, slots),
+        pluginRoutingRow('macos-desktop', 'macos-desktop', map, slots),
     ];
     for (const row of rows) assert.doesNotMatch(row.split('first call:')[0], /<[a-z][a-z -]*>/, row);
-    assert.ok(rows[0].includes('`data/x/webkit-control/output/`'), rows[0]);
-    assert.ok(rows[1].includes('`data/x/msedge-control/output/`'), rows[1]);
-    assert.ok(rows[2].includes('data/x/state/approvals/DESKTOP-EXEC-ALLOW'), rows[2]);
+    assert.ok(rows[0].startsWith('- `playwright-webkit` - '), rows[0]);
+    assert.ok(rows[1].startsWith('- `playwright` - '), rows[1]);
+    for (const row of rows.slice(2)) assert.ok(row.includes('data/x/state/approvals/DESKTOP-EXEC-ALLOW'), row);
 });
 
 test('I20: the rows\' docs and data roots follow a local-scope install\'s settings.local.json over settings.json', () =>
 {
     // 2.8.0: the receipt is the data root's (state/approvals/), so the row follows ALFRED_CODE_DATA_PATH the same way.
-    const { root, home } = project('docs-root-local', { servers: ['windows-control'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs', ALFRED_CODE_DATA_PATH: 'shared' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs', ALFRED_CODE_DATA_PATH: 'var/data' } } });
+    const { root, home } = project('docs-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs', ALFRED_CODE_DATA_PATH: 'shared' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs', ALFRED_CODE_DATA_PATH: 'var/data' } } });
     const { out } = run([], { cwd: root, home });
     assert.match(out, /DOCS ROOT: var\/data\/docs\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.local\.json env\)/);
     const [row] = rowsOf(out);
@@ -162,9 +163,9 @@ test('I20: the rows\' docs and data roots follow a local-scope install\'s settin
 test('I20: --verify fails a rule still holding an unresolved slot', () =>
 {
     const { root, home } = project('verify-slot');
-    const rule = write(path.join(root, 'rule.md'), '---\ndescription: generated\n---\n\n# x\n\n## Orchestration skills\n\n## Subagent seats\n\n## MCP routing\n- `chrome-control` - screenshots land in `<data root>/browser/<engine>/output/`. first call: `ToolSearch select:x`.\n');
+    const rule = write(path.join(root, 'rule.md'), '---\ndescription: generated\n---\n\n# x\n\n## Orchestration skills\n\n## Subagent seats\n\n## MCP routing\n- `playwright` - screenshots land in `<data root>/<docs-path>/output/`. first call: `ToolSearch select:x`.\n');
     const { status, out } = run(['--verify', rule], { cwd: root, home });
-    assert.match(out, /slots:\s+FAIL - unresolved <data root>, <engine>/);
+    assert.match(out, /slots:\s+FAIL - unresolved <data root>, <docs-path>/);
     assert.equal(status, 1, out);
 });
 
@@ -192,15 +193,14 @@ test('I21: the always-on surface skips manual-only descriptions and prices the g
     write(path.join(base, 'skills', 'manual', 'SKILL.md'), '---\nname: manual\ndescription: "a long manual-only description"\ndisable-model-invocation: true\n---\n');
     // The agents reference holds the doc's policy and the routing map; SKILL.md the rule's copy target, its import slot left out.
     write(path.join(base, 'caps', 'SKILL.md'), '# caps\n\nCOPY TARGET - the rule:\n\n```markdown\n---\ndescription: d\n---\n\n# R\n\nText.\n\n<the script\'s import lines, one per awareness doc>\n```\n');
-    write(path.join(base, 'caps', 'references', 'agents.md'), '# caps\n\n```markdown\n## Usage policy (fixed - stamped verbatim, every run)\n<!-- policy-rev: 00000000 -->\n- P1\n\n## Orchestration skills\n```\n\nThe routing map (only for servers actually present):\n- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.\n- `browser` - not fixed text.\n');
+    write(path.join(base, 'caps', 'references', 'agents.md'), '# caps\n\n```markdown\n## Usage policy (fixed - stamped verbatim, every run)\n<!-- policy-rev: 00000000 -->\n- P1\n\n## Orchestration skills\n```\n\nThe routing map (only for servers actually present):\n- `playwright` - not fixed text.\n');
     const s = alwaysOnSurface({ rulesDir: path.join(base, 'rules'), agentsDir: path.join(base, 'agents'), skillsDir: path.join(base, 'skills'), capabilitiesDir: path.join(base, 'caps') });
     assert.equal(s.rules, 'ABCDE'.length, 'the body only - no frontmatter, no comment, no blank-line padding');
     assert.equal(s.agents, 5);
     assert.equal(s.skills, 6, 'description plus when_to_use, the manual-only skill not counted');
     assert.equal(s.manualOnly, 1);
-    const fixed = '## Usage policy (fixed - stamped verbatim, every run)\n- P1'.length + '- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.'.length
-        + '# R\n\nText.'.length;
-    assert.equal(s.generated, fixed, 'the policy section (its stamp comment is stripped), the locked-server row and the awareness rule\'s own text');
+    const fixed = '## Usage policy (fixed - stamped verbatim, every run)\n- P1'.length + '# R\n\nText.'.length;
+    assert.equal(s.generated, fixed, 'the policy section (its stamp comment is stripped) and the awareness rule\'s own text - no routing row is fixed');
     assert.equal(s.total, s.rules + s.agents + s.agentTools + s.skills + s.generated);
 });
 
@@ -256,14 +256,16 @@ test('I24: the stamped policy drops the docs-placement and memory lines and stat
     assert.ok(!policy.includes('<docs-path>'), 'alfred-docs-root owns where a doc lands');
 });
 
-test('I24: the locked servers share ONE routing row that points at their baselines', () =>
+// 2026-10-24 (the stack ships no MCP server): the locked servers' shared row left with them, and every row is keyed by
+// the name the record of the shipped servers registers it under.
+test('I24: the routing map keys one row per recorded server and names no server the stack shipped', () =>
 {
-    const map = routingMapText();
-    const locked = map.split('\n').filter((l) => /^- .*`(?:alfred-)?(navigation|documentation|memory)`/.test(l));
-    assert.equal(locked.length, 1, locked.join('\n'));
-    assert.match(locked[0], /^- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - /);
-    for (const select of ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', 'mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id', 'mcp__plugin_alfred-memory_alfred-memory__memory_store'])
-        assert.ok(!map.includes(select), `the template restates a baseline's load line: ${select}`);
+    const keys = routingMapText().split('\n').map((l) => /^- `([^`]+)` - /.exec(l)).filter(Boolean).map((m) => m[1]);
+    assert.deepStrictEqual(keys, ['playwright', 'windows-desktop', 'macos-desktop', 'appium-mcp']);
+    const record = Object.keys(JSON.parse(read('stack/mcp/original-mcps.json')).mcpServers);
+    for (const key of keys.slice(1)) assert.ok(record.includes(key), `${key} is a record name`);
+    assert.ok(record.some((k) => k.startsWith('playwright-')), 'the record registers the browser per engine');
+    assert.doesNotMatch(routingMapText(), /`alfred-(?:navigation|documentation|memory)`|`(?:browser|windows-control|macos-control|mobile-control)` - /);
 });
 
 // Audit 2026-10-14 RU11: the locked row no longer restates the navigation rule's edit and memory lines - both
@@ -280,16 +282,16 @@ test('I24: the generated rule holds no sentence a baseline owns', () =>
     assert.ok(!registry['navigation-edit-tools'], 'the edit line has one home, the navigation rule');
 });
 
-test('I24: the report prints one locked-server row, and --verify passes a rule built from it', () =>
+test('I24: the report prints one row per registered server, and --verify passes a rule built from it', () =>
 {
     const { root, home } = project('locked-row');
     const { out } = run([], { cwd: root, home });
     const rows = rowsOf(out);
     assert.equal(rows.length, 2, rows.join('\n'));
-    assert.equal(rows.filter((r) => /^- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - /.test(r)).length, 1, rows.join('\n'));
-    assert.equal(rows.filter((r) => /^- `chrome-control` - /.test(r)).length, 1, rows.join('\n'));
-    const partial = rowsOf(run([], { cwd: project('locked-partial', { servers: ['alfred-memory', 'alfred-navigation'] }).root, home }).out);
-    assert.deepStrictEqual(partial.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-memory`'], 'a locked server the install lacks is not named');
+    assert.equal(rows.filter((r) => /^- `playwright-chrome` - /.test(r)).length, 1, rows.join('\n'));
+    assert.equal(rows.filter((r) => /^- `windows-desktop` - /.test(r)).length, 1, rows.join('\n'));
+    const unknown = rowsOf(run([], { cwd: project('unknown-server', { servers: ['serena'] }).root, home }).out);
+    assert.deepStrictEqual(unknown.map((r) => /^- `([^`]+)` - routing: see project docs\./.exec(r)?.[1]), ['serena'], 'a server the map does not key gets the unknown row');
 
     const skill = read(TEMPLATE).split('\n');
     const at = skill.findIndex((l) => /<!--\s*policy-rev:/.test(l));
@@ -308,50 +310,43 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
 
 // ------------------------------------------------------------------ I12 (prose half)
 
-test('I12: the navigation rule keeps rename and safe delete, every other edit on Edit / Write; the locked row points at it', () =>
+test('I12: the navigation rule keeps rename and safe delete, every other edit on Edit / Write', () =>
 {
     const nav = squash(read('stack/rules/alfred-navigation.md'));
     assert.ok(!nav.includes('symbol edits and the memory handoff stay on the navigation server'), 'the old edit routing is gone');
-    const line = 'keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`';
-    assert.ok(nav.includes(line), 'alfred-navigation.md');
-    assert.ok(nav.includes('every other edit goes through Edit / Write'), 'alfred-navigation.md');
+    assert.ok(nav.includes('Edits go through Edit / Write'), 'alfred-navigation.md');
+    assert.ok(nav.includes('only a symbol rename or a safe delete is used'), 'alfred-navigation.md');
     const map = squash(routingMapText());
-    // RU11: the row points at the baselines instead of restating them.
-    assert.ok(map.includes('- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - load and route as their baselines say; first call: the `ToolSearch select:` line each names.'), 'the template row points');
-    assert.ok(!map.includes(line) && !map.includes('memory tools are off'), 'the template row restates no baseline line');
-    assert.ok(!map.includes('symbol-level editor'), 'the row no longer sells the server as an editor');
-    // The user's 2026-10-13 ruling: the navigation server is navigation only, every note goes to alfred-memory.
-    assert.ok(!nav.includes('seat memory handoff') && !map.includes('seat memory handoff'), 'no seat handoff left on the navigation server');
-    // Stack audit 2026-10-20 rules row 6: the memory rule is the one home of that routing; the navigation rule no longer repeats it.
-    assert.ok(squash(read('stack/rules/alfred-memory.md')).includes('never in the navigation server (its memory tools are off)'), 'the memory rule routes notes to alfred-memory');
+    assert.ok(!map.includes('symbol-level editor'), 'no row sells a server as an editor');
+    assert.ok(!nav.includes('seat memory handoff') && !map.includes('seat memory handoff'), 'no seat handoff left on a navigation server');
 });
 
 // ------------------------------------------------------------------ I45 + I10 (prose half)
 
 test('I45: the macOS row leads with the failed start, and an empty snapshot only past the skip switch', () =>
 {
-    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `macos-control`')));
+    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `macos-desktop`')));
     assert.ok(!row.includes('an empty snapshot means the Accessibility grant is missing'), row);
     assert.ok(row.includes('fails to connect at start') && row.includes('System Settings opens'), row);
     assert.ok(row.includes('`MACOS_MCP_SKIP_PERMISSION_CHECK=1`'), row);
     assert.ok(row.includes('`Shell`') && row.includes('`<data root>/state/approvals/DESKTOP-EXEC-ALLOW`'), row);
 });
 
-test('I10: the Windows row says FileSystem is off and App launch_executable is denied without the receipt', () =>
+test('I10: the Windows row keeps FileSystem excluded and App launch_executable denied without the receipt', () =>
 {
-    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-control`')));
+    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-desktop`')));
     assert.ok(row.includes('`FileSystem`'), row);
     assert.ok(row.includes('`launch_executable`') && row.includes('`<data root>/state/approvals/DESKTOP-EXEC-ALLOW`'), row);
 });
 
-// 2026-10-13: mobile-control (appium-mcp) - its row's output dirs are the launcher's, under the resolved data root.
-test('mobile-control: the row names its output dirs under the resolved data root and the registration\'s tool spelling', () =>
+// 2026-10-13: mobile-control (appium-mcp); 2026-10-24 keyed by the record's `appium-mcp`, its output dirs the server's own env.
+test('appium-mcp: the row names the server\'s output dirs and the registration\'s tool spelling', () =>
 {
-    const { root, home } = project('mobile-row', { servers: ['mobile-control'] });
+    const { root, home } = project('mobile-row', { servers: ['appium-mcp'] });
     const rows = rowsOf(run([], { cwd: root, home }).out);
     assert.strictEqual(rows.length, 1, rows.join('\n'));
-    assert.ok(rows[0].startsWith('- `mobile-control` - the mobile server (appium-mcp)'), rows[0]);
-    for (const dir of ['page-sources', 'screenshots']) assert.ok(rows[0].includes(`\`.alfred/mobile-control/${dir}/\``), rows[0]);
-    assert.match(rows[0], /ToolSearch select:mcp__mobile-control__appium_session_management,mcp__mobile-control__appium_find_element,/);   // mcp-fixture: the registration spelling a copy-route row is re-spelled to
+    assert.ok(rows[0].startsWith('- `appium-mcp` - the mobile server (appium-mcp)'), rows[0]);
+    for (const dir of ['PAGE_SOURCES_DIR', 'SCREENSHOTS_DIR']) assert.ok(rows[0].includes(`\`${dir}\``), rows[0]);
+    assert.match(rows[0], /ToolSearch select:mcp__appium-mcp__appium_session_management,mcp__appium-mcp__appium_find_element,/);   // mcp-fixture: the registration spelling a copy-route row is re-spelled to
     assert.doesNotMatch(rows[0], /<data root>|<server>|<engine>/, rows[0]);
 });

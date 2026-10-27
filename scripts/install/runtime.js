@@ -40,6 +40,8 @@ function resolveWin(cmd, env = process.env, isFile = isFileOnDisk)
     const listed = (read('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.trim().toLowerCase()).filter((e) => STARTABLE.includes(e));
     const own = path.win32.extname(cmd).toLowerCase();
     const names = STARTABLE.includes(own) ? [cmd] : listed.map((e) => cmd + e);
+    // A full path (process.execPath, a --claude path) is that file, never a name to look up on PATH.
+    if (/^([A-Za-z]:\\|\\\\)/.test(cmd)) return names.find((name) => isFile(name)) || '';
     for (const dir of dirs)
         for (const name of names)
         {
@@ -261,6 +263,6 @@ function cloneMain({ repoUrl, tmpdir = os.tmpdir() } = {})
 }
 
 module.exports = {
-    which, locate, unrunnable, cliRunner, capture, resolveWin, resolveOnce, cmdArg, spawnCommand, spawnCommandAsync, execCommand,
+    which, locate, unrunnable, cliRunner, capture, resolveWin, resolveOnce, cmdArg, commandPlan, spawnCommand, spawnCommandAsync, execCommand,
     gitRoot, gitRevision, runNode, lines, fetchArchive, cloneMain, join: path.join,
 };

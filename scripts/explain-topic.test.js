@@ -60,7 +60,7 @@ test('explain-topic: project code keeps the real-file walkthrough, any other top
 
 test('explain-topic: the diagram is one offline HTML file under the docs root, checked before hand-over', () => {
   const b = flat(read(`${SKILL}/SKILL.md`));
-  assert.match(b, /`<docs root>\/tutorial\/<topic-slug>\.html`/);
+  assert.match(b, /`<docs root>\/explanations\/<topic-slug>\.<level>\.html`/);
   assert.match(b, /inline SVG/);
   assert.match(b, /no external script, font, image or CDN/);
   assert.match(b, /4\.5:1/);
@@ -74,12 +74,25 @@ test('explain-topic: the diagram is one offline HTML file under the docs root, c
   assert.doesNotMatch(read(`${SKILL}/references/diagram-patterns.md`), /<script\b|<link\b|https?:\/\//);
 });
 
+test('explain-topic: a child level, and every run saves its pair under explanations/ (item 6)', () => {
+  const b = flat(read(`${SKILL}/SKILL.md`));
+  assert.match(b, /\*\*Child \/ 'like I'm six'\*\*/);
+  assert.match(b, /child level: a story/);
+  assert.match(b, /sentences of about 8-10 words/);
+  assert.match(b, /grown-ups call this/);
+  assert.match(b, /`<docs root>\/explanations\/<topic-slug>\.<level>\.md`/);
+  assert.match(b, /`<docs root>\/explanations\/<topic-slug>\.<level>\.html`/);
+  assert.match(b, /`-2`/);
+  assert.doesNotMatch(b, /tutorial\//);
+});
+
 // The template's own claim, measured: every text colour reaches 4.5:1 on each fill it sits on, every line and shape
 // 3:1 on the page (WCAG 1.4.3 and 1.4.11), in light and dark mode.
-test('explain-topic: the template colours meet the contrast they promise, in both modes', () => {
-  const tpl = read(`${SKILL}/references/diagram-template.md`);
-  const blocks = [...tpl.matchAll(/:root\s*\{([^}]*)\}/g)].map((m) => Object.fromEntries(
-    [...m[1].matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((v) => [v[1], v[2]])));
+const paletteOf = (file) => [...read(`${SKILL}/references/${file}`).matchAll(/:root\s*\{([^}]*)\}/g)].map((m) => Object.fromEntries(
+  [...m[1].matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((v) => [v[1], v[2]])));
+for (const file of ['diagram-template.md', 'page-template.md'])
+test(`explain-topic: the ${file} colours meet the contrast they promise, in both modes`, () => {
+  const blocks = paletteOf(file);
   assert.strictEqual(blocks.length, 2, 'a light and a dark palette');
   const lum = (hex) => {
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -93,5 +106,25 @@ test('explain-topic: the template colours meet the contrast they promise, in bot
       assert.ok(ratio(c[fg], c[bg]) >= 4.5, `${fg} on ${bg}: ${ratio(c[fg], c[bg]).toFixed(2)}`);
     for (const [fg, bg] of [['line', 'bg'], ['box-stroke', 'bg'], ['accent', 'bg']])
       assert.ok(ratio(c[fg], c[bg]) >= 3, `${fg} on ${bg}: ${ratio(c[fg], c[bg]).toFixed(2)}`);
+    // the page's answer feedback is text on the page
+    if (file === 'page-template.md')
+      for (const fg of ['ok', 'bad']) assert.ok(ratio(c[fg], c.bg) >= 4.5, `${fg} on bg: ${ratio(c[fg], c.bg).toFixed(2)}`);
   }
+});
+
+test('explain-topic: the page keeps the diagram template\'s palette, so a diagram pasted in looks the same (item 6)', () => {
+  const [page, diagram] = [paletteOf('page-template.md'), paletteOf('diagram-template.md')];
+  for (const mode of [0, 1]) for (const [k, v] of Object.entries(diagram[mode])) assert.strictEqual(page[mode][k], v, `--${k} in mode ${mode}`);
+});
+
+test('explain-topic page template: no script, link or URL; every radio has its label; one right answer per question (item 6)', () => {
+  const tpl = read(`${SKILL}/references/page-template.md`);
+  assert.doesNotMatch(tpl, /<script\b|<link\b|https?:\/\//);
+  const radios = [...tpl.matchAll(/<input type="radio" name="(q\d+)" id="([^"]+)"([^>]*)>/g)];
+  assert.ok(radios.length >= 2);
+  for (const [, , id] of radios) assert.ok(tpl.includes(`<label for="${id}"`), id);
+  for (const q of new Set(radios.map((m) => m[1])))
+    assert.strictEqual(radios.filter((m) => m[1] === q && /\bdata-right\b/.test(m[3])).length, 1, q);
+  assert.match(tpl, /<details>\s*<summary>/);
+  assert.match(tpl, /input:checked \+ label/);
 });

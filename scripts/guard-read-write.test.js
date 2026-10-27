@@ -139,27 +139,27 @@ test('guard-read-whole-file: a shell loop ENDS at its own done - a later cat is 
   assert.equal(bash(READ, 'find . -name "*.cs" -exec cat {} +').status, 2, 'find -exec cat is untouched by the change');
 });
 
-test('guard-read-whole-file: no serena remedy for a path serena is seeded to ignore', () => {
-  // Two bundles: the denial named serena for a path under `.claude/`, which both installer twins
-  // seed into serena's OWN ignored_paths, so the redirect the model made from it errored. A remedy
-  // that cannot run is worse than none - it costs the round trip and teaches the block is noise.
+test('guard-read-whole-file: no navigation remedy for a tree no symbol lookup indexes', () => {
+  // Two bundles: the denial named the navigation server for a path under `.claude/`, which the stack once seeded into
+  // that server's OWN ignored paths, so the redirect the model made from it errored. A remedy that cannot run is worse
+  // than none - it costs the round trip and teaches the block is noise.
   const inClaude = path.join(ROOT, '.claude', 'hooks', 'local-hook.js');
   fs.mkdirSync(path.dirname(inClaude), { recursive: true });
   fs.writeFileSync(inClaude, LONG_JS);
   const r = run(READ, { tool_name: 'Read', tool_input: { file_path: inClaude } });
   assert.equal(r.status, 2, 'the whole-file read is still blocked');
-  // M30: the hook's remedy line is the plugin spelling - the old `select:mcp__serena` pattern matched nothing any hook (mcp-fixture)
-  // writes, so it could never fail (the ordinary-path case below proves this pattern does match a real remedy).
-  assert.doesNotMatch(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/, 'but no tools that cannot index this tree');
-  assert.match(r.stderr, /ignored_paths/, 'the denial says why');
+  // M30: the pattern is the remedy's own text - one matching nothing any hook writes could never fail (the ordinary-path
+  // case below proves this pattern does match a real remedy).
+  assert.doesNotMatch(r.stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/, 'but no tools that cannot index this tree');
+  assert.match(r.stderr, /No symbol lookup indexes this tree/, 'the denial says why');
   assert.match(r.stderr, /grep -n/, 'and gives a remedy that works there');
   const inSerena = path.join(ROOT, '.serena', 'cache', 'big.ts');
   fs.mkdirSync(path.dirname(inSerena), { recursive: true });
   fs.writeFileSync(inSerena, LONG_JS);
-  assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/,
-    "serena's own tree either");
-  // The data root (ALFRED_CODE_DATA_PATH, default .alfred) holds serena's own home and the browser profiles:
-  // seeded into ignored_paths too, so no navigation remedy there either - the default and a custom root alike.
+  assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/,
+    "the old .serena tree either");
+  // The data root (ALFRED_CODE_DATA_PATH, default .alfred) holds the docs, the state and an old server's data: no
+  // navigation remedy there either - the default and a custom root alike.
   for (const [root, env] of [['.alfred', {}], ['.data', { ALFRED_CODE_DATA_PATH: '.data' }]])
   {
     const inData = path.join(ROOT, root, 'serena', 'home', 'big.ts');
@@ -167,7 +167,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
     fs.writeFileSync(inData, LONG_JS);
     const d = run(READ, { tool_name: 'Read', tool_input: { file_path: inData } }, { env: { ...process.env, ...env } });
     assert.equal(d.status, 2, root);
-    assert.doesNotMatch(d.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/, `no navigation remedy under ${root}`);
+    assert.doesNotMatch(d.stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/, `no navigation remedy under ${root}`);
     assert.match(d.stderr, /grep -n/, root);
   }
   // ... and an ordinary source path still gets the whole ladder, loading call included
@@ -176,7 +176,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(src, LONG_JS);
   const ok = run(READ, { tool_name: 'Read', tool_input: { file_path: src } });
   assert.equal(ok.status, 2);
-  assert.match(ok.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview/, 'the serena ladder is unchanged where it works');
+  assert.match(ok.stderr, /LSP documentSymbol on[\s\S]*navigation line of your session-start tool order - its ToolSearch select: loads them/, 'the navigation ladder is unchanged where it works');
 });
 
 test('guard-read-whole-file: an oversized binary or minified file is answered with PAGING, not a grep', () => {
@@ -478,7 +478,7 @@ test('audit 2026-10-11 SD16: an out-of-project file is located with grep, and th
   const r = readAt(f, 399, 300, s);
   assert.equal(r.status, 2, 'the measured second range still blocks - the 60% cap is unchanged');
   assert.match(r.stderr, /179 of its 632 lines are still readable by range here/, 'floor(632 x 0.6) = 379, less the 200 read');
-  assert.match(r.stderr, /outside the project, so the navigation server has not indexed it/);
+  assert.match(r.stderr, /outside the project, so no navigation index covers it/);
   assert.match(r.stderr, /grep -n '<function, handler or key you need>'/);
   assert.doesNotMatch(r.stderr, /get_symbols_overview|ToolSearch select/, 'no navigation remedy for a tree it never indexed');
   assert.equal(readAt(f, 473, 48, s).status, 0, 'the targeted range the denial points at passes (39%)');
@@ -592,6 +592,17 @@ test('2.8.0: a plan under the docs root\'s work/plans/ reads whole, as one under
   const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
   assert.equal(rd('.alfred/docs/work/plans/plan.md'), 0, 'the plan under work/plans/');
   assert.equal(rd('work/plans/other.md'), 2, 'a work/plans/ folder outside the docs root is no plan');
+});
+
+test('a 61KB draft under state/sessions/scorer/ reads whole; a 61KB .md elsewhere under state/ still blocks', () => {
+  const dir = capDir();
+  const slug = path.join(dir, '.alfred', 'state', 'sessions', 'scorer', 's1', 'x'); fs.mkdirSync(slug, { recursive: true });
+  fs.writeFileSync(path.join(slug, 'ab12cd34.draft.md'), '# draft\n' + 'x'.repeat(61 * 1024) + '\n');
+  fs.writeFileSync(path.join(dir, '.alfred', 'state', 'sessions', 'other.md'), '# other\n' + 'x'.repeat(61 * 1024) + '\n');
+  const envd = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
+  assert.equal(rd('.alfred/state/sessions/scorer/s1/x/ab12cd34.draft.md'), 0, 'the draft is the grader\'s mandated input');
+  assert.equal(rd('.alfred/state/sessions/other.md'), 2, 'any other 61KB file under state/ still blocks');
 });
 
 test('audit 2026-10-10 C11/C13: the rule notice reads no redirect inside quotes and no target outside the project', () => {

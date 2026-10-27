@@ -17,7 +17,7 @@ this cycle, not remembered from an earlier one.
 - Background runs - the one start line
 - Reviewer fit - the step-4 stop's recommendation
 - Conformance - step 5
-- The step-6 memory purge
+- The step-6 notes purge
 - The sibling hand-off - step 6
 - Doc-drift surfaces - the step-6 close line
 
@@ -50,13 +50,13 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   stop and put the choice through AskUserQuestion - 'Retry the stamp (Recommended)' / 'Run this stage inline' -
   rather than retrying blind or dispatching around the gate.
 - A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits.
-- **Lifetime.** The AUTO stamp lives until step 6's close deletes it or the session ends - a
+- **Lifetime.** This hand-written AUTO stamp lives until step 6's close deletes it or the session ends (the hook's session stamp is never deleted - step 6 deletes its run marker) - a
   resumed session re-writes it only from the user's waiver words typed in THAT session, else the
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
-- **auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
-- **Under auto-mode an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
+- **Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
+- **Under auto-run an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
   the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
 - **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
   asked for a fresh session nobody could take, and a waived close printed none of its fields). So the fresh-session
@@ -74,12 +74,12 @@ Each task card goes to its stack's `<stack>-implementer` seat, dispatched exactl
 spells it (`alfred-code:<seat>` where the core plugin carries it) - a flat fan-out with the main
 session the only orchestrator:
 
-- **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-mode the hook's `AUTO` stamp already stands - leave it)
+- **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-run the hook's `AUTO` stamp already stands - leave it)
   (the dispatch hook blocks an unstamped implementer). It is the plan's own - `<plan id>` is the plan file's name without `.md`. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. DELETE it when the fan-out completes,
   before the step-5 stop: a live stamp can authorize an unrelated dispatch for up to 8h.
 - **The contract version.** MINT it - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY
-  dispatch prompt verbatim, with the seat's literal note name and this project's memory tag:
-  `note: <feature>/<contract_version>/<seat>/<task>`, `project:<name>` (the seat stores its note under both - `alfred-memory.md`).
+  dispatch prompt verbatim, with the seat's literal note name:
+  `note: <feature>/<contract_version>/<seat>/<task>` (the seat stores its note under that name on the handoff bus).
 - **The card's docs anchors ride the brief** - the `docs.js where <file>` section ids the design
   read for the card's files - so the seat reads those sections instead of re-orienting or skipping
   it (measured: 0 docs reads in 18 of 18 seat transcripts whose briefs named none).
@@ -139,15 +139,14 @@ Deviations and findings become a punch list routed back to step 4 - and the fix 
 reviewer again before anything is stamped: a punch-list fix is unreviewed code. Then the body's
 `Conformance:` stamp.
 
-## The step-6 memory purge
+## The step-6 notes purge
 
-**The purge is counted, not claimed.** At close, from the project root: `node .claude/hooks/memory.js handoff <feature>` with the feature's slug - its first line counts what is left of the feature's handoff notes (this project's `handoff:<feature>` rows, and an older release's navigation-server notes still on disk, each listed below it), read from the memory database, so no recollection decides it; an unreadable database prints no number and exits 1. Above zero the close is not done - delete the rest, then count again.
+**The purge is counted, not claimed.** At close, from the project root: `node .claude/hooks/handoff.js left <feature>` with the feature's slug - its first line counts what is left of the feature's handoff notes, each listed `note <name>` below it, read from the bus, so no recollection decides it; an unreadable store prints no number and exits 1. Above zero the close is not done - purge the rest, then count again.
 
 ## The sibling hand-off - step 6
 
 A change a sibling repo must follow is written as a task card under
-`<docs-path>/work/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or an
-`alfred-memory` note, after reading the sibling's actual source: for each client action the card tells the sibling
+`<docs-path>/work/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), after reading the sibling's actual source: for each client action the card tells the sibling
 to wire, its handler there, and each backend route that handler calls confirmed to exist in THIS repo (one grep
 over the endpoint files) - a route that does not exist leaves the bullet out. The close then prints it beside
 the card as the docs-root rule's hand-off block, ready to paste into the sibling's session, so nobody has to ask for it inline (measured:
