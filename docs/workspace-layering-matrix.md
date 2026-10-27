@@ -103,7 +103,7 @@ every `--source`, a throwaway tree, `CLAUDE_CONFIG_DIR` and `HOME` per case, the
 | S' | `node --test scripts/setup-plugin.test.js`, in the tree | 89/89 |
 | F | the review's fix pass, in the tree: `install-workspace`, `workspace`, `install-settings-writer`, `install-variables-move`, `install-variables`, `workspace-cli`, `check-turn-build`, `one-gitignore`, `git-hygiene`, `install-data-root`, `docs-move` | 279/279, 133/133, 247/247 |
 | M | `node docs/workspace-layering-matrix/ws-matrix-r2.js <export> <v2.12.0 tree> <v2.10.0 tree>` | 81/81 (77 acceptance rows, 4 fix-pass rows) |
-| Gate | `npm run gate` on the final commit | not run for this release alone - the 3.0.0 release runs one gate over releases 2 and 3 on its final commit |
+| Gate | `npm run gate` | the first gate on `884b933` was red - 6 failures on macOS, 7 on Windows, Linux not run (Docker off); fixed in `ddbd2a9` and `ea109ca` (release 3's 'Found and fixed'). The 3.0.0 gate runs once over releases 2 and 3 |
 
 ### Found and fixed - release 2
 
@@ -150,9 +150,59 @@ Each fix has its regression test; the runs above are from after the last fix.
 | AC18 the MCP hint | PASS | M (AC18) |
 | AC19 the switch | PASS | M (AC19, AC19-copy) |
 | AC20 boundaries and cost | PASS | M (AC20: standalone 27.5 ms vs 2.12.0 26.7 ms, depth 8 30.8 ms) |
-| AC21 lint, suites, matrix, gate | PASS; the gate runs at the 3.0.0 release | `npm run lint` clean; S, S', F, M; Gate |
+| AC21 lint, suites, matrix, gate | PASS; the first gate was red and is fixed, the 3.0.0 gate is the release's | `npm run lint` clean; S, S', F, M; Gate |
 | AC22 no direct settings reader | PASS | S (variables-readers, 3/3 in the tree; stamp-docs-root; update-preflight) |
 | AC23 Claude Code's own settings follow the file | PASS | M (AC23 at project and local) |
 | AC24 a join inherits | PASS after `7bd376c`, `b14b286` | M (AC24 via update and via configure) |
 | The review's I1-I4 | PASS after `7e011bc`, `0ae1716`, `9eaeae1` | M (FX-I1 to FX-I4; each FAIL on `b14b286`) |
 | Windows | NOT RUN | this release's matrix runs on macOS only; the gate's Windows leg runs the suites |
+
+## Release 3 - docs, preferences and memory for a child
+
+Run 2026-10-27 on `develop` at `38743e0` (3.0.0, unreleased) against the spec's release 3 (D3, sections 2.2-2.3,
+AC24-AC26, AC29's release 3 bullets, AC31). The setup is release 1's: a clean export of this tree as every
+`--source`, a throwaway tree, `CLAUDE_CONFIG_DIR` and `HOME` per case, the `claude` stub. The old tree is
+`git archive 884b933c`, release 2's last commit.
+
+### The runs - release 3
+
+| Key | Command | Result |
+|---|---|---|
+| S | `node --test` over the suites each task touched, in the tree (the ledger's per-task lines) | layout-workspace 24/24, preferences-session 79/79, docs-session 130/130, guard-hooks 209/210 (the one failure needs a project outside `/tmp`; it fails at `884b933` too), install-workspace + install-settings-writer + install-stamp, setup-plugin + workspace-cli 120/120 |
+| S' | the same suites inside the export, 19 files | 965: 957 pass, 4 skipped, 4 environmental (no `.git` in the export, a `/tmp` root, a `node_modules` link the run added) |
+| F | the final review's fix pass, in the tree | layout-workspace, guard-hooks, install-workspace, preferences-session, docs-session, workspace-cli, layout-variables, install-variables: 24, 210 (the one `/tmp` case above), 56, 79, 130, 31, 26, 16 - every new test RED first |
+| M | `node docs/workspace-layering-matrix/ws-matrix-r3.js <export> <884b933c tree> <claude>` | 26/26 (R3-1a to R3-9, R3-10 and R3-11 from the fix pass, R3-8 a logged-out `claude -p` 2.1.311 start) |
+| P | `node docs/workspace-layering-matrix/memory-probe.js <claude>` (A5) | macOS 8/8 on 2.1.311; Windows 8/8 case-folded on 2.1.309 (the evidence doc's 'Release 3 - A5') |
+| Gate | `npm run gate` on the 3.0.0 commit | in the release's own record: it runs once over releases 2 and 3 |
+
+### Found and fixed - release 3
+
+- **The gate over release 2 - `ddbd2a9`, `ea109ca`.** The first gate on `884b933` failed 6 cases on macOS and 7 on
+  Windows; Linux did not run (Docker was off). `variables.js` spawned git directly, a Windows rename raced a reader,
+  three tests wrote a real home and a README count was stale.
+- **A5 on Windows - `61412e2`.** Claude Code names the memory folder by the case the cwd was typed in. NTFS opens
+  R6's spelling anyway, and the past-200 listing now ignores case on win32.
+- **The final review - `38743e0`.**
+  - A child's linked worktree has no workspace file of its own (it is gitignored). So it read an empty chain: no
+    docs or memory line, and the guard let a write into the root's memory through. The readers now take the main
+    checkout's chain, as release 2's variables do.
+  - The install wrote an Edit deny over any member folder holding the child's own memory, its project or its docs
+    root, and a deny beats every allow. A root `autoMemoryDirectory` of `.` (or a docs path of `.`) denied every
+    edit in every child. Such a folder is now left out, and the guard keeps the rest of it.
+  - A relative `autoMemoryDirectory`, or a bare `~`, is no setting: Claude Code takes an absolute path or `~/`
+    alone.
+  - The evidence doc said the deny covers every past-200 match. It covers none, because the child's own list holds
+    them all. The doc now says so; it is a deferred minor in the ledger.
+
+### Per acceptance criterion - release 3
+
+| AC | Result | Where |
+|---|---|---|
+| AC24 the child's preference doc wins, the root's applies where the child has none, `ignore doc` removes it | PASS | S (preferences-session, layout-workspace ancestorPrefsDirs); M (R3-1d) |
+| AC25 the docs line and the capped memory line; no folder, no line | PASS | S (docs-session, preferences-session); M (R3-1c to R3-1f, R3-7c, R3-9, R3-10) |
+| AC26 A4 and A5 | A5 PASS; A4 NOT RUN | P; A4 needs a logged-in session, a billed run the user declined - the manual step is in the evidence doc |
+| AC29 the index at 59, 60 and 61 lines and 6 KB minus and plus one byte; the whole start under 10,000 with the index cut | PASS | M (R3-7a to R3-7f) |
+| AC31 Write, Edit and a Bash `echo >>` from a child into the root's memory denied, naming its own; the root's own session passes | PASS | S (guard-hooks, the release 3 memory cases); M (R3-1g, R3-5, R3-10, R3-11b) |
+| Install rows: fresh, re-run, update over release 2, the user's own rows, garbage input, every scope | PASS | M (R3-1a, R3-1b, R3-2, R3-3, R3-4, R3-5, R3-6 at project, user and local) |
+| The final review's I1, I2 and M3 | PASS after `38743e0` | S (the four new tests, each RED first); M (R3-10, R3-11a, R3-11b) |
+| Windows | the gate's Windows leg | this matrix runs on macOS; the gate runs every suite there |
