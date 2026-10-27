@@ -263,7 +263,7 @@ function stopCheck(payload)
     stderr: `This turn changed source files and the build check for them fails - ${commands.join('; ')}.\n` +
       `The first ${errors.length} error line(s):\n${errors.join('\n')}\n` +
       'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +
-      'ALFRED_CODE_TURN_CHECK=0 in the settings.json env switches it off.\n',
+      'ALFRED_CODE_TURN_CHECK=0 in the data root\'s .variables switches it off.\n',
   };
 }
 
