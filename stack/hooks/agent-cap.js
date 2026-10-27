@@ -109,7 +109,10 @@ function entries(reg)
 }
 
 // The lock in a line: exclusive create, retried every 20 ms for up to 1.5 s, broken past 5 s. `ok: false` when it was
-// never taken; a throw inside `fn` still releases it and reads as no value.
+// never taken; a throw inside `fn` still releases it and reads as no value. On Windows a lock being deleted while another
+// process stats it is 'delete pending', and its create fails EPERM (EBUSY on a sharing violation): held, not absent
+// (CI windows-2025, 2026-10-27: 6 of 8 dispatches passed a cap of 5).
+const LOCK_HELD = new Set(['EEXIST', 'EPERM', 'EBUSY']);
 function withLock(reg, fn)
 {
     const lock = lockOf(reg);
@@ -120,7 +123,7 @@ function withLock(reg, fn)
         try { fs.closeSync(fs.openSync(lock, 'wx')); break; }
         catch (err)
         {
-            if (!err || err.code !== 'EEXIST') return { ok: false };
+            if (!err || !LOCK_HELD.has(err.code)) return { ok: false };
             // A failed stat (released in between, or a dangling link) waits like a held lock: read as infinitely old, it
             // deleted the lock a third process had just taken (final review I1).
             const m = mtimeOf(lock);
