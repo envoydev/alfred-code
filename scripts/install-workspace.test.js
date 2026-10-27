@@ -357,7 +357,7 @@ test('AC24: answered before the update moves its values, a 2.12.0 standalone sti
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
     const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
     const NUDGE = 'ALFRED_CODE_CORRECTION_NUDGE';
-    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, settings: readOr(path.join(at(work, 'api'), '.claude', 'settings.json')) });
+    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, settings: readOr(path.join(at(work, 'api'), '.claude', 'settings.json')), stamp: stampOf(work, 'api') });
     const r = scenario([
         { at: '.', ...OLD },
         { at: 'api', ...OLD, after: (work) => setEnv(work, 'api', 'settings.json', { [NUDGE]: 'inject' }) },
@@ -375,6 +375,47 @@ test('AC24: answered before the update moves its values, a 2.12.0 standalone sti
     assert.deepStrictEqual(left, [], 'no stack value left in settings.json');
     assert.match(r.outs[4], /settings\.json env: ALFRED_CODE_SCORER_LEVEL removed - a stack seed, so the workspace's value reaches this project/);
     assert.deepStrictEqual(again.vars, joined.vars, `a second update changes nothing: ${r.outs[5]}`);
+    assert.ok(!/^join-prune:/m.test(joined.stamp), 'the run consumed the join-prune line');
+});
+
+// The spec's Migration: a 2.12.0 child registered while the switch was off (2.12's init joined unasked; no own-env line)
+// is a project 'with the switch never set' - its update moves every value into its own .variables, nothing pruned.
+test('a 2.12.0 child registered with the switch off keeps every value through the update - no join prune without a join', skipWithout('v2.12.0'), () =>
+{
+    const old = releaseExport('v2.12.0');
+    const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
+    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const r = scenario([
+        { at: '.', ...OLD },
+        { at: 'api', ...OLD, args: ['--auto-compact', 'on'], after: (work) => join(work, 'api') },
+        update('.', { after: (work) => setVar(work, '.', { [LEVEL]: '90' }) }),
+        update('api', { after: (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), stamp: readOr(path.join(at(work, 'api'), '.claude', 'alfred-code.stamp')) }) }),
+    ]);
+    const got = r.steps[3];
+    assert.ok(!/^own-env:/m.test(got.stamp), 'a dormant 2.12 child has no own-env line');
+    assert.strictEqual(got.vars[LEVEL], '80', `its own seed moved, not pruned: ${JSON.stringify(got.vars)}\n${r.outs[3]}`);
+    assert.strictEqual(got.vars.ALFRED_CODE_AUTO_COMPACT, '1', 'its init answer moved');
+    assert.strictEqual(got.effective[LEVEL], '80');
+    assert.ok(!/a stack seed, so the workspace's value reaches this project/.test(r.outs[3]), r.outs[3]);
+});
+
+// D4 step 5 for Claude Code's own settings: a child whose AUTO_COMPACT and MEMORY come from the root writes the rows a
+// project holding them itself would - else its hooks run compact / custom memory while Claude Code does neither.
+test('a child reading AUTO_COMPACT=1 and MEMORY=custom from its root gets the autoCompactWindow rows and autoMemoryEnabled false', POSIX_ONLY, () =>
+{
+    const settingsOf = (work, rel) => json(path.join(at(work, rel), '.claude', 'settings.json')) || {};
+    const r = scenario([
+        { at: '.', after: (work) => { setVar(work, '.', { ALFRED_CODE_AUTO_COMPACT: '1', ALFRED_CODE_MEMORY: 'custom' }); join(work, 'api'); } },
+        { at: 'api', after: (work) => ({ api: settingsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from }) },
+        update('api', { after: (work) => ({ api: settingsOf(work, 'api') }) }),
+    ]);
+    const got = r.steps[1];
+    assert.deepStrictEqual([got.from.ALFRED_CODE_AUTO_COMPACT, got.from.ALFRED_CODE_MEMORY], ['..', '..'], 'the child reads both from the root');
+    const rows = Object.values(got.api.modelSettings || {}).filter((e) => e && e.autoCompactWindow !== undefined);
+    assert.ok(rows.length > 0, `no autoCompactWindow row in the child: ${JSON.stringify(got.api.modelSettings)}\n${r.outs[1]}`);
+    assert.strictEqual(got.api.autoMemoryEnabled, false, r.outs[1]);
+    assert.deepStrictEqual(r.steps[2].api.modelSettings, got.api.modelSettings, 'an update keeps them');
+    assert.strictEqual(r.steps[2].api.autoMemoryEnabled, false);
 });
 
 // AC19: on by default, and a launch 0 still freezes - the child reads a chain of one and an install there removes nothing.

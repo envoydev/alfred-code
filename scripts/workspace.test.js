@@ -848,6 +848,16 @@ test('pruneOnJoin drops each key still at its ledger hash, keeps a typed or chan
     assert.deepStrictEqual(lines, ['workspace: 3 of this project\'s values kept as its own (ALFRED_CODE_HISTORY, ALFRED_CODE_DOCS_VERSIONING, ALFRED_CODE_CORRECTION_NUDGE) - 1 stack seed dropped, so the workspace\'s value reaches it']);
 });
 
+test('pruneOnJoin keeps an installer answer off the catalog default (--auto-compact on) as the project\'s own, though it sits at its ledger hash (D5)', () =>
+{
+    const H = stampLib.valueHash;
+    const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_AUTO_COMPACT=${H('1')},.variables:ALFRED_CODE_HISTORY=${H('3')}\n`;
+    const at = roleTree({ p: { stamp: stampText, git: true, vars: 'ALFRED_CODE_AUTO_COMPACT=1\nALFRED_CODE_HISTORY=3\n' } });
+    const got = ws.pruneOnJoin(at('p'), { env: ON, log: () => {} });
+    assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_HISTORY'], own: ['ALFRED_CODE_AUTO_COMPACT'] });
+    assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_AUTO_COMPACT=1\n');
+});
+
 test('keepOnLeave writes each value read through the chain into the child\'s file, a seed with its ledger row; with the parent gone it names the keys that read their defaults', () =>
 {
     const H = stampLib.valueHash;

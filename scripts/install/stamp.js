@@ -397,6 +397,9 @@ function readOwnEnv(file)
 
 // 'declined' when the D5 ask was answered 'Leave it' for this project, else ''.
 const readInstructionsBoth = (file) => ((lineOf(file, 'instructions-both') || [])[0] === 'declined' ? 'declined' : '');
+// True when a join answered between runs left this project's 2.12 values in settings for the next run to prune
+// (workspace.js pruneOnJoin); the stamp that run writes carries no such line.
+const readJoinPrune = (file) => (lineOf(file, 'join-prune') || [])[0] === 'settings';
 
 // One `key: value` line set, replaced or (value null) removed in place, the rest of the stamp left byte for byte - for
 // the workspace CLI, which answers an ask between installer runs. A new line goes before `library-skills:`. True when
@@ -736,7 +739,7 @@ module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
     readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, SERVER_NAME, validServerName, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
-    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, markLine, ACCOUNT_KEYS,
+    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS,
 };
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for

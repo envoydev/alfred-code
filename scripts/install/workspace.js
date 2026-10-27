@@ -516,9 +516,20 @@ function editVariablesLedger(projectRoot, change)
     stamp.markLine(file, 'managed-env', stamp.renderLedger({ env })[0].slice('managed-env: '.length));
 }
 
-// A join's prune (D5): every key of the joiner's `.variables` still at its managed-env ledger hash was seeded by the stack
-// and never changed, so it leaves (with its row) and the members' value reaches the project; a typed or changed key, and
-// DOCS_VERSIONING and WORKSPACE, stay as the project's own. One line names the count kept.
+// A stack seed: the value still at its managed-env ledger hash AND the catalog default - an installer answer off the
+// default (`--auto-compact on`, a walk's value) is ledgered the same way and is the project's own (D5).
+let catalogDefaults = null;
+function isSeed(key, value, rows)
+{
+    catalogDefaults ||= new Map(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'meta', 'environment.json'), 'utf8')).env.map((r) => [r.key, String(r.default ?? '')]));
+    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && catalogDefaults.get(key) === String(value);
+}
+
+// A join's prune (D5): every stack seed (isSeed) in the joiner's `.variables` leaves (with its row) and the members'
+// value reaches the project; a typed, changed or answered key, and DOCS_VERSIONING and WORKSPACE, stay as the project's
+// own. One line names the count kept. A joiner whose values still sit in settings (a 2.12 project the update walk joins
+// before the installer moves them) gets `join-prune: settings` in its stamp, so the next settings pass prunes them there
+// (envPlan) - a 2.12 child that never answered a join keeps every value (the spec's Migration).
 function pruneOnJoin(projectRoot, { env = process.env, log = () => {} } = {})
 {
     const variables = require('./variables.js');
@@ -532,9 +543,12 @@ function pruneOnJoin(projectRoot, { env = process.env, log = () => {} } = {})
     for (const [key, value] of Object.entries(values))
     {
         if (!layout.VARIABLE_KEYS.includes(key)) continue;
-        if (!layout.MEMBER_NEVER.has(key) && rows[key] && rows[key] === stamp.valueHash(value)) dropped.push(key);
+        if (!layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
         else own.push(key);
     }
+    const ledgerEnv = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env || {};
+    if (['settings.json', 'settings.local.json'].some((f) => Object.keys(ledgerEnv[f] || {}).some((k) => layout.VARIABLE_KEYS.includes(k))))
+        stamp.markLine(stampFile, 'join-prune', 'settings');
     if (dropped.length)
     {
         const done = variables.write(file, Object.fromEntries(dropped.map((k) => [k, null])));
@@ -815,9 +829,10 @@ function chainValues(projectRoot, { env = process.env } = {})
 // it set itself): each copy still at its ledger hash, and given the same value by the chain now, goes (`copies`); a copy
 // the chain would answer otherwise - a parent not updated yet - stays as the child's own, so no value changes. Its
 // HOOKS_OFF loses the part entries a member's settings hold (`hooksOffDrop`), which the loader merges back at load.
-// A project with no `own-env:` record joined through the role answer, which the update walk runs BEFORE the installer:
-// its 2.12 seeds still sit in settings.json, so each one still at its ledger hash goes as the join's prune drops it from
-// `.variables` (`seeds`) - never DOCS_VERSIONING or an `ignore env` key - and the workspace's value reaches it.
+// A project the role answer joined while its 2.12 values still sat in settings (pruneOnJoin's `join-prune: settings`
+// stamp line - the update walk answers BEFORE the installer): each stack seed (isSeed) goes from settings as the prune
+// drops it from `.variables` (`seeds`) - never DOCS_VERSIONING or an `ignore env` key - and the workspace's value
+// reaches it. The stamp the run writes carries no such line, so it prunes once.
 // A project whose own file names a parent it cannot reach - the switch at 0 (frozen) or a link that does not hold - gets
 // the same plan with nothing to drop: a default seeded now would shadow the chain once it reads again.
 function envPlan(ctx)
@@ -828,8 +843,10 @@ function envPlan(ctx)
     const dataRoot = w.fileRoot ?? (ctx.dataInfo && !ctx.dataInfo.invalid ? ctx.dataInfo.root : undefined);
     const view = linked ? { ignores: w.ignores } : readWorkspace(ctx.projectRoot, { env: ctx.env, dataRoot }).view;
     if (!linked && !(view && view.parent)) return null;
-    const plan = { ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], seeds: [], hooksOffDrop: [] };
+    const plan = { ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], seeds: [], hooksOffDrop: [], memberEnv: {} };
     if (!linked) return plan;
+    // D4 step 5 for the settings pass's own readers (the compaction windows, the memory switch): what the members hand it.
+    plan.memberEnv = chainValues(ctx.projectRoot, { env: ctx.env });
     const read = stamp.stampFiles({ projectRoot: ctx.projectRoot }).read;
     const own = read ? stamp.readOwnEnv(read) : null;
     const layout = require('../../stack/hooks/layout.js');
@@ -839,11 +856,12 @@ function envPlan(ctx)
     const rows = ((ctx.ledger && ctx.ledger.env) || {})[target] || {};
     if (own === null)
     {
-        for (const [key, value] of Object.entries(env))
-            if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !plan.ignored.includes(key) && rows[key] && rows[key] === stamp.valueHash(value)) plan.seeds.push(key);
+        if (read && stamp.readJoinPrune(read))
+            for (const [key, value] of Object.entries(env))
+                if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !plan.ignored.includes(key) && isSeed(key, value, rows)) plan.seeds.push(key);
         return plan;
     }
-    const chained = chainValues(ctx.projectRoot, { env: ctx.env });
+    const chained = plan.memberEnv;
     for (const [key, value] of Object.entries(env))
     {
         if (!layout.VARIABLE_KEYS.includes(key) || own.includes(key) || layout.MEMBER_NEVER.has(key)) continue;

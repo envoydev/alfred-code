@@ -823,6 +823,8 @@ function writeSettings(opts)
         if (Object.keys(fileValues).length) data.env = label === 'settings.local.json' ? { ...fileValues, ...(data.env || {}) } : { ...(data.env || {}), ...fileValues };
     }
     const envBefore = plain(data.env) ? { ...data.env } : {};
+    // The members' values (D4 step 5) sit under every own layer when the passes below read the windows and the memory switch.
+    const memberEnv = childEnv && plain(childEnv.memberEnv) ? childEnv.memberEnv : {};
     // A joined child (workspace.js envPlan): a copy a 2.12 child kept of an inherited value goes - the chain gives it the
     // same value (D4 step 5) - and so do the part entries of its HOOKS_OFF a member's settings hold, which D4 merges back.
     if (childEnv && plain(data.env))
@@ -1020,7 +1022,7 @@ function writeSettings(opts)
             return plain(entry) && Object.hasOwn(entry, 'autoCompactWindow') && Boolean(acwPrior)
                 && acwPrior[compactAt(id)] === valueHash(JSON.stringify(entry.autoCompactWindow));
         };
-        const env = { ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
+        const env = { ...memberEnv, ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
         const seeds = topLevel(data) || topLevel(sibling) || topLevel(account) ? {} : compactWindowSeeds(compactWindows.models, env, catalog);
         const seeded = [];
         const moved = [];
@@ -1072,7 +1074,7 @@ function writeSettings(opts)
     {
         const memPrior = (name) => (prior && prior.settings ? prior.settings[name] || {} : null);
         const oursIn = (obj, name) => Object.hasOwn(obj, 'autoMemoryEnabled') && Boolean(memPrior(name)) && memPrior(name).autoMemoryEnabled === valueHash(JSON.stringify(obj.autoMemoryEnabled));
-        const env = { ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
+        const env = { ...memberEnv, ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
         const custom = env.ALFRED_CODE_MEMORY === 'custom';
         const inLocal = Boolean(overlay) && Object.hasOwn(overlay, 'ALFRED_CODE_MEMORY');
         const [at, name, other, otherName] = inLocal ? [local, localName, data, label] : [data, label, local, localName];
@@ -1100,7 +1102,7 @@ function writeSettings(opts)
         else if (!custom && at.autoMemoryEnabled === false && say) log(`  ${name}: autoMemoryEnabled: false kept - yours; native memory needs it on, so Claude's own memory stays off until you remove it`);
         // The shared file keeps its switch-off while its own env is custom (fix-pass review I1): one developer's
         // settings.local.json answer is theirs alone and never strips the team's row.
-        const sharedCustom = other === data && ({ ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}) }).ALFRED_CODE_MEMORY === 'custom';
+        const sharedCustom = other === data && ({ ...memberEnv, ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}) }).ALFRED_CODE_MEMORY === 'custom';
         if (other && oursIn(other, otherName) && sharedCustom)
         {
             memOwned = true;
