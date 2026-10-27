@@ -91,3 +91,53 @@ test('every session binds a stated want as its general rule', () =>
     assert.ok(rule.includes('binds as the general rule behind it'), 'the lift is always on');
     assert.ok(rule.includes('\'Every case like it\' marked (Recommended)'), 'the ask recommends the general rule');
 });
+
+// ---- Task 4: the review reports a bypassed seam and judges the by-hand entries ------------------------------------------
+const VERIFY = 'stack/skills/task-verify-code/SKILL.md';
+const PASSES = 'stack/skills/review-code/references/passes.md';
+const verifiers = () => SEATS('verifier').map((f) => `stack/agents/${f}`);
+// The text from a line opening `<n>. ` (or `- **<n>.` style) to the next numbered line.
+const numbered = (text, n) =>
+{
+    const m = new RegExp(`^\\s*${n}\\. `, 'm').exec(text);
+    assert.ok(m, `no step ${n}`);
+    const rest = text.slice(m.index + m[0].length);
+    const end = new RegExp(`^\\s*${n + 1}\\. `, 'm').exec(rest);
+    return rest.slice(0, end ? end.index : undefined);
+};
+
+test('the seam question is in task-verify-code, every verifier and review-code pass 7', () =>
+{
+    assert.strictEqual(SEATS('verifier').length, 10);
+    for (const rel of [VERIFY, ...verifiers(), PASSES])
+    {
+        const text = read(rel).replace(/\s+/g, ' ');
+        assert.ok(text.includes('call a capability the project wraps directly'), `${rel}: the question`);
+        assert.ok(text.includes('tagged `seam`'), `${rel}: the tag`);
+        assert.ok(text.includes('Test code that fakes the seam or builds the fixed values it returns is no bypass'), `${rel}: the test-code carve-out`);
+    }
+    assert.ok(numbered(read(VERIFY), 6).replace(/\s+/g, ' ').includes('A same-file `seam` finding is MATERIAL'), 'task-verify-code step 6 grades it');
+    assert.ok(numbered(read(PASSES), 7).replace(/\s+/g, ' ').includes('A same-file `seam` finding is MATERIAL'), 'pass 7 grades it');
+    for (const rel of verifiers())
+    {
+        const text = read(rel).replace(/\s+/g, ' ');
+        assert.ok(text.includes('delete / stdlib / native / yagni / shrink / seam'), `${rel}: the tag list`);
+        assert.ok(text.includes('A same-file `seam` finding is `med`, never `low`'), `${rel}: the seat's severity`);
+    }
+    const anchors = read('stack/skills/task-solve-cross/references/agent-output-protocol.md').split('\n').find((l) => l.startsWith('**Severity anchors.**')) || '';
+    assert.ok(anchors.includes('a same-file `seam` bypass'), 'the orchestrator re-checks it as med');
+});
+
+test('every quoter names the by hand line', () =>
+{
+    for (const rel of [...verifiers(), 'stack/agents/integration-reviewer.md', VERIFY, PASSES])
+    {
+        const text = read(rel).replace(/\s+/g, ' ');
+        assert.ok(text.includes('judge every id a `by hand:` line names'), `${rel}: judges the by-hand ids`);
+        assert.ok(text.includes('a `skipped:` line names'), `${rel}: and the skipped entries`);
+        assert.ok(text.includes('where no `by hand:` line follows a summary'), `${rel}: the older-script fallback`);
+    }
+    const row = (rel, field) => read(rel).split('\n').find((l) => l.includes(field)) || '';
+    assert.ok(row('stack/skills/capture-architecture-quality/SKILL.md', 'Preferences:').includes('`by hand:`'), 'the architecture capture reports it');
+    assert.ok(row('stack/skills/capture-code-quality/SKILL.md', 'Rules:').includes('`by hand:`'), 'the code capture reports it');
+});

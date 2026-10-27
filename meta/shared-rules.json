@@ -7909,43 +7909,43 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         }
       ]
     },
@@ -8367,6 +8367,182 @@
         {
           "file": "stack/skills/capture-preferences/SKILL.md",
           "marker": "the general rule behind it"
+        }
+      ]
+    },
+    "verifier-app-seam-bypass": {
+      "_note": "A diff that calls a capability the project wraps (the clock, the file system, logging, settings, a process, the network) raw, where the file or project already routes it through an abstraction, is a review finding tagged `seam` (the user's case 2026-10-27: 'use IDateTimeService, not new DateTime' - the implementers' ladder and the reviewers both missed the app's own seam). Test code that fakes the seam is no bypass.",
+      "owner": {
+        "file": "stack/skills/task-verify-code/SKILL.md",
+        "marker": "call a capability the project wraps directly"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "call a capability the project wraps directly"
+        },
+        {
+          "file": "stack/skills/review-code/references/passes.md",
+          "marker": "call a capability the project wraps directly"
+        }
+      ]
+    },
+    "preferences-by-hand": {
+      "_note": "`preferences.js check` prints a `by hand:` line naming the ids of the entries with no Check:, and every quoter judges those ids, plus every entry a `skipped:` line names, against the diff; a script copy older than the seat prints no `by hand:` line, so the fallback clause judges every entry with no Check: (the core plugin updates itself, the library copy waits for /alfred-code:update).",
+      "owner": {
+        "file": "stack/skills/capture-preferences/SKILL.md",
+        "marker": "judge every id a `by hand:` line names"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/skills/task-verify-code/SKILL.md",
+          "marker": "judge every id a `by hand:` line names"
+        },
+        {
+          "file": "stack/skills/review-code/references/passes.md",
+          "marker": "judge every id a `by hand:` line names"
+        }
+      ]
+    },
+    "verifier-seam-severity": {
+      "_note": "A same-file seam bypass breaks the file's own convention, so a verifier grades it `med` (routed back like a defect) and the orchestrator's `med` anchor names it, so the re-check does not demote it; a project-wide one is `low`.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "A same-file `seam` finding is `med`, never `low`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "A same-file `seam` finding is `med`, never `low`"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/agent-output-protocol.md",
+          "marker": "a same-file `seam` bypass"
+        }
+      ]
+    },
+    "review-seam-severity": {
+      "_note": "The single-session review grades a same-file seam bypass MATERIAL and a project-wide one MINOR, in task-verify-code step 6 and review-code pass 7 alike.",
+      "owner": {
+        "file": "stack/skills/task-verify-code/SKILL.md",
+        "marker": "A same-file `seam` finding is MATERIAL"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/review-code/references/passes.md",
+          "marker": "A same-file `seam` finding is MATERIAL"
         }
       ]
     }

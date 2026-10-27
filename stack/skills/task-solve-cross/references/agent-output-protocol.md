@@ -77,7 +77,7 @@ A rubric audit (`loop-code-quality`) returns the loop's keyed findings shape ins
 
 A finding's severity is a claim: the orchestrator re-checks each one against the anchors and the skip-list below before routing it to an owner, and the integration-reviewer holds its own findings to the same three paragraphs.
 
-**Severity anchors.** `high` - a behavior the plan specified is broken, data can be lost or corrupted, a security check is missing, or a failure is hidden (below). `med` - a real defect on a path the tests skip, or contract drift a consumer will hit. `low` - nothing breaks today: naming, a comment, over-build, a style nit. A missing doc comment, a formatting nit or an over-build finding is never `high`.
+**Severity anchors.** `high` - a behavior the plan specified is broken, data can be lost or corrupted, a security check is missing, or a failure is hidden (below). `med` - a real defect on a path the tests skip, contract drift a consumer will hit, or a same-file `seam` bypass (a capability the file already routes through the app's seam, called raw). `low` - nothing breaks today: naming, a comment, over-build, a style nit. A missing doc comment, a formatting nit or an over-build finding is never `high`.
 
 **Not a finding.** Drop these rather than route them: a pattern the plan's `## Decisions` ledger or the project's code-style capture records as deliberate; a pre-existing issue in code the diff did not touch (a line in `summary`, never a task for an implementer); a test-only shortcut inside a test project (a fixed clock, a hard-coded fixture); a 'could fail under load' with no trigger condition named; a warning the build itself does not raise.
 

@@ -95,7 +95,7 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 |---|---|
 | `References:` | which of this skill's `references/` files this run actually Read |
 | `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |
-| `Preferences:` | the `A<n>` entries judged and the preferences check's `checked:` line, or `none - no ARCHITECTURE-PREFERENCES.md` |
+| `Preferences:` | the `A<n>` entries judged and the check's `checked:` and `by hand:` lines, or `none - no ARCHITECTURE-PREFERENCES.md` |
 | `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, and rejected (naming the question each rejected one failed) |
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |
 | `Watch:` | the merge's `watch-merge quality: ...` line and the entry the watch check named, or `skipped - the engine predates watch-merge` |

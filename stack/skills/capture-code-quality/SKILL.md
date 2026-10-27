@@ -86,7 +86,7 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 | Field | Content |
 |---|---|
 | `References:` | which of this skill's `references/` files this run actually Read |
-| `Rules:` | the rule sources judged - `PERSONAL-CODE-PREFERENCES.md` with the check's `checked:` line, the loops prompts by file, `PROJECT-CODE-PREFERENCES.md`, the convention rules - and each absent one named (`no preferences doc`, `no loops/ folder`) |
+| `Rules:` | the rule sources judged - `PERSONAL-CODE-PREFERENCES.md` with the check's `checked:` and `by hand:` lines, the loops prompts by file, `PROJECT-CODE-PREFERENCES.md`, the convention rules - and each absent one named (`no preferences doc`, `no loops/ folder`) |
 | `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |
 | `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, handed off, and rejected (naming the question each rejected one failed) |
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |
