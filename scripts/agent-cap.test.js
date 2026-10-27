@@ -103,7 +103,7 @@ test('the count: the liveness boundaries (AC4)', () =>
     put(reg, 'R', 'r1201', { type: 'Plan', at: now - (12 * MIN + 1000), parent: '' });
     const quiet = touched(path.join(TMP, 'tq', 'quiet.jsonl'), now - 40 * 1000);
     put(reg, 'R', 'stopped', { type: 'Plan', at: now - MIN, parent: '', transcript: quiet, stop: now - 30 * 1000 });
-    const sent = touched(path.join(TMP, 'ts', 'sent.jsonl'), now - 28 * 1000);
+    const sent = touched(path.join(TMP, 'ts', 'sent.jsonl'), now - 24 * 1000);
     put(reg, 'R', 'sentback', { type: 'Plan', at: now - MIN, parent: '', transcript: sent, stop: now - 30 * 1000 });
     put(reg, 'R', 'garbage', 'not json at all');
     fs.writeFileSync(path.join(reg.dir, `AGENT-CAP-${reg.sid}-R-torn`), '{"type":');
@@ -115,6 +115,20 @@ test('the count: the liveness boundaries (AC4)', () =>
     assert.deepStrictEqual(p.rows.map((r) => r.kind), ['agent-cap-expired'], 'one row for the file that expired with no stop');
     cap.count(reg, { now: now + 2 * MIN + 1000, probe: () => {} });
     assert.ok(!names(reg).includes('AGENT-CAP-sess-1-R-stopped'), 'a stopped file is gone 2 minutes after its stop');
+});
+
+// Final review M1 (re-graded Important): a hand-back's PostToolUse rows land up to 3.65 s after the call (183 subagent
+// transcripts, 40 past one second), so a transcript written a few seconds after the stop is the stop's own tail, not a
+// hold that sent the seat back. Past 5 s it is a sent-back seat.
+test('the count: a transcript written within 5 s of the stop is the stop\'s own tail (final review M1)', () =>
+{
+    const now = Date.now();
+    const { reg } = freshReg();
+    const tail = touched(path.join(TMP, 'tt', 'tail.jsonl'), now - 30 * 1000 + 3700);
+    put(reg, 'R', 'tail', { type: 'Plan', at: now - MIN, parent: '', transcript: tail, stop: now - 30 * 1000 });
+    const back = touched(path.join(TMP, 'tb', 'back.jsonl'), now - 30 * 1000 + 5200);
+    put(reg, 'R', 'back', { type: 'Plan', at: now - MIN, parent: '', transcript: back, stop: now - 30 * 1000 });
+    assert.deepStrictEqual([...cap.count(reg, { now, probe: () => {} }).counted], ['R-back']);
 });
 
 test('the count: a seat waiting on its own agent counts past 12 minutes (AC4)', () =>
@@ -146,6 +160,53 @@ test('the lock: held past 1.5 s fails, older than 5 s is broken (AC8)', () =>
     assert.ok(!fs.existsSync(lock), 'the lock is released after fn');
     assert.deepStrictEqual(cap.withLock(reg, () => { throw new Error('boom'); }), { ok: true, value: undefined }, 'a throw inside fails open');
     assert.ok(!fs.existsSync(lock));
+});
+
+// Final review I1: a lock whose stat fails - released between the failed create and the stat, or a dangling link - read as
+// infinitely old, so a waiter deleted whatever lock a third process had just taken and both ran inside. A failed stat
+// now waits like a held lock. A dangling symlink is the deterministic stand-in: the exclusive create sees it, the stat
+// does not - and the old code spun on it forever (`rmSync` with `force` passes over a dangling link), so the call runs in
+// a child process with a timeout.
+test('the lock: one whose stat fails is waited on, never broken (final review I1)', { skip: process.platform === 'win32' }, () =>
+{
+    const { reg } = freshReg();
+    const lock = path.join(reg.dir, `AGENT-CAP-${reg.sid}.lock`);
+    fs.mkdirSync(reg.dir, { recursive: true });
+    fs.symlinkSync(path.join(reg.dir, 'nowhere'), lock);
+    const script = `const cap = require(${JSON.stringify(path.join(HOOKS, 'agent-cap.js'))}); let ran = false; `
+        + `const held = cap.withLock(${JSON.stringify(reg)}, () => { ran = true; }); process.stdout.write(JSON.stringify({ ok: held.ok, ran }));`;
+    const r = require('node:child_process').spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 8000 });
+    assert.strictEqual(r.signal, null, 'withLock returned instead of spinning');
+    assert.deepStrictEqual(JSON.parse(r.stdout), { ok: false, ran: false }, 'never taken');
+    assert.ok(fs.lstatSync(lock).isSymbolicLink(), 'and not deleted');
+});
+
+// The same race under load: eight processes each take the lock 200 times and claim a sentinel inside it with an exclusive
+// create. Two holders at once is an overlap; the shipped code measured 27-134 per run (6 of 7 runs).
+test('the lock: eight processes taking it 200 times each never overlap inside it (final review I1)', () =>
+{
+    const { reg } = freshReg();
+    fs.mkdirSync(reg.dir, { recursive: true });
+    const sentinel = path.join(reg.dir, 'inside');
+    const script = [
+        `const cap = require(${JSON.stringify(path.join(HOOKS, 'agent-cap.js'))});`,
+        `const fs = require('fs');`,
+        `const reg = ${JSON.stringify(reg)};`,
+        `let overlaps = 0;`,
+        `for (let i = 0; i < 200; i++) cap.withLock(reg, () => {`,
+        `  try { fs.closeSync(fs.openSync(${JSON.stringify(sentinel)}, 'wx')); } catch { overlaps++; return; }`,
+        `  fs.rmSync(${JSON.stringify(sentinel)}, { force: true });`,
+        `});`,
+        `process.stdout.write(String(overlaps));`,
+    ].join('\n');
+    const { spawn } = require('node:child_process');
+    return Promise.all(Array.from({ length: 8 }, () => new Promise((resolve) =>
+    {
+        const p = spawn(process.execPath, ['-e', script], { stdio: ['ignore', 'pipe', 'inherit'] });
+        let out = '';
+        p.stdout.on('data', (d) => { out += d; });
+        p.on('close', () => resolve(Number(out) || 0));
+    }))).then((counts) => assert.strictEqual(counts.reduce((a, b) => a + b, 0), 0, `overlaps per process: ${counts.join(', ')}`));
 });
 
 test('the Stop reconcile (S4 event 4.1)', () =>

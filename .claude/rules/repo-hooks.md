@@ -607,7 +607,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the copy route), so a copy without it runs unchanged. A PreToolUse payload carries no list of running agents, so the
     session keeps one in `<data root>/state/sessions/`: `AGENT-CAP-<sid>-P-<tool_use_id>` (a dispatch not started, 60s),
     `-R-<agent_id>` (a started agent, counted while its own `at` or its transcript's mtime is under 12 minutes old; after
-    its SubagentStop only when the transcript moved more than 1s past it - a hold sent it back - and kept 2 minutes so a
+    its SubagentStop only when the transcript moved more than 5 s past it - a hold sent it back (a hand-back's own hook rows land up to 3.65 s after it) - and kept 2 minutes so a
     resume finds it; a file a counted one names as `parent` counts too), `.lock` (exclusive create, 20ms retries, 1.5s
     wait, broken past 5s) and `.denied`; ids cleaned to `[A-Za-z0-9_-]`, the `AGENT-CAP-` prefix swept after 7 days.
     The three event branches run first and exit 0 before any dispatch rule (a SubagentStart payload has no

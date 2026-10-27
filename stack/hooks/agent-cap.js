@@ -22,7 +22,8 @@ const PENDING_MS = 60 * 1000;
 // Just over the Bash tool's 10-minute cap; measured 2026-10-27 over 2,289 subagent transcripts: 26 working gaps past it.
 const ACTIVE_MS = 12 * 60 * 1000;
 const STOPPED_KEEP_MS = 2 * 60 * 1000;
-const SENT_BACK_MS = 1000;
+// A hand-back's own PostToolUse rows land up to 3.65 s after it (final review M1, 183 subagent transcripts): later is a hold.
+const SENT_BACK_MS = 5000;
 const LOCK_RETRY_MS = 20;
 const LOCK_WAIT_MS = 1500;
 const LOCK_STALE_MS = 5000;
@@ -120,7 +121,10 @@ function withLock(reg, fn)
         catch (err)
         {
             if (!err || err.code !== 'EEXIST') return { ok: false };
-            if (Date.now() - mtimeOf(lock) > LOCK_STALE_MS) { remove(lock); continue; }
+            // A failed stat (released in between, or a dangling link) waits like a held lock: read as infinitely old, it
+            // deleted the lock a third process had just taken (final review I1).
+            const m = mtimeOf(lock);
+            if (m && Date.now() - m > LOCK_STALE_MS) { remove(lock); continue; }
             if (Date.now() >= deadline) return { ok: false };
             sleep(LOCK_RETRY_MS);
         }
@@ -132,7 +136,7 @@ function withLock(reg, fn)
 
 // The count, under the lock. A pending file counts under 60 s; a started one while its activity - the newer of its `at`
 // and its transcript's mtime - is under 12 minutes, and after a stop only when the transcript was written more than a
-// second past it (a hold sent the seat back); a file a counted one names as `parent` counts too. What does not count is
+// 5 s past it (a hold sent the seat back); a file a counted one names as `parent` counts too. What does not count is
 // deleted, except a stopped file in its first 2 minutes; one that expired with no stop writes an `agent-cap-expired` row.
 function count(reg, { now = Date.now(), probe = () => {} } = {})
 {
