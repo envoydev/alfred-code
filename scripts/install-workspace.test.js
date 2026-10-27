@@ -721,196 +721,161 @@ const stateOf = (work, rel) => json(path.join(at(work, rel), '.alfred', 'state',
 const rowsOf = (work, rel) => lineOf(stampOf(work, rel), 'workspace-mcp');
 const rowMap = (line) => Object.fromEntries((line || '').split(',').filter(Boolean).map((r) => r.replace(/^local:/, '').split('=')));
 const hashOf = (entry) => stampLib.entryHash(entry);
-const runnerOf = (work, rel) => path.join(keyAt(work, rel), '.claude', 'hooks', 'secrets-run.js');
 const SRV = { type: 'stdio', command: 'node', args: ['srv.js', '--stdio'], env: { MODE: 'one' } };
 const mcpState = (work) => ({ calls: mcpCalls(work), local: localOf(work, 'api'), rows: rowsOf(work, 'api'), state: stateOf(work, 'api') });
 const d2 = (steps) => scenario(steps, { account: true });
 
-let fresh;
-const freshRun = () => (fresh ||= d2([
-    { at: '.', after: (work) =>
-    {
-        join(work, 'api');
-        putLocal(work, '.', {
-            srv: SRV,
-            run: { type: 'stdio', command: 'node', args: [runnerOf(work, '.'), '--', 'tool', '--stdio'], env: {} },
-            'bad.name': SRV,
-            rel: { type: 'stdio', command: './bin/server', args: [], env: {} },
-            mine: SRV, theirs: SRV, proj: SRV,
-        });
-        putLocal(work, 'api', { mine: { type: 'stdio', command: 'node', args: ['own.js'], env: {} } });
-        putAccount(work, (d) => { d.mcpServers = { theirs: { type: 'stdio', command: 'node', args: ['user.js'], env: {} } }; });
-        fs.writeFileSync(path.join(at(work, 'api'), '.mcp.json'), `${JSON.stringify({ mcpServers: { proj: { command: 'node', args: ['p.js'] } } }, null, 2)}\n`);
-    } },
-    { at: 'api', after: (work) => ({ ...mcpState(work), parent: localOf(work, '.'), runner: runnerOf(work, 'api') }) },
-    update('api', { after: mcpState }),
-]));
-
-test('D2: a child copies its parent\'s local server once; a second run changes nothing (AC22)', POSIX_ONLY, () =>
+// ------------------------------------------------------------------ D8: the hint that replaced D2's copies
+// A child is told about a linked member's local-scope server it cannot see; nothing registers it here.
+const HINT = (name, rel) => `mcp ${name}: registered for ${rel} only (local scope) - not seen here. Share it: claude mcp add-json -s user, or the root's .mcp.json - approve it once in this folder; or copy it here: claude mcp get ${name} in ${rel}, then claude mcp add-json -s local ${name}`;
+const hintsIn = (out) => out.split('\n').map((l) => l.replace(/^==>/, '').trim()).filter((l) => /^mcp \S+: registered for /.test(l));
+const writeCopies = (work, rel, names) =>
 {
-    const r = freshRun();
-    const got = r.steps[1];
-    const adds = got.calls.filter((l) => l.startsWith('mcp add-json '));
-    assert.deepStrictEqual(adds.map((l) => l.split(' ').slice(0, 5).join(' ')).sort(), ['mcp add-json -s local run', 'mcp add-json -s local srv'], r.outs[1]);
-    assert.deepStrictEqual(got.local.srv, got.parent.srv, 'the copy is the parent\'s entry');
-    assert.deepStrictEqual(rowMap(got.rows), { run: hashOf(got.local.run), srv: hashOf(got.local.srv) }, r.outs[1]);
-    assert.deepStrictEqual(got.state, { run: hashOf(got.parent.run), srv: hashOf(got.parent.srv) });
-    assert.match(r.outs[1], /mcp srv: copied/);
-    for (const bit of ['srv.js', '"command"', '"args"', '--stdio']) assert.ok(!r.outs[1].includes(bit), `the log holds ${bit}:\n${r.outs[1]}`);
-    const again = r.steps[2];
-    assert.deepStrictEqual(again.calls, got.calls, 'the second run made an mcp call');
-    assert.deepStrictEqual([again.local, again.rows, again.state], [got.local, got.rows, got.state], r.outs[2]);
+    const f = path.join(at(work, rel), '.claude', 'alfred-code.stamp');
+    stampLib.markLine(f, 'workspace-mcp', names.map((n) => `local:${n}=${hashOf(localOf(work, rel)[n])}`).join(','));
+    const s = path.join(at(work, rel), '.alfred', 'state', 'workspace-mcp.json');
+    fs.mkdirSync(path.dirname(s), { recursive: true });
+    fs.writeFileSync(s, `${JSON.stringify(Object.fromEntries(names.map((n) => [n, '0'.repeat(64)])), null, 2)}\n`);
+};
+
+test('D8: a child names each linked member\'s local server it cannot see', POSIX_ONLY, () =>
+{
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); join(work, 'api/tool', { parent: 'api' }); putLocal(work, '.', { srv: SRV, other: SRV }); } },
+        { at: 'api', after: (work) => putLocal(work, 'api', { near: SRV }) },
+        { at: 'api/tool' },
+    ]);
+    assert.deepStrictEqual(hintsIn(r.outs[1]).sort(), [HINT('other', '..'), HINT('srv', '..')], r.outs[1]);
+    assert.deepStrictEqual(hintsIn(r.outs[2]).sort(), [HINT('near', '..'), HINT('other', '../..'), HINT('srv', '../..')], r.outs[2]);
 });
 
-test('D2: the runner path is re-pointed to the child\'s own', POSIX_ONLY, () =>
+test('D8: no line for a server registered here at any scope, in an ancestor\'s .mcp.json, at user scope or under ignore mcp', POSIX_ONLY, () =>
 {
-    const got = freshRun().steps[1];
-    assert.deepStrictEqual(got.local.run.args, [got.runner, '--', 'tool', '--stdio']);
+    const r = d2([
+        { at: '.', after: (work) =>
+        {
+            join(work, 'api');
+            putLocal(work, '.', { mine: SRV, theirs: SRV, proj: SRV, anc: SRV, ign: SRV, shown: SRV });
+            putLocal(work, 'api', { mine: { type: 'stdio', command: 'node', args: ['own.js'], env: {} } });
+            putAccount(work, (d) => { d.mcpServers = { theirs: { type: 'stdio', command: 'node', args: ['user.js'], env: {} } }; });
+            fs.writeFileSync(path.join(at(work, 'api'), '.mcp.json'), `${JSON.stringify({ mcpServers: { proj: { command: 'node', args: ['p.js'] } } }, null, 2)}\n`);
+            fs.writeFileSync(path.join(at(work), '.mcp.json'), `${JSON.stringify({ mcpServers: { anc: { command: 'node', args: ['a.js'] } } }, null, 2)}\n`);
+            edit(work, 'api', (m) => wsLib.addIgnore(m, 'mcp', 'ign'));
+        } },
+        { at: 'api' },
+    ]);
+    assert.deepStrictEqual(hintsIn(r.outs[1]), [HINT('shown', '..')], r.outs[1]);
 });
 
-test('D2: a name outside [A-Za-z0-9_-] is named and not copied (R5)', POSIX_ONLY, () =>
+test('D8: the hint calls no claude mcp verb', POSIX_ONLY, () =>
 {
-    const r = freshRun();
-    assert.ok(!Object.hasOwn(r.steps[1].local, 'bad.name'));
-    assert.match(r.outs[1], /mcp "bad\.name": not copied - /);
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { srv: SRV }); } },
+        { at: 'api', after: (work) => mcpCalls(work) },
+        update('api', { after: (work) => (readOr(path.join(work, 'claude-calls.log'), '') || '').split('\n').filter((l) => /^mcp /.test(l)) }),
+    ]);
+    assert.strictEqual(hintsIn(r.outs[1]).length, 1, r.outs[1]);
+    assert.deepStrictEqual(r.steps[1], [], 'no add-json or remove');
+    assert.deepStrictEqual(r.steps[2], [], 'no claude mcp call of any kind');
 });
 
-test('D2: a parent entry with a relative command is named and not copied (R8)', POSIX_ONLY, () =>
+test('D8: an unreadable or two-key account file prints its one !! line; a keyless member prints none', POSIX_ONLY, () =>
 {
-    const r = freshRun();
-    assert.ok(!Object.hasOwn(r.steps[1].local, 'rel'));
-    assert.match(r.outs[1], /mcp rel: not copied - its command is a relative path/);
+    const bad = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { srv: SRV }); } },
+        { at: 'api', before: (work) => fs.writeFileSync(accountOf(work), '{ not json') },
+    ]);
+    assert.strictEqual((bad.outs[1].match(/^(==>)?\s*!! workspace: .*\.claude\.json could not be read - no MCP hint for the linked folders$/gm) || []).length, 1, bad.outs[1]);
+    assert.deepStrictEqual(hintsIn(bad.outs[1]), []);
+    const two = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { srv: SRV }); putAccount(work, (d) => { d.projects[`${keyAt(work, '.')}/`] = { mcpServers: { srv: SRV } }; }); } },
+        { at: 'api' },
+    ]);
+    assert.strictEqual((two.outs[1].match(/^(==>)?\s*!! workspace: .*\.claude\.json holds 2 entries for \.\. \(.*\) - no MCP hint for it$/gm) || []).length, 1, two.outs[1]);
+    const none = d2([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api' },
+    ]);
+    assert.doesNotMatch(none.outs[1], /!! workspace: .*\.claude\.json|^(==>)?\s*mcp /m, none.outs[1]);
 });
 
-test('D2: a server registered in the child at any scope is not copied', POSIX_ONLY, () =>
+test('D8: no output names an entry\'s JSON or a value', POSIX_ONLY, () =>
 {
-    const r = freshRun();
-    const got = r.steps[1];
-    assert.deepStrictEqual(got.local.mine.args, ['own.js'], 'the child\'s own local entry stays');
-    assert.ok(!Object.hasOwn(got.local, 'theirs') && !Object.hasOwn(got.local, 'proj'));
-    assert.ok(!got.calls.some((l) => / (mine|theirs|proj) /.test(l)), got.calls.join('\n'));
-    assert.match(r.outs[1], /mcp mine: not copied - this project registers its own \(local scope\)/);
-    assert.match(r.outs[1], /mcp theirs: not copied - this project registers its own \(user scope\)/);
-    assert.match(r.outs[1], /mcp proj: not copied - this project registers its own \(project scope\)/);
+    const TOKEN = 'tok-d8-0123456789abcdef';
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: { type: 'stdio', command: 'node', args: ['secret-arg.js'], env: { API_TOKEN: TOKEN } } }); } },
+        { at: 'api' },
+        cli('status', { at: 'api' }),
+    ]);
+    assert.strictEqual(hintsIn(r.outs[1]).length, 1, r.outs[1]);
+    for (const out of [r.outs[1], r.outs[2]])
+        for (const bit of [TOKEN, 'secret-arg.js', '"command"', 'API_TOKEN']) assert.ok(!out.includes(bit), `the output holds ${bit}:\n${out}`);
 });
 
-test('D2: a changed parent entry at hash is removed and added again; one changed by hand is kept and named', POSIX_ONLY, () =>
+test('D8: status prints the hint lines', POSIX_ONLY, () =>
 {
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { srv: SRV }); } },
+        { at: 'api' },
+        cli('status', { at: 'api' }),
+    ]);
+    assert.deepStrictEqual(hintsIn(r.outs[2]), [HINT('srv', '..')], r.outs[2]);
+});
+
+test('D8: an install with workspace-mcp rows drops them and the state file, leaves the account file byte-identical and names the kept registrations in one line', POSIX_ONLY, () =>
+{
+    let before = null;
     const r = d2([
         { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV, b: SRV }); } },
-        { at: 'api', after: mcpState },
-        update('api', {
-            before: (work) => { putLocal(work, '.', { a: { ...SRV, args: ['srv.js', '--v2'] } }); putLocal(work, 'api', { b: { ...SRV, env: { MODE: 'mine' } } }); },
-            after: (work) => ({ ...mcpState(work), parent: localOf(work, '.') }),
-        }),
+        { at: 'api', after: (work) => { putLocal(work, 'api', { a: SRV, b: SRV }); writeCopies(work, 'api', ['a', 'b']); before = fs.readFileSync(accountOf(work)); return mcpState(work); } },
+        update('api', { after: (work) => ({ ...mcpState(work), account: fs.readFileSync(accountOf(work)).equals(before) }) }),
+        update('api', { after: mcpState }),
     ]);
+    assert.ok(r.steps[1].rows && r.steps[1].state, 'the older record is in place');
     const got = r.steps[2];
-    const made = got.calls.slice(r.steps[1].calls.length).map((l) => l.split(' ').slice(0, 5).join(' '));
-    assert.deepStrictEqual(made, ['mcp remove a -s local', 'mcp add-json -s local a'], r.outs[2]);
-    assert.deepStrictEqual(got.local.a, got.parent.a);
-    assert.strictEqual(got.local.b.env.MODE, 'mine', 'the hand-changed copy is kept');
-    assert.deepStrictEqual(rowMap(got.rows), { a: hashOf(got.local.a) }, 'the hand-changed copy left the ledger');
-    assert.strictEqual(got.state.a, hashOf(got.parent.a));
-    assert.match(r.outs[2], /mcp b: kept - /);
+    assert.strictEqual(got.rows, null, r.outs[2]);
+    assert.strictEqual(got.state, null, r.outs[2]);
+    assert.ok(got.account, 'the account file is byte-identical');
+    assert.deepStrictEqual(Object.keys(got.local).sort(), ['a', 'b'], 'the registrations stay');
+    assert.deepStrictEqual(got.calls, [], 'no claude mcp call');
+    assert.strictEqual((r.outs[2].match(/workspace: the MCP registrations an earlier release copied here \(a, b\) are kept as yours/g) || []).length, 1, r.outs[2]);
+    assert.deepStrictEqual(hintsIn(r.outs[2]), [], 'a server registered here is not hinted');
+    assert.doesNotMatch(r.outs[3], /earlier release copied here/, 'a second update says nothing more');
 });
 
-test('D2: a CLI that stores the entry in its own shape reads as at hash; a lost state file re-makes the copy once', POSIX_ONLY, () =>
+test('D8: with the switch at 0 nothing is hinted and the rows stay as recorded', POSIX_ONLY, () =>
 {
-    const BARE = { command: 'node', args: ['bare.js'] };
     const r = d2([
-        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { bare: BARE }); } },
-        { at: 'api', after: mcpState },
-        update('api', { after: mcpState }),
-        update('api', { before: (work) => fs.rmSync(path.join(at(work, 'api'), '.alfred', 'state', 'workspace-mcp.json')), after: mcpState }),
-        update('api', { after: mcpState }),
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV, c: SRV }); } },
+        { at: 'api', after: (work) => { putLocal(work, 'api', { a: SRV }); writeCopies(work, 'api', ['a']); return mcpState(work); } },
+        update('api', { env: { ALFRED_CODE_WORKSPACE: '0' }, after: mcpState }),
     ]);
-    assert.deepStrictEqual(r.steps[1].local.bare, { type: 'stdio', ...BARE }, 'the stub stores its own shape');
-    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
-    const remade = r.steps[3].calls.slice(r.steps[2].calls.length).map((l) => l.split(' ').slice(0, 5).join(' '));
-    assert.deepStrictEqual(remade, ['mcp remove bare -s local', 'mcp add-json -s local bare'], r.outs[3]);
-    assert.deepStrictEqual(r.steps[3].state, { bare: hashOf(BARE) });
-    assert.strictEqual(r.steps[4].calls.length, r.steps[3].calls.length, r.outs[4]);
+    assert.deepStrictEqual(hintsIn(r.outs[2]), [], r.outs[2]);
+    assert.deepStrictEqual([r.steps[2].rows, r.steps[2].state], [r.steps[1].rows, r.steps[1].state]);
 });
 
-test('D2: ignore mcp removes the copy; a parent server gone removes it; a parent key absent keeps it', POSIX_ONLY, () =>
+test('D8: uninstall in a child with workspace-mcp rows removes no registration and names them; at the root it strips the children\'s rows', POSIX_ONLY, () =>
 {
-    const r = d2([
-        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV, b: SRV, c: SRV }); } },
-        { at: 'api', after: mcpState },
-        update('api', { before: (work) => { edit(work, 'api', (m) => wsLib.addIgnore(m, 'mcp', 'a')); putLocal(work, '.', { b: null }); }, after: mcpState }),
-        update('api', { before: (work) => putAccount(work, (d) => { delete d.projects[keyAt(work, '.')]; }), after: mcpState }),
-    ]);
-    assert.deepStrictEqual(Object.keys(r.steps[1].local).sort(), ['a', 'b', 'c'], r.outs[1]);
-    const gone = r.steps[2].calls.slice(r.steps[1].calls.length);
-    assert.deepStrictEqual(gone.sort(), ['mcp remove a -s local', 'mcp remove b -s local'], r.outs[2]);
-    assert.deepStrictEqual(Object.keys(r.steps[2].local), ['c']);
-    assert.deepStrictEqual(Object.keys(rowMap(r.steps[2].rows)), ['c']);
-    assert.strictEqual(r.steps[3].calls.length, r.steps[2].calls.length, r.outs[3]);
-    assert.deepStrictEqual([r.steps[3].local, r.steps[3].rows], [r.steps[2].local, r.steps[2].rows]);
-    assert.match(r.outs[3], /!! workspace: \S*\.claude\.json holds no entry for \.\. - /);
-});
-
-test('D2: an empty chain while the workspace is on changes no copy and keeps its rows; a rejoin refreshes at hash', POSIX_ONLY, () =>
-{
-    const r = d2([
+    const child = d2([
         { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
-        { at: 'api', after: mcpState },
-        update('api', { before: (work) => edit(work, '.', (m) => wsLib.removeChild(m, 'api')), after: mcpState }),
-        update('api', { before: (work) => { edit(work, '.', (m) => wsLib.addChild(m, 'api')); putLocal(work, '.', { a: { ...SRV, args: ['v2'] } }); }, after: mcpState }),
+        { at: 'api', after: (work) => { putLocal(work, 'api', { a: SRV }); writeCopies(work, 'api', ['a']); } },
+        { at: 'api', act: 'uninstall', after: (work) => ({ ...mcpState(work), stamp: fs.existsSync(path.join(at(work, 'api'), '.claude', 'alfred-code.stamp')) }) },
     ]);
-    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
-    assert.deepStrictEqual([r.steps[2].local, r.steps[2].rows], [r.steps[1].local, r.steps[1].rows]);
-    assert.strictEqual((r.outs[2].match(/no linked parent/g) || []).length, 1, r.outs[2]);
-    assert.match(r.outs[2], /no linked parent - the copied MCP registration a is kept as it is/);
-    const remade = r.steps[3].calls.slice(r.steps[2].calls.length).map((l) => l.split(' ').slice(0, 5).join(' '));
-    assert.deepStrictEqual(remade, ['mcp remove a -s local', 'mcp add-json -s local a'], r.outs[3]);
-    assert.deepStrictEqual(r.steps[3].local.a.args, ['v2']);
-});
-
-test('D2: an unreadable, replaced or two-key account file changes nothing and prints its !! line (AC22)', POSIX_ONLY, () =>
-{
-    const saved = {};
-    const r = d2([
+    const got = child.steps[2];
+    assert.deepStrictEqual(got.calls, [], child.outs[2]);
+    assert.deepStrictEqual(Object.keys(got.local), ['a'], 'the registration stays as the user\'s');
+    assert.match(child.outs[2], /workspace: the MCP registrations an earlier release copied here \(a\) are kept as yours/);
+    assert.strictEqual(got.state, null, 'the state file goes');
+    assert.strictEqual(got.stamp, false, child.outs[2]);
+    const root = d2([
         { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
-        { at: 'api', after: mcpState },
-        update('api', {
-            before: (work) => { saved.text = readOr(accountOf(work)); putLocal(work, '.', { a: { ...SRV, args: ['v2'] } }); saved.changed = readOr(accountOf(work)); fs.writeFileSync(accountOf(work), '{ not json'); },
-            after: (work) => { const got = { calls: mcpCalls(work), rows: rowsOf(work, 'api') }; fs.writeFileSync(accountOf(work), saved.changed); return got; },
-        }),
-        update('api', {
-            before: (work) => { fs.mkdirSync(path.join(work, 'acct', 'backups'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', 'backups', `.claude.json.corrupted.${Date.now() + 1000}`), '{}'); },
-            after: (work) => { const got = mcpState(work); fs.rmSync(path.join(work, 'acct', 'backups'), { recursive: true, force: true }); return got; },
-        }),
-        update('api', {
-            before: (work) => putAccount(work, (d) => { d.projects[keyAt(work, '.').toUpperCase()] = { mcpServers: { a: SRV } }; }),
-            after: mcpState,
-        }),
+        { at: 'api', after: (work) => { putLocal(work, 'api', { a: SRV }); writeCopies(work, 'api', ['a']); return mcpState(work); } },
+        { at: '.', act: 'uninstall', after: mcpState },
     ]);
-    const before = r.steps[1];
-    for (const [i, line] of [[2, /!! workspace: \S*\.claude\.json could not be read - no MCP registration was copied from \.\. or removed/],
-        [3, /!! workspace: \S*\.claude\.json was replaced since the last run .*- no MCP registration was copied from \.\. or removed/],
-        [4, /!! workspace: \S*\.claude\.json holds 2 entries for \.\. .*- no MCP registration was copied from \.\. or removed/]])
-    {
-        assert.strictEqual(r.steps[i].calls.length, before.calls.length, `run ${i} made an mcp call:\n${r.outs[i]}`);
-        assert.strictEqual(r.steps[i].rows, before.rows, r.outs[i]);
-        assert.match(r.outs[i], line);
-    }
-    assert.deepStrictEqual(r.steps[4].local.a, SRV, 'the copy kept its first shape');
-});
-
-test('D2: a failing add-json prints the !! line and no CLI output', POSIX_ONLY, () =>
-{
-    const TOKEN = 'tok-d2-0123456789abcdef';
-    const r = d2([
-        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: { type: 'stdio', command: 'node', args: ['a.js'], env: { API_TOKEN: TOKEN } } }); } },
-        { at: 'api', env: { CLAUDE_STUB_ADDJSON_FAIL: '1' }, after: mcpState },
-    ]);
-    const got = r.steps[1];
-    assert.match(r.outs[1], /!! mcp a: copy failed \(exit 1\)/);
-    for (const bit of [TOKEN, 'a.js', '"command"', 'Invalid configuration']) assert.ok(!r.outs[1].includes(bit), `the log holds ${bit}`);
-    assert.strictEqual(got.rows, null, 'no row for a copy that was not made');
-    assert.ok(!Object.hasOwn(got.local, 'a'));
-    assert.strictEqual(got.calls.filter((l) => l.startsWith('mcp add-json -s local a ')).length, 1);
+    assert.ok(root.steps[1].rows, root.outs[1]);
+    assert.strictEqual(root.steps[2].rows, null, root.outs[2]);
+    assert.deepStrictEqual(root.steps[2].local, root.steps[1].local, 'the copies stay as the user\'s own');
+    assert.deepStrictEqual(root.steps[2].calls, [], root.outs[2]);
 });
 
 test('D2: ignore mcp for a parent .mcp.json server writes a disabledMcpjsonServers member, ledgered, and removes it when lifted', POSIX_ONLY, () =>
@@ -931,58 +896,4 @@ test('D2: ignore mcp for a parent .mcp.json server writes a disabledMcpjsonServe
     assert.strictEqual(r.steps[3].disabled, undefined, r.outs[3]);
     assert.ok(!r.steps[3].rows.includes('disabledMcpjsonServers'), r.steps[3].rows);
     assert.strictEqual(r.steps[3].excludes, r.steps[2].excludes);
-});
-
-test('D2: the retire path never touches a workspace-mcp row', POSIX_ONLY, () =>
-{
-    const r = d2([
-        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
-        { at: 'api', after: mcpState },
-        update('api', {
-            before: (work) => { const f = path.join(at(work, 'api'), '.claude', 'alfred-code.stamp'); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/^version: .*$/m, 'version: 2.10.0')); },
-            after: mcpState,
-        }),
-    ]);
-    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
-    assert.deepStrictEqual([r.steps[2].local, r.steps[2].rows], [r.steps[1].local, r.steps[1].rows]);
-    assert.ok(r.steps[2].rows, 'the row is there');
-});
-
-test('D2: uninstall in the child removes its copies at hash and keeps a changed one', POSIX_ONLY, () =>
-{
-    const r = d2([
-        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV, b: SRV }); } },
-        { at: 'api', after: mcpState },
-        { at: 'api', act: 'uninstall', before: (work) => putLocal(work, 'api', { b: { ...SRV, env: { MODE: 'mine' } } }), after: (work) => ({ ...mcpState(work), stamp: fs.existsSync(path.join(at(work, 'api'), '.claude', 'alfred-code.stamp')) }) },
-    ]);
-    const got = r.steps[2];
-    assert.deepStrictEqual(got.calls.slice(r.steps[1].calls.length), ['mcp remove a -s local'], r.outs[2]);
-    assert.deepStrictEqual(Object.keys(got.local), ['b']);
-    assert.match(r.outs[2], /mcp b: kept - /);
-    assert.strictEqual(got.state, null, 'the state file goes with the copies');
-    assert.strictEqual(got.stamp, false, r.outs[2]);
-});
-
-test('D2: uninstall at the root strips the children\'s workspace-mcp rows and leaves the registrations', POSIX_ONLY, () =>
-{
-    const r = d2([
-        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
-        { at: 'api', after: mcpState },
-        { at: '.', act: 'uninstall', after: mcpState },
-    ]);
-    assert.ok(r.steps[1].rows, r.outs[1]);
-    assert.strictEqual(r.steps[2].rows, null, r.outs[2]);
-    assert.deepStrictEqual(r.steps[2].local, r.steps[1].local, 'the copies stay as the user\'s own');
-    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
-});
-
-test('D2: the kill switch copies and removes nothing', POSIX_ONLY, () =>
-{
-    const r = d2([
-        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
-        { at: 'api', after: mcpState },
-        update('api', { env: { ALFRED_CODE_WORKSPACE: '0' }, before: (work) => putLocal(work, '.', { a: { ...SRV, args: ['v2'] }, c: SRV }), after: mcpState }),
-    ]);
-    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
-    assert.deepStrictEqual([r.steps[2].local, r.steps[2].rows, r.steps[2].state], [r.steps[1].local, r.steps[1].rows, r.steps[1].state]);
 });

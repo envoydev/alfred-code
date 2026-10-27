@@ -171,6 +171,7 @@ function status(out)
     try { check = JSON.parse(fs.readFileSync(path.join(path.dirname(own.file || ''), 'state', 'workspace-check.json'), 'utf8')); }
     catch { /* no load check has run here */ }
     out(check && check.state && check.at ? `check: ${check.state} ${check.at}` : 'check: never');
+    for (const line of ws.hintLines(root, { env })) out(line);
 }
 
 function accountInstructions(out)

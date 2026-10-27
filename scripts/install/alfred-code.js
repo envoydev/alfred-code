@@ -2189,13 +2189,10 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     }
     // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
-    // D2's copies of a parent's local registrations: each at its row hash removed, one changed here kept as the user's.
-    const copied = (ledger.workspaceMcp || {}).local || {};
-    if (Object.keys(copied).length)
-    {
-        uninstallLayer.removeScopedMcp({ mcpAt: { local: copied }, cli, log, note, readAt: (at) => mcp.registrationsAt({ scope: at, accountFile, projectRoot }) });
-        fs.rmSync(path.join(projectRoot, ...keptRoot.split('/'), 'state', 'workspace-mcp.json'), { force: true });
-    }
+    // An earlier release's D2 copies stay as the user's registrations (spec D8): only their record goes.
+    const copied = Object.keys((ledger.workspaceMcp || {}).local || {}).sort();
+    if (copied.length) log(`  ${workspace.keptCopiesLine(copied)}`);
+    fs.rmSync(path.join(projectRoot, ...keptRoot.split('/'), 'state', 'workspace-mcp.json'), { force: true });
     liftMemorySwitchOff({ sourceDir: path.join(__dirname, '..', '..'), stampFile: file, claudeDir, scope, ledger, log, note });
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });

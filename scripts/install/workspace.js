@@ -823,7 +823,7 @@ function workspaceStep(ctx)
     const w = ctx.workspace || { on: false, members: [], ownPrior: null, ownEnvPrior: null };
     ctx.ownPicks = w.ownPrior;
     ctx.ownEnv = w.ownEnvPrior;
-    if (!w.on) { mcpStep(ctx); return { created: false }; }
+    if (!w.on) { mcpHint(ctx); return { created: false }; }
     const ancestors = stampedAncestors(ctx.projectRoot, { env: ctx.env });
     const want = excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: w.ignores })), process.platform);
     const prior = ((ctx.ledger && ctx.ledger.settings) || {})['settings.local.json'] || {};
@@ -838,7 +838,7 @@ function workspaceStep(ctx)
     // entry that hides it here. Every stamped folder above counts, linked or not, as for the excludes.
     const d = sync('disabledMcpjsonServers', mcpJsonIgnores(ancestors, w.ignores));
     ctx.workspaceRows = { ...r.rows, ...d.rows };
-    mcpStep(ctx);
+    mcpHint(ctx);
     if (w.members.length)
     {
         const final = listLines(ctx.lists);
@@ -850,7 +850,7 @@ function workspaceStep(ctx)
     return { created: Boolean(r.created || d.created) };
 }
 
-// ------------------------------------------------------------------ D2, the parent's local MCP registrations (spec 4)
+// ------------------------------------------------------------------ D8, a linked member's local MCP registrations
 
 const ignoredMcp = (ignores) => (ignores || []).filter((i) => i.category === 'mcp').map((i) => i.name);
 // The `ignore mcp` names some ancestor's .mcp.json registers.
@@ -889,126 +889,77 @@ function localRegistrations({ accountFile, root })
 }
 const parentRegistrations = ({ accountFile, parentRoot }) => localRegistrations({ accountFile, root: parentRoot });
 
-// Plan R8: a command that is a relative path would start inside the child (Claude starts a server in the session's
-// folder, A10). A bare name is a PATH lookup, and `~` / `$` open a path the shell or the CLI expands.
-const relativeCommand = (entry) => typeof entry.command === 'string' && /[\\/]/.test(entry.command) && !/^[~$]/.test(entry.command)
-    && !path.posix.isAbsolute(entry.command) && !path.win32.isAbsolute(entry.command);
-
-function readState(file)
+// Since 2.10.1 the stack writes no MCP registration, so a child is told about a linked member's local-scope server it
+// cannot see and is never given a copy (spec D8): one line per server, names only - never the entry's JSON or a value.
+// A8, probed 2026-10-27 on Claude Code 2.1.311 with no model call: `claude mcp list` in a child under an ancestor's
+// .mcp.json server never approved there lists it 'Pending approval', so sharing through the root's .mcp.json is
+// approved once in each folder. `approval` is that verdict, a parameter so a test can pin the line both ways.
+const APPROVE_ONCE = true;
+function hintLine(name, rel, { approval = APPROVE_ONCE } = {})
 {
-    const data = readJson(file);
-    return Object.fromEntries(Object.entries(isObj(data) ? data : {}).filter(([n, h]) => stamp.validServerName(n) && /^[0-9a-f]{64}$/.test(String(h))));
-}
-function writeState(file, state, was)
-{
-    if (JSON.stringify(state) === JSON.stringify(was)) return;
-    if (!Object.keys(state).length) { fs.rmSync(file, { force: true }); return; }
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
+    const n = stamp.validServerName(name) ? name : JSON.stringify(name);
+    return `mcp ${n}: registered for ${rel} only (local scope) - not seen here. Share it: claude mcp add-json -s user, or the root's .mcp.json${approval ? ' - approve it once in this folder' : ''}; or copy it here: claude mcp get ${n} in ${rel}, then claude mcp add-json -s local ${n}`;
 }
 
-// After the excludes: each local-scope registration of the parent (members[0]) not ignored here and not registered here
-// at any scope is copied with `claude mcp add-json -s local` (cwd = this project), a runner path naming the parent's
-// secrets-run.js re-pointed to this project's own, and recorded as a `workspace-mcp` row at the hash of the entry READ
-// BACK (R11); the parent's entry hash goes into <data root>/state/workspace-mcp.json. A copy at its row hash whose parent
-// entry changed, or whose state row is gone, is made again; one the parent dropped, or this project now ignores, is
-// removed; one not at its hash is the user's - kept, named, and out of the ledger. Nothing is copied or removed while the
-// workspace is off, the chain is empty, the CLI is missing, or the account file cannot be trusted (unreadable, replaced
-// since the stamp, two keys or none for the parent): the rows stay as recorded. No line carries the JSON (spec 4).
-function mcpStep(ctx)
+// The hint for `projectRoot`: each linked member's local-scope server not registered here at any scope, not in a
+// .mcp.json here or in a folder above (which reaches this project natively, probe P2) and not under `ignore mcp` -
+// the nearest member naming it wins. An unreadable account file, or two keys for this project or a member, is one
+// `!!` line; a member with no key registers nothing locally, so it says nothing. Read only.
+function hintLines(projectRoot, { env = process.env, accountFile = accountPaths(env).accountFile, approval } = {})
 {
-    const w = ctx.workspace || { on: false, members: [], ignores: [] };
-    const prior = { ...(((ctx.ledger && ctx.ledger.workspaceMcp) || {}).local || {}) };
-    const record = (rows) => { ctx.workspaceMcp = Object.keys(rows).length ? { local: rows } : null; };
-    record(prior);
-    if (!w.on) return;
-    const names = Object.keys(prior).sort();
-    if (!w.members.length)
-    {
-        const one = names.length === 1;
-        if (names.length) ctx.log(`  workspace: no linked parent - the copied MCP registration${one ? '' : 's'} ${names.join(', ')} ${one ? 'is kept as it is' : 'are kept as they are'}; a parent's next update takes ${one ? 'it' : 'them'} on again`);
-        return;
-    }
-    if (!ctx.hasClaude) return;
+    const linked = chain(projectRoot, { env });
+    if (!linked.members.length) return [];
+    const here = localRegistrations({ accountFile, root: projectRoot });
+    if (here.state === 'unreadable') return [`!! workspace: ${accountFile} could not be read - no MCP hint for the linked folders`];
+    if (here.state === 'ambiguous') return [`!! workspace: ${accountFile} holds ${here.keys.length} entries for this project (${here.keys.join(', ')}) - no MCP hint for it`];
     const mcp = require('./mcp.js');
-    const parent = w.members[0];
-    const from = parent.rel;
-    const stop = (what) => ctx.log(`  !! workspace: ${what} - no MCP registration was copied from ${from} or removed`);
-    const reg = parentRegistrations({ accountFile: ctx.accountFile, parentRoot: parent.root });
-    if (reg.state === 'unreadable') return stop(`${ctx.accountFile} could not be read`);
-    const loss = mcp.accountLoss({ backups: mcp.accountBackups(ctx.backupDirs || []), stamped: stamp.readInstalledAt(ctx.stampFile) });
-    if (loss.why === 'replaced') return stop(`${ctx.accountFile} was replaced since the last run (the claude CLI kept the old one as ${loss.backup})`);
-    if (reg.state === 'ambiguous') return stop(`${ctx.accountFile} holds ${reg.keys.length} entries for ${from} (${reg.keys.join(', ')})`);
-    if (reg.state === 'nokey') { if (names.length) stop(`${ctx.accountFile} holds no entry for ${from}`); return; }
-    const hereRead = () => localRegistrations({ accountFile: ctx.accountFile, root: ctx.projectRoot });
-    const here = hereRead();
-    if (here.state !== 'ok' && here.state !== 'nokey') return stop(`${ctx.accountFile} holds ${here.keys.length} entries for this project (${here.keys.join(', ')})`);
-    const project = mcp.registrationsAt({ scope: 'project', mcpFile: ctx.mcpFile, projectRoot: ctx.projectRoot }).servers;
-    const ignored = new Set(ignoredMcp(w.ignores));
-    const stateFile = path.join(ctx.projectRoot, ctx.dataInfo.root, 'state', 'workspace-mcp.json');
-    const state = readState(stateFile);
-    const runnerFrom = realKey(path.join(parent.root, '.claude', 'hooks', 'secrets-run.js'));
-    const runnerTo = path.join(realOf(ctx.projectRoot), '.claude', 'hooks', 'secrets-run.js');
-    const point = (v) => (typeof v === 'string' && /secrets-run\.js$/i.test(v) && realKey(path.resolve(parent.root, v)) === runnerFrom ? runnerTo : v);
-    const repoint = (entry) => ({ ...entry, ...(entry.command !== undefined ? { command: point(entry.command) } : {}), ...(Array.isArray(entry.args) ? { args: entry.args.map(point) } : {}) });
-    // The exit status is the line's (`!! mcp <name>: <action> failed (exit <N>)`), so the CLI is spawned here: nothing it
-    // prints is shown, since add-json's error repeats the JSON it was handed.
-    const call = (argv) =>
+    const seen = new Set([...Object.keys(here.servers), ...Object.keys(here.user), ...ignoredMcp(readWorkspace(projectRoot, { env }).view.ignores)]);
+    for (let dir = realOf(projectRoot); ; dir = path.dirname(dir))
     {
-        const r = ctx.rt.spawnCommand('claude', argv, { cwd: ctx.projectRoot, env: ctx.cliEnv, encoding: 'utf8' });
-        return { ok: !r.error && r.status === 0, code: r.error ? 'not started' : r.signal ? `signal ${r.signal}` : `exit ${r.status}` };
-    };
-    const rows = {};
-    const next = {};
-    const settled = new Set();
-    for (const name of Object.keys(reg.servers).sort())
+        for (const n of Object.keys(mcp.registrationsAt({ scope: 'project', mcpFile: path.join(dir, '.mcp.json'), projectRoot: dir }).servers)) seen.add(n);
+        if (path.dirname(dir) === dir) break;
+    }
+    const lines = [];
+    for (const member of linked.members)
     {
-        const entry = reg.servers[name];
-        if (!stamp.validServerName(name)) { ctx.log(`  mcp ${JSON.stringify(name)}: not copied - a server name takes letters, digits, _ and - only`); continue; }
-        if (ignored.has(name) || !isObj(entry)) continue;
-        const ours = Object.hasOwn(prior, name);
-        const own = ['local', 'project', 'user'].find((at) => Object.hasOwn(at === 'local' ? here.servers : at === 'project' ? project : here.user, name));
-        if (!ours && own) { ctx.log(`  mcp ${name}: not copied - this project registers its own (${own} scope)`); continue; }
-        if (relativeCommand(entry)) { ctx.log(`  mcp ${name}: not copied - its command is a relative path, which would start inside this project`); continue; }
-        settled.add(name);
-        const parentHash = stamp.entryHash(entry);
-        const held = here.servers[name];
-        if (ours && held)
+        const reg = localRegistrations({ accountFile, root: member.root });
+        if (reg.state === 'ambiguous') { lines.push(`!! workspace: ${accountFile} holds ${reg.keys.length} entries for ${member.rel} (${reg.keys.join(', ')}) - no MCP hint for it`); continue; }
+        for (const name of Object.keys(reg.servers).sort())
         {
-            if (stamp.entryHash(held) !== prior[name]) { ctx.log(`  mcp ${name}: kept - changed here since it was copied from ${from}, so it is yours; to take ${from}'s again: claude mcp remove ${name} -s local`); continue; }
-            if (state[name] === parentHash) { rows[name] = prior[name]; next[name] = parentHash; continue; }
-            const gone = call(['mcp', 'remove', name, '-s', 'local']);
-            if (!gone.ok)
-            {
-                ctx.note(`mcp ${name}: remove failed (${gone.code}) - the copy stays as it was; run update again`);
-                rows[name] = prior[name];
-                if (state[name]) next[name] = state[name];
-                continue;
-            }
+            if (seen.has(name)) continue;
+            seen.add(name);
+            lines.push(hintLine(name, member.rel, { approval }));
         }
-        const made = call(['mcp', 'add-json', '-s', 'local', name, JSON.stringify(repoint(entry))]);
-        if (!made.ok) { ctx.note(`mcp ${name}: copy failed (${made.code})`); continue; }
-        const back = hereRead().servers[name];
-        if (!back) { ctx.note(`mcp ${name}: copied, but ${ctx.accountFile} does not hold it here - not recorded`); continue; }
-        rows[name] = stamp.entryHash(back);
-        next[name] = parentHash;
-        ctx.log(`  mcp ${name}: ${!ours ? 'copied' : state[name] ? `copied again - its entry in ${from} changed` : 'copied again - no record of the entry it was made from'} (from ${from}, local scope)`);
     }
-    for (const name of names)
-    {
-        if (settled.has(name)) continue;
-        const held = here.servers[name];
-        if (!held) continue;
-        if (stamp.entryHash(held) !== prior[name]) { ctx.log(`  mcp ${name}: kept - changed here since it was copied from ${from}, so it is yours`); continue; }
-        const why = ignored.has(name) ? `ignore mcp ${name}` : Object.hasOwn(reg.servers, name) ? `${from}'s entry is no longer copied` : `${from} no longer registers it`;
-        const gone = call(['mcp', 'remove', name, '-s', 'local']);
-        if (gone.ok) { ctx.log(`  mcp ${name}: removed - ${why}`); continue; }
-        ctx.note(`mcp ${name}: remove failed (${gone.code}) - run update again`);
-        rows[name] = prior[name];
-        if (state[name]) next[name] = state[name];
-    }
-    writeState(stateFile, next, state);
-    record(rows);
+    return lines;
+}
+
+const keptCopiesLine = (names) => `workspace: the MCP registrations an earlier release copied here (${names.join(', ')}) are kept as yours - nothing records them now; claude mcp remove <name> -s local takes one out`;
+
+// An earlier release's D2 copies: the stamp's `workspace-mcp` rows and `state/workspace-mcp.json` go, the registrations
+// stay as the user's, named in one line. Never a registration or the account file. Runs after the hint, which skips a
+// server registered here, so a copy is never hinted.
+function retireMcpCopies(ctx)
+{
+    const names = Object.keys(((ctx.ledger && ctx.ledger.workspaceMcp) || {}).local || {}).sort();
+    const stateFile = path.join(ctx.projectRoot, ctx.dataInfo.root, 'state', 'workspace-mcp.json');
+    const stateRemoved = fs.existsSync(stateFile);
+    if (stateRemoved) fs.rmSync(stateFile, { force: true });
+    if (names.length) ctx.log(`  ${keptCopiesLine(names)}`);
+    ctx.workspaceMcp = null;
+    return { rows: names.length, stateRemoved };
+}
+
+// After the excludes, in a child: the hint, then the older copies' record goes. Off, it is frozen: the rows stay as
+// recorded and nothing is printed.
+function mcpHint(ctx)
+{
+    const w = ctx.workspace || { on: false, members: [] };
+    const prior = ((ctx.ledger && ctx.ledger.workspaceMcp) || {}).local || {};
+    ctx.workspaceMcp = Object.keys(prior).length ? { local: prior } : null;
+    if (!w.on) return;
+    if (w.members.length) for (const line of hintLines(ctx.projectRoot, { env: ctx.env, accountFile: ctx.accountFile })) ctx.log(`  ${line}`);
+    retireMcpCopies(ctx);
 }
 
 // ------------------------------------------------------------------ D5, the account instruction key (spec 3)
@@ -1376,7 +1327,8 @@ module.exports = {
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, joinLine, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
-    readPlan, prepare, recordWord, listLines, envStep, workspaceStep, parentRegistrations, mcpStep,
+    readPlan, prepare, recordWord, listLines, envStep, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
+    retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
     releaseChildren, leaveParent, managedSettingsFile, checkLoads,
 };

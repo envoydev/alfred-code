@@ -777,3 +777,15 @@ test('parentRegistrations finds the parent\'s key case-folded with \\ as /, and 
     fs.rmSync(file);
     assert.strictEqual(ws.parentRegistrations({ accountFile: file, parentRoot: root }).state, 'nokey', 'no account file holds no key');
 });
+
+// ------------------------------------------------------------------ D8: the hint for a linked member's local server
+
+test('hintLine names the server and its folder, with the approve-once clause only when approval says so', () =>
+{
+    const tail = 'or copy it here: claude mcp get srv in .., then claude mcp add-json -s local srv';
+    assert.strictEqual(ws.APPROVE_ONCE, true, 'A8 verdict: an ancestor .mcp.json server waits for approval in each folder');
+    assert.strictEqual(ws.hintLine('srv', '..', { approval: true }), `mcp srv: registered for .. only (local scope) - not seen here. Share it: claude mcp add-json -s user, or the root's .mcp.json - approve it once in this folder; ${tail}`);
+    assert.strictEqual(ws.hintLine('srv', '..', { approval: false }), `mcp srv: registered for .. only (local scope) - not seen here. Share it: claude mcp add-json -s user, or the root's .mcp.json; ${tail}`);
+    assert.strictEqual(ws.hintLine('srv', '..'), ws.hintLine('srv', '..', { approval: true }), 'the default is the probed verdict');
+    assert.match(ws.hintLine('a b', '../..'), /^mcp "a b": registered for \.\.\/\.\. only .*claude mcp get "a b" in \.\.\/\.\./, 'a name the CLI would split is quoted');
+});
