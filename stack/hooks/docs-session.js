@@ -442,7 +442,7 @@ function main() {
   // return: nothing under the docs root declares itself a domain. A RECOMPUTED domain (docs.js recomputed - quality/'s
   // assessment, rewritten from the code at each capture) does not count: alone it gets no start block, gate or ask.
   if (!durableOf(docs).length) {
-    // R5: a child with no domain of its own still learns where its workspace root's docs are.
+    // R5: a child whose own docs declare nothing durable still learns where its workspace root's docs are.
     const ws = event === 'SessionStart' && !docsOff('block') ? workspaceDocsLines(input, root, docs) : [];
     if (ws.length) emit('SessionStart', ws.join('\n'));
     return;
