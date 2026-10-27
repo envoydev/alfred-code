@@ -161,6 +161,11 @@ Verdicts:
   unless its own `autoMemoryDirectory` sets its folder apart (`layout.workspaceMemoryOf`). For the same reason neither
   the Edit deny nor the write guard protects the root's memory there: both leave out the child's own folders, and these
   are all of them. The same `autoMemoryDirectory` restores both, and the deny then covers every match.
-- A4 (a Read under `additionalDirectories` asks no permission) NOT RUN: it needs one logged-in session, a billed run
-  the user declined. The manual step: in a child after an update, ask the session to Read a file under the root's docs
-  folder and watch for a permission prompt; none is the pass.
+- A4 (a Read under `additionalDirectories` asks no permission) PASS, 2026-10-28, Claude Code 2.1.312, one logged-in
+  `claude -p` run ($0.08 reported). The child was built as R3-1 builds it - a root install, `workspace.js role --answer
+  child`, the child install with `--parent-plan` - from a clean export of develop e48e6ea3; its `settings.local.json`
+  listed only the root's `.alfred/docs` in `permissions.additionalDirectories`. The run set no permission mode and no
+  allowed tools, so it ran in Manual mode (`permissionMode: default`), where a call that would prompt is denied:
+  - a Read of a file in the root's docs folder returned its marker line with no denial;
+  - the control, a Read of a sibling folder no setting lists, was denied - `permission_denied`, 'Path is outside allowed
+    working directories' - so the run can tell the two apart.
