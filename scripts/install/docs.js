@@ -7,8 +7,9 @@
 //     new one, so an existing install's file is relocated ONCE, byte-identical, and NEVER over a
 //     file already at the new path. A folder becomes a domain the engine sees only when it holds a
 //     `watch.json`, so a moved document stayed invisible until its capture re-ran - two of the
-//     three get the minimal `{}` written for them. `quality/` is watch-less BY DESIGN and is left alone: it is
-//     recomputed every run. The working papers that sat in `related-context/` move to `work/cross-project-tasks/`
+//     three get the minimal `{}` written for them. `quality/` is left alone: it is a recomputed domain whose
+//     `watch.json` only its capture can write (the entries are the assessment's own), so an assessment that predates
+//     it is named (assessmentWatchLine). The working papers that sat in `related-context/` move to `work/cross-project-tasks/`
 //     with the 2.8.0 layout (migrateLayout).
 //
 //   - THE VERSIONING SEED. `ALFRED_CODE_DOCS_VERSIONING` says HOW the docs follow a branch: `git`
@@ -211,6 +212,7 @@ function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = []
     const repointed = repointDocs({ projectRoot, docsPath, base, rules, instructions, log });
     const awareness = migrateAwareness({ projectRoot, base, docsPath, rules, log });
     revertRecomputed({ projectRoot, docsPath, engineText, log });
+    assessmentWatchLine({ projectRoot, docsPath, log });
     return { moved, switched, repointed, awareness, preferences };
 }
 
@@ -234,6 +236,22 @@ function revertRecomputed({ projectRoot, docsPath, engineText, log = () => {} })
         return false;
     }
     log('  docs migration (quality): quality/watch.json removed - this engine has no recomputed domains; /capture-architecture-quality writes it again when they return');
+    return true;
+}
+
+// An assessment written before quality/ became a recomputed domain has no sections and no watch.json, so it stays
+// outside the engine until its capture runs again (the docs-watch design, D6). The line repeats on every run until
+// then and writes nothing: only the capture knows the entries. Returns whether it was named.
+function assessmentWatchLine({ projectRoot, docsPath, log = () => {} })
+{
+    const quality = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''), 'quality');
+    try
+    {
+        if (!fs.statSync(path.join(quality, 'ARCHITECTURE-ASSESSMENT.md')).isFile()) return false;
+        if (fs.existsSync(path.join(quality, 'watch.json'))) return false;
+    }
+    catch { return false; }
+    log('  !! quality/ARCHITECTURE-ASSESSMENT.md predates its watch - run /capture-architecture-quality to put it under the session-close docs check');
     return true;
 }
 
@@ -1634,7 +1652,7 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,
 };

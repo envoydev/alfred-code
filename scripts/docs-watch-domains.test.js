@@ -16,7 +16,7 @@ const AW = 'stack/skills/capture-awareness/references';
 const SEED = `watch-merge quality --seed '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"]}' --kinds 'weakness: ' 'strength: '`;
 
 // A text that still calls quality/ watch-less, or no docs domain at all.
-const WATCHLESS_RE = /quality\/`? carries no `?watch\.json|watch-less|quality\/`? is no docs domain|no docs domain at all|lives outside the docs-domain engine|recomputed with the doc and no docs domain/i;
+const WATCHLESS_RE = /quality\/`? carries no `?watch\.json|watch-less|quality\/`? is no docs domain|no docs domain at all|lives outside the docs-domain engine|recomputed with the doc and no docs domain|recomputed, not a domain|no domain of its own/i;
 
 const filesUnder = (rel, keep) =>
 {
@@ -79,11 +79,13 @@ test('AC9: the code assessment is notOwned in the recomputed domain', () =>
         assert.match(squash(read(f)), /recomputed domain[^.]*`notOwned`/, f);
 });
 
-test('AC9: no file under stack/ still calls quality/ watch-less or no docs domain', () =>
+test('AC9: no file under stack/, setup-plugin/, meta/ or scripts/ still calls quality/ watch-less or no docs domain', () =>
 {
     const hits = [];
-    for (const f of filesUnder('stack', (p) => /\.(md|js|json)$/.test(p) && !/\.test\.js$/.test(p)))
-        read(f).split('\n').forEach((line, i) => { if (WATCHLESS_RE.test(line)) hits.push(`${f}:${i + 1}`); });
+    const shipped = (p) => /\.(md|js|json)$/.test(p) && !/\.test\.js$/.test(p) && !p.startsWith('scripts/fixtures/') && !p.includes('/node_modules/');
+    for (const dir of ['stack', 'setup-plugin', 'meta', 'scripts'])
+        for (const f of filesUnder(dir, shipped))
+            read(f).split('\n').forEach((line, i) => { if (WATCHLESS_RE.test(line)) hits.push(`${f}:${i + 1}`); });
     assert.deepStrictEqual(hits, []);
 });
 

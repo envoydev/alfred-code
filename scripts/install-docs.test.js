@@ -174,7 +174,7 @@ test('migration: an EXISTING watch.json is never overwritten, a dangling link in
     assert.deepStrictEqual(out.switched, [], 'a dangling watch.json symlink was replaced - it is still theirs');
 });
 
-test('migration: quality/ and related-context/ are watch-less BY DESIGN and stay that way', () =>
+test('migration: the installer writes no watch.json into quality/ or related-context/ - only the assessment\'s capture knows its entries', () =>
 {
     const root = project({ files: {
         '.claude/docs/architecture/ASSESSMENT.md': '# q\n',
@@ -241,6 +241,25 @@ test('migration: an absent docs root is nothing to do, never a crash', () =>
         { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS, preferences: PREFS_RESULT('none') });
 });
 
+// D6 (every project-derived doc is watched, 2026-10-27): an assessment written before quality/ had a watch stays outside
+// the engine until its capture runs again, so every run names it - and writes nothing for it: only the capture knows
+// the entries.
+const D6_LINE = '!! quality/ARCHITECTURE-ASSESSMENT.md predates its watch - run /capture-architecture-quality to put it under the session-close docs check';
+const d6Lines = (logs) => logs.filter((l) => l.includes('predates its watch')).map((l) => l.trim());
+
+test('D6: an assessment with no quality/watch.json is named once per run, and nothing is written under quality/', () =>
+{
+    const root = project({ files: { '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# a\n' } });
+    for (const run of [1, 2])
+    {
+        const logs = [];
+        docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m) });
+        assert.deepStrictEqual(d6Lines(logs), [D6_LINE], `run ${run}`);
+    }
+    assert.deepStrictEqual(fs.readdirSync(path.join(root, '.claude/docs/quality')), ['ARCHITECTURE-ASSESSMENT.md']);
+    assert.strictEqual(docs.assessmentWatchLine({ projectRoot: root, docsPath: '.claude/docs', log: () => {} }), true);
+});
+
 // The way back (the docs-watch design, Rollout; AC19): a code revert alone would leave a recomputed quality/watch.json
 // for an engine that reads it as an ordinary domain, so the migration deletes it - but only beside an engine with no
 // refRecomputed, which makes it dormant in the release that ships it.
@@ -290,6 +309,19 @@ test('the way back: a watch.json without the key, an unparseable one, no engine 
     }
     for (const root of [project(), path.join(TMP, 'no-docs-root-2')])
         assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: OLD_ENGINE }), false);
+});
+
+test('D6: nothing named and nothing thrown with the watch present, with no quality/ and with no docs root', () =>
+{
+    const watched = project({ files: { '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# a\n', '.claude/docs/quality/watch.json': '{"recomputed":true}\n' } });
+    const noQuality = project({ files: { '.claude/docs/architecture/ARCHITECTURE.md': '# m\n' } });
+    for (const root of [watched, noQuality, path.join(TMP, 'no-docs-root')])
+    {
+        const logs = [];
+        docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m) });
+        assert.deepStrictEqual(d6Lines(logs), [], root);
+        assert.strictEqual(docs.assessmentWatchLine({ projectRoot: root, docsPath: '.claude/docs', log: () => {} }), false, root);
+    }
 });
 
 // 2026-10-10: a 0.2.x project kept the orientation doc loose at the docs root - its pre-folder home - and the data

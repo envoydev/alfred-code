@@ -147,7 +147,10 @@ The stores and what each holds, where the docs root and the data root live, and 
   by the installer, never printed, the run book's line re-pointed; a key the store holds with another value, a store
   git would commit (`git check-ignore`) or one that is not a file moves nothing and is said every run until fixed. The findings (`quality/ARCHITECTURE-ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
-  `quality/` carries no `watch.json` and is no docs domain. A doc an older capture left at a former home moves on
+  `quality/` is a RECOMPUTED domain (`"recomputed": true` in its `watch.json`, written only by `capture-architecture-quality`
+  through `docs.js watch-merge`): the assessment's located entries are asked at a session's close, set in place on every
+  branch, picked after the durable docs and never credited as a docs read; `CODE-ASSESSMENT.md` is `notOwned` there. An
+  assessment older than its watch is named by update (`docs.assessmentWatchLine`), never given one by the installer. A doc an older capture left at a former home moves on
   update (`docs.migrateDocsDomains`, absent-only: `PROJECT-CODE-STYLE.md`, `architecture/ASSESSMENT.md`, and the
   orientation doc from `related-context/` or loose at the root, its pre-folder home), and each generated rule naming
   the old path is re-pointed whenever the doc sits only at its new home - the project's own AGENTS.md / CLAUDE.md is
