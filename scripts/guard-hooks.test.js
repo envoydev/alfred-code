@@ -5102,7 +5102,8 @@ test('guard-read-whole-file: a line of here-strings is charged to the work budge
 
 // ---- release 3, T7: a workspace member's memory folder is read-only from a child (R8) ----------------------------------
 function memWs() {
-  const top = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'xp-mem-')));
+  // .native: Windows CI's temp is an 8.3 name (RUNNER~1); the memory folder is named from the long one.
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'xp-mem-')));
   const at = (rel) => path.join(top, ...rel.split('/'));
   const put = (rel, text) => { fs.mkdirSync(path.dirname(at(rel)), { recursive: true }); fs.writeFileSync(at(rel), text); };
   put('ws/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/.alfred/workspace', 'child api\n');

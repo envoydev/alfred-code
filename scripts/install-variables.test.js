@@ -16,7 +16,8 @@ const TOKEN = `ghp_${'Q7'.repeat(14)}`;
 
 function sandbox(t)
 {
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ac-vars-')));
+    // .native: Windows CI's temp is an 8.3 name (RUNNER~1); a worktree's main checkout is read back long.
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ac-vars-')));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     const env = { CLAUDE_CONFIG_DIR: path.join(dir, 'acct') };
     fs.mkdirSync(env.CLAUDE_CONFIG_DIR);

@@ -844,7 +844,8 @@ test('the capture asks about each new or changed glob Scope:\'s reach, keeping i
 // Release 3, T4 (R3): readDirs - the project's own dirs, then each linked member's; the own alone without layout.js.
 test('readDirs lists the own dirs first, then the root\'s; a copy with no layout.js beside it reads the own alone', () =>
 {
-    const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-readdirs-')));
+    // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
+    const work = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-readdirs-')));
     try
     {
         const put = (rel, text) => { const f = path.join(work, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };

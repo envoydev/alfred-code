@@ -923,7 +923,8 @@ test('a pre-2.10.1 stamp\'s switch-off in the run\'s own file is named as the ol
 // Release 3, T4 (R3): a child reads its workspace root's TOOLS-PREFERENCES.md where it has none; no capture verb does.
 function wsTools({ childFile = 'parent ..\n' } = {})
 {
-    const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tools-ws-')));
+    // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
+    const work = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'tools-ws-')));
     const put = (rel, text) => { const f = path.join(work, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
     put('ws/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/.alfred/workspace', 'child api\n');
     put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/.alfred/workspace', childFile);

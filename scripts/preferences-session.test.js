@@ -1672,7 +1672,8 @@ const ROOT_PERSONAL = PERSONAL.replace('put behaviour on the type that owns the 
 const layoutLib = require('../stack/hooks/layout.js');
 function wsProject({ rootDocs = {}, childDocs = {}, childFile = 'parent ..\n', engine = false } = {})
 {
-    const top = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-ws-')));
+    // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
+    const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-ws-')));
     const ws = path.join(top, 'ws');
     const root = path.join(ws, 'api');
     const config = path.join(top, 'config');

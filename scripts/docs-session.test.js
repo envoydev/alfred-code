@@ -2664,7 +2664,8 @@ test('a dead Scope with no preferences engine beside the hooks adds nothing (AC2
 
 // R5 (release 3): a linked child's start names each ancestor's docs root and its areas, read-only.
 function wsDocs({ rootAreas = ['architecture', 'preferences'], childArch = true, childFile = 'parent ..\n' } = {}) {
-  const top = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-ws-')));
+  // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-ws-')));
   const put = (rel, text) => { const f = path.join(top, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
   put('ws/.claude/alfred-code.stamp', 'sha: x\n');
   put('ws/.alfred/workspace', 'child api\n');
