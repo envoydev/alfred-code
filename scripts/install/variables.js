@@ -9,11 +9,11 @@
 // two lines are refused, the key named and never the value.
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const rt = require('./runtime.js'); // every external command through the one Windows-safe spawn (M6)
 const layout = require('../../stack/hooks/layout.js');
 const { SECRET_SHAPE, PEM_PRIVATE } = require('../credential-shapes.js');
 const { parseJson } = require('./json-file.js');
-const { sleepMs, takeLock } = require('./file-lock.js');
+const { STEP_MS, sleepMs, takeLock } = require('./file-lock.js');
 const stamp = require('./stamp.js');
 const { DATA_IGNORE_HEAD } = require('../../stack/mcp/data-root.js');
 
@@ -77,7 +77,10 @@ function applied(lines, updates, order)
 const render = (lines, eol) => (lines.length ? `${lines.join(eol)}${eol}` : '');
 
 // Writes `updates` into `file` under its lock. { changed } - false with no `why` when the file already says it.
-function write(file, updates, { order = layout.VARIABLE_KEYS, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
+// A rename onto a file another process holds open fails on Windows for a moment (the hook loader reads it at every hook
+// start): those three codes are retried inside the lock's own budget, any other failure is not.
+const BUSY = new Set(['EPERM', 'EACCES', 'EBUSY']);
+function write(file, updates, { order = layout.VARIABLE_KEYS, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000, rename = fs.renameSync } = {})
 {
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); }
     catch { return { changed: false, why: 'unwritable' }; }
@@ -94,7 +97,12 @@ function write(file, updates, { order = layout.VARIABLE_KEYS, now = Date.now, sl
         try
         {
             fs.writeFileSync(tmp, after);
-            fs.renameSync(tmp, file);
+            const start = now();
+            for (;;)
+            {
+                try { rename(tmp, file); break; }
+                catch (e) { if (!e || !BUSY.has(e.code) || now() - start >= retryMs) throw e; sleep(STEP_MS); }
+            }
         }
         catch
         {
@@ -118,9 +126,8 @@ function tracked(file)
 {
     try
     {
-        execFileSync('git', ['-c', 'core.fsmonitor=false', 'ls-files', '--error-unmatch', '--', path.basename(file)],
-            { cwd: path.dirname(file), stdio: 'ignore', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
-        return true;
+        return rt.spawnCommand('git', ['-c', 'core.fsmonitor=false', 'ls-files', '--error-unmatch', '--', path.basename(file)],
+            { cwd: path.dirname(file), stdio: 'ignore', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).status === 0;
     }
     catch { return false; }
 }
@@ -133,7 +140,7 @@ function ignoreVerdict(projectRoot, dataRoot)
 {
     const root = String(dataRoot).replace(/\\/g, '/').replace(/\/+$/, '');
     const rel = `${root}/${FILE}`;
-    const git = (args) => spawnSync('git', ['-c', 'core.fsmonitor=false', ...args],
+    const git = (args) => rt.spawnCommand('git', ['-c', 'core.fsmonitor=false', ...args],
         { cwd: projectRoot, encoding: 'utf8', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
     if (git(['check-ignore', '-q', '--', rel]).status !== 0) return { ignored: false };
     const m = /^(.*?):(\d+):/.exec(String(git(['check-ignore', '-v', '--', rel]).stdout || ''));

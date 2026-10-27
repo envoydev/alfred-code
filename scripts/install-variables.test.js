@@ -210,6 +210,33 @@ test('two writers at once both land through the lock (AC11)', async (t) =>
     assert.ok(!fs.existsSync(`${varsOf(root)}.lock`), 'the lock is released');
 });
 
+// The Windows gate leg (2026-10-27): a rename over a file another process holds open fails with a transient EPERM, and
+// the hook loader reads .variables at every hook start - the write retries it inside the lock's budget.
+test('a rename a reader blocks for a moment (EPERM, EACCES, EBUSY) is retried; one blocked past the budget is unwritable', (t) =>
+{
+    const { dir } = sandbox(t);
+    const root = project(dir);
+    put(varsOf(root), 'ALFRED_CODE_HISTORY=5\n');
+    let clock = 0;
+    const seams = { now: () => clock, sleep: (ms) => { clock += ms; } };
+    const blocked = (codes) => (from, to) =>
+    {
+        const code = codes.shift();
+        if (code) throw Object.assign(new Error(code), { code });
+        fs.renameSync(from, to);
+    };
+    assert.deepStrictEqual(variables.write(varsOf(root), { ALFRED_CODE_HISTORY: '6' }, { ...seams, rename: blocked(['EPERM', 'EACCES', 'EBUSY']) }), { changed: true });
+    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=6\n');
+    const always = () => { throw Object.assign(new Error('EPERM'), { code: 'EPERM' }); };
+    assert.deepStrictEqual(variables.write(varsOf(root), { ALFRED_CODE_HISTORY: '7' }, { ...seams, retryMs: 200, rename: always }), { changed: false, why: 'unwritable' });
+    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=6\n');
+    const other = () => { throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' }); };
+    let slept = 0;
+    assert.deepStrictEqual(variables.write(varsOf(root), { ALFRED_CODE_HISTORY: '7' }, { now: () => 0, sleep: () => { slept++; }, rename: other }), { changed: false, why: 'unwritable' });
+    assert.strictEqual(slept, 0, 'any other failure is not retried');
+    assert.deepStrictEqual(fs.readdirSync(path.dirname(varsOf(root))).sort(), ['.variables'], 'no temp file or lock left');
+});
+
 test('the write is a rename - no reader sees a partial file (Review Focus 4)', (t) =>
 {
     const { dir } = sandbox(t);
