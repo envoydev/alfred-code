@@ -279,12 +279,29 @@ test('status names the parent, the own, ignored and inherited lines, and the las
     const plan = path.join(TMP, 'installed.json');
     fs.writeFileSync(plan, JSON.stringify({ skills: ['javascript', 'npm'], rules: ['alfred-security'], plugins: [{ name: 'alfred-code' }] }));
     const r = cli('status', '--root', at('ws/api'), '--installed', plan);
-    assert.strictEqual(r.out, 'role: child of ..\nworkspace: parent ..\nown: skill npm\nignored: skill sqlite\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ncheck: never\n');
+    assert.strictEqual(r.out, 'role: child of ..\nworkspace: parent ..\nown: skill npm\nignored: skill sqlite\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ndocs: -\nmemory: -\ncheck: never\n');
     fs.mkdirSync(path.join(at('ws/api'), '.alfred', 'state'), { recursive: true });
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'state', 'workspace-check.json'), JSON.stringify({ at: '2026-10-26T10:00:00Z', state: 'clean', misses: [] }));
-    assert.match(cli('status', '--root', at('ws/api')).out, /^from-root: unknown - pass --installed <plan json>\ncheck: clean 2026-10-26T10:00:00Z\n$/m);
+    assert.match(cli('status', '--root', at('ws/api')).out, /^from-root: unknown - pass --installed <plan json>\ndocs: -\nmemory: -\ncheck: clean 2026-10-26T10:00:00Z\n$/m);
     const alone = tree({ alone: { git: true } });
     assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (not asked)\nworkspace: parent none\nown: -\nignored: -\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
+});
+
+test('status names the ancestor docs roots and the memory index it reads, or ignored', () =>
+{
+    const at = tree({ ws: { stamp: true, file: 'child api\nchild web\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' }, 'ws/web': { stamp: true, git: true, file: 'parent ..\nignore docs root\nignore memory root\n' } });
+    const docs = path.join(at('ws'), '.alfred', 'docs');
+    fs.mkdirSync(path.join(docs, 'architecture'), { recursive: true });
+    const index = path.join(ENV.CLAUDE_CONFIG_DIR, 'projects', at('ws').normalize('NFC').replace(/[^A-Za-z0-9]/g, '-'), 'memory', 'MEMORY.md');
+    fs.mkdirSync(path.dirname(index), { recursive: true });
+    fs.writeFileSync(index, '- a note\n');
+    const lines = (rel, e = ENV) => spawnSync(process.execPath, [CLI, 'status', '--root', at(rel)], { encoding: 'utf8', env: e }).stdout.split('\n').filter((l) => /^(docs|memory): /.test(l));
+    assert.deepStrictEqual(lines('ws/api'), [`docs: ${docs}`, `memory: ${index}`]);
+    assert.deepStrictEqual(lines('ws/web'), ['docs: ignored', 'memory: ignored']);
+    assert.deepStrictEqual(lines('ws'), [], 'the root reads no ancestor');
+    assert.deepStrictEqual(lines('ws/api', { ...ENV, ALFRED_CODE_WORKSPACE: '0' }), [], 'nor does a child with the switch at 0');
+    fs.writeFileSync(index, '');
+    assert.deepStrictEqual(lines('ws/api'), [`docs: ${docs}`, 'memory: -'], 'an empty index is none');
 });
 
 test('account-instructions: --check, --apply records the row in each named stamp, --decline over two roots writes both, --remove takes the key at its hash', () =>

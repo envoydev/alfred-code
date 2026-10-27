@@ -1304,6 +1304,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     held), `.claude/` and `.git/`. It holds with nobody at the terminal - it asks nothing, it hands content over - writes one
     block row per hold (`kind` `code`, `git` or `git+code`), and fails open: malformed state reads as no record and is
     rewritten.
+  - A workspace child's start and writes (release 3, 2026-10-27; `layout.js` resolves every path, the switch at `0`
+    turns all of it off). `docs-session.js` names each linked ancestor whose docs root holds a domain, nearest first -
+    `Workspace root docs (read-only): <abs docs root> - <areas>`, the areas by `docs.js domains()`'s rule - in the main
+    session only, and in a child with no domain of its own too; `ignore docs root` here or in a nearer member drops it.
+    `preferences-session.js` reads a doc the child lacks from each ancestor's preferences folder after its own
+    (`layout.ancestorPrefsDirs`, `ignore doc <file>` skipping one) and points a hold at it by absolute path, and its main
+    start adds the workspace root's memory index: `Workspace root memory (read-only): <dir>/MEMORY.md`, then the first 60
+    lines, 6 KB of UTF-8 and the room the personal doc, the tool order and the host lines left of 9,500 characters, each
+    cut at a line, the path alone under 300 left (Claude Code swaps a hook context past 10,000 characters for a preview).
+    `guard-cross-project-write.js` denies a write into ANY linked member's memory folder before the account-dir allowance,
+    with no allow route (branch `ancestor-memory`, the block naming the child's own memory); a folder the child also owns
+    stays writable.
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
     wired; its Stop process also runs the turn build check, above) - a machine-local record per session under `<data root>/state/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
     one file keeps it out, and an update removes the `*` file earlier releases wrote; no `watch.json`, so no docs domain): at `Stop` it

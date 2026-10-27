@@ -125,6 +125,17 @@ The stores and what each holds, where the docs root and the data root live, and 
   workspace-check.json`, which `status` reads. Both stay out of git through the root's `/*`. Uninstall takes out the
   `parent` and `child` lines on both sides (`leaveParent`, `releaseChildren`, which first writes each child's
   inherited values into its own `.variables`) and leaves the rest of the file, as it leaves the data root.
+- **A child reads its ancestors' docs and memory, never writes them** (workspace layering, release 3, 2026-10-27). An
+  ancestor's docs root is `layout.docsRootOf` - its own settings' leftover `ALFRED_CODE_DOCS_PATH`, else `<its data
+  root>/docs`, never the child's env. Its memory folder is `layout.memoryDirsOf`, Claude Code's own rule: the first
+  string `autoMemoryDirectory` (the managed drop-ins last first, the managed file, the member's `settings.local.json`, its
+  `settings.json`, the account's; a leading `~` is the home folder), else `<account>/projects/<name>/memory`, `<name>`
+  its git top (a linked worktree's main checkout) with every character outside `[A-Za-z0-9]` as `-`; past 200
+  characters Claude Code appends `-<hash>`, so the existing `<first 200>-*` folders are listed (probe A5,
+  `docs/workspace-layering-evidence.md`), and `CLAUDE_CODE_PROJECT_DIR_NAME` set means none. The line a child's start
+  shows is `layout.workspaceMemoryOf`: the top member's folder, none past an `ignore memory root`, unless exactly one
+  folder matches, or when it is one of the child's own. The install opens the docs roots and denies their edit
+  (`repo-installer.md`); the hooks read them and guard the memory (`repo-hooks.md`).
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed

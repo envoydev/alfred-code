@@ -9,7 +9,7 @@
 //   role        the project's role and its ask (`--when init|update|configure`), or one `--answer` applied
 //   ignore      one `ignore <category> <name>` line in or out
 //   children    the direct children, `ok` or `gone`, for uninstall
-//   status      the role, the parent, the own, ignored and inherited lines, the last load check, the variables'
+//   status      the role, the parent, the own, ignored and inherited lines, the ancestor docs and memory read, the last load check, the variables'
 //               notes and the secrets chain's keys by source
 //   account-instructions  D5's account key: check, apply, decline or remove
 //   plan        update's cascade, before it runs: each project's row, projected add and drop, and its own asks
@@ -168,6 +168,25 @@ function status(out)
             const mine = new Set(ownPicks);
             out(`from-root: ${list(ws.planLines(read.plan).filter((l) => !mine.has(l)))}`);
         }
+    }
+    // Release 3: what a linked child reads from its ancestors - their docs roots that exist, nearest first, and the
+    // workspace root's memory index - or `ignored` where its own file, or a nearer member's for the memory, takes them out.
+    if (parent && ws.workspaceOn({ env, projectRoot: root }))
+    {
+        const lay = require('../stack/hooks/layout.js');
+        const drops = (ignores, what) => (ignores || []).some((i) => i.category === what && i.name === 'root');
+        const docs = lay.ancestorPrefsDirs(root, { env }).map((e) => path.dirname(e.dir)).filter((d) => fs.existsSync(d));
+        out(`docs: ${drops(own.view.ignores, 'docs') ? 'ignored' : list(docs)}`);
+        const nearer = linked.members.slice(0, -1).map((m) => m.ignores || (m.view && m.view.ignores));
+        let index = '-';
+        if ([own.view.ignores, ...nearer].some((i) => drops(i, 'memory'))) index = 'ignored';
+        else
+        {
+            const dir = lay.workspaceMemoryOf(root, { env });
+            try { if (dir && fs.readFileSync(path.join(dir, 'MEMORY.md'), 'utf8').trim()) index = path.join(dir, 'MEMORY.md'); }
+            catch { /* no index */ }
+        }
+        out(`memory: ${index}`);
     }
     let check = null;
     try { check = JSON.parse(fs.readFileSync(path.join(path.dirname(own.file || ''), 'state', 'workspace-check.json'), 'utf8')); }

@@ -70,7 +70,9 @@ One table, no ask - it is seven rows and every other area reads against it:
   `child of <rel>`, `root of <n> children`, `root, no child yet`, `standalone`, `standalone (not asked)` or
   `workspace off`. A child adds ` - own <n>, ignored <n> - load check <state> <at>` (the counts of its `own:` and
   `ignored:` lines, its `check:` line, `never` when none ran); a `gone` child line adds `, <n> gone`. Pasted under the
-  table as they are: each `secrets: <KEY> own|from <rel>` line (the secrets chain by key and source, never a value),
+  table as they are: a child's `docs:` and `memory:` lines (the ancestor docs roots it reads and the workspace root's
+  memory index, `ignored` where its file takes them out, `-` for none), each `secrets: <KEY> own|from <rel>` line (the
+  secrets chain by key and source, never a value),
   each `mcp <name>:` line (a member's local-scope server this project cannot see) and each `!!` line.
 
 ## 3. One question - what else to show

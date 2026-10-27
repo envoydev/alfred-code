@@ -215,7 +215,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the rest from each member's `.variables` at load, never `MEMBER_NEVER` (the docs mode, the switch) nor a member's
   whole-hook `HOOKS_OFF` entry, and a 2.12 child's copies still at their ledger hash go - and `workspaceStep` after the settings pass -
   the `claudeMdExcludes` rows for every stamped folder above (linked or not) in `settings.local.json`, ledgered as array
-  members, and the stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits; then
+  members, and the stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits; in a linked
+  child it syncs `permissions.additionalDirectories` to the ancestor docs roots (none past an `ignore docs root` here or
+  in a nearer member) and `permissions.deny` to an `Edit(//<path>/**)` row over each of them and over every member's
+  memory folder that is not the child's own (`ancestorAccess`, `editDenyRule`, `//c/...` on Windows; release 3); then
   `mcpHint` prints one `mcp <name>:` line per member's local-scope server this project cannot see - a hint, never a
   copy (D8; an earlier release's copies stay as the user's registrations, only their record goes). Joining prunes
   the child's own seeds a member answers (`pruneOnJoin`); leaving - configure's leave, or the parent's uninstall

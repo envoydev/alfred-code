@@ -480,3 +480,11 @@ names a `parent`), and the switch kept the link idle. From 3.0.0 it is a live ch
 held stays its own, the chain fills only the keys it never set, and each update brings the parent's later set changes.
 To keep such a project apart, take configure's 'Leave and become standalone' (it keeps every value), or set
 `ALFRED_CODE_WORKSPACE=0` with `scripts/variables.js set` in that project.
+
+A child now reads what sits above it, read-only. Each session start names the workspace root's docs (`Workspace root
+docs (read-only):`, the folders and their areas) and pushes the root's memory index (`Workspace root memory
+(read-only):`, its first 60 lines inside the start's budget); a preference doc the child does not have is read from
+the root's preferences folder after its own. The update adds the root's docs folder to the child's
+`settings.local.json` `permissions.additionalDirectories` and an Edit deny over it and over every member's memory
+folder, and the write guard refuses a write into a member's memory. `ignore docs root` or `ignore memory root` in the
+child's workspace file takes either out; status prints the child's `docs:` and `memory:` lines.
