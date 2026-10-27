@@ -464,6 +464,14 @@ function modePrompt() {
   }
   const flags = pre.modeFlags(prompt);
   const lines = [];
+  // a mode flag typed with no command before it switches nothing (spec section 2's grammar); said, so a user who typed
+  // `--mode-auto-run-off` alone mid-run is not left thinking the mode ended (final review m9, re-graded)
+  const bare = /^\s*(--mode-[\w-]+|--auto-mode|--score-on|--score-off)(?=\s|$)/.exec(prompt);
+  if (bare && !flags.commands.length) {
+    ledgerRow({ mode: 'auto', kind: 'mode-flag-bare', reason: `${bare[1]} typed with no command before it switches nothing` });
+    lines.push(`'${bare[1]}' typed alone switches nothing: mode flags count only right after a command - `
+      + '`/mode-auto-run --mode-auto-run-off` ends auto-run for the session, `/mode-output-scorer --mode-output-scorer-off` the scorer. Tell the user so in one line.');
+  }
   for (const flag of flags.old) {
     ledgerRow({ mode: 'auto', kind: 'mode-flag-old', reason: `the old flag ${flag} starts nothing - ${OLD_FLAG_NOW[flag]} replaces it` });
     lines.push(oldFlagLine(flag));
@@ -1195,9 +1203,13 @@ function solveFlowLine() {
   return state === 'off' ? 'Solve flow: switched off here - a code change goes under Left for you.' : 'Solve flow: not installed here - a code change goes under Left for you.';
 }
 if (auto && !auto.marker) {
-  // a flag-only mode line switched auto-run on and opened no run (spec section 6): said once, nothing more
-  if (EVENT === 'UserPromptExpansion') expansionOut(auto.kept ? '' : `auto-run is ON for this session (${auto.file}) - no run started: `
-    + 'the next task, capture, loop, issue or mode command runs under it, each ask taking its (Recommended) option. Do nothing else for this line.');
+  // a mode line switched auto-run on and opened no run (spec section 6): a flag-only one is said once and does nothing
+  // more; one carrying a request (`/mode-output-scorer --mode-auto-run-on <request>`) runs it under the mode (final review I2)
+  if (EVENT === 'UserPromptExpansion') expansionOut(auto.kept ? '' : autoFlags && autoFlags.request
+    ? `auto-run is ON for this session (${auto.file}) - this line's request runs under it: each ask takes its (Recommended) `
+      + 'option; one with no marked option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), waits for the user.'
+    : `auto-run is ON for this session (${auto.file}) - no run started: `
+      + 'the next task, capture, loop, issue or mode command runs under it, each ask taking its (Recommended) option. Do nothing else for this line.');
   process.exit(0);
 }
 if (auto) {
@@ -1217,8 +1229,9 @@ if (auto) {
   else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: contract } }));
   process.exit(0);
 }
-// M7: a refused /mode-auto-run start offers no fresh session - nothing runs, so there is nothing to resume
-if (EVENT === 'UserPromptExpansion' && AUTO_SELF_RE.test(skill) && autoRefused) leave();
+// M7: a refused /mode-auto-run start offers no fresh session - nothing runs, so there is nothing to resume; nor does a
+// /mode-auto-run line with no request, which only flips a switch (final review I3)
+if (EVENT === 'UserPromptExpansion' && AUTO_SELF_RE.test(skill) && (autoRefused || (!auto && autoFlags && !autoFlags.request))) leave();
 if (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) gatedStepHold();
 
 if (EVENT !== 'SessionStart' && !isOrchestration(skill)) leave();

@@ -1244,6 +1244,29 @@ test('M7: a refused /mode-auto-run start gets no fresh-session offer past the tr
     assert.match(bannerOf(r)[0], /auto-run did NOT start: type the request after \/mode-auto-run/);
 });
 
+test('final review I3: a /mode- line that starts no run gets no fresh-session offer past the trigger', () =>
+{
+    const big = transcript([], 'claude-opus-5-5', 450000);
+    for (const line of ['/mode-auto-run --mode-auto-run-off', '/mode-auto-run --mode-output-scorer-on', '/mode-auto-run --auto-mode', '/mode-auto-run --mode-auto-run-on'])
+        assert.doesNotMatch(context(typedRun(project(), 'i3', line, big)), /Do NOT start the run yet/, line);
+    assert.match(context(typedRun(project(), 'i3b', '/mode-auto-run fix X', big)), /auto-run is ON for this \/mode-auto-run run/, 'a request still runs, under the contract');
+});
+
+test('final review I2: an -on line carrying a request with no flow command keeps its request; the flag-only line still starts nothing', () =>
+{
+    const t = transcript();
+    for (const line of ['/mode-output-scorer --mode-auto-run-on grade the plan in docs/plan.md', '/habits-explain-topic /mode-output-scorer --mode-auto-run-on explain closures'])
+    {
+        const p = project();
+        const r = expand(p, 'i2', line, t, { command_name: 'mode-output-scorer', command_args: '--mode-auto-run-on x' });
+        const said = context(r);
+        assert.ok(fs.existsSync(p.gate), `${line}: the stamp`);
+        assert.doesNotMatch(said, /Do nothing else|no run started/, `${line}: the request is not dropped`);
+        assert.match(said, /auto-run is ON for this session \(\.alfred\/state\/approvals\/APPROVAL\) - this line's request runs under it/, line);
+    }
+    assert.match(context(expand(project(), 'i2f', '/mode-output-scorer --mode-auto-run-on', t)), /no run started: .*Do nothing else for this line\./, 'flag-only keeps its line');
+});
+
 test('M8: task-solve switched off by skillOverrides reads "switched off here"', () =>
 {
     const t = transcript();
@@ -1303,4 +1326,35 @@ test('mode-auto-run names every other user-typed flow, so a new one fails until 
     });
     assert.strictEqual(flagged.length, 11);
     for (const n of flagged) assert.ok(body.includes(`/${n}`), n);
+});
+
+test('final review I4/I5: the catalog and the solve flow describe the marker lifecycle - a close deletes the run marker, never the session stamp, and the ON line is named', () =>
+{
+    const root = path.join(__dirname, '..');
+    const note = JSON.parse(fs.readFileSync(path.join(root, 'meta', 'stack-manifest.json'), 'utf8')).hooks.find((h) => h.file === 'guard-stop-contract.js' && h.matcher === '@Stop').note;
+    const html = fs.readFileSync(path.join(root, 'docs', 'alfred-code.html'), 'utf8').split('\n');
+    const row = (name) => html.find((l) => l.startsWith(`  ["${name}", `)) || '';
+    for (const [where, text] of [['the manifest note', note], ['the HTML row', row('guard-stop-contract')]])
+    {
+        assert.doesNotMatch(text, /deletes the stamp|per stamp/, `${where} still tells a close to delete the stamp`);
+        assert.match(text, /deletes the marker/, `${where} names the marker`);
+    }
+    assert.match(row('guard-answer'), /Modes ON: /, 'the ON line is in the guard-answer row');
+    const mechanics = fs.readFileSync(path.join(root, 'stack', 'skills', 'task-solve', 'references', 'step-mechanics.md'), 'utf8');
+    const lifetime = mechanics.split('\n').findIndex((l) => l.includes('**Lifetime.**'));
+    assert.match(mechanics.split('\n').slice(lifetime, lifetime + 3).join(' '), /hook's session stamp is never deleted/, 'step-mechanics says which stamp a close deletes');
+});
+
+test('final review m9 (re-graded): a mode flag typed alone gets the pointer to its command and switches nothing', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoStamp(p, 'bf');
+    openRun(p, 'bf');
+    const said = context(sub(p, 'bf', '--mode-auto-run-off', t));
+    assert.match(said, /'--mode-auto-run-off' typed alone switches nothing: mode flags count only right after a command - `\/mode-auto-run --mode-auto-run-off` ends auto-run for the session/);
+    assert.ok(fs.existsSync(p.gate), 'the stamp stands: the grammar is unchanged');
+    assert.ok(rows(p, 'bf').some((r) => r.kind === 'mode-flag-bare'), 'one mode-flag-bare row');
+    assert.match(context(sub(project(), 'bf2', '--mode-output-scorer-on now', t)), /'--mode-output-scorer-on' typed alone switches nothing/, 'with no stamp too');
+    assert.strictEqual(context(sub(project(), 'bf3', 'what does --mode-auto-run-off do?', t)), '', 'a flag inside prose says nothing');
 });

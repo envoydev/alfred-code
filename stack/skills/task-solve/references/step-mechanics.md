@@ -50,7 +50,7 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   stop and put the choice through AskUserQuestion - 'Retry the stamp (Recommended)' / 'Run this stage inline' -
   rather than retrying blind or dispatching around the gate.
 - A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits.
-- **Lifetime.** The AUTO stamp lives until step 6's close deletes it or the session ends - a
+- **Lifetime.** This hand-written AUTO stamp lives until step 6's close deletes it or the session ends (the hook's session stamp is never deleted - step 6 deletes its run marker) - a
   resumed session re-writes it only from the user's waiver words typed in THAT session, else the
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list

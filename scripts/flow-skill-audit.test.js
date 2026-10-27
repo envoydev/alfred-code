@@ -259,7 +259,8 @@ const body = (text) => String(text).replace(/^---\n[\s\S]*?\n---\n/, '');
 // MINOR task-solve/references/step-mechanics.md:40: the dispatch guard reads a pre-session stamp as stale.
 test('task-solve: the AUTO stamp ends with the session; a resumed session re-writes it only from that session\'s words', () => {
     const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
-    assert.match(mech, /The AUTO stamp lives until step 6's close deletes it or the session ends - a resumed session re-writes it only from the user's waiver words typed in THAT session, else the next dispatch asks\./);
+    // final review 2026-10-27 I5: the line names which stamp - the hook's session stamp is never deleted
+    assert.match(mech, /This hand-written AUTO stamp lives until step 6's close deletes it or the session ends \(the hook's session stamp is never deleted - step 6 deletes its run marker\) - a resumed session re-writes it only from the user's waiver words typed in THAT session, else the next dispatch asks\./);
 });
 
 // MINOR task-solve:172: the agents-mode stamp's first line is given, not learned from a bounce.

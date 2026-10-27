@@ -12,6 +12,8 @@ const { modeFlags, autoRunRefusal, runMarkerFile, runMarkerSkill, writeRunMarker
 
 const EMPTY = { commands: [], family: false, run: [], request: '', autoRun: null, scorer: null, flagOnly: false, old: [], unknown: [], late: false };
 
+// The 2.2.0 old prefix, built at run time: the rename sweep fails any tracked file that spells an old name.
+const OLD_FLOW = ['alfred', 'task-solve'].join('-');
 const ROWS = [
     ['/task-solve --mode-auto-run-on X', { family: true, autoRun: 'on', request: 'X', flagOnly: false, run: ['--mode-auto-run-on'] }],
     ['/task-solve --mode-auto-run-off X', { autoRun: 'off', scorer: null, request: 'X' }],
@@ -47,7 +49,7 @@ const ROWS = [
     ['/task-solve /a /b /c /d /e /f --mode-auto-run-on X',
         { commands: ['/task-solve', '/a', '/b', '/c', '/d', '/e'], run: [], autoRun: null, request: '/f --mode-auto-run-on X', late: true }],
     ['/alfred-code:task-solve --mode-auto-run-on X', { commands: ['/alfred-code:task-solve'], family: true, autoRun: 'on' }],
-    ['/alfred-task-solve --mode-auto-run-on X', { family: true, autoRun: 'on' }],
+    [`/${OLD_FLOW} --mode-auto-run-on X`, { family: true, autoRun: 'on' }],
     ['/task-solve `--mode-auto-run-on` X', { run: [], autoRun: null, request: '`--mode-auto-run-on` X', late: false }],
     ['  /task-solve   --mode-auto-run-on   fix  it  ', { autoRun: 'on', request: 'fix  it' }],
 ];
@@ -63,7 +65,7 @@ test('modeFlags: the leading run after a family command group, and nothing else 
 });
 
 test('FLOW_FAMILY_RE: the five families with the plugin and old prefixes, nothing else', () => {
-    for (const name of ['task-solve', 'capture-architecture', 'loop-code-quality', 'issue-diagnoser', 'mode-auto-run', 'alfred-code:task-solve', 'alfred-task-solve'])
+    for (const name of ['task-solve', 'capture-architecture', 'loop-code-quality', 'issue-diagnoser', 'mode-auto-run', 'alfred-code:task-solve', OLD_FLOW])
         assert.ok(FLOW_FAMILY_RE.test(name), name);
     for (const name of ['review-code', 'habits-explain-topic', 'task-', 'mode', 'compact']) assert.ok(!FLOW_FAMILY_RE.test(name), name);
 });

@@ -81,11 +81,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   change READS that body and follows it, because Claude Code refuses the model's own `Skill` call of a
   `disable-model-invocation` flow whatever a hook says (code.claude.com/docs/en/skills); `flowLine` in the stop contract
   marks the solve run on the first Read of a `task-solve/SKILL.md` after a typed `/mode-auto-run` row with a request, and
-  the next typed prompt disarms it (M1). A refused `/mode-auto-run` start gets no fresh-session offer (M7). An old flag
+  the next typed prompt disarms it (M1). A refused `/mode-auto-run` start gets no fresh-session offer (M7), nor does a `/mode-auto-run` line with no request, which
+  only flips a switch; an `-on` line that opens no run but carries a request (`/mode-output-scorer --mode-auto-run-on <request>`)
+  is told the request runs under the mode, the flag-only one that nothing else happens (final review 2026-10-27, I2 / I3). An old flag
   (`--auto-mode`, `--score-on`, `--score-off`) is stripped with a pointer line - the auto one says the run is attended,
   for the skew window where a flow skill copied before the update still reads the old flag - an unknown `--mode-*` gets
   its reason line, and a flag run after a non-family command switches nothing and gets the 'count only after' line
-  (`mode-flag-old` / `mode-flag-unknown` rows).
+  (`mode-flag-old` / `mode-flag-unknown` rows); a prompt opening on a mode flag with no command before it switches nothing
+  and gets the pointer to `/mode-auto-run --mode-auto-run-off` (`mode-flag-bare`, final review m9).
   `guard-stop-contract.js`
   then answers - under a stamp naming THIS session only, never a hand-written one (audit HK02: it answered a second
   session's asks) - each `AskUserQuestion` whose every question marks ONE `(Recommended)` option - `allow` with the questions
