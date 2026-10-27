@@ -18,13 +18,13 @@ const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
 const brand = require('./brand.js');
 const { readJson, parseJson } = require('./json-file.js');
+const { sleepMs, takeLock } = require('./file-lock.js');
 const runtime = require('./runtime.js');
 const stamp = require('./stamp.js');
 
 const CATEGORIES = Object.freeze(['skill', 'agent', 'rule', 'hook', 'plugin', 'env', 'mcp', 'secret', 'doc', 'instructions']);
 const FILE = 'workspace';
 const LOCK = 'workspace.lock';
-const STEP_MS = 50;
 
 // ------------------------------------------------------------------ the lines
 
@@ -229,38 +229,6 @@ function readWorkspace(projectRoot, opts = {})
     }
     const { text, ...got } = readAt(at.file);
     return got;
-}
-
-// Atomics.wait blocks without spinning; the installer and the CLI are synchronous throughout.
-const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-
-// true once this run holds the lock, false when another run held it past `retryMs`. A lock older than `staleMs`
-// (by its mtime) is a run that died holding it, and is taken over.
-function takeLock(lock, { now, sleep, retryMs, staleMs })
-{
-    const start = now();
-    for (;;)
-    {
-        try
-        {
-            fs.closeSync(fs.openSync(lock, 'wx'));
-            return true;
-        }
-        catch (e)
-        {
-            if (!e || e.code !== 'EEXIST') throw e;
-        }
-        let age = 0;
-        try { age = now() - fs.statSync(lock).mtimeMs; }
-        catch { continue; }                 // released between the open and the stat: try again at once
-        if (age > staleMs)
-        {
-            try { fs.unlinkSync(lock); } catch { /* another run took it over first: the open decides */ }
-            continue;
-        }
-        if (now() - start >= retryMs) return false;
-        sleep(STEP_MS);
-    }
 }
 
 // Reads, changes and writes the project's workspace file under its lock. `mutate(model)` changes the model in place
