@@ -300,7 +300,7 @@ function orientation(root, docs) {
   // The one line below is the part that used to name architecture/ as if it were the only docs folder; a
   // project whose docs are preferences/ and awareness/ (no architecture/ at all) is named correctly here.
   let doms = [];
-  try { doms = docs.domains(); } catch {}
+  try { doms = durableOf(docs); } catch {}
   const rootRel = path.relative(root, docs.DOCS_ROOT).split(path.sep).join('/');
   // The first-look scan's file: read from manifests, never captured - pushed, but with the warning beside it. An
   // older engine copy beside this hook has no orientationState, and reads as not provisional.
@@ -372,7 +372,7 @@ function sessionStart(input, root, docs, state) {
   // With no doc file to read by section (a provisional orientation alone, or a domain whose every file is protected),
   // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
   let readable = true;
-  try { readable = docs.docFiles().length > 0; } catch {}
+  try { readable = durableDocFiles(docs).length > 0; } catch {}
   if (!docsOff('gate') && readable) {
     let roots = ['src', 'tests'];
     try { roots = docs.loadWatch().sourceRoots; } catch {}
@@ -415,8 +415,9 @@ function main() {
   // without one - see docs.js's own domains()). A project whose docs are preferences/ and awareness/,
   // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the
   // whole-hook gate reads every domain, not one hardcoded folder. An empty list is still the right reason to
-  // return: nothing under the docs root declares itself a domain.
-  if (!docs.domains().length) return;
+  // return: nothing under the docs root declares itself a domain. A RECOMPUTED domain (docs.js recomputed - quality/'s
+  // assessment, rewritten from the code at each capture) does not count: alone it gets no start block, gate or ask.
+  if (!durableOf(docs).length) return;
   const state = loadState(input.session_id);
   if (event === 'SessionStart') return sessionStart(input, root, docs, state);
   if (event === 'SubagentStart') return subagentStart(input, root, docs);
@@ -666,11 +667,32 @@ function resolveHit(docs, h, id) {
 // A section whose own text names a file a watch entry hit, verbatim, answers before the entries' sections (audit
 // 2026-10-10 C23, session f6c591fa): each is a queue of its own ahead of theirs, so the round-robin below takes it
 // first. Only the files already hit are matched, so the ask fires exactly when it did before.
-function namedFirst(docs, hits) {
+function namedFirst(docs, hits, keep = () => true) {
   if (typeof docs.namingSections !== 'function') return hits;
   let named = [];
-  try { named = docs.namingSections(hits.flatMap((h) => h.files), ASK_SECTIONS); } catch { return hits; }
+  try { named = docs.namingSections(hits.flatMap((h) => h.files), ASK_SECTIONS, keep); } catch { return hits; }
   return [...named.map((n) => ({ kind: 'names the file', files: n.files, sections: [n.id], domain: n.domain })), ...hits];
+}
+
+// A RECOMPUTED domain's sections (docs.js recomputed: rewritten from the code at each capture, so reading one is no
+// orientation and a seat never answers for one). Each reader is guarded, so an older engine reads every domain durable.
+const isRecomputedDomain = (docs, d) => { try { return typeof docs.recomputed === 'function' && docs.recomputed(d); } catch { return false; } };
+const isRecomputedRef = (docs, ref) => { try { return typeof docs.refRecomputed === 'function' && docs.refRecomputed(ref); } catch { return false; } };
+const durableOf = (docs) => (typeof docs.durableDomains === 'function' ? docs.durableDomains() : docs.domains());
+function durableDocFiles(docs) {
+  const dirs = durableOf(docs).map((d) => docs.domainDir(d));
+  return docs.docFiles().filter((f) => dirs.some((d) => !path.relative(d, f).startsWith('..')));
+}
+
+// The close ask's two pools: the durable sections first, up to the cap, then the recomputed ones in the slots left -
+// a weakness section never takes a durable section's place, whichever names the file. `rcHits` is the recomputed
+// pool's own hit list (the close adds the seats' files to it); a section is placed by the domain its ref resolves to.
+function askPools(docs, hits, limit, exclude = () => false, rcHits = hits) {
+  const durable = sectionRefs(docs, namedFirst(docs, hits, (n) => !isRecomputedDomain(docs, n.domain)), limit, (id) => exclude(id) || isRecomputedRef(docs, id));
+  const left = limit - durable.asks.length;
+  if (left <= 0 || !rcHits.length) return durable;
+  const rc = sectionRefs(docs, namedFirst(docs, rcHits, (n) => isRecomputedDomain(docs, n.domain)), left, (id) => exclude(id) || !isRecomputedRef(docs, id));
+  return { asks: [...durable.asks, ...rc.asks], warnings: [...durable.warnings, ...rc.warnings].slice(0, limit) };
 }
 
 function sectionRefs(docs, hits, limit, exclude = () => false) {
@@ -820,7 +842,10 @@ function seatAsk(input, root, docs, a, key, closing) {
   if (!hits.length) return null;
   // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
   // section, and the second is the one most likely to notice the first's rewrite only covered half the change.
-  const { asks, warnings } = sectionRefs(docs, namedFirst(docs, hits), ASK_SECTIONS, (id) => a.asked.includes(id));
+  // A seat never answers for a recomputed section: its own loop recomputes it, and the close asks it (stop, rcHits).
+  const durableHits = hits.filter((h) => !isRecomputedDomain(docs, h.domain));
+  if (!durableHits.length) return null;
+  const { asks, warnings } = sectionRefs(docs, namedFirst(docs, durableHits, (n) => !isRecomputedDomain(docs, n.domain)), ASK_SECTIONS, (id) => a.asked.includes(id) || isRecomputedRef(docs, id));
   if (!asks.length && !warnings.length) return null;
   const files = [...new Set(hits.flatMap((h) => h.files))];
   const reason = finishAsk(docs, files, asks, warnings, closing);
@@ -939,7 +964,8 @@ function consultedBy(input, paths, docRoots, docs, plansRels = []) {
       .flatMap((r) => r.split(/[ \t]+/).slice(2))
       // a path under the docs root resolves like its ref (docs.js stripDocsRoot, audit 2026-10-20 C27)
       .filter((r) => !r.startsWith('-') && /^[\w./][\w.\/-]*(#[\w-]+)?$/.test(r))
-      .filter(resolves);
+      .filter(resolves)
+      .filter((r) => !isRecomputedRef(docs, r));
   }
   if (/docs\.js[ \t]+(toc|where|files|status|lint|watch|stale)\b/.test(command)) return [];
   const underDocs = (p) => docRoots.some((d) => p === d || p.startsWith(`${d}/`));
@@ -969,7 +995,7 @@ function orientedRefs(abs, docs) {
   const out = new Set();
   for (const m of text.matchAll(ORIENTED_LINE)) {
     for (const r of m[1].match(/[A-Za-z][\w.\/-]*#[\w-]+/g) || []) {
-      try { if (docs.askRef(r)) out.add(r); } catch { /* an unresolved name earns nothing */ }
+      try { if (docs.askRef(r) && !isRecomputedRef(docs, r)) out.add(r); } catch { /* an unresolved name earns nothing */ }
     }
   }
   return [...out];
@@ -1292,7 +1318,8 @@ function preToolUse(input, root, docs, state) {
   // One root per domain, not one hardcoded architecture/ - a project documented only in preferences/ must still
   // get credit for reading it. domains() is already required to succeed for this hook to have run at all (see
   // main()'s own gate above), so no extra guard is needed here.
-  const docRoots = docs.domains().map((d) => toPosix(path.relative(root, docs.domainDir(d))));
+  // A recomputed domain is left out: reading the assessment is no orientation, so it earns no credit.
+  const docRoots = durableOf(docs).map((d) => toPosix(path.relative(root, docs.domainDir(d))));
   // Only these tools can name a source target, so nothing else pays for the watch list.
   const name = input.tool_name || '';
   const fileWrite = /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name) || NAV_EDIT.test(name);
@@ -1363,7 +1390,7 @@ function preToolUse(input, root, docs, state) {
   // of this hold - what it can read, and what it pastes or names.
   // Nothing under the docs root can be read by section, so a hold would only point at an empty list.
   let readable = true;
-  try { readable = docs.docFiles().filter(notPrefs).length > 0; } catch {}
+  try { readable = durableDocFiles(docs).filter(notPrefs).length > 0; } catch {}
   if (!readable) { allow(); return; }
   if (gate.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: gate.holds }); allow(); return; }
   // Nobody at the terminal (hook-prelude.js unattended): the hold is still logged as a bypass, never made.
@@ -1371,7 +1398,7 @@ function preToolUse(input, root, docs, state) {
   gate.holds++;
   saveState(input.session_id, state);
   let hits = [];
-  try { hits = docs.where(targets, 3).filter((h) => notPrefs(h.file)); } catch {}
+  try { hits = docs.where(targets, 3).filter((h) => notPrefs(h.file) && !isRecomputedRef(docs, h.id)); } catch {}
   // Only a section that DECLARES a cover of the target is pasted (audit 2026-10-10 C03 / C23: a word match on a
   // cover-less section was pasted as 'the convention this change follows' for a test helper - ab61627f, f24eb967 - and
   // a module-size inventory for a one-line fix - 8f44a003); word-only hits are named as candidates, and the hold does
@@ -1426,13 +1453,18 @@ function askLines(docs, files, refs) {
   try { mode = docs.docsMode(); branch = docs.branch() || ''; mainline = docs.isMainline(branch); } catch {}
   // What saving the doc costs, which is the whole difference between the two versioning modes. On mainline under
   // local versioning there is no overlay and nothing to commit, so neither of the other two lines is true there.
+  // A recomputed section is written in place on every branch (docs.js set), so under local versioning on a branch it
+  // lands at once: an ask of only those says so, and a mixed one words the branch lines for the rest and names them.
+  const inPlace = refs.filter((r) => isRecomputedRef(docs, r.id));
+  const kept = refs.length - inPlace.length;
   const tail = mode === 'git'
     ? [`         and commit the doc${one ? '' : 's'} with your code, so ${one ? 'it travels' : 'they travel'} with this branch.`]
-    : mainline
+    : mainline || !kept
       ? [`         and ${one ? 'it lands' : 'they land'} in the shared docs at once. Nothing to commit.`]
       : [
-        `         and ${one ? 'it is' : 'they are'} stored for branch ${branch} only. ${one ? 'It moves' : 'They move'} into the`,
-        `         shared docs by ${one ? 'itself' : 'themselves'} once this branch is merged. Nothing to commit.`,
+        `         and ${kept === 1 ? 'it is' : 'they are'} stored for branch ${branch} only. ${kept === 1 ? 'It moves' : 'They move'} into the`,
+        `         shared docs by ${kept === 1 ? 'itself' : 'themselves'} once this branch is merged. Nothing to commit.`,
+        ...(inPlace.length ? [`         ${inPlace.map((r) => r.id).join(', ')} ${inPlace.length === 1 ? 'is' : 'are'} rewritten from the code, so ${inPlace.length === 1 ? 'it lands' : 'they land'} in the shared docs at once.`] : []),
       ];
   return [
     ...(one
@@ -1494,11 +1526,12 @@ const HANDBACK_LAST = [
   '(docs ok, or the section you rewrote), then your report unchanged - its status: and contract_version: lines,',
   'where it has them, as they were.',
 ];
-function finishAsk(docs, files, asks, warnings = [], closing = []) {
+function finishAsk(docs, files, asks, warnings = [], closing = [], dead = []) {
   const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
   const parts = [`Docs check: you changed ${named}`];
   if (warnings.length) parts.push('', ...warnLines(files, warnings));
   if (asks.length) parts.push('', ...askLines(docs, files, asks));
+  if (dead.length) parts.push('', ...dead.map((d) => `${d.file} ${d.id} - its Scope: \`${d.glob}\` reaches no file since this session's change - ask the user to run /capture-preferences to re-scope ${d.id}`));
   if (closing.length) parts.push('', ...closing);
   return parts.join('\n');
 }
@@ -1546,6 +1579,30 @@ const SETTLED_STATUS = /^(?:completed?|done|failed|killed|stopped|cancell?ed|err
 const liveBackgroundWork = (input) => input.hook_event_name === 'Stop' && Array.isArray(input.background_tasks)
   && input.background_tasks.some((t) => t && typeof t === 'object' && !SETTLED_STATUS.test(String(t.status || '')));
 
+// A code or architecture preference entry whose Scope: reaches no file (D4 of the docs-watch spec): the capture's own
+// reader decides (preferences.js deadScopes, beside these hooks where preferences-session.js finds it). The user's words
+// are never rewritten - the close names the entry. No copy, a throw or no row adds nothing.
+let prefsReader;
+function deadScopeRows(root) {
+  if (prefsReader === undefined) {
+    try { prefsReader = require(path.join(__dirname, '..', 'skills', 'capture-preferences', 'scripts', 'preferences.js')); } catch { prefsReader = null; }
+  }
+  if (!prefsReader || typeof prefsReader.deadScopes !== 'function' || typeof prefsReader.globRe !== 'function') return [];
+  try {
+    return prefsReader.deadScopes(root).map((r) => ({ file: path.basename(String((r.doc && r.doc.file) || '')), id: r.id, glob: r.glob, re: prefsReader.globRe(r.glob) }));
+  } catch { return []; }
+}
+
+// A recomputed hit the capture already saw: its domain's watch.json was written after this session started and after
+// every file the hit names last changed (a deleted file has no time, so it keeps the hit). A quality loop recomputes the
+// assessment at its stop, after its fixes, so those fixes are not asked again; a fix made after the recompute is.
+function captureSaw(root, docs, h, startedAt) {
+  let w;
+  try { w = fs.statSync(path.join(docs.domainDir(h.domain), 'watch.json')).mtimeMs; } catch { return false; }
+  if (!(w >= (startedAt + 1) * 1000)) return false;
+  return h.files.every((f) => { try { return fs.statSync(path.join(root, f)).mtimeMs <= w; } catch { return false; } });
+}
+
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
@@ -1553,11 +1610,15 @@ function stop(input, root, docs, state) {
   // session's change too (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
   if (docsOff('ask') || stopHeld(input) || state.asked || !state.snapshot) return;
   if (typeof docs.askRef !== 'function') return;
-  // Nothing watched, nothing to ask: the tree diff it would pay for (47-261ms, every turn) can only end in no hit
-  // (audit 2026-10-08).
-  if (noWatch(docs)) return;
+  // Nothing watched and no dead Scope: to name, nothing to ask: the tree diff it would pay for (47-261ms, every turn)
+  // can only end in no hit (audit 2026-10-08).
+  const watched = !noWatch(docs);
+  let scopeRows = watched ? null : deadScopeRows(root);
+  if (!watched && !scopeRows.length) return;
   let changed;
   let hits = [];
+  let rcHits = [];
+  let dead = [];
   try {
     changed = docs.changedSince(state.snapshot);
     if (!changed.files.length && !changed.dirs.length) return;
@@ -1590,17 +1651,33 @@ function stop(input, root, docs, state) {
     if (outside.size) log(root, input, { event: 'changed-outside-session', files: [...outside].slice(0, 5) });
     const files = claimed.filter((f) => !outside.has(f));
     const dirs = changed.dirs.filter((d) => files.some((f) => f.startsWith(`${d}/`)));
-    if (!files.length && !dirs.length) return;
-    hits = docs.watchHits(files, dirs);
+    // A seat was never asked a recomputed section, so the close asks it over the seats' files too.
+    const seatFiles = changed.files.filter((f) => seats.has(f) && !others.has(f) && !files.includes(f));
+    const gone = [...files, ...seatFiles].filter((f) => !fs.existsSync(path.join(root, f)));
+    if (gone.length) {
+      if (!scopeRows) scopeRows = deadScopeRows(root);
+      dead = scopeRows.filter((r) => gone.some((f) => r.re.test(f)));
+    }
+    if (!files.length && !dirs.length && !seatFiles.length && !dead.length) return;
+    if (watched) {
+      hits = docs.watchHits(files, dirs).filter((h) => !isRecomputedDomain(docs, h.domain));
+      if (typeof docs.refRecomputed === 'function') {
+        const all = [...files, ...seatFiles];
+        rcHits = docs.watchHits(all, changed.dirs.filter((d) => all.some((f) => f.startsWith(`${d}/`))))
+          .filter((h) => isRecomputedDomain(docs, h.domain) && !captureSaw(root, docs, h, state.snapshot.at));
+      }
+    }
   } catch { return; }
-  if (!hits.length) return;
-  const { asks, warnings } = sectionRefs(docs, namedFirst(docs, hits), ASK_SECTIONS);
-  if (!asks.length && !warnings.length) return;
-  const files = [...new Set(hits.flatMap((h) => h.files))];
+  if (!hits.length && !rcHits.length && !dead.length) return;
+  const { asks, warnings } = hits.length || rcHits.length ? askPools(docs, hits, ASK_SECTIONS, undefined, rcHits) : { asks: [], warnings: [] };
+  if (!asks.length && !warnings.length && !dead.length) return;
+  const files = [...new Set([...hits, ...rcHits].flatMap((h) => h.files))];
+  for (const f of [...new Set(changed.files)]) if (!files.includes(f) && dead.some((r) => r.re.test(f))) files.push(f);
+  const deadIds = dead.map((r) => `${r.file} ${r.id}`);
   // Nobody at the terminal (hook-prelude.js unattended): the ask would only turn the final answer into
   // 'docs ok' (8 of 12 print-mode cells, pilot 2). Logged, never made.
   if (unattended(input)) {
-    log(root, input, { event: 'ask-skipped', why: 'unattended', sections: asks.map((r) => r.id), files: files.slice(0, 5) });
+    log(root, input, { event: 'ask-skipped', why: 'unattended', sections: asks.map((r) => r.id), deadScopes: deadIds, files: files.slice(0, 5) });
     unattendedRow(root, input, 'docs finish ask');
     return;
   }
@@ -1611,13 +1688,13 @@ function stop(input, root, docs, state) {
   if (liveBackgroundWork(input) && (state.deferred || 0) < MAX_DEFERS) {
     state.deferred = (state.deferred || 0) + 1;
     saveState(input.session_id, state);
-    log(root, input, { event: 'ask-deferred', why: 'background work running', deferred: state.deferred, sections: asks.map((r) => r.id), files: files.slice(0, 5) });
+    log(root, input, { event: 'ask-deferred', why: 'background work running', deferred: state.deferred, sections: asks.map((r) => r.id), deadScopes: deadIds, files: files.slice(0, 5) });
     return;
   }
   state.asked = true;
   saveState(input.session_id, state);
-  const reason = finishAsk(docs, files, asks, warnings, SUMMARY_LAST);
-  log(root, input, { event: 'ask-update', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
+  const reason = finishAsk(docs, files, asks, warnings, SUMMARY_LAST, dead);
+  log(root, input, { event: 'ask-update', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), deadScopes: deadIds, files: files.slice(0, 5), kinds: [...new Set([...hits, ...rcHits].map((h) => h.kind))] });
   blockRow(root, input, reason);
   markHeld(input);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
