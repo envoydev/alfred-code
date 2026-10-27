@@ -9,7 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
-const { dataRootOffer, toolIgnoreOffer, applyIgnore } = require('./git-hygiene.js');
+const { dataRootOffer, toolIgnoreOffer, applyIgnore, rewriteOwnLine, OWN_COMMENT } = require('./git-hygiene.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'git-hygiene-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -63,6 +63,29 @@ test('apply: .gitignore gets one anchored line with its comment, kept EOL, and a
         'node_modules\r\n# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local\r\n/.alfred/\r\n');
     assert.ok(ignored(root, '.alfred/serena/x'));
     assert.strictEqual(applyIgnore({ projectRoot: root, home: 'gitignore' }).state, 'none', 'now ignored: nothing offered');
+});
+
+// Workspace roles and variables, D6: at project and user scope git tracks `<root>/.variables`, so the root's line is the
+// pair `/<root>/*` and `!/<root>/.variables`; an earlier line of this script's own becomes the pair, a user's line never.
+test('apply at project scope writes /.alfred/* and !/.alfred/.variables, so the variables are tracked and the rest ignored', () =>
+{
+    const root = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'local' }, files: { '.gitignore': 'node_modules\n', '.alfred/.gitignore': '/*\n!/.gitignore\n!/.variables\n!/docs/\n', '.claude/alfred-code.stamp': 'scope: project\n' } });
+    const r = applyIgnore({ projectRoot: root, home: 'gitignore' });
+    assert.deepStrictEqual([r.state, r.lines], ['applied', ['/.alfred/*', '!/.alfred/.variables']]);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), `node_modules\n${OWN_COMMENT}\n/.alfred/*\n!/.alfred/.variables\n`);
+    assert.ok(ignored(root, '.alfred/serena/x'));
+    assert.ok(!ignored(root, '.alfred/.variables'));
+});
+
+test('rewriteOwnLine turns this script\'s own /.alfred/ line into the pair, keeps the EOL, and leaves a user\'s line alone', () =>
+{
+    const own = repo({ files: { '.gitignore': `a\r\n${OWN_COMMENT}\r\n/.alfred/\r\n` } });
+    assert.deepStrictEqual(rewriteOwnLine({ projectRoot: own, root: '.alfred' }), [path.join(own, '.gitignore')]);
+    assert.strictEqual(fs.readFileSync(path.join(own, '.gitignore'), 'utf8'), `a\r\n${OWN_COMMENT}\r\n/.alfred/*\r\n!/.alfred/.variables\r\n`);
+    assert.deepStrictEqual(rewriteOwnLine({ projectRoot: own, root: '.alfred' }), [], 'a re-run rewrites nothing');
+    const mine = repo({ files: { '.gitignore': 'a\n/.alfred/\n' } });
+    assert.deepStrictEqual(rewriteOwnLine({ projectRoot: mine, root: '.alfred' }), []);
+    assert.strictEqual(fs.readFileSync(path.join(mine, '.gitignore'), 'utf8'), 'a\n/.alfred/\n');
 });
 
 test('apply: the exclude file names the root from the top level, and no committed file is touched', () =>

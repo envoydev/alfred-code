@@ -509,53 +509,63 @@ function ownPicksAfter({ prior, final, parentLines, added = [], blind = false })
 
 // ------------------------------------------------------------------ the env
 
-// Never passed down: the data root and the docs mode are this project's own layout, and a `seed: false` row is set
-// only in the launch environment or by hand.
-const ENV_NEVER = new Set(['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_VERSIONING']);
-const HOOKS_OFF = 'ALFRED_CODE_HOOKS_OFF';
 const csv = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
-// What a child's env takes from its parent: `seeds` (the value each not-own key should hold), `force` (the present keys
-// whose value differs from its seed) and `own` (the keys the child set itself - sticky once own). `childEnv` is the
-// env of the file this run writes, `beneath` the env of the file Claude Code lays it over (a local-scope child's
-// settings.json, the team's): a key only there is own, so no parent value is written over it for this machine alone.
-function childEnv({ catalog, parentEnv = {}, childEnv: here = {}, beneath = {}, ownPrior, ledgerRows = {}, flagKeys = [], ignores = [] })
+// Step 5 of the loader (layout.js resolveVariables) alone: what the workspace chain hands this project, nearest member
+// first, `ignore env K` lines stopping K from that member on; never a layout MEMBER_NEVER key.
+function chainValues(projectRoot, { env = process.env } = {})
 {
-    const first = ownPrior === null || ownPrior === undefined;
-    const own = new Set(first ? [] : ownPrior);
-    const ignored = new Set(ignores.filter((i) => i.category === 'env').map((i) => i.name));
-    const seeds = {};
-    const force = [];
-    for (const row of catalog)
+    const layout = require('../../stack/hooks/layout.js');
+    const out = {};
+    if (!layout.workspaceOn({ env, projectRoot })) return out;
+    const { members, ignores } = layout.workspaceChain(projectRoot, { env });
+    const skip = new Set((ignores || []).filter((i) => i.category === 'env').map((i) => i.name));
+    for (const member of members)
     {
-        const key = row.key;
-        if (ENV_NEVER.has(key) || row.seed === false) continue;
-        const present = Object.hasOwn(here, key);
-        const value = present ? String(here[key]) : undefined;
-        const parentValue = Object.hasOwn(parentEnv, key) ? String(parentEnv[key]) : String(row.default);
-        if (flagKeys.includes(key)) own.add(key);
-        else if (!present && Object.hasOwn(beneath, key)) own.add(key);
-        else if (present && !own.has(key))
-        {
-            const row0 = ledgerRows[key];
-            if (first) { if (value !== parentValue) own.add(key); }
-            else if (row0) { if (valueHashOf(value) !== row0) own.add(key); }
-            else if (value !== String(row.default) && value !== parentValue) own.add(key);
-        }
-        if (own.has(key)) continue;
-        let target = ignored.has(key) ? String(row.default) : parentValue;
-        if (key === HOOKS_OFF && !ignored.has(key))
-        {
-            const whole = csv(here[key] ?? beneath[key]).filter((e) => !e.includes(':'));
-            const parts = csv(parentEnv[key]).filter((e) => e.includes(':'));
-            target = [...new Set([...whole, ...parts])].join(',');
-        }
-        seeds[key] = target;
-        if (present && value !== target) force.push(key);
+        const read = layout.readDotenv(path.join(member.root, ...member.dataRoot.split('/'), '.variables'));
+        for (const [key, value] of Object.entries((read && read.values) || {}))
+            if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !skip.has(key) && !Object.hasOwn(out, key)) out[key] = value;
+        for (const i of member.ignores || []) if (i.category === 'env') skip.add(i.name);
     }
-    return { seeds, force: force.sort(), own: [...own].sort() };
+    return out;
 }
-const valueHashOf = (v) => stamp.valueHash(v);
+
+// What the settings pass seeds and drops for a joined child (workspace roles and variables, D5), or null for any other
+// run. A child seeds only what it owns - the catalog default for each `ignore env K` it holds - and the chain hands it
+// the rest. A 2.12 child the switch joined by hand copied its parent's values (its stamp's `own-env:` line names the keys
+// it set itself): each copy still at its ledger hash, and given the same value by the chain now, goes (`copies`); a copy
+// the chain would answer otherwise - a parent not updated yet - stays as the child's own, so no value changes. Its
+// HOOKS_OFF loses the part entries a member's settings hold (`hooksOffDrop`), which the loader merges back at load.
+// A project whose own file names a parent it cannot reach - the switch at 0 (frozen) or a link that does not hold - gets
+// the same plan with nothing to drop: a default seeded now would shadow the chain once it reads again.
+function envPlan(ctx)
+{
+    const w = ctx.workspace;
+    if (!w || ctx.args.action === 'uninstall') return null;
+    const linked = Boolean(w.on && w.members.length);
+    const dataRoot = w.fileRoot ?? (ctx.dataInfo && !ctx.dataInfo.invalid ? ctx.dataInfo.root : undefined);
+    const view = linked ? { ignores: w.ignores } : readWorkspace(ctx.projectRoot, { env: ctx.env, dataRoot }).view;
+    if (!linked && !(view && view.parent)) return null;
+    const plan = { ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], hooksOffDrop: [] };
+    if (!linked) return plan;
+    const read = stamp.stampFiles({ projectRoot: ctx.projectRoot }).read;
+    const own = read ? stamp.readOwnEnv(read) : null;
+    if (own === null) return plan;
+    const layout = require('../../stack/hooks/layout.js');
+    const target = ctx.args.scope === 'local' ? 'settings.local.json' : 'settings.json';
+    const data = readJson(path.join(ctx.claudeDir, target));
+    const env = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
+    const rows = ((ctx.ledger && ctx.ledger.env) || {})[target] || {};
+    const chained = chainValues(ctx.projectRoot, { env: ctx.env });
+    for (const [key, value] of Object.entries(env))
+    {
+        if (!layout.VARIABLE_KEYS.includes(key) || own.includes(key) || layout.MEMBER_NEVER.has(key)) continue;
+        if (rows[key] === stamp.valueHash(value) && chained[key] === String(value)) plan.copies.push(key);
+    }
+    const memberParts = new Set(w.members.flatMap((m) => csv(settingsEnv(m.root).ALFRED_CODE_HOOKS_OFF)).filter((e) => e.includes(':')));
+    plan.hooksOffDrop = csv(env.ALFRED_CODE_HOOKS_OFF).filter((e) => e.includes(':') && memberParts.has(e));
+    return plan;
+}
 
 // ------------------------------------------------------------------ the excludes (spec 2.5)
 
@@ -667,7 +677,7 @@ function settingsEnv(root)
 function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir() })
 {
     const read = stamp.stampFiles({ projectRoot }).read;
-    const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null, ownEnvPrior: read ? stamp.readOwnEnv(read) : null, parentEnv: {} };
+    const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null };
     if (args.action === 'uninstall' || !workspaceOn({ env, projectRoot })) return { ...base, on: false };
     const checked = args.dataPath ? dataRootMod.checkDataPath(args.dataPath) : null;
     // The file sits at --data-path once init registered there; on a root change it is still at the current root until
@@ -712,7 +722,6 @@ function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime
     }
     if (!got.plan) return failed(got.why);
     at.parentLines = planLines(got.plan);
-    at.parentEnv = settingsEnv(parent.root);
     return at;
 }
 
@@ -751,37 +760,14 @@ function listLines(lists)
     return uniqSorted(Object.entries(CATEGORY).flatMap(([key, c]) => (lists[key] || []).map((e) => `${c.line} ${c.name(e)}`)));
 }
 
-// Before the settings pass: a joined child whose parent was read gets the parent's env as seeds and forces
-// (childEnv); any other run leaves `workspaceEnv` null, so the env layer runs as a standalone one would - a force
-// against an unread parent would reset every inherited value to its catalog default.
-function envStep(ctx)
-{
-    const w = ctx.workspace;
-    ctx.workspaceEnv = null;
-    ctx.workspaceOwnEnv = null;
-    if (!w || !w.on || !w.parentLines) return;
-    const local = ctx.args.scope === 'local';
-    const target = local ? 'settings.local.json' : 'settings.json';
-    const envIn = (name) => { const data = readJson(path.join(ctx.claudeDir, name)); return data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {}; };
-    const catalog = (readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env) || [];
-    const flagKeys = [ctx.args.memory && 'ALFRED_CODE_MEMORY', ctx.args.docsVersioning && 'ALFRED_CODE_DOCS_VERSIONING', ctx.args.autoCompact && 'ALFRED_CODE_AUTO_COMPACT'].filter(Boolean);
-    const r = childEnv({
-        catalog, parentEnv: w.parentEnv, childEnv: envIn(target), beneath: local ? envIn('settings.json') : {},
-        ownPrior: w.ownEnvPrior, ledgerRows: ((ctx.ledger && ctx.ledger.env) || {})[target] || {}, flagKeys, ignores: w.ignores,
-    });
-    ctx.workspaceEnv = { seeds: r.seeds, force: r.force };
-    ctx.workspaceOwnEnv = r.own;
-}
-
 // After the settings pass: the excludes for every stamped folder above (joined or not), then the own lines. It never
 // writes a `child` line into a parent - the back-reference is the consent record. Frozen, it touches nothing: the
 // member rows still present are carried by the ledger, and so are the own lines. Returns { created } - true when the
 // excludes made settings.local.json, which the caller names when git does not ignore it.
 function workspaceStep(ctx)
 {
-    const w = ctx.workspace || { on: false, members: [], ownPrior: null, ownEnvPrior: null };
+    const w = ctx.workspace || { on: false, members: [], ownPrior: null };
     ctx.ownPicks = w.ownPrior;
-    ctx.ownEnv = w.ownEnvPrior;
     if (!w.on) { mcpHint(ctx); return { created: false }; }
     const ancestors = stampedAncestors(ctx.projectRoot, { env: ctx.env });
     const want = excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: w.ignores })), process.platform);
@@ -804,7 +790,6 @@ function workspaceStep(ctx)
         ctx.ownPicks = w.parentLines || w.ownPrior !== null
             ? ownPicksAfter({ prior: w.ownPrior, final, parentLines: w.parentLines, added: ctx.userAdds || [], blind: Boolean(ctx.workspaceBlind) })
             : null;
-        if (ctx.workspaceOwnEnv) ctx.ownEnv = ctx.workspaceOwnEnv;
     }
     return { created: Boolean(r.created || d.created) };
 }
@@ -1285,8 +1270,8 @@ module.exports = {
     setParent, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, joinLine, chain, subtree, rescan,
-    planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
-    readPlan, prepare, recordWord, listLines, envStep, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
+    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs,
+    readPlan, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
     releaseChildren, leaveParent, managedSettingsFile, checkLoads,

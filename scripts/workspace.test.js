@@ -387,16 +387,6 @@ test('the /tmp spelling and the real spelling are one member', { skip: process.p
 
 const { valueHash } = require('./install/stamp.js');
 const { hashItem } = require('./install/library.js');
-const CATALOG = [
-    { key: 'ALFRED_CODE_DATA_PATH', default: '.alfred' },
-    { key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git' },
-    { key: 'ALFRED_CODE_SCORER', default: '0' },
-    { key: 'ALFRED_CODE_HISTORY', default: '1' },
-    { key: 'ALFRED_CODE_MEMORY', default: 'claude' },
-    { key: 'ALFRED_CODE_HOOKS_OFF', default: '' },
-    { key: 'ALFRED_CODE_WORKSPACE', default: '0', seed: false },
-];
-const envOf = (o) => ws.childEnv({ catalog: CATALOG, parentEnv: {}, childEnv: {}, beneath: {}, ownPrior: [], ledgerRows: {}, flagKeys: [], ignores: [], ...o });
 
 test('planLines spells every category the way --add takes it', () =>
 {
@@ -426,83 +416,27 @@ test('ownPicksAfter, one case per rule', () =>
     assert.strictEqual(ws.ownPicksAfter({ prior: null, final, parentLines: ['skill a'], added: [], blind: true }), null);
 });
 
-test('childEnv: a key absent in the child is seeded with the parent\'s value', () =>
+// The chain a joined child reads at load (D4 step 5), seen from the installer's side: what envPlan compares a 2.12 copy with.
+const chainTree = () =>
 {
-    const got = envOf({ parentEnv: { ALFRED_CODE_SCORER: '1' } });
-    assert.strictEqual(got.seeds.ALFRED_CODE_SCORER, '1');
-    assert.strictEqual(got.seeds.ALFRED_CODE_HISTORY, '1', 'a key the parent lacks seeds its catalog default');
-    assert.deepStrictEqual(got.force, []);
+    const at = tree({ 'ws': { stamp: true, file: 'child api\n' }, 'ws/api': { stamp: true, file: 'parent ..\n' } });
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORER=1\nALFRED_CODE_HISTORY=0\nALFRED_CODE_DOCS_VERSIONING=local\nALFRED_CODE_INSTRUMENT=1\n');
+    return at;
+};
+
+test('chainValues reads the members\' .variables, never a MEMBER_NEVER key, and stops a key at an ignore env line', () =>
+{
+    const at = chainTree();
+    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORER: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_INSTRUMENT: '1' });
+    fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'workspace'), 'parent ..\nignore env ALFRED_CODE_SCORER\n');
+    assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_SCORER'));
 });
 
-test('childEnv: a key not own and at its ledgered hash is forced to the parent\'s value', () =>
+test('chainValues reads nothing with the switch at 0 or for a project with no parent', () =>
 {
-    const got = envOf({ parentEnv: { ALFRED_CODE_SCORER: '1' }, childEnv: { ALFRED_CODE_SCORER: '0' }, ledgerRows: { ALFRED_CODE_SCORER: valueHash('0') } });
-    assert.deepStrictEqual(got.force, ['ALFRED_CODE_SCORER']);
-    assert.strictEqual(got.seeds.ALFRED_CODE_SCORER, '1');
-});
-
-test('childEnv: a value off its ledger row is own, and own stays own', () =>
-{
-    const got = envOf({ parentEnv: { ALFRED_CODE_SCORER: '1' }, childEnv: { ALFRED_CODE_SCORER: '0' }, ledgerRows: { ALFRED_CODE_SCORER: valueHash('1') } });
-    assert.deepStrictEqual(got.own, ['ALFRED_CODE_SCORER']);
-    assert.deepStrictEqual(got.force, []);
-    assert.strictEqual(Object.hasOwn(got.seeds, 'ALFRED_CODE_SCORER'), false);
-    const again = envOf({ parentEnv: { ALFRED_CODE_SCORER: '1' }, childEnv: { ALFRED_CODE_SCORER: '1' }, ledgerRows: { ALFRED_CODE_SCORER: valueHash('1') }, ownPrior: ['ALFRED_CODE_SCORER'] });
-    assert.deepStrictEqual(again.own, ['ALFRED_CODE_SCORER']);
-});
-
-test('childEnv: with no ledger row, a value off both the default and the parent is own', () =>
-{
-    assert.deepStrictEqual(envOf({ parentEnv: { ALFRED_CODE_SCORER: '1' }, childEnv: { ALFRED_CODE_SCORER: '2' } }).own, ['ALFRED_CODE_SCORER']);
-    const atDefault = envOf({ parentEnv: { ALFRED_CODE_SCORER: '1' }, childEnv: { ALFRED_CODE_SCORER: '0' } });
-    assert.deepStrictEqual(atDefault.own, []);
-    assert.deepStrictEqual(atDefault.force, ['ALFRED_CODE_SCORER']);
-});
-
-test('childEnv: on a first run every key off the parent\'s value is own (the join rule)', () =>
-{
-    const got = envOf({ ownPrior: null, parentEnv: { ALFRED_CODE_SCORER: '0' }, childEnv: { ALFRED_CODE_SCORER: '1', ALFRED_CODE_HISTORY: '1' }, ledgerRows: { ALFRED_CODE_SCORER: valueHash('1') } });
-    assert.deepStrictEqual(got.own, ['ALFRED_CODE_SCORER']);
-    assert.deepStrictEqual(got.force, []);
-});
-
-test('childEnv: flag keys are own', () =>
-{
-    assert.deepStrictEqual(envOf({ parentEnv: { ALFRED_CODE_MEMORY: 'alfred' }, childEnv: { ALFRED_CODE_MEMORY: 'claude' }, flagKeys: ['ALFRED_CODE_MEMORY'] }).own, ['ALFRED_CODE_MEMORY']);
-});
-
-test('childEnv: a key only beneath is own and never seeded or forced', () =>
-{
-    const got = envOf({ parentEnv: { ALFRED_CODE_SCORER: '1' }, beneath: { ALFRED_CODE_SCORER: '0' } });
-    assert.deepStrictEqual(got.own, ['ALFRED_CODE_SCORER']);
-    assert.strictEqual(Object.hasOwn(got.seeds, 'ALFRED_CODE_SCORER'), false);
-    assert.deepStrictEqual(got.force, []);
-});
-
-test('childEnv: ignore env K seeds the catalog default', () =>
-{
-    const got = envOf({ parentEnv: { ALFRED_CODE_SCORER: '1' }, childEnv: { ALFRED_CODE_SCORER: '1' }, ledgerRows: { ALFRED_CODE_SCORER: valueHash('1') }, ignores: [{ category: 'env', name: 'ALFRED_CODE_SCORER' }] });
-    assert.strictEqual(got.seeds.ALFRED_CODE_SCORER, '0');
-    assert.deepStrictEqual(got.force, ['ALFRED_CODE_SCORER']);
-});
-
-test('childEnv: the data root, docs versioning and a seed:false row never pass down', () =>
-{
-    const got = envOf({ parentEnv: { ALFRED_CODE_DATA_PATH: '.ws', ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_WORKSPACE: '0' } });
-    for (const key of ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_WORKSPACE'])
-        assert.strictEqual(Object.hasOwn(got.seeds, key), false, key);
-});
-
-test('childEnv: HOOKS_OFF keeps the child\'s whole-hook entries and takes the parent\'s part entries', () =>
-{
-    const row = { ALFRED_CODE_HOOKS_OFF: valueHash('docs-session') };
-    const got = envOf({ parentEnv: { ALFRED_CODE_HOOKS_OFF: 'guard-x,guard-ungated-commit:push' }, childEnv: { ALFRED_CODE_HOOKS_OFF: 'docs-session' }, ledgerRows: row });
-    assert.strictEqual(got.seeds.ALFRED_CODE_HOOKS_OFF, 'docs-session,guard-ungated-commit:push');
-    assert.deepStrictEqual(got.force, ['ALFRED_CODE_HOOKS_OFF']);
-    const left = envOf({ parentEnv: { ALFRED_CODE_HOOKS_OFF: '' }, childEnv: { ALFRED_CODE_HOOKS_OFF: 'docs-session,guard-ungated-commit:push' }, ledgerRows: { ALFRED_CODE_HOOKS_OFF: valueHash('docs-session,guard-ungated-commit:push') } });
-    assert.strictEqual(left.seeds.ALFRED_CODE_HOOKS_OFF, 'docs-session', 'a part entry the parent dropped leaves');
-    const own = envOf({ parentEnv: { ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' }, childEnv: { ALFRED_CODE_HOOKS_OFF: 'docs-session' }, ownPrior: ['ALFRED_CODE_HOOKS_OFF'] });
-    assert.deepStrictEqual([own.own, own.force, Object.hasOwn(own.seeds, 'ALFRED_CODE_HOOKS_OFF')], [['ALFRED_CODE_HOOKS_OFF'], [], false]);
+    const at = chainTree();
+    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: { ...env0, ALFRED_CODE_WORKSPACE: '0' } }), {});
+    assert.deepStrictEqual(ws.chainValues(at('ws'), { env: env0 }), {});
 });
 
 test('stampedAncestors lists every stamped folder above, linked or not, nearest first', () =>

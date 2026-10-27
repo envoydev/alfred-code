@@ -41,8 +41,8 @@ if (require.main === module) {
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
-// `1` only, as the copy route's shell gate and environment.json read it: `true` switched this hook on where the copy
-// route's gate kept it off (audit 2026-10-08 row 29).
+// `1` only, as environment.json reads it: `true` once switched this hook on where the copy route's shell gate kept it
+// off (audit 2026-10-08 row 29). The gate went in 3.0.0 - the switch lives in .variables, which no shell test reads.
 if (String(envOf(process.env, 'INSTRUMENT') || '').trim() !== '1') process.exit(0); // off unless explicitly switched on
 
 // pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes)

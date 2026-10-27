@@ -11,7 +11,9 @@ const path = require('node:path');
 const rt = require('./install/runtime.js');
 const wsLib = require('./install/workspace.js');
 const stampLib = require('./install/stamp.js');
-const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, releaseExport, skipWithout } = require('./seed-sandbox.js');
+const layoutLib = require('../stack/hooks/layout.js');
+const variablesLib = require('./install/variables.js');
 
 const SEED = path.join(__dirname, 'install', 'alfred-code.js');
 const CLI = path.join(__dirname, 'workspace.js');
@@ -31,6 +33,10 @@ const stampOf = (work, rel) => readOr(path.join(at(work, rel), '.claude', 'alfre
 const lineOf = (text, key) => { const m = new RegExp(`^${key}: ?(.*)$`, 'm').exec(text); return m ? m[1] : null; };
 const hasSkill = (work, rel, name) => fs.existsSync(path.join(at(work, rel), '.claude', 'skills', name, 'SKILL.md'));
 const envOf = (work, rel, file = 'settings.json') => ((json(path.join(at(work, rel), '.claude', file)) || {}).env || {});
+// The stack's variables (D5): a project's own `.variables`, a value set through the CLI's library, and what a project reads.
+const varsOf = (work, rel) => ((layoutLib.readDotenv(path.join(at(work, rel), '.alfred', '.variables')) || {}).values || {});
+const setVar = (work, rel, values) => assert.deepStrictEqual(variablesLib.set(at(work, rel), Object.entries(values).map(([k, v]) => `${k}=${v}`), { env: acct(work), log: () => {} }).refused, []);
+const effectiveOf = (work, rel) => Object.fromEntries(variablesLib.show(at(work, rel), { env: acct(work) }).map((r) => [r.key, r.value]));
 const excludesOf = (work, rel) => (json(path.join(at(work, rel), '.claude', 'settings.local.json')) || {}).claudeMdExcludes || [];
 const ruleGlobs = (work, rel) => (lineOf(stampOf(work, rel), 'library-rules') || '').split(',').filter(Boolean).map((e) => e.split('=')[0])
     .map((n) => wsLib.excludeGlobs([path.join(at(work, rel), '.claude', 'rules', `${n}.md`)], process.platform)[0]);
@@ -70,6 +76,7 @@ function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = fals
     return seedRun(steps.map((s) => s.act || 'install'), '', {
         plugins, account,
         seed: steps.map((s) => s.seed || SEED),
+        source: steps.map((s) => s.source || path.join(__dirname, '..')),
         cwds: steps.map((s) => path.join('ws', ...(s.at && s.at !== '.' ? s.at.split('/') : []))),
         env: steps.map((s) => ({ ALFRED_CODE_WORKSPACE: '1', ...(s.env || {}) })),
         args: steps.map((s, i) => (repo, work) =>
@@ -202,19 +209,63 @@ test('the user\'s own exclude entry, settings key and .mcp.json server survive i
     assert.strictEqual(r.steps[3].stack, 0, `uninstall left the stack's excludes:\n${r.outs[3]}`);
 });
 
-test('env: the root\'s ALFRED_CODE_SCORER=1 lands in a local-scope child; configure\'s value stays; ignore env brings the default back (AC14)', POSIX_ONLY, () =>
+test('env: the root\'s ALFRED_CODE_SCORER=1 reaches a local-scope child through the chain; configure\'s value stays; ignore env seeds the default (D5)', POSIX_ONLY, () =>
 {
     const local = ['--scope', 'local'];
+    const read = (rel) => (work) => [effectiveOf(work, rel)[SC], varsOf(work, rel)[SC]];
     const r = scenario([
-        { at: '.', after: (work) => { setEnv(work, '.', 'settings.json', { [SC]: '1' }); join(work, 'api'); join(work, 'web'); } },
-        { at: 'api', args: local, after: (work) => envOf(work, 'api', 'settings.local.json')[SC] },
-        { at: 'web', args: local, after: (work) => { setEnv(work, 'web', 'settings.local.json', { [SC]: '0' }); edit(work, 'api', (m) => wsLib.addIgnore(m, 'env', SC)); } },
-        update('web', { args: local, after: (work) => [envOf(work, 'web', 'settings.local.json')[SC], lineOf(stampOf(work, 'web'), 'own-env')] }),
-        update('api', { args: local, after: (work) => envOf(work, 'api', 'settings.local.json')[SC] }),
+        { at: '.', after: (work) => { setVar(work, '.', { [SC]: '1' }); join(work, 'api'); join(work, 'web'); } },
+        { at: 'api', args: local, after: read('api') },
+        { at: 'web', args: local, after: (work) => { setVar(work, 'web', { [SC]: '0' }); edit(work, 'api', (m) => wsLib.addIgnore(m, 'env', SC)); } },
+        update('web', { args: local, after: read('web') }),
+        update('api', { args: local, after: read('api') }),
     ]);
-    assert.strictEqual(r.steps[1], '1', r.outs[1]);
-    assert.deepStrictEqual(r.steps[3], ['0', SC], r.outs[3]);
-    assert.strictEqual(r.steps[4], '0', r.outs[4]);
+    assert.deepStrictEqual(r.steps[1], ['1', undefined], `read through the chain, never copied: ${r.outs[1]}`);
+    assert.deepStrictEqual(r.steps[3], ['0', '0'], r.outs[3]);
+    assert.deepStrictEqual(r.steps[4], ['0', '0'], r.outs[4]);
+});
+
+// AC14's env half, Review Focus 7: a 2.12.0 tree with the switch at 1 - the root and a local-scope child installed by that
+// release, the child holding the root's values as copies and one key of its own - updated by this tree, root first.
+test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file, copies leave its settings, the own-env line goes, HOOKS_OFF keeps only the child\'s entries, every effective value unchanged, and the parent\'s guard-ungated-commit:push still stands down there (AC14)', skipWithout('v2.12.0'), () =>
+{
+    const old = releaseExport('v2.12.0');
+    const oldWs = old && require(path.join(old, 'scripts', 'install', 'workspace.js'));
+    const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
+    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const OFF = 'ALFRED_CODE_HOOKS_OFF';
+    const on = (work) => ({ ...acct(work) });
+    const api = (work) => ({
+        effective: Object.fromEntries(variablesLib.show(at(work, 'api'), { env: on(work) }).map((r) => [r.key, r.value])),
+        local: envOf(work, 'api', 'settings.local.json'),
+        vars: (layoutLib.readDotenv(path.join(at(work, 'api'), '.alfred', '.variables')) || {}).values || {},
+        ownEnv: lineOf(stampOf(work, 'api'), 'own-env'),
+        off: layoutLib.hooksOffOf(at(work, 'api'), { env: on(work) }).split(',').filter(Boolean).sort(),
+    });
+    const local = ['--scope', 'local'];
+    const r = scenario([
+        { at: '.', ...OLD, after: (work) =>
+        {
+            setEnv(work, '.', 'settings.json', { [SC]: '1', [OFF]: 'guard-ungated-commit:push' });
+            assert.ok(oldWs.writeWorkspace(at(work, 'api'), (m) => oldWs.setParent(m, '..'), { env: acct(work) }).ok);
+            assert.ok(oldWs.writeWorkspace(at(work), (m) => oldWs.addChild(m, 'api'), { env: acct(work) }).ok);
+        } },
+        { at: 'api', ...OLD, args: local, after: (work) => setEnv(work, 'api', 'settings.local.json', { [LEVEL]: '95', [OFF]: 'guard-ungated-commit:push,docs-session:gate' }) },
+        { at: 'api', ...OLD, act: 'update', args: [...local, '--installed-only'], after: api },
+        update('.'),
+        update('api', { args: local, after: api }),
+    ]);
+    const [before, after] = [r.steps[2], r.steps[4]];
+    assert.strictEqual(before.local[SC], '1', `v2.12.0 copied the root's value: ${r.outs[1]}`);
+    assert.strictEqual(before.local[OFF], 'guard-ungated-commit:push,docs-session:gate', r.outs[2]);
+    assert.ok(before.ownEnv.split(',').includes(LEVEL), `v2.12.0 recorded the child's own value: ${before.ownEnv}`);
+    assert.deepStrictEqual(after.effective, before.effective, r.outs[4]);
+    assert.strictEqual(after.vars[LEVEL], '95', 'the own-env key landed in the child\'s file');
+    assert.ok(!Object.hasOwn(after.vars, SC), 'a copy never lands in the child\'s file');
+    assert.deepStrictEqual(Object.keys(after.local).filter((k) => k.startsWith('ALFRED_CODE_') && k !== 'ALFRED_CODE_DATA_PATH' && k !== OFF), [], JSON.stringify(after.local));
+    assert.strictEqual(after.ownEnv, null, 'the own-env line went');
+    assert.strictEqual(after.local[OFF], 'docs-session:gate', 'HOOKS_OFF keeps only the child\'s own entries');
+    assert.deepStrictEqual(after.off, ['docs-session:gate', 'guard-ungated-commit:push'], 'the root\'s part entry still reaches the child');
 });
 
 test('a parent read-back that fails adds and drops nothing and prints one !! line', POSIX_ONLY, () =>
@@ -232,15 +283,18 @@ test('a parent read-back that fails adds and drops nothing and prints one !! lin
 
 test('kill switch: at 0, nothing is added, dropped, re-seeded or removed and the own lines are carried (AC16)', POSIX_ONLY, () =>
 {
-    const keep = (work) => ({ own: lineOf(stampOf(work, 'api'), 'own-picks'), env: lineOf(stampOf(work, 'api'), 'own-env'), ex: excludesOf(work, 'api').length, sc: envOf(work, 'api')[SC], x: hasSkill(work, 'api', X) });
+    const keep = (work) => ({ own: lineOf(stampOf(work, 'api'), 'own-picks'), ex: excludesOf(work, 'api').length, vars: varsOf(work, 'api'), x: hasSkill(work, 'api', X) });
     const r = scenario([
         { at: '.', after: (work) => join(work, 'api') },
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: keep },
-        update('.', { args: ['--add', `skill ${X}`], after: (work) => setEnv(work, '.', 'settings.json', { [SC]: '1' }) }),
+        update('.', { args: ['--add', `skill ${X}`], after: (work) => setVar(work, '.', { [SC]: '1' }) }),
         update('api', { env: { ALFRED_CODE_WORKSPACE: '0' }, after: keep }),
+        update('api', { after: (work) => effectiveOf(work, 'api')[SC] }),
     ]);
     assert.ok(r.steps[1].ex > 0);
+    assert.deepStrictEqual(Object.keys(r.steps[1].vars), ['ALFRED_CODE_DOCS_VERSIONING'], 'a child seeds no chained key');
     assert.deepStrictEqual(r.steps[3], r.steps[1], r.outs[3]);
+    assert.strictEqual(r.steps[4], '1', 'switched back on, the root\'s value reaches the child - nothing seeded at 0 shadows it');
     assert.doesNotMatch(r.outs[3], /workspace: from/);
 });
 
@@ -271,9 +325,9 @@ test('a child whose back-reference was deleted inherits nothing, writes nothing 
 
 test('a parent print-plan with a failure note, or with an unparseable settings.json, gives parentLines null', POSIX_ONLY, () =>
 {
-    const state = (work) => [hasSkill(work, 'api', X), envOf(work, 'api')[SC]];
+    const state = (work) => [hasSkill(work, 'api', X), effectiveOf(work, 'api')[SC]];
     const r = scenario([
-        { at: '.', after: (work) => { setEnv(work, '.', 'settings.json', { [SC]: '1' }); join(work, 'api'); } },
+        { at: '.', after: (work) => { setVar(work, '.', { [SC]: '1' }); join(work, 'api'); } },
         { at: 'api', after: state },
         update('.', { args: ['--add', `skill ${X}`] }),
         planStep('good.json'),
@@ -421,7 +475,7 @@ test('a child registered under a chosen data root installs with that root and in
     const r = scenario([
         { at: '.', sel: `${ROOT_SEL}skill ${X}\n`, after: (work) =>
         {
-            setEnv(work, '.', 'settings.json', { [SC]: '1' });
+            setVar(work, '.', { [SC]: '1' });
             join(work, 'api', { dataRoot: '.kid-data' });
             edit(work, 'api', (m) => wsLib.addIgnore(m, 'skill', X), '.kid-data');
         } },
@@ -429,7 +483,7 @@ test('a child registered under a chosen data root installs with that root and in
         { at: 'api', args: (work) => ['--data-path', '.kid-data', '--parent-plan', path.join(work, 'root.json')], after: (work) => ({
             root: lineOf(stampOf(work, 'api'), 'data-root'), file: readOr(path.join(at(work, 'api'), '.kid-data', 'workspace')),
             alfred: fs.existsSync(path.join(at(work, 'api'), '.alfred')), x: hasSkill(work, 'api', X), js: hasSkill(work, 'api', 'javascript'),
-            sc: envOf(work, 'api')[SC],
+            sc: effectiveOf(work, 'api')[SC],
         }) },
     ]);
     const got = r.steps[2];
@@ -444,7 +498,7 @@ test('a child registered under a chosen data root installs with that root and in
 test('a D5 decline, a managed-account row and the own lines survive an update', POSIX_ONLY, () =>
 {
     const ROW = `settings.json:${stampLib.ACCOUNT_KEYS[0]}=${'a'.repeat(64)}`;
-    const lines = (rel) => (work) => ['instructions-both', 'managed-account', 'own-picks', 'own-env'].map((k) => lineOf(stampOf(work, rel), k));
+    const lines = (rel) => (work) => ['instructions-both', 'managed-account', 'own-picks'].map((k) => lineOf(stampOf(work, rel), k));
     const stampFile = (work, rel) => path.join(at(work, rel), '.claude', 'alfred-code.stamp');
     const r = scenario([
         { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
@@ -644,7 +698,7 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
         { at: 'web', after: (work) => tree(work, 'api/tool') },
         { at: '.', act: 'uninstall', after: (work) => ({
             api: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')), web: readOr(path.join(at(work, 'web'), '.alfred', 'workspace')),
-            root: readOr(path.join(at(work), '.alfred', 'workspace')), own: lineOf(stampOf(work, 'api'), 'own-picks'), ownEnv: lineOf(stampOf(work, 'api'), 'own-env'),
+            root: readOr(path.join(at(work), '.alfred', 'workspace')), own: lineOf(stampOf(work, 'api'), 'own-picks'),
             skills: [hasSkill(work, 'api', 'javascript'), hasSkill(work, 'api', OWN), hasSkill(work, 'web', 'javascript')],
             tool: tree(work, 'api/tool'), rootStamp: fs.existsSync(path.join(at(work), '.claude', 'alfred-code.stamp')),
         }) },
@@ -655,7 +709,7 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
     assert.strictEqual(got.api, 'child tool\n', r.outs[4]);
     assert.strictEqual(got.web, '');
     assert.ok(!/^child /m.test(got.root || ''), `the root still lists a child:\n${got.root}`);
-    assert.deepStrictEqual([got.own, got.ownEnv], [null, null], 'a released child reads as standalone: every pick its own');
+    assert.strictEqual(got.own, null, 'a released child reads as standalone: every pick its own');
     assert.deepStrictEqual(got.skills, [true, true, true]);
     assert.strictEqual(got.tool, r.steps[3], 'the grandchild kept every file');
     assert.match(r.outs[4], /workspace: released api - /);

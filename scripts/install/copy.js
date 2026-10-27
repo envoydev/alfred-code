@@ -176,7 +176,11 @@ function resolveDocsVersioning(projectRoot, scope)
     const claudeDir = path.join(projectRoot, '.claude');
     const at = scope || readStampScope(stampFile(claudeDir).read || '');
     const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project', { sharedOnly: true }).env;
-    const value = String(envOf(env && typeof env === 'object' ? env : {}, 'DOCS_VERSIONING') || '').trim().toLowerCase();
+    // The key lives in .variables since 3.0.0 (workspace roles and variables, D5), which the settings view sits under -
+    // read there first, so an install reads the value its own settings pass just wrote.
+    const variables = require('./variables.js');
+    const own = variables.read(variables.fileOf(projectRoot, { env: {} })).values.ALFRED_CODE_DOCS_VERSIONING;
+    const value = String(own ?? envOf(env && typeof env === 'object' ? env : {}, 'DOCS_VERSIONING') ?? '').trim().toLowerCase();
     return value === 'git' || value === 'local' ? value : null;
 }
 

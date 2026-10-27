@@ -18,14 +18,8 @@ const MOVED = require('../meta/environment.json').env.map((r) => r.key)
 // Readers still to convert, as `<file>:<key suffix | env-lookup>`.
 const PENDING = [
     'scripts/analyze-usage.js:TURN_CHECK',
-    'scripts/install/alfred-code.js:MEMORY',
     'scripts/install/copy.js:DOCS_VERSIONING',
-    'scripts/install/settings.js:AUTO_COMPACT',
     'scripts/install/settings.js:DOCS_VERSIONING',
-    'scripts/install/settings.js:MEMORY',
-    'scripts/install/workspace.js:AUTO_COMPACT',
-    'scripts/install/workspace.js:DOCS_VERSIONING',
-    'scripts/install/workspace.js:MEMORY',
     'scripts/stamp-docs-root.js:DOCS_VERSIONING',
     'scripts/update-preflight.js:env-lookup',
     'stack/skills/capture-preferences/scripts/tools.js:MEMORY',
@@ -36,6 +30,11 @@ const PENDING = [
 // No read of a moved key in a settings file. Only the loader and the writer are allowed whole.
 const WHOLE = new Set(['stack/hooks/layout.js', 'scripts/install/variables.js', 'scripts/variables.js']);
 const ALLOWED = {
+    'scripts/install/alfred-code.js:MEMORY': 'merged view (settings env with the .variables values laid over it), held by AC23 test "AC23: at <scope> scope AUTO_COMPACT=1 and MEMORY=custom keep every autoCompactWindow row and autoMemoryEnabled false byte-identical; 0 in .variables removes the rows"',
+    'scripts/install/alfred-code.js:AUTO_COMPACT': 'variablesStep compares a flag with the loader\'s value (layout.variablesOf) - no settings read',
+    'scripts/install/alfred-code.js:DOCS_VERSIONING': 'variablesStep compares a flag with the loader\'s value (layout.variablesOf) - no settings read',
+    'scripts/install/settings.js:AUTO_COMPACT': 'merged view (settings env with the .variables values laid over it), held by AC23 test "AC23: at <scope> scope AUTO_COMPACT=1 and MEMORY=custom keep every autoCompactWindow row and autoMemoryEnabled false byte-identical; 0 in .variables removes the rows"',
+    'scripts/install/settings.js:MEMORY': 'merged view (settings env with the .variables values laid over it), held by AC23 test "AC23: at <scope> scope AUTO_COMPACT=1 and MEMORY=custom keep every autoCompactWindow row and autoMemoryEnabled false byte-identical; 0 in .variables removes the rows"',
     'scripts/install/settings.js:env-lookup': 'applyEnv\'s migration and the uninstall read the settings env to move or remove it; `prior.env` is the stamp\'s ledger',
     'scripts/lint-skills.js:DOCS_VERSIONING': 'a lint check that the seed special-cases the catalog key - no settings read',
     'stack/hooks/hook-prelude.js:SCORER': 'switchOn reads the hook\'s env, which applyVariables fills',

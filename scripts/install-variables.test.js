@@ -43,7 +43,7 @@ test('set writes a catalog key into .variables and reports it', (t) =>
     const root = project(dir);
     const log = logger();
     const got = variables.set(root, ['ALFRED_CODE_SCORER_LEVEL=80'], { env, log });
-    assert.deepStrictEqual(got, { written: ['ALFRED_CODE_SCORER_LEVEL'], toLocal: [], refused: [] });
+    assert.deepStrictEqual(got, { written: ['ALFRED_CODE_SCORER_LEVEL'], toLocal: [], toSettings: [], refused: [] });
     assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_SCORER_LEVEL=80\n');
     assert.ok(log.lines.some((l) => l.includes('ALFRED_CODE_SCORER_LEVEL') && l.includes('.alfred/.variables')), log.lines.join('\n'));
 });
@@ -57,7 +57,7 @@ test('set routes a key settings.local.json holds to that file and prints the var
     const before = read(varsOf(root));
     const log = logger();
     const got = variables.set(root, ['ALFRED_CODE_HISTORY=9'], { env, log });
-    assert.deepStrictEqual(got, { written: [], toLocal: ['ALFRED_CODE_HISTORY'], refused: [] });
+    assert.deepStrictEqual(got, { written: [], toLocal: ['ALFRED_CODE_HISTORY'], toSettings: [], refused: [] });
     const local = JSON.parse(read(localOf(root)));
     assert.strictEqual(local.env.ALFRED_CODE_HISTORY, '9');
     assert.deepStrictEqual(local.permissions, { allow: ['Bash(ls)'] }, 'the rest of the file is kept');
@@ -75,7 +75,7 @@ test('a local-scope set on a git-tracked .variables writes nothing and prints th
     git(root, 'commit', '-qm', 'team values');
     const log = logger();
     const got = variables.set(root, ['ALFRED_CODE_HISTORY=9'], { env, scope: 'local', log });
-    assert.deepStrictEqual(got, { written: [], toLocal: [], refused: ['ALFRED_CODE_HISTORY'] });
+    assert.deepStrictEqual(got, { written: [], toLocal: [], toSettings: [], refused: ['ALFRED_CODE_HISTORY'] });
     assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=5\n', 'byte-identical');
     assert.ok(log.lines.includes('!! variables: ALFRED_CODE_HISTORY - .variables is tracked here; change it with the team (no .variables.local yet)'), log.lines.join('\n'));
     // The same set at project scope writes: the team's file is the place.
@@ -92,7 +92,7 @@ test('set ALFRED_CODE_HOOKS_OFF=x exits 1 naming settings.json', (t) =>
     assert.strictEqual(read(varsOf(root)), null, 'no file written');
     // The data root and a key outside the catalog are refused the same way, each named.
     const other = variables.set(root, ['ALFRED_CODE_DATA_PATH=x', 'ALFRED_CODE_PUSH_GATE=0', 'ALFRED_CODE_HISTORY=4'], { env, log: () => {} });
-    assert.deepStrictEqual(other, { written: ['ALFRED_CODE_HISTORY'], toLocal: [], refused: ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_PUSH_GATE'] });
+    assert.deepStrictEqual(other, { written: ['ALFRED_CODE_HISTORY'], toLocal: [], toSettings: [], refused: ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_PUSH_GATE'] });
     assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=4\n');
 });
 

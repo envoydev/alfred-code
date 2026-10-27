@@ -68,10 +68,13 @@ function twoZeroLayout(repo)
     const settings = json(path.join(claude, 'settings.json'));
     delete settings.env.ALFRED_CODE_DATA_PATH;
     settings.env.ALFRED_CODE_DOCS_PATH = '.claude/docs';
+    // Before 3.0.0 the stack's variables sat in settings.json, ledgered there (workspace roles and variables, D5).
+    Object.assign(settings.env, (require('../stack/hooks/layout.js').readDotenv(path.join(repo, '.alfred', '.variables')) || {}).values || {});
     fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify(settings, null, 2));
     const stampFile = path.join(claude, 'alfred-code.stamp');
     const stamp = read(stampFile)
         .replace(/settings\.json:ALFRED_CODE_DOCS_PATH=[0-9a-f]{64}/, `settings.json:ALFRED_CODE_DOCS_PATH=${valueHash('.claude/docs')}`)
+        .replace(/(^|,)\.variables:/gm, '$1settings.json:')
         .split('\n').filter((l) => !/^data-/.test(l)).join('\n');
     fs.writeFileSync(stampFile, stamp);
     fs.rmSync(path.join(repo, '.alfred'), { recursive: true, force: true });
@@ -221,7 +224,7 @@ test('a custom root: --data-path moves the docs and the sensitive data, leaves a
     assert.ok(r.has('.alfred/serena/project.yml') && !r.has('.data/serena') && !r.has('.data/chrome-control'));
     assert.strictEqual(r.cookies, true, 'the old root\'s .gitignore went, and the cookies with it into git');
     // One .gitignore for the new root: it carries the docs rules, and the docs root has none of its own.
-    assert.match(r.text('.data/.gitignore'), /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n!\/docs\/\n(?:[^\n]*\n)*\/docs\/flow\/\n/);
+    assert.match(r.text('.data/.gitignore'), /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n!\/\.variables\n!\/docs\/\n(?:[^\n]*\n)*\/docs\/flow\/\n/);
     assert.ok(!r.has('.data/docs/.gitignore'), 'the docs root keeps no .gitignore of its own under the data root');
     assert.deepStrictEqual(steps[2], steps[1], 'a re-run rewrote settings.json or the pending lines');
 

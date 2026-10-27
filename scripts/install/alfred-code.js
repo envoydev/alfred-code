@@ -41,6 +41,7 @@ const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
 const workspace = require('./workspace.js');
+const variables = require('./variables.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
@@ -331,6 +332,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 ledgerEnv: priorLedger && priorLedger.env ? priorLedger.env['settings.local.json'] || {} : null,
                 ledgerSettings: priorLedger && priorLedger.settings ? priorLedger.settings['settings.local.json'] || {} : null,
                 ledgerDeny: priorLedger ? priorLedger.deny : null,
+                variablesFile: dataInfo.invalid ? null : variables.fileOf(projectRoot, { env: {}, dataRoot: dataInfo.prior || dataInfo.root }),
+                ledgerVariables: priorLedger && priorLedger.env ? priorLedger.env['.variables'] || {} : null,
             });
             // Review finding 1: the ledger's deny rows follow what the move carried, so the writer below
             // claims in settings.json only what landed there - never an entry the team already held.
@@ -617,7 +620,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             ledger: ledgerOf(ctx),
             data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept, secrets: secretsAt },
             instructionsFile: ctx.instructionsAnswer,
-            ownPicks: ctx.ownPicks, ownEnv: ctx.ownEnv, instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
+            ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
         });
 
         summarise(ctx, failures);
@@ -657,7 +660,7 @@ function runLayers(ctx)
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
-    workspace.envStep(ctx);
+    variablesStep(ctx);
     installHooksAndRules(ctx);
     if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx, path.join(ctx.claudeDir, 'settings.local.json'));
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
@@ -811,7 +814,7 @@ function ignoreStep(ctx, docsPath)
     try { mode = copy.resolveDocsVersioning(projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot, docsPath }); }
     catch (err) { note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`); }
     let data = null;
-    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, log }); }
+    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, log }); }
     catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
     ctx.dataIgnoreOk = data !== null;
     const dataCovered = STACK_IGNORE.includes(data);
@@ -822,6 +825,61 @@ function ignoreStep(ctx, docsPath)
     try { docs.pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered, dataCovered, log }); }
     catch (err) { note(`the nested .gitignore files could not be checked (${err.message}) - they stay as they are`); }
 }
+
+// THE STACK'S VARIABLES (workspace roles and variables, D5 / D6), before the settings pass: where this run keeps them.
+// At project and user scope git must track `<data root>/.variables`: an earlier git-hygiene line becomes its pair, then
+// `git check-ignore -q` decides - ignored by any rule but the data root's own .gitignore (which ignoreStep re-includes
+// the file in), the keys stay in settings.json and one line names the rule. At local scope the file stays under the data root's ignore, and
+// one git tracks (a teammate's project-scope install committed it) is never written: its values count as set, and a flag
+// that differs is named and not written. Sets ctx.variablesFile (null: no move) and ctx.variablesHeld (values the settings
+// pass must not seed over), and the child's env plan (workspace.js envPlan).
+function variablesStep(ctx)
+{
+    ctx.variablesFile = null;
+    ctx.variablesHeld = null;
+    ctx.childEnv = workspace.envPlan(ctx);
+    if (ctx.dataInfo.invalid) return;
+    const root = ctx.dataInfo.root;
+    const file = variables.fileOf(ctx.projectRoot, { env: {}, dataRoot: root });
+    // A root change carries the file first; at local scope a file the team tracks stays where the team keeps it.
+    const prior = ctx.dataInfo.prior;
+    const before = prior && prior !== root ? variables.fileOf(ctx.projectRoot, { env: {}, dataRoot: prior }) : null;
+    if (before && !(ctx.args.scope === 'local' && fs.existsSync(before) && variables.tracked(before)))
+    {
+        try { variables.carry({ projectRoot: ctx.projectRoot, from: prior, to: root, log: ctx.log }); }
+        catch (err) { ctx.note(`${prior}/.variables could not be moved (${err.code || err.message}) - move it to ${root}/ by hand, then update`); }
+    }
+    if (ctx.args.scope === 'local')
+    {
+        if (!fs.existsSync(file) || !variables.tracked(file)) { ctx.variablesFile = file; return; }
+        ctx.variablesHeld = variables.read(file).values;
+        const now = layout().variablesOf(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir } }).values;
+        const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
+        const current = (key) => now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? '');
+        for (const [flag, key, value] of [['memory', 'ALFRED_CODE_MEMORY', ctx.args.memory], ['autoCompact', 'ALFRED_CODE_AUTO_COMPACT', ctx.args.autoCompact && (ctx.args.autoCompact === 'on' ? '1' : '0')],
+            ['docsVersioning', 'ALFRED_CODE_DOCS_VERSIONING', ctx.args.docsVersioning]])
+        {
+            if (!value || value === current(key)) continue;
+            ctx.log(`  !! variables: ${key} - .variables is tracked here; change it with the team (no .variables.local yet)`);
+            ctx.args[flag] = undefined;
+        }
+        return;
+    }
+    try { for (const f of require('../git-hygiene.js').rewriteOwnLine({ projectRoot: ctx.projectRoot, root })) ctx.log(`  variables: ${path.relative(ctx.projectRoot, f).split(path.sep).join('/')} - /${root}/ rewritten as /${root}/* and !/${root}/.variables, so git tracks the stack's variables`); }
+    catch (err) { ctx.note(`the earlier ${root}/ ignore line could not be rewritten (${err.message})`); }
+    // The data root's own .gitignore is the stack's: the ignore pass after the settings writes re-includes the file there.
+    const verdict = variables.ignoreVerdict(ctx.projectRoot, root);
+    // Ignored by another rule, the keys stay in (or are seeded into) settings.json for the team (D6); a file already
+    // there is this machine's own and reads over them, as a local-scope run left it.
+    if (verdict.ignored && !verdict.own)
+    {
+        ctx.log(`  ${variables.ignoredLine(root, verdict)}`);
+        return;
+    }
+    ctx.variablesFile = file;
+}
+let layoutModule = null;
+const layout = () => (layoutModule ??= require('../../stack/hooks/layout.js'));
 
 // The project's sensitive data exists from the first install on (data-root.js ensureSensitiveFile): one comment line,
 // written only where git keeps it out; a store git would commit is said, never made.
@@ -1707,7 +1765,9 @@ function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, cl
     try { beside = envOf(settings.readSettings(path.join(claudeDir, scope === 'local' ? 'settings.json' : 'settings.local.json')).data); }
     catch { /* an unreadable sibling holds no choice the writer reads */ }
     const elsewhere = scope !== 'local' && Object.hasOwn(beside, 'ALFRED_CODE_MEMORY');
-    const chosen = memory || (scope === 'local' ? { ...beside, ...envOf(data) } : { ...envOf(data), ...beside }).ALFRED_CODE_MEMORY;
+    // The merged view (D4): settings.local.json over .variables over settings.json.
+    const own = variables.read(variables.fileOf(path.dirname(claudeDir), { env: {} })).values;
+    const chosen = memory || (scope === 'local' ? { ...beside, ...own, ...envOf(data) } : { ...envOf(data), ...own, ...beside }).ALFRED_CODE_MEMORY;
     if (writerFollows && chosen === 'custom' && !elsewhere) return;
     log(`  ${path.basename(file)}: autoMemoryEnabled: false removed - the stack switched Claude's own memory off for its memory server, which it ships no more; set it back to keep it off`);
 }
@@ -1920,7 +1980,10 @@ function installHooksAndRules(ctx)
         hooksOff, hooksAnswered,
         // N6: at local scope settings.json still applies beneath the local file, so what it holds is no
         // gap for a seed to fill - a local default would hide it.
-        inheritedEnv: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).env : null,
+        // A .variables this run may not write (tracked at local scope, ignored at project or user) applies over settings.json
+        // all the same (D4 step 3), so its values are no gap either.
+        inheritedEnv: ctx.args.scope === 'local' || ctx.variablesHeld
+            ? { ...(ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).env || {} : {}), ...(ctx.variablesHeld || {}) } : null,
         // R99: at every other scope settings.local.json applies OVER settings.json, so a stack key it
         // holds is written back there - where the read-back found it and where it takes effect.
         localFile: ctx.args.scope === 'local' ? null : path.join(ctx.claudeDir, 'settings.local.json'),
@@ -1942,11 +2005,12 @@ function installHooksAndRules(ctx)
             account: readJson(path.join(ctx.configDir, 'settings.json')),
         },
         renamed: ctx.manifest.renamed,
-        // A joined child's env follows its parent (workspace.js envStep; null on any other run).
-        workspaceEnv: ctx.workspaceEnv || null,
+        // Where the stack's variables live (variablesStep), and what a joined child seeds and drops (workspace.js envPlan).
+        variablesFile: ctx.variablesFile, childEnv: ctx.childEnv,
         log: ctx.log, note: ctx.note,
     });
     ctx.managedSettings = written.managed || null;
+    ctx.variablesMoved = (written.variablesMoved || []).length;
     // C8: Claude Code keeps settings.local.json out of commits only when IT creates the file
     // (code.claude.com/docs/en/settings) - one this run created, and git does not ignore, is named. F7: it
     // is the user's to act on (a machine path would be committed), so it carries the `!!` marker the 1.x
@@ -1974,8 +2038,14 @@ function ledgerOf(ctx)
     // run recorded there still stands - read as {} it would drop every entry, and nothing restores them
     // once the file is fixed.
     const unreadable = (name) => { try { settings.readSettings(path.join(ctx.claudeDir, name)); return false; } catch { return true; } };
-    const envNow = (name) => { const env = readJson(path.join(ctx.claudeDir, name)).env; return env && typeof env === 'object' ? env : {}; };
-    const still = (name, keys) => (unreadable(name) ? { ...keys }
+    // A .variables row the writer did not carry this run (no move: an ignored data root) is checked against the file.
+    const envNow = (name) =>
+    {
+        if (name === variables.FILE) return variables.read(variables.fileOf(ctx.projectRoot, { env: {}, dataRoot: ctx.dataInfo.root })).values;
+        const env = readJson(path.join(ctx.claudeDir, name)).env;
+        return env && typeof env === 'object' ? env : {};
+    };
+    const still = (name, keys) => (name !== variables.FILE && unreadable(name) ? { ...keys }
         : Object.fromEntries(Object.entries(keys || {}).filter(([k, h]) => Object.hasOwn(envNow(name), k) && stampLayer.valueHash(envNow(name)[k]) === h)));
     const part = ctx.managedSettings || { env: {}, deny: prior.deny || [], hooks: prior.hooks || [], settings: {} };
     const env = { ...part.env };
@@ -2194,7 +2264,8 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     if (copied.length) log(`  ${workspace.keptCopiesLine(copied)}`);
     fs.rmSync(path.join(projectRoot, ...keptRoot.split('/'), 'state', 'workspace-mcp.json'), { force: true });
     liftMemorySwitchOff({ sourceDir: path.join(__dirname, '..', '..'), stampFile: file, claudeDir, scope, ledger, log, note });
-    settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
+    settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note,
+        variablesFile: variables.fileOf(projectRoot, { env: {}, dataRoot: keptRoot }) });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     // Workspace layering (spec 2.6): a parent's children read as standalone, a child leaves its parent, and D5's account
@@ -2242,6 +2313,9 @@ function summarise(ctx, failures)
         + `, hooks=${hookFiles.size}, agents=${ctx.lists.agents.length}, rules=${ctx.lists.rules.length}`;
     line += ctx.args.keepPins ? '; keep-pins=on' : '; keep-pins=off (agent model/effort pins reset to catalog defaults)';
     ctx.log(line);
+    // D5's skew line: a teammate's older core reads the settings env alone.
+    if (ctx.variablesMoved && ctx.args.scope !== 'local')
+        ctx.log(`  variables: ${ctx.variablesMoved} keys moved to ${ctx.dataInfo.root}/.variables - a teammate on 2.12.0 or older reads none of them until they update; a downgrade needs them put back in .claude/settings.json by hand`);
     if (failures) ctx.log(`  ${failures} step(s) reported a failure above - the rest of the run completed`);
 }
 

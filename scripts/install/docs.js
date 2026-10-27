@@ -1533,7 +1533,7 @@ function moveDocsRoot({ projectRoot, plan })
 const { DATA_IGNORE_HEAD, dataIgnoreText, docsInsideRoot } = require('../../stack/mcp/data-root.js');
 
 // 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
-function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
+function ensureDataIgnore({ projectRoot, root, docsPath, mode, scope, log = () => {} })
 {
     const base = path.join(projectRoot, ...normRoot(root).split('/'));
     const file = path.join(base, '.gitignore');
@@ -1550,7 +1550,7 @@ function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
             log(`  data root: git tracks docs under ${shown} - they stay visible to git (versioning local; docs.js status reports the disagreement)`);
         }
     }
-    const want = dataIgnoreText({ root, docsPath, mode: shape });
+    const want = dataIgnoreText({ root, docsPath, mode: shape, scope });
     let have = null;
     try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { have = null; }
     if (have === want) return 'current';

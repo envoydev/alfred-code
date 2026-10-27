@@ -9,7 +9,7 @@
 // two lines are refused, the key named and never the value.
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const layout = require('../../stack/hooks/layout.js');
 const { SECRET_SHAPE, PEM_PRIVATE } = require('../credential-shapes.js');
 const { parseJson } = require('./json-file.js');
@@ -28,10 +28,11 @@ const isFile = (file) => { try { return fs.statSync(file).isFile(); } catch { re
 
 // The project's file: the checkout's, else the main worktree's when only that one exists (a gitignored file a new
 // worktree lacks) - the loader's place. Where neither exists, the checkout's, which a write creates.
-function fileOf(projectRoot, { env = process.env } = {})
+function fileOf(projectRoot, { env = process.env, dataRoot } = {})
 {
     const checkout = path.resolve(projectRoot);
-    const at = (place) => path.join(place, ...layout.dataRootOf(place, { env }).split('/'), FILE);
+    // `dataRoot` is the checkout's root as a run decided it (the installer's, before its settings pass writes it).
+    const at = (place) => path.join(place, ...(dataRoot && place === checkout ? dataRoot : layout.dataRootOf(place, { env })).split('/'), FILE);
     const own = at(checkout);
     if (isFile(own)) return own;
     const main = layout.mainCounterpart(checkout);
@@ -123,12 +124,69 @@ function tracked(file)
     catch { return false; }
 }
 
+// D6's verdict on `<dataRoot>/.variables`: `git check-ignore -q` decides (exit 0: ignored) - `-v` exits 0 on a negated
+// match too, so it only names the rule: { ignored: false } | { ignored: true, source?, line?, own? }. `own` says the rule
+// is the data root's own .gitignore, the stack's file, which the install re-includes `.variables` in. No git, or no
+// repository: not ignored.
+function ignoreVerdict(projectRoot, dataRoot)
+{
+    const root = String(dataRoot).replace(/\\/g, '/').replace(/\/+$/, '');
+    const rel = `${root}/${FILE}`;
+    const git = (args) => spawnSync('git', ['-c', 'core.fsmonitor=false', ...args],
+        { cwd: projectRoot, encoding: 'utf8', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+    if (git(['check-ignore', '-q', '--', rel]).status !== 0) return { ignored: false };
+    const m = /^(.*?):(\d+):/.exec(String(git(['check-ignore', '-v', '--', rel]).stdout || ''));
+    if (!m) return { ignored: true };
+    // -v names a .gitignore from the repository's top, never the cwd.
+    const real = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+    const top = String(git(['rev-parse', '--show-toplevel']).stdout || '').trim();
+    const own = Boolean(top) && real(path.resolve(top, m[1])) === real(path.join(projectRoot, ...root.split('/'), '.gitignore'));
+    return { ignored: true, source: m[1], line: Number(m[2]), own };
+}
+// A data root change (--data-path) carries the file, as workspace.js moveWorkspace carries the workspace file - before the
+// settings pass, so it reads the project's own values at the new root. A file already there is kept and the old named.
+function carry({ projectRoot, from, to, log = () => {} })
+{
+    const src = path.join(projectRoot, ...String(from).split('/'), FILE);
+    const dst = path.join(projectRoot, ...String(to).split('/'), FILE);
+    if (!fs.existsSync(src)) return 'absent';
+    if (fs.existsSync(dst))
+    {
+        log(`  !! variables: ${from}/${FILE} left in place - ${to}/${FILE} already exists`);
+        return 'clash';
+    }
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.renameSync(src, dst);
+    log(`  variables: moved ${from}/${FILE} -> ${to}/${FILE}`);
+    return 'moved';
+}
+
+// The line D6 prints for an ignored file.
+const ignoredLine = (dataRoot, verdict) => `!! variables: ${dataRoot}/${FILE} is ignored by ${verdict.source ? `${verdict.source}:${verdict.line}` : 'a git rule'}`
+    + ` - the keys are kept in settings.json; ignore /${dataRoot}/* and re-include !/${dataRoot}/${FILE}, then update`;
+
 // The project's settings.local.json: its parsed object, or null when absent or unparseable (D4 step 2 skips it).
 function localSettings(projectRoot)
 {
     const file = path.join(projectRoot, '.claude', LOCAL);
     try { const data = parseJson(fs.readFileSync(file, 'utf8')); return data && typeof data === 'object' && !Array.isArray(data) ? { file, data } : null; }
     catch { return null; }
+}
+// The project's settings.json for a D6 write: its object with an `env` object, {} when absent. An unparseable file is
+// refused whole - the user's own file is never rewritten from nothing.
+function sharedSettings(projectRoot)
+{
+    const file = path.join(projectRoot, '.claude', 'settings.json');
+    let text = null;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { text = null; }
+    let data = {};
+    if (text !== null)
+    {
+        try { data = parseJson(text); } catch { data = null; }
+        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('.claude/settings.json cannot be read - fix it, then run the set again');
+    }
+    if (!data.env || typeof data.env !== 'object' || Array.isArray(data.env)) data.env = {};
+    return { file, data };
 }
 const heldLocally = (local, key) =>
 {
@@ -150,7 +208,8 @@ function pairsOf(input)
     });
 }
 
-// D5's routing for each pair. An empty value (`KEY=`) removes the key. { written, toLocal, refused }: the keys each way.
+// D5's routing for each pair. An empty value (`KEY=`) removes the key. { written, toLocal, toSettings, refused }: the keys
+// each way - `toSettings` at project or user scope where git ignores the file (D6), so the value still reaches the team.
 function set(projectRoot, pairs, { scope, env = process.env, log = console.log } = {})
 {
     const root = path.resolve(projectRoot);
@@ -158,11 +217,13 @@ function set(projectRoot, pairs, { scope, env = process.env, log = console.log }
     const file = fileOf(root, { env });
     const rel = path.relative(root, file).split(path.sep).join('/') || FILE;
     const local = localSettings(root);
-    const result = { written: [], toLocal: [], refused: [] };
+    const result = { written: [], toLocal: [], toSettings: [], refused: [] };
     const updates = {};
     const refuse = (key, why) => { result.refused.push(key); log(`!! variables: ${key} ${why}`); };
     let localChanged = false;
     let fileTracked;
+    let verdict;
+    let shared;
     for (const [key, raw] of pairsOf(pairs))
     {
         if (!key || !KEY_NAME.test(key)) { refuse('(a word)', 'is no KEY=value pair - not written'); continue; }
@@ -191,9 +252,23 @@ function set(projectRoot, pairs, { scope, env = process.env, log = console.log }
             refuse(key, '- .variables is tracked here; change it with the team (no .variables.local yet)');
             continue;
         }
+        if (runScope !== 'local' && (verdict ??= ignoreVerdict(root, layout.dataRootOf(root, { env }))).ignored)
+        {
+            if (value === null) delete (shared ??= sharedSettings(root)).data.env[key];
+            else (shared ??= sharedSettings(root)).data.env[key] = value;
+            result.toSettings.push(key);
+            continue;
+        }
         updates[key] = value;
     }
     if (localChanged) fs.writeFileSync(local.file, `${JSON.stringify(local.data, null, 2)}\n`);
+    if (shared && shared.data)
+    {
+        log(ignoredLine(layout.dataRootOf(root, { env }), verdict));
+        fs.mkdirSync(path.dirname(shared.file), { recursive: true });
+        fs.writeFileSync(shared.file, `${JSON.stringify(shared.data, null, 2)}\n`);
+        log(`variables: ${result.toSettings.join(', ')} written to .claude/settings.json`);
+    }
     const keys = Object.keys(updates);
     if (keys.length)
     {
@@ -228,4 +303,4 @@ function show(projectRoot, { env = process.env, catalog = CATALOG() } = {})
     });
 }
 
-module.exports = { FILE, fileOf, read, write, set, show };
+module.exports = { FILE, fileOf, read, write, set, show, ignoreVerdict, ignoredLine, tracked, carry };

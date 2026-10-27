@@ -57,6 +57,11 @@ function main()
     return got.refused.length ? 1 : 0;
 }
 
-if (require.main === module) process.exit(main());
+if (require.main === module)
+{
+    // A pipe's write is async on POSIX: blocking first, so process.exit never cuts the output short.
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    process.exit(main());
+}
 
 module.exports = { parse, main };
