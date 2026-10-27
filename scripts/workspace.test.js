@@ -226,7 +226,7 @@ const tree = (spec) =>
 };
 const runtime = require('./install/runtime.js');
 const exec = runtime.execCommand;
-const env0 = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
+const env0 = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account'), ALFRED_CODE_WORKSPACE: '1' };   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
 
 test('findParent finds the nearest stamped ancestor and skips the account dir', () =>
 {
@@ -484,7 +484,7 @@ test('workspaceOn reads the launch env first, then settings.local.json over sett
     const claude = path.join(root, '.claude');
     fs.mkdirSync(claude, { recursive: true });
     const put = (name, value) => fs.writeFileSync(path.join(claude, name), value === undefined ? '{}' : JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: value } }));
-    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), false, 'no value anywhere: off until 3.0.0');
+    assert.strictEqual(ws.workspaceOn({ env: { CLAUDE_CONFIG_DIR: path.join(root, 'no-account') }, projectRoot: root }), true, 'no value anywhere: on since 3.0.0');
     assert.strictEqual(ws.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '1' }, projectRoot: root }), true, 'a launch 1 turns it on');
     assert.strictEqual(ws.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '0' }, projectRoot: root }), false, 'the launch env 0 freezes it');
     put('settings.json', '0');

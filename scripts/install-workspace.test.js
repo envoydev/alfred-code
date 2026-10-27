@@ -25,7 +25,7 @@ const OWN = 'npm';
 const SC = 'ALFRED_CODE_SCORER';
 
 const at = (work, rel = '.') => path.join(work, 'ws', ...(rel === '.' ? [] : rel.split('/')));
-// The workspace is off until 3.0.0 (the user's answer of 2026-10-27): every case here runs it on, the kill-switch cases at 0.
+// The workspace is on by default since 3.0.0 (D9); every case here still pins it, so a launch 0 in the caller's env cannot freeze it - the kill-switch cases at 0.
 const acct = (work) => ({ CLAUDE_CONFIG_DIR: path.join(work, 'acct'), ALFRED_CODE_WORKSPACE: '1' });
 const readOr = (file, fallback = null) => { try { return fs.readFileSync(file, 'utf8'); } catch { return fallback; } };
 const json = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
@@ -347,6 +347,21 @@ test('AC24: a 2.12.0 standalone joined at update and through configure reads SCO
         assert.strictEqual(left.vars[LEVEL], '90', `${when}: leaving wrote the root's value back: ${r.outs[5]}`);
         assert.deepStrictEqual(left.effective, joined.effective, when);
     }
+});
+
+// AC19: on by default, and a launch 0 still freezes - the child reads a chain of one and an install there removes nothing.
+test('AC19: a launch 0 in ws/api reads a chain of one and an install there removes nothing', POSIX_ONLY, () =>
+{
+    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const files = (work) => ['.', 'api'].flatMap((rel) => ['workspace', '.variables'].map((f) => readOr(path.join(at(work, rel), '.alfred', f))));
+    const r = scenario([
+        { at: '.', env: { ALFRED_CODE_WORKSPACE: '' }, after: (work) => { setVar(work, '.', { [LEVEL]: '90' }); join(work, 'api'); } },
+        { at: 'api', env: { ALFRED_CODE_WORKSPACE: '' }, after: (work) => ({ files: files(work), from: layoutLib.variablesOf(at(work, 'api'), { env: { CLAUDE_CONFIG_DIR: acct(work).CLAUDE_CONFIG_DIR } }).from[LEVEL] }) },
+        { at: 'api', env: { ALFRED_CODE_WORKSPACE: '0' }, after: (work) => ({ files: files(work), from: layoutLib.variablesOf(at(work, 'api'), { env: { CLAUDE_CONFIG_DIR: acct(work).CLAUDE_CONFIG_DIR, ALFRED_CODE_WORKSPACE: '0' } }).from[LEVEL] }) },
+    ]);
+    assert.strictEqual(r.steps[1].from, '..', `unset is on: the child reads the root's value through the chain: ${r.outs[1]}`);
+    assert.notStrictEqual(r.steps[2].from, '..', 'a launch 0 reads a chain of one');
+    assert.deepStrictEqual(r.steps[2].files, r.steps[1].files, `the workspace files and the .variables files are unchanged: ${r.outs[2]}`);
 });
 
 test('a parent read-back that fails adds and drops nothing and prints one !! line', POSIX_ONLY, () =>

@@ -16,7 +16,7 @@ const ENV = (() =>
 {
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
     for (const k of Object.keys(env)) if (/^ALFRED_CODE_|^CLAUDE_PROJECT_DIR$/.test(k)) delete env[k];
-    env.ALFRED_CODE_WORKSPACE = '1';   // the workspace is off until 3.0.0; the chain cases run it on
+    env.ALFRED_CODE_WORKSPACE = '1';   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
     return env;
 })();
 // `spec` maps a folder to { file, store, data, local } (secret-chain.test.js's tree); every folder is stamped and gets

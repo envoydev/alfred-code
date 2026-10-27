@@ -27,9 +27,10 @@ if (require.main === module) {
 // This hook rides the core plugin (2.0.0 - no shell gate wrapper): the generated entry launches it
 // on matcher '.*' as a plain `node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"`, so
 // when the switch is off the per-call cost is a node spawn that exits at the check below, not a
-// shell test. The switch is `ALFRED_CODE_INSTRUMENT` in .claude/settings.json env, seeded "0": flip
-// it to "1" for a measured benchmark / audit run (optionally ALFRED_CODE_INSTRUMENT_LOG=<path>),
-// back to "0" after. The env check below is what actually gates every call.
+// shell test. The switch is `ALFRED_CODE_INSTRUMENT` in the project's `<data root>/.variables`
+// (the prelude's loader sets it on the process env), seeded "0": flip it to "1" for a measured
+// benchmark / audit run (optionally ALFRED_CODE_INSTRUMENT_LOG=<path>), back to "0" after. The env
+// check below is what actually gates every call.
 //
 // Output: one JSONL row per matched call at
 //   $ALFRED_CODE_INSTRUMENT_LOG  (default: <data root>/statistics/tools-usage/<session-or-agent-id>.jsonl,

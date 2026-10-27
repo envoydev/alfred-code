@@ -9,7 +9,7 @@ const chain = require('../stack/hooks/secret-chain.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'secret-chain-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
-const env0 = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
+const env0 = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account'), ALFRED_CODE_WORKSPACE: '1' };   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
 // `spec` maps a folder to { file, store, storeName, data, local } - `file` the workspace file's text, `store` the store's
 // text (or a Buffer), written as `storeName` (default .secrets) under `data` (default .alfred); `local` its
 // settings.local.json. Every folder is stamped.

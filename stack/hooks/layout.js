@@ -314,8 +314,9 @@ const wsKey = (p) =>
 const wsRel = (from, to) => path.relative(from, to).split(path.sep).join('/');
 const wsIsDir = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
 
-// The switch, ALFRED_CODE_WORKSPACE: off until 3.0.0, on only at `1` - a launch `0` freezes it, else the loader's steps 2
-// to 4 (settings.local.json, the project's .variables, the settings env over the launch env); never a member's file.
+// The switch, ALFRED_CODE_WORKSPACE: on by default since 3.0.0, off only at `0` - a launch `0` freezes it, else the
+// loader's steps 2 to 4 (settings.local.json, the project's .variables, the settings env over the launch env), so a file
+// `0` beats a launch `1`; never a member's file.
 // install/workspace.js workspaceOn calls this one.
 function workspaceOn({ env = {}, projectRoot })
 {
@@ -408,8 +409,8 @@ const VARIABLE_SET = new Set(VARIABLE_KEYS);
 const MEMBER_NEVER = new Set(['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_WORKSPACE']);
 const HOOKS_OFF_KEY = 'ALFRED_CODE_HOOKS_OFF';
 const SWITCH_KEY = 'ALFRED_CODE_WORKSPACE';
-// The switch's value as read: on only at `1` until 3.0.0 flips it (D9).
-const switchValueOn = (value) => String(value) === '1';
+// The switch's value as read: off only at `0`, unset included as on (D9).
+const switchValueOn = (value) => String(value) !== '0';
 
 // The dotenv reader of the `.secrets` grammar (secret-chain.js reads its stores through it; guard-sensitive-data.test.js
 // holds the guard, data-root.js and this to one fixture): optional `export`, quotes stripped, `#` / `;` comments.

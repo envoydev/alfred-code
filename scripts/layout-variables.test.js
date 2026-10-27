@@ -18,7 +18,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const ACCT = path.join(TMP, 'acct');
 fs.mkdirSync(ACCT, { recursive: true });
 const ON = { CLAUDE_CONFIG_DIR: ACCT, ALFRED_CODE_WORKSPACE: '1' };
-const OFF = { CLAUDE_CONFIG_DIR: ACCT };
+const UNSET = { CLAUDE_CONFIG_DIR: ACCT };
 
 // `spec` maps a folder to { stamp, git, ws, data, settings, local, vars } - `ws` its workspace file's text and `vars`
 // its .variables text (a string, or a Buffer for an encoding case), both under `data` (default .alfred); `settings` /
@@ -78,9 +78,9 @@ test('the order: step 2 over 3 over 4 over 5', () =>
 test('a launch 0 freezes: one member read is none', () =>
 {
     const at = three({ ws: { vars: `${K('SCORER')}=1\n${K('MEMORY')}=custom\n` } });
-    const frozen = varsOf(at('ws/api'), { ...OFF, [K('WORKSPACE')]: '0' });
+    const frozen = varsOf(at('ws/api'), { ...UNSET, [K('WORKSPACE')]: '0' });
     assert.deepStrictEqual(frozen.values, { [K('WORKSPACE')]: '0' });
-    assert.strictEqual(varsOf(at('ws/api'), OFF).values[K('SCORER')], undefined, 'unset is off until the switch flips');
+    assert.strictEqual(varsOf(at('ws/api'), UNSET).values[K('SCORER')], '1', 'unset is on since 3.0.0 (D9)');
     assert.strictEqual(varsOf(at('ws/api'), ON).values[K('SCORER')], '1');
 });
 
@@ -117,7 +117,7 @@ test('HOOKS_OFF merges the root\'s guard-ungated-commit:push with the child\'s d
     const parts = (rel, env = ON) => layout.hooksOffOf(at(rel), { env: { ...env } }).split(',').filter(Boolean).sort();
     assert.deepStrictEqual(parts('ws/api'), ['docs-session', 'guard-ungated-commit:push'], 'a root\'s whole-hook HOOKS_OFF entry does not reach ws/api');
     assert.deepStrictEqual(parts('ws/api/tool'), ['guard-ungated-commit:push'], 'the grandchild takes the root\'s part entry');
-    assert.deepStrictEqual(parts('ws/api', OFF), ['docs-session'], 'the switch off reads the project alone');
+    assert.deepStrictEqual(parts('ws/api', { ...UNSET, [K('WORKSPACE')]: '0' }), ['docs-session'], 'the switch off reads the project alone');
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'workspace'), `parent ..\nchild tool\nignore env ${K('HOOKS_OFF')}\n`);
     assert.deepStrictEqual(parts('ws/api'), ['docs-session']);
     assert.deepStrictEqual(parts('ws/api/tool'), [], 'a nearer ignore stops the root for the grandchild too');
@@ -140,7 +140,7 @@ test('a .variables HOOKS_OFF or DATA_PATH line is not read and is named in notes
 test('AC11: no file and a 0-byte file read the process env', () =>
 {
     const at = tree({ 'p': { stamp: true } });
-    const env = { ...OFF, [K('HISTORY')]: '4' };
+    const env = { ...UNSET, [K('HISTORY')]: '4' };
     assert.deepStrictEqual([varsOf(at('p'), env).values[K('HISTORY')], varsOf(at('p'), env).from[K('HISTORY')]], ['4', 'env']);
     fs.mkdirSync(path.join(at('p'), '.alfred'));
     setVars(at('p'), '');
@@ -151,7 +151,7 @@ test('AC11: no file and a 0-byte file read the process env', () =>
 test('AC11: a garbage line is kept out and named', () =>
 {
     const at = tree({ 'p': { stamp: true, vars: `${K('HISTORY')}=5\nthis is not a pair\n${K('SCORER')}=1\n` } });
-    const v = varsOf(at('p'), OFF);
+    const v = varsOf(at('p'), UNSET);
     assert.deepStrictEqual(v.values, { [K('HISTORY')]: '5', [K('SCORER')]: '1' });
     assert.deepStrictEqual(v.notes, ['!! variables: .variables line 2 is not a KEY=value line - not read']);
     assert.deepStrictEqual(layout.readDotenv(path.join(at('p'), '.alfred', '.variables')).bad, [2]);
@@ -163,7 +163,7 @@ test('AC11: UTF-16 and BOM files read', () =>
     for (const vars of [Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]), Buffer.from(text, 'utf16le'), `\uFEFF${text}`])
     {
         const at = tree({ 'p': { stamp: true, vars } });
-        assert.deepStrictEqual(varsOf(at('p'), OFF).values, { [K('HISTORY')]: '6', [K('MEMORY')]: 'custom' });
+        assert.deepStrictEqual(varsOf(at('p'), UNSET).values, { [K('HISTORY')]: '6', [K('MEMORY')]: 'custom' });
     }
 });
 
@@ -172,13 +172,13 @@ test('AC11: a folder named .variables is no file', () =>
     const at = tree({ 'p': { stamp: true } });
     fs.mkdirSync(path.join(at('p'), '.alfred', '.variables'), { recursive: true });
     assert.strictEqual(layout.readDotenv(path.join(at('p'), '.alfred', '.variables')), null);
-    assert.deepStrictEqual(varsOf(at('p'), { ...OFF, [K('SCORER')]: '1' }).values, { [K('SCORER')]: '1' });
+    assert.deepStrictEqual(varsOf(at('p'), { ...UNSET, [K('SCORER')]: '1' }).values, { [K('SCORER')]: '1' });
 });
 
 test('applyVariables: a launch HOOKS_OFF with no project settings stands; an account entry stands beside a member\'s part entry', () =>
 {
     const lone = tree({ 'p': { stamp: true } });
-    const env = { ...OFF, [K('HOOKS_OFF')]: 'guard-answer' };
+    const env = { ...UNSET, [K('HOOKS_OFF')]: 'guard-answer' };
     layout.applyVariables(lone('p'), env);
     assert.strictEqual(env[K('HOOKS_OFF')], 'guard-answer');
     const at = three({ ws: { settings: { env: { [K('HOOKS_OFF')]: 'docs-session:block' } } } });
@@ -201,7 +201,7 @@ test('applyVariables sets each winner once per env object, and a second call ret
 test('AC11: an unparseable settings.local.json skips step 2', () =>
 {
     const at = tree({ 'p': { stamp: true, local: '{ not json', vars: `${K('HISTORY')}=8\n` } });
-    assert.deepStrictEqual([varsOf(at('p'), OFF).values[K('HISTORY')], varsOf(at('p'), OFF).from[K('HISTORY')]], ['8', 'own']);
+    assert.deepStrictEqual([varsOf(at('p'), UNSET).values[K('HISTORY')], varsOf(at('p'), UNSET).from[K('HISTORY')]], ['8', 'own']);
 });
 
 test('out of a session, step 4 reads what a session lays over its launch env: the project\'s settings.json, then the account\'s', () =>
@@ -225,7 +225,7 @@ test('AC13: the prelude loaded in ws/api/tool reads the root\'s SCORER_LEVEL=90'
 test('Review Focus 1: a hook started in src/ reads the project\'s file', () =>
 {
     const at = tree({ 'p': { stamp: true, git: true, vars: `${K('HISTORY')}=7\n` }, 'p/src': {} });
-    const env = { ...process.env, ...OFF };
+    const env = { ...process.env, ...UNSET };
     delete env.CLAUDE_PROJECT_DIR;
     const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(HOOKS, 'hook-prelude.js'))}); process.stdout.write(String(process.env.${K('HISTORY')}))`],
         { encoding: 'utf8', cwd: at('p/src'), env });
@@ -253,7 +253,7 @@ test('AC20: chain depth 7, 8 and 9 - the ninth member is not read', () =>
 test('AC20: values of 0, 1 and 2 characters; a bare ALFRED_CODE_ key is ignored', () =>
 {
     const at = tree({ 'p': { stamp: true, vars: `${K('HISTORY')}=\n${K('MEMORY')}=c\n${K('FORGE_WATCH')}=on\nALFRED_CODE_=x\n` } });
-    const v = varsOf(at('p'), { ...OFF, [K('HISTORY')]: '4' });
+    const v = varsOf(at('p'), { ...UNSET, [K('HISTORY')]: '4' });
     assert.deepStrictEqual([v.values[K('HISTORY')], v.from[K('HISTORY')]], ['4', 'env'], 'an empty value is unset, as envOf reads it');
     assert.strictEqual(v.values[K('MEMORY')], 'c');
     assert.strictEqual(v.values[K('FORGE_WATCH')], 'on');
@@ -266,14 +266,14 @@ test('Review Focus 2: a moved data root', () =>
     const at = tree({ 'p': { stamp: true, data: 'tools/data', settings: { env: { [K('DATA_PATH')]: 'tools/data' } }, vars: `${K('HISTORY')}=5\n` } });
     fs.mkdirSync(path.join(at('p'), '.alfred'), { recursive: true });
     setVars(at('p'), `${K('HISTORY')}=9\n`);
-    assert.strictEqual(varsOf(at('p'), OFF).values[K('HISTORY')], '5');
+    assert.strictEqual(varsOf(at('p'), UNSET).values[K('HISTORY')], '5');
 });
 
 test('Review Focus 5: a CRLF file and a project path with a space', () =>
 {
     const spaced = fs.mkdtempSync(path.join(TMP, 'with space-'));
     const at = tree({ 'p q': { stamp: true, vars: `${K('HISTORY')}=6\r\n${K('SCORER')}="1"\r\n` } }, spaced);
-    assert.deepStrictEqual(varsOf(at('p q'), OFF).values, { [K('HISTORY')]: '6', [K('SCORER')]: '1' });
+    assert.deepStrictEqual(varsOf(at('p q'), UNSET).values, { [K('HISTORY')]: '6', [K('SCORER')]: '1' });
 });
 
 // ---- Review Focus 6: a guard switch in a .variables file is never read ----------------------------------------------
@@ -430,6 +430,6 @@ test('layers files reads settings.local.json, .variables and settings.json only;
 test('a BOM\'d settings.json and settings.local.json are read like any other', () =>
 {
     const at = tree({ 'p': { stamp: true, settings: `\uFEFF${JSON.stringify({ env: { [K('TURN_CHECK')]: '1' } })}`, local: `\uFEFF${JSON.stringify({ env: { [K('HISTORY')]: '4' } })}` } });
-    const v = varsOf(at('p'), OFF);
+    const v = varsOf(at('p'), UNSET);
     assert.deepStrictEqual([v.values[K('TURN_CHECK')], v.values[K('HISTORY')]], ['1', '4']);
 });

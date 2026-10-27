@@ -218,8 +218,8 @@ function removeIgnore(model, category, name)
 
 // ------------------------------------------------------------------ the switch
 
-// ALFRED_CODE_WORKSPACE, a catalog row the installers never write. OFF until 3.0.0 (the user's answer of 2026-10-27):
-// only a `1` turns it on. The hooks' loader decides it (layout.js workspaceOn): a launch `0` freezes it, else
+// ALFRED_CODE_WORKSPACE, a catalog row the installers never write. On by default since 3.0.0 (D9): only a `0` turns it
+// off. The hooks' loader decides it (layout.js workspaceOn): a launch `0` freezes it, else
 // settings.local.json, the project's .variables, then the settings env over the launch env.
 function workspaceOn({ env = {}, projectRoot })
 {

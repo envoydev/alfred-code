@@ -324,6 +324,31 @@ test('the copy route wires instrumentation with no shell gate', POSIX_ONLY, () =
     for (const c of result) assert.doesNotMatch(c, /\[ .*\] \|\|/, c);
 });
 
+test('AC19: instrumentation on the copy route logs with ALFRED_CODE_INSTRUMENT=1 in .variables, and not at 0', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', `${SEL}hook instrument-tool-usage\n`, {
+        plugins: PLUGINS, args: ['--scope', 'project'], env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' },
+        inspect: (repo) =>
+        {
+            const [command] = instrumentCommands(repo);
+            const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('ALFRED_CODE_')));
+            const fire = (session) =>
+            {
+                rt.spawnCommand('sh', ['-c', command], { cwd: repo, input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: session, tool_name: 'Read', tool_input: { file_path: 'a.txt' } }), encoding: 'utf8', env: { ...env, CLAUDE_PROJECT_DIR: repo, ...acctEnv(repo) } });
+                return fs.existsSync(path.join(repo, '.alfred', 'statistics', 'tools-usage', `${session}.jsonl`));
+            };
+            const seeded = varsOf(repo).ALFRED_CODE_INSTRUMENT;
+            const off = fire('off-run');
+            variables.write(varsFile(repo), { ALFRED_CODE_INSTRUMENT: '1' });
+            return { command, seeded, off, on: fire('on-run') };
+        },
+    });
+    assert.ok(result.command, 'the copy route wired no instrumentation hook');
+    assert.strictEqual(result.seeded, '0', 'seeded off in .variables');
+    assert.strictEqual(result.off, false, 'no row while .variables holds 0');
+    assert.strictEqual(result.on, true, 'a row once .variables holds 1');
+});
+
 test('an update over a v2.12.0 copy-route install replaces the gated instrumentation entry with one ungated entry, and a second update changes nothing', skipWithout('v2.12.0'), () =>
 {
     const { outs, steps } = seedRun(['install', 'update', 'update'], `${SEL}hook instrument-tool-usage\n`, {
