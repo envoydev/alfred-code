@@ -36,3 +36,50 @@ test('NORMALIZE lifts a case to its rule', () =>
     assert.ok(normalize.includes('Under auto-run this ask goes out with no `(Recommended)` mark'), 'auto-run leaves the ask for the user');
     assert.ok(read('stack/skills/capture-preferences/references/doc-shape.md').includes('`Example:`'), 'the doc shape lists the line');
 });
+
+// ---- Task 3: the seam rung leads the ladder, and the designer cards the seam -------------------------------------------
+const RUNG = 'Before new code, stop at the first rung that holds: the app\'s own seam for the capability';
+const LADDER_SITES = () => ['stack/skills/task-implement/SKILL.md', ...SEATS('implementer').map((f) => `stack/agents/${f}`)];
+
+test('the seam rung leads the ladder in task-implement and every implementer', () =>
+{
+    assert.strictEqual(SEATS('implementer').length, 10);
+    for (const rel of LADDER_SITES())
+    {
+        const text = read(rel);
+        assert.ok(text.includes(RUNG), `${rel}: the ladder opens on the seam rung`);
+        assert.ok(text.includes('any capability the project wraps'), `${rel}: the rung names any wrapped capability`);
+        assert.ok(text.indexOf(RUNG) < text.indexOf('the stdlib, runtime or framework already does it'), `${rel}: the seam rung comes before the stdlib rung`);
+    }
+});
+
+test('the rung stops on a seam outside the task', () =>
+{
+    for (const rel of LADDER_SITES())
+    {
+        const text = read(rel);
+        const ladder = text.indexOf(RUNG);
+        const rung = text.indexOf('The seam rung: any capability the project wraps', ladder);
+        assert.ok(ladder >= 0 && rung > ladder, `${rel}: the seam rung follows the ladder sentence`);
+        assert.ok(text.indexOf('`BLOCKED_CONTRACT_CHANGE`', rung) > rung, `${rel}: an interface outside the task's files is a contract change`);
+    }
+});
+
+test('the designer cards the seam', () =>
+{
+    assert.strictEqual(SEATS('solution-designer').length, 10);
+    for (const rel of ['stack/skills/task-design/SKILL.md', ...SEATS('solution-designer').map((f) => `stack/agents/${f}`)])
+        assert.ok(read(rel).includes('the app\'s own seam a task\'s code must go through'), `${rel}: the card names the seam`);
+});
+
+test('fix-discipline climbs the seam rung second', () =>
+{
+    const steps = read('stack/skills/loop-code-quality/assets/loops-starter/fix-discipline.md').split('\n').filter((l) => /^\d\. /.test(l));
+    assert.strictEqual(steps.length, 6);
+    assert.ok(steps[0].startsWith('1. Does this need to exist at all?'));
+    assert.ok(steps[1].startsWith('2. Does the app\'s own seam for the capability already do it?'));
+    assert.ok(steps[2].startsWith('3. Does the stdlib, runtime, or a native framework feature already do it?'));
+    assert.ok(steps[3].startsWith('4. Does an existing helper in this repo'));
+    assert.ok(steps[4].startsWith('5. Can it be one line?'));
+    assert.ok(steps[5].startsWith('6. Only then: the minimum code that works.'));
+});

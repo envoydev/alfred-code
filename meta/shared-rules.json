@@ -4478,51 +4478,51 @@
       ]
     },
     "implementer-reuse-before-recreation": {
-      "_note": "The reuse ladder before new code - stdlib, existing helper, one line, then the minimum that works - never at the cost of validation, data-loss handling or secret handling. Owned by task-implement; restated in every *-implementer.",
+      "_note": "The reuse ladder before new code - the app's own seam for the capability first (any capability the project wraps goes through its abstraction; a member it lacks is added, one outside the task is a contract change), then stdlib, existing helper, one line, then the minimum that works - never at the cost of validation, data-loss handling or secret handling. Owned by task-implement; restated in every *-implementer.",
       "owner": {
         "file": "stack/skills/task-implement/SKILL.md",
-        "marker": "Before new code, stop at the first rung that holds"
+        "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Before new code, stop at the first rung that holds"
+          "marker": "Before new code, stop at the first rung that holds: the app's own seam for the capability"
         }
       ]
     },
@@ -8292,6 +8292,68 @@
         {
           "file": "stack/hooks/layout.js",
           "marker": "function checkDataPath(raw)\n{\n    const value = String(raw ?? '').trim().replace(/\\\\/g, '/').replace(/\\/{2,}/g, '/').replace(/^(\\.\\/)+/, '').replace(/\\/+$/, '');\n    if (!value) return { ok: false, why: 'the data root is empty' };\n    if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return { ok: false, why: `${value} is absolute - the data root is a folder inside the project` };\n    if (/\\s/.test(value)) return { ok: false, why: `${value} holds a space - the navigation server's home reaches cmd.exe unquoted on Windows` };\n    if (/[$%`\"'*?<>|:]/.test(value)) return { ok: false, why: `${value} holds a character a shell or a server placeholder would read` };\n    const parts = value.split('/');\n    if (parts.some((p) => p === '.' || p === '..')) return { ok: false, why: `${value} has a . or .. segment - the data root stays inside the project` };\n    if (parts[0] === '.claude') return { ok: false, why: `${value} is under .claude/, where Claude Code prompts for every write` };\n    if (parts[0] === '.git') return { ok: false, why: `${value} is under .git/` };\n    return { ok: true, value };\n}"
+        }
+      ]
+    },
+    "designer-seam-anchor": {
+      "_note": "A task whose code reaches a capability the project wraps carries the app's own seam in its anchors, and a missing member's interface, implementation and test are that task's files - so the seam is searched at design, where the files are assigned. Owned by task-design step 4; restated after each designer's anchors bullet.",
+      "owner": {
+        "file": "stack/skills/task-design/SKILL.md",
+        "marker": "the app's own seam a task's code must go through"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "the app's own seam a task's code must go through"
+        }
+      ]
+    },
+    "seam-rung-fix-ladder": {
+      "_note": "The seam rung restated as fix-discipline's step 2, so a quality loop's FIX climbs it too. Owned by task-implement's ladder.",
+      "owner": {
+        "file": "stack/skills/task-implement/SKILL.md",
+        "marker": "capability the project wraps"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/fix-discipline.md",
+          "marker": "A capability the project wraps"
         }
       ]
     }

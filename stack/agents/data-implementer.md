@@ -51,7 +51,13 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 
 **Decisions.** A judgment call the card left open - two idiomatic shapes, a placement, a name at a seam - is decided here, never bounced back: pick the option most consistent with the codebase's existing patterns and record it as `the choice - precedent: <file:symbol or named rule>`, or `no precedent - <reason>` said explicitly and still decided. In-chat, append it to the plan file's `## Decisions` ledger; a dispatched seat reports it as `decisions:` lines for the orchestrator to fold in, never editing the shared plan file itself (siblings build in parallel). A bounce (an in-chat ask, a seat's NEEDS_CONTEXT) is for a user-level requirement or scope beyond the card, never for a how-to-build call.
 
-**Reuse before recreation.** Before new code, stop at the first rung that holds: the stdlib, runtime or framework already does it; an existing helper in this repo or an already-referenced package does it (search first - a second copy is a defect, consolidate to the existing seam); it is one line; only then the minimum code that works. Less code that still works - never the flimsier algorithm, never at the cost of validation at a trust boundary, error handling that prevents data loss, or secret handling.
+**Reuse before recreation.** Before new code, stop at the first rung that holds: the app's own seam for the capability; the stdlib, runtime or framework already does it; an existing helper in this repo or an already-referenced package does it (search first - a second copy is a defect, consolidate to the existing seam); it is one line; only then the minimum code that works. Less code that still works - never the flimsier algorithm, never at the cost of validation at a trust boundary, error handling that prevents data loss, or secret handling.
+
+The seam rung: any capability the project wraps - such as the clock, the file system, logging, settings, a process or the network - goes through the abstraction the touched class or the project already routes it through; search them first.
+
+- A member the project's own interface lacks is added to it, its implementation and a test - never inlined as the raw call.
+- When that interface sits outside the task's files, stop and name the member as a contract change (a seat's `BLOCKED_CONTRACT_CHANGE`).
+- A framework seam the project chose, such as `ILogger<T>` or `TimeProvider`, is used through its members or an extension over it, never a new wrapper.
 
 ## Loop (bounded)
 1. Locate the task's code via the navigation tools and read what the edit depends on.
