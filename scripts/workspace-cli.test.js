@@ -225,6 +225,19 @@ test('status prints show\'s notes: the HOOKS_OFF line, the not-read line and the
     assert.ok(!r.out.includes(token) && !r.out.includes('guard-secret-value'), 'no value printed');
 });
 
+test('status prints each chain key with its source and no value', () =>
+{
+    const at = joined();
+    const value = (n) => `v${n}-${'Z9'.repeat(8)}`;
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.secrets'), `SHARED_TOKEN=${value(1)}\nROOT_ONLY=${value(2)}\n`);
+    fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.secrets'), `SHARED_TOKEN=${value(3)}\nAPI_ONLY=${value(4)}\n`);
+    const r = cli('status', '--root', at('ws/api'));
+    assert.strictEqual(r.code, 0, r.out);
+    const lines = r.out.split('\n').filter((l) => l.startsWith('secrets: '));
+    assert.deepStrictEqual(lines.sort(), ['secrets: API_ONLY own', 'secrets: ROOT_ONLY from ..', 'secrets: SHARED_TOKEN own'].sort());
+    for (const n of [1, 2, 3, 4]) assert.ok(!r.out.includes(value(n)), 'no value printed');
+});
+
 test('ignore --add and --remove edit this project\'s ignore lines', () =>
 {
     const at = joined();

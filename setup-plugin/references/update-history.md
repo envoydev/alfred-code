@@ -451,3 +451,26 @@ that run is attended, so a flow skill copied before this update never runs unatt
 turns auto-run on and runs the request start to finish; `/mode-auto-run --mode-auto-run-off` switches it off and runs
 nothing. While a mode is on, each prompt shows `Modes ON: ...`. Update refreshes the flow skill copies; nothing else
 to report.
+
+## in 3.0.0 - the stack's values move to .variables; the workspace is on, with a role
+
+Update together: every teammate on a project moves to 3.0.0 in the same sitting. The stack's values - every catalog key
+but `ALFRED_CODE_DATA_PATH` and the guard key `ALFRED_CODE_HOOKS_OFF`, `ALFRED_CODE_SCORER_LEVEL`,
+`ALFRED_CODE_DOCS_VERSIONING` and `ALFRED_CODE_MAXIMUM_RUN_AGENTS` among them - leave the settings `env` for
+`<data root>/.variables`, and 2.12.0 or older reads none of them: a teammate who has not updated runs on the stack's
+defaults until they do. The way back, for anyone who must stay on 2.12.0 a while, is the values copied into their
+settings.json by hand.
+
+The update moves each key out of `settings.json` into `.variables`, one `.variables env:` line per key, and keeps
+`ALFRED_CODE_HOOKS_OFF` and `ALFRED_CODE_DATA_PATH` where they were. At project and user scope git tracks the file
+(the data root's `.gitignore` gains `!/.variables`) - commit it with the update; at local scope it stays out of git,
+and a key typed into `settings.local.json` still wins over it. Configure and validate write values through
+`scripts/variables.js set`, and status shows each value with the file it came from.
+
+The workspace is on by default: `ALFRED_CODE_WORKSPACE` unset now reads on, and only `0` turns it off. Each project
+has a role - standalone, a root that projects below can join, or a child of the installed folder above - asked at
+init, offered in configure's Environment area, and asked by an update only when the installed folders around the
+project change. A child holds no copies of its parent's values or local MCP servers any more: the hooks read the
+values through the chain, and the update prints one `mcp <name>:` line per parent's local-scope server the child
+cannot see; a copy an earlier release made stays as your own registration. A parent's uninstall writes every value
+each child read from it into the child's own `.variables` first, so nothing a child reads changes.

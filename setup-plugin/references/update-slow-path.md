@@ -86,8 +86,8 @@ logged as one `unattended: <question> -> <choice>` line.
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/alfred-code:update
 --docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
-installer writes it over the current value and prints one `settings.json env: ALFRED_CODE_DOCS_VERSIONING
-<old> -> '<new>'` line; any other value is refused before anything is written. Without it, the key is
+installer writes it into `<data root>/.variables` over the current value and prints one `.variables env:
+ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line; any other value is refused before anything is written. Without it, the key is
 only seeded when missing. `--memory-level` left with the memory server in 2.10.1: the installer accepts it and
 ignores it in one line.
 

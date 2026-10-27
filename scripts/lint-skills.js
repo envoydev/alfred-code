@@ -1232,6 +1232,9 @@ const SETUP_ASK_TEMPLATES = {
     // a child install's scope ask and its local-scope git-hygiene ask, read only on `child=yes` (workspace layering,
     // 2026-10-26 - init-install.md is already past the Bash output cap, so a standalone install carries neither).
     'setup-plugin/references/init-child.md': 2,
+    // the role ask, its own call before screen A, read beside `workspace.js role --when init` (workspace roles and
+    // variables D2, 2026-10-27 - init-install.md stays at its size pin).
+    'setup-plugin/references/init-role.md': 1,
     // screen B's second call - the environment rows past the first four (ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27).
     'setup-plugin/references/init-env-more.md': 1,
     // the instruction files' place, one template per `instructions:` case - read by init's step 1 and configure's step 12
@@ -1247,7 +1250,8 @@ const SETUP_ASK_TEMPLATES = {
     // -1: step 12's old-seed rename ask, folded into instructions-place.md's name ask (2026-10-22).
     // -1: the memory level ask, with the memory server (the no-MCP stack, 2026-10-24).
     // +2: step 8's memory and navigation asks (spec P1 + P2, 2026-10-24).
-    'setup-plugin/commands/configure.md': 10,
+    // +3: step 8's workspace role, one template per role (workspace roles and variables D2, 2026-10-27).
+    'setup-plugin/commands/configure.md': 13,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -1256,6 +1260,7 @@ const SETUP_ASK_TEMPLATES = {
     // +2: the new-items ask, one template per case (audit 2026-10-21 commands T2-12).
     // -1: the old-seed rename ask - the walk asks instructions-place.md's name templates instead (2026-10-22).
     // +2: the workspace join ask and the account's both-instruction-files ask (workspace layering, 2026-10-26).
+    // The join ask became the role ask, one template over its five cases (workspace roles and variables D2, 2026-10-27).
     'setup-plugin/references/update-walk.md': 6,
     // the children's asks and the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26).
     'setup-plugin/references/update-workspace.md': 2,

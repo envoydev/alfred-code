@@ -9,7 +9,8 @@
 //   role        the project's role and its ask (`--when init|update|configure`), or one `--answer` applied
 //   ignore      one `ignore <category> <name>` line in or out
 //   children    the direct children, `ok` or `gone`, for uninstall
-//   status      the role, the parent, the own, ignored and inherited lines, and the last load check
+//   status      the role, the parent, the own, ignored and inherited lines, the last load check, the variables'
+//               notes and the secrets chain's keys by source
 //   account-instructions  D5's account key: check, apply, decline or remove
 //   plan        update's cascade, before it runs: each project's row, projected add and drop, and its own asks
 //   answer      one project's answers to those asks, merged into the answers file the cascade reads
@@ -175,6 +176,9 @@ function status(out)
     for (const line of ws.hintLines(root, { env })) out(line);
     // variables.js show's notes (D7): a guard key, a key never read, a key named like a credential - never a value.
     for (const note of require('../stack/hooks/layout.js').variablesOf(root, { env }).notes) out(note);
+    // The secrets chain by key and source - the nearest store's key wins - never a value.
+    const secrets = require('../stack/hooks/secret-chain.js').chainOf(root, { env });
+    for (const [key, rel] of Object.entries(secrets.from)) out(`secrets: ${key} ${rel === '.' ? 'own' : `from ${rel}`}`);
 }
 
 function accountInstructions(out)
