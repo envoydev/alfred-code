@@ -284,6 +284,18 @@ test('next: a fail under the level revises at once; no re-grade, whatever the ba
     graded('r2', { total: 65 }); assert.strictEqual(next('r2')[0], 'revise');
     graded('r3', { total: 79 }); assert.strictEqual(next('r3')[0], 'revise');
 });
+test('next: a revise after a drop names the best round\'s draft and findings to revise from; after a rise it names none', () => {
+    const a = graded('dr1', { total: 70 }); graded('dr1', { total: 50 });
+    assert.match(next('dr1')[0], new RegExp(`^ask-continue ${a} `));                               // the drop stalls, the best named
+    decide('dr1', 'revise');
+    const out = next('dr1');
+    assert.strictEqual(out[0], 'revise');
+    assert.deepStrictEqual(out.filter((l) => l.startsWith('From: ')), [`From: ${path.join(path.dirname(log('dr1')), `${a}.draft.md`)} - round 0, the best so far; its findings: ${path.join(path.dirname(log('dr1')), `${a}.score.md`)}`]);
+    graded('dr2', { total: 50 }); graded('dr2', { total: 60 });
+    const rise = next('dr2');
+    assert.strictEqual(rise[0], 'revise');
+    assert.ok(!rise.some((l) => l.startsWith('From: ')), rise.join('\n'));
+});
 test('next: an old log holding a regrade-of line is read and never answered with regrade', () => {
     const a = graded('rg1', { total: 75 }); graded('rg1', { total: 75, regradeOf: a });
     assert.match(fs.readFileSync(log('rg1'), 'utf8'), new RegExp(`^1 0 [0-9a-f]+ regrade-of ${a}$`, 'm'));

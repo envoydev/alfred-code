@@ -39,7 +39,7 @@ Every later call passes the same `--root`, `--session` and `--slug`.
 6. `node "$S" grade <score file> --output <output> --level <n>`, the level from the injected line. Exit 2 (malformed) or 3 (no seal, or a broken one) is a failed grade: the Fallback's retry.
 7. `node "$S" next --root ... --session ... --slug <slug> --level <n> --rounds <r>`, plus `--auto` when auto-run is on (the `scorer: on` line names auto-run, or an `auto-run: on` line is in context), and do exactly what its first line says:
    - `release <id>` - the pass below;
-   - `revise` - step 8, then `start` again (a new round), step 4 and step 5;
+   - `revise` - step 8, then `start` again (a new round), step 4 and step 5; a `From:` line under it names an earlier, higher-scoring draft and its findings - the revision starts from that draft and those findings, never the lower last one;
    - `offer-fix <id> recommend <choice>` - Fix on a pass below; nothing is released yet;
    - `fix <id>` - step 8 over the findings its `Fixable:` line names, then `start` (a new round), step 4 and step 5;
    - `ask-continue <id> recommend <choice>` or `withhold-final <id> recommend <choice>` - Release and withhold below;
