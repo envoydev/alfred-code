@@ -153,7 +153,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     }
     assert.match(b, /`<docs-path>\/quality\/CODE-ASSESSMENT\.md`/);
     assert.match(b, /The only file you write/);
-    assert.match(b, /no `watch\.json`/);
+    assert.match(b, /recomputed domain[^.]*`notOwned`/);
     assert.match(b, /code-quality-analyzer/, 'the seat it fans out');
     assert.match(b, /`<docs-path>\/quality\/loops\/`/, 'rule source: the numbered prompts');
     assert.match(b, /`<docs-path>\/preferences\/PROJECT-CODE-PREFERENCES\.md`/, 'rule source: the recorded style');
@@ -202,7 +202,7 @@ test('the doc shape ties every finding to file:line and to the rule it breaks, o
         assert.ok(s.includes(section), `doc-shape carries ${section}`);
     assert.match(s, /pass all four questions or it is not a finding/);
     assert.match(s, /an output, never a target/);
-    assert.match(s, /no `watch\.json`/);
+    assert.match(s, /recomputed domain[^.]*`notOwned`/);
     assert.match(s, /Target: ~300 lines/);
     assert.match(s, /As of: <branch>@<short-sha>, <YYYY-MM-DD>/);
     assert.match(s, /All three absent[^.]*stops[^.]*writes nothing/, 'no rule source at all is a stop, not a clean result');
@@ -215,7 +215,7 @@ test('the doc shape ties every finding to file:line and to the rule it breaks, o
     assert.match(entry[0], /\*\*Remediation\*\* - /);
 });
 
-test('quality/CODE-ASSESSMENT.md is no docs domain - the engine never sections or versions it', () =>
+test('a quality/ folder with no watch.json is no docs domain - the engine never sections or versions it', () =>
 {
     const { repo, HOOKS } = require('./docs-fixture');
     const r = repo();

@@ -9,7 +9,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 
 - `<docs-path>/quality/CODE-ASSESSMENT.md` - the reasoned, tiered findings. The only file you write.
 
-**`quality/` carries no `watch.json`, so it is no docs domain - the doc is recomputed every run (`references/doc-shape.md` says why).** Read `references/doc-shape.md` before JUDGE - the rule sources, the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions.
+**`quality/` is a recomputed domain for the architecture assessment; this doc is `notOwned` there, recomputed whole every run (`references/doc-shape.md` says why).** Read `references/doc-shape.md` before JUDGE - the rule sources, the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions.
 
 **Reads decisions, never writes them - hard rule.** The decision log (`<docs-path>/decisions/`, or wherever the project keeps ADRs) and the choices the project AGENTS.md records are what gate question 4 reads; a candidate worth deciding rather than fixing is named as a Proposed decision in the doc and the report, for a person to accept by writing it themselves.
 

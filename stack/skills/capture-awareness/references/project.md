@@ -147,21 +147,19 @@ The spelling is the engine's: `**` matches any depth, the root included, so `**p
 `package.json` and `web/package.json` alike.
 
 `<docs-path>/awareness/watch.json` is the domain's one watch file, shared by the three parts: the run book owns its
-`watch` entries, one per file family the doc cites, pointing at the sections that family feeds - a change to a
-cited file then asks, at the session's close, whether that section still holds. The `notOwned` entry for
-`AGENTS-AWARENESS.md` is the script's: keep it in every write (the rule step puts it back if a write dropped it).
+`watch` entries, one per file family the doc cites, each `kind` opening with `run book: `, pointing at the sections
+that family feeds - a change to a cited file then asks, at the session's close, whether that section still holds.
+The `notOwned` entry for `AGENTS-AWARENESS.md` is the script's and the `seam with <slug>` entries are the
+related-projects part's: the merge (WRITE, below) keeps both, so the run book never writes the file whole.
 No `sourceRoots`: this domain describes how to run the code, not where it lives, so it leaves the first-change gate
 to the domains that map the code. For a project whose commands came from `package.json` and whose services came
-from a compose file:
+from a compose file, the run book's entries are:
 
 ```json
-{
-  "notOwned": ["AGENTS-AWARENESS.md"],
-  "watch": [
-    { "kind": "build and test commands", "globs": ["**package.json"], "sections": ["PROJECT-AWARENESS#build"] },
-    { "kind": "services and start config", "globs": ["**docker-compose*.yml"], "sections": ["PROJECT-AWARENESS#before-you-run", "PROJECT-AWARENESS#start", "PROJECT-AWARENESS#debugging"] }
-  ]
-}
+[
+  { "kind": "run book: build and test commands", "globs": ["**package.json"], "sections": ["PROJECT-AWARENESS#build"] },
+  { "kind": "run book: services and start config", "globs": ["**docker-compose*.yml"], "sections": ["PROJECT-AWARENESS#before-you-run", "PROJECT-AWARENESS#start", "PROJECT-AWARENESS#debugging"] }
+]
 ```
 
 ## The keys in the sensitive data
@@ -193,12 +191,24 @@ this line; a key the store already holds with another value stops that move unti
 ## WRITE and the three checks
 
 - **A first capture** writes `PROJECT-AWARENESS.md` whole (Write), creating `<docs-path>/awareness/` when absent -
-  `docs.js set` refuses a file that does not exist yet - and writes the `watch` entries into `watch.json`, keeping
-  the `notOwned` entry already there.
+  `docs.js set` refuses a file that does not exist yet - then merges the watch (below).
 - **A refresh** lands each changed section through `node .claude/hooks/docs.js set PROJECT-AWARENESS#<id> <textfile>`:
   the engine writes it in place on mainline, without git or under git versioning, and into this branch's overlay
   otherwise - the capture never decides which. Sections nobody changed are not rewritten. Each section `set` writes
   carries its own `captured:` stamp; where it wrote in place, also edit the top `Captured:` line to this run's.
+- **The watch, every run** - the run book's entries replace as one set, by their prefix:
+
+  ```bash
+  node .claude/hooks/docs.js watch-merge awareness --kinds 'run book: ' --doc PROJECT-AWARENESS <<'EOF'
+  [ <the run book's entries, as in covers and watch.json above> ]
+  EOF
+  ```
+
+  `--doc PROJECT-AWARENESS` also takes in an older capture's entries written without the prefix (every section they
+  name is in this doc), so the first run after an update replaces them instead of leaving duplicates; the `seam
+  with` entries and the `notOwned` key are kept. An engine older than the merge answers with its usage line: then
+  edit `watch.json` by hand as before - replace the entries whose sections are all in `PROJECT-AWARENESS`, keep
+  every other entry and key - and say so in the report.
 
 Every repo fact cites its file; every gap nobody filled says `unknown` and names this capture. Then three checks,
 all before the report:

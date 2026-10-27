@@ -82,6 +82,7 @@ cross-repo findings go to Claude Code's own memory, naming the sibling, never he
 
 ## acme-billing-api
 <!-- id: acme-billing-api -->
+<!-- covers: src/Contracts/OrderCreated.cs -->
 
 ```yaml
 location:   ../acme-billing-api
@@ -99,10 +100,13 @@ What grounds it: `src/Contracts/OrderCreated.cs` (this repo, publishes) and `acm
   repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's
   branch matters little.
 - **One `##` heading per sibling**, `<!-- id: <slug> -->` (a lowercase slug of the sibling's name, unique in the
-  file, kept across heading rewordings; `docs.js seed-ids` adds a missing one) and deliberately NO `covers:` -
-  nothing in this repo's code should trigger a re-read of a sibling's characterization (`docs.js lint` notes a
-  section that declares no `covers:`, never fails on one). The heading is the sibling's name: the memory hook reads
-  these headings to surface each sibling's memories.
+  file, kept across heading rewordings; `docs.js seed-ids` adds a missing one), then `<!-- covers: <globs> -->`
+  naming the THIS-repo files on its 'What grounds it' line. The sibling drifts on its own, which the entry's
+  `captured:` and `read_at:` stamps keep answering; the covers watch this repo's side of the seam, so a session that
+  moves or rewrites the seam file is asked at its close whether the entry still holds. An entry whose seam located
+  no file in this repo (UNVERIFIED, or a seam wholly on the sibling's side) carries no covers line and no watch
+  entry: nothing here can make it stale (`docs.js lint` notes a section with no `covers:`, never fails on one). The
+  heading is the sibling's name: the memory hook reads these headings to surface each sibling's memories.
 - **The entry** - location, relation, first_read, seam, the seat's `read_at:` and its own `captured:` stamp - then
   ONE line of evidence: what grounds the relation and the seam (the located files, both sides), plus any
   uncertainty or UNVERIFIED marker carried over verbatim. Describe edges, not roles.
@@ -117,14 +121,28 @@ What grounds it: `src/Contracts/OrderCreated.cs` (this repo, publishes) and `acm
 ## Write mechanics
 
 - **A first capture** writes `RELATED-PROJECTS-AWARENESS.md` whole (Write), creating `<docs-path>/awareness/` when
-  absent - `docs.js set` refuses a file that does not exist yet. No `watch` entry belongs to this doc: no file in
-  THIS repo bears on whether a sibling's characterization still holds.
+  absent - `docs.js set` refuses a file that does not exist yet.
 - **A re-run is an upsert, keyed by `location`.** A sibling passed this run: its entry rewritten from the fresh
   characterization, through `node .claude/hooks/docs.js set RELATED-PROJECTS-AWARENESS#<id> <textfile>`: the
   engine writes it in place on mainline, without git or under git versioning, and into this branch's overlay
   otherwise - the capture never decides which. A new sibling's section is added the same way. An existing entry
   whose location was NOT passed is kept exactly as-is (removal is a manual edit - the report names the entries left
   untouched so stale ones are visible). Where `set` wrote in place, also edit the top `Captured:` line to this run's.
+- **The watch, after each write.** Merge one entry per sibling this run wrote, each under its own exact kind, one
+  `--kind 'seam with <slug>'` per sibling - never the bare prefix, so a one-sibling re-run keeps every other
+  sibling's entry. The globs are the section's covers:
+
+  ```bash
+  node .claude/hooks/docs.js watch-merge awareness --kind 'seam with acme-billing-api' <<'EOF'
+  [ { "kind": "seam with acme-billing-api", "globs": ["src/Contracts/OrderCreated.cs"], "sections": ["RELATED-PROJECTS-AWARENESS#acme-billing-api"] } ]
+  EOF
+  ```
+
+  A sibling whose seam now locates no file here, or whose section was removed, is named with no stdin entry (`[]`),
+  which drops its entry; the run book's entries and the `notOwned` key are kept. Then `node .claude/hooks/docs.js
+  watch <one seam file>` names the sibling's section - none named means its entry was dropped, fixed before the
+  report. An engine older than the merge answers with its usage line: skip the merge and the check, and say so in
+  the report.
 
 Every entry is grounded in the located evidence or carries its UNVERIFIED marker - a relation is never smoothed
 over, a hint never overrides contradicting evidence silently (the contradiction is reported). Unreachable siblings

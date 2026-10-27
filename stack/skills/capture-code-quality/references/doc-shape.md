@@ -2,7 +2,7 @@
 
 ## Contents
 
-- **Why this doc lives outside the docs-domain engine** - recomputed every run, never versioned
+- **Why the engine leaves this doc alone** - recomputed every run, never versioned or watched
 - **Rule sources** - what counts as a rule, and which source wins a disagreement
 - **The findings gate** - the four questions a candidate must pass before it is a finding
 - **The count rule** - an output, never a target, in both directions
@@ -11,15 +11,16 @@
 - **Format discipline** - the budget, and the spill pass that keeps every entry
 - **Write mechanics** - the freshness line, the folder, the single overwrite
 
-## Why this doc lives outside the docs-domain engine
+## Why the engine leaves this doc alone
 
-`<docs-path>/quality/` carries no `watch.json`, so `domains()` in `.claude/hooks/docs.js` never picks it
-up - this doc and `quality/ARCHITECTURE-ASSESSMENT.md` beside it are no docs domain at all. Findings are a function of
-the rules plus the code, recomputable on demand for whatever branch you are on; versioning them would be
-storing a cache and calling it a record. No `<!-- id: -->` / `<!-- covers: -->` lines, no section stamp,
-no `docs.js set` or `lint`, no branch-overlay question at session end - none of that machinery applies,
-and this skill never invokes it. On a project that commits its docs, plain git tracks the file like any
-other; on a local-only docs root it is local too.
+`<docs-path>/quality/` is a recomputed domain for the architecture assessment, and this doc is `notOwned` there:
+`capture-architecture-quality` writes the folder's watch file and lists `CODE-ASSESSMENT.md` in it, so
+`.claude/hooks/docs.js` never sections, watches, versions or writes this doc. Findings are a function of the rules
+plus the code, recomputable on demand for whatever branch you are on; versioning them would be storing a cache
+and calling it a record. No `<!-- id: -->` / `<!-- covers: -->` lines, no section stamp, no `docs.js set` or
+`lint`, no branch-overlay question at session end - none of that machinery applies to this doc, and this skill
+never invokes it or writes `quality/watch.json`. On a project that commits its docs, plain git tracks the file
+like any other; on a local-only docs root it is local too.
 
 ## Rule sources
 
