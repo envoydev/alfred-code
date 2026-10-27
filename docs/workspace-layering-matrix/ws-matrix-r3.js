@@ -285,7 +285,7 @@ run('R3-11', (sb) =>
         u.code === 0 && !holds(p.deny, fileInApi).length && !(p.additionalDirectories || []).includes(sb.at('.')) && (p.deny || []).includes(deny(sb.memOf('.'))),
         `${JSON.stringify(p)}\n${u.out.slice(-500)}`);
     // Under the account folder: the guard opens a folder elsewhere only when the account or managed settings name it
-    // (R3-12), never a project's own file.
+    // (R3-12) or an untracked settings.local.json does (R3-13), never a file a clone carries.
     const mem = path.join(sb.env.CLAUDE_CONFIG_DIR, 'mem');
     sb.put(path.join(sb.at('.'), '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: path.join(mem, 'ws') }));
     sb.put(path.join(sb.at('api'), '.claude', 'settings.local.json'), JSON.stringify({ ...sb.local('api'), autoMemoryDirectory: path.join(mem, 'ws', 'api') }));
@@ -314,6 +314,59 @@ run('R3-12', (sb) =>
     check('R3-12 the account settings name a memory folder outside the account folder: writable, the switch at 0 too; a file beside it and a repo settings.json naming ~/.ssh stay blocked',
         inst.code === 0 && own.code === 0 && off.code === 0 && beside.code === 2 && ssh.code === 2,
         `install ${inst.code}\nown ${own.code} ${own.stderr.slice(0, 300)}\noff ${off.code}\nbeside ${beside.code}\nssh ${ssh.code}`);
+});
+
+// ---------------------------------------------------------------- R3-13 the memory folder in an untracked settings.local.json (3.1.0)
+run('R3-13', (sb) =>
+{
+    sb.mk('.');
+    const inst = sb.install('.', ROOT_SEL);
+    const mem = path.join(sb.work, 'mem', 'solo');
+    const localFile = path.join(sb.at('.'), '.claude', 'settings.local.json');
+    sb.put(localFile, JSON.stringify({ ...(json(localFile) || {}), autoMemoryDirectory: mem }));
+    const own = sb.write('.', path.join(mem, 'MEMORY.md'));
+    const beside = sb.write('.', path.join(sb.work, 'mem', 'other.md'));
+    const upd = sb.update('.');
+    const kept = (json(localFile) || {}).autoMemoryDirectory === mem;
+    const after = sb.write('.', path.join(mem, 'MEMORY.md'));
+    check('R3-13a an untracked settings.local.json names a memory folder outside the account folder: writable, a file beside it blocked; an update keeps the key and the allowance',
+        inst.code === 0 && own.code === 0 && beside.code === 2 && upd.code === 0 && kept && after.code === 0,
+        `install ${inst.code}\nown ${own.code} ${own.stderr.slice(0, 300)}\nbeside ${beside.code}\nupdate ${upd.code} kept ${kept}\nafter ${after.code} ${after.stderr.slice(0, 300)}`);
+    // A session started in a sub-folder: Claude Code reads the root's file there (v2.1.211), and a file in the sub-folder
+    // may be an archive's - on Windows Claude Code reads the start folder's, so neither opens.
+    sb.mk('pkg', false);
+    sb.put(path.join(sb.at('pkg'), '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: path.join(sb.work, 'mem', 'pkg') }));
+    const subRoot = sb.write('pkg', path.join(mem, 'MEMORY.md'));
+    const subOwn = sb.write('pkg', path.join(sb.work, 'mem', 'pkg', 'MEMORY.md'));
+    const rootRead = process.platform === 'win32' ? 2 : 0;
+    check('R3-13d from a sub-folder: the root\'s untracked file opens its folder, the sub-folder\'s own file opens nothing',
+        subRoot.code === rootRead && subOwn.code === 2, `root's ${subRoot.code} ${subRoot.stderr.slice(0, 300)}\nown ${subOwn.code}`);
+    spawnSync('git', ['add', '-f', '.claude/settings.local.json'], { cwd: sb.at('.') });
+    const tracked = sb.write('.', path.join(mem, 'MEMORY.md'));
+    check('R3-13b the same file once git tracks it (a clone carries it): blocked', tracked.code === 2, `${tracked.code} ${tracked.stderr.slice(0, 300)}`);
+    sb.mk('../plain', false);
+    const plainInst = sb.install('../plain', ROOT_SEL);
+    const plainLocal = path.join(sb.at('../plain'), '.claude', 'settings.local.json');
+    sb.put(plainLocal, JSON.stringify({ ...(json(plainLocal) || {}), autoMemoryDirectory: path.join(sb.work, 'mem', 'plain') }));
+    const plain = sb.write('../plain', path.join(sb.work, 'mem', 'plain', 'MEMORY.md'));
+    check('R3-13c a project outside any git repo: nothing says the file is untracked, so blocked', plainInst.code === 0 && plain.code === 2,
+        `install ${plainInst.code} ${plainInst.out.slice(-300)}\nwrite ${plain.code} ${plain.stderr.slice(0, 300)}`);
+    if (process.platform === 'win32') { notRun('R3-13e a clone with a symlinked .claude', 'a symlink needs a privilege Windows CI lacks'); return; }
+    // A repository whose .claude is a symlink to a folder holding settings.local.json naming ~/.ssh: git tracks the link and
+    // conf/settings.local.json, never .claude/settings.local.json, so ls-files alone calls it untracked.
+    const src = path.join(sb.work, 'evil-src');
+    sb.put(path.join(src, 'conf', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: '~/.ssh' }));
+    fs.symlinkSync('conf', path.join(src, '.claude'));
+    const g = (cwd, ...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' });
+    g(src, 'init', '-q');
+    g(src, 'add', '-A');
+    g(src, 'commit', '-qm', 'i');
+    const cloned = g(sb.work, 'clone', '-q', src, sb.at('../evil'));
+    // Installed, as the user would: the plugin's guard stands down in a project with no install.
+    const evilInst = sb.install('../evil', ROOT_SEL);
+    const ssh = sb.write('../evil', path.join(sb.work, '.ssh', 'authorized_keys'));
+    check('R3-13e a clone whose .claude is a symlink, its settings.local.json naming ~/.ssh: blocked', cloned.status === 0 && evilInst.code === 0 && ssh.code === 2,
+        `clone ${cloned.status} ${cloned.stderr}\ninstall ${evilInst.code} ${evilInst.out.slice(-300)}\nssh ${ssh.code} ${ssh.stderr.slice(0, 300)}`);
 });
 
 // ---------------------------------------------------------------- R3-8 a real logged-out start

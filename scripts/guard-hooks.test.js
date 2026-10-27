@@ -5206,14 +5206,75 @@ test('guard-cross-project-write: an autoMemoryDirectory the account settings nam
   } finally { w.rm(); }
 });
 
-test('guard-cross-project-write: an autoMemoryDirectory a repo can ship opens nothing - settings.json or settings.local.json naming ~/.ssh or a folder beside the project', () => {
+test('guard-cross-project-write: an autoMemoryDirectory a repo can ship opens nothing - settings.json or a tracked settings.local.json naming ~/.ssh or a folder beside the project', () => {
   const w = memWs();
   try {
     const ssh = path.join(w.home, '.ssh');
     w.put('ws/api/.claude/settings.json', JSON.stringify({ autoMemoryDirectory: '~/.ssh' }));
     assert.equal(w.write('ws/api', path.join(ssh, 'authorized_keys')).status, 2, 'a committed settings.json');
     w.put('ws/api/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/api') }));
-    assert.equal(w.write('ws/api', path.join(w.at('mem/api'), 'MEMORY.md')).status, 2, 'a settings.local.json, which a repo can commit too');
+    spawnSync('git', ['add', '-f', '.claude/settings.local.json'], { cwd: w.at('ws/api') });
+    assert.equal(w.write('ws/api', path.join(w.at('mem/api'), 'MEMORY.md')).status, 2, 'a settings.local.json git tracks, as a clone carries it');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: an untracked settings.local.json opens its autoMemoryDirectory - not outside a git repo, not a folder holding the project', () => {
+  const w = memWs();
+  try {
+    w.put('ws/api/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/api') }));
+    for (const extra of [{}, { ALFRED_CODE_WORKSPACE: '0' }]) {
+      const r = w.write('ws/api', path.join(w.at('mem/api'), 'MEMORY.md'), extra);
+      assert.equal(r.status, 0, `${JSON.stringify(extra)}: ${r.stderr}`);
+    }
+    assert.equal(w.write('ws/api', path.join(w.at('mem'), 'other.md')).status, 2, 'a file beside it');
+    w.put('plain/.claude/alfred-code.stamp', 'sha: x\n');
+    w.put('plain/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/plain') }));
+    assert.equal(w.write('plain', path.join(w.at('mem/plain'), 'MEMORY.md')).status, 2, 'no git repo says the file is untracked');
+    w.put('ws/api/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('ws') }));
+    assert.equal(w.write('ws/api', w.at('ws/notes.md')).status, 2, 'a folder holding the project');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: a settings.local.json under a symlinked .claude or a repository nested at .claude opens nothing; a GIT_ variable cannot hide a tracked one', () => {
+  const w = memWs();
+  try {
+    const git = (rel, ...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: w.at(rel), encoding: 'utf8' });
+    if (process.platform !== 'win32') {
+      w.put('linked/conf/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/linked') }));
+      git('linked', 'init', '-q');
+      fs.symlinkSync('conf', w.at('linked/.claude'));
+      git('linked', 'add', '-A');
+      git('linked', 'commit', '-qm', 'i');
+      assert.equal(w.write('linked', path.join(w.at('mem/linked'), 'MEMORY.md')).status, 2, 'a symlinked .claude, as a clone carries it');
+    }
+    w.put('nested/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/nested') }));
+    git('nested', 'init', '-q');
+    git('nested/.claude', 'init', '-q');
+    assert.equal(w.write('nested', path.join(w.at('mem/nested'), 'MEMORY.md')).status, 2, 'a repository at .claude, as a submodule is');
+    w.put('ws/api/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/api') }));
+    git('ws/api', 'add', '-f', '.claude/settings.local.json');
+    for (const extra of [{ GIT_LITERAL_PATHSPECS: '1' }, { GIT_INDEX_FILE: w.at('no-index') }]) {
+      assert.equal(w.write('ws/api', path.join(w.at('mem/api'), 'MEMORY.md'), extra).status, 2, JSON.stringify(extra));
+    }
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: from a sub-folder or a linked worktree the root\'s untracked settings.local.json is the one read; a sub-folder\'s own file opens nothing', () => {
+  const w = memWs();
+  try {
+    const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: w.at('mono'), encoding: 'utf8' });
+    w.put('mono/pkg/src.js', 'x');
+    git('init', '-q');
+    git('add', '-A');
+    git('commit', '-qm', 'i');
+    w.put('mono/pkg/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/pkg') }));
+    assert.equal(w.write('mono/pkg', path.join(w.at('mem/pkg'), 'MEMORY.md')).status, 2, 'a sub-folder\'s own file, as an archive dropped into a repository carries it');
+    w.put('mono/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/mono') }));
+    // Windows: Claude Code keeps the file in the start folder, so the root's is not the one it reads.
+    const rootRead = process.platform === 'win32' ? 2 : 0;
+    assert.equal(w.write('mono/pkg', path.join(w.at('mem/mono'), 'MEMORY.md')).status, rootRead, 'the root\'s, from a sub-folder');
+    git('worktree', 'add', '-q', w.at('mono-wt'), '-b', 'feat');
+    assert.equal(w.write('mono-wt', path.join(w.at('mem/mono'), 'MEMORY.md')).status, rootRead, 'the main checkout\'s, from a linked worktree');
   } finally { w.rm(); }
 });
 

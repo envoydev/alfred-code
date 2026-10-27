@@ -410,3 +410,46 @@ test('trustedMemoryDir reads the managed and account settings only, never a proj
     fs.writeFileSync(m.managed, JSON.stringify({ autoMemoryDirectory: '/policy/mem' }));
     assert.strictEqual(of(), path.resolve('/policy/mem'));
 });
+
+test('trustedMemoryDir reads settings.local.json in its own place only when the untracked check passes it', () =>
+{
+    const m = memTree({ 'p': { git: true, local: JSON.stringify({ autoMemoryDirectory: '/local/mem' }) } });
+    const local = path.join(m.at('p'), '.claude', 'settings.local.json');
+    const seen = [];
+    const of = (untracked) => layout.trustedMemoryDir(m.at('p'), { env: m.env, home: m.home, managed: m.managed, untracked });
+    assert.strictEqual(of(), null, 'no check: the file stays untrusted');
+    assert.strictEqual(of((f) => { seen.push(f); return true; }), path.resolve('/local/mem'));
+    assert.deepStrictEqual(seen, [local], 'the check is asked about settings.local.json');
+    assert.strictEqual(of(() => false), null, 'a tracked file');
+    fs.writeFileSync(path.join(m.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: '~/mem' }));
+    assert.strictEqual(of(() => true), path.resolve('/local/mem'), 'the local file outranks the account');
+    assert.strictEqual(of(() => false), path.join(m.home, 'mem'), 'a tracked one falls through to the account');
+    fs.writeFileSync(local, JSON.stringify({ autoMemoryDirectory: 'rel/mem' }));
+    seen.length = 0;
+    assert.strictEqual(of((f) => { seen.push(f); return true; }), path.join(m.home, 'mem'), 'a relative value is no setting');
+    assert.deepStrictEqual(seen, [], 'and asks no check');
+    fs.writeFileSync(local, JSON.stringify({ autoMemoryDirectory: '/local/mem' }));
+    fs.mkdirSync(path.dirname(m.managed), { recursive: true });
+    fs.writeFileSync(m.managed, JSON.stringify({ autoMemoryDirectory: '/policy/mem' }));
+    assert.strictEqual(of((f) => { seen.push(f); return true; }), path.resolve('/policy/mem'), 'the managed file outranks it');
+    assert.deepStrictEqual(seen, [], 'unasked');
+});
+
+test('localSettingsFile names the settings.local.json Claude Code reads in a repository: the root\'s, the main checkout\'s; on Windows the start folder\'s at its top; null below it there and with no repository', () =>
+{
+    const m = memTree({ 'r': { git: true }, 'r/pkg': {}, 'plain': {} });
+    const of = (rel, platform = 'darwin') => layout.localSettingsFile(m.at(rel), { home: m.home, platform });
+    const file = (rel) => path.join(m.at(rel), '.claude', 'settings.local.json');
+    assert.strictEqual(of('r'), file('r'));
+    assert.strictEqual(of('r/pkg'), file('r'), 'a sub-folder reads the root\'s');
+    assert.strictEqual(of('r', 'win32'), file('r'));
+    assert.strictEqual(of('r/pkg', 'win32'), null, 'Windows keeps it in the start folder, which nothing vouches for below the top');
+    assert.strictEqual(of('plain'), null);
+    const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: m.at('r'), stdio: 'ignore' });
+    fs.writeFileSync(path.join(m.at('r'), 'a.txt'), 'a');
+    git('add', 'a.txt');
+    git('commit', '-qm', 'i');
+    git('worktree', 'add', '-q', path.join(m.at('.'), 'r-wt'), '-b', 'feat');
+    assert.strictEqual(of('r-wt'), file('r'), 'a linked worktree reads the main checkout\'s');
+    assert.strictEqual(of('r-wt', 'win32'), file('r-wt'));
+});

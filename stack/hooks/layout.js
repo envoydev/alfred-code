@@ -651,22 +651,25 @@ const readObject = (file) =>
 };
 // R6: `autoMemoryDirectory` where Claude Code reads it first - the managed drop-ins (merged after the file in alphabetical
 // order, so the last wins), the managed file, the member's settings.local.json, its settings.json, the account's.
-// `trusted` reads only the files a cloned repo cannot ship - the managed ones and the account's.
-function autoMemorySetting(root, { account, home, managed, trusted = false })
+// `trusted` reads only the files a cloned repo cannot ship - the managed ones, the account's, and the settings.local.json
+// Claude Code reads (localSettingsFile) when `untracked(file)` vouches for it.
+function autoMemorySetting(root, { account, home, managed, trusted = false, untracked = () => false, platform = process.platform })
 {
     const dropDir = path.join(path.dirname(managed), 'managed-settings.d');
     let drops = [];
     try { drops = fs.readdirSync(dropDir).filter((n) => n.endsWith('.json') && !n.startsWith('.')).sort().reverse().map((n) => path.join(dropDir, n)); }
     catch { /* no drop-in folder */ }
-    const project = trusted ? [] : [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json')];
+    const local = trusted ? localSettingsFile(root, { home, platform }) : path.join(root, '.claude', 'settings.local.json');
+    const project = trusted ? (local ? [local] : []) : [local, path.join(root, '.claude', 'settings.json')];
     for (const file of [...drops, managed, ...project, path.join(account, 'settings.json')])
     {
         const value = (readObject(file) || {}).autoMemoryDirectory;
         if (typeof value !== 'string' || !value.trim()) continue;
         const v = value.trim();
-        if (/^~[\\/]/.test(v)) return path.join(home, v.slice(2));
-        if (path.isAbsolute(v)) return path.resolve(v);
         // Claude Code takes an absolute path or one starting `~/` alone (memory docs): any other value is no setting.
+        const dir = /^~[\\/]/.test(v) ? path.join(home, v.slice(2)) : path.isAbsolute(v) ? path.resolve(v) : null;
+        if (!dir || (trusted && file === local && !untracked(local))) continue;
+        return dir;
     }
     return null;
 }
@@ -694,12 +697,24 @@ function memoryDirsOf(root, { env = process.env, home = require('os').homedir(),
     catch { /* no projects folder yet */ }
     return names.sort().map((n) => path.join(projects, n, 'memory'));
 }
-// The autoMemoryDirectory set where no repo can ship it (the managed settings, the account's), or null: the folder the
-// write guard may open for the project's own memory. A project's settings.json or settings.local.json can arrive in
-// a clone and name any folder (~/.ssh, a sibling repo), so neither is trusted to widen a gate.
-function trustedMemoryDir(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env) } = {})
+// The settings.local.json Claude Code reads in a git repository (settings docs, 'Where Claude Code keeps the local file
+// in a git repository', v2.1.211): the repository root's - a linked worktree's main checkout's - for every sub-folder;
+// on Windows the start folder's. Null where no file is vouched for: no repository, one rooted at home (gitTopOf gives
+// ''), and a start folder below the top on Windows - a file there may be an archive's, dropped into the repository.
+function localSettingsFile(root, { home = require('os').homedir(), platform = process.platform } = {})
 {
-    return autoMemorySetting(root, { account: env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), home, managed, trusted: true });
+    const top = gitTopOf(root, { home });
+    if (!top) return null;
+    if (platform === 'win32') return dirKey(top) === dirKey(root) ? path.join(root, '.claude', 'settings.local.json') : null;
+    return path.join(worktreeMain(top) || top, '.claude', 'settings.local.json');
+}
+// The autoMemoryDirectory set where no repo can ship it (the managed settings, the account's, a settings.local.json
+// `untracked` vouches for), or null: the folder the write guard may open for the project's own memory. A project's
+// settings.json, or a settings.local.json git tracks, can arrive in a clone and name any folder (~/.ssh, a sibling
+// repo), so neither is trusted to widen a gate. `untracked` is the caller's: this file spawns nothing.
+function trustedMemoryDir(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), untracked, platform = process.platform } = {})
+{
+    return autoMemorySetting(root, { account: env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), home, managed, trusted: true, untracked, platform });
 }
 // R2: an ancestor's docs root from its own settings (a leftover ALFRED_CODE_DOCS_PATH, settings.local.json first), never
 // the child's env, else `<its data root>/docs` - absolute.
@@ -771,6 +786,6 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, trustedMemoryDir, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
+    memoryDirsOf, trustedMemoryDir, localSettingsFile, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

@@ -493,3 +493,17 @@ A memory folder you choose with `autoMemoryDirectory` outside the account folder
 when your account `settings.json` or the managed settings name it. The same setting in a project's `settings.json` or
 `settings.local.json` opens nothing, since a repo can commit either file to name any folder: set a per-project folder in
 the account settings or in `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, or memory saves there still stop at the guard's ask.
+
+## after 3.0.0 - the memory folder in an untracked settings.local.json
+
+The write guard now also opens the `autoMemoryDirectory` named in the `.claude/settings.local.json` Claude Code reads
+for the project - the repository root's, the main checkout's in a linked worktree, the project folder's on Windows -
+when that file is your own: git does not track it and `.claude` is a real folder, not a link or a nested repository.
+A tracked or staged file, a sub-folder's own file, a project outside any git repository and the project's
+`settings.json` still open nothing; the managed settings still outrank the local file, and a folder holding the
+project or the home folder opens nothing.
+
+## after 3.0.0 - the output scorer revises from its best round
+
+When a revised draft scores lower than an earlier round and the scorer asks for one more revision, its `revise` line
+now names the best round's draft and that round's findings to revise from, so the lower draft is not built on.
