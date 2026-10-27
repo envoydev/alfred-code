@@ -474,3 +474,9 @@ project change. A child holds no copies of its parent's values or local MCP serv
 values through the chain, and the update prints one `mcp <name>:` line per parent's local-scope server the child
 cannot see; a copy an earlier release made stays as your own registration. A parent's uninstall writes every value
 each child read from it into the child's own `.variables` first, so nothing a child reads changes.
+
+A project 2.12.0's init installed below an installed folder was registered as its child then (its `.alfred/workspace`
+names a `parent`), and the switch kept the link idle. From 3.0.0 it is a live child with no new ask: every value it
+held stays its own, the chain fills only the keys it never set, and each update brings the parent's later set changes.
+To keep such a project apart, take configure's 'Leave and become standalone' (it keeps every value), or set
+`ALFRED_CODE_WORKSPACE=0` with `scripts/variables.js set` in that project.
