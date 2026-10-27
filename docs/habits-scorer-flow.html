@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Habits Scorer Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  /* Layout: one reading column on graph paper; each figure scrolls sideways on its own at phone width. */
+  :root {
+    color-scheme: light;
+    --paper: #f4f6f2;
+    --grid: #e4e8e2;
+    --panel: #ffffff;
+    --ink: #1c2427;
+    --muted: #5a6662;
+    --rule: #c3cbc6;
+    --pen: #b53c15;
+    --pen-soft: #fcefe9;
+    --ok: #2a7849;
+    --ok-soft: #e7f3eb;
+    --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --display: 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #121615; --grid: #1a201e; --panel: #1a1f1e; --ink: #e2e8e5; --muted: #9aa6a1;
+      --rule: #3a4442; --pen: #ff8c63; --pen-soft: #2a1c16; --ok: #5cc68b; --ok-soft: #142419;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #121615; --grid: #1a201e; --panel: #1a1f1e; --ink: #e2e8e5; --muted: #9aa6a1;
+    --rule: #3a4442; --pen: #ff8c63; --pen-soft: #2a1c16; --ok: #5cc68b; --ok-soft: #142419;
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding-block: 40px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    gap: 40px;
+  }
+  header { display: grid; gap: 10px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--pen);
+    margin: 0;
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(28px, 5vw, 38px);
+    line-height: 1.1;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .lede { margin: 0; max-width: 65ch; color: var(--muted); }
+  code { font-family: var(--mono); font-size: 0.9em; }
+
+  figure { margin: 0; display: grid; gap: 12px; min-width: 0; }
+  .fig-title {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+  }
+  .scroll { overflow-x: auto; }
+  .scroll svg { display: block; width: 100%; min-width: 680px; height: auto; }
+  figcaption { max-width: 68ch; color: var(--muted); font-size: 14px; }
+  figcaption strong { color: var(--ink); font-weight: 600; }
+  .pen-mark { color: var(--pen); font-weight: 600; }
+
+  /* the diagram's marks, all from the tokens */
+  .dia { color: var(--muted); }
+  .dia text { font-family: var(--sans); }
+  .dia .bx { fill: var(--panel); stroke: var(--rule); stroke-width: 1.25; }
+  .dia .key { stroke: var(--ink); stroke-width: 2; }
+  .dia .diff { fill: var(--pen-soft); stroke: var(--pen); stroke-width: 2; }
+  .dia .okb { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 2; }
+  .dia .ghost { fill: var(--paper); stroke: var(--muted); stroke-width: 1.25; stroke-dasharray: 5 4; }
+  .dia .ln { fill: none; stroke: currentColor; stroke-width: 1.5; }
+  .dia .dash { stroke-dasharray: 5 4; }
+  .dia .sep { stroke: var(--rule); stroke-width: 1; }
+  .dia .divider { stroke: var(--rule); stroke-width: 1.25; stroke-dasharray: 3 5; }
+  .dia .t { font-weight: 600; font-size: 13px; fill: var(--ink); }
+  .dia .h { font-family: var(--display); font-weight: 600; font-size: 17px; fill: var(--ink); }
+  .dia .s { font-size: 11px; fill: var(--muted); }
+  .dia .m { font-family: var(--mono); font-size: 10.5px; fill: var(--ink); }
+  .dia .lab { font-size: 11px; font-style: italic; fill: var(--muted); }
+  .dia .lb { font-size: 11px; font-weight: 600; fill: var(--ink); }
+  .dia .opt { font-size: 11.5px; font-weight: 600; fill: var(--ink); }
+
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 0;
+  }
+  .facts div {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 12px 14px;
+    min-width: 0;
+  }
+  .facts dt {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .facts dd { margin: 4px 0 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">alfred-code · habits-output-scorer · planned, not built</p>
+    <h1>Habits scorer flow</h1>
+    <p class="lede">How a covered skill's output is graded before you see it, and what changes in an <code>--auto-mode</code> run. Drawn from the approved spec and the 15-task plan.</p>
+  </header>
+
+  <figure>
+    <p class="fig-title">Figure 1 · The loop both sessions share</p>
+    <div class="scroll">
+      <svg class="dia" viewBox="0 0 800 640" role="img" aria-label="The shared loop: switch the scorer on; a covered skill drafts its output; a fresh read-only grader seat grades it; a hook seals the score file; scorecard.js decides. A pass releases the output with a Scored line, a regrade or a revision loops back to the grader, and a draft that cannot reach the level goes to the ask. A Stop backstop holds a turn that drafted without a Scored line.">
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <rect class="bx" x="220" y="16" width="340" height="60" rx="8"/>
+        <text class="t" x="390" y="40" text-anchor="middle">Switch it on</text>
+        <text class="m" x="390" y="61" text-anchor="middle">ALFRED_CODE_HABITS_SCORER=1 or --habits-scorer-on</text>
+
+        <line class="ln" x1="390" y1="76" x2="390" y2="113" marker-end="url(#a1)"/>
+        <text class="lab" x="402" y="99">each prompt carries 'habits-scorer: on (level 80)'</text>
+
+        <rect class="bx" x="220" y="116" width="340" height="80" rx="8"/>
+        <text class="t" x="390" y="140" text-anchor="middle">A covered skill drafts its output</text>
+        <text class="s" x="390" y="161" text-anchor="middle">plan · inline plan · answer · ticket</text>
+        <text class="s" x="390" y="178" text-anchor="middle">upgrade plan · verdict · pick</text>
+
+        <line class="ln" x1="220" y1="156" x2="191" y2="156" marker-end="url(#a1)"/>
+        <rect class="ghost" x="20" y="122" width="168" height="68" rx="8"/>
+        <text class="t" x="104" y="146" text-anchor="middle">Not graded</text>
+        <text class="s" x="104" y="165" text-anchor="middle">an ordinary reply, or</text>
+        <text class="s" x="104" y="181" text-anchor="middle">a plan its flow audits</text>
+
+        <line class="ln" x1="390" y1="196" x2="390" y2="233" marker-end="url(#a1)"/>
+        <text class="lab" x="402" y="219">writes task.md and &lt;id&gt;.draft.md</text>
+
+        <rect class="bx" x="220" y="236" width="340" height="80" rx="8"/>
+        <text class="t" x="390" y="260" text-anchor="middle">A fresh grader seat</text>
+        <text class="m" x="390" y="281" text-anchor="middle">output-scorer · Sonnet · read-only</text>
+        <text class="s" x="390" y="299" text-anchor="middle">turn ends: 'Scoring plan - the grader is running'</text>
+
+        <line class="ln" x1="390" y1="316" x2="390" y2="353" marker-end="url(#a1)"/>
+        <text class="lab" x="402" y="339">report: hand-back or SubagentStop</text>
+
+        <rect class="bx" x="220" y="356" width="340" height="76" rx="8"/>
+        <text class="t" x="390" y="380" text-anchor="middle">A hook seals the score file</text>
+        <text class="m" x="390" y="400" text-anchor="middle">&lt;id&gt;.score.md · seal: sha256</text>
+        <text class="s" x="390" y="418" text-anchor="middle">written by the hook, never by the author</text>
+
+        <line class="ln" x1="390" y1="432" x2="390" y2="469" marker-end="url(#a1)"/>
+        <text class="lab" x="402" y="455">scorecard.js grade, then next</text>
+
+        <rect class="bx key" x="220" y="472" width="340" height="80" rx="8"/>
+        <text class="t" x="390" y="496" text-anchor="middle">scorecard.js decides</text>
+        <text class="s" x="390" y="517" text-anchor="middle">pass: total ≥ level and no BLOCKER</text>
+        <text class="s" x="390" y="535" text-anchor="middle">ceiling: total + the closable points left</text>
+
+        <line class="ln" x1="560" y1="512" x2="605" y2="512" marker-end="url(#a1)"/>
+        <text class="lab" x="583" y="504" text-anchor="middle">pass</text>
+        <rect class="okb" x="608" y="472" width="172" height="80" rx="8"/>
+        <text class="t" x="694" y="496" text-anchor="middle">Released to you</text>
+        <text class="m" x="694" y="517" text-anchor="middle">Scored: 86/100</text>
+        <text class="m" x="694" y="535" text-anchor="middle">level 80 · independent</text>
+
+        <rect class="ghost" x="608" y="230" width="172" height="100" rx="8"/>
+        <text class="t" x="694" y="252" text-anchor="middle">Stop backstop</text>
+        <text class="s" x="694" y="271" text-anchor="middle">a turn that drafted</text>
+        <text class="s" x="694" y="287" text-anchor="middle">but shows no Scored: line</text>
+        <text class="s" x="694" y="303" text-anchor="middle">is held once</text>
+        <text class="s" x="694" y="319" text-anchor="middle">(not while a grade runs)</text>
+        <line class="ln dash" x1="694" y1="330" x2="694" y2="469" marker-end="url(#a1)"/>
+        <text class="lab" x="702" y="396">looks for</text>
+        <text class="lab" x="702" y="410">this line</text>
+
+        <path class="ln" d="M220 512H170V276H217" marker-end="url(#a1)"/>
+        <text class="lb" x="160" y="372" text-anchor="end">regrade</text>
+        <text class="lab" x="160" y="387" text-anchor="end">1 to 5 under the level:</text>
+        <text class="lab" x="160" y="401" text-anchor="end">same draft, new seat</text>
+        <text class="lb" x="160" y="428" text-anchor="end">revise</text>
+        <text class="lab" x="160" y="443" text-anchor="end">fix the findings, new</text>
+        <text class="lab" x="160" y="457" text-anchor="end">draft, up to 3 times</text>
+
+        <line class="ln" x1="390" y1="552" x2="390" y2="589" marker-end="url(#a1)"/>
+        <text class="lab" x="402" y="575">ceiling under the level, a stall, or the cap</text>
+        <rect class="bx key" x="270" y="592" width="240" height="34" rx="17"/>
+        <text class="t" x="390" y="614" text-anchor="middle">ask-continue → Figure 2</text>
+      </svg>
+    </div>
+    <figcaption><strong>Both sessions run this loop unchanged.</strong> The draft, the grade and the decision are files and a script, so the model never sets its own score, and nothing reaches you until <code>scorecard.js</code> prints <code>release</code>. While the scorer is off, none of this runs.</figcaption>
+  </figure>
+
+  <figure>
+    <p class="fig-title">Figure 2 · Where the two sessions differ: the draft cannot pass</p>
+    <div class="scroll">
+      <svg class="dia" viewBox="0 0 800 492" role="img" aria-label="Two lanes. Normal session: one ask of up to 4 questions; you pick Answer the open decisions, Accept it at the score marked, or Revise once more; your answers start attempt 2; at its cap or stall you choose to accept it marked or keep it withheld. Auto-mode session: the continue question alone; the run takes the Recommended option, answering with each finding's recommended fix when a decision is needed, accepting marked when no BLOCKER is open, revising when one is; at attempt 2's cap or stall it stays withheld while a BLOCKER is open, otherwise it goes out marked.">
+        <defs>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <line class="divider" x1="400" y1="8" x2="400" y2="484"/>
+        <text class="h" x="205" y="30" text-anchor="middle">Normal session</text>
+        <text class="s" x="205" y="48" text-anchor="middle">you answer the ask</text>
+        <text class="h" x="595" y="30" text-anchor="middle">--auto-mode session</text>
+        <text class="s" x="595" y="48" text-anchor="middle">the run takes the Recommended option</text>
+
+        <rect class="diff" x="20" y="64" width="370" height="72" rx="8"/>
+        <text class="t" x="205" y="87" text-anchor="middle">One ask, up to 4 questions</text>
+        <text class="s" x="205" y="106" text-anchor="middle">the continue question, then the top BLOCKERs and MATERIALs</text>
+        <text class="s" x="205" y="123" text-anchor="middle">one option is marked Recommended</text>
+
+        <rect class="diff" x="410" y="64" width="370" height="72" rx="8"/>
+        <text class="t" x="595" y="87" text-anchor="middle">The continue question alone</text>
+        <text class="s" x="595" y="106" text-anchor="middle">'3 open decisions' stands in for the findings' text</text>
+        <text class="s" x="595" y="123" text-anchor="middle">so no finding's wording can stop the auto-answer</text>
+
+        <line class="ln" x1="77" y1="136" x2="77" y2="145"/>
+        <text class="lab" x="77" y="159" text-anchor="middle">you</text>
+        <line class="ln" x1="77" y1="165" x2="77" y2="181" marker-end="url(#a2)"/>
+        <line class="ln" x1="205" y1="136" x2="205" y2="145"/>
+        <text class="lab" x="205" y="159" text-anchor="middle">you</text>
+        <line class="ln" x1="205" y1="165" x2="205" y2="181" marker-end="url(#a2)"/>
+        <line class="ln" x1="333" y1="136" x2="333" y2="145"/>
+        <text class="lab" x="333" y="159" text-anchor="middle">you</text>
+        <line class="ln" x1="333" y1="165" x2="333" y2="181" marker-end="url(#a2)"/>
+
+        <line class="ln" x1="467" y1="136" x2="467" y2="145"/>
+        <text class="lab" x="467" y="159" text-anchor="middle">decision needed</text>
+        <line class="ln" x1="467" y1="165" x2="467" y2="181" marker-end="url(#a2)"/>
+        <line class="ln" x1="595" y1="136" x2="595" y2="145"/>
+        <text class="lab" x="595" y="159" text-anchor="middle">no BLOCKER</text>
+        <line class="ln" x1="595" y1="165" x2="595" y2="181" marker-end="url(#a2)"/>
+        <line class="ln" x1="723" y1="136" x2="723" y2="145"/>
+        <text class="lab" x="723" y="159" text-anchor="middle">BLOCKER open</text>
+        <line class="ln" x1="723" y1="165" x2="723" y2="181" marker-end="url(#a2)"/>
+
+        <rect class="diff" x="20" y="184" width="114" height="82" rx="8"/>
+        <text class="opt" x="77" y="204" text-anchor="middle">Answer the open</text>
+        <text class="opt" x="77" y="219" text-anchor="middle">decisions</text>
+        <line class="sep" x1="30" y1="229" x2="124" y2="229"/>
+        <text class="s" x="77" y="245" text-anchor="middle">your answers</text>
+        <text class="s" x="77" y="260" text-anchor="middle">go to answers.md</text>
+
+        <rect class="bx" x="148" y="184" width="114" height="82" rx="8"/>
+        <text class="opt" x="205" y="204" text-anchor="middle">Accept it at</text>
+        <text class="opt" x="205" y="219" text-anchor="middle">&lt;S&gt;, marked</text>
+        <line class="sep" x1="158" y1="229" x2="252" y2="229"/>
+        <text class="s" x="205" y="245" text-anchor="middle">goes out, marked</text>
+        <text class="s" x="205" y="260" text-anchor="middle">below the level</text>
+
+        <rect class="bx" x="276" y="184" width="114" height="82" rx="8"/>
+        <text class="opt" x="333" y="204" text-anchor="middle">Revise once</text>
+        <text class="opt" x="333" y="219" text-anchor="middle">more</text>
+        <line class="sep" x1="286" y1="229" x2="380" y2="229"/>
+        <text class="s" x="333" y="245" text-anchor="middle">one more round,</text>
+        <text class="s" x="333" y="260" text-anchor="middle">then a new grade</text>
+
+        <rect class="diff" x="410" y="184" width="114" height="82" rx="8"/>
+        <text class="opt" x="467" y="204" text-anchor="middle">Answer the open</text>
+        <text class="opt" x="467" y="219" text-anchor="middle">decisions</text>
+        <line class="sep" x1="420" y1="229" x2="514" y2="229"/>
+        <text class="s" x="467" y="245" text-anchor="middle">each finding's</text>
+        <text class="s" x="467" y="260" text-anchor="middle">recommended fix</text>
+
+        <rect class="bx" x="538" y="184" width="114" height="82" rx="8"/>
+        <text class="opt" x="595" y="204" text-anchor="middle">Accept it at</text>
+        <text class="opt" x="595" y="219" text-anchor="middle">&lt;S&gt;, marked</text>
+        <line class="sep" x1="548" y1="229" x2="642" y2="229"/>
+        <text class="s" x="595" y="245" text-anchor="middle">goes out, marked</text>
+        <text class="s" x="595" y="260" text-anchor="middle">below the level</text>
+
+        <rect class="bx" x="666" y="184" width="114" height="82" rx="8"/>
+        <text class="opt" x="723" y="204" text-anchor="middle">Revise once</text>
+        <text class="opt" x="723" y="219" text-anchor="middle">more</text>
+        <line class="sep" x1="676" y1="229" x2="770" y2="229"/>
+        <text class="s" x="723" y="245" text-anchor="middle">one more round,</text>
+        <text class="s" x="723" y="260" text-anchor="middle">then a new grade</text>
+
+        <line class="ln" x1="77" y1="266" x2="77" y2="303" marker-end="url(#a2)"/>
+        <text class="lab" x="85" y="289">joins task.md</text>
+        <line class="ln" x1="467" y1="266" x2="467" y2="303" marker-end="url(#a2)"/>
+        <text class="lab" x="475" y="289">joins task.md</text>
+
+        <rect class="bx" x="20" y="306" width="370" height="56" rx="8"/>
+        <text class="t" x="205" y="329" text-anchor="middle">Attempt 2: the full rounds again</text>
+        <text class="s" x="205" y="348" text-anchor="middle">its continue ask drops 'Answer the open decisions'</text>
+
+        <rect class="bx" x="410" y="306" width="370" height="56" rx="8"/>
+        <text class="t" x="595" y="329" text-anchor="middle">Attempt 2: the full rounds again</text>
+        <text class="s" x="595" y="348" text-anchor="middle">its continue ask drops 'Answer the open decisions'</text>
+
+        <line class="ln" x1="205" y1="362" x2="205" y2="399" marker-end="url(#a2)"/>
+        <text class="lab" x="213" y="385">cap or stall</text>
+        <line class="ln" x1="595" y1="362" x2="595" y2="399" marker-end="url(#a2)"/>
+        <text class="lab" x="603" y="385">cap or stall</text>
+
+        <rect class="diff" x="20" y="402" width="370" height="80" rx="8"/>
+        <text class="t" x="205" y="425" text-anchor="middle">Final ask: you choose</text>
+        <text class="s" x="205" y="445" text-anchor="middle">'Accept it at &lt;S&gt;, marked' or 'Keep it withheld'</text>
+        <text class="s" x="205" y="463" text-anchor="middle">Keep is Recommended while a BLOCKER is open</text>
+
+        <rect class="diff" x="410" y="402" width="370" height="80" rx="8"/>
+        <text class="t" x="595" y="425" text-anchor="middle">Final ask: answered for you</text>
+        <text class="s" x="595" y="445" text-anchor="middle">BLOCKER open → it stays withheld</text>
+        <text class="s" x="595" y="463" text-anchor="middle">no BLOCKER → it goes out, marked</text>
+      </svg>
+    </div>
+    <figcaption><strong>Only the ask differs.</strong> Both lanes offer the same three options under the same Recommended rule; <span class="pen-mark">red outlines</span> mark what changes. In <code>--auto-mode</code> the run takes the marked option, so an output below the level goes out only marked and only with no BLOCKER open, otherwise it stays withheld. Neither session starts a third attempt.</figcaption>
+  </figure>
+
+  <dl class="facts">
+    <div>
+      <dt>Level</dt>
+      <dd>80 by default; any whole number from 60 to 100 in <code>ALFRED_CODE_HABITS_SCORER_LEVEL</code>.</dd>
+    </div>
+    <div>
+      <dt>Rounds</dt>
+      <dd>A grade plus up to 3 revisions per attempt, one regrade per round at most; an inline plan gets one grade.</dd>
+    </div>
+    <div>
+      <dt>Off</dt>
+      <dd>The default. <code>--habits-scorer-off</code> turns it off for the session, even when the variable is 1.</dd>
+    </div>
+  </dl>
+</main>
+</body>
+</html>
