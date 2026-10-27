@@ -29,9 +29,10 @@ Write them to a folder `refining/<slug>/` in the session scratchpad:
 Round 0 grades the draft; rounds 1-3 each revise, then grade again.
 
 1. Dispatch ONE new reviewer: the Agent tool, `subagent_type: general-purpose`, `model: opus`, description `Review <kind> round <n>`, prompt = `references/reviewer-prompt.md` with TASK = `task.md`, RUBRIC = `${CLAUDE_SKILL_DIR}/references/rubric.md`, ARTIFACT = the draft (and, for a plan, its spec). Never a fork, never resumed, never told earlier scores, findings, the change log, or that this is a revision.
-2. Validate the scorecard: recompute each criterion as weight x met / 4 and the total rounded; flip a `yes` with no quote to `no`, and an `n/a` on a check that allows none to `no`; apply the BLOCKER cap of 60. Change nothing else. A malformed reply gets one re-run with a new reviewer - a failed grade, not a second opinion. A well-formed grade is never repeated on an unchanged draft: a fail is revised at once (2026-10-25: 10 of 10 stack re-grades of an unchanged draft were followed by the revision anyway, 16% of the scored minutes). Save it as `round-<n>.md` in the folder.
+2. Validate the scorecard: recompute each criterion as weight x met / 4 and the total rounded; flip a `yes` with no quote to `no`, and an `n/a` on a check that allows none to `no`; apply the BLOCKER cap of 60. Change nothing else. A malformed reply gets one re-run with a new reviewer - a failed grade, not a second opinion. A well-formed grade is never repeated on an unchanged draft: a fail is revised at once (2026-10-25: 10 of 10 stack re-grades of an unchanged draft were followed by the revision anyway, 16% of the scored minutes). Save it as `round-<n>.md` in the folder, and a copy of the draft it graded as `draft-<n>` (the draft's own extension) beside it.
 3. Verify each finding against what it cites before acting on it. A finding that is factually wrong is rejected with the evidence, never 'fixed' to please the grader.
 4. Decide, in this order. 90 is the target, not a strict bar: whether another round is worth it depends on what it can still reach.
+   - ROLL BACK first - when this total is lower than an earlier round's, copy the highest-scoring round's `draft-<k>` back over the draft and take its `round-<k>.md` as this round's scorecard: every rule below, the stall test and the next revision work from the best version, never the lower one. A tie keeps the newer draft. Why: a revision can trade a fixed finding for two new ones, and the user's bar is the best the loop reached, not the last it wrote (the user, 2026-10-27).
    - PASS - 90 or more and no BLOCKER or MATERIAL open: finish.
    - PASS WITH FIXES - 90 or more, no BLOCKER, a MATERIAL open: fix each MATERIAL the evidence confirms and finish WITHOUT another grade; the handoff lists them as fixed after the last grade. A round to confirm a fix already checked against the finding's own evidence costs 160k-280k tokens and mostly measures grader noise. Aim for 100 only when every unmet check closes with information in hand and the stakes are high (stored data, a public contract, security, a release).
    - Measure the CEILING - the most the next round can reach in the current circumstances: the uncapped total plus the points (weight / 4) of each unmet check you can close with what is in hand - the reviewer's `[closable]` / `[needs: ...]` tag is its claim, the sum is yours (the repository, the docs, the user's answers so far). A check that needs a decision only the user can make, information nobody has, or a section this kind of artifact does not carry adds nothing, and an open BLOCKER whose fix needs such a decision keeps the cap of 60. Print it on the round's line.
@@ -52,8 +53,8 @@ Under auto-run the ask is not put: the Recommended option is taken. Auto-run is 
 
 ## In the chat
 
-- One line per round, never the scorecard table: `Round <n> - <S>/100 (<delta>) - ceiling <c> - <b> BLOCKER, <m> MATERIAL - <decision>`.
-- The handoff names the draft's path, the score path (`60 -> 86 -> 91 -> 95`), `independent` or `SELF`, and every finding fixed after the last grade (not re-graded). A status line goes into the file only now, after the loop.
+- One line per round, never the scorecard table: `Round <n> - <S>/100 (<delta>) - ceiling <c> - <b> BLOCKER, <m> MATERIAL - <decision>`; a rolled-back round's decision starts `ROLLED BACK to round <k>`.
+- The handoff names the draft's path, the score path (`60 -> 86 -> 91 -> 95`; a drop shows where it went back: `60 -> 86 -> 82 (back to round 1) -> 91`), `independent` or `SELF`, and every finding fixed after the last grade (not re-graded). A status line goes into the file only now, after the loop.
 
 ## Fallback
 
@@ -64,3 +65,4 @@ No Agent tool, or two failed dispatches: grade in a separate step that reads onl
 - A spec or plan handed over for review with no score path.
 - The user asking whether it was scored.
 - A reviewer that was told an earlier score, or read a file carrying one.
+- A draft handed over, or revised again, that scored lower than an earlier round of the same run.

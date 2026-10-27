@@ -171,7 +171,7 @@ AC24-AC26, AC29's release 3 bullets, AC31). The setup is release 1's: a clean ex
 | S | `node --test` over the suites each task touched, in the tree (the ledger's per-task lines) | layout-workspace 24/24, preferences-session 79/79, docs-session 130/130, guard-hooks 209/210 (the one failure needs a project outside `/tmp`; it fails at `884b933` too), install-workspace + install-settings-writer + install-stamp, setup-plugin + workspace-cli 120/120 |
 | S' | the same suites inside the export, 19 files | 965: 957 pass, 4 skipped, 4 environmental (no `.git` in the export, a `/tmp` root, a `node_modules` link the run added) |
 | F | the final review's fix pass, in the tree | layout-workspace, guard-hooks, install-workspace, preferences-session, docs-session, workspace-cli, layout-variables, install-variables: 24, 210 (the one `/tmp` case above), 56, 79, 130, 31, 26, 16 - every new test RED first |
-| M | `node docs/workspace-layering-matrix/ws-matrix-r3.js <export> <884b933c tree> <claude>` | 27/27 on `16adf9e` (R3-1a to R3-9; R3-10 and R3-11 from the review's fix pass, R3-12 the custom memory folder; R3-8 a logged-out `claude -p` 2.1.311 start) |
+| M | `node docs/workspace-layering-matrix/ws-matrix-r3.js <export> <884b933c tree> <claude>` | 27/27 on `16adf9e` (R3-1a to R3-9; R3-10 and R3-11 from the review's fix pass, R3-12 the custom memory folder; R3-8 a logged-out `claude -p` 2.1.311 start); 32/32 on the 3.1.0 tree with R3-13a to R3-13e, the untracked `settings.local.json` (13d and 13e fail on the pre-review hooks) |
 | P | `node docs/workspace-layering-matrix/memory-probe.js <claude>` (A5) | macOS 8/8 on 2.1.311; Windows 8/8 case-folded on 2.1.309 (the evidence doc's 'Release 3 - A5') |
 | Gate | `npm run gate` | on `5d02141`: macOS and Linux 2 failures each, fixed in `fca9e84` (below); the gate on the final commit is the release's |
 
@@ -213,4 +213,5 @@ AC24-AC26, AC29's release 3 bullets, AC31). The setup is release 1's: a clean ex
 | Install rows: fresh, re-run, update over release 2, the user's own rows, garbage input, every scope | PASS | M (R3-1a, R3-1b, R3-2, R3-3, R3-4, R3-5, R3-6 at project, user and local) |
 | The final review's I1, I2 and M3 | PASS after `38743e0` | S (the four new tests, each RED first); M (R3-10, R3-11a, R3-11b) |
 | The custom memory folder: the account's setting opens it, a repo's settings never | PASS after `16adf9e` | S (guard-hooks, layout-workspace, each RED first); M (R3-12) |
+| 3.1.0: the untracked `settings.local.json` Claude Code reads (the root's) opens its folder; tracked, staged, under a symlinked `.claude`, a sub-folder's own or outside a git repo it opens nothing; an update keeps the key | PASS | S (guard-hooks, layout-workspace, each RED first); M (R3-13a to R3-13e) |
 | Windows | the gate's Windows leg | this matrix runs on macOS; the gate runs every suite there |

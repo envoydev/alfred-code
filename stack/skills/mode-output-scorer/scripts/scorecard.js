@@ -563,6 +563,9 @@ function runNext(args) {
     const graded = rounds.filter((r) => r.valid.length);
     const passing = bestOf(graded.filter((r) => r.value >= level && !r.blocker));
     const last = rounds[rounds.length - 1];
+    // A revision starts from the best graded draft, not a lower last one (the user, 2026-10-27: a revision can score lower).
+    const top = bestOf(graded);
+    const from = () => (top && top.id !== last.id ? [`From: ${top.draft} - round ${top.round}, the best so far; its findings: ${path.join(ctx.folder, `${top.id}.score.md`)}`] : []);
     const ids = new Set(log.grades.filter((g) => g.attempt === attempt).map((g) => g.id));
     const bought = log.bought.filter((id) => ids.has(id)).length;
     const used = ids.size;
@@ -589,13 +592,13 @@ function runNext(args) {
       out.push(`incomplete ${last.id}`);
     } else if (new RegExp(`^bought ${ID_RE}$`).test(log.newest)) {
       named = last;
-      out.push('revise');
+      out.push('revise', ...from());
     } else {
       named = last;
       const before = graded.filter((r) => r.round < last.round).pop();
       const gained = !before || last.value - before.value >= STALL;
       if (used < cap && gained && last.ceiling >= level && last.ceiling >= last.value + STALL) {
-        out.push('revise');
+        out.push('revise', ...from());
       } else {
         const best = bestOf(graded);
         named = best;

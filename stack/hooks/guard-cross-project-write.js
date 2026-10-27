@@ -317,15 +317,30 @@ function memberMemory(t) {
   const hit = members.find((m) => inside(t, m.dir));
   return hit && !own.some((o) => inside(o, hit.dir) && inside(t, o)) ? hit : null;
 }
-// The memory folder the user's own settings name outside the account dir (the managed or account settings.json,
-// never a file a clone can carry), whatever the switch says - unless it holds the project or the home folder, which
-// would swallow the gate (the containment rule above).
+// The memory folder the user's own settings name outside the account dir (the managed or account settings.json, or a
+// settings.local.json git does not track - never a file a clone can carry), whatever the switch says - unless it holds
+// the project or the home folder, which would swallow the gate (the containment rule above).
+// Claude Code's own test (permissions docs, 'When your local settings file needs trust'): a file git tracks, or one under
+// a symlinked `.claude`, is the repository's - and so is one in a repository nested at `.claude` (a submodule). Untracked
+// = a plain file in a real `.claude` and git answering 'no match' (exit 1) with no inherited GIT_* variable steering it;
+// a tracked or staged file, no git or a timeout trusts nothing. Asked only when that file holds a valid setting the
+// managed ones do not override.
+function untrackedLocal(file) {
+  const dir = path.dirname(file);
+  const claude = fs.lstatSync(dir, { throwIfNoEntry: false });
+  if (!claude || !claude.isDirectory() || fs.existsSync(path.join(dir, '.git'))) return false;
+  if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) return false;
+  const env = { GIT_OPTIONAL_LOCKS: '0' };
+  for (const [k, v] of Object.entries(process.env)) if (!/^GIT_/i.test(k)) env[k] = v;
+  return require('child_process').spawnSync('git', ['-c', 'core.fsmonitor=false', 'ls-files', '--error-unmatch', '--', ':(icase).claude/settings.local.json'],
+    { cwd: path.dirname(dir), stdio: 'ignore', timeout: 3000, env }).status === 1;
+}
 let trustedMemory;
 function ownMemory(t) {
   if (trustedMemory === undefined) {
     trustedMemory = null;
     try {
-      const dir = layout && typeof layout.trustedMemoryDir === 'function' ? layout.trustedMemoryDir(ROOT) : null;
+      const dir = layout && typeof layout.trustedMemoryDir === 'function' ? layout.trustedMemoryDir(ROOT, { untracked: untrackedLocal }) : null;
       if (dir && !inside(ROOT, realish(dir)) && !(HOME && inside(HOME, realish(dir)))) trustedMemory = realish(dir);
     } catch { /* fail closed: no allowance */ }
   }
