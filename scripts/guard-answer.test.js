@@ -472,7 +472,7 @@ test('ON line: lists exactly the modes on, on the prompt that turns one on or of
     clearStamp();
     assert.doesNotMatch(prompt('e6', 'next'), /auto-run: on/);
 });
-test('ON line: a refused -on (another session running, read-only data root, empty /mode-auto-run) does not list auto-run (AC8)', () => {
+test('ON line: a refused -on (another session running, empty /mode-auto-run) does not list auto-run (AC8)', () => {
     clearStamp();
     assert.strictEqual(msgOf('f1', '/mode-auto-run'), undefined, 'an empty /mode-auto-run');
     assert.strictEqual(msgOf('f1', '/mode-auto-run', ON), 'Modes ON: output-scorer (level 80)');
@@ -484,7 +484,10 @@ test('ON line: a refused -on (another session running, read-only data root, empt
     fs.writeFileSync(APPROVAL, 'AUTO - "/task-solve --mode-auto-run-on x"\nsession: other-sid\nskill: task-solve\n');
     assert.strictEqual(msgOf('f2', '/task-solve --mode-auto-run-on fix x', {}, { transcript_path: path.join(tdir, 'f2.jsonl') }), undefined, 'another session running');
     clearStamp();
-    // a data root that cannot be written
+});
+// A folder's mode bits do not make it read-only on Windows, and root writes through them.
+test('ON line: a refused -on on a read-only data root does not list auto-run (AC8)', { skip: (process.platform === 'win32' && 'a mode bit does not make a Windows folder read-only') || (process.getuid?.() === 0 && 'root writes a mode-555 folder') }, () => {
+    clearStamp();
     const ro = fs.mkdtempSync(path.join(TMP, 'ro-'));
     fs.chmodSync(ro, 0o555);
     try {
