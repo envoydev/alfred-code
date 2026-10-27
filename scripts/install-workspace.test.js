@@ -791,8 +791,9 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
         { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: (work) => join(work, 'api/tool', { parent: 'api' }) },
         { at: 'api/tool' },
-        { at: 'web', after: (work) => tree(work, 'api/tool') },
+        { at: 'web', after: (work) => ({ tool: tree(work, 'api/tool'), vars: readOr(path.join(at(work), '.alfred', '.variables')) }) },
         { at: '.', act: 'uninstall', after: (work) => ({
+            apiVars: readOr(path.join(at(work, 'api'), '.alfred', '.variables')),
             api: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')), web: readOr(path.join(at(work, 'web'), '.alfred', 'workspace')),
             root: readOr(path.join(at(work), '.alfred', 'workspace')), own: lineOf(stampOf(work, 'api'), 'own-picks'),
             skills: [hasSkill(work, 'api', 'javascript'), hasSkill(work, 'api', OWN), hasSkill(work, 'web', 'javascript')],
@@ -807,7 +808,14 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
     assert.ok(!/^child /m.test(got.root || ''), `the root still lists a child:\n${got.root}`);
     assert.strictEqual(got.own, null, 'a released child reads as standalone: every pick its own');
     assert.deepStrictEqual(got.skills, [true, true, true]);
-    assert.strictEqual(got.tool, r.steps[3], 'the grandchild kept every file');
+    assert.strictEqual(got.tool, r.steps[3].tool, 'the grandchild kept every file');
+    // D5: the root's values reach api through its own file now - its seeds included, read before the settings pass took
+    // them (an empty value reads as unset, the default before and after)
+    const pairs = (text) => Object.fromEntries((text || '').split('\n').filter((l) => /^ALFRED_CODE_\w+=/.test(l)).map((l) => l.split(/=(.*)/s).slice(0, 2)));
+    const rootVars = pairs(r.steps[3].vars);
+    assert.ok(Object.keys(rootVars).length, `the root seeded no .variables:\n${r.steps[3].vars}`);
+    const apiVars = pairs(got.apiVars);
+    for (const [key, value] of Object.entries(rootVars)) if (!layoutLib.MEMBER_NEVER.has(key) && value !== '') assert.strictEqual(apiVars[key], value, `${key} in api after the root's uninstall:\n${got.apiVars}\n${r.outs[4]}`);
     assert.match(r.outs[4], /workspace: released api - /);
     assert.match(r.outs[4], /workspace: released web - /);
     // the next update of a released child removes its stale excludes, and keeps every item

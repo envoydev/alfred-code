@@ -2264,14 +2264,16 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     if (copied.length) log(`  ${workspace.keptCopiesLine(copied)}`);
     fs.rmSync(path.join(projectRoot, ...keptRoot.split('/'), 'state', 'workspace-mcp.json'), { force: true });
     liftMemorySwitchOff({ sourceDir: path.join(__dirname, '..', '..'), stampFile: file, claudeDir, scope, ledger, log, note });
+    // Workspace layering (spec 2.6): a parent's children read as standalone, each keeping the values it read from here
+    // (D5) - so before the settings pass below takes this project's seeds out of its `.variables`.
+    workspace.releaseChildren({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note,
         variablesFile: variables.fileOf(projectRoot, { env: {}, dataRoot: keptRoot }) });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
-    // Workspace layering (spec 2.6): a parent's children read as standalone, a child leaves its parent, and D5's account
-    // key goes with the last project on the account that records it. This project's own file sits under the root the
-    // stamp records - the settings pass above already took ALFRED_CODE_DATA_PATH out.
-    workspace.releaseChildren({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
+    // A child leaves its parent, and D5's account key goes with the last project on the account that records it. This
+    // project's own file sits under the root the stamp records - the settings pass above already took
+    // ALFRED_CODE_DATA_PATH out.
     workspace.leaveParent({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
     const accountHash = ((ledger.account || {})['settings.json'] || {})[workspace.INSTRUCTION_KEY];
     if (accountHash) dropAccountKey({ projectRoot, configDir, accountFile, hash: accountHash, log, note });

@@ -872,3 +872,18 @@ test('keepOnLeave writes each value read through the chain into the child\'s fil
     assert.ok(g.defaults.includes('ALFRED_CODE_SCORER_LEVEL') && !g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
     assert.match(lines.join('\n'), /^workspace: \.\. is gone - \d+ values read the stack's defaults here now \(ALFRED_CODE_/m);
 });
+
+test('releaseChildren writes each value a child read from the parent into the child\'s file before its parent line goes (D5)', () =>
+{
+    const at = roleTree({
+        ws: { stamp: 'sha: x\nmanaged-env: \n', file: 'child api\n', vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
+        'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, file: 'parent ..\n', vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
+    });
+    const before = layoutLib.variablesOf(at('ws/api'), { env: ON }).values;
+    const logs = [];
+    assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), env: ON, log: (l) => logs.push(l) }), ['api']);
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', 'workspace'), 'utf8'), '');
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
+    assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: ON }).values, before, 'every value reads the same once released');
+    assert.match(logs.join('\n'), /^workspace: api: 2 values this project read from the workspace written into \.alfred\/\.variables/m);
+});

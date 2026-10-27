@@ -1350,7 +1350,8 @@ const readOr = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch {
 
 // ------------------------------------------------------------------ uninstall (spec 2.6)
 
-// A parent's uninstall: each direct child that names it loses its `parent` line and its stamp's `own-picks:` /
+// A parent's uninstall: each direct child that names it first gets every value it read through the chain written into
+// its own `.variables` (D5's keep, so nothing changes), then loses its `parent` line and its stamp's `own-picks:` /
 // `own-env:` lines, so it reads as standalone and every item it holds is its own; the parent's `child` lines go
 // with them. A gone child has nothing to release. Returns the released children's lines.
 function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () => {}, note = () => {} })
@@ -1366,6 +1367,8 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         // A child that names another parent is that parent's: its line here is stale, and it is left as it is.
         const held = readWorkspace(child, { env: ancestorEnv(env) });
         if (!points(held.model)) { stale.push(rel); continue; }
+        const kept = keepOnLeave(child, { env: ancestorEnv(env), log: (l) => log(l.replace(/^workspace: /, `workspace: ${rel}: `)) });
+        if (kept.why) { note(`workspace: ${rel} could not be released (${kept.why}) - run uninstall again`); continue; }
         const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env) });
         if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
