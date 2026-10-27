@@ -226,7 +226,7 @@ const tree = (spec) =>
 };
 const runtime = require('./install/runtime.js');
 const exec = runtime.execCommand;
-const env0 = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
+const env0 = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
 
 test('findParent finds the nearest stamped ancestor and skips the account dir', () =>
 {
@@ -394,7 +394,7 @@ const CATALOG = [
     { key: 'ALFRED_CODE_HISTORY', default: '1' },
     { key: 'ALFRED_CODE_MEMORY', default: 'claude' },
     { key: 'ALFRED_CODE_HOOKS_OFF', default: '' },
-    { key: 'ALFRED_CODE_WORKSPACE', default: '1', seed: false },
+    { key: 'ALFRED_CODE_WORKSPACE', default: '0', seed: false },
 ];
 const envOf = (o) => ws.childEnv({ catalog: CATALOG, parentEnv: {}, childEnv: {}, beneath: {}, ownPrior: [], ledgerRows: {}, flagKeys: [], ignores: [], ...o });
 
@@ -550,7 +550,8 @@ test('workspaceOn reads the launch env first, then settings.local.json over sett
     const claude = path.join(root, '.claude');
     fs.mkdirSync(claude, { recursive: true });
     const put = (name, value) => fs.writeFileSync(path.join(claude, name), value === undefined ? '{}' : JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: value } }));
-    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), true, 'no value anywhere: on');
+    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), false, 'no value anywhere: off until 3.0.0');
+    assert.strictEqual(ws.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '1' }, projectRoot: root }), true, 'a launch 1 turns it on');
     assert.strictEqual(ws.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '0' }, projectRoot: root }), false, 'the launch env 0 freezes it');
     put('settings.json', '0');
     assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), false, 'settings.json 0 freezes it');
@@ -561,7 +562,7 @@ test('workspaceOn reads the launch env first, then settings.local.json over sett
     put('settings.json', '1');
     assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), false, 'settings.local.json 0 over settings.json 1');
     fs.writeFileSync(path.join(claude, 'settings.local.json'), '{ not json');
-    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), true, 'an unreadable local file is read as holding nothing');
+    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), true, 'an unreadable local file is read as holding nothing, so settings.json 1 stands');
 });
 
 // ------------------------------------------------------------------ D5, the account instruction key (Task 10)
@@ -577,7 +578,7 @@ const d5 = ({ md = 'ws/CLAUDE.md', joined = true } = {}) =>
         fs.writeFileSync(file, '# team\n');
     }
     const configDir = path.join(at('home'), '.claude');
-    return { at, configDir, accountFile: path.join(configDir, '.claude.json'), env: { CLAUDE_CONFIG_DIR: configDir } };
+    return { at, configDir, accountFile: path.join(configDir, '.claude.json'), env: { CLAUDE_CONFIG_DIR: configDir, ALFRED_CODE_WORKSPACE: '1' } };
 };
 const stateOf = (f, root = f.at('home/ws/api')) => ws.instructionsBothState({ projectRoot: root, env: f.env, configDir: f.configDir, accountFile: f.accountFile });
 const accountSettings = (f, data) => { fs.mkdirSync(f.configDir, { recursive: true }); fs.writeFileSync(path.join(f.configDir, 'settings.json'), typeof data === 'string' ? data : JSON.stringify(data)); };
@@ -737,7 +738,7 @@ test('with CLAUDE_CONFIG_DIR unset, the projects list is read from <HOME>/.claud
         assert.deepStrictEqual(paths, { configDir: path.join(home, '.claude'), accountFile: path.join(home, '.claude.json') });
         assert.deepStrictEqual(ws.accountPaths({ CLAUDE_CONFIG_DIR: '/x/acct' }), { configDir: '/x/acct', accountFile: path.join('/x/acct', '.claude.json') });
         listProjects(paths.accountFile, [one.at('home/ws/api'), two.at('home/ws/api')]);
-        const state = (root) => ws.instructionsBothState({ projectRoot: root, env: {}, ...paths });
+        const state = (root) => ws.instructionsBothState({ projectRoot: root, env: { ALFRED_CODE_WORKSPACE: '1' }, ...paths });
         assert.strictEqual(state(two.at('home/ws/api')), 'ask');
         markStamp(one.at('home/ws/api'), 'instructions-both: declined');
         assert.strictEqual(state(two.at('home/ws/api')), 'declined');

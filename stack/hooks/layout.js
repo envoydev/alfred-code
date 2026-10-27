@@ -303,7 +303,8 @@ const wsKey = (p) =>
 const wsRel = (from, to) => path.relative(from, to).split(path.sep).join('/');
 const wsIsDir = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
 
-// The kill switch, ALFRED_CODE_WORKSPACE=0: env, then the project's settings.local.json over its settings.json.
+// The switch, ALFRED_CODE_WORKSPACE: off until 3.0.0, on only at `1` - a launch `0` freezes it, else the project's
+// settings.local.json over its settings.json, else the launch env (install/workspace.js workspaceOn, held equal by a test).
 function workspaceOn({ env = {}, projectRoot })
 {
     if (String(env.ALFRED_CODE_WORKSPACE) === '0') return false;
@@ -315,7 +316,7 @@ function workspaceOn({ env = {}, projectRoot })
     };
     const local = valueIn('settings.local.json');
     const value = local !== undefined ? local : valueIn('settings.json');
-    return String(value) !== '0';
+    return String(value !== undefined ? value : env.ALFRED_CODE_WORKSPACE) === '1';
 }
 
 // The project's own workspace file: its parent line and its ignore lines.

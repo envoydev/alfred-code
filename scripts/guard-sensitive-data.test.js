@@ -365,6 +365,8 @@ const wsTree = (spec) =>
     return (rel = '.') => path.join(top, ...rel.split('/'));
 };
 const CUSTOM = { data: 'var/data', local: JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'var/data' } }) };
+// The workspace is off until 3.0.0 (the user's answer of 2026-10-27): the chain cases run it on.
+const WS_ON = { ALFRED_CODE_WORKSPACE: '1' };
 const wsThree = (extra = {}) => wsTree({
     'ws': { file: 'child api\n', store: 'A=root-a-value\nB=root-b-value\n', ...extra.ws },
     'ws/api': { file: 'parent ..\nchild tool\n', store: 'A=child-a-value\n', ...extra.api },
@@ -375,15 +377,15 @@ const hex = (s) => Buffer.from(s).toString('hex');
 test('workspace chain: --with-sensitive gives the chain\'s values, nearest first, and masks a parent\'s value (AC20)', () =>
 {
     const at = wsThree();
-    const out = wrapped(at('ws/api'), node('out', 'A', 'B'));
+    const out = wrapped(at('ws/api'), node('out', 'A', 'B'), WS_ON);
     assert.strictEqual(out.status, 0, out.stderr);
     assert.strictEqual(out.stdout.replace(/\r/g, ''), 'A=<A>\nB=<B>\n', 'the parent\'s B is masked like the child\'s own A');
-    assert.strictEqual(wrapped(at('ws/api'), node('hex', 'A', 'B')).stdout.replace(/\r/g, ''), `A=${hex('child-a-value')}\nB=${hex('root-b-value')}\n`, 'the nearest A wins');
+    assert.strictEqual(wrapped(at('ws/api'), node('hex', 'A', 'B'), WS_ON).stdout.replace(/\r/g, ''), `A=${hex('child-a-value')}\nB=${hex('root-b-value')}\n`, 'the nearest A wins');
     assert.match(out.stderr, /2 value\(s\) in the environment/);
     assert.match(out.stderr, /\.alfred\/\.secrets: A\b/);
     assert.match(out.stderr, /\.\.\/\.alfred\/\.secrets: B\b/);
     for (const value of ['child-a-value', 'root-a-value', 'root-b-value']) assert.ok(!out.stderr.includes(value), out.stderr);
-    const tool = wrapped(at('ws/api/tool'), node('hex', 'A', 'B'));
+    const tool = wrapped(at('ws/api/tool'), node('hex', 'A', 'B'), WS_ON);
     assert.strictEqual(tool.stdout.replace(/\r/g, ''), `A=${hex('child-a-value')}\nB=${hex('root-b-value')}\n`, 'a grandchild with no store of its own reads both ancestors');
 });
 
@@ -412,12 +414,12 @@ test('workspace chain: a shell command naming the parent\'s store is refused or 
 test('workspace chain: the SessionStart line names each source\'s keys and no value', () =>
 {
     const at = wsThree();
-    const said = context(started(at('ws/api')));
+    const said = context(started(at('ws/api'), WS_ON));
     assert.match(said, /^Sensitive data: \.alfred\/\.secrets holds A; from \.\.: B - kept out of the chat/);
     assert.match(said, /--with-sensitive -- "<command line>"/);
     for (const value of ['child-a-value', 'root-a-value', 'root-b-value']) assert.ok(!said.includes(value), said);
-    assert.match(context(started(at('ws/api/tool'))), /^Sensitive data: from \.\.: A; from \.\.\/\.\.: B - kept out of the chat/, 'a child with only ancestors\' stores gets the from-only line');
-    assert.match(context(started(at('ws'))), /^Sensitive data: \.alfred\/\.secrets holds A, B - kept out of the chat/, 'the root holds only its own: today\'s line');
+    assert.match(context(started(at('ws/api/tool'), WS_ON)), /^Sensitive data: from \.\.: A; from \.\.\/\.\.: B - kept out of the chat/, 'a child with only ancestors\' stores gets the from-only line');
+    assert.match(context(started(at('ws'), WS_ON)), /^Sensitive data: \.alfred\/\.secrets holds A, B - kept out of the chat/, 'the root holds only its own: today\'s line');
 });
 
 test('workspace chain: a tree verb or find reaching a parent store is refused, at the default and a custom data root', () =>

@@ -13,7 +13,7 @@ const CLI = path.join(__dirname, 'workspace.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-cli-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const ENV = { ...process.env, CLAUDE_CONFIG_DIR: path.join(TMP, 'acct') };
-delete ENV.ALFRED_CODE_WORKSPACE;
+ENV.ALFRED_CODE_WORKSPACE = '1';   // off until 3.0.0 (the user's answer of 2026-10-27); these cases run it on
 
 // { rel: { stamp, git, file } } under a fresh folder; returns rel -> real path.
 const tree = (spec) =>
@@ -305,7 +305,18 @@ test('cascade with ALFRED_CODE_WORKSPACE=0 runs nothing', () =>
     const at = cascadeTree();
     const { src, runs } = fakeSource();
     const r = spawnSync(process.execPath, [CLI, 'cascade', '--root', at('ws'), '--source', src], { encoding: 'utf8', env: { ...ENV, ALFRED_CODE_WORKSPACE: '0' } });
-    assert.strictEqual(r.stdout, 'cascade: off - ALFRED_CODE_WORKSPACE is 0\n');
+    assert.strictEqual(r.stdout, 'cascade: off - ALFRED_CODE_WORKSPACE is not 1\n');
+    assert.deepStrictEqual(runs(), []);
+});
+
+test('cascade with ALFRED_CODE_WORKSPACE unset runs nothing: off until 3.0.0', () =>
+{
+    const at = cascadeTree();
+    const { src, runs } = fakeSource();
+    const env = { ...ENV };
+    delete env.ALFRED_CODE_WORKSPACE;
+    const r = spawnSync(process.execPath, [CLI, 'cascade', '--root', at('ws'), '--source', src], { encoding: 'utf8', env });
+    assert.strictEqual(r.stdout, 'cascade: off - ALFRED_CODE_WORKSPACE is not 1\n');
     assert.deepStrictEqual(runs(), []);
 });
 
@@ -338,6 +349,6 @@ test('plan with ALFRED_CODE_WORKSPACE=0 lists only this project and reads nothin
     const at = cascadeTree();
     const { src, runs } = fakeSource();
     const r = spawnSync(process.execPath, [CLI, 'plan', '--root', at('ws'), '--source', src, '--rescan'], { encoding: 'utf8', env: { ...ENV, ALFRED_CODE_WORKSPACE: '0' } });
-    assert.strictEqual(r.stdout, 'workspace-plan: off - ALFRED_CODE_WORKSPACE is 0\n');
+    assert.strictEqual(r.stdout, 'workspace-plan: off - ALFRED_CODE_WORKSPACE is not 1\n');
     assert.deepStrictEqual(runs(), []);
 });

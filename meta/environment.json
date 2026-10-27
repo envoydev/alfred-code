@@ -260,10 +260,10 @@
     },
     {
       "key": "ALFRED_CODE_WORKSPACE",
-      "default": "1",
+      "default": "0",
       "ask": false,
       "seed": false,
-      "what": "Workspace layering: `1` lets a child project inherit its parent folder's Alfred install; `0` freezes the workspace - no parent lookup, join ask, cascade or delta, and nothing it wrote is removed. Never written into a project; set it in the launch environment or a settings `env`.",
+      "what": "Workspace layering, OFF until 3.0.0: `1` lets a child project inherit its parent folder's Alfred install; anything else (unset included) freezes the workspace - no parent lookup, join ask, cascade or delta, and nothing it wrote is removed. Never written into a project; set it in the launch environment or a settings `env`.",
       "validate": {
         "type": "enum",
         "values": ["0", "1"]

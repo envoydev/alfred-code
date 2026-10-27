@@ -409,7 +409,7 @@ test('init-plan prints instructions-both: ask before its last line, and unattend
         fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
     }
     fs.writeFileSync(path.join(ws, 'CLAUDE.md'), '# team\n');
-    const env = E({ CLAUDE_CONFIG_DIR: path.join(top, 'acct') });
+    const env = E({ CLAUDE_CONFIG_DIR: path.join(top, 'acct'), ALFRED_CODE_WORKSPACE: '1' });   // the workspace is off until 3.0.0
     const planned = plan({ inv: INV(), root: fs.realpathSync(api), env, probe: NONE });
     const lines = render(planned);
     assert.strictEqual(lines[lines.length - 2], 'instructions-both: ask', lines.join('\n'));

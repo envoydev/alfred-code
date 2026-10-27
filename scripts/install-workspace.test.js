@@ -23,7 +23,8 @@ const OWN = 'npm';
 const SC = 'ALFRED_CODE_SCORER';
 
 const at = (work, rel = '.') => path.join(work, 'ws', ...(rel === '.' ? [] : rel.split('/')));
-const acct = (work) => ({ CLAUDE_CONFIG_DIR: path.join(work, 'acct') });
+// The workspace is off until 3.0.0 (the user's answer of 2026-10-27): every case here runs it on, the kill-switch cases at 0.
+const acct = (work) => ({ CLAUDE_CONFIG_DIR: path.join(work, 'acct'), ALFRED_CODE_WORKSPACE: '1' });
 const readOr = (file, fallback = null) => { try { return fs.readFileSync(file, 'utf8'); } catch { return fallback; } };
 const json = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
 const stampOf = (work, rel) => readOr(path.join(at(work, rel), '.claude', 'alfred-code.stamp'), '');
@@ -70,7 +71,7 @@ function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = fals
         plugins, account,
         seed: steps.map((s) => s.seed || SEED),
         cwds: steps.map((s) => path.join('ws', ...(s.at && s.at !== '.' ? s.at.split('/') : []))),
-        env: steps.map((s) => s.env || {}),
+        env: steps.map((s) => ({ ALFRED_CODE_WORKSPACE: '1', ...(s.env || {}) })),
         args: steps.map((s, i) => (repo, work) =>
         {
             if (s.before) s.before(work);

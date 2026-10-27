@@ -879,7 +879,7 @@ test('update-preflight prints instructions-both: ask in a child', () =>
         fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
     }
     fs.writeFileSync(path.join(parent, 'CLAUDE.md'), '# team\n');
-    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct') };
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
     delete env.ALFRED_CODE_UNATTENDED;
     const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env);
     assert.match(out, /^instructions-both: ask$/m, out);
@@ -903,9 +903,9 @@ function nestedPreflight({ parentLine = null, childLine = null } = {})
         fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
     }
-    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct') };
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
     delete env.ALFRED_CODE_UNATTENDED;
-    delete env.ALFRED_CODE_WORKSPACE;
+    env.ALFRED_CODE_WORKSPACE = '1';   // off until 3.0.0; this case runs it on
     const full = (extra = {}) => run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], { ...env, ...extra }).out;
     const asks = (extra = {}) => run(['--asks', '--root', install], { ...env, ...extra }).out;
     return { install, parent, env, full, asks };
@@ -932,7 +932,7 @@ test('update-preflight prints no workspace line in a project with nothing instal
     const { snap, install, fixtureFile } = scaffold();
     execFileSync('git', ['init', '-q', install]);
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(path.dirname(install), 'acct') };
-    delete env.ALFRED_CODE_WORKSPACE;
+    env.ALFRED_CODE_WORKSPACE = '1';   // off until 3.0.0; this case runs it on
     assert.doesNotMatch(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out, /^workspace:/m);
     assert.doesNotMatch(run(['--asks', '--root', install], env).out, /^workspace:/m);
 });

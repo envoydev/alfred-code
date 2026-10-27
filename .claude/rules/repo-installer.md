@@ -229,8 +229,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   goes through `rt.spawnCommand`, which on Windows takes a full path as that file (`resolveWin`, the release 1
   matrix). D5, the account's `instructionFiles` key, is asked once per
   account and ledgered as `managed-account:`; the last uninstall that records it removes it (`lastHolder`). The switch
-  is `ALFRED_CODE_WORKSPACE` (`seed: false`, never written): `0` freezes everything - no lookup, ask, cascade or delta,
-  and nothing it wrote is removed.
+  is `ALFRED_CODE_WORKSPACE` (`seed: false`, never written), OFF until 3.0.0 (the user's answer of 2026-10-27): a launch
+  `0` freezes it whatever the settings say, else the project's settings `env` value decides, else the launch value, and
+  only a `1` turns it on; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
 - **Everything installs from ONE source snapshot** per run (`install/source.js`, `createSource`), resolved in
   this order: a handed `--source`; the PLUGIN CACHE; the release archive
   (`releases/latest/download`, with a `RELEASE-SOURCE` file naming commit + version); a shallow clone

@@ -114,15 +114,19 @@ test('a symlinked spelling of the child reads the real chain, as chain() does', 
     assert.deepStrictEqual(layout.workspaceChain(path.join(at('ws'), 'api'), { env: env0 }).members.map((m) => m.root), [at('other')]);
 });
 
-test('workspaceOn reads env, then settings.local.json over settings.json', () =>
+// Off until 3.0.0 (the user's answer of 2026-10-27): only a `1` turns it on, a settings value over the launch env.
+test('workspaceOn reads env, then settings.local.json over settings.json, and is off with no 1 anywhere', () =>
 {
-    const at = tree({ 'p': {}, 'q': { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }) }, 'r': { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }), local: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '1' } }) }, 's': { local: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: 0 } }) } });
-    assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('p') }), true);
+    const at = tree({ 'p': {}, 'q': { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }) }, 'r': { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }), local: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '1' } }) }, 's': { local: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: 0 } }) }, 't': { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: 1 } }) } });
+    assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('p') }), false, 'no value anywhere: off');
+    assert.strictEqual(layout.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '1' }, projectRoot: at('p') }), true, 'a launch 1 turns it on');
+    assert.strictEqual(layout.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: 'yes' }, projectRoot: at('p') }), false, 'only 1 is on');
+    assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('t') }), true, 'a number 1 reads as 1');
     assert.strictEqual(layout.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '0' }, projectRoot: at('p') }), false);
     assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('q') }), false);
     assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('r') }), true, 'the local file wins');
     assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('s') }), false, 'a number 0 reads as 0');
-    for (const p of ['p', 'q', 'r', 's']) for (const e of [{}, { ALFRED_CODE_WORKSPACE: '0' }]) assert.strictEqual(layout.workspaceOn({ env: e, projectRoot: at(p) }), ws.workspaceOn({ env: e, projectRoot: at(p) }), `${p} ${JSON.stringify(e)}`);
+    for (const p of ['p', 'q', 'r', 's', 't']) for (const e of [{}, { ALFRED_CODE_WORKSPACE: '0' }, { ALFRED_CODE_WORKSPACE: '1' }]) assert.strictEqual(layout.workspaceOn({ env: e, projectRoot: at(p) }), ws.workspaceOn({ env: e, projectRoot: at(p) }), `${p} ${JSON.stringify(e)}`);
 });
 
 test('a malformed workspace line is skipped and the chain still reads', () =>

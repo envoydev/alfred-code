@@ -273,7 +273,7 @@ function planVerb(out)
     // Off, update reads no cascade text: no tree, no projection, nothing cascades.
     if (!ws.workspaceOn({ env, projectRoot: top }))
     {
-        out('workspace-plan: off - ALFRED_CODE_WORKSPACE is 0');
+        out('workspace-plan: off - ALFRED_CODE_WORKSPACE is not 1');
         return;
     }
     let snapshot = '?';
@@ -429,7 +429,7 @@ function cascade(out)
     const answers = file ? readAnswers(file, { absentOk: true }) : {};
     if (!ws.workspaceOn({ env, projectRoot: top }))
     {
-        out('cascade: off - ALFRED_CODE_WORKSPACE is 0');
+        out('cascade: off - ALFRED_CODE_WORKSPACE is not 1');
         return;
     }
     const rows = ws.subtree(top, { env });
