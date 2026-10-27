@@ -651,13 +651,15 @@ const readObject = (file) =>
 };
 // R6: `autoMemoryDirectory` where Claude Code reads it first - the managed drop-ins (merged after the file in alphabetical
 // order, so the last wins), the managed file, the member's settings.local.json, its settings.json, the account's.
-function autoMemorySetting(root, { account, home, managed })
+// `trusted` reads only the files a cloned repo cannot ship - the managed ones and the account's.
+function autoMemorySetting(root, { account, home, managed, trusted = false })
 {
     const dropDir = path.join(path.dirname(managed), 'managed-settings.d');
     let drops = [];
     try { drops = fs.readdirSync(dropDir).filter((n) => n.endsWith('.json') && !n.startsWith('.')).sort().reverse().map((n) => path.join(dropDir, n)); }
     catch { /* no drop-in folder */ }
-    for (const file of [...drops, managed, path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')])
+    const project = trusted ? [] : [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json')];
+    for (const file of [...drops, managed, ...project, path.join(account, 'settings.json')])
     {
         const value = (readObject(file) || {}).autoMemoryDirectory;
         if (typeof value !== 'string' || !value.trim()) continue;
@@ -671,14 +673,14 @@ function autoMemorySetting(root, { account, home, managed })
 // The folder Claude Code keeps a project's auto memory in (A5, docs/workspace-layering-evidence.md): the setting, else
 // `<account>/projects/<name>/memory`, `<name>` the git top (a worktree's main checkout) with every character outside
 // [A-Za-z0-9] as `-`. Past 200 characters Claude Code cuts the name and appends `-<hash>`: every existing match is named.
-// [] when CLAUDE_CODE_PROJECT_DIR_NAME renames the folder.
+// [] when CLAUDE_CODE_PROJECT_DIR_NAME renames the folder and no setting names it.
 const MEMORY_NAME_MAX = 200;
 function memoryDirsOf(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
-    if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
     const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
     const set = autoMemorySetting(root, { account, home, managed });
     if (set) return [set];
+    if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
     const top = gitTopOf(root, { home });
     const name = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
     const projects = path.join(account, 'projects');
@@ -691,6 +693,13 @@ function memoryDirsOf(root, { env = process.env, home = require('os').homedir(),
     try { names = fs.readdirSync(projects).filter((n) => fold(n).startsWith(fold(head)) && n.length > head.length); }
     catch { /* no projects folder yet */ }
     return names.sort().map((n) => path.join(projects, n, 'memory'));
+}
+// The autoMemoryDirectory set where no repo can ship it (the managed settings, the account's), or null: the folder the
+// write guard may open for the project's own memory. A project's settings.json or settings.local.json can arrive in
+// a clone and name any folder (~/.ssh, a sibling repo), so neither is trusted to widen a gate.
+function trustedMemoryDir(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env) } = {})
+{
+    return autoMemorySetting(root, { account: env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), home, managed, trusted: true });
 }
 // R2: an ancestor's docs root from its own settings (a leftover ALFRED_CODE_DOCS_PATH, settings.local.json first), never
 // the child's env, else `<its data root>/docs` - absolute.
@@ -762,6 +771,6 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
+    memoryDirsOf, trustedMemoryDir, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

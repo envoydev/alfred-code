@@ -317,6 +317,20 @@ function memberMemory(t) {
   const hit = members.find((m) => inside(t, m.dir));
   return hit && !own.some((o) => inside(o, hit.dir) && inside(t, o)) ? hit : null;
 }
+// The memory folder the user's own settings name outside the account dir (the managed or account settings.json,
+// never a file a clone can carry), whatever the switch says - unless it holds the project or the home folder, which
+// would swallow the gate (the containment rule above).
+let trustedMemory;
+function ownMemory(t) {
+  if (trustedMemory === undefined) {
+    trustedMemory = null;
+    try {
+      const dir = layout && typeof layout.trustedMemoryDir === 'function' ? layout.trustedMemoryDir(ROOT) : null;
+      if (dir && !inside(ROOT, realish(dir)) && !(HOME && inside(HOME, realish(dir)))) trustedMemory = realish(dir);
+    } catch { /* fail closed: no allowance */ }
+  }
+  return trustedMemory !== null && inside(t, trustedMemory);
+}
 function memoryBlock(what, shown, hit) {
   global.BLOCK_DETAIL = { branch: 'ancestor-memory' };
   const { own } = memoryOf();
@@ -332,6 +346,7 @@ function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
   if (memberMemory(t)) return false;
+  if (ownMemory(t)) return true;
   if (effectiveAllow.some((d) => inside(t, d))) return true;
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;

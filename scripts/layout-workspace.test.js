@@ -245,10 +245,12 @@ test('a managed-settings value wins over the member\'s, the member\'s over the a
     assert.deepStrictEqual(memOf(m, 'p'), [path.resolve('/drop-b')], 'drop-ins merge after the file in alphabetical order');
 });
 
-test('CLAUDE_CODE_PROJECT_DIR_NAME gives []', () =>
+test('CLAUDE_CODE_PROJECT_DIR_NAME gives [], but an autoMemoryDirectory still names its folder', () =>
 {
-    const m = memTree({ 'p': { git: true } });
-    assert.deepStrictEqual(memOf(m, 'p', { env: { ...m.env, CLAUDE_CODE_PROJECT_DIR_NAME: 'renamed' } }), []);
+    const m = memTree({ 'p': { git: true }, 'q': { git: true, local: JSON.stringify({ autoMemoryDirectory: '/custom/mem' }) } });
+    const renamed = { env: { ...m.env, CLAUDE_CODE_PROJECT_DIR_NAME: 'renamed' } };
+    assert.deepStrictEqual(memOf(m, 'p', renamed), []);
+    assert.deepStrictEqual(memOf(m, 'q', renamed), [path.resolve('/custom/mem')]);
 });
 
 test('a garbage settings.json or a non-string autoMemoryDirectory / ALFRED_CODE_DOCS_PATH falls through to the default', () =>
@@ -395,4 +397,16 @@ test('a child\'s linked worktree, with no workspace file of its own, reads its m
     assert.strictEqual(main.length, 1);
     assert.deepStrictEqual(prefsOf(layout.ancestorPrefsDirs(wt, { env: m.env })), main);
     assert.strictEqual(wsMem(m, 'api-wt'), path.join(m.acct, 'projects', sanitized(m.at('ws')), 'memory'));
+});
+
+test('trustedMemoryDir reads the managed and account settings only, never a project file a clone can carry', () =>
+{
+    const m = memTree({ 'p': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '~/.ssh' }), local: JSON.stringify({ autoMemoryDirectory: '/local/mem' }) } });
+    const of = () => layout.trustedMemoryDir(m.at('p'), { env: m.env, home: m.home, managed: m.managed });
+    assert.strictEqual(of(), null);
+    fs.writeFileSync(path.join(m.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: '~/mem' }));
+    assert.strictEqual(of(), path.join(m.home, 'mem'));
+    fs.mkdirSync(path.dirname(m.managed), { recursive: true });
+    fs.writeFileSync(m.managed, JSON.stringify({ autoMemoryDirectory: '/policy/mem' }));
+    assert.strictEqual(of(), path.resolve('/policy/mem'));
 });

@@ -488,3 +488,8 @@ the root's preferences folder after its own. The update adds the root's docs fol
 `settings.local.json` `permissions.additionalDirectories` and an Edit deny over it and over every member's memory
 folder, and the write guard refuses a write into a member's memory. `ignore docs root` or `ignore memory root` in the
 child's workspace file takes either out; status prints the child's `docs:` and `memory:` lines.
+
+A memory folder you choose with `autoMemoryDirectory` outside the account folder is now writable by the write guard -
+when your account `settings.json` or the managed settings name it. The same setting in a project's `settings.json` or
+`settings.local.json` opens nothing, since a repo can commit either file to name any folder: set a per-project folder in
+the account settings or in `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, or memory saves there still stop at the guard's ask.

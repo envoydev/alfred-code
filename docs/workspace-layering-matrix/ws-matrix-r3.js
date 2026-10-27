@@ -284,7 +284,8 @@ run('R3-11', (sb) =>
     check('R3-11a a root autoMemoryDirectory "." and docs path ".": the child\'s update denies nothing holding it, lists no additional directory holding it, still denies the root\'s default memory',
         u.code === 0 && !holds(p.deny, fileInApi).length && !(p.additionalDirectories || []).includes(sb.at('.')) && (p.deny || []).includes(deny(sb.memOf('.'))),
         `${JSON.stringify(p)}\n${u.out.slice(-500)}`);
-    // Under the account folder, which the guard allows: a custom folder elsewhere takes its ordinary cross-project ask.
+    // Under the account folder: the guard opens a folder elsewhere only when the account or managed settings name it
+    // (R3-12), never a project's own file.
     const mem = path.join(sb.env.CLAUDE_CONFIG_DIR, 'mem');
     sb.put(path.join(sb.at('.'), '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: path.join(mem, 'ws') }));
     sb.put(path.join(sb.at('api'), '.claude', 'settings.local.json'), JSON.stringify({ ...sb.local('api'), autoMemoryDirectory: path.join(mem, 'ws', 'api') }));
@@ -295,6 +296,24 @@ run('R3-11', (sb) =>
     check('R3-11b the child\'s own memory nested in the root\'s: no deny row over it, the guard lets the child write its own and denies the root\'s',
         u2.code === 0 && !holds(p2.deny, path.join(mem, 'ws', 'api', 'MEMORY.md')).length && own.code === 0 && root.code === 2 && /memory of/.test(root.stderr),
         `${JSON.stringify(p2)}\n${u2.out.slice(-500)}\nown ${own.code} ${own.stderr.slice(0, 200)}\nroot ${root.code}`);
+});
+
+// ---------------------------------------------------------------- R3-12 a custom memory folder outside the account folder
+run('R3-12', (sb) =>
+{
+    sb.mk('.');
+    const inst = sb.install('.', ROOT_SEL);
+    const mem = path.join(sb.work, 'mem', 'solo');
+    const acctFile = path.join(sb.env.CLAUDE_CONFIG_DIR, 'settings.json');
+    sb.put(acctFile, JSON.stringify({ ...(json(acctFile) || {}), autoMemoryDirectory: mem }));
+    const own = sb.write('.', path.join(mem, 'MEMORY.md'));
+    const off = sb.hook('.', 'guard-cross-project-write.js', { hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: path.join(mem, 'MEMORY.md'), content: 'x' } }, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_WORKSPACE: '0' });
+    const beside = sb.write('.', path.join(sb.work, 'mem', 'other.md'));
+    sb.put(path.join(sb.at('.'), '.claude', 'settings.json'), JSON.stringify({ ...(json(path.join(sb.at('.'), '.claude', 'settings.json')) || {}), autoMemoryDirectory: '~/.ssh' }));
+    const ssh = sb.write('.', path.join(sb.work, '.ssh', 'authorized_keys'));
+    check('R3-12 the account settings name a memory folder outside the account folder: writable, the switch at 0 too; a file beside it and a repo settings.json naming ~/.ssh stay blocked',
+        inst.code === 0 && own.code === 0 && off.code === 0 && beside.code === 2 && ssh.code === 2,
+        `install ${inst.code}\nown ${own.code} ${own.stderr.slice(0, 300)}\noff ${off.code}\nbeside ${beside.code}\nssh ${ssh.code}`);
 });
 
 // ---------------------------------------------------------------- R3-8 a real logged-out start

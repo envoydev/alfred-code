@@ -5194,6 +5194,38 @@ test('guard-cross-project-write: a root whose autoMemoryDirectory holds the chil
   } finally { w.rm(); }
 });
 
+test('guard-cross-project-write: an autoMemoryDirectory the account settings name outside the account dir is writable - a root, a child, the switch at 0, a renamed project folder', () => {
+  const w = memWs();
+  try {
+    fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: w.at('mem/shared') }));
+    for (const [rel, extra] of [['ws', {}], ['ws/api', {}], ['ws/api', { ALFRED_CODE_WORKSPACE: '0' }], ['ws/api', { CLAUDE_CODE_PROJECT_DIR_NAME: 'renamed' }]]) {
+      const r = w.write(rel, path.join(w.at('mem/shared'), 'MEMORY.md'), extra);
+      assert.equal(r.status, 0, `${rel} ${JSON.stringify(extra)}: ${r.stderr}`);
+    }
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: an autoMemoryDirectory a repo can ship opens nothing - settings.json or settings.local.json naming ~/.ssh or a folder beside the project', () => {
+  const w = memWs();
+  try {
+    const ssh = path.join(w.home, '.ssh');
+    w.put('ws/api/.claude/settings.json', JSON.stringify({ autoMemoryDirectory: '~/.ssh' }));
+    assert.equal(w.write('ws/api', path.join(ssh, 'authorized_keys')).status, 2, 'a committed settings.json');
+    w.put('ws/api/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/api') }));
+    assert.equal(w.write('ws/api', path.join(w.at('mem/api'), 'MEMORY.md')).status, 2, 'a settings.local.json, which a repo can commit too');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: an account autoMemoryDirectory holding the project or the home folder opens nothing beside them', () => {
+  const w = memWs();
+  try {
+    fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: w.at('ws') }));
+    assert.equal(w.write('ws/api', w.at('ws/notes.md')).status, 2, 'a folder holding the project');
+    fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: '~/' }));
+    assert.equal(w.write('ws/api', path.join(w.home, 'notes.md')).status, 2, 'the home folder');
+  } finally { w.rm(); }
+});
+
 test('guard-cross-project-write: a root with its own autoMemoryDirectory under a user-level one is still denied', () => {
   const w = memWs();
   try {
