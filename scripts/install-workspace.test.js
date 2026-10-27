@@ -1124,3 +1124,93 @@ test('D2: ignore mcp for a parent .mcp.json server writes a disabledMcpjsonServe
     assert.ok(!r.steps[3].rows.includes('disabledMcpjsonServers'), r.steps[3].rows);
     assert.strictEqual(r.steps[3].excludes, r.steps[2].excludes);
 });
+
+// ---- release 3, T3: a child reads its ancestors' docs roots; their docs and memory are read-only (R2, R8) -----------
+const localSettingsOf = (work, rel) => json(path.join(at(work, rel), '.claude', 'settings.local.json')) || {};
+const permsOf = (work, rel) => (localSettingsOf(work, rel).permissions || {});
+const ledgerRowsOf = (work, rel, arrayPath) => Object.keys((stampLib.readLedger(path.join(at(work, rel), '.claude', 'alfred-code.stamp')) || { settings: {} }).settings?.['settings.local.json'] || {})
+    .filter((r) => r.startsWith(`${arrayPath}[`));
+const denyFor = (p) => wsLib.editDenyRule(p, process.platform);
+const docsOf = (work, rel) => layoutLib.docsRootOf(fs.realpathSync(at(work, rel)), { env: acct(work) });
+const memOf = (work, rel) => layoutLib.memoryDirsOf(fs.realpathSync(at(work, rel)), { env: acct(work), home: work });
+
+test('editDenyRule writes the POSIX form the permissions docs give, //c/ on win32', () =>
+{
+    assert.strictEqual(wsLib.editDenyRule('/x/my docs', 'linux'), 'Edit(//x/my docs/**)');
+    assert.strictEqual(wsLib.editDenyRule('C:\\Users\\a b\\docs\\', 'win32'), 'Edit(//c/Users/a b/docs/**)');
+    assert.strictEqual(wsLib.editDenyRule('d:\\w', 'win32'), 'Edit(//d/w/**)');
+});
+
+test('a child gets each linked ancestor\'s docs root and an Edit deny row for it and its memory folder, ledgered per member; the excludes stay beside them; a second run changes nothing', POSIX_ONLY, () =>
+{
+    const read = (work) => ({ perms: permsOf(work, 'api'), excludes: excludesOf(work, 'api').length, dirs: ledgerRowsOf(work, 'api', 'permissions.additionalDirectories').length,
+        deny: ledgerRowsOf(work, 'api', 'permissions.deny').length, ex: ledgerRowsOf(work, 'api', 'claudeMdExcludes').length, docs: docsOf(work, '.'), mem: memOf(work, '.'), hash: treeHash(at(work, 'api')) });
+    const r = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api', after: read },
+        update('api', { after: read }),
+        update('api', { after: read }),
+        { at: 'web', after: (work) => ({ perms: permsOf(work, 'web') }) },
+    ]);
+    const got = r.steps[1];
+    assert.deepStrictEqual(got.perms.additionalDirectories, [got.docs], r.outs[1]);
+    assert.strictEqual(got.mem.length, 1);
+    assert.deepStrictEqual([...got.perms.deny].sort(), [denyFor(got.docs), denyFor(got.mem[0])].sort());
+    assert.deepStrictEqual([got.dirs, got.deny], [1, 2], 'one ledger row per member');
+    assert.ok(got.excludes > 0 && got.ex === got.excludes, 'the claudeMdExcludes rows survive beside them');
+    assert.deepStrictEqual(r.steps[2].perms, got.perms, 'the update keeps them');
+    assert.strictEqual(r.steps[3].hash, r.steps[2].hash, 'a second update changes nothing');
+    assert.deepStrictEqual(r.steps[4].perms, {}, 'a project with no parent gets none');
+});
+
+test('ignore docs root drops the docs row and its deny, the memory deny stays; a moved docs root swaps its rows', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api' },
+        // a leftover key the root's own update would retire: set where only the child's run reads it
+        update('api', { before: (work) => setEnv(work, '.', 'settings.local.json', { ALFRED_CODE_DOCS_PATH: 'moved/docs' }), after: (work) => ({ perms: permsOf(work, 'api'), docs: docsOf(work, '.'), mem: memOf(work, '.') }) }),
+        update('api', { before: (work) => edit(work, 'api', (m) => wsLib.addIgnore(m, 'docs', 'root')), after: (work) => ({ perms: permsOf(work, 'api'), mem: memOf(work, '.'), dirs: ledgerRowsOf(work, 'api', 'permissions.additionalDirectories') }) }),
+    ]);
+    const moved = r.steps[2];
+    assert.ok(moved.docs.endsWith(path.join('moved', 'docs')));
+    assert.deepStrictEqual(moved.perms.additionalDirectories, [moved.docs], r.outs[2]);
+    assert.ok(moved.perms.deny.includes(denyFor(moved.docs)) && !moved.perms.deny.some((d) => d.includes('/.alfred/docs')), 'the old row is removed, the new one written');
+    const ignored = r.steps[3];
+    assert.strictEqual(ignored.perms.additionalDirectories, undefined, r.outs[3]);
+    assert.deepStrictEqual(ignored.perms.deny, [denyFor(ignored.mem[0])]);
+    assert.deepStrictEqual(ignored.dirs, []);
+});
+
+test('a user\'s own additionalDirectories entry and deny rule are never claimed and survive install, update and uninstall; uninstall removes the stack\'s rows; the kill switch keeps them', POSIX_ONLY, () =>
+{
+    let mine;
+    const r = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api', before: (work) =>
+        {
+            const docs = fs.realpathSync(path.join(at(work), '.alfred')) + `${path.sep}docs`;
+            mine = { additionalDirectories: ['/mine'], deny: ['Edit(//x/**)', denyFor(docs)] };
+            fs.mkdirSync(path.join(at(work, 'api'), '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(at(work, 'api'), '.claude', 'settings.local.json'), JSON.stringify({ permissions: mine }, null, 2));
+        }, after: (work) => ({ perms: permsOf(work, 'api'), deny: ledgerRowsOf(work, 'api', 'permissions.deny').length }) },
+        update('api', { env: { ALFRED_CODE_WORKSPACE: '0' }, after: (work) => ({ perms: permsOf(work, 'api') }) }),
+        { at: 'api', act: 'uninstall', after: (work) => ({ perms: permsOf(work, 'api') }) },
+    ]);
+    const inst = r.steps[1].perms;
+    assert.ok(inst.additionalDirectories.includes('/mine') && inst.deny.includes('Edit(//x/**)'), r.outs[1]);
+    assert.strictEqual(r.steps[1].deny, 1, 'the user\'s copy of the docs deny is not claimed - only the memory deny is the stack\'s');
+    assert.deepStrictEqual(r.steps[2].perms, inst, 'frozen: the rows stay');
+    const after = r.steps[3].perms;
+    assert.deepStrictEqual(after.additionalDirectories, ['/mine'], r.outs[3]);
+    assert.deepStrictEqual(after.deny, mine.deny, 'the user\'s rules survive; the stack\'s memory deny goes');
+});
+
+test('a memory folder equal to the child\'s own gets no deny row', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', before: (work) => { fs.mkdirSync(path.join(work, 'acct'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', 'settings.json'), JSON.stringify({ autoMemoryDirectory: '~/shared-mem' })); }, after: (work) => join(work, 'api') },
+        { at: 'api', after: (work) => ({ perms: permsOf(work, 'api'), docs: docsOf(work, '.') }) },
+    ]);
+    assert.deepStrictEqual(r.steps[1].perms.deny, [denyFor(r.steps[1].docs)], r.outs[1]);
+});

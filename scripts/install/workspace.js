@@ -1087,7 +1087,10 @@ function workspaceStep(ctx)
     // `ignore mcp <name>` for a server in an ancestor's .mcp.json, which reaches this project natively (probe P2): the
     // entry that hides it here. Every stamped folder above counts, linked or not, as for the excludes.
     const d = sync('disabledMcpjsonServers', mcpJsonIgnores(ancestors, w.ignores));
-    ctx.workspaceRows = { ...r.rows, ...d.rows };
+    const access = ancestorAccess(ctx, w);
+    const a = sync('permissions.additionalDirectories', access.dirs);
+    const n = sync('permissions.deny', access.deny);
+    ctx.workspaceRows = { ...r.rows, ...d.rows, ...a.rows, ...n.rows };
     mcpHint(ctx);
     if (w.members.length)
     {
@@ -1096,7 +1099,36 @@ function workspaceStep(ctx)
             ? ownPicksAfter({ prior: w.ownPrior, final, parentLines: w.parentLines, added: ctx.userAdds || [], blind: Boolean(ctx.workspaceBlind) })
             : null;
     }
-    return { created: Boolean(r.created || d.created) };
+    return { created: Boolean(r.created || d.created || a.created || n.created) };
+}
+
+// The rule that stops Claude's own edit tools under `p` - permissions docs, 'Read and Edit': `//` is the filesystem root,
+// and Windows paths match in POSIX form, `C:\x` as `/c/x`.
+function editDenyRule(p, platform = process.platform)
+{
+    let posix = String(p).replace(/[\\/]+$/, '');
+    if (platform === 'win32') posix = posix.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`);
+    return `Edit(/${posix}/**)`;
+}
+
+// Release 3 (R1, R2, R8): what a child reads of its linked members and what it may never write. Each member's docs root
+// is an additional directory with an Edit deny beside it, unless `ignore docs root` here or in a nearer member drops it
+// (R0); every member's memory folder is denied, but one this project shares (its own memory).
+function ancestorAccess(ctx, w)
+{
+    const layout = require('../../stack/hooks/layout.js');
+    const docsRootIgnored = (ignores) => (ignores || []).some((i) => i.category === 'docs' && i.name === 'root');
+    const own = new Set(layout.memoryDirsOf(ctx.projectRoot, { env: ctx.env }).map(realKey));
+    const dirs = [];
+    const memory = [];
+    let dropped = docsRootIgnored(w.ignores);
+    for (const m of w.members || [])
+    {
+        if (!dropped) dirs.push(layout.docsRootOf(m.root, { env: ctx.env, dataRoot: m.dataRoot }));
+        for (const dir of layout.memoryDirsOf(m.root, { env: ctx.env })) if (!own.has(realKey(dir))) memory.push(dir);
+        if (docsRootIgnored(m.view && m.view.ignores)) dropped = true;
+    }
+    return { dirs, deny: [...dirs, ...memory].map((p) => editDenyRule(p)) };
 }
 
 // ------------------------------------------------------------------ D8, a linked member's local MCP registrations
@@ -1574,6 +1606,7 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
 }
 
 module.exports = {
+    editDenyRule,
     CATEGORIES, workspaceOn, parseLine, parseWorkspace, renderWorkspace, viewOf,
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,

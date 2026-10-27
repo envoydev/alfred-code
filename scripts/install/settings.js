@@ -135,7 +135,7 @@ function dropSetting(data, at)
 // Workspace layering (spec 2.3): the stack's rows in a settings ARRAY - `claudeMdExcludes`, and in later releases
 // `permissions.additionalDirectories` and `disabledMcpjsonServers` - one ledger row per MEMBER, keyed by the member's
 // own hash, so each is taken back alone and a member the user put there (no row) is never claimed or removed.
-const MEMBER_PATH = /^(claudeMdExcludes|permissions\.additionalDirectories|disabledMcpjsonServers)\[([0-9a-f]{64})\]$/;
+const MEMBER_PATH = /^(claudeMdExcludes|permissions\.additionalDirectories|permissions\.deny|disabledMcpjsonServers)\[([0-9a-f]{64})\]$/;
 const memberRow = (arrayPath, value) => `${arrayPath}[${valueHash(value)}]`;
 const isPlainObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
