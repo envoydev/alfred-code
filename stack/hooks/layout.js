@@ -662,8 +662,9 @@ function autoMemorySetting(root, { account, home, managed })
         const value = (readObject(file) || {}).autoMemoryDirectory;
         if (typeof value !== 'string' || !value.trim()) continue;
         const v = value.trim();
-        if (v === '~') return home;
-        return /^~[\\/]/.test(v) ? path.join(home, v.slice(2)) : path.resolve(root, v);
+        if (/^~[\\/]/.test(v)) return path.join(home, v.slice(2));
+        if (path.isAbsolute(v)) return path.resolve(v);
+        // Claude Code takes an absolute path or one starting `~/` alone (memory docs): any other value is no setting.
     }
     return null;
 }
@@ -703,13 +704,16 @@ function docsRootOf(root, { env = process.env, dataRoot } = {})
     const data = dataRoot || dataRootOf(root, { env: { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR } });
     return path.resolve(root, ...data.split('/'), 'docs');
 }
+// The folder a checkout's workspace chain is read from: a linked worktree's main counterpart, whose workspace file the
+// worktree lacks (it is gitignored), as resolveVariables reads it.
+const chainProjectOf = (projectRoot) => mainCounterpart(projectRoot) || projectRoot;
 // R3: each linked member's preferences folder, nearest first, read-only, while the switch is on. `skip` holds the files an
 // `ignore doc <file>` here or in a nearer member drops for THAT member (R0); `ignore docs root` drops the member and every
 // one past it, as it drops their docs roots.
 function ancestorPrefsDirs(projectRoot, { env = process.env } = {})
 {
     if (!workspaceOn({ env, projectRoot })) return [];
-    const chain = workspaceChain(projectRoot, { env });
+    const chain = workspaceChain(chainProjectOf(projectRoot), { env });
     const skip = new Set();
     let dropped = false;
     const take = (ignores) =>
@@ -733,7 +737,7 @@ function ancestorPrefsDirs(projectRoot, { env = process.env } = {})
 // The workspace root (D3's 'root'): the chain's last linked member, null with no parent. The switch is the caller's.
 function topMember(projectRoot, { env = process.env } = {})
 {
-    const { members } = workspaceChain(projectRoot, { env });
+    const { members } = workspaceChain(chainProjectOf(projectRoot), { env });
     return members.length ? members[members.length - 1] : null;
 }
 
@@ -743,7 +747,7 @@ function topMember(projectRoot, { env = process.env } = {})
 function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env) } = {})
 {
     if (!workspaceOn({ env, projectRoot })) return null;
-    const chain = workspaceChain(projectRoot, { env });
+    const chain = workspaceChain(chainProjectOf(projectRoot), { env });
     const { members } = chain;
     if (!members.length) return null;
     const ignored = (ignores) => (ignores || []).some((i) => i.category === 'memory' && i.name === 'root');
@@ -758,6 +762,6 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf,
+    memoryDirsOf, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

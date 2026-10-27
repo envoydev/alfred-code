@@ -158,7 +158,9 @@ Verdicts:
   plan's 'Revisit when' ask, taken in auto-run on its recommended answer: R6 stands, with that case-folded listing.
 - Past 200 characters the suffix is a 6-character hash the stack cannot compute, so it lists `<first 200>-*`. A child
   shares its root's first 200 characters, so its own list holds every root candidate: such a child gets no memory line
-  unless its own `autoMemoryDirectory` sets its folder apart (`layout.workspaceMemoryOf`); the deny covers every match.
+  unless its own `autoMemoryDirectory` sets its folder apart (`layout.workspaceMemoryOf`). For the same reason neither
+  the Edit deny nor the write guard protects the root's memory there: both leave out the child's own folders, and these
+  are all of them. The same `autoMemoryDirectory` restores both, and the deny then covers every match.
 - A4 (a Read under `additionalDirectories` asks no permission) NOT RUN: it needs one logged-in session, a billed run
   the user declined. The manual step: in a child after an update, ask the session to Read a file under the root's docs
   folder and watch for a permission prompt; none is the pass.

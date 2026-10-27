@@ -1113,19 +1113,25 @@ function editDenyRule(p, platform = process.platform)
 
 // Release 3 (R1, R2, R8): what a child reads of its linked members and what it may never write. Each member's docs root
 // is an additional directory with an Edit deny beside it, unless `ignore docs root` here or in a nearer member drops it
-// (R0); every member's memory folder is denied, but one this project shares (its own memory).
+// (R0); every member's memory folder is denied, but one this project shares (its own memory). A deny beats every allow,
+// so no folder holding this project, its docs root or its own memory is listed: the write guard alone keeps the rest
+// of such a folder (its memory branch).
 function ancestorAccess(ctx, w)
 {
     const layout = require('../../stack/hooks/layout.js');
     const docsRootIgnored = (ignores) => (ignores || []).some((i) => i.category === 'docs' && i.name === 'root');
-    const own = new Set(layout.memoryDirsOf(ctx.projectRoot, { env: ctx.env }).map(realKey));
+    const ownMemory = layout.memoryDirsOf(ctx.projectRoot, { env: ctx.env });
+    const own = new Set(ownMemory.map(realKey));
+    const mine = [ctx.projectRoot, layout.docsRootOf(ctx.projectRoot, { env: ctx.env }), ...ownMemory].map(realKey);
+    const holdsMine = (dir) => { const key = realKey(dir); return mine.some((k) => k === key || k.startsWith(key.endsWith('/') ? key : `${key}/`)); };
     const dirs = [];
     const memory = [];
     let dropped = docsRootIgnored(w.ignores);
     for (const m of w.members || [])
     {
-        if (!dropped) dirs.push(layout.docsRootOf(m.root, { env: ctx.env, dataRoot: m.dataRoot }));
-        for (const dir of layout.memoryDirsOf(m.root, { env: ctx.env })) if (!own.has(realKey(dir))) memory.push(dir);
+        const docs = layout.docsRootOf(m.root, { env: ctx.env, dataRoot: m.dataRoot });
+        if (!dropped && !holdsMine(docs)) dirs.push(docs);
+        for (const dir of layout.memoryDirsOf(m.root, { env: ctx.env })) if (!own.has(realKey(dir)) && !holdsMine(dir)) memory.push(dir);
         if (docsRootIgnored(m.view && m.view.ignores)) dropped = true;
     }
     return { dirs, deny: [...dirs, ...memory].map((p) => editDenyRule(p)) };
@@ -1606,7 +1612,7 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
 }
 
 module.exports = {
-    editDenyRule,
+    editDenyRule, ancestorAccess,
     CATEGORIES, workspaceOn, parseLine, parseWorkspace, renderWorkspace, viewOf,
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,

@@ -301,10 +301,11 @@ function memoryOf() {
     const own = layout.memoryDirsOf(ROOT).map(realish);
     const ownKeys = new Set(own.map(fold));
     const members = [];
-    for (const m of layout.workspaceChain(ROOT).members) {
+    for (const m of layout.workspaceChain(layout.chainProjectOf(ROOT)).members) {
       for (const d of layout.memoryDirsOf(m.root)) {
         const dir = realish(d);
-        if (!ownKeys.has(fold(dir))) members.push({ dir, root: m.root });
+        // A folder holding this project is no member memory to it (a deny there would bar its own files).
+        if (!ownKeys.has(fold(dir)) && !inside(ROOT, dir)) members.push({ dir, root: m.root });
       }
     }
     memoryDirs = { members, own };

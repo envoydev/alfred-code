@@ -222,11 +222,12 @@ test('memoryDirsOf equals the folders T1 measured: a space and an e-acute each o
     assert.deepStrictEqual(memOf(m, 'MixedCase'), [path.join(m.acct, 'projects', `${S}-MixedCase`, 'memory')]);
 });
 
-test('autoMemoryDirectory in settings.local.json wins over settings.json, ~ expanded', () =>
+test('autoMemoryDirectory in settings.local.json wins over settings.json, ~/ expanded; a bare ~ or a relative value is no setting', () =>
 {
-    const m = memTree({ 'p': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '/shared/mem' }), local: JSON.stringify({ autoMemoryDirectory: '~/my-mem' }) }, 'q': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '~' }) } });
+    const m = memTree({ 'p': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '/shared/mem' }), local: JSON.stringify({ autoMemoryDirectory: '~/my-mem' }) }, 'q': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '~' }) }, 'r': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '/shared/mem' }), local: JSON.stringify({ autoMemoryDirectory: '.' }) } });
     assert.deepStrictEqual(memOf(m, 'p'), [path.join(m.home, 'my-mem')]);
-    assert.deepStrictEqual(memOf(m, 'q'), [m.home]);
+    assert.deepStrictEqual(memOf(m, 'q'), [path.join(m.acct, 'projects', sanitized(m.at('q')), 'memory')]);
+    assert.deepStrictEqual(memOf(m, 'r'), [path.resolve('/shared/mem')], 'the relative value is skipped, the next scope read');
 });
 
 test('a managed-settings value wins over the member\'s, the member\'s over the account\'s; the last drop-in over the file', () =>
@@ -376,4 +377,22 @@ test('memoryDirsOf past 200 on win32 lists a folder named in another case; on a 
     const of = (platform) => layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed, platform });
     assert.deepStrictEqual(of('win32'), [path.join(m.acct, 'projects', typed, 'memory')]);
     assert.deepStrictEqual(of('darwin'), []);
+});
+
+// ---- release 3 review: a child's linked worktree reads the chain its main checkout holds ----------------------------
+test('a child\'s linked worktree, with no workspace file of its own, reads its main checkout\'s preferences folders and root memory', () =>
+{
+    const m = memTree({ 'ws': { stamp: true, git: true, file: 'child api\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' } });
+    const api = m.at('ws/api');
+    fs.writeFileSync(path.join(api, '.gitignore'), '.alfred/\n');
+    const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: api, stdio: 'ignore' });
+    git('add', '.gitignore', '.claude');
+    git('commit', '-qm', 'i');
+    git('worktree', 'add', '-q', path.join(m.at('.'), 'api-wt'), '-b', 'feat');
+    const wt = m.at('api-wt');
+    assert.ok(!fs.existsSync(path.join(wt, '.alfred')), 'the worktree holds no workspace file');
+    const main = prefsOf(layout.ancestorPrefsDirs(api, { env: m.env }));
+    assert.strictEqual(main.length, 1);
+    assert.deepStrictEqual(prefsOf(layout.ancestorPrefsDirs(wt, { env: m.env })), main);
+    assert.strictEqual(wsMem(m, 'api-wt'), path.join(m.acct, 'projects', sanitized(m.at('ws')), 'memory'));
 });

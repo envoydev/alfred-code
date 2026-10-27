@@ -1141,6 +1141,37 @@ test('editDenyRule writes the POSIX form the permissions docs give, //c/ on win3
     assert.strictEqual(wsLib.editDenyRule('d:\\w', 'win32'), 'Edit(//d/w/**)');
 });
 
+// ancestorAccess alone, on a bare tree: `local` maps a folder to its settings.local.json object.
+const accessTree = (local) =>
+{
+    const work = fs.realpathSync(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'ws-access-')));
+    for (const rel of ['.', 'api']) fs.mkdirSync(at(work, rel), { recursive: true });
+    for (const [rel, o] of Object.entries(local))
+    {
+        fs.mkdirSync(path.join(at(work, rel), '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(at(work, rel), '.claude', 'settings.local.json'), JSON.stringify(o));
+    }
+    const env = acct(work);
+    const access = wsLib.ancestorAccess({ projectRoot: at(work, 'api'), env }, { ignores: [], members: [{ root: at(work), dataRoot: '.alfred', view: { ignores: [] } }] });
+    fs.rmSync(work, { recursive: true, force: true });
+    return { work, access, covers: (file) => access.deny.some((rule) => (file + '/').startsWith(rule.slice('Edit(/'.length, -'**)'.length))) };
+};
+
+test('ancestorAccess never denies a folder holding the child\'s own memory, its project or its docs root; a relative autoMemoryDirectory is not read', POSIX_ONLY, () =>
+{
+    const nested = accessTree({ '.': { autoMemoryDirectory: '/m/ws' }, 'api': { autoMemoryDirectory: '/m/ws/api' } });
+    assert.ok(!nested.covers('/m/ws/api/MEMORY.md'), `the child's own nested memory: ${nested.access.deny}`);
+    assert.strictEqual(nested.access.deny.length, 1, 'the docs root keeps its row');
+    const dot = accessTree({ '.': { autoMemoryDirectory: '.' } });
+    assert.ok(!dot.covers(path.join(at(dot.work, 'api'), 'src', 'a.ts')), `a relative value: ${dot.access.deny}`);
+    assert.ok(dot.access.deny.includes(denyFor(path.join(dot.work, 'acct', 'projects', at(dot.work).replace(/[^A-Za-z0-9]/g, '-'), 'memory'))), `the default folder instead: ${dot.access.deny}`);
+    const docs = accessTree({ '.': { env: { ALFRED_CODE_DOCS_PATH: '.' } } });
+    assert.deepStrictEqual(docs.access.dirs, [], 'a docs root holding the child is no additional directory');
+    assert.ok(!docs.covers(path.join(at(docs.work, 'api'), 'src', 'a.ts')), `a docs root holding the child: ${docs.access.deny}`);
+    const whole = accessTree({ '.': { autoMemoryDirectory: '/' } });
+    assert.ok(!whole.covers(path.join(at(whole.work, 'api'), 'src', 'a.ts')), `an absolute folder above the child: ${whole.access.deny}`);
+});
+
 test('a child gets each linked ancestor\'s docs root and an Edit deny row for it and its memory folder, ledgered per member; the excludes stay beside them; a second run changes nothing', POSIX_ONLY, () =>
 {
     const read = (work) => ({ perms: permsOf(work, 'api'), excludes: excludesOf(work, 'api').length, dirs: ledgerRowsOf(work, 'api', 'permissions.additionalDirectories').length,

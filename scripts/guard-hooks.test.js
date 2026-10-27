@@ -5169,6 +5169,31 @@ test('guard-cross-project-write: ws/api/tool cannot write into ws/api\'s memory 
   } finally { w.rm(); }
 });
 
+test('guard-cross-project-write: a child\'s linked worktree, with no workspace file of its own, cannot write into the root\'s memory either', () => {
+  const w = memWs();
+  try {
+    w.put('ws/api/.gitignore', '.alfred/\ntool/\n');
+    const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: w.at('ws/api'), encoding: 'utf8' });
+    git('add', '.gitignore', '.claude');
+    git('commit', '-qm', 'i');
+    git('worktree', 'add', '-q', w.at('api-wt'), '-b', 'feat');
+    assert.ok(!fs.existsSync(w.at('api-wt/.alfred')), 'the worktree holds no workspace file');
+    const r = w.write('api-wt', path.join(w.mem('ws'), 'MEMORY.md'));
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /memory of/);
+    assert.equal(w.write('api-wt', path.join(w.mem('ws/api'), 'MEMORY.md')).status, 0, 'its own memory, keyed by the main checkout');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: a root whose autoMemoryDirectory holds the child is no memory to the child: a write beside it takes the ordinary cross-project route', () => {
+  const w = memWs();
+  try {
+    w.put('ws/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('ws') }));
+    const r = w.write('ws/api', w.at('ws/notes.md'));
+    assert.doesNotMatch(r.stderr, /memory of/, r.stderr);
+  } finally { w.rm(); }
+});
+
 test('guard-cross-project-write: a root with its own autoMemoryDirectory under a user-level one is still denied', () => {
   const w = memWs();
   try {
