@@ -133,7 +133,7 @@ test('every event the stack wires is present, and each keeps its own matchers', 
         assert.ok(block[event], `${event} must be wired`);
     const pre = block.PreToolUse.map(b => b.matcher);
     assert.ok(pre.includes(fileDispatcher.MATCHER), 'the file-tool matcher survives');
-    assert.ok(pre.includes('Task|Agent'), 'the dispatch matcher survives');
+    assert.ok(pre.includes('Task|Agent|SendMessage'), 'the dispatch matcher survives');
     assert.ok(pre.includes('.*'), 'the instrumentation catch-all survives');
     const session = block.SessionStart.map(b => b.matcher);
     assert.ok(session.includes('compact'), 'the compact matcher survives');

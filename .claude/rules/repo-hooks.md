@@ -568,7 +568,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     ignored, or tracked). No server gets a value: the stack ships none since 2.10.1 (the browser and mobile launchers that read the store
     left with them); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
     through its own parser, `guard-sensitive-data.test.js` holding both to one fixture.
-  - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
+  - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent|SendMessage`, `SubagentStart`, `SubagentStop`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without its plan's gate file (written on explicit approval or an AUTO waiver) -
     PER PLAN since 2.8.0 (spec Part 4, the user's ruling of 2026-10-20: two sessions on two plans shared one stamp): the brief
     names its plan on a `plan: <plan id>` line (`layout.js planIdOf`: a path or `.md` name reduced to its basename, an
@@ -601,6 +601,31 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
     In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
     then the implementer gate - and no block row is written (M9, `standDown(..., { setUp: false })`).
+    THE AGENT CAP (`ALFRED_CODE_MAXIMUM_RUN_AGENTS`, the user's task of 2026-10-27; the maximum-run-agents design): how many
+    of a session's agents may run at once - default 5, `0` no cap, at most 50, anything not a whole number read as 5
+    (`agent-cap.js capOf`). `agent-cap.js` is a module the three hooks require inside a try (`HOOK_MODULES`, copied on
+    the copy route), so a copy without it runs unchanged. A PreToolUse payload carries no list of running agents, so the
+    session keeps one in `<data root>/state/sessions/`: `AGENT-CAP-<sid>-P-<tool_use_id>` (a dispatch not started, 60s),
+    `-R-<agent_id>` (a started agent, counted while its own `at` or its transcript's mtime is under 12 minutes old; after
+    its SubagentStop only when the transcript moved more than 5 s past it - a hold sent it back (a hand-back's own hook rows land up to 3.65 s after it) - and kept 2 minutes so a
+    resume finds it; a file a counted one names as `parent` counts too), `.lock` (exclusive create, 20ms retries, 1.5s
+    wait, broken past 5s) and `.denied`; ids cleaned to `[A-Za-z0-9_-]`, the `AGENT-CAP-` prefix swept after 7 days.
+    The three event branches run first and exit 0 before any dispatch rule (a SubagentStart payload has no
+    `subagent_type` and would read as `general-purpose`): SubagentStart takes the oldest pending file of its type and
+    tells a seat its number ('Agents at once: <n> (ALFRED_CODE_MAXIMUM_RUN_AGENTS)', nothing at 5), SubagentStop marks
+    the file, and a `SendMessage` to a STOPPED seat is judged like a dispatch. A dispatch at or past the cap - a seat's
+    own included - is denied with the running count and up to eight types, one `branch: agent-cap` row; the text never
+    says how to lift it (the setting is the user's), a seat is told to do the step itself, and a main-session denial
+    writes `.denied`. A later rule's exit 2 drops the call's pending file (a second exit wrapper after the shared
+    telemetry one). The stop contract's main-session Stop, behind the same `capGates` as the deny, reconciles against
+    `background_tasks` right after its sweep (its pendings go; running files matched by id, else the most recent N kept;
+    one `agent-cap-reconciled` row) and, after the scorer backstop and never while it is owed, sends the turn back ONCE
+    per `.denied` file when the count is under the cap again (`agent-cap-continue`); guard-answer's typed prompt deletes
+    `.denied` and its context names the number when it is not 5. Stand-downs, writing nothing: the csv or `:cap` opt-out,
+    either hook off, `minimal`, a repo never set up, a Cursor payload, cap `0`, no session id; guard-answer off stops the
+    continuation only. A lock not taken passes with one `agent-cap-unjudged` row, a started file that expired with no
+    stop writes `agent-cap-expired`. Revisit (14 days of rows): continue rows past 1 in 10 denials, expired rows past 1
+    in 10 transcripts, any unjudged row, or a reported stall.
   - `guard-ungated-commit.js` (PreToolUse, the shell route) and the same gate on every MCP server (`^mcp__.*` - the stack's own
     exemption went with its servers, 2026-10-24) - blocks a non-trivial `git commit` without the
     `<data root>/state/approvals/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry

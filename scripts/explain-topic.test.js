@@ -55,7 +55,7 @@ test('explain-topic: project code keeps the real-file walkthrough, any other top
   assert.match(b, /say where it breaks down/i, 'an analogy states its limit');
   assert.match(b, /the answers after the questions/, 'recall before the answers');
   assert.match(b, /Simplify, never falsify/);
-  assert.match(b, /A request written in any other language is answered in English/);
+  assert.match(b, /Answer in the language the user asked in, whatever it is/);   // no language hardcoded (2026-10-27)
 });
 
 test('explain-topic: the diagram is one offline HTML file under the docs root, checked before hand-over', () => {

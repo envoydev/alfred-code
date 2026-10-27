@@ -1983,11 +1983,17 @@ if (payload.hook_event_name === 'Stop') {
     const logDir = envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir();
     if (typeof pre.sweepStale === 'function') { pre.sweepStale(logDir, 'guard-stop-'); pre.sweepStale(logDir, 'alfred-stop-held-'); pre.capLog(require('path').join(logDir, 'guard-stop-contract.log')); }
   } catch { /* no prelude: nothing swept */ }
+  // ALFRED_CODE_MAXIMUM_RUN_AGENTS (agent-cap.js, required inside a try - a copy without it runs unchanged): the main
+  // session's Stop reconciles the agent registry against the payload's background_tasks. It never decides.
+  let agentCap = null;
+  try { agentCap = require('./agent-cap.js'); } catch { /* no module: no cap */ }
+  if (agentCap) agentCap.stopReconcile(payload, process.env);
   try { settleAskFixed(); } catch { /* the ask-fixed rows wait (below); never decides */ }
   // The scorer backstop (scorerOwed, above): a close that owes a Scored: line and lacks it is held ONCE per typed prompt
   // - the SCORER-HELD marker names the cycle - so a grader's notification turn is never held again. It runs before the
   // stopHeld exit (R17): a rewrite after this hook's own hold for another reason is still judged. A grader seat still
   // running is the loop's own wait; a seat's own Stop never owes it. Fail-open: a throw reads as not owed.
+  let scorerOwes = false;
   if (!payload.agent_id && payload.transcript_path) {
     try {
       const pre = require('./hook-prelude.js');
@@ -1995,6 +2001,7 @@ if (payload.hook_event_name === 'Stop') {
       const state = typeof pre.scorerState === 'function' ? pre.scorerState(root, payload.session_id) : { usable: false };
       if (state.usable && !seatLive(/(?:^|:)output-scorer$/)) {
         const { owed, cycle, unbacked } = scorerOwed(state, pre, root);
+        scorerOwes = Boolean(owed);
         const marker = owed ? pre.scorerHeldFile(root, payload.session_id) : null;
         let held = '';
         try { if (marker) held = fs.readFileSync(marker, 'utf8').trim(); } catch { /* no marker: this session never held */ }
@@ -2011,6 +2018,17 @@ if (payload.hook_event_name === 'Stop') {
         }
       }
     } catch { /* fail-open: the backstop never breaks a Stop */ }
+  }
+  // The agent cap's one continuation: a dispatch the cap denied this prompt, and the count under the cap again - held
+  // once per `.denied` file (deleted first), never while the scorer is owed its grade, before the stopHeld exit as the
+  // backstop is. guard-answer off stands it down (capGates' canContinue): that hook scopes `.denied` to its prompt.
+  if (agentCap && !scorerOwes) {
+    const again = agentCap.stopContinue(payload, process.env);
+    if (again) {
+      blockDetail('agent-cap-continue', again.match(/\d+/)[0]);
+      process.stderr.write(`${again}\n`);
+      process.exit(2);
+    }
   }
   // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
   // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).

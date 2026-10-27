@@ -9,7 +9,7 @@ Transforms a raw description into a clean, professional ticket written in Englis
 
 ## When to use
 
-- Any tracker (Jira, Azure DevOps, GitHub, GitLab, YouTrack) and type (bug, user story, epic, technical task), from a raw description or a not-yet-filed draft to rework (shorter, a different focus) - asked casually or in Ukrainian.
+- Any tracker (Jira, Azure DevOps, GitHub, GitLab, YouTrack) and type (bug, user story, epic, technical task), from a raw description or a not-yet-filed draft to rework (shorter, a different focus) - asked casually or in any language.
 - Not for a ticket already in the tracker (query / comment / close, or an update to its filed content), or a commit / PR message. An existing EMPTY or placeholder ticket the user names to fill is this skill's - see Filing.
 
 ## Procedure

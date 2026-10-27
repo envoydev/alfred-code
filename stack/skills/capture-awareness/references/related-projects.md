@@ -49,7 +49,7 @@ Characterize <the siblings> through the related-project-analyzer seats, one per 
 1. **VALIDATE** - for each location: a path must exist (relative resolved from the project root), a URL must look
    like a git remote. An invalid location is reported and skipped, never silently dropped. Note each relation hint
    - it travels to the seat as a prior, not a verdict.
-2. **CHARACTERIZE** - DELEGATED: dispatch all seats in a single message. Each prompt carries the HOST project's root
+2. **CHARACTERIZE** - DELEGATED: dispatch up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` seats in one message (default 5), the next as each hands back. Each prompt carries the HOST project's root
    and identity (name + package or assembly ids - read them once from the manifest files first), ONE sibling
    location, its hint if given, and the `read_at:` its entry already carries in the doc (a re-capture starts from
    what changed since). The seats write no files; their final messages - one YAML entry + evidence + uncertainty

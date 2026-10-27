@@ -795,8 +795,8 @@ test('check 49: the live file is clean, and a stale RETIRED alias, a renames key
 test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {
     const build = require('./build-marketplace.js');
     const wirings = build.parseHookWirings();
-    const drifted = build.hooksBlock(wirings.map(w => (w.file === 'guard-unapproved-dispatch.js' && w.matcher === 'Task|Agent'
-        ? { ...w, matcher: 'Task|Agent|Glob' } : w)));
+    const drifted = build.hooksBlock(wirings.map(w => (w.file === 'guard-unapproved-dispatch.js' && w.matcher === 'Task|Agent|SendMessage'
+        ? { ...w, matcher: 'Task|Agent|SendMessage|Glob' } : w)));
     assert.notStrictEqual(JSON.stringify(drifted), JSON.stringify(build.hooksBlock(wirings)),
         'a changed matcher must change the generated block, which is what check 48 compares');
 
@@ -1079,11 +1079,14 @@ test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration dr
     assert.ok(lintEnvironmentCatalog({ env: baseRows() }, 'ALFRED_CODE_FOO ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
         .some((f) => /ALFRED_CODE_DOCS_VERSIONING is a catalog row, but scripts\/install\/settings\.js does not name it/.test(f)));
 
-    // More than 4 `ask: true` rows blows the AskUserQuestion cap.
-    const askRows = ['A', 'B', 'C', 'D', 'E'].map((n) => ({ key: `ALFRED_CODE_${n}`, default: '', what: n, ask: true }))
+    // init asks screen B in calls of four, at most two calls (2026-10-27): five asked rows pass, nine fail.
+    const askRows = (n) => 'ABCDEFGHI'.slice(0, n).split('').map((k) => ({ key: `ALFRED_CODE_${k}`, default: '', what: k, ask: true }))
         .concat([{ key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git', what: 'x' }, { key: 'ALFRED_CODE_HOOKS_OFF', default: '', what: 'y' }]);
-    assert.ok(lintEnvironmentCatalog({ env: askRows }, 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
-        .some((f) => /asks 5 questions on init's environment screen/.test(f)));
+    const screenB = (n) => lintEnvironmentCatalog({ env: askRows(n) }, 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
+        .filter((f) => /environment screen/.test(f));
+    assert.deepStrictEqual(screenB(5), [], 'five asked rows go in two calls');
+    assert.deepStrictEqual(screenB(8), [], 'eight fill both calls');
+    assert.ok(screenB(9).some((f) => /asks 9 questions on init's environment screen - init asks them in calls of four, at most two calls \(8 rows\)/.test(f)));
 
     // A migration renaming to a key the catalog does not list.
     const migrationsMissing = { migrations: [{ id: 'm1', rename_settings_env: { from: 'OLD_KEY', to: 'ALFRED_CODE_MISSING' } }] };
@@ -1405,4 +1408,18 @@ test('check 68: lint-skills.js runs the conformance marker check, and the live c
     assert.match(src, /lintConformance\(/);
     const cf = require('./conformance.js');
     assert.deepStrictEqual(cf.lintConformance(cf.loadClaims()), []);
+});
+
+// init-install.md is already past the Bash output cap init's one `cat` of it meets, so it is pinned at its size of
+// 2026-10-27 and screen B's second call lives in init-env-more.md (ALFRED_CODE_MAXIMUM_RUN_AGENTS, AC10).
+test('check 61: init-install.md is held at 31,960 bytes, and init-env-more.md carries one ask template', () =>
+{
+    const { lintSetupAskPresence, SETUP_ASK_TEMPLATES } = require('./lint-skills.js');
+    const rel = 'setup-plugin/references/init-install.md';
+    const sized = (bytes) => lintSetupAskPresence([{ skill: 'setup-plugin', file: rel, text: 'x'.repeat(bytes) }])
+        .filter((f) => /bytes/.test(f));
+    assert.deepStrictEqual(sized(31960), []);
+    assert.ok(sized(31961).some((f) => /init-install\.md is 31961 bytes, past its pin of 31960/.test(f)));
+    assert.strictEqual(SETUP_ASK_TEMPLATES['setup-plugin/references/init-env-more.md'], 1);
+    assert.strictEqual(SETUP_ASK_TEMPLATES[rel], 9);
 });

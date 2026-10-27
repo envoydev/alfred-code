@@ -661,8 +661,10 @@ test('a worktree and its main checkout share one ledger', () => {
   const w = watchRepo();
   const wt = path.join(w.base, 'wt');
   w.git('worktree', 'add', '-q', '-b', 'feat/wt', wt);
-  assert.strictEqual(fs.realpathSync(forge.ledgerRoot(wt)), fs.realpathSync(w.dir));
-  assert.strictEqual(fs.realpathSync(forge.ledgerRoot(path.join(w.dir))), fs.realpathSync(w.dir));
+  // git names the main checkout in its long form, so both sides take the native realpath (a Windows 8.3 temp dir)
+  const real = (p) => fs.realpathSync.native(p);
+  assert.strictEqual(real(forge.ledgerRoot(wt)), real(w.dir));
+  assert.strictEqual(real(forge.ledgerRoot(path.join(w.dir))), real(w.dir));
   assert.strictEqual(forge.ledgerRoot(fs.mkdtempSync(path.join(TMP, 'nogit-'))), null);
 });
 
@@ -691,8 +693,17 @@ test('no CLI is planned for an unknown forge, one already on PATH, or no remote'
 });
 
 // The CLI runs git, so its PATH keeps the machine's dirs - minus any that hold a forge CLI this machine happens to have.
-const gitOnlyPath = (env) => [env.PATH, ...String(process.env.PATH).split(path.delimiter)
-  .filter((d) => !['gh', 'glab', 'tea', 'az'].some((n) => fs.existsSync(path.join(d, n)) || fs.existsSync(path.join(d, `${n}.exe`))))].join(path.delimiter);
+// A dropped dir's own git keeps its place through a link in a folder of its own: GitHub's Ubuntu runners keep gh and
+// git side by side in /usr/bin, and dropping it left the hook no git at all.
+const gitOnlyPath = (env) => [env.PATH, ...String(process.env.PATH).split(path.delimiter).flatMap((d) => {
+  const has = (n) => fs.existsSync(path.join(d, n)) || fs.existsSync(path.join(d, `${n}.exe`));
+  if (!['gh', 'glab', 'tea', 'az'].some(has)) return [d];
+  const git = ['git', 'git.exe'].map((n) => path.join(d, n)).find((f) => fs.existsSync(f));
+  if (!git) return [];
+  const own = fs.mkdtempSync(path.join(TMP, 'git-'));
+  fs.symlinkSync(git, path.join(own, path.basename(git)));
+  return [own];
+})].join(path.delimiter);
 test('init reads the profile and its ask condition from one call', () => {
   const lab = repo('git@gitlab.com:g/r.git');
   const env = envFor(lab);

@@ -32,8 +32,8 @@ test('the bracketed token normalizes every accepted spelling', () =>
     const r = run([
         '1 ABC-1 (1h 30m) - Fixed the login redirect.',
         '2 ABC-2 (0.25h) - Reviewed the PR.',
-        '3 ABC-3 (1,5 год) - Paired on the report.',
-        '4 Other (45хв) - Standup.',
+        '3 ABC-3 (1,5h) - Paired on the report.',
+        '4 Other (45m) - Standup.',
     ]);
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(r.minutes, 90 + 15 + 90 + 45, r.stdout);
@@ -73,14 +73,25 @@ test('every accepted unit spelling reads in full, compact or spaced', () =>
     const cases = [
         ['1h 15m', 75], ['1h15m', 75], ['2h30m', 150], ['1H15M', 75], ['90m', 90], ['15 m', 15], ['2 h', 120],
         ['1.5h', 90], ['1,5h', 90], ['1,5 h', 90], ['0.25h', 15], ['1.25h 15m', 90],
-        ['1г 15хв', 75], ['1г15хв', 75], ['1 г 15 хв', 75], ['1год15хв', 75], ['1 год 15 хв', 75],
-        ['1,5 год', 90], ['1.5г', 90], ['2гг', 120], ['2 гг 10 хв', 130], ['45хв', 45], ['10 хвил', 10], ['1г10хвил', 70],
     ];
     for (const [time, minutes] of cases)
     {
         const r = run([`1 ABC-1 (${time}) - Fixed the export.`]);
         assert.strictEqual(r.status, 0, `${time}: ${r.stderr}`);
         assert.strictEqual(r.minutes, minutes, `${time}: ${r.stdout}`);
+    }
+});
+
+// No language's unit words are hardcoded (the user's task of 2026-10-27): the log prints `h` / `m` in every output
+// language, the notes' own unit words are normalised while drafting, so a drafted line still holding one is caught.
+test('a unit word other than h / m is unreadable: the drafted line is respelled before the total', () =>
+{
+    const word = (code) => String.fromCodePoint(...code);
+    for (const unit of [word([0x433]), word([0x445, 0x432]), 'hrs', 'min'])
+    {
+        const r = run([`1 ABC-1 (2${unit}) - Fixed the export.`]);
+        assert.strictEqual(r.status, 2, `${unit}: ${r.stdout}`);
+        assert.match(r.stderr, /every bracketed time reads as h \/ m\.$/m, unit);
     }
 });
 

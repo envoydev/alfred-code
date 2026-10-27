@@ -49,7 +49,11 @@ const ROUTES = [
   { hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-read-whole-file.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-secret-value.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Monitor', 'Grep'], deny: true },
-  { hook: 'guard-unapproved-dispatch.js', event: 'PreToolUse', tools: ['Task', 'Agent'], deny: true },
+  { hook: 'guard-unapproved-dispatch.js', event: 'PreToolUse', tools: ['Task', 'Agent', 'SendMessage'], deny: true },
+  // The agent cap's lifecycle halves (ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27): a start takes a pending file, a stop marks
+  // it - state only, no verdict (declared in UNEXERCISED below).
+  { hook: 'guard-unapproved-dispatch.js', event: 'SubagentStart', deny: false },
+  { hook: 'guard-unapproved-dispatch.js', event: 'SubagentStop', deny: false },
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
   // Every MCP server (a forge merge under any server key or plugin), replayed on forge tool names.
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', deny: true, pattern: '^mcp__.*',
@@ -98,6 +102,14 @@ const ROUTES = [
 // the point - it costs one line and a reason, and it keeps every UNDECLARED silence loud.
 // The evidence a declared route needs is proof the gate CAN fire: its own unit coverage.
 const UNEXERCISED = {
+  // Wired 2026-10-27 (the agent cap). Each judges the session's own cap files - a resume of a stopped seat, a start taking
+  // its pending file, a stop marking it - which a per-call replay never writes; all three are pinned in agent-cap.test.js.
+  'guard-unapproved-dispatch.js::PreToolUse:SendMessage':
+    'judged only against a stopped seat\'s cap file, which a per-call replay never writes; pinned in agent-cap.test.js',
+  'guard-unapproved-dispatch.js::SubagentStart':
+    'takes the pending file a dispatch wrote and prints at most a count line; pinned in agent-cap.test.js',
+  'guard-unapproved-dispatch.js::SubagentStop':
+    'marks the started agent\'s cap file and prints nothing - no verdict to replay; pinned in agent-cap.test.js',
   // Wired 2026-10-25 (mode-output-scorer). The seal acts only on an output-scorer seat's hand-back, a seat the corpus
   // predates; what it writes is pinned in guard-stop-closes.test.js ('scorer seal').
   'guard-stop-contract.js::PreToolUse:SubagentHandback':

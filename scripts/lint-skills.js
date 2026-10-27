@@ -1232,6 +1232,8 @@ const SETUP_ASK_TEMPLATES = {
     // a child install's scope ask and its local-scope git-hygiene ask, read only on `child=yes` (workspace layering,
     // 2026-10-26 - init-install.md is already past the Bash output cap, so a standalone install carries neither).
     'setup-plugin/references/init-child.md': 2,
+    // screen B's second call - the environment rows past the first four (ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27).
+    'setup-plugin/references/init-env-more.md': 1,
     // the instruction files' place, one template per `instructions:` case - read by init's step 1 and configure's step 12
     // (2026-10-21); +3: the name, one per `instructions-file:` files= case (the user's ask of 2026-10-21, after 2.9.0);
     // +1: update's rename-first name ask for a never-asked .claude/CLAUDE.md install (the user's rulings of 2026-10-22).
@@ -1293,9 +1295,18 @@ function setupAskFiles(root, fsLike = fs)
     }
     return files;
 }
+// A reference init reads with ONE `cat` is held at its size: init-install.md passed the Bash output cap (2026-10-27), so
+// a new screen-B call went into a reference of its own, and growing this file again would cut its tail off that read.
+const SETUP_SIZE_PINS = { 'setup-plugin/references/init-install.md': 31960 };
 function lintSetupAskPresence(files)
 {
     const findings = [];
+    for (const [rel, max] of Object.entries(SETUP_SIZE_PINS))
+    {
+        const f = files.find((x) => x.file === rel);
+        const bytes = f ? Buffer.byteLength(f.text, 'utf8') : 0;
+        if (bytes > max) findings.push(`${rel.split('/').pop()} is ${bytes} bytes, past its pin of ${max} - init reads it in one cat; trim it, or move the new part into a reference of its own`);
+    }
     for (const [rel, pinned] of Object.entries(SETUP_ASK_TEMPLATES))
     {
         const f = files.find((x) => x.file === rel);
@@ -3017,7 +3028,7 @@ function lintHooksEntry(liveIn)
         out.push(`the \`${wanted.name}\` core entry's hooks are STALE against the manifest's hooks table - run \`npm run marketplace\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js']);
+    const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'agent-cap.js']);
     const wired = new Set();
     for (const blocks of Object.values(stack))
         for (const block of blocks)
@@ -3203,11 +3214,11 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
         if (!keys.has(key)) { out.push(`scripts/install/settings.js special-cases ${key}, which environment.json does not list`); }
         if (!namedInSeed.has(key)) { out.push(`${key} is a catalog row, but scripts/install/settings.js does not name it - the special case moved or was removed`); }
     }
-    // init's install phase asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
-    // questions; a row with `asked_with` rides along with another row's question. Past four, the
-    // fifth question is silently dropped by the tool - so the cap is enforced here, at authoring time.
+    // init's install phase asks the `ask: true` rows on its environment screen, and the tool caps a call at four
+    // questions; a row with `asked_with` rides along with another row's question. The screen goes in calls of four, the
+    // second from init-env-more.md (2026-10-27, ALFRED_CODE_MAXIMUM_RUN_AGENTS), so past eight a question has no call.
     const asked = rows.filter(r => r.ask && !r.asked_with).length;
-    if (asked > 4) { out.push(`environment.json asks ${asked} questions on init's environment screen - the AskUserQuestion cap is 4; fold one row into another with asked_with, or stop asking it`); }
+    if (asked > 8) { out.push(`environment.json asks ${asked} questions on init's environment screen - init asks them in calls of four, at most two calls (8 rows); fold one row into another with asked_with, or stop asking it`); }
     // A rename in migrations.json must land on a key the catalog owns, or validate would offer to
     // migrate a value into a variable nothing reads.
     for (const m of (migrations && migrations.migrations) || [])

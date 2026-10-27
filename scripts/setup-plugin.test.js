@@ -1496,3 +1496,13 @@ test('update-close reads the cascade rows and runs check-loads only when cascade
     assert.match(close, /node "\$TMP\/repo\/scripts\/workspace\.js" check-loads --root <rel>/, 'check-loads per updated child');
     assert.match(close, /`updated` \/ `unchanged` \/ `failed` \/ `skipped` \/ `gone`/);
 });
+
+// ALFRED_CODE_MAXIMUM_RUN_AGENTS (2026-10-27): the AskUserQuestion tool takes four questions a call, so configure's
+// environment step asks its rows in calls of at most four, as init's screen B does (init-env-more.md holds its second).
+test('configure step 8 and init screen B ask the environment rows in calls of at most four', () => {
+    assert.match(flat(cmdBody('configure')), /in calls of at most four questions, in catalog order/);
+    const install = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'init-install.md'), 'utf8'));
+    assert.match(install, /in calls of at most four in catalog order - the rows past the first four in a second call, from `cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-env-more\.md"`/);
+    const more = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'init-env-more.md'), 'utf8');
+    assert.match(more, /^How many of a session's agents may run at once\?$/m);
+});

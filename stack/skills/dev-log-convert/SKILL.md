@@ -5,11 +5,11 @@ description: "Use when the user says 'dev-log' - converts a day's raw work notes
 
 # Dev log - raw notes to a past-tense work log
 
-You will receive text (Ukrainian, English, or mixed) describing work done during one or more days. Convert it into a concise English work log written in past tense.
+You will receive text (in any language, or mixed) describing work done during one or more days. Convert it into a concise English work log written in past tense.
 
 ## When to use
 
-Converts a day's raw work notes (Ukrainian, English, or mixed) into a structured, past-tense English work log - ticket IDs normalized, time totalled, tasks grouped by project or prefix across one or more days. Fires only on the exact keyword 'dev-log'. A request to log work read off the repo still starts from 'dev-log'.
+Converts a day's raw work notes (in any language, or mixed) into a structured, past-tense English work log - ticket IDs normalized, time totalled, tasks grouped by project or prefix across one or more days. Fires only on the exact keyword 'dev-log'. A request to log work read off the repo still starts from 'dev-log'.
 
 Do not use it for general note-taking, meeting minutes, commit messages, or status updates, which are not this format.
 
@@ -72,9 +72,9 @@ Total time: <sum across all groups>.
 **Language**
 - Default output language is English.
 - If the input is entirely in English, keep the output in English.
-- If the input is in Ukrainian or mixed Ukrainian/English, translate everything to English by default.
-- If the user explicitly asks to keep the output in Ukrainian (e.g. 'keep in Ukrainian', 'залиш українською', 'не перекладай', 'output in Ukrainian'), produce the log in Ukrainian instead. In that case, translate any English fragments in the input to Ukrainian for consistency. This preference applies only to the current request unless the user says otherwise.
-- Output only English or Ukrainian.
+- If the input is in another language, or mixed with English, translate everything to English by default.
+- If the user explicitly asks to keep the output in the notes' language (in any wording - 'keep it in <language>', 'don't translate', in English or in that language), produce the log in that language instead. In that case, translate any English fragments in the input to that language for consistency. This preference applies only to the current request unless the user says otherwise.
+- Output only English or the notes' language.
 - Use past tense only.
 - Each task summary is 1-2 short sentences.
 - Use a normal dash `-` instead of an em dash.
@@ -99,7 +99,7 @@ Total time: <sum across all groups>.
   A task with no time given at all simply takes `(time not specified)` - the placeholder covers a
   missing figure, the ask covers an invented split.
 - Normalize time to `h` for hours and `m` for minutes (e.g. `2h`, `30m`, `1h 30m`).
-- Accept Ukrainian variants in input: `г`, `год`, `гг`, `хв`, `хвил` - treat as hours/minutes accordingly.
+- Accept the notes' own unit words (hours, minutes and their abbreviations, in any language) and normalize them to `h` / `m`: the log prints `h` / `m` in every output language.
 - Accept decimal hours in input and convert: `0.25h` → `15m`, `0.5h` → `30m`, `0.75h` → `45m`, `1.25h` → `1h 15m`, `2.5h` → `2h 30m`.
 - Multi-ticket day granularity: one entry per ticket is not a safe default - mirror the granularity of the user's prior day-entries in the same log, and where no precedent exists, ask:
 
@@ -117,7 +117,7 @@ Total time: <sum across all groups>.
   node "$T" < "$LINES"
   ```
 
-  Feed it the exact lines the log will print, never re-typed or sample lines, and re-run it after any edit to a line. The `Total time` you print is copied from the `Total time:` line of that last run, never carried from an earlier run or from your own sum. It reads only the bracketed time after the ticket id (a duration in the summary never counts), normalizes the h/m, Ukrainian and decimal-hour spellings, compact or spaced (`1h15m`, `1г 15хв`), and counts a `(time not specified)` line as zero. Exit 2 with `UNREADABLE` names a bracketed time it could not read in full: respell it as `<n>h <n>m` and re-run - that run printed no total to take. Where neither path holds the script, re-add the times by hand and say the check was manual.
+  Feed it the exact lines the log will print, never re-typed or sample lines, and re-run it after any edit to a line. The `Total time` you print is copied from the `Total time:` line of that last run, never carried from an earlier run or from your own sum. It reads only the bracketed time after the ticket id (a duration in the summary never counts), normalizes the h/m and decimal-hour spellings, compact or spaced (`1h15m`, `1.5h`), reads any other unit word as unreadable, and counts a `(time not specified)` line as zero. Exit 2 with `UNREADABLE` names a bracketed time it could not read in full: respell it as `<n>h <n>m` and re-run - that run printed no total to take. Where neither path holds the script, re-add the times by hand and say the check was manual.
 
 **Task grouping within a day**
 - Keep only the main points - no extra explanations, no step-by-step process.
@@ -136,11 +136,11 @@ Total time: <sum across all groups>.
   - A task completed within the day (a fix applied or a feature fully implemented in that single day) with no mention of investigation, analysis or research opens with `Investigated <brief topic>.` before the fix sentence - a same-day fix began with finding the cause, and the log credits it.
   - Not when the task runs across several days, the summary already opens with an investigation verb, or the input mentions investigation or analysis.
 - Edge cases:
-  - Relative dates (`today`, `yesterday`, `сьогодні`, `вчора`): resolve to absolute `dd.mm.yyyy` from today's date (Mon-Sun, no weekend skip).
+  - Relative dates (`today`, `yesterday`, or the same words in the notes' language): resolve to absolute `dd.mm.yyyy` from today's date (Mon-Sun, no weekend skip).
   - Same ticket over several days: a separate line under each day with that day's time only - never summed across days.
   - A ticket's FIRST day-entry in a split (no earlier entry for it anywhere in this log) opens with a start verb (`Started`, `Investigated`, `Worked on`), never `Continued` - `Continued` is only for a later day of the same split.
   - A day with no work (vacation, sick leave, public holiday): the day header, then a single line `Off (<reason>).`, no `Total time`.
-  - A task with no action verb: prefix `Worked on` (English) or `Працював над` (Ukrainian).
+  - A task with no action verb: prefix `Worked on`, or its equivalent in the output language.
   - Time mismatch (bullets sum to a different total than the input states): trust the bullets and recompute `Total time` from them - never echo the input's total.
 
 **Multiple days**
@@ -177,10 +177,12 @@ Open each summary with a past-tense verb, and render recurring non-ticket items 
 
 ## Examples
 
-### Example 1 - single prefix, Ukrainian input
+### Example 1 - single prefix, shorthand notes
 
 Input:
-> Понеділок: ABC-1319 - 2г досліджував проблему з ротацією культур по ID поля, виправив обробку відсутніх записів, протестував. ABC-1320 - 30хв створив merge request. Нарада з командою - 1г.
+> mon: ABC-1319 - 2 hrs digging into crop rotation by field id problem, fixed missing records handling, tested. ABC-1320 - 30 min MR. team sync - 1 hr.
+
+Notes in any other language read the same way: translated, then shaped as below.
 
 Output:
 ```

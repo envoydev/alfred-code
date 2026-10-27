@@ -1,11 +1,11 @@
 # dev-log-convert - worked multi-prefix examples
 
-Example 1 (single-prefix day, Ukrainian input) lives in SKILL.md; these cover the grouping formats.
+Example 1 (single-prefix day, shorthand notes) lives in SKILL.md; these cover the grouping formats.
 
-## Example 2 - multi-prefix day, mixed-language input, no explicit project labels
+## Example 2 - multi-prefix day, terse notes, no explicit project labels
 
 Input:
-> Сьогодні: XYZ-7169 - 3г, переніс legend control на чарт, зробив half-view / full-view конфіг. XYZ-7205 - 2.5г, виправив issue з статусом job у JobScheduler. Daily standup - 15хв. ABC-1456 - 30хв, написав результат investigation у Confluence та Jira. Дзвінок з командою - 30хв.
+> today: XYZ-7169 - 3 hrs, legend control moved to chart, half-view / full-view config done. XYZ-7205 - 2.5 hrs, job status issue in JobScheduler fixed. Daily standup - 15 min. ABC-1456 - 30 min, investigation result written up in Confluence and Jira. call w/ team - 30 min.
 
 Output (groups labeled by prefix because no project name was given):
 ```

@@ -293,10 +293,10 @@ data-root change carries the docs with it and re-stamps the rule. Claude Code's 
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
 
-Show the CURRENT values read from the file - never assume the defaults - then one AskUserQuestion
-keep-or-change consent covering every row (keep - recommended; change, the new values via Other) -
-one question per row, and a row carrying `asked_with` rides along with the row it names rather than
-spending its own question. A row carrying `group_off` is ONE question for the whole FEATURE it owns
+Show the CURRENT values read from the file - never assume the defaults - then the keep-or-change consent
+covering every row (keep - recommended; change, the new values via Other) - one question per row, asked in calls
+of at most four questions, in catalog order (the tool takes four a call), and a row carrying `asked_with` rides
+along with the row it names rather than spending its own question. A row carrying `group_off` is ONE question for the whole FEATURE it owns
 - it and its riders: name each key with the value currently on disk, and give three answers - keep
 them (recommended), set your own (Other: one number per key, in the catalog's own order), or do not
 use the feature (which writes the row's `group_off` value to every key in the group). Only a row

@@ -114,6 +114,85 @@ if (cursorOff) process.exit(0);
     exit(code);
   };
 })();
+
+// --- ALFRED_CODE_MAXIMUM_RUN_AGENTS (the maximum-run-agents design of 2026-10-27) --------------------------------
+// How many of a session's agents may run at once, counted in agent-cap.js's per-session registry. The module is
+// required inside a try, so a copy without it runs every rule below unchanged. A dispatch this call's cap block passed
+// holds a pending file; any later exit 2 of the same call drops it, so a denied dispatch holds no slot. This wrapper
+// sits after the telemetry one and leaves it as it is.
+let agentCap = null;
+try { agentCap = require('./agent-cap.js'); } catch { /* no module: no cap */ }
+let capRelease = null;
+(() => {
+  const exit = process.exit;
+  process.exit = (code) => {
+    if (code === 2 && capRelease) { try { capRelease(); } catch { /* fail open */ } }
+    exit(code);
+  };
+})();
+// One denial, both routes: the block row's branch, the three lines, and `.denied` for the main session's Stop.
+const capDeny = (g, c) => {
+  global.BLOCK_DETAIL = { branch: 'agent-cap', running: c.running, cap: g.n };
+  if (!payload.agent_id) agentCap.markDenied(g.reg, c, g.n);
+  process.stderr.write(agentCap.denialText(c, g.n, { seat: Boolean(payload.agent_id) }));
+  process.exit(2);
+};
+const capProbe = (g) => agentCap.probeWriter(g.root, payload, path.basename(__filename));
+const capUnjudged = (g) => capProbe(g)('agent-cap-unjudged', 'probe: the agent cap could not take its lock or write its registry - the call passed unjudged');
+// The start and stop of an agent, and a SendMessage, exit here whether the cap judged or stood down - before every
+// dispatch rule below, where a payload with no subagent_type would read as general-purpose. Only a resume past the cap
+// is denied.
+if (payload.hook_event_name === 'SubagentStart' || payload.hook_event_name === 'SubagentStop') {
+  const g = agentCap && agentCap.capGates(payload, process.env);
+  if (g) {
+    const tp = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
+    const done = agentCap.withLock(g.reg, () => (payload.hook_event_name === 'SubagentStart'
+      ? agentCap.startAgent(g.reg, { agentId: payload.agent_id, type: payload.agent_type, transcript: agentCap.subagentTranscript(tp, payload.session_id, payload.agent_id) })
+      : agentCap.stopAgent(g.reg, { agentId: payload.agent_id, transcriptPath: payload.agent_transcript_path, sessionDir: tp ? path.dirname(tp) : '' })));
+    if (!done.ok) capUnjudged(g);
+  }
+  // A seat reads its number here, as the session reads it from its prompt context - nothing at the default 5.
+  const line = agentCap && payload.hook_event_name === 'SubagentStart' && !unsetRepo ? agentCap.startLine(process.env) : '';
+  if (line) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: line } }));
+  process.exit(0);
+}
+if (payload.tool_name === 'SendMessage') {
+  const g = agentCap && agentCap.capGates(payload, process.env);
+  const to = agentCap ? agentCap.cleanId((payload.tool_input || {}).to, { agent: true }) : '';
+  if (g && to) {
+    // A message to a STOPPED seat resumes it, so it is judged like a dispatch - one its registry file names, or any agent id
+    // once that file is gone (kept 2 minutes, or dropped by a Stop reconcile); a name, a teammate or a running agent passes.
+    const judged = agentCap.withLock(g.reg, () => {
+      const target = agentCap.readEntry(agentCap.fileOf(g.reg, 'R', to));
+      if (!target && !agentCap.AGENT_ID.test(to)) return null;
+      const c = agentCap.count(g.reg, { probe: capProbe(g) });
+      if (c.counted.has(`R-${to}`)) return null;
+      if (c.running >= g.n) return c;
+      agentCap.addPending(g.reg, payload.tool_use_id, { type: (target && target.type) || 'agent', parent: payload.agent_id || '' });
+      if (!payload.agent_id) agentCap.clearDenied(g.reg);
+      return null;
+    });
+    if (!judged.ok) capUnjudged(g);
+    else if (judged.value) capDeny(g, judged.value);
+  }
+  process.exit(0);
+}
+if (payload.tool_name === 'Agent' || payload.tool_name === 'Task') {
+  const g = agentCap && agentCap.capGates(payload, process.env);
+  if (g) {
+    const seatType = String((payload.tool_input || {}).subagent_type || 'general-purpose');
+    const judged = agentCap.withLock(g.reg, () => {
+      const c = agentCap.count(g.reg, { probe: capProbe(g) });
+      if (c.running >= g.n) return c;
+      const id = agentCap.addPending(g.reg, payload.tool_use_id, { type: seatType, parent: payload.agent_id || '' });
+      if (id) capRelease = () => agentCap.dropPending(g.reg, id);
+      if (!payload.agent_id) agentCap.clearDenied(g.reg);
+      return null;
+    });
+    if (!judged.ok) capUnjudged(g);
+    else if (judged.value) capDeny(g, judged.value);
+  }
+}
 const input = payload.tool_input || {};
 // An Agent call with no subagent_type runs the built-in general-purpose seat (the docs say so), so an
 // omitted field is judged as that seat - read as '', it walked past both generic gates.

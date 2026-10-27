@@ -156,7 +156,8 @@ test('grade: the ceiling adds the closable no rows, and stays at 60 under a BLOC
 // so the docs root is .alfred/docs).
 const kv = (r) => Object.fromEntries(r.stdout.split('\n').map((l) => /^([\w-]+): (.*)$/.exec(l)).filter(Boolean).map((m) => [m[1], m[2]]));
 // a score-file path names a file `start` never writes (the hand-back hook creates it with wx, R15), so its folder is resolved
-const real = (p) => (fs.existsSync(p) ? fs.realpathSync(p) : path.join(fs.realpathSync(path.dirname(p)), path.basename(p)));
+// native: the CLI and git name a Windows 8.3 temp dir in its long form, which the JS realpath would leave short
+const real = (p) => (fs.existsSync(p) ? fs.realpathSync.native(p) : path.join(fs.realpathSync.native(path.dirname(p)), path.basename(p)));
 const SCORER_DIR = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer');
 const dir = (slug) => path.join(SCORER_DIR, 'S', slug);
 const log = (slug) => path.join(dir(slug), 'rounds.log');

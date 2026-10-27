@@ -729,7 +729,10 @@ function resolveFile(token) {
 // it: time alone let a second session open on the same project honour the first one's answer, and a `*` lifted
 // the literal check there too (audit 2026-10-08). A reader with no session id keeps the time rule.
 const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
-const realOf = (p) => { try { return fs.realpathSync(p); } catch { return pathMod.resolve(p); } };
+// The native realpath first, as secret-chain.js and layout.js take it (a Windows 8.3 short name in one spelling and the
+// long name in the other matched no store); `realStrict` throws where the path does not exist.
+const realStrict = (p) => { try { return fs.realpathSync.native(p); } catch { return fs.realpathSync(p); } };
+const realOf = (p) => { try { return realStrict(p); } catch { return pathMod.resolve(p); } };
 const sessionIdOf = (v) => (typeof v === 'string' && /^[\w.-]{1,128}$/.test(v) ? v : '');
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
@@ -953,7 +956,7 @@ function isDataRootSecrets(file) {
   const ends = (p) => { const s = String(p).replace(/\\/g, '/').toLowerCase(); return s === tail || s.endsWith(`/${tail}`); };
   if (ends(file)) return true;
   let real;
-  try { real = fs.realpathSync(file); } catch { return false; }
+  try { real = realStrict(file); } catch { return false; }
   if (ends(real)) return true;
   if (baseOf(real).toLowerCase() !== SECRETS_FILE) return false;
   const at = real.toLowerCase();
@@ -1060,7 +1063,7 @@ if (process.argv[2] === '--with-sensitive') {
   const sources = Object.keys(chain.files).map((rel) => [rel, keys.filter((k) => chain.from[k] === rel)]).filter(([, ks]) => ks.length);
   if (sources.length === 1 && sources[0][0] === '.') process.stderr.write(`# with-sensitive: ${keys.length} value(s) from ${chain.files['.']} in the environment (${keys.join(', ')}), each shown as <KEY> in this output\n`);
   else if (sources.length) {
-    const shown = (f) => pathMod.relative(process.cwd(), f).split(pathMod.sep).join('/');
+    const shown = (f) => pathMod.relative(realOf(process.cwd()), realOf(f)).split(pathMod.sep).join('/');
     process.stderr.write(`# with-sensitive: ${keys.length} value(s) in the environment (${sources.map(([rel, ks]) => `${shown(chain.files[rel])}: ${ks.join(', ')}`).join('; ')}), each shown as <KEY> in this output\n`);
   }
   const { spawn } = require('child_process');

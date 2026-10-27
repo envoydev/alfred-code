@@ -21,13 +21,13 @@ const TRIO_OWNER = 'stack/skills/task-solve-cross/references/domain-trio-protoco
 const TRIO_COPIES = [TRIO_OWNER, ...['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage', 'task-build-from-scratch']
     .map((s) => `stack/skills/${s}/references/domain-trio-protocol.md`)];
 
-// ---- BLOCKER 1 (C1, D4): the vendored trio fan-out obeys the 3-at-once cap -------------------------------------
-test('BLOCKER 1: every trio protocol copy fans out up to 3 at once, never "expose all of it"', () => {
+// ---- BLOCKER 1 (C1, D4): the vendored trio fan-out obeys the agent cap ------------------------------------------
+test('BLOCKER 1: every trio protocol copy fans out up to the agent cap at once, never "expose all of it"', () => {
     for (const file of TRIO_COPIES) {
         const text = flat(read(file));
         assert.doesNotMatch(text, /all in parallel, from the main session/, `${file}: the uncapped fan-out is gone`);
         assert.doesNotMatch(text, /your job is to expose all of it/, `${file}: the uncapped fan-out is gone`);
-        assert.match(text, /up to 3 at once \(more only on the user's ask\), queueing the rest as seats return/, `${file}: the cap`);
+        assert.match(text, /up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once \(default 5\), queueing the rest as seats return/, `${file}: the cap`);
         assert.match(text, /Fan out every task the designer marked independent, not a token two\./, `${file}: still fans out every independent task`);
     }
     for (const file of TRIO_COPIES.slice(1)) assert.strictEqual(read(file), read(TRIO_OWNER), `${file} is a verbatim copy of the owner`);

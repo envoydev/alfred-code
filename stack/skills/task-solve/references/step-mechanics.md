@@ -28,7 +28,7 @@ Two build modes, the recommendation decided per plan by the `Execution:` verdict
 
 - **session** - `task-implement` runs the tasks in this chat. Fits when the tasks are few,
   serial, or one stack's.
-- **agents** - each task card goes to its stack's `<stack>-implementer` seat, up to 3 at once,
+- **agents** - each task card goes to its stack's `<stack>-implementer` seat, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5),
   frontmatter models unless the user names one. Fits when the plan holds independent tasks that
   can build in parallel (the measured multi-slice exception: built inline, such a plan cost a
   multiple of its dispatched build).

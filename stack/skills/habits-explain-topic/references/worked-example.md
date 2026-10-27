@@ -42,7 +42,7 @@ The structure below shows the shape and density, not real project code - your sn
 >
 > A promise stored where a value belongs stays a ticket, however long you wait - only `await` or `then` hands over the coat.
 
-**Concept mode (Ukrainian request):** same five-part shape, but step 3 carries two labeled lines - **Головна ідея:** (the mental model) and **Підводний камінь:** (the gotcha) - and step 4 shows a real call flowing through rather than a bug fix.
+**Concept mode (a request in another language):** same five-part shape, written in that language, but step 3 carries two labeled lines - the main idea (the mental model) and the gotcha, each label in that language - and step 4 shows a real call flowing through rather than a bug fix.
 
 **Compare mode:** step 2 walks one short path per approach (A then B) from real code, step 3 is **The verdict:** (when A wins, when B wins, the deciding axis, then a one-line recommendation), and step 4 puts the key differing lines of A and B side by side.
 

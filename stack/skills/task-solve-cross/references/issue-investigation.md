@@ -29,7 +29,7 @@ The strict rule:
 
 ```text
 Diagnose before coding.
-Evidence-gatherers may run in parallel (read-only).
+Evidence-gatherers may run in parallel (read-only), up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5).
 Implementers do not start until the diagnosis is proven or the fix route is explicitly approved.
 When the fix dispatches, the task card embeds the diagnosis report VERBATIM - root cause, files,
 evidence, fix plan - never a pointer to it: a fix seat that re-derives the diagnosis pays for the
@@ -130,7 +130,7 @@ If a fix changes a shared contract, the issue flow uses the same BLOCKED_CONTRAC
 
 ## Parallelism
 
-Parallel is encouraged in the evidence-gathering phase (reproduce, logs/traces, backend path, frontend path, DB schema, CI/runtime) - all read-only. Parallel CODING before diagnosis is forbidden: no backend, frontend, and data implementer all fixing at once before the root cause is known. Independent fix experiments are allowed only when explicitly sandboxed and not committed.
+Parallel is encouraged in the evidence-gathering phase (reproduce, logs/traces, backend path, frontend path, DB schema, CI/runtime) - all read-only, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5). Parallel CODING before diagnosis is forbidden: no backend, frontend, and data implementer all fixing at once before the root cause is known. Independent fix experiments are allowed only when explicitly sandboxed and not committed.
 
 ## Final report
 
