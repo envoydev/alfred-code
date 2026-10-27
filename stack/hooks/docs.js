@@ -51,6 +51,10 @@ function envOf(env, suffix)
     return value === '' ? undefined : value;
 }
 
+// The stack's variables (D4) set on the process env before the first read (layout.js, copied beside this engine); an
+// older copy route has no loader.
+try { const loader = require('./layout.js'); loader.applyVariables(process.env.CLAUDE_PROJECT_DIR || loader.projectRootOf(process.cwd()).checkout); }
+catch { /* the process env as it stands */ }
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const DOCS_ROOT = path.resolve(ROOT, docsRootEnv());

@@ -176,7 +176,10 @@ function ensureRootIgnore({ projectDir, root, env = process.env })
     const file = path.join(base, '.gitignore');
     if (fs.existsSync(file)) return 'present';
     const docsPath = settingFrom({ env, projectDir, suffix: 'DOCS_PATH' }) || `${root}/docs`;
-    const mode = String(settingFrom({ env, projectDir, suffix: 'DOCS_VERSIONING' }) || '').trim().toLowerCase();
+    // The docs mode is one of the stack's variables (D4): the hooks' loader reads it, the project's .variables first.
+    let mode = '';
+    try { mode = String(require(path.join(__dirname, '..', 'hooks', 'layout.js')).variablesOf(projectDir, { env }).values.ALFRED_CODE_DOCS_VERSIONING || '').trim().toLowerCase(); }
+    catch { /* no loader beside it: the committed shape */ }
     fs.mkdirSync(base, { recursive: true });
     // `wx`: another run at the same moment may have written it - its file stands.
     try { fs.writeFileSync(file, dataIgnoreText({ root, docsPath, mode }), { flag: 'wx' }); }

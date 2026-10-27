@@ -26,6 +26,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
+// The stack's variables (D4) set on the process env before the first read: the hooks' loader, at ../../../hooks/ in the
+// plugin and in a project's .claude/ (bundle-gate.js's route); a copy with no loader beside it reads the env as it is.
+try
+{
+    const loader = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
+    loader.applyVariables(process.env.CLAUDE_PROJECT_DIR || loader.projectRootOf(process.cwd()).checkout);
+}
+catch { /* the process env as it stands */ }
 
 const BLOCKER_CAP = 60;
 const SELF_CAP = 99;

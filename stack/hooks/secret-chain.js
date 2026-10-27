@@ -12,43 +12,12 @@ const layout = require('./layout.js');
 // The two names of a project's store, `.secrets` first (secret-file-names in meta/shared-rules.json).
 const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);
 
-// The guard's dotenv reader, copied: guard-sensitive-data.test.js holds the guard, data-root.js and this to one fixture.
-const DOTENV_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
-const unquote = (v) => v.trim().replace(/^(["'])(.*)\1$/, '$2');
-const LINES = /\r?\n/;
-const COMMENT_LINE = /^\s*(?:[#;]|$)/;
-const swap16 = (buf) => Buffer.from(buf.subarray(0, buf.length - (buf.length % 2))).swap16();
-// A store is text in the encoding its writer chose: a BOM decides it; without one, NUL bytes on every other position of
-// the first 64 bytes and none on the rest decide UTF-16.
-function readText(file)
-{
-    const buf = fs.readFileSync(file);
-    if (buf[0] === 0xff && buf[1] === 0xfe) return buf.subarray(2).toString('utf16le');
-    if (buf[0] === 0xfe && buf[1] === 0xff) return swap16(buf.subarray(2)).toString('utf16le');
-    const head = buf.subarray(0, 64);
-    if (head.length >= 4)
-    {
-        let even = 0;
-        let odd = 0;
-        for (let i = 0; i < head.length; i++) if (head[i] === 0) { if (i % 2) odd++; else even++; }
-        const half = head.length >> 1;
-        if (even === 0 && odd >= half * 0.9) return buf.toString('utf16le');
-        if (odd === 0 && even >= half * 0.9) return swap16(buf).toString('utf16le');
-    }
-    return buf.toString('utf8').replace(/^\uFEFF/, '');
-}
-// { KEY: value } of one store; {} when it cannot be read.
+// { KEY: value } of one store, through layout.js's dotenv reader (the `.variables` grammar is this one); {} when it
+// cannot be read. guard-sensitive-data.test.js holds the guard, data-root.js and this to one fixture.
 function readStore(file)
 {
-    const out = {};
-    let text = '';
-    try { text = readText(file); } catch { return out; }
-    for (const line of text.split(LINES))
-    {
-        const m = line.match(DOTENV_LINE);
-        if (m && !COMMENT_LINE.test(line)) out[m[1]] = unquote(m[2]);
-    }
-    return out;
+    const read = layout.readDotenv(file);
+    return read ? read.values : {};
 }
 
 const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };

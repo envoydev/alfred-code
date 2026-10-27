@@ -60,6 +60,10 @@ const path = require('node:path');
 // <docs>/flow/ is still read for the 2.x line, and is the only path when layout.js is not there.
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+// The stack's variables (D4): each winner of `<data root>/.variables`, the settings and the linked members' files set on
+// the process env once, before any hook reads one - for CLAUDE_PROJECT_DIR, else the project the cwd sits in.
+try { if (layout && layout.applyVariables) layout.applyVariables(process.env.CLAUDE_PROJECT_DIR || layout.projectRootOf(process.cwd()).checkout); }
+catch { /* the process env as it stands */ }
 
 // STDOUT AND STDERR BLOCK. Node writes a pipe ASYNCHRONOUSLY on macOS, and process.exit() drops whatever the
 // pipe has not taken yet: measured 2026-10-10, the secret guard's rewrite of a 100 KB command reached its reader

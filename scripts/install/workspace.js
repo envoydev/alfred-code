@@ -167,20 +167,11 @@ function removeIgnore(model, category, name)
 // ------------------------------------------------------------------ the switch
 
 // ALFRED_CODE_WORKSPACE, a catalog row the installers never write. OFF until 3.0.0 (the user's answer of 2026-10-27):
-// only a `1` turns it on. The settings env that applies here (settings.local.json over settings.json) wins over the
-// launch env, since a session applies a settings `env` over its launch env - a launch `1` cannot thaw a settings `0` -
-// and a launch `0` freezes it whatever a settings file says. An unreadable settings file holds nothing.
+// only a `1` turns it on. The hooks' loader decides it (layout.js workspaceOn): a launch `0` freezes it, else
+// settings.local.json, the project's .variables, then the settings env over the launch env.
 function workspaceOn({ env = {}, projectRoot })
 {
-    if (String(env.ALFRED_CODE_WORKSPACE) === '0') return false;
-    const valueIn = (name) =>
-    {
-        const data = readJson(path.join(projectRoot, '.claude', name));
-        return data && data.env && typeof data.env === 'object' ? data.env.ALFRED_CODE_WORKSPACE : undefined;
-    };
-    const local = valueIn('settings.local.json');
-    const value = local !== undefined ? local : valueIn('settings.json');
-    return String(value !== undefined ? value : env.ALFRED_CODE_WORKSPACE) === '1';
+    return require('../../stack/hooks/layout.js').workspaceOn({ env, projectRoot });
 }
 
 // ------------------------------------------------------------------ the file

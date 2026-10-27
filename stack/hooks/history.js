@@ -21,6 +21,9 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.en
 // <docs-path>/history/ is still read for the 2.x line, and is the only home when layout.js is not there.
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 history/ */ }
+// The stack's variables (D4) set on the process env before the first read; an older copy route has no loader.
+try { if (layout && layout.applyVariables) layout.applyVariables(process.env.CLAUDE_PROJECT_DIR || layout.projectRootOf(process.cwd()).checkout); }
+catch { /* the process env as it stands */ }
 const legacyHistoryDir = (root) => path.resolve(root, docsRootEnv(), 'history');
 const historyDir = (root) => (layout ? path.dirname(layout.statePath(root, 'history', 'x.json')) : legacyHistoryDir(root));
 // A session's record: where it already is (a session an older hook started keeps its legacy one), else the new home.

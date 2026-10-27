@@ -24,6 +24,14 @@ const { spawnSync } = require('node:child_process');
 const prefs = require('./preferences.js');
 const client = require('./mcp-client.js');
 const lsp = require('./lsp-coverage.js');
+// The stack's variables (D4) set on the process env before the first read: the hooks' loader, at ../../../hooks/ in the
+// plugin and in a project's .claude/ (bundle-gate.js's route); a copy with no loader beside it reads the env as it is.
+try
+{
+    const loader = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
+    loader.applyVariables(process.env.CLAUDE_PROJECT_DIR || loader.projectRootOf(process.cwd()).checkout);
+}
+catch { /* the process env as it stands */ }
 
 const TOOLS_DOC = 'TOOLS-PREFERENCES.md';
 // The doc's cap. The main session gets every entry at every start, and each rank's Load clause spells its tools in full,
