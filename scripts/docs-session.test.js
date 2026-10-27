@@ -6,7 +6,10 @@ require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // its per-sessio
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
-const { repo, section } = require('./docs-fixture');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const { repo, section, HOOKS } = require('./docs-fixture');
 
 let n = 0;
 const sid = () => `docs-test-${process.pid}-${++n}`;
@@ -2657,4 +2660,47 @@ test('a dead Scope with no preferences engine beside the hooks adds nothing (AC2
     r.git('rm', '-qf', 'src/Gone/x.cs', 'src/Gone/y.cs');
     assert.deepStrictEqual([run(stopEv(s)).stdout], [''], 'fail-open: no engine, no line');
   } finally { r.rm(); fs.rmSync(hooks, { recursive: true, force: true }); }
+});
+
+// R5 (release 3): a linked child's start names each ancestor's docs root and its areas, read-only.
+function wsDocs({ rootAreas = ['architecture', 'preferences'], childArch = true, childFile = 'parent ..\n' } = {}) {
+  const top = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-ws-')));
+  const put = (rel, text) => { const f = path.join(top, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+  put('ws/.claude/alfred-code.stamp', 'sha: x\n');
+  put('ws/.alfred/workspace', 'child api\n');
+  for (const a of rootAreas) put(`ws/.alfred/docs/${a}/${a === 'architecture' ? 'ARCHITECTURE.md' : 'watch.json'}`, a === 'architecture' ? '# A\n' : '{}\n');
+  put('ws/.alfred/docs/references/watch.json', '{}\n');
+  put('ws/api/.claude/alfred-code.stamp', 'sha: x\n');
+  put('ws/api/.alfred/workspace', childFile);
+  if (childArch) put('ws/api/.alfred/docs/architecture/ARCHITECTURE.md', '# Api\n');
+  const api = path.join(top, 'ws', 'api');
+  spawnSync('git', ['init', '-q'], { cwd: api });
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: api, CLAUDE_CONFIG_DIR: path.join(top, 'cfg') };
+  for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_WORKSPACE', 'ALFRED_CODE_DATA_PATH']) delete env[k];
+  const hook = (payload, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'docs-session.js')], { cwd: api, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid(), cwd: api, ...payload }), encoding: 'utf8', env: { ...env, ...extra } });
+  return { docs: path.join(top, 'ws', '.alfred', 'docs'), hook, rm: () => fs.rmSync(top, { recursive: true, force: true }) };
+}
+
+test('a child\'s start names the root\'s docs root and areas, read-only; a child with no domain of its own still gets the line', () => {
+  const w = wsDocs();
+  const bare = wsDocs({ childArch: false });
+  try {
+    const out = w.hook({});
+    assert.ok(ctx(out).includes(`Workspace root docs (read-only): ${w.docs} - architecture, preferences`), out.stdout + out.stderr);
+    const alone = ctx(bare.hook({}));
+    assert.strictEqual(alone.split('\n')[0], `Workspace root docs (read-only): ${bare.docs} - architecture, preferences`);
+    assert.doesNotMatch(alone, /How this project is documented/);
+  } finally { w.rm(); bare.rm(); }
+});
+
+test('no workspace docs line: a root with no domain, a seat\'s start, the kill switch, ignore docs root', () => {
+  const none = wsDocs({ rootAreas: [] });
+  const w = wsDocs();
+  const ig = wsDocs({ childFile: 'parent ..\nignore docs root\n' });
+  try {
+    assert.doesNotMatch(ctx(none.hook({})) || '', /Workspace root docs/);
+    assert.doesNotMatch(ctx(w.hook({ agent_id: 'seat-1' })) || '', /Workspace root docs/);
+    assert.doesNotMatch(ctx(w.hook({}, { ALFRED_CODE_WORKSPACE: '0' })) || '', /Workspace root docs/);
+    assert.doesNotMatch(ctx(ig.hook({})) || '', /Workspace root docs/);
+  } finally { none.rm(); w.rm(); ig.rm(); }
 });

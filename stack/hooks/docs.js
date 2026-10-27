@@ -2152,7 +2152,7 @@ function adrNew(title) {
 }
 
 module.exports = {
-  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, HOOK_FOOTER, BRANCHES, domains, domainDir, resetDomains,
+  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, HOOK_FOOTER, BRANCHES, RESERVED_DOMAIN_NAMES, domains, domainDir, resetDomains,
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
   parse, sections, allSections, where, namingSections, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,

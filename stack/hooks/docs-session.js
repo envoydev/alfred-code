@@ -285,6 +285,30 @@ const log = (root, input, row) => {
   } catch {}
 };
 
+// R5 (release 3): each linked ancestor whose docs root holds a domain, nearest first, named read-only - main session
+// only, a seat works from its brief. The areas follow docs.js domains()'s rule, read here: that module is bound to
+// this project's own docs root.
+function workspaceDocsLines(input, root, docs) {
+  if (input.agent_id || !layout || typeof layout.ancestorPrefsDirs !== 'function') return [];
+  let dirs = [];
+  try { dirs = layout.ancestorPrefsDirs(root); } catch { return []; }
+  const reserved = docs.RESERVED_DOMAIN_NAMES || new Set();
+  const out = [];
+  for (const { dir } of dirs) {
+    const docsRoot = path.dirname(dir);
+    let areas = [];
+    try {
+      areas = fs.readdirSync(docsRoot, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !reserved.has(e.name))
+        .map((e) => e.name)
+        .filter((n) => n === 'architecture' || fs.existsSync(path.join(docsRoot, n, 'watch.json')))
+        .sort();
+    } catch { /* no docs root there */ }
+    if (areas.length) out.push(`Workspace root docs (read-only): ${docsRoot} - ${areas.join(', ')}`);
+  }
+  return out;
+}
+
 function orientation(root, docs) {
   let block = '';
   try { block = fs.readFileSync(docs.BLOCK_FILE, 'utf8').trim(); } catch {}
@@ -338,7 +362,7 @@ function sessionStart(input, root, docs, state) {
   let st = null;
   try { st = docs.status(); } catch {}
   const lines = orientation(root, docs);
-  const extra = [];
+  const extra = workspaceDocsLines(input, root, docs);
   for (const p of landed) {
     const ok = p.results.filter((x) => x.result !== 'conflict');
     const bad = p.results.filter((x) => x.result === 'conflict');
@@ -417,7 +441,12 @@ function main() {
   // whole-hook gate reads every domain, not one hardcoded folder. An empty list is still the right reason to
   // return: nothing under the docs root declares itself a domain. A RECOMPUTED domain (docs.js recomputed - quality/'s
   // assessment, rewritten from the code at each capture) does not count: alone it gets no start block, gate or ask.
-  if (!durableOf(docs).length) return;
+  if (!durableOf(docs).length) {
+    // R5: a child with no domain of its own still learns where its workspace root's docs are.
+    const ws = event === 'SessionStart' && !docsOff('block') ? workspaceDocsLines(input, root, docs) : [];
+    if (ws.length) emit('SessionStart', ws.join('\n'));
+    return;
+  }
   const state = loadState(input.session_id);
   if (event === 'SessionStart') return sessionStart(input, root, docs, state);
   if (event === 'SubagentStart') return subagentStart(input, root, docs);
