@@ -3,9 +3,12 @@
 // sections with covers and merged into a recomputed quality/watch.json, each sibling's seam and the run book merge
 // their entries through `docs.js watch-merge`, and no shipped text still calls quality/ watch-less.
 const test = require('node:test');
+
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // AC18 spawns the docs hook
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { repo, section } = require('./docs-fixture');
 
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -99,4 +102,58 @@ test('AC10: no capture-preferences text tells a capture to write watch entries f
                 hits.push(`${f}:${i + 1}`);
         });
     assert.deepStrictEqual(hits, []);
+});
+
+// AC18: the capture's own steps, with no model - a hand-built assessment in the D3 shape, its entries merged through
+// watch-merge from no quality/watch.json, the two checks the capture runs, and the close ask a change then brings. A
+// durable architecture/ domain sits beside it: a docs root whose only domain is recomputed runs no docs hook (spec D4).
+test('AC18: a hand-built assessment passes the capture\'s checks', () =>
+{
+    const r = repo({ tracked: true, files: { 'src/Invoicing/InvoiceBuilder.cs': 'class InvoiceBuilder {}\n', 'src/Orders/Order.cs': 'class Order {}\n', 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/boot.md': section('entry', 'src/Api/Program.cs', 'Program.cs wires every module.'), 'watch.json': JSON.stringify({ watch: [{ kind: 'root', globs: ['src/Api/Program.cs'], sections: ['boot#entry'] }] }) } });
+    const Q = '.claude/docs/quality';
+    const doc = [
+        '# Architecture assessment', '',
+        '## Strengths', '<!-- id: strengths -->', '',
+        '### S1 - Orders owns its persistence behind one module', '<!-- id: orders-owns-its-persistence-behind-one-module -->',
+        '<!-- covers: src/Orders/** -->', 'Orders keeps its tables behind its own module.', '',
+        '## Must-fix', '<!-- id: must-fix -->', '',
+        '### W1 - Invoicing queries Orders\' persistence entities across the module boundary',
+        '<!-- id: invoicing-queries-orders-persistence-entities-across-the-module-boundary -->',
+        '<!-- covers: src/Invoicing/InvoiceBuilder.cs, src/Orders/Order.cs -->',
+        'InvoiceBuilder reads Order directly. located: Invoicing/InvoiceBuilder -> Orders.Order', '',
+        '## Summary', '<!-- id: summary -->', '1 strength, 1 must-fix.', '',
+    ].join('\n');
+    const W1 = 'ARCHITECTURE-ASSESSMENT#invoicing-queries-orders-persistence-entities-across-the-module-boundary';
+    const S1 = 'ARCHITECTURE-ASSESSMENT#orders-owns-its-persistence-behind-one-module';
+    const entries = [
+        { kind: 'weakness: invoicing reads orders entities', globs: ['src/Invoicing/InvoiceBuilder.cs', 'src/Orders/Order.cs'], sections: [W1] },
+        { kind: 'strength: orders owns its persistence', globs: ['src/Orders/**'], sections: [S1] },
+    ];
+    try
+    {
+        assert.ok(!r.exists(`${Q}/watch.json`), 'the run starts from no quality/watch.json');
+        r.write(`${Q}/ARCHITECTURE-ASSESSMENT.md`, doc);
+        const seed = '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"]}';
+        const merged = r.cli(['watch-merge', 'quality', '--seed', seed, '--kinds', 'weakness: ', 'strength: '], JSON.stringify(entries));
+        assert.strictEqual(merged.status, 0, merged.stdout + merged.stderr);
+        assert.match(merged.stdout, /^watch-merge quality: kept 0, replaced 0 with 2$/m);
+        const watch = JSON.parse(r.read(`${Q}/watch.json`));
+        assert.strictEqual(watch.recomputed, true);
+        assert.deepStrictEqual(watch.notOwned, ['CODE-ASSESSMENT.md', 'references/**']);
+
+        const lint = r.cli(['lint', 'quality']);
+        assert.match(lint.stdout, /^0 problems, /m, lint.stdout);
+        const hit = r.cli(['watch', 'src/Invoicing/InvoiceBuilder.cs']);
+        assert.ok(hit.stdout.includes(`weakness: invoicing reads orders entities: src/Invoicing/InvoiceBuilder.cs -> ${W1}`), hit.stdout);
+
+        r.git('add', '-A'); r.git('commit', '-qm', 'capture');
+        const s = `ac18-${process.pid}`;
+        r.hook({ hook_event_name: 'SessionStart', session_id: s });
+        r.hook({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Bash', tool_input: { command: 'npm run generate' } });
+        r.write('src/Invoicing/InvoiceBuilder.cs', 'class InvoiceBuilder { int total; }\n');
+        const out = r.hook({ hook_event_name: 'Stop', session_id: s, stop_hook_active: false });
+        const reason = out.stdout ? JSON.parse(out.stdout).reason : '';
+        assert.deepStrictEqual([...reason.matchAll(/ set (\S+) --expect/g)].map((m) => m[1]), [W1], reason);
+    }
+    finally { r.rm(); }
 });
