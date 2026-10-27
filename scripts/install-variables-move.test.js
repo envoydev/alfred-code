@@ -13,6 +13,7 @@ const rt = require('./install/runtime.js');
 const layout = require('../stack/hooks/layout.js');
 const variables = require('./install/variables.js');
 const stampLib = require('./install/stamp.js');
+const { DATA_IGNORE_HEAD } = require('../stack/mcp/data-root.js');
 const { seedRun, POSIX_ONLY, releaseExport, skipWithout } = require('./seed-sandbox.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -435,6 +436,21 @@ test('a configure set where the user\'s .alfred/ line ignores the data root writ
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('variables.ignoreVerdict: a data-root .gitignore the user wrote is not the stack\'s own, so the keys stay in settings.json', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-own-'));
+    try
+    {
+        rt.execCommand('git', ['init', '-q', dir]);
+        fs.mkdirSync(path.join(dir, '.alfred'));
+        // ensureDataIgnore keeps a file without the stack's head as it is, so nothing re-includes .variables there.
+        fs.writeFileSync(path.join(dir, '.alfred', '.gitignore'), '*\n');
+        assert.deepStrictEqual(variables.ignoreVerdict(dir, '.alfred'), { ignored: true, source: '.alfred/.gitignore', line: 1, own: false });
+        assert.match(variables.ignoredLine('.alfred', variables.ignoreVerdict(dir, '.alfred')), /add !\/\.variables to \.alfred\/\.gitignore/, 'the hint names the file that ignores it');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('variables.ignoreVerdict reads -q for the verdict and -v only for the rule\'s name', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
@@ -442,7 +458,7 @@ test('variables.ignoreVerdict reads -q for the verdict and -v only for the rule\
     {
         rt.execCommand('git', ['init', '-q', dir]);
         fs.mkdirSync(path.join(dir, '.alfred'));
-        fs.writeFileSync(path.join(dir, '.alfred', '.gitignore'), '# alfred\n/*\n!/.gitignore\n');
+        fs.writeFileSync(path.join(dir, '.alfred', '.gitignore'), `${DATA_IGNORE_HEAD}\n/*\n!/.gitignore\n`);
         assert.deepStrictEqual(variables.ignoreVerdict(dir, '.alfred'), { ignored: true, source: '.alfred/.gitignore', line: 2, own: true }, 'the data root\'s own file, which the run re-includes');
         fs.writeFileSync(path.join(dir, '.alfred', '.gitignore'), '# alfred\n/*\n!/.gitignore\n!/.variables\n');
         assert.deepStrictEqual(variables.ignoreVerdict(dir, '.alfred'), { ignored: false });
@@ -450,8 +466,8 @@ test('variables.ignoreVerdict reads -q for the verdict and -v only for the rule\
         assert.deepStrictEqual(variables.ignoreVerdict(dir, '.alfred'), { ignored: true, source: '.gitignore', line: 2, own: false });
         fs.writeFileSync(path.join(dir, '.gitignore'), 'x\n');
         fs.mkdirSync(path.join(dir, 'sub', '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'sub', '.alfred', '.gitignore'), '/*\n');
-        assert.deepStrictEqual(variables.ignoreVerdict(path.join(dir, 'sub'), '.alfred'), { ignored: true, source: 'sub/.alfred/.gitignore', line: 1, own: true }, 'a project below the repository top');
+        fs.writeFileSync(path.join(dir, 'sub', '.alfred', '.gitignore'), `${DATA_IGNORE_HEAD}\n/*\n`);
+        assert.deepStrictEqual(variables.ignoreVerdict(path.join(dir, 'sub'), '.alfred'), { ignored: true, source: 'sub/.alfred/.gitignore', line: 2, own: true }, 'a project below the repository top');
         const none = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-nogit-'));
         try { assert.deepStrictEqual(variables.ignoreVerdict(none, '.alfred'), { ignored: false }); }
         finally { fs.rmSync(none, { recursive: true, force: true }); }

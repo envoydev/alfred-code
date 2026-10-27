@@ -15,6 +15,7 @@ const { SECRET_SHAPE, PEM_PRIVATE } = require('../credential-shapes.js');
 const { parseJson } = require('./json-file.js');
 const { sleepMs, takeLock } = require('./file-lock.js');
 const stamp = require('./stamp.js');
+const { DATA_IGNORE_HEAD } = require('../../stack/mcp/data-root.js');
 
 const FILE = '.variables';
 const LOCAL = 'settings.local.json';
@@ -126,8 +127,8 @@ function tracked(file)
 
 // D6's verdict on `<dataRoot>/.variables`: `git check-ignore -q` decides (exit 0: ignored) - `-v` exits 0 on a negated
 // match too, so it only names the rule: { ignored: false } | { ignored: true, source?, line?, own? }. `own` says the rule
-// is the data root's own .gitignore, the stack's file, which the install re-includes `.variables` in. No git, or no
-// repository: not ignored.
+// is the data root's own .gitignore AND the stack's text (its head), which the install re-includes `.variables` in - a
+// file the user wrote there is kept as it is (docs.ensureDataIgnore), so it is not. No git, or no repository: not ignored.
 function ignoreVerdict(projectRoot, dataRoot)
 {
     const root = String(dataRoot).replace(/\\/g, '/').replace(/\/+$/, '');
@@ -140,7 +141,10 @@ function ignoreVerdict(projectRoot, dataRoot)
     // -v names a .gitignore from the repository's top, never the cwd.
     const real = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
     const top = String(git(['rev-parse', '--show-toplevel']).stdout || '').trim();
-    const own = Boolean(top) && real(path.resolve(top, m[1])) === real(path.join(projectRoot, ...root.split('/'), '.gitignore'));
+    const mine = path.join(projectRoot, ...root.split('/'), '.gitignore');
+    let head = '';
+    try { head = fs.readFileSync(mine, 'utf8'); } catch { /* the rule's file is elsewhere */ }
+    const own = Boolean(top) && real(path.resolve(top, m[1])) === real(mine) && head.startsWith(DATA_IGNORE_HEAD);
     return { ignored: true, source: m[1], line: Number(m[2]), own };
 }
 // A data root change (--data-path) carries the file, as workspace.js moveWorkspace carries the workspace file - before the
@@ -162,8 +166,13 @@ function carry({ projectRoot, from, to, log = () => {} })
 }
 
 // The line D6 prints for an ignored file.
-const ignoredLine = (dataRoot, verdict) => `!! variables: ${dataRoot}/${FILE} is ignored by ${verdict.source ? `${verdict.source}:${verdict.line}` : 'a git rule'}`
-    + ` - the keys are kept in settings.json; ignore /${dataRoot}/* and re-include !/${dataRoot}/${FILE}, then update`;
+const ignoredLine = (dataRoot, verdict) =>
+{
+    const src = String(verdict.source || '');
+    const inRoot = src === `${dataRoot}/.gitignore` || src.endsWith(`/${dataRoot}/.gitignore`);
+    return `!! variables: ${dataRoot}/${FILE} is ignored by ${src ? `${src}:${verdict.line}` : 'a git rule'} - the keys are kept in settings.json; `
+        + (inRoot ? `add !/${FILE} to ${dataRoot}/.gitignore, then update` : `ignore /${dataRoot}/* and re-include !/${dataRoot}/${FILE}, then update`);
+};
 
 // The project's settings.local.json: its parsed object, or null when absent or unparseable (D4 step 2 skips it).
 function localSettings(projectRoot)
