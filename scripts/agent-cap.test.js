@@ -162,6 +162,26 @@ test('the lock: held past 1.5 s fails, older than 5 s is broken (AC8)', () =>
     assert.ok(!fs.existsSync(lock));
 });
 
+// CI on windows-2025, 2026-10-27: 8 dispatches at cap 5 let 6 through. A lock another process is deleting while a third
+// stats it sits 'delete pending' on Windows, and an exclusive create of it fails EPERM (EBUSY on a sharing violation),
+// not EEXIST - read as 'no lock to take', the dispatch passed unjudged. Both wait like a held lock.
+test('the lock: a create refused EPERM or EBUSY waits like a held lock (Windows delete-pending)', () =>
+{
+    const { reg } = freshReg();
+    const lock = path.join(reg.dir, `AGENT-CAP-${reg.sid}.lock`);
+    const open = fs.openSync;
+    const refusals = ['EPERM', 'EBUSY'];
+    fs.openSync = (file, ...rest) =>
+    {
+        if (file === lock && refusals.length) throw Object.assign(new Error('refused'), { code: refusals.shift() });
+        return open(file, ...rest);
+    };
+    try { assert.deepStrictEqual(cap.withLock(reg, () => 3), { ok: true, value: 3 }); }
+    finally { fs.openSync = open; }
+    assert.deepStrictEqual(refusals, [], 'both refusals were retried');
+    assert.ok(!fs.existsSync(lock));
+});
+
 // Final review I1: a lock whose stat fails - released between the failed create and the stat, or a dangling link - read as
 // infinitely old, so a waiter deleted whatever lock a third process had just taken and both ran inside. A failed stat
 // now waits like a held lock. A dangling symlink is the deterministic stand-in: the exclusive create sees it, the stat
