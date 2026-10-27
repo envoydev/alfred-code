@@ -159,7 +159,7 @@ Each fix has its regression test; the runs above are from after the last fix.
 
 ## Release 3 - docs, preferences and memory for a child
 
-Run 2026-10-27 on `develop` at `38743e0` (3.0.0, unreleased) against the spec's release 3 (D3, sections 2.2-2.3,
+Run 2026-10-27 on `develop` at `16adf9e` (3.0.0, unreleased) against the spec's release 3 (D3, sections 2.2-2.3,
 AC24-AC26, AC29's release 3 bullets, AC31). The setup is release 1's: a clean export of this tree as every
 `--source`, a throwaway tree, `CLAUDE_CONFIG_DIR` and `HOME` per case, the `claude` stub. The old tree is
 `git archive 884b933c`, release 2's last commit.
@@ -171,9 +171,9 @@ AC24-AC26, AC29's release 3 bullets, AC31). The setup is release 1's: a clean ex
 | S | `node --test` over the suites each task touched, in the tree (the ledger's per-task lines) | layout-workspace 24/24, preferences-session 79/79, docs-session 130/130, guard-hooks 209/210 (the one failure needs a project outside `/tmp`; it fails at `884b933` too), install-workspace + install-settings-writer + install-stamp, setup-plugin + workspace-cli 120/120 |
 | S' | the same suites inside the export, 19 files | 965: 957 pass, 4 skipped, 4 environmental (no `.git` in the export, a `/tmp` root, a `node_modules` link the run added) |
 | F | the final review's fix pass, in the tree | layout-workspace, guard-hooks, install-workspace, preferences-session, docs-session, workspace-cli, layout-variables, install-variables: 24, 210 (the one `/tmp` case above), 56, 79, 130, 31, 26, 16 - every new test RED first |
-| M | `node docs/workspace-layering-matrix/ws-matrix-r3.js <export> <884b933c tree> <claude>` | 26/26 (R3-1a to R3-9, R3-10 and R3-11 from the fix pass, R3-8 a logged-out `claude -p` 2.1.311 start) |
+| M | `node docs/workspace-layering-matrix/ws-matrix-r3.js <export> <884b933c tree> <claude>` | 27/27 on `16adf9e` (R3-1a to R3-9; R3-10 and R3-11 from the review's fix pass, R3-12 the custom memory folder; R3-8 a logged-out `claude -p` 2.1.311 start) |
 | P | `node docs/workspace-layering-matrix/memory-probe.js <claude>` (A5) | macOS 8/8 on 2.1.311; Windows 8/8 case-folded on 2.1.309 (the evidence doc's 'Release 3 - A5') |
-| Gate | `npm run gate` on the 3.0.0 commit | in the release's own record: it runs once over releases 2 and 3 |
+| Gate | `npm run gate` | on `5d02141`: macOS and Linux 2 failures each, fixed in `fca9e84` (below); the gate on the final commit is the release's |
 
 ### Found and fixed - release 3
 
@@ -193,6 +193,13 @@ AC24-AC26, AC29's release 3 bullets, AC31). The setup is release 1's: a clean ex
     alone.
   - The evidence doc said the deny covers every past-200 match. It covers none, because the child's own list holds
     them all. The doc now says so; it is a deferred minor in the ledger.
+- **The custom memory folder - `16adf9e`.** A project's `autoMemoryDirectory` outside the account folder went down
+  the guard's ordinary cross-project route, so Claude's memory saves there stopped. The guard now opens the folder
+  when the account or managed settings name it, never a project's own settings file, which a clone can carry to name
+  `~/.ssh`. A folder holding the project or the home folder opens nothing.
+- **The first 3.0.0 gate - `fca9e84`.** A release 3 comment used a phrase the docs-watch sweep bans, and the hooks-doc
+  check banned 'seventeen' anywhere in the footprint, which now counts seventeen references. It bans it as a hook
+  count only.
 
 ### Per acceptance criterion - release 3
 
@@ -205,4 +212,5 @@ AC24-AC26, AC29's release 3 bullets, AC31). The setup is release 1's: a clean ex
 | AC31 Write, Edit and a Bash `echo >>` from a child into the root's memory denied, naming its own; the root's own session passes | PASS | S (guard-hooks, the release 3 memory cases); M (R3-1g, R3-5, R3-10, R3-11b) |
 | Install rows: fresh, re-run, update over release 2, the user's own rows, garbage input, every scope | PASS | M (R3-1a, R3-1b, R3-2, R3-3, R3-4, R3-5, R3-6 at project, user and local) |
 | The final review's I1, I2 and M3 | PASS after `38743e0` | S (the four new tests, each RED first); M (R3-10, R3-11a, R3-11b) |
+| The custom memory folder: the account's setting opens it, a repo's settings never | PASS after `16adf9e` | S (guard-hooks, layout-workspace, each RED first); M (R3-12) |
 | Windows | the gate's Windows leg | this matrix runs on macOS; the gate runs every suite there |
