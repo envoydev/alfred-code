@@ -3104,7 +3104,10 @@ function lintAgentPreloads()
 // 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what the core
 // ships - so a hand-edited path list, description or dependency is drift. The core is the one PLUGIN,
 // exactly as generated. A `renames` key or a hooks entry is a finding: 2.0.0 ships neither (S11/S16,
-// and the fold). `liveIn` is a parsed marketplace for a test; the lint reads the committed file.
+// and the fold). An entry fetched from OUTSIDE this repo (an object `source`: `github`, `url`,
+// `git-subdir`, ...) ships none of its files, so it is the marketplace's, not the placement's - the
+// hand-written `preferred-tools` entry (plugins.js foreignEntry, which uninstall reads too). `liveIn` is
+// a parsed marketplace for a test; the lint reads the committed file.
 function lintMarketplaceEntries(liveIn)
 {
     const findings = [];
@@ -3135,7 +3138,7 @@ function lintMarketplaceEntries(liveIn)
     // An MCP server entry has its own check (53: the stack ships none).
     for (const p of live.plugins || [])
     {
-        if (!p || generated.has(p.name) || build.mcpEntry(p)) continue;
+        if (!p || generated.has(p.name) || build.mcpEntry(p) || require('./install/plugins.js').foreignEntry(p)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
         else if (Object.hasOwn(require('./install/manifest.js').loadManifest(ROOT).renamed.mcps, p.name))

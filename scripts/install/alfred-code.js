@@ -382,7 +382,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const effective = (rows) => plugins.withEffective(rows, engineOn({ configDir, claudeDir }));
             listing = effective(plugins.parsePluginList(raw, projectRoot));
             selection.dropFormerPicks({ listing, lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions, log, said: formerSaid });
-            const stackListing = effective(plugins.parsePluginList(raw, projectRoot, { marketplace: market }));
+            const foreign = plugins.foreignEntries(resolved.dir);
+            const stackListing = effective(plugins.parsePluginList(raw, projectRoot, { marketplace: market })).filter((r) => !foreign.has(r.name));
             const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
             const back = selection.readBack({
                 claudeDir, skillsDir,
@@ -2168,7 +2169,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
         const manifest = loadManifest(path.join(__dirname, '..', '..'));
         uninstallLayer.removePlugins({
             rows: plugins.parsePluginList(rawList, projectRoot, { everyScope: true }), market, scope,
-            thirdParty: [...manifest.catalogs.plugins, ...CORE_DEP_PLUGINS], cli, log, note,
+            thirdParty: [...manifest.catalogs.plugins, ...CORE_DEP_PLUGINS], foreign: plugins.foreignEntries(path.join(__dirname, '..', '..')), cli, log, note,
         });
         // Never the bare form: with no --scope the CLI removes the declaration from EVERY scope and uninstalls every
         // plugin installed from it (a session ran it and lost four plugins other projects used - 2026-10-06 report).

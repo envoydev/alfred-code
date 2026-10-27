@@ -110,10 +110,11 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, in
 
 // The stack's plugin rows (`rows`: every scope's, parsePluginList everyScope) at this install's scope. A
 // dependency is refused while its dependent is installed, so a refusal is retried once the pass has
-// taken everything else - as many passes as there are rows at most.
-function removePlugins({ rows = [], market, scope, thirdParty = [], cli, log = () => {}, note = () => {} })
+// taken everything else - as many passes as there are rows at most. A `foreign` name (plugins.foreignEntries) is the
+// marketplace's own plugin, not the stack's, and is left installed.
+function removePlugins({ rows = [], market, scope, thirdParty = [], foreign = new Set(), cli, log = () => {}, note = () => {} })
 {
-    const ours = rows.filter((r) => r.marketplace === market && r.version);
+    const ours = rows.filter((r) => r.marketplace === market && r.version && !foreign.has(r.name));
     let left = [];
     for (const r of ours)
     {

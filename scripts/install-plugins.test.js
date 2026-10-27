@@ -341,16 +341,18 @@ test('update and install: a stack row already at the snapshot\'s release is not 
     assert.strictEqual(P.atRelease(rows, 'alfred-code@envoydev', 'user', release), false, 'a scope the row is not at is no match');
 });
 
-test('source: EVERY installed stack entry is updated at its own scope before the snapshot is read', () =>
+test('source: the core is updated at each of its scopes before the snapshot is read, and nothing else the catalog lists', () =>
 {
-    // Not the core alone: the entry Claude Code launches is read from the refreshed catalog, so an
-    // entry left on the older version can name a file that version's cache does not carry (the serena
-    // launcher over a 1.1.0 cache) - and a run that stops at a question never reaches its apply step.
+    // The core is the stack's one entry since 2.10.1: a retired one (alfred-navigation, the hooks entry) is pruned by
+    // the same run, and preferred-tools - listed in the same catalog from its own repo - is the user's, updated on its
+    // own (the user's ruling of 2026-10-27).
     const run = cli();
     const refreshed = new Set();
     P.refreshStackSource({
         listing: [
             { name: 'alfred-code', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: true },
+            { name: 'alfred-code', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
+            { name: 'preferred-tools', marketplace: 'envoydev', version: '0.1.0', scope: 'project', enabled: true },
             { name: 'alfred-navigation', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
             { name: 'alfred-navigation', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
             { name: 'alfred-code-hooks', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
@@ -361,8 +363,7 @@ test('source: EVERY installed stack entry is updated at its own scope before the
         'plugin marketplace add envoydev/alfred-code',
         'plugin marketplace update envoydev',
         'plugin update alfred-code@envoydev --scope user -y',
-        'plugin update alfred-navigation@envoydev --scope project -y',
-        'plugin update alfred-code-hooks@envoydev --scope project -y',
+        'plugin update alfred-code@envoydev --scope project -y',
     ]);
     assert.ok(refreshed.has('envoydev'), 'the later passes must not refresh it again');
 });
@@ -828,7 +829,7 @@ test('plugin-list: everyScope keeps one row per name@marketplace@scope, so a cor
     assert.deepStrictEqual(rows.map((r) => r.scope).sort(), ['project', 'user'], 'another project\'s row is still dropped');
 });
 
-test('source: a core under another key - that key is refreshed and every row under it updated by its OWN id', () =>
+test('source: a core under another key - that key is refreshed and the core updated under it', () =>
 {
     const run = cli();
     const listing = [NEW_CORE('user'), { ...NEW_CORE('project'), name: 'alfred-navigation' }, { ...NEW_CORE('project'), name: 'serena', marketplace: 'claude-plugins-official' }];
@@ -837,8 +838,7 @@ test('source: a core under another key - that key is refreshed and every row und
     assert.deepStrictEqual(run.calls, [
         `plugin marketplace update ${KEY}`,
         `plugin update alfred-code@${KEY} --scope user -y`,
-        `plugin update alfred-navigation@${KEY} --scope project -y`,
-    ], 'no registration of the default key, and no row of another marketplace');
+    ], 'no registration of the default key, no retired entry under it, and no row of another marketplace');
 });
 
 test('source: a fresh account registers the stack and takes the key the add produced', () =>

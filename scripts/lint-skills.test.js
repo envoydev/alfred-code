@@ -790,6 +790,14 @@ test('check 49: the live file is clean, and a stale RETIRED alias, a renames key
     const hooks = liveMarketplace();
     hooks.plugins.push({ name: 'alfred-code-hooks', source: './', description: 'x', hooks: {} });
     assert.ok(lintMarketplaceEntries(hooks).some((f) => /alfred-code-hooks.*folded into the core/.test(f)), 'a hooks entry is a finding');
+
+    // An entry fetched from outside the repo is the marketplace's own; a hand entry inside the repo is still drift.
+    const foreign = liveMarketplace();
+    foreign.plugins.push({ name: 'other-tool', source: { source: 'github', repo: 'envoydev/other-tool' }, description: 'x' });
+    assert.deepStrictEqual(lintMarketplaceEntries(foreign), [], 'an object-sourced entry is not the placement\'s');
+    const inside = liveMarketplace();
+    inside.plugins.push({ name: 'stray', source: './stray', description: 'x' });
+    assert.ok(lintMarketplaceEntries(inside).some((f) => /carries stray, which the placement does not produce/.test(f)), 'a relative-path hand entry is a finding');
 });
 
 test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {

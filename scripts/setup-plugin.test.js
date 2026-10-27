@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+const { foreignEntry } = require('./install/plugins.js');
 
 const ROOT = path.join(__dirname, '..');
 const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
@@ -19,7 +20,8 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     assert.ok(core, 'the core entry must survive every generator run');
     assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided commands ship from the core - init and uninstall among them');
     assert.ok(core.commands.includes('./setup-plugin/commands/init.md') && !core.commands.includes('./setup-plugin/commands/setup.md'), 'setup merged into init (2026-10-17)');
-    for (const p of mp.plugins)
+    // preferred-tools is fetched from its own repo (plugins.js foreignEntry): the marketplace's plugin, not the stack's.
+    for (const p of mp.plugins.filter((x) => !foreignEntry(x)))
     {
         assert.strictEqual(p.source, './', `${p.name} shares the repo root as its source`);
         assert.strictEqual(p.strict, false, `${p.name} carries no plugin.json of its own`);
@@ -725,7 +727,7 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, run
 // the placeholder is resolved here against the layout the cache actually has.
 test('every path a shipped body cites through ${CLAUDE_PLUGIN_ROOT} exists in the installed layout', () => {
     const mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    for (const entry of mkt.plugins) assert.strictEqual(entry.source, './', `${entry.name} is not sourced from the repo root - resolve its paths against its own source`);
+    for (const entry of mkt.plugins.filter((x) => !foreignEntry(x))) assert.strictEqual(entry.source, './', `${entry.name} is not sourced from the repo root - resolve its paths against its own source`);
     const bodies = [];
     const walk = (dir) => {
         for (const e of fs.readdirSync(dir, { withFileTypes: true }))

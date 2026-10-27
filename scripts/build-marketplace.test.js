@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { buildEntries, coreEntry, applyToMarketplace, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
-const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
+const { CORE_DEP_PLUGINS, foreignEntry } = require('./install/plugins.js');
 
 const SCRIPT = path.join(__dirname, 'build-marketplace.js');
 const run = (args, opts = {}) => execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts });
@@ -196,12 +196,13 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
     // plugin that depends on nothing can never be disabled at load by a missing one, and one that names
     // the core blocks each core disable while it is on (I7) - an alias naming the 2.x core is unmet for
     // the not-yet-updated installs it exists for (I6). An MCP entry carries servers and nothing else,
-    // which is how applyMcpPlugins recognises one. Everything else must reach the core, or enabling it
-    // would not enable the baseline.
+    // which is how applyMcpPlugins recognises one. An entry fetched from outside this repo (preferred-tools,
+    // plugins.js foreignEntry) is the marketplace's own plugin, not a part of the stack. Everything else must
+    // reach the core, or enabling it would not enable the baseline.
     const mcpOnly = (p) => p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'alfred-code' || mcpOnly(e)) continue;
+        if (e.name === 'alfred-code' || mcpOnly(e) || foreignEntry(e)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)

@@ -385,12 +385,11 @@ function stackMarket({ listing = [], marketplaces = [], readMarketplaces, cli, e
 
 // Before the run reads its snapshot: the snapshot IS the newest core entry in the plugin cache, and
 // only `plugin update` puts a newer one there - a refreshed catalog alone leaves the cache where it
-// was, so the run would install the release it is replacing. EVERY installed stack entry, not the
-// core alone: Claude Code launches an entry as the marketplace clone declares it (measured,
-// docs/uv-python-pin-evidence.md), so after this refresh an entry left on its older version can name
-// a file that version does not carry - and a run that stops at a question never reaches the apply
-// step that would update it. Each at its OWN scope, because `plugin update --scope <other>` is a
-// silent no-op. `listing` may be a function, read once.
+// was, so the run would install the release it is replacing. The CORE alone, at every scope it is
+// installed at: since 2.10.1 it is the stack's one entry (lint 45), every other one it shipped is retired
+// and pruned by this same run, and any other plugin the catalog lists - preferred-tools, from its own repo
+// - is the user's, updated on its own (the user's ruling of 2026-10-27). Each at its OWN scope, because
+// `plugin update --scope <other>` is a silent no-op. `listing` may be a function, read once.
 // Returns the marketplace key the run uses.
 function refreshStackSource({ listing = [], marketplaces = [], readMarketplaces, cli, refreshed = new Set(), log = () => {}, env = {} })
 {
@@ -399,7 +398,7 @@ function refreshStackSource({ listing = [], marketplaces = [], readMarketplaces,
     refreshMarketplaces({ plugins: [`${BRAND.core}@${market}`], cli, refreshed });
     for (const row of rows)
     {
-        if (row.marketplace !== market || !row.version || !row.scope) continue;
+        if (row.name !== BRAND.core || row.marketplace !== market || !row.version || !row.scope) continue;
         log(`plugin update [${row.scope}]: ${row.name}@${market} (before the snapshot is read)`);
         cli(['plugin', 'update', `${row.name}@${market}`, '--scope', row.scope, '-y'], { quiet: true });
     }
@@ -801,6 +800,19 @@ function parseMarketplaces(json)
     catch { return []; }
 }
 
+// The names the stack's marketplace lists from OUTSIDE this repo - an object `source` (`github`, `url`, ...), the
+// hand-written preferred-tools entry. They are the marketplace's plugins, not the stack's: a row of one under the stack
+// key is never uninstalled with the stack nor read back as a stack entry. Read from the snapshot's own marketplace.json;
+// one that cannot be read names none.
+const foreignEntry = (e) => Boolean(e && e.source && typeof e.source === 'object');
+function foreignEntries(sourceDir)
+{
+    let entries;
+    try { entries = parseJson(fs.readFileSync(path.join(sourceDir, '.claude-plugin', 'marketplace.json'), 'utf8')).plugins; }
+    catch { return new Set(); }
+    return new Set((Array.isArray(entries) ? entries : []).filter(foreignEntry).map((e) => e.name));
+}
+
 // The plugins THIS project's settings switch on that no install record reaches (audit 2026-10-10, session 758ce661: a
 // project's settings enabled a browser engine, the capabilities rule listed it, and the only record was another
 // project's - the session had no browser tools and nothing said why). The settings' word is effectiveOn's, over the
@@ -865,7 +877,7 @@ module.exports = {
     pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, dropStaleRetired, retirementDue, updatePlugins, extraMarketplaces,
-    copyRouteStandDown, restoreStoodDown, standDownScope, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins,
+    copyRouteStandDown, restoreStoodDown, standDownScope, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins, foreignEntry, foreignEntries,
 };
 
 // `node scripts/install/plugins.js unreached [projectRoot] [--listing <file>] [--marketplaces <file>]` -
