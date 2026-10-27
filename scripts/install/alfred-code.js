@@ -667,7 +667,12 @@ function runLayers(ctx)
     // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
     if (!ctx.docsRootPending)
     {
-        docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
+        // The engine this run copies (HOOK_ENGINES, from the snapshot - never this installer's own tree, which --source can
+        // differ from): its text decides whether the docs-watch way back runs (docs.revertRecomputed). No text, no run.
+        let engineText = null;
+        try { engineText = fs.readFileSync(path.join(ctx.source.dir, 'stack', 'hooks', 'docs.js'), 'utf8'); }
+        catch { /* an unreadable engine keeps the way back dormant */ }
+        docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), engineText, log: ctx.log });
         // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
         try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }

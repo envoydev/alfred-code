@@ -241,6 +241,57 @@ test('migration: an absent docs root is nothing to do, never a crash', () =>
         { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS, preferences: PREFS_RESULT('none') });
 });
 
+// The way back (the docs-watch design, Rollout; AC19): a code revert alone would leave a recomputed quality/watch.json
+// for an engine that reads it as an ordinary domain, so the migration deletes it - but only beside an engine with no
+// refRecomputed, which makes it dormant in the release that ships it.
+const ENGINE_TEXT = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'docs.js'), 'utf8');
+const OLD_ENGINE = "'use strict';\n// an engine from before recomputed domains\nfunction watchOfUncached() { return {}; }\n";
+const RECOMPUTED = '{\n  "recomputed": true,\n  "notOwned": ["CODE-ASSESSMENT.md", "references/**"],\n  "watch": []\n}\n';
+const qualityOf = (root) => path.join(root, '.claude/docs/quality');
+const qualityFiles = (root) => Object.fromEntries(fs.readdirSync(qualityOf(root)).sort().map((f) => [f, fs.readFileSync(path.join(qualityOf(root), f), 'utf8')]));
+
+test('migration dormant beside this engine: a recomputed quality/watch.json is byte-identical after', () =>
+{
+    const root = project({ files: { '.claude/docs/quality/watch.json': RECOMPUTED, '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# a\n' } });
+    docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', engineText: ENGINE_TEXT });
+    assert.strictEqual(fs.readFileSync(path.join(qualityOf(root), 'watch.json'), 'utf8'), RECOMPUTED);
+    assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: ENGINE_TEXT }), false);
+});
+
+test('the way back: beside an engine with no refRecomputed only a recomputed quality/watch.json goes, nothing else changes', () =>
+{
+    const root = project({ files: {
+        '.claude/docs/quality/watch.json': RECOMPUTED,
+        '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# a\n',
+        '.claude/docs/quality/CODE-ASSESSMENT.md': '# c\n',
+    } });
+    const before = qualityFiles(root);
+    const logs = [];
+    docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', engineText: OLD_ENGINE, log: (m) => logs.push(m) });
+    const after = qualityFiles(root);
+    delete before['watch.json'];
+    assert.deepStrictEqual(after, before, 'only watch.json left quality/');
+    assert.ok(logs.some((l) => /quality\/watch\.json removed/.test(l)), 'the removal is said');
+    // A second run has nothing left to remove.
+    assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: OLD_ENGINE }), false);
+});
+
+test('the way back: a watch.json without the key, an unparseable one, no engine text and no quality/ are left alone', () =>
+{
+    const plain = project({ files: { '.claude/docs/quality/watch.json': '{\n  "watch": []\n}\n' } });
+    const falsy = project({ files: { '.claude/docs/quality/watch.json': '{"recomputed":"yes"}\n' } });
+    const garbage = project({ files: { '.claude/docs/quality/watch.json': '{not json' } });
+    const unread = project({ files: { '.claude/docs/quality/watch.json': RECOMPUTED } });
+    for (const [root, text] of [[plain, OLD_ENGINE], [falsy, OLD_ENGINE], [garbage, OLD_ENGINE], [unread, null]])
+    {
+        const before = qualityFiles(root);
+        assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: text }), false, root);
+        assert.deepStrictEqual(qualityFiles(root), before, root);
+    }
+    for (const root of [project(), path.join(TMP, 'no-docs-root-2')])
+        assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: OLD_ENGINE }), false);
+});
+
 // 2026-10-10: a 0.2.x project kept the orientation doc loose at the docs root - its pre-folder home - and the data
 // move carried it to .alfred/docs/ that way; only its capture moved it, and a capture never re-runs by itself. Its
 // always-on pointer rule and the project's AGENTS.md named the loose path, so a bare move would leave them dangling.

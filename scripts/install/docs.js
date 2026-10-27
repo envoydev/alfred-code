@@ -187,7 +187,7 @@ function lastHome(to)
 
 // `rules` are the generated rules (selection.generatedRules), `instructions` the project's own AGENTS.md /
 // CLAUDE.md files to name - see repointDocs.
-function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = [], instructions = [], log = () => {}, spawn = spawnSync })
+function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = [], instructions = [], engineText = null, log = () => {}, spawn = spawnSync })
 {
     // resolve, not join: a docs root the user set may be absolute (migrateUsageReport and migratePlans read it so too)
     const base = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''));
@@ -210,7 +210,31 @@ function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = []
         if (switchOnDomain(path.join(base, dir), doc, { log })) switched.push(dir);
     const repointed = repointDocs({ projectRoot, docsPath, base, rules, instructions, log });
     const awareness = migrateAwareness({ projectRoot, base, docsPath, rules, log });
+    revertRecomputed({ projectRoot, docsPath, engineText, log });
     return { moved, switched, repointed, awareness, preferences };
+}
+
+// The way back (the docs-watch design, Rollout): an engine from before recomputed domains reads a recomputed
+// quality/watch.json as an ordinary domain - it would vote on versioning, take branch overlays and compete for ask
+// slots. So beside such an engine, and only there, the file goes and nothing else does; the capture writes it again
+// if recomputed domains return. The probe is the TEXT of the engine this run copies (`engineText`), never a require,
+// since loading docs.js resolves the docs root. Dormant while that engine knows refRecomputed, and on no text at all.
+function revertRecomputed({ projectRoot, docsPath, engineText, log = () => {} })
+{
+    if (typeof engineText !== 'string' || /\brefRecomputed\b/.test(engineText)) return false;
+    const file = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''), 'quality', 'watch.json');
+    let data;
+    try { data = parseJson(fs.readFileSync(file, 'utf8')); }
+    catch { return false; }
+    if (!data || typeof data !== 'object' || Array.isArray(data) || data.recomputed !== true) return false;
+    try { fs.rmSync(file); }
+    catch (err)
+    {
+        log(`  !! docs migration (quality): ${file} could not be removed (${err.code || err.message}) - delete it by hand, this engine reads it as an ordinary domain`);
+        return false;
+    }
+    log('  docs migration (quality): quality/watch.json removed - this engine has no recomputed domains; /capture-architecture-quality writes it again when they return');
+    return true;
 }
 
 // A section ref is spelled `KEY#id`, `KEY.md#id` or with its folder in front; a key inside a longer one is no ref
@@ -1610,7 +1634,7 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,
 };
