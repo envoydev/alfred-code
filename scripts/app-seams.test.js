@@ -83,3 +83,11 @@ test('fix-discipline climbs the seam rung second', () =>
     assert.ok(steps[4].startsWith('5. Can it be one line?'));
     assert.ok(steps[5].startsWith('6. Only then: the minimum code that works.'));
 });
+
+// ---- Task 5: the always-on line ---------------------------------------------------------------------------------------
+test('every session binds a stated want as its general rule', () =>
+{
+    const rule = read('stack/rules/alfred-preferences.md');
+    assert.ok(rule.includes('binds as the general rule behind it'), 'the lift is always on');
+    assert.ok(rule.includes('\'Every case like it\' marked (Recommended)'), 'the ask recommends the general rule');
+});
