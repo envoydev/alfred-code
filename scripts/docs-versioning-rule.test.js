@@ -89,7 +89,10 @@ function build(sc, home)
 }
 const settingsFile = (repo) => path.join(repo, '.claude', 'settings.json');
 const writeEnv = (repo, env) => { fs.mkdirSync(path.join(repo, '.claude'), { recursive: true }); fs.writeFileSync(settingsFile(repo), `${JSON.stringify({ env }, null, 2)}\n`); };
-const readValue = (repo) => JSON.parse(fs.readFileSync(settingsFile(repo), 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING;
+// Since 3.0.0 the decision lives in the data root's .variables (the variables writer picks the file); the stamp reads it
+// through the team layers, so the test writes and reads it the same way.
+const writeHeld = (repo, value) => require('./install/variables.js').set(repo, [`ALFRED_CODE_DOCS_VERSIONING=${value}`], { scope: 'project', team: true, log: () => {} });
+const readValue = (repo) => require('../stack/hooks/layout.js').variablesOf(repo, { env: {}, layers: 'team' }).values.ALFRED_CODE_DOCS_VERSIONING;
 
 // The engine: its own resolver, the declared value (if any) handed in the environment exactly as the hook gets it.
 function viaEngine(sc)
@@ -107,7 +110,8 @@ function viaStamp(sc)
 {
     const { repo, docsPath } = build(sc, 'stamp');
     const held = sc.declared || 'git';
-    writeEnv(repo, { ALFRED_CODE_DOCS_PATH: docsPath, ALFRED_CODE_DOCS_VERSIONING: held });
+    writeEnv(repo, { ALFRED_CODE_DOCS_PATH: docsPath });
+    writeHeld(repo, held);
     const seeded = sc.declared ? (sc.declared === 'git' ? 'local' : 'git') : held;
     execFileSync(process.execPath, [STAMP, repo, '--reprobe-versioning', seeded], { encoding: 'utf8' });
     return readValue(repo);

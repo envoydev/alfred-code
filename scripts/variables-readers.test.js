@@ -51,7 +51,8 @@ const SETTINGS_READER = /\b(settingFrom|readBackSettings|readSettings)\(/;
 function scanned()
 {
     return execFileSync('git', ['ls-files', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean)
-        .filter((f) => !f.endsWith('.test.js') && !f.startsWith('scripts/fixtures/') && !WHOLE.has(f))
+        // the release matrices are test harnesses: they write 2.12.0-shaped settings on purpose, to update over them
+        .filter((f) => !f.endsWith('.test.js') && !f.startsWith('scripts/fixtures/') && !f.startsWith('docs/workspace-layering-matrix/') && !WHOLE.has(f))
         .filter((f) => { const t = fs.readFileSync(path.join(ROOT, f), 'utf8'); return SETTINGS_FILE.test(t) || SETTINGS_READER.test(t); });
 }
 
