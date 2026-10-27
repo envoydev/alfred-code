@@ -537,7 +537,8 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held && !sharedKeys.includes(key);
     const present = (key) => key in env || key in beneath;
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
-    const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
+    // A decision's line names the file the value lands in: a moved key's is .variables (seedLabel), as its seed line says.
+    const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: seedAt(key), mine: true });
 
     if (foldEnv(env, migrations, log, label, { alsoInto: held, alsoLabel: overlayLabel })) changed = true;
     if (offWithTiers(env, migrations, log, label, { stackWrote, absentOk: (key) => !present(key) && !(held && key in held) })) changed = true;

@@ -107,6 +107,22 @@ test('AC7: the user\'s own .alfred/ line keeps the keys in settings.json and nam
     assert.match(out, /!! variables: \.alfred\/\.variables is ignored by \.gitignore:2 - the keys are kept in settings\.json; ignore \/\.alfred\/\* and re-include !\/\.alfred\/\.variables, then update/, out);
 });
 
+// A decision the run takes for a moved key (`--docs-versioning`, `--memory`, `--auto-compact`) lands in .variables, and its
+// line names that file - a line naming settings.json sent the reader to a file that no longer holds the key.
+test('an update\'s --docs-versioning and --memory lines name .variables, where the values land', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], SEL, {
+        plugins: PLUGINS, args: [[], ['--installed-only', '--docs-versioning', 'local', '--memory', 'custom']],
+        each: (repo) => ({ vars: varsOf(repo), env: envIn(repo, 'settings.json') }),
+    });
+    assert.match(outs[1], /^==> {3}\.variables env: ALFRED_CODE_DOCS_VERSIONING 'git' -> 'local' \(--docs-versioning\)$/m, outs[1]);
+    assert.match(outs[1], /^==> {3}\.variables env: ALFRED_CODE_MEMORY '[a-z]+' -> 'custom'/m, outs[1]);
+    assert.doesNotMatch(outs[1], /settings\.json env: ALFRED_CODE_(DOCS_VERSIONING|MEMORY)\b/);
+    assert.strictEqual(steps[1].vars.ALFRED_CODE_DOCS_VERSIONING, 'local');
+    assert.strictEqual(steps[1].vars.ALFRED_CODE_MEMORY, 'custom');
+    assert.ok(!Object.hasOwn(steps[1].env, 'ALFRED_CODE_DOCS_VERSIONING') && !Object.hasOwn(steps[1].env, 'ALFRED_CODE_MEMORY'));
+});
+
 // AC17: the guard key never moves (D7) - a fresh install over a settings file that holds it, and an update over v2.12.0.
 const OFF = 'ALFRED_CODE_HOOKS_OFF';
 const putOff = (repo) =>
