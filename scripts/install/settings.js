@@ -829,6 +829,8 @@ function writeSettings(opts)
     {
         for (const key of childEnv.copies || []) if (Object.hasOwn(data.env, key))
         { delete data.env[key]; log(`  ${label} env: ${key} removed - a copy of the value the workspace gives this project`); }
+        for (const key of childEnv.seeds || []) if (Object.hasOwn(data.env, key))
+        { delete data.env[key]; log(`  ${label} env: ${key} removed - a stack seed, so the workspace's value reaches this project`); }
         const drop = new Set(childEnv.hooksOffDrop || []);
         const off = data.env.ALFRED_CODE_HOOKS_OFF;
         if (drop.size && typeof off === 'string')

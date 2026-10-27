@@ -815,6 +815,9 @@ function chainValues(projectRoot, { env = process.env } = {})
 // it set itself): each copy still at its ledger hash, and given the same value by the chain now, goes (`copies`); a copy
 // the chain would answer otherwise - a parent not updated yet - stays as the child's own, so no value changes. Its
 // HOOKS_OFF loses the part entries a member's settings hold (`hooksOffDrop`), which the loader merges back at load.
+// A project with no `own-env:` record joined through the role answer, which the update walk runs BEFORE the installer:
+// its 2.12 seeds still sit in settings.json, so each one still at its ledger hash goes as the join's prune drops it from
+// `.variables` (`seeds`) - never DOCS_VERSIONING or an `ignore env` key - and the workspace's value reaches it.
 // A project whose own file names a parent it cannot reach - the switch at 0 (frozen) or a link that does not hold - gets
 // the same plan with nothing to drop: a default seeded now would shadow the chain once it reads again.
 function envPlan(ctx)
@@ -825,16 +828,21 @@ function envPlan(ctx)
     const dataRoot = w.fileRoot ?? (ctx.dataInfo && !ctx.dataInfo.invalid ? ctx.dataInfo.root : undefined);
     const view = linked ? { ignores: w.ignores } : readWorkspace(ctx.projectRoot, { env: ctx.env, dataRoot }).view;
     if (!linked && !(view && view.parent)) return null;
-    const plan = { ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], hooksOffDrop: [] };
+    const plan = { ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], seeds: [], hooksOffDrop: [] };
     if (!linked) return plan;
     const read = stamp.stampFiles({ projectRoot: ctx.projectRoot }).read;
     const own = read ? stamp.readOwnEnv(read) : null;
-    if (own === null) return plan;
     const layout = require('../../stack/hooks/layout.js');
     const target = ctx.args.scope === 'local' ? 'settings.local.json' : 'settings.json';
     const data = readJson(path.join(ctx.claudeDir, target));
     const env = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
     const rows = ((ctx.ledger && ctx.ledger.env) || {})[target] || {};
+    if (own === null)
+    {
+        for (const [key, value] of Object.entries(env))
+            if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !plan.ignored.includes(key) && rows[key] && rows[key] === stamp.valueHash(value)) plan.seeds.push(key);
+        return plan;
+    }
     const chained = chainValues(ctx.projectRoot, { env: ctx.env });
     for (const [key, value] of Object.entries(env))
     {

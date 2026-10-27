@@ -349,6 +349,34 @@ test('AC24: a 2.12.0 standalone joined at update and through configure reads SCO
     }
 });
 
+// AC24 in the update walk's own order: the role answer runs BEFORE the installer call, so the 2.12.0 seeds are still in
+// settings.json when the project joins - the move must drop them as the join's prune would, never carry them in as its own.
+test('AC24: answered before the update moves its values, a 2.12.0 standalone still holds only its typed key and DOCS_VERSIONING', skipWithout('v2.12.0'), () =>
+{
+    const old = releaseExport('v2.12.0');
+    const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
+    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const NUDGE = 'ALFRED_CODE_CORRECTION_NUDGE';
+    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, settings: readOr(path.join(at(work, 'api'), '.claude', 'settings.json')) });
+    const r = scenario([
+        { at: '.', ...OLD },
+        { at: 'api', ...OLD, after: (work) => setEnv(work, 'api', 'settings.json', { [NUDGE]: 'inject' }) },
+        update('.', { after: (work) => setVar(work, '.', { [LEVEL]: '90' }) }),
+        cli('role', { at: 'api', args: ['--answer', 'join:..'] }),
+        update('api', { after: read }),
+        update('api', { after: read }),
+    ]);
+    const [joined, again] = [r.steps[4], r.steps[5]];
+    assert.strictEqual(joined.effective[LEVEL], '90', r.outs[4]);
+    assert.strictEqual(joined.from[LEVEL], '..');
+    assert.deepStrictEqual(Object.keys(joined.vars).sort(), [NUDGE, 'ALFRED_CODE_DOCS_VERSIONING'].sort(), `${JSON.stringify(joined.vars)}\n${r.outs[4]}`);
+    assert.strictEqual(joined.vars[NUDGE], 'inject');
+    const left = Object.keys(JSON.parse(joined.settings).env || {}).filter((k) => layoutLib.VARIABLE_KEYS.includes(k));
+    assert.deepStrictEqual(left, [], 'no stack value left in settings.json');
+    assert.match(r.outs[4], /settings\.json env: ALFRED_CODE_SCORER_LEVEL removed - a stack seed, so the workspace's value reaches this project/);
+    assert.deepStrictEqual(again.vars, joined.vars, `a second update changes nothing: ${r.outs[5]}`);
+});
+
 // AC19: on by default, and a launch 0 still freezes - the child reads a chain of one and an install there removes nothing.
 test('AC19: a launch 0 in ws/api reads a chain of one and an install there removes nothing', POSIX_ONLY, () =>
 {
