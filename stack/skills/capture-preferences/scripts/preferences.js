@@ -459,14 +459,17 @@ function check(projectRoot, { mode, area, base = null })
     const scoped = new Set();
     let checked = 0;
     let violations = 0;
+    // An entry with no Check: is judged by the reader, never run: its id is named after the summary (the by-hand line),
+    // so a clean summary is never read as every entry passing.
+    const byHand = [];
     for (const d of presentDocs(projectRoot, area).filter((x) => !x.pushed))
     {
         const sections = parseSections(d.text);
         const shared = new Set();
         for (const s of sections)
         {
-            if (s.fields.Check === undefined) continue;
-            // a violation cites its entry by id: with none, or one another entry holds, there is nothing to cite
+            // a violation - or a by-hand judgement - cites its entry by id: with none, or one another entry holds, there
+            // is nothing to cite, whichever kind the entry is
             if (!s.id) { console.log(`skipped: ${s.heading} - the heading names no entry id (\`## C1 - <title>\`, A1 or G1 by doc), so nothing is run`); continue; }
             if (sections.filter((o) => o.id === s.id).length > 1)
             {
@@ -474,6 +477,7 @@ function check(projectRoot, { mode, area, base = null })
                 shared.add(s.id);
                 continue;
             }
+            if (s.fields.Check === undefined) { byHand.push(s.id); continue; }
             const id = s.id;
             const parsed = parseCheck(s.fields.Check);
             if (!parsed) { console.log(`skipped: ${id} - the Check: is not regex \`<pattern>\` in \`<glob>\`, so nothing is run`); continue; }
@@ -490,6 +494,7 @@ function check(projectRoot, { mode, area, base = null })
         }
     }
     console.log(`checked: ${checked} entries, ${violations} violations`);
+    if (byHand.length) console.log(`by hand: ${byHand.length} entries carry no Check: - judge each against the change: ${byHand.join(', ')}`);
     if (noGit) console.log('note: not a git repo - use --all');
     else if (mode !== 'all' && checked && !scoped.size)
         console.log(`note: no file changed since ${base || 'HEAD'} is in an entry's scope - after a commit, pass --diff <base> or --all`);

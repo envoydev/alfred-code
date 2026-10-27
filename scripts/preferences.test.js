@@ -191,6 +191,117 @@ test('an entry with no id, or an id two entries share, is skipped with one skipp
     finally { p.rm(); }
 });
 
+// The by-hand line (app-seams-first, D3): an entry with no Check: is named after the summary, so a reader judges it
+// against the change instead of reading the summary as a pass.
+const noCheck = (id, title = `Entry ${id}`) => `## ${id.toUpperCase()} - ${title}\n<!-- id: ${id} -->\n- Rule: x.`;
+const BY_HAND = 'by hand: ';
+
+test('by hand lists the entries with no Check: after the summary', () =>
+{
+    const p = project({ files: { 'src/a.cs': 'static class A {}\n' }, prefs: { 'PERSONAL-CODE': doc('Code preferences', noCheck('c2'), C3, noCheck('c4')) } });
+    try
+    {
+        assert.deepStrictEqual(run(p.dir, 'check', '--all', '--area', 'code').lines, [
+            'violation: C3 src/a.cs:1 static class A {}',
+            'checked: 1 entries, 1 violations',
+            'by hand: 2 entries carry no Check: - judge each against the change: C2, C4',
+        ]);
+    }
+    finally { p.rm(); }
+});
+
+test('no by hand line when every entry has a Check:', () =>
+{
+    const p = project({ files: { 'src/a.cs': 'static class A {}\n' }, prefs: { 'PERSONAL-CODE': doc('Code preferences', C3) } });
+    try { assert.ok(!run(p.dir, 'check', '--all', '--area', 'code').lines.some((l) => l.startsWith(BY_HAND))); }
+    finally { p.rm(); }
+});
+
+test('no cap on the ids a by hand line names', () =>
+{
+    for (const n of [1, 25])
+    {
+        const ids = Array.from({ length: n }, (_, i) => `c${i + 10}`);
+        const p = project({ prefs: { 'PERSONAL-CODE': doc('Code preferences', ...ids.map((id) => noCheck(id))) } });
+        try
+        {
+            const line = run(p.dir, 'check', '--all', '--area', 'code').lines.find((l) => l.startsWith(BY_HAND));
+            assert.strictEqual(line, `by hand: ${n} entries carry no Check: - judge each against the change: ${ids.map((i) => i.toUpperCase()).join(', ')}`);
+            assert.doesNotMatch(line, /more/);
+        }
+        finally { p.rm(); }
+    }
+});
+
+test('an entry with no Check: and no id, or a shared id, gets a skipped line and is not in by hand', () =>
+{
+    const p = project({ prefs: { 'PERSONAL-CODE': doc('Code preferences', '## No id here\n- Rule: x.', noCheck('c5', 'First'), noCheck('c5', 'Second')) } });
+    try
+    {
+        const r = run(p.dir, 'check', '--all', '--area', 'code');
+        assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('skipped:')), [
+            'skipped: No id here - the heading names no entry id (`## C1 - <title>`, A1 or G1 by doc), so nothing is run',
+            'skipped: C5 - more than one entry holds this id, so nothing is run for any of them',
+        ], r.out);
+        assert.ok(!r.lines.some((l) => l.startsWith(BY_HAND)), r.out);
+    }
+    finally { p.rm(); }
+});
+
+test('shared id across kinds: one skipped line, no by hand line', () =>
+{
+    const withCheck = C3.replace('## C3 - No static classes', '## C5 - With a check').replace('<!-- id: c3 -->', '<!-- id: c5 -->');
+    const p = project({ prefs: { 'PERSONAL-CODE': doc('Code preferences', withCheck, noCheck('c5', 'Without')) } });
+    try
+    {
+        const r = run(p.dir, 'check', '--all', '--area', 'code');
+        assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('skipped:')), ['skipped: C5 - more than one entry holds this id, so nothing is run for any of them'], r.out);
+        assert.ok(!r.lines.some((l) => l.startsWith(BY_HAND)), r.out);
+        assert.match(r.out, /^checked: 0 entries, 0 violations$/m);
+    }
+    finally { p.rm(); }
+});
+
+test('note after by hand outside git', () =>
+{
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'preferences-nogit-')));
+    try
+    {
+        fs.mkdirSync(path.join(dir, '.alfred/docs/preferences'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.alfred/docs/preferences/PERSONAL-CODE-PREFERENCES.md'), doc('Code preferences', noCheck('c2')));
+        assert.deepStrictEqual(run(dir, 'check', '--diff', '--area', 'code').lines, [
+            'checked: 0 entries, 0 violations',
+            'by hand: 1 entries carry no Check: - judge each against the change: C2',
+            'note: not a git repo - use --all',
+        ]);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('git area lists G1-G5 by hand', () =>
+{
+    const p = project({ prefs: { GIT: seededGit() } });
+    try
+    {
+        assert.ok(run(p.dir, 'check', '--all', '--area', 'git').lines.includes('by hand: 5 entries carry no Check: - judge each against the change: G1, G2, G3, G4, G5'));
+    }
+    finally { p.rm(); }
+});
+
+test('an Example: line changes nothing', () =>
+{
+    const withExample = C3.replace(/(- Rule: [^\n]*\n)/, '$1- Example: use IDateTimeService, not new DateTime\n');
+    const p = project({ files: { 'src/a.cs': 'static class A {}\n' }, prefs: { 'PERSONAL-CODE': doc('Code preferences', withExample) } });
+    try
+    {
+        const lint = run(p.dir, 'lint');
+        assert.strictEqual(lint.code, 0, lint.out);
+        assert.doesNotMatch(lint.out, /C3/);
+        assert.ok(run(p.dir, 'check', '--all').lines.includes('violation: C3 src/a.cs:1 static class A {}'));
+    }
+    finally { p.rm(); }
+});
+
 test('check with no preferences captured says so and exits 0', () =>
 {
     const p = project();
@@ -446,6 +557,7 @@ test('a Check: holding $( or a pipe is rejected by lint as a command', () =>
 // The seed the installer writes, as a project holds it: the date filled in.
 const SEED = path.join(ROOT, 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md');
 const seeded = () => fs.readFileSync(SEED, 'utf8').replace(/__TODAY__/g, '2026-10-21');
+function seededGit() { return fs.readFileSync(path.join(ROOT, 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md'), 'utf8').replace(/__TODAY__/g, '2026-10-21'); }
 
 test('lint passes the seeded git doc as it is, and fails one missing a locked entry, naming each key and the update that puts it back', () =>
 {
@@ -707,7 +819,7 @@ test('Q-1: in a linked worktree, check reads a doc git keeps out from the main c
         assert.deepStrictEqual(run(wt, 'check', '--diff', '--area', 'code').lines, ['violation: C3 src/a.cs:2 public static class A {}', 'checked: 1 entries, 1 violations']);
         fs.mkdirSync(path.join(wt, '.alfred/docs/preferences'), { recursive: true });
         fs.writeFileSync(path.join(wt, '.alfred/docs/preferences/PERSONAL-CODE-PREFERENCES.md'), doc('Code preferences', '## C1 - x\n<!-- id: c1 -->\n- Rule: x.'));
-        assert.deepStrictEqual(run(wt, 'check', '--diff', '--area', 'code').lines, ['checked: 0 entries, 0 violations']);
+        assert.deepStrictEqual(run(wt, 'check', '--diff', '--area', 'code').lines, ['checked: 0 entries, 0 violations', 'by hand: 1 entries carry no Check: - judge each against the change: C1']);
         fs.rmSync(path.join(wt, '.alfred/docs/preferences/PERSONAL-CODE-PREFERENCES.md'));
         fs.symlinkSync(path.join(p.dir, '.alfred/docs/preferences/PERSONAL-CODE-PREFERENCES.md'), path.join(wt, '.alfred/docs/preferences/PERSONAL-CODE-PREFERENCES.md'));
         assert.deepStrictEqual(run(wt, 'check', '--diff', '--area', 'code').lines, ['checked: 0 entries, 0 violations'], 'a link where the doc first sits is refused, never passed over');
