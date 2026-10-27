@@ -672,7 +672,7 @@ function autoMemorySetting(root, { account, home, managed })
 // [A-Za-z0-9] as `-`. Past 200 characters Claude Code cuts the name and appends `-<hash>`: every existing match is named.
 // [] when CLAUDE_CODE_PROJECT_DIR_NAME renames the folder.
 const MEMORY_NAME_MAX = 200;
-function memoryDirsOf(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env) } = {})
+function memoryDirsOf(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
     if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
     const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
@@ -683,8 +683,11 @@ function memoryDirsOf(root, { env = process.env, home = require('os').homedir(),
     const projects = path.join(account, 'projects');
     if (name.length <= MEMORY_NAME_MAX) return [path.join(projects, name, 'memory')];
     const head = `${name.slice(0, MEMORY_NAME_MAX)}-`;
+    // Claude Code names the folder from the cwd as TYPED, and on Windows that case need not be the real one (probe A5):
+    // NTFS opens the computed spelling under any case, but a listing compares names, so there it ignores case.
+    const fold = (n) => (platform === 'win32' ? n.toLowerCase() : n);
     let names = [];
-    try { names = fs.readdirSync(projects).filter((n) => n.startsWith(head) && n.length > head.length); }
+    try { names = fs.readdirSync(projects).filter((n) => fold(n).startsWith(fold(head)) && n.length > head.length); }
     catch { /* no projects folder yet */ }
     return names.sort().map((n) => path.join(projects, n, 'memory'));
 }

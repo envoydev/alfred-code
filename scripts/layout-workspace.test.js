@@ -362,3 +362,18 @@ test('workspaceMemoryOf past 200 characters: a child sharing the root\'s first 2
     fs.mkdirSync(path.join(m.acct, 'projects', `${head}-zz09aa`, 'memory'), { recursive: true });
     assert.strictEqual(of(), null, 'two matches: no line');
 });
+
+// A5 on Windows (2026-10-27): Claude Code keys the folder by the cwd's case as TYPED, and NTFS opens it under any case, so
+// the past-200 listing matches case-insensitively there - and only there.
+test('memoryDirsOf past 200 on win32 lists a folder named in another case; on a case-sensitive platform it does not', () =>
+{
+    const m = memTree({});
+    const base = m.at('.');
+    const long = path.join(base, 'L'.repeat(Math.max(1, 205 - (sanitized(base).length + 1))));
+    fs.mkdirSync(long); execFileSync('git', ['init', '-q'], { cwd: long });
+    const typed = `${sanitized(long).slice(0, 200).toLowerCase()}-jungf8`;
+    fs.mkdirSync(path.join(m.acct, 'projects', typed, 'memory'), { recursive: true });
+    const of = (platform) => layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed, platform });
+    assert.deepStrictEqual(of('win32'), [path.join(m.acct, 'projects', typed, 'memory')]);
+    assert.deepStrictEqual(of('darwin'), []);
+});

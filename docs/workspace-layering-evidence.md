@@ -123,3 +123,42 @@ Verdicts:
 - A11 holds: with the project server approved, the LOCAL entry of the same name starts.
 - A3 NOT RUN - needs an interactive approval: open a session in a child under a root whose .mcp.json holds a server,
   approve it, then open one in a second child and see whether it asks again.
+
+## Release 3 - A5, the memory folder's name (2026-10-27, Claude Code 2.1.311 macOS, 2.1.309 Windows 11 VM)
+
+`node docs/workspace-layering-matrix/memory-probe.js <claude>`: one logged-out `claude -p hi` per case in a fresh git
+project, a throwaway `CLAUDE_CONFIG_DIR` and `HOME`, an `InstructionsLoaded` hook from `--settings` (A9) writing its
+payload. The folder its `transcript_path` names under `<config>/projects/` is compared with R6's name for the git top
+(every character outside `[A-Za-z0-9]` as `-`, NFC; past 200 the first 200 plus `-*`). `<P>` below is the sanitized
+throwaway folder (`-private-var-folders-...-T-mem-probe-<x>` on macOS, `C--Windows-Temp-memprobe-run-mem-probe-<x>` on
+Windows); `x...` stands for the padding.
+
+| Case | Typed cwd | macOS folder | Windows folder |
+|---|---|---|---|
+| plain | `Plain` | `<P>-Plain` | `<P>-Plain` |
+| lowercase-typed | `mixedcase` (real `MixedCase`) | `<P>-MixedCase` | `<P>-mixedcase` |
+| all-caps-typed | `MIXEDCASE2` (real `MixedCase2`) | `<P>-MixedCase2` | `<P>-MIXEDCASE2` |
+| a space and an e-acute | `my projé` | `<P>-my-proj-` | `<P>-my-proj-` |
+| sanitized 199 | `len199-x...` | exact, 199 | exact, 199 |
+| sanitized 200 | `len200-x...` | exact, 200 | exact, 200 |
+| sanitized 201 | `len201-x...` | `<first 200>-88hs3i` | `<first 200>-as0pke` |
+| sanitized 201, lowercase-typed | `len201b-x...` (real `LEN201B-X...`) | `<first 200>-q93z7i`, real case | `<first 200>-b4yysy`, typed case |
+
+macOS 8/8 PASS against R6 as written. Windows 8/8 PASS once the names are compared case-folded; the first run, which
+compared them exactly, failed the two typed-case rows.
+
+Verdicts:
+
+- R6 holds on macOS: the folder is keyed by the real path's case, whatever was typed.
+- On Windows Claude Code keys the folder by the cwd's case AS TYPED (A8's finding for the `projects` key, again here).
+  NTFS opens a folder under any case, and each row up to 200 characters printed `R6's spelling opens it: yes` - so the
+  computed path reaches the folder the session made, and the hooks' comparisons, which fold case on win32, match it.
+  The one place a name is compared as text is the past-200 listing: it now ignores case on win32
+  (`layout.memoryDirsOf`, the test 'memoryDirsOf past 200 on win32 lists a folder named in another case'). This is the
+  plan's 'Revisit when' ask, taken in auto-run on its recommended answer: R6 stands, with that case-folded listing.
+- Past 200 characters the suffix is a 6-character hash the stack cannot compute, so it lists `<first 200>-*`. A child
+  shares its root's first 200 characters, so its own list holds every root candidate: such a child gets no memory line
+  unless its own `autoMemoryDirectory` sets its folder apart (`layout.workspaceMemoryOf`); the deny covers every match.
+- A4 (a Read under `additionalDirectories` asks no permission) NOT RUN: it needs one logged-in session, a billed run
+  the user declined. The manual step: in a child after an update, ask the session to Read a file under the root's docs
+  folder and watch for a permission prompt; none is the pass.
