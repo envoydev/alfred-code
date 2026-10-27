@@ -24,6 +24,9 @@
 //   seed-ids                        give every section a stable id (idempotent); one `ids added: <file> (+n)` line
 //                                   per file rewritten, then the total
 //   watch <path...> [--dir <dir...>]  which watch.json entries these changed paths (and new folders) hit
+//   watch-merge <domain> [--seed '<JSON object>'] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json
+//                                   replace only the scoped entries of <domain>/watch.json with stdin's array, atomically;
+//                                   one `watch-merge <domain>: kept <k>, replaced <r> with <n>` line
 //   adr new '<title>' | adr index   allocate the next decision record under decisions/ and rewrite the DECISIONS.md
 //                                   index table from the records (index alone: the table only)
 // Two modes, DECLARED at install time by the docs-versioning env key (VERSIONING_KEYS below): 'git' means the docs
@@ -236,10 +239,19 @@ function freshlyPromoted(now = Date.now()) {
 // each word is across the docs, and the broad globs fill what is left. Review history is never offered.
 // A section a merge just folded in is NEWS, and news outranks narrowness: the reader has not read it, and it changed
 // what mainline says. It answers only where it covers the path, and never takes the last slot.
+// A recomputed domain's sections (the architecture assessment) only fill the slots the durable ones leave: a narrow
+// weakness note would otherwise outrank the decision written about its whole area.
 function where(paths, limit = 3) {
   const news = freshlyPromoted();
-  const want = [...new Set(paths.flatMap(tokens))];
   const current = allSections().filter((s) => !s.history);
+  const isRecomputed = (s) => recomputed(fileDomain(s.file));
+  const durable = whereAmong(current.filter((s) => !isRecomputed(s)), paths, limit, news);
+  const left = limit - durable.length;
+  const rest = left > 0 ? current.filter(isRecomputed) : [];
+  return rest.length ? [...durable, ...whereAmong(rest, paths, left, news)] : durable;
+}
+function whereAmong(current, paths, limit, news) {
+  const want = [...new Set(paths.flatMap(tokens))];
   const cap = narrowCap();
   const covering = (s) => s.covers.length && paths.some((p) => matches(s.covers, p));
   const ranked = (list) => list.map((s) => ({ ...s, width: coverWidth(s.covers, paths) })).sort(narrowestFirst);
@@ -300,8 +312,9 @@ function where(paths, limit = 3) {
 // The sections whose OWN text (subsections aside) names one of these repo paths verbatim - the surest sign a section
 // states a fact about that file, a count or a shape (audit 2026-10-10 C23, session f6c591fa: the watch entry's three
 // sections stated no count for the changed contract, and the two naming it with a count were never offered). History
-// is never offered; the most paths named first, then the shorter text.
-function namingSections(files, limit = 3) {
+// is never offered; the most paths named first, then the shorter text. `keep({ id, domain })` drops a section before
+// the cap, so a caller leaving a domain out still gets its full count of the rest.
+function namingSections(files, limit = 3, keep = () => true) {
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const want = [...new Set(files)].filter((f) => typeof f === 'string' && f.length > 3 && !f.endsWith('/'))
     .map((f) => ({ f, re: new RegExp(`(?<![\\w./-])${esc(f)}(?![\\w/-]|\\.\\w)`) }));
@@ -311,7 +324,8 @@ function namingSections(files, limit = 3) {
     if (s.history) continue;
     const own = s.text.slice(0, s.ownChars);
     const named = want.filter((w) => own.includes(w.f) && w.re.test(own)).map((w) => w.f);
-    if (named.length) out.push({ id: s.id, domain: fileDomain(s.file), files: named, chars: s.chars });
+    const hit = { id: s.id, domain: fileDomain(s.file), files: named, chars: s.chars };
+    if (named.length && keep(hit)) out.push(hit);
   }
   return out.sort((a, b) => b.files.length - a.files.length || a.chars - b.chars).slice(0, limit);
 }
@@ -403,8 +417,9 @@ function captureStamp(covers) {
   return `<!-- captured: ${head}${withList.length ? ` with: ${withList.join(', ')}` : ''} -->`;
 }
 
+// A recomputed domain is never outgrown: its capture rewrites it from the code, and the session close asks for it.
 function stale() {
-  return allSections().filter((s) => !s.history).map((s) => ({ s, files: outgrownFiles(s) })).filter((x) => x.files.length);
+  return allSections().filter((s) => !s.history && !recomputed(fileDomain(s.file))).map((s) => ({ s, files: outgrownFiles(s) })).filter((x) => x.files.length);
 }
 const orientationState = () => (!fs.existsSync(BLOCK_FILE) ? 'none' : PROVISIONAL.test(safeRead(BLOCK_FILE)) ? 'provisional' : 'captured');
 
@@ -437,12 +452,12 @@ function merge3(ours, base, theirs, name) {
 // alone is an ordinary shape. Probing architecture/ alone answered 'not committed' for exactly that project -
 // which then wrote per-branch OVERLAYS into a docs root git is versioning, and had `status` call committed
 // docs ignored. ANY tracked domain is enough: the doc text is committed where it matters, and a domain added
-// today but not committed yet must not flip a committed install onto the overlay. No domain at all - a fresh
-// project, or a docs root holding only watch-less folders like quality/ - reads as not tracked, exactly as an
-// absent architecture/ did.
+// today but not committed yet must not flip a committed install onto the overlay. No durable domain at all - a fresh
+// project, or a docs root holding only a recomputed quality/ - reads as not tracked, exactly as an absent
+// architecture/ did: a recomputed domain casts no vote, here or in keptOutOfGit below.
 let TRACKED_CACHE;
 function tracked() {
-  if (TRACKED_CACHE === undefined) TRACKED_CACHE = domains().some((d) => git(['ls-files', '--error-unmatch', domainDir(d)]) !== null);
+  if (TRACKED_CACHE === undefined) TRACKED_CACHE = durableDomains().some((d) => git(['ls-files', '--error-unmatch', domainDir(d)]) !== null);
   return TRACKED_CACHE;
 }
 // The env keys that can declare the mode, in precedence order. ONE list, and every message below names the key that
@@ -473,7 +488,7 @@ function rootIgnored() {
 // either (a) a domain exists, or (b) git ignores the docs root. Everything else is 'git', a fresh project whose docs
 // root is not ignored included: its docs will be committed with the code unless someone says otherwise. A tracked
 // domain wins over an ignored root - a doc force-added under an ignore pattern is committed all the same.
-const keptOutOfGit = () => !tracked() && (domains().length > 0 || rootIgnored());
+const keptOutOfGit = () => !tracked() && (durableDomains().length > 0 || rootIgnored());
 // ONE resolver, cached with the other git-state probes: a process runs one CLI command or one hook event, and
 // neither the environment nor the index changes underfoot. Without a repo nothing is versioned at all (status reports
 // 'none') and the fallback stays the 'local' it always was, so no path that reads the mode changes there.
@@ -993,7 +1008,9 @@ function set(ref, newText, expect) {
   const own = globList((COVERS.exec(kept.join('\n')) || [])[1] || '');
   const stampLine = gitRepo ? captureStamp(own.length ? own : (hit ? hit.covers : [])) : '';
   const text = [lines[0], lines[1], ...kept, ...(stampLine ? [stampLine] : []), ...lines.slice(j)].join('\n');
-  if (!gitRepo || gitVersioned() || isMainline(b)) return writeInPlace(file, sec, text);
+  // A recomputed domain is written in place on every branch: the next capture rewrites it from the code, so an
+  // overlay would only keep a branch's copy of text that is about to be replaced.
+  if (!gitRepo || gitVersioned() || isMainline(b) || recomputed(fileDomain(file))) return writeInPlace(file, sec, text);
   return writeOverride(file, sec, text, b);
 }
 
@@ -1737,7 +1754,7 @@ function watchOfUncached(domain) {
   // declaring nothing, turned a project whose source root is 'app' into 'app,src,tests', so the first-change
   // gate held changes under src/ and tests/ that no domain documents and `where` had nothing to hand over.
   // A single-domain install is unchanged: its empty union still falls back to WATCH_ROOTS.
-  const empty = { sourceRoots: [], watch: [], newModule: null, notOwned: [] };
+  const empty = { sourceRoots: [], watch: [], newModule: null, notOwned: [], recomputed: false };
   const file = path.join(domainDir(domain), 'watch.json');
   if (!fs.existsSync(file)) return { ...empty, problems: [], missing: true };
   let j;
@@ -1768,7 +1785,81 @@ function watchOfUncached(domain) {
     if (!Array.isArray(j.notOwned) || j.notOwned.some((x) => typeof x !== 'string' || !x)) problems.push(`${domain}/watch.json notOwned must be a list of strings`);
     else notOwned = j.notOwned;
   }
-  return { sourceRoots, watch, newModule, notOwned, problems };
+  // A RECOMPUTED domain (quality/: a capture rewrites it whole from the code) is watched like any other, but its text
+  // is never a branch's to keep apart, never a vote on how the docs are versioned and never a durable section's rival
+  // (the docs-watch-every-domain spec of 2026-10-27, D1). Anything but a boolean reads as false - today's behaviour.
+  if (j.recomputed !== undefined && typeof j.recomputed !== 'boolean') problems.push(`${domain}/watch.json recomputed must be true or false`);
+  return { sourceRoots, watch, newModule, notOwned, recomputed: j.recomputed === true, problems };
+}
+const recomputed = (domain) => Boolean(domain) && watchOf(domain).recomputed === true;
+// The domains whose text is written to last: every domain but a recomputed one.
+const durableDomains = () => domains().filter((d) => !recomputed(d));
+// Whether a section ref names a recomputed domain's file; a ref nothing resolves is not one.
+const refRecomputed = (ref) => { try { return recomputed(parseRef(ref).domain); } catch { return false; } };
+
+// The ONE writer of model-written watch entries (D2): a part of a capture replaces only the entries in its SCOPE - the
+// union of `kinds` (a kind prefix), `kind` (an exact kind) and `doc` (every section ref in that doc) - so a second
+// writer's entries and a hand-added one keep their place. Every stdin entry must fall in the scope by its own kind.
+// `seed` adds each top-level key the file lacks and never changes one it holds. Returns { error } and writes nothing,
+// or { kept, replaced, added, file }.
+function watchMerge(domain, input, { kinds = [], kind = [], doc = [], seed = null } = {}) {
+  if (!/^[A-Za-z0-9][\w-]*$/.test(String(domain || '')) || RESERVED_DOMAIN_NAMES.has(domain)) return { error: `not a domain name: ${JSON.stringify(domain)}` };
+  if (!kinds.length && !kind.length && !doc.length) return { error: 'name the scope: --kinds <prefix>..., --kind <exact>... or --doc <DOC>' };
+  const UNSAFE = new Set(['__proto__', 'constructor', 'prototype']);
+  let seeded = null;
+  if (seed !== null) {
+    try { seeded = JSON.parse(seed); } catch (e) { return { error: `--seed is not valid JSON: ${e.message}` }; }
+    if (!seeded || typeof seeded !== 'object' || Array.isArray(seeded)) return { error: '--seed must be a JSON object' };
+    if (Object.keys(seeded).some((k) => k === 'watch' || UNSAFE.has(k))) return { error: '--seed may not name watch: the entries come on stdin' };
+  }
+  let entries;
+  try { entries = JSON.parse(input); } catch (e) { return { error: `stdin is not valid JSON: ${e.message}` }; }
+  if (!Array.isArray(entries)) return { error: 'stdin must be a JSON array of watch entries' };
+  const strings = (v) => Array.isArray(v) && v.length && v.every((x) => typeof x === 'string' && x);
+  const byKind = (e) => typeof e.kind === 'string' && (kinds.some((p) => e.kind.startsWith(p)) || kind.includes(e.kind));
+  const docOf = (ref) => String(ref).split('#')[0].replace(/\.md$/, '');
+  const byDoc = (e) => strings(e.sections) && e.sections.every((r) => doc.some((d) => docOf(r) === d || docOf(r) === `${domain}/${d}`));
+  for (const [i, e] of entries.entries()) {
+    if (!e || typeof e !== 'object' || Array.isArray(e) || !strings(e.globs) || !strings(e.sections)) return { error: `stdin entry ${i} needs a kind, a non-empty globs list and a non-empty sections list` };
+    if (!byKind(e)) return { error: `stdin entry ${i} (${JSON.stringify(e.kind)}) is outside the scope this merge names - nothing written` };
+  }
+  const file = path.join(domainDir(domain), 'watch.json');
+  let j = {};
+  if (fs.existsSync(file)) {
+    try { j = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return { error: `${domain}/watch.json is not valid JSON (${e.message}) - fix it by hand; nothing written` }; }
+    if (!j || typeof j !== 'object' || Array.isArray(j)) return { error: `${domain}/watch.json is not an object - fix it by hand; nothing written` };
+    if (j.watch !== undefined && !Array.isArray(j.watch)) return { error: `${domain}/watch.json watch is not a list - fix it by hand; nothing written` };
+  }
+  // No prototype: a file's own `__proto__` key stays a key it holds, never a setter call.
+  const out = Object.create(null);
+  for (const [k, v] of Object.entries(seeded || {})) if (!Object.prototype.hasOwnProperty.call(j, k)) out[k] = v;
+  for (const [k, v] of Object.entries(j)) out[k] = v;
+  const list = Array.isArray(j.watch) ? j.watch : [];
+  const merged = [];
+  let replaced = 0;
+  for (const e of list) {
+    if (e && typeof e === 'object' && (byKind(e) || byDoc(e))) {
+      if (!replaced++) merged.push(...entries);
+      continue;
+    }
+    merged.push(e);
+  }
+  if (!replaced) merged.push(...entries);
+  out.watch = merged;
+  const text = `${JSON.stringify(out, null, 2)}\n`;
+  if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== text) {
+    const tmp = `${file}.tmp-${process.pid}`;
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(tmp, text);
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      try { fs.rmSync(tmp, { force: true }); } catch {}
+      return { error: `cannot write ${domain}/watch.json: ${e.message}` };
+    }
+    resetDomains();
+  }
+  return { kept: list.length - replaced, replaced, added: entries.length, file };
 }
 // The declared notOwned list, exactly as that domain's own watch.json states it - no default folded
 // in, so a caller that wants the whole effective list (domainFiles, set) goes through notOwnedOf below.
@@ -2060,6 +2151,7 @@ module.exports = {
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, integrity, seedIds, loadWatch, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
+  recomputed, refRecomputed, durableDomains, watchMerge,
   sectionHash, firstSentence, ceilings, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
 };
 if (require.main !== module) return;
@@ -2199,6 +2291,23 @@ const commands = {
     const hits = watchHits(files, dirs);
     console.log(hits.length ? hits.map((h) => `${h.kind}: ${h.files.join(', ')} -> ${h.sections.join(', ')}`).join('\n') : 'nothing hit');
   },
+  'watch-merge': () => {
+    const [domain, ...rest] = args;
+    const opts = { kinds: [], kind: [], doc: [], seed: null };
+    let flag = null;
+    for (const a of rest) {
+      if (['--kinds', '--kind', '--doc', '--seed'].includes(a)) { flag = a.slice(2); continue; }
+      if (!flag || a.startsWith('--')) { console.log(`watch-merge: unexpected ${JSON.stringify(a)} - usage: docs.js watch-merge <domain> [--seed '<JSON object>'] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json`); process.exit(1); }
+      if (flag === 'seed') { opts.seed = a; flag = null; } else opts[flag].push(a);
+    }
+    if (flag === 'seed') { console.log('watch-merge: --seed needs a JSON object'); process.exit(1); }
+    let input = '';
+    try { input = fs.readFileSync(0, 'utf8'); } catch (e) { console.log(`watch-merge: cannot read stdin: ${e.message}`); process.exit(1); }
+    const r = watchMerge(domain, input, opts);
+    if (r.error) { console.log(`watch-merge: ${r.error}`); process.exit(1); }
+    docsLog({ event: 'watch-merge', domain, kept: r.kept, replaced: r.replaced, added: r.added });
+    console.log(`watch-merge ${domain}: kept ${r.kept}, replaced ${r.replaced} with ${r.added}`);
+  },
   adr: () => {
     const indexLine = (ix) => {
       if (!ix.error) { console.log(`index rewritten: ${shown(ix.file)} (${ix.rows} record${ix.rows === 1 ? '' : 's'})`); return true; }
@@ -2217,6 +2326,6 @@ const commands = {
 };
 if (commands[cmd]) commands[cmd]();
 else {
-  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain] | ceilings [--prune] | seed-ids | watch <path...> [--dir <dir...>] | adr new \'<title>\' | adr index');
+  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain] | ceilings [--prune] | seed-ids | watch <path...> [--dir <dir...>] | watch-merge <domain> [--seed \'<JSON object>\'] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json | adr new \'<title>\' | adr index');
   process.exit(cmd ? 1 : 0);
 }
