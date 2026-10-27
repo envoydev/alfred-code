@@ -1,4 +1,4 @@
-# Workspace layering - release 1 matrix
+# Workspace layering - the release matrices
 
 Run 2026-10-26 on `develop` at `64c381c6` (2.10.1, unreleased) against the workspace layering design of 2026-10-25
 (a machine-local spec; its AC numbers are the rows below). Every `--source` is a clean export of
@@ -87,3 +87,72 @@ A fresh reviewer read `b9aaedc3..5f8b4b0b`. Each Important finding got a test th
 | AC30 the probe's env, HOME, no-credentials line, skips, the account key | PASS after `034fb40c` | R (11 rows); W' (the keyed count); S (AC30 units) |
 | AC31 | NOT RUN | release 3 |
 | AC32 the 'only' halves by path, size and sha256 | PASS | G (2 rows); S (AC32) |
+
+## Release 2 - roles and variables
+
+Run 2026-10-27 on `develop` at `6c0996bb` (3.0.0, unreleased) against the roles-and-variables design of 2026-10-27 (a
+machine-local spec; its AC numbers are the rows below). The setup is release 1's: a clean export of this tree as
+every `--source`, a throwaway tree, `CLAUDE_CONFIG_DIR` and `HOME` per case, the `claude` stub. The old trees are
+`git archive v2.12.0` and `git archive v2.10.0`.
+
+### The runs - release 2
+
+| Key | Command | Result |
+|---|---|---|
+| S | `node --test` over the 24 suites the change touches, inside the export | 889: 874 pass, 14 skipped (the cases that need a release tag or an 8.3 name), 1 environmental (`variables-readers` runs `git ls-files`, and the export has no `.git`; 3/3 in the tree) |
+| S' | `node --test scripts/setup-plugin.test.js`, in the tree | 89/89 |
+| F | the review's fix pass, in the tree: `install-workspace`, `workspace`, `install-settings-writer`, `install-variables-move`, `install-variables`, `workspace-cli`, `check-turn-build`, `one-gitignore`, `git-hygiene`, `install-data-root`, `docs-move` | 279/279, 133/133, 247/247 |
+| M | `node docs/workspace-layering-matrix/ws-matrix-r2.js <export> <v2.12.0 tree> <v2.10.0 tree>` | 81/81 (77 acceptance rows, 4 fix-pass rows) |
+| Gate | `npm run gate` on the final commit | not run for this release alone - the 3.0.0 release runs one gate over releases 2 and 3 on its final commit |
+
+### Found and fixed - release 2
+
+Each fix has its regression test; the runs above are from after the last fix.
+
+- **AC24 - `7bd376c`.** The update walk's 'Join' runs before the installer moves the values, so a 2.12.0
+  standalone's settings seeds landed in its `.variables` as its own and hid the root's. The installer now names
+  those seeds at their ledger hash and drops them.
+- **AC24 - `b14b286`.** `variables.js show` labelled every inherited value `env`: the CLI loads the hook prelude,
+  which applies the variables to the process env. The entry now passes the launch env it took before the prelude.
+- **The final review - `7e011bc`.** A 2.12.0 child registered while its switch was off had never been pruned, and
+  the update pruned it anyway. The prune now marks the stamp, and only a marked project loses seeds. The prune also
+  dropped an installer answer that matched the stamp (`--auto-compact on`). Now only a value equal to the catalog
+  default counts as a seed. And a child's settings pass ignored the `AUTO_COMPACT` / `MEMORY` it inherits, so
+  Claude Code compacted and remembered as if they were unset. The members' values are now its lowest layer.
+- **The final review - `0ae1716`.** A data-root `.gitignore` the user wrote was read as the stack's own, so the
+  keys moved into a file git ignores. Only a file with the stack's head counts as its own. The `!!` hint now says
+  to add `!/.variables` to that file.
+- **The final review - `9eaeae1`.** A local-scope run rewrote the team's committed data-root `.gitignore` and
+  dropped its `!/.variables` line. A tracked file that has the line keeps it.
+- **The final review - `6c0996b`.** The turn check's block message pointed to the settings.json env, which the
+  loader no longer reads for that key. It now names `.variables`.
+
+### Per acceptance criterion - release 2
+
+| AC | Result | Where |
+|---|---|---|
+| AC1 the workspace file's lines round-trip; `wsLine` and `parseLine` agree | PASS | S (workspace.test AC1) |
+| AC2 init's role ask | PASS | M (AC2, AC2b, AC2c) |
+| AC3 a quiet update after any answer | PASS | M (AC3, three projects) |
+| AC4 tree changes: one ask, and the first option unattended | PASS | M (AC4, AC4b, AC4c) |
+| AC5 configure's role changes; root to standalone refused with a child | PASS | M (AC5) |
+| AC6 status's five role words | PASS | M (AC6) |
+| AC7 fresh install at each scope; git-hygiene's line rewritten; the user's own line stops the move | PASS | M (AC7 at project, user and local; AC7-hygiene; AC7-own-line) |
+| AC8 update over v2.12.0 at each scope; the user's own line stops it | PASS | M (AC8 at each scope; AC8-own-line) |
+| AC9 update over v2.10.0 at each scope | PASS | M (AC9 at each scope) |
+| AC10 the user's config is kept | PASS | M (AC10, AC10-local) |
+| AC11 missing, empty and garbage input; two writers | PASS | M (AC11) |
+| AC12 the loader's order; AC13 no copy | PASS | M (AC12, AC13 inside it) |
+| AC14 a 2.12.0 tree with the switch on | PASS | M (AC14) |
+| AC15 leaving keeps the values; with the root gone | PASS | M (AC15, AC15-gone) |
+| AC16 a tracked `.variables` and a local-scope run | PASS | M (AC16) |
+| AC17 the secret guard, `HOOKS_OFF` in settings | PASS | M (AC17, AC17-update) |
+| AC18 the MCP hint | PASS | M (AC18) |
+| AC19 the switch | PASS | M (AC19, AC19-copy) |
+| AC20 boundaries and cost | PASS | M (AC20: standalone 27.5 ms vs 2.12.0 26.7 ms, depth 8 30.8 ms) |
+| AC21 lint, suites, matrix, gate | PASS; the gate runs at the 3.0.0 release | `npm run lint` clean; S, S', F, M; Gate |
+| AC22 no direct settings reader | PASS | S (variables-readers, 3/3 in the tree; stamp-docs-root; update-preflight) |
+| AC23 Claude Code's own settings follow the file | PASS | M (AC23 at project and local) |
+| AC24 a join inherits | PASS after `7bd376c`, `b14b286` | M (AC24 via update and via configure) |
+| The review's I1-I4 | PASS after `7e011bc`, `0ae1716`, `9eaeae1` | M (FX-I1 to FX-I4; each FAIL on `b14b286`) |
+| Windows | NOT RUN | this release's matrix runs on macOS only; the gate's Windows leg runs the suites |
