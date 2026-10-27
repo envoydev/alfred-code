@@ -114,7 +114,7 @@ The personal doc holds <n> chars, over its 3,000 cap - every session start pays 
 
 ### 5. MEASURE
 
-`<script> check --all --area <area>` for each area the run touched but personal (it has no `Check:`): count each new or changed entry's `violation:` lines - how many places break it today. Fix none of them here; the quality loops and the next task do. The check prints a `by hand:` line after its summary naming each entry with no `Check:`; a reader quotes it and must judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the change.
+`<script> check --all --area <area>` for each area the run touched but personal (it has no `Check:`): count each new or changed entry's `violation:` lines - how many places break it today. Fix none of them here; the quality loops and the next task do. The check prints a `by hand:` line after its summary naming each entry with no `Check:`; a review that quotes it must judge every id a `by hand:` line names, and every entry a `skipped:` line names, against its diff - here the run only reports how many entries the line names, on the `Check:` line.
 
 ### 6. REPORT
 
@@ -123,7 +123,7 @@ A tools run reports in `references/tools-area.md`'s shape instead, its `Order:` 
 ```
 Docs: <doc> - <ids added | changed | removed>; overrides <what a preference beats, or none>
 Conflicts: <the sources step 3 read> - <each clash asked and its answer | none>
-Check: <id> <n> violations[, <id> <n> violations] | none with a Check:
+Check: <id> <n> violations[, <id> <n> violations] | none with a Check:[; by hand: <n>]
 Reach: <each reach: line, verbatim> | no code or architecture entry touched
 Lint: <the script's lint: line, verbatim>
 ```

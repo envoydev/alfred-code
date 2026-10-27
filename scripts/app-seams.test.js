@@ -141,3 +141,18 @@ test('every quoter names the by hand line', () =>
     assert.ok(row('stack/skills/capture-architecture-quality/SKILL.md', 'Preferences:').includes('`by hand:`'), 'the architecture capture reports it');
     assert.ok(row('stack/skills/capture-code-quality/SKILL.md', 'Rules:').includes('`by hand:`'), 'the code capture reports it');
 });
+
+// ---- The review's fix pass ---------------------------------------------------------------------------------------------
+test('task-verify-code never tells the reviewer a MATERIAL seam finding does not block', () =>
+{
+    const step = numbered(read(VERIFY), 6).replace(/\s+/g, ' ');
+    assert.ok(!step.includes('A finding, never a block. A same-file'), 'no bare never-a-block beside a MATERIAL grade');
+    assert.ok(step.includes('A same-file `seam` finding is MATERIAL and holds the receipt'), 'the seam finding holds the receipt like any MATERIAL');
+});
+
+test('the capture reports the by-hand counts and leaves the judging to a review', () =>
+{
+    const measure = section(read(CAPTURE), '5. MEASURE').replace(/\s+/g, ' ');
+    assert.ok(measure.includes('judge every id a `by hand:` line names'), 'the owner sentence keeps its marker');
+    assert.ok(measure.includes('here the run only reports how many entries the line names'), 'the capture itself judges nothing');
+});
