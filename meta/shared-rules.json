@@ -8344,19 +8344,6 @@
         }
       ]
     },
-    "seam-rung-fix-ladder": {
-      "_note": "The seam rung restated as fix-discipline's step 2, so a quality loop's FIX climbs it too. Owned by task-implement's ladder.",
-      "owner": {
-        "file": "stack/skills/task-implement/SKILL.md",
-        "marker": "capability the project wraps"
-      },
-      "sites": [
-        {
-          "file": "stack/skills/loop-code-quality/assets/loops-starter/fix-discipline.md",
-          "marker": "A capability the project wraps"
-        }
-      ]
-    },
     "general-rule-lift": {
       "_note": "A stated want binds as the general rule behind it, the user's case its example (the user's ruling of 2026-10-27: 'use IDateTimeService, not new DateTime' meant every wrapped capability). Owned by the always-on preferences rule; the capture's NORMALIZE step restates it where it writes the entry.",
       "owner": {
