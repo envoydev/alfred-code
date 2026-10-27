@@ -1550,9 +1550,16 @@ function ensureDataIgnore({ projectRoot, root, docsPath, mode, scope, log = () =
             log(`  data root: git tracks docs under ${shown} - they stay visible to git (versioning local; docs.js status reports the disagreement)`);
         }
     }
-    const want = dataIgnoreText({ root, docsPath, mode: shape, scope });
     let have = null;
     try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { have = null; }
+    // A local-scope run never drops the `.variables` re-include from a file git tracks: the team committed it with theirs.
+    let keepVariables = false;
+    if (scope === 'local' && have !== null && /^!\/\.variables$/m.test(have))
+    {
+        try { keepVariables = String(rt.execCommand('git', ['ls-files', '--', `${normRoot(root)}/.gitignore`], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
+        catch { keepVariables = false; }
+    }
+    const want = dataIgnoreText({ root, docsPath, mode: shape, scope: keepVariables ? 'project' : scope });
     if (have === want) return 'current';
     if (have !== null && !have.startsWith(DATA_IGNORE_HEAD))
     {
