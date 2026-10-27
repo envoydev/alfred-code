@@ -258,6 +258,14 @@ function wsLine(raw)
         if (value === 'none') return { key: 'parent', kind: 'parent-none', raw: line };
         if (/^\.\.(\/\.\.)*$/.test(value)) return { key: 'parent', kind: 'parent', value, raw: line };
     }
+    else if (word === 'role')
+    {
+        if (value === 'root' || value === 'standalone') return { key: 'role', kind: 'role', value };
+    }
+    else if (word === 'above')
+    {
+        if (value === 'none' || /^\.\.(\/\.\.)*$/.test(value)) return { key: 'above', kind: 'above', value };
+    }
     else if (word === 'child')
     {
         if (value !== '' && !value.startsWith('/') && !/[:\\]/.test(value) && wsSegmentsOk(value)) return { key: `child ${value}`, kind: 'child', value };
@@ -306,8 +314,9 @@ const wsKey = (p) =>
 const wsRel = (from, to) => path.relative(from, to).split(path.sep).join('/');
 const wsIsDir = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
 
-// The switch, ALFRED_CODE_WORKSPACE: off until 3.0.0, on only at `1` - a launch `0` freezes it, else the loader's steps 2
-// to 4 (settings.local.json, the project's .variables, the settings env over the launch env); never a member's file.
+// The switch, ALFRED_CODE_WORKSPACE: on by default since 3.0.0, off only at `0` - a launch `0` freezes it, else the
+// loader's steps 2 to 4 (settings.local.json, the project's .variables, the settings env over the launch env), so a file
+// `0` beats a launch `1`; never a member's file.
 // install/workspace.js workspaceOn calls this one.
 function workspaceOn({ env = {}, projectRoot })
 {
@@ -400,8 +409,8 @@ const VARIABLE_SET = new Set(VARIABLE_KEYS);
 const MEMBER_NEVER = new Set(['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_WORKSPACE']);
 const HOOKS_OFF_KEY = 'ALFRED_CODE_HOOKS_OFF';
 const SWITCH_KEY = 'ALFRED_CODE_WORKSPACE';
-// The switch's value as read: on only at `1` until 3.0.0 flips it (D9).
-const switchValueOn = (value) => String(value) === '1';
+// The switch's value as read: off only at `0`, unset included as on (D9).
+const switchValueOn = (value) => String(value) !== '0';
 
 // The dotenv reader of the `.secrets` grammar (secret-chain.js reads its stores through it; guard-sensitive-data.test.js
 // holds the guard, data-root.js and this to one fixture): optional `export`, quotes stripped, `#` / `;` comments.
@@ -459,7 +468,8 @@ function settingsEnv(file)
     try
     {
         if (!fs.statSync(file, { throwIfNoEntry: false })) return null;
-        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        // A Windows editor's BOM is no reason to drop the file's values (Claude Code reads it).
+        const data = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
         return data && typeof data === 'object' && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : null;
     }
     catch { return null; }
@@ -473,15 +483,22 @@ const valueIn = (from, key) =>
 };
 const csvOf = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
-// What one `.variables` file says beyond its values: each line that is no pair, and each ALFRED_CODE_ key the loader
-// never reads from a file (D7).
-function fileNotes(read, label)
+// Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern` (lint check 31 holds
+// the copies equal): a file holding one is a credential file to the secret guard, so its note points to the store.
+const SECRET_KEY_SOURCE = '(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$';
+const SECRET_KEY_RE = new RegExp(SECRET_KEY_SOURCE, 'i');
+
+// What one `.variables` file says beyond its values: each line that is no pair, each key named like a credential (with
+// the `.secrets` beside it), and each other ALFRED_CODE_ key the loader never reads from a file (D7). Never a value.
+function fileNotes(read, label, secrets)
 {
     if (!read) return [];
     const notes = read.bad.map((n) => `!! variables: ${label} line ${n} is not a KEY=value line - not read`);
     for (const key of Object.keys(read.values))
     {
-        if (!/^ALFRED_CODE_[A-Za-z0-9_]+$/.test(key) || VARIABLE_SET.has(key)) continue;
+        if (VARIABLE_SET.has(key)) continue;
+        if (SECRET_KEY_RE.test(key)) { notes.push(`!! variables: ${key} in ${label} looks like a credential - keep it in ${secrets}`); continue; }
+        if (!/^ALFRED_CODE_[A-Za-z0-9_]+$/.test(key)) continue;
         notes.push(key === HOOKS_OFF_KEY
             ? `!! variables: ${HOOKS_OFF_KEY} in ${label} is not read - it lives in .claude/settings.json`
             : `!! variables: ${key} in ${label} is not read - only the stack's variables are; a guard switch stays in .claude/settings.json`);
@@ -519,13 +536,15 @@ function ownVariables(checkout, env, mainOf, checkoutData)
 
 // Steps 1 to 4 for every key - the project alone, what the switch is read from. Step 4 outside a session reads what a
 // session lays over its launch env: the project's settings.json, then the account's (in a hook the two agree).
-function ownLayers(projectRoot, env)
+// `layers` 'files' reads the project's own three files alone, 'team' its two shared ones (see variablesOf).
+function ownLayers(projectRoot, env, layers = 'all')
 {
     const checkout = path.resolve(projectRoot);
     const claude = path.join(checkout, '.claude');
-    const local = settingsEnv(path.join(claude, 'settings.local.json'));
+    const all = layers === 'all';
+    const local = layers === 'team' ? null : settingsEnv(path.join(claude, 'settings.local.json'));
     const shared = settingsEnv(path.join(claude, 'settings.json'));
-    const account = settingsEnv(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'));
+    const account = all ? settingsEnv(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json')) : null;
     let main;
     const mainOf = () => (main === undefined ? (main = mainCounterpart(checkout)) : main);
     // dataRootOf's answer from the three files already read (settingFrom's order: the env, local, shared, account).
@@ -535,10 +554,10 @@ function ownLayers(projectRoot, env)
     const own = ownVariables(checkout, env, mainOf, dataRoot);
     const values = {};
     const from = {};
-    const notes = fileNotes(own.read, own.place === checkout ? '.variables' : '.variables of the main worktree');
+    const notes = fileNotes(own.read, own.place === checkout ? '.variables' : '.variables of the main worktree', `${dataRoot}/.secrets`);
     for (const key of VARIABLE_KEYS)
     {
-        if (key === SWITCH_KEY && String(env[key]) === '0') { values[key] = '0'; from[key] = 'env'; continue; }
+        if (all && key === SWITCH_KEY && String(env[key]) === '0') { values[key] = '0'; from[key] = 'env'; continue; }
         let value = valueIn(local, key);
         if (value !== undefined)
         {
@@ -549,7 +568,7 @@ function ownLayers(projectRoot, env)
         }
         value = own.read ? valueIn(own.read.values, key) : undefined;
         if (value !== undefined) { values[key] = value; from[key] = 'own'; continue; }
-        value = valueIn(shared, key) ?? valueIn(account, key) ?? valueIn(env, key);
+        value = valueIn(shared, key) ?? valueIn(account, key) ?? (all ? valueIn(env, key) : undefined);
         if (value !== undefined) { values[key] = value; from[key] = 'env'; }
     }
     return { checkout, main: mainOf, dataRoot, local, shared, values, from, notes };
@@ -558,13 +577,13 @@ function ownLayers(projectRoot, env)
 // The whole read: every key's winner, where it came from, the notes, and the merged HOOKS_OFF csv (D4): the project's
 // entries (settings.local.json over settings.json, R99) plus each member's `<hook>:<part>` entries - a member's
 // whole-hook entry never reaches a child (release 1) - up to an `ignore env ALFRED_CODE_HOOKS_OFF`.
-function resolveVariables(projectRoot, env)
+function resolveVariables(projectRoot, env, which = 'all')
 {
-    const layers = ownLayers(projectRoot, env);
+    const layers = ownLayers(projectRoot, env, which);
     const { values, from, notes } = layers;
     const hooksOffAt = (local, shared) => csvOf(local && Object.hasOwn(local, HOOKS_OFF_KEY) ? local[HOOKS_OFF_KEY] : (shared || {})[HOOKS_OFF_KEY]);
     const hooksOff = hooksOffAt(layers.local, layers.shared);
-    if (switchValueOn(values[SWITCH_KEY]))
+    if (which === 'all' && switchValueOn(values[SWITCH_KEY]))
     {
         const project = layers.main() || layers.checkout;
         const chain = workspaceChain(project, { env, startData: project === layers.checkout ? layers.dataRoot : undefined });
@@ -573,7 +592,7 @@ function resolveVariables(projectRoot, env)
         {
             const file = path.join(member.root, ...member.dataRoot.split('/'), '.variables');
             const read = readDotenv(file);
-            notes.push(...fileNotes(read, `.variables of ${member.rel}`));
+            notes.push(...fileNotes(read, `.variables of ${member.rel}`, `${member.rel}/${member.dataRoot}/.secrets`));
             for (const key of VARIABLE_KEYS)
             {
                 if (values[key] !== undefined || MEMBER_NEVER.has(key) || skip.has(key) || !read) continue;
@@ -591,9 +610,12 @@ function resolveVariables(projectRoot, env)
     return { values, from, notes, hooksOff: [...new Set(hooksOff)].join(',') };
 }
 
-function variablesOf(projectRoot, { env = process.env } = {})
+// `layers`: 'all' (the D4 order, what a hook reads), 'files' (the project's settings.local.json, .variables and
+// settings.json - no account file, process env or member: a session's env carries settings.local.json's values, so a
+// script deciding what a file holds reads the files) or 'team' (the two files a teammate shares, no settings.local.json).
+function variablesOf(projectRoot, { env = process.env, layers = 'all' } = {})
 {
-    const { values, from, notes } = resolveVariables(projectRoot, env);
+    const { values, from, notes } = resolveVariables(projectRoot, env, layers);
     return { values, from, notes };
 }
 const hooksOffOf = (projectRoot, { env = process.env } = {}) => resolveVariables(projectRoot, env).hooksOff;
@@ -617,6 +639,6 @@ function applyVariables(projectRoot, env = process.env)
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
-    settingFrom, checkDataPath, dataRootOf, workspaceOn, ownWorkspace, workspaceChain,
-    VARIABLE_KEYS, readDotenv, readText, variablesOf, hooksOffOf, applyVariables,
+    settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
+    VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

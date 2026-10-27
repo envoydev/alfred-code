@@ -726,6 +726,25 @@ test('modes: under default, the switch-off in effect is named, a shadowed one is
     finally { s.done(); }
 });
 
+// T12c (AC22): the mode is one of the stack's variables, read through the loader - the project's .variables included.
+test('configure\'s memory area reports custom from .variables', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const vars = (text) => s.write(path.join(s.root, '.alfred', '.variables'), text);
+        vars('ALFRED_CODE_MEMORY=custom\n');
+        settingsAt(s, { enabledPlugins: STACK, autoMemoryEnabled: false });
+        assert.strictEqual(tools.memoryMode({ projectRoot: s.root, env: s.env }), 'custom');
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `memory: custom - ${MEM_TOOLS}; Claude's own memory is off`);
+        // The team's custom in .variables keeps its switch-off for a developer whose settings.local.json answers default.
+        settingsAt(s, { env: { ALFRED_CODE_MEMORY: 'default' } }, 'settings.local.json');
+        const lines = tools.modeLines({ projectRoot: s.root, env: s.env });
+        assert.match(lines[1], /^memory: autoMemoryEnabled is false in \.claude\/settings\.json - the team's custom memory switch-off/, lines.join('\n'));
+    }
+    finally { s.done(); }
+});
+
 test('memoryMode reads Custom and bogus as default', () =>
 {
     const s = sandbox();

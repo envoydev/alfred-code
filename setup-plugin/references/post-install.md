@@ -116,7 +116,7 @@ language server, and purge any handoff note a run left behind (`node .claude/hoo
 The architecture docs handle a branch switch themselves: under `local` versioning the docs hook
 serves the branch's own section versions and folds a merged branch back into mainline at the next
 session start; under `git` versioning the branch's commits carry its docs and git does the merge.
-Which one this install uses is `ALFRED_CODE_DOCS_VERSIONING` in the settings.json `env` block, and
+Which one this install uses is `ALFRED_CODE_DOCS_VERSIONING` in `<data root>/.variables`, and
 `node .claude/hooks/docs.js status` names it.
 
 ## Done looks like

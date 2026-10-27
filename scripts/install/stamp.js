@@ -137,7 +137,8 @@ const valueHash = (value) => crypto.createHash('sha256').update(String(value)).d
 const stable = (v) => (Array.isArray(v) ? v.map(stable)
     : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, stable(v[k])])) : v);
 const entryHash = (entry) => valueHash(JSON.stringify(stable(entry)));
-const LEDGER_FILES = ['settings.json', 'settings.local.json'];
+// `.variables` (workspace roles and variables, D5): the stack's variables moved there in 3.0.0, their env rows with them.
+const LEDGER_FILES = ['settings.json', 'settings.local.json', '.variables'];
 const HEX = /^[0-9a-f]{64}$/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const FILE_KINDS = ['hooks', 'skills', 'agents'];

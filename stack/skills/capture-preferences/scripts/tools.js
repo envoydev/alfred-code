@@ -26,9 +26,10 @@ const client = require('./mcp-client.js');
 const lsp = require('./lsp-coverage.js');
 // The stack's variables (D4) set on the process env before the first read: the hooks' loader, at ../../../hooks/ in the
 // plugin and in a project's .claude/ (bundle-gate.js's route); a copy with no loader beside it reads the env as it is.
+let loader = null;
 try
 {
-    const loader = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
+    loader = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
     loader.applyVariables(process.env.CLAUDE_PROJECT_DIR || loader.projectRootOf(process.cwd()).checkout);
 }
 catch { /* the process env as it stands */ }
@@ -775,23 +776,21 @@ function jobOrder({ projectRoot, env = process.env, job, seat = null })
     return { ranks: found ? found.ranks.map((r) => r.label) : [], own: !!found && !found.isDefault, fellBack: !!found && found.fellBack, docRel: doc ? doc.rel : null };
 }
 
-// The memory mode (ALFRED_CODE_MEMORY): settings.local.json's env, then settings.json's, then the process env - the first that
-// sets it. Anything but exactly `custom` is the default, so a typo never leaves a project without Claude's own memory.
-// The project file whose env holds ALFRED_CODE_MEMORY - the installer writes the switch-off beside it - and its value.
-function memoryChoice(projectRoot)
+// The memory mode (ALFRED_CODE_MEMORY), one of the stack's variables: the loader's winner (settings.local.json, the
+// project's .variables, settings.json, the account file, the process env, a linked member - spec D4). Anything but
+// exactly `custom` is the default, so a typo never leaves a project without Claude's own memory.
+// `layers` as the loader takes it: 'team' is the value under a developer's own settings.local.json. The choice is
+// { name, value } - `name` the layer it came from ('settings.local.json', 'own', 'env' or a member) - or null.
+function memoryChoice(projectRoot, env = process.env, layers = 'all')
 {
-    for (const name of ['settings.local.json', 'settings.json'])
-    {
-        const data = readJsonFile(path.join(projectRoot, '.claude', name));
-        const own = data && typeof data === 'object' && data.env && typeof data.env === 'object' ? data.env : null;
-        if (own && Object.hasOwn(own, 'ALFRED_CODE_MEMORY')) return { name, value: own.ALFRED_CODE_MEMORY };
-    }
-    return null;
+    const got = loader ? loader.variablesOf(projectRoot, { env, layers }) : { values: { ...env }, from: {} };
+    const value = got.values.ALFRED_CODE_MEMORY;
+    return value === undefined || value === '' ? null : { name: got.from.ALFRED_CODE_MEMORY || 'env', value };
 }
 function memoryMode({ projectRoot, env = process.env })
 {
-    const choice = memoryChoice(projectRoot);
-    return (choice ? choice.value : env.ALFRED_CODE_MEMORY) === 'custom' ? 'custom' : 'default';
+    const choice = memoryChoice(projectRoot, env);
+    return choice && choice.value === 'custom' ? 'custom' : 'default';
 }
 
 // The `autoMemoryEnabled` in effect here: the narrowest file that sets the key (settings.local.json, settings.json, then the
@@ -815,16 +814,15 @@ function memoryOffIn(opts)
     const s = memorySetting(opts);
     return s && s.value === false ? [s.file] : [];
 }
-// The team's custom switch-off kept for a developer whose settings.local.json answers default: settings.json's own env is
-// still custom, so every update keeps its false (settings.js, fix-pass review I1) and only this developer's file can turn
-// Claude's own memory back on.
-function teamSwitchOff(projectRoot, setting)
+// The team's custom switch-off kept for a developer whose settings.local.json answers default: the team's files (the
+// project's .variables, settings.json beneath it) still say custom, so every update keeps its false (settings.js, fix-pass
+// review I1) and only this developer's file can turn Claude's own memory back on.
+function teamSwitchOff(projectRoot, setting, env = process.env)
 {
     if (!setting || setting.value !== false || setting.abs !== path.join(projectRoot, '.claude', 'settings.json')) return false;
-    const choice = memoryChoice(projectRoot);
-    const shared = readJsonFile(setting.abs);
-    const env = shared && typeof shared === 'object' && shared.env && typeof shared.env === 'object' ? shared.env : {};
-    return Boolean(choice) && choice.name === 'settings.local.json' && choice.value !== 'custom' && env.ALFRED_CODE_MEMORY === 'custom';
+    const choice = memoryChoice(projectRoot, env, 'files');
+    const team = memoryChoice(projectRoot, env, 'team');
+    return Boolean(choice) && choice.name === 'settings.local.json' && choice.value !== 'custom' && Boolean(team) && team.value === 'custom';
 }
 
 // Whose switch-off that false is when the stack wrote it, else null. Custom memory's: the stamp's ledger records it in that
@@ -863,7 +861,7 @@ function memoryLines({ projectRoot, env = process.env, preview = null })
     }
     if (mode !== 'custom')
     {
-        if (teamSwitchOff(projectRoot, setting))
+        if (teamSwitchOff(projectRoot, setting, env))
             return ["memory: default - Claude Code's own memory, at its default place", `memory: autoMemoryEnabled is false in ${setting.file} - the team's custom memory switch-off, which every update keeps; set autoMemoryEnabled: true in .claude/settings.local.json to turn it on for you`];
         const whose = stackSwitchOff(projectRoot, setting);
         return ["memory: default - Claude Code's own memory, at its default place", ...off.map((f) => (whose
@@ -953,7 +951,7 @@ function validateRows(projectRoot, env = process.env)
         // Final review M5: the user's own true in one of the project's files is kept by every update, so it stands until
         // they take it out (one in the account file is outranked by the switch-off the next update writes here). One in
         // settings.json under a choice in settings.local.json is outranked the same way (fix-pass review m3).
-        const below = Boolean(setting) && path.basename(setting.abs) === 'settings.json' && (memoryChoice(projectRoot) || {}).name === 'settings.local.json';
+        const below = Boolean(setting) && path.basename(setting.abs) === 'settings.json' && (memoryChoice(projectRoot, env) || {}).name === 'settings.local.json';
         if (setting && setting.project && setting.value === true) rows.push(below
             ? `!! memory: ALFRED_CODE_MEMORY is custom, but autoMemoryEnabled is true in ${setting.file} - Claude's own memory stays on beside your memory tool until /alfred-code:update writes the switch-off into .claude/settings.local.json`
             : `!! memory: ALFRED_CODE_MEMORY is custom, but autoMemoryEnabled is true in ${setting.file} - Claude's own memory stays on beside your memory tool; remove the key from ${setting.file} and /alfred-code:update switches it off`);
@@ -961,7 +959,7 @@ function validateRows(projectRoot, env = process.env)
     else if (setting && setting.value === false)
     {
         const whose = stackSwitchOff(projectRoot, setting);
-        if (teamSwitchOff(projectRoot, setting)) rows.push(`!! memory: native memory is chosen in .claude/settings.local.json, but the team's ${setting.file} is on custom memory and its switch-off keeps Claude's own memory off for you - set autoMemoryEnabled: true in .claude/settings.local.json, or remove ALFRED_CODE_MEMORY there to follow the team`);
+        if (teamSwitchOff(projectRoot, setting, env)) rows.push(`!! memory: native memory is chosen in .claude/settings.local.json, but the team's ${setting.file} is on custom memory and its switch-off keeps Claude's own memory off for you - set autoMemoryEnabled: true in .claude/settings.local.json, or remove ALFRED_CODE_MEMORY there to follow the team`);
         else rows.push(whose ? `!! memory: native memory is chosen, but ${whose} is still in ${setting.file} - run /alfred-code:update to remove it`
             : `!! memory: native memory is chosen, but autoMemoryEnabled is false in ${setting.file} - Claude's own memory stays off until you remove it`);
     }

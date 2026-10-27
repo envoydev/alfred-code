@@ -131,6 +131,23 @@ test('grade: a bad --level reads the env level, else 80 (spec 5.4: parsed per 5.
     assert.match(cli(['grade', file, '--rubric', R100_FILE, '--level', 'abc'], { ALFRED_CODE_SCORER_LEVEL: '90' }).stdout, /^verdict: fail$/m);
     assert.match(cli(['grade', file, '--rubric', R100_FILE, '--level', '85']).stdout, /^verdict: pass$/m);
 });
+// T12c (AC22, AC13's script half): a workspace child reads the root's level through the loader.
+test('the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child', () => {
+    const ws = fs.mkdtempSync(path.join(ROOT, 'ws-'));
+    const api = path.join(ws, 'api');
+    for (const [dir, line] of [[ws, 'child api\n'], [api, 'parent ..\n']]) {
+        fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
+    }
+    fs.writeFileSync(path.join(ws, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=90\n');
+    const env = { CLAUDE_CONFIG_DIR: path.join(ws, 'acct'), ALFRED_CODE_WORKSPACE: '1' };
+    const { levelOf } = require(SCORECARD);
+    assert.strictEqual(levelOf(undefined, env, fs.realpathSync(api)), 90);
+    const file = scoreFile(card100(85));
+    assert.match(cli(['grade', file, '--rubric', R100_FILE, '--root', fs.realpathSync(api)], env).stdout, /^verdict: fail$/m, 'the CLI reads it too: 85 under 90');
+});
 test('grade: --output resolves its rubric beside the script; an unknown output exits 2 (R10)', () => {
     assert.strictEqual(cli(['grade', scoreFile(card100(100)), '--output', 'no-such-output']).status, 2);
 });

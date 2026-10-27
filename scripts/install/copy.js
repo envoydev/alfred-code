@@ -166,17 +166,18 @@ function resolveDocsRoot(projectRoot, scope)
     return envOf(view, 'DOCS_PATH') || `${data.ok ? data.value : DATA_ROOT_DEFAULT}/docs`;
 }
 
-// The docs versioning DECLARED in the same view the docs root is read from - 'git', 'local', or null
-// when the key is absent or holds anything else (the four-home rule answers then).
+// The docs versioning DECLARED for this project - 'git', 'local', or null when the key is absent or holds anything else
+// (the four-home rule answers then). One of the stack's variables (D4), read through the hooks' loader from the project's
+// files: at local scope its three, else the two the team shares, so a personal settings.local.json value never answers
+// for the committed docs (C7). The loader reads .variables from disk, so an install reads the value its own settings
+// pass just wrote.
 function resolveDocsVersioning(projectRoot, scope)
 {
-    const { readBackSettings } = require('./settings.js');
     const { readStampScope } = require('./stamp.js');
     const { stampFile } = require('./brand.js');
-    const claudeDir = path.join(projectRoot, '.claude');
-    const at = scope || readStampScope(stampFile(claudeDir).read || '');
-    const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project', { sharedOnly: true }).env;
-    const value = String(envOf(env && typeof env === 'object' ? env : {}, 'DOCS_VERSIONING') || '').trim().toLowerCase();
+    const at = scope || readStampScope(stampFile(path.join(projectRoot, '.claude')).read || '');
+    const { values } = require('../../stack/hooks/layout.js').variablesOf(projectRoot, { env: {}, layers: at === 'local' ? 'files' : 'team' });
+    const value = String(values.ALFRED_CODE_DOCS_VERSIONING ?? '').trim().toLowerCase();
     return value === 'git' || value === 'local' ? value : null;
 }
 

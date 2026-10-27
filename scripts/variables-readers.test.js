@@ -15,29 +15,23 @@ const MOVED = require('../meta/environment.json').env.map((r) => r.key)
     .filter((k) => k !== 'ALFRED_CODE_DATA_PATH' && k !== 'ALFRED_CODE_HOOKS_OFF')
     .map((k) => k.slice('ALFRED_CODE_'.length));
 
-// Readers still to convert, as `<file>:<key suffix | env-lookup>`.
-const PENDING = [
-    'scripts/analyze-usage.js:TURN_CHECK',
-    'scripts/install/alfred-code.js:MEMORY',
-    'scripts/install/copy.js:DOCS_VERSIONING',
-    'scripts/install/settings.js:AUTO_COMPACT',
-    'scripts/install/settings.js:DOCS_VERSIONING',
-    'scripts/install/settings.js:MEMORY',
-    'scripts/install/workspace.js:AUTO_COMPACT',
-    'scripts/install/workspace.js:DOCS_VERSIONING',
-    'scripts/install/workspace.js:MEMORY',
-    'scripts/stamp-docs-root.js:DOCS_VERSIONING',
-    'scripts/update-preflight.js:env-lookup',
-    'stack/skills/capture-preferences/scripts/tools.js:MEMORY',
-    'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_LEVEL',
-    'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_ROUNDS',
-];
+// Readers still to convert, as `<file>:<key suffix | env-lookup>` - none since T12c: every reader goes through the loader.
+const PENDING = [];
 
 // No read of a moved key in a settings file. Only the loader and the writer are allowed whole.
 const WHOLE = new Set(['stack/hooks/layout.js', 'scripts/install/variables.js', 'scripts/variables.js']);
 const ALLOWED = {
+    'scripts/install/alfred-code.js:MEMORY': 'merged view (settings env with the .variables values laid over it), held by AC23 test "AC23: at <scope> scope AUTO_COMPACT=1 and MEMORY=custom keep every autoCompactWindow row and autoMemoryEnabled false byte-identical; 0 in .variables removes the rows"',
+    'scripts/install/alfred-code.js:AUTO_COMPACT': 'variablesStep compares a flag with the loader\'s value (layout.variablesOf) - no settings read',
+    'scripts/install/alfred-code.js:DOCS_VERSIONING': 'variablesStep compares a flag with the loader\'s value (layout.variablesOf) - no settings read',
+    'scripts/install/settings.js:DOCS_VERSIONING': 'merged view (settings env with the .variables values laid over it): the seed and --docs-versioning decide in it before the move writes .variables, held by "a fresh install with --docs-versioning <mode> writes the <mode>-shaped data ignore (<scope> scope)" and the AC7 fresh-install tests',
+    'scripts/install/settings.js:AUTO_COMPACT': 'merged view (settings env with the .variables values laid over it), held by AC23 test "AC23: at <scope> scope AUTO_COMPACT=1 and MEMORY=custom keep every autoCompactWindow row and autoMemoryEnabled false byte-identical; 0 in .variables removes the rows"',
+    'scripts/install/settings.js:MEMORY': 'merged view (settings env with the .variables values laid over it), held by AC23 test "AC23: at <scope> scope AUTO_COMPACT=1 and MEMORY=custom keep every autoCompactWindow row and autoMemoryEnabled false byte-identical; 0 in .variables removes the rows"',
     'scripts/install/settings.js:env-lookup': 'applyEnv\'s migration and the uninstall read the settings env to move or remove it; `prior.env` is the stamp\'s ledger',
+    'scripts/update-preflight.js:env-lookup': 'detects() reads the env object it is handed - a settings file\'s for a settings key, the loader\'s values (layout.variablesOf, layers files) for the stack\'s variables, held by "a preflight settings_env_value row matches a key only .variables holds"',
     'scripts/lint-skills.js:DOCS_VERSIONING': 'a lint check that the seed special-cases the catalog key - no settings read',
+    'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_LEVEL': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child"',
+    'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_ROUNDS': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child"',
     'stack/hooks/hook-prelude.js:SCORER': 'switchOn reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORER_LEVEL': 'reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORER_OUTPUTS': 'reads the hook\'s env, which applyVariables fills',
@@ -61,11 +55,13 @@ function scanned()
         .filter((f) => { const t = fs.readFileSync(path.join(ROOT, f), 'utf8'); return SETTINGS_FILE.test(t) || SETTINGS_READER.test(t); });
 }
 
-// The rows one line hits. A process env read is no hit: the loader fills the process env, so those see the winner.
+// The rows one line hits. A process env read is no hit: the loader fills the process env, so those see the winner. A
+// read of the loader's own values (`envOf(variablesOf(...).values, 'K')`) is no hit either: it is the loader.
 function rowsOn(line)
 {
     const rest = line.replace(/process\.env\.ALFRED_CODE_\w+/g, '').replace(/process\.env\[[^\]]*\]/g, '')
-        .replace(/envOf\((?:[\w.]+\s*\|\|\s*)?process\.env\s*,[^)]*\)/g, '');
+        .replace(/envOf\((?:[\w.]+\s*\|\|\s*)?process\.env\s*,[^)]*\)/g, '')
+        .replace(/envOf\(\s*[\w.]*variablesOf\([^)]*\)\.values\s*,\s*(['"`])\w+\1\s*\)/g, '');
     const found = new Set();
     for (const s of MOVED)
     {
@@ -111,6 +107,11 @@ test('no tracked .js outside the tests reads or writes a moved key in a settings
     assert.deepStrictEqual(gone, [], 'a converted reader leaves PENDING in the same step');
 });
 
+test('PENDING is empty: no reader of a moved key is left to convert (AC22)', () =>
+{
+    assert.strictEqual(PENDING.length, 0);
+});
+
 test('the scan sees each access shape and passes over a process env read, a message and a comment', () =>
 {
     const rows = (line) => [...rowsOn(line)].sort();
@@ -123,6 +124,9 @@ test('the scan sees each access shape and passes over a process env read, a mess
     assert.deepStrictEqual(rows('const v = envOf(data.env, suffix);'), ['env-lookup']);
     assert.deepStrictEqual(rows('const v = envOf(process.env, \'MEMORY\') || process.env.ALFRED_CODE_SCORER;'), []);
     assert.deepStrictEqual(rows('const v = envOf(env || process.env, \'HOOK_LOG_DIR\');'), []);
+    assert.deepStrictEqual(rows('const on = envOf(variablesOf(root, { env: process.env }).values, \'TURN_CHECK\') === \'1\';'), [], 'the loader\'s own values');
+    assert.deepStrictEqual(rows('return envOf(layout.variablesOf(root, { env: {}, layers: \'team\' }).values, \'DOCS_VERSIONING\');'), []);
+    assert.deepStrictEqual(rows('const v = envOf(variablesOf(root).values, \'X\') || data.env.ALFRED_CODE_MEMORY;'), ['MEMORY'], 'a settings read beside it still hits');
     assert.deepStrictEqual(rows('log(\'set ALFRED_CODE_MEMORY in settings.json\');'), [], 'a key inside a longer string is no access');
     assert.deepStrictEqual(rows('const T = `T${n}`;'), [], 'a head that is no key fragment');
     assert.deepStrictEqual(rows('const CONFIG = /(?:\\.env[^/]*)$/;'), [], 'a regex naming .env files');

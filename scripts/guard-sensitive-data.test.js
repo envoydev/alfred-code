@@ -365,7 +365,7 @@ const wsTree = (spec) =>
     return (rel = '.') => path.join(top, ...rel.split('/'));
 };
 const CUSTOM = { data: 'var/data', local: JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'var/data' } }) };
-// The workspace is off until 3.0.0 (the user's answer of 2026-10-27): the chain cases run it on.
+// The workspace is on by default since 3.0.0 (D9); the chain cases still pin it, so a launch 0 in the caller's env cannot freeze them.
 const WS_ON = { ALFRED_CODE_WORKSPACE: '1' };
 const wsThree = (extra = {}) => wsTree({
     'ws': { file: 'child api\n', store: 'A=root-a-value\nB=root-b-value\n', ...extra.ws },

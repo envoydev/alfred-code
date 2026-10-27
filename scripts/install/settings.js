@@ -286,13 +286,15 @@ function hookCommand(file, args)
     // unquoted text earlier installs wired, migrated in place so an update never leaves two entries.
     const quoted = `"$CLAUDE_PROJECT_DIR/.claude/hooks/${file}"${tail}`;
     const legacy = `$CLAUDE_PROJECT_DIR/.claude/hooks/${file}${tail}`;
+    // The instrumentation hook was wired behind a shell test of ALFRED_CODE_INSTRUMENT until 3.0.0: the switch moved into
+    // .variables (workspace roles and variables, D5), which no shell test reads, so the hook decides for itself as it does
+    // on the plugin route, and an update migrates the gated text in place (`older`).
     if (file === 'instrument-tool-usage.js')
     {
-        // env-gated: the shell test costs nothing when off; node spawns only under the flag.
         const gate = '[ "$ALFRED_CODE_INSTRUMENT" != "1" ] || ';
-        return { command: gate + quoted, legacy: gate + legacy };
+        return { command: quoted, legacy, older: [gate + quoted, gate + legacy] };
     }
-    return { command: quoted, legacy };
+    return { command: quoted, legacy, older: [] };
 }
 
 const fileOf = (command) => (command.includes(HOOKS_DIR_MARK) ? command.split(HOOKS_DIR_MARK).pop().split('"')[0] : '');
@@ -304,14 +306,14 @@ function wireHooks(data, specs, retiredHooks)
     const every = () => Object.entries(hooks);
 
     // Migrate the unquoted command text earlier installs wired, on any event.
-    for (const { command, legacy } of specs)
+    for (const { command, legacy, older = [] } of specs)
         for (const [, entries] of every())
             for (const entry of entries)
                 for (const h of entry.hooks || [])
-                    if (h.command === legacy) { h.command = command; changed = true; }
+                    if (h.command === legacy || older.includes(h.command)) { h.command = command; changed = true; }
 
     // Backfill the timeout onto entries an earlier install wrote bare - they carry the 600s default.
-    const ours = new Set(specs.flatMap((s) => [s.command, s.legacy]));
+    const ours = new Set(specs.flatMap((s) => [s.command, s.legacy, ...(s.older || [])]));
     for (const [event, entries] of every())
         for (const entry of entries)
             for (const h of entry.hooks || [])
@@ -514,11 +516,13 @@ function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null,
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-// `workspaceEnv` (a joined child, workspace.js childEnv): `seeds` replaces a catalog default with the workspace root's
-// value, and a `force` key THIS file holds at another value is rewritten to it - a key only the file beneath holds is
-// never in either, and a decision this run took (a flag, the hooks walk's answer) wins over both.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null, workspaceEnv = null })
+// `seeds` (a joined child, workspace.js envPlan): the keys a seed may fill - the workspace hands a child the rest (D4 step
+// 5), and a decision this run took (a flag, the hooks walk's answer) is written whatever it says. `seedLabel` names the
+// file a seed is said to land in (writeSettings moves the stack's variables into .variables).
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null, seeds = null, seedLabel = null })
 {
+    // Where a seed is said to land: a moved key goes to .variables (writeSettings' split), the rest to this file.
+    const seedAt = (key) => (seedLabel ? seedLabel(key) : label);
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
     renameEnv(beneath, migrations, () => {});
@@ -530,21 +534,11 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
         offWithTiers(held, migrations, log, overlayLabel, { only: isStackKey, stackWrote });
         retireAndReseed(held, migrations, log, overlayLabel, isStackKey, stackWrote);
     }
-    const wsSeeds = workspaceEnv && workspaceEnv.seeds && typeof workspaceEnv.seeds === 'object' ? workspaceEnv.seeds : {};
-    const wsForce = new Set(workspaceEnv && Array.isArray(workspaceEnv.force) ? workspaceEnv.force : []);
-    const fromRoot = (key) => Object.hasOwn(wsSeeds, key);
-    // A forced key this file holds at another value takes the workspace root's.
-    const follow = (key) =>
-    {
-        if (!wsForce.has(key) || !fromRoot(key) || !Object.hasOwn(env, key) || env[key] === wsSeeds[key]) return false;
-        log(`  ${label} env: ${key} '${env[key]}' -> '${wsSeeds[key]}' (the workspace root's value)`);
-        env[key] = wsSeeds[key];
-        return true;
-    };
     const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held && !sharedKeys.includes(key);
     const present = (key) => key in env || key in beneath;
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
-    const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
+    // A decision's line names the file the value lands in: a moved key's is .variables (seedLabel), as its seed line says.
+    const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: seedAt(key), mine: true });
 
     if (foldEnv(env, migrations, log, label, { alsoInto: held, alsoLabel: overlayLabel })) changed = true;
     if (offWithTiers(env, migrations, log, label, { stackWrote, absentOk: (key) => !present(key) && !(held && key in held) })) changed = true;
@@ -599,20 +593,21 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
             + ` (--memory${old === memory.value ? ', unchanged' : ''})`);
     }
 
-    // 4. SEEDS - absent-only, from the catalog, which is the one list.
+    // 4. SEEDS - absent-only, from the catalog, which is the one list. `seeds` narrows them: a joined child seeds only what
+    // it owns (workspace roles and variables, D5) - the chain hands it the rest.
     for (const row of catalog)
     {
         if (row.written) continue;                       // step 5 owns these
         if (row.seed === false) continue;                // never written: the launch env or a hand-set value only
+        if (seeds && !seeds(row.key)) continue;
         if (row.key === 'ALFRED_CODE_AUTO_COMPACT' && autoCompact && autoCompact.value && !heldHere(row.key)) continue;   // decided above
         if (row.key === 'ALFRED_CODE_MEMORY' && memory && memory.value && !heldHere(row.key)) continue;                  // decided above
         if (row.key === 'ALFRED_CODE_DOCS_VERSIONING') continue;   // a decision, below
         if (row.key === 'ALFRED_CODE_HOOKS_OFF') continue;         // answered-wins, below
-        if (present(row.key)) { if (follow(row.key)) changed = true; continue; }
-        const seed = fromRoot(row.key) ? wsSeeds[row.key] : row.default;
-        env[row.key] = seed;
+        if (present(row.key)) continue;
+        env[row.key] = row.default;
         changed = true;
-        log(`  ${label} env: ${row.key} seeded ${fromRoot(row.key) ? 'from the workspace root ' : ''}(${seed === '' ? 'empty' : seed})`);
+        log(`  ${seedAt(row.key)} env: ${row.key} seeded (${row.default === '' ? 'empty' : row.default})`);
     }
 
     // The docs versioning DECISION. `--docs-versioning` writes over a value already there; without
@@ -629,7 +624,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     {
         env.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.seed;
         changed = true;
-        log(`  ${label} env: ALFRED_CODE_DOCS_VERSIONING seeded (${docsVersioning.seed})`);
+        log(`  ${seedAt('ALFRED_CODE_DOCS_VERSIONING')} env: ALFRED_CODE_DOCS_VERSIONING seeded (${docsVersioning.seed})`);
     }
 
     // ALFRED_CODE_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
@@ -654,13 +649,11 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
             const now = was.split(',').map((h) => { const bare = h.trim().replace(/\.js$/i, '').toLowerCase(); return Object.hasOwn(renamedHooks, bare) ? renamedHooks[bare] : h; }).join(',');
             if (now !== was) { into.ALFRED_CODE_HOOKS_OFF = now; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${now} (a renamed hook re-spelled)`); }
         }
-        if (follow('ALFRED_CODE_HOOKS_OFF')) changed = true;
-        else if (!present('ALFRED_CODE_HOOKS_OFF'))
+        if (!present('ALFRED_CODE_HOOKS_OFF'))
         {
-            const off = fromRoot('ALFRED_CODE_HOOKS_OFF') ? wsSeeds.ALFRED_CODE_HOOKS_OFF : '';
-            env.ALFRED_CODE_HOOKS_OFF = off;
+            env.ALFRED_CODE_HOOKS_OFF = '';
             changed = true;
-            log(`  ${label} env: ALFRED_CODE_HOOKS_OFF seeded ${fromRoot('ALFRED_CODE_HOOKS_OFF') ? 'from the workspace root ' : ''}(${off || 'empty - every hook runs'})`);
+            log(`  ${label} env: ALFRED_CODE_HOOKS_OFF seeded (empty - every hook runs)`);
         }
     }
 
@@ -795,8 +788,8 @@ function writeSettings(opts)
         agentDeny = [], agentAllow = [],
         mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
         docsVersioning, docsPath = null, dataPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
-        inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {}, workspaceEnv = null,
-        log = () => {}, note = () => {},
+        inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
+        variablesFile = null, childEnv = null, log = () => {}, note = () => {},
     } = opts;
     // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
     // wirings the RELEASE writes, whatever this run's selection wires.
@@ -809,7 +802,43 @@ function writeSettings(opts)
     let data;
     try { ({ data } = readSettings(file)); }
     catch (err) { note(err.message); return { written: false, refused: true }; }
+    // THE MOVE (workspace roles and variables, D5): `variablesFile` is the project's .variables where this run keeps the
+    // stack's variables - null keeps them in this file, as before 3.0.0 (git ignores the data root, a local-scope run over
+    // a tracked file, a caller that names none). The file's values join the env every pass below reads, the file winning
+    // (D4 step 3 over 4), so the seeds, the migrations and the window and memory passes see one view; after them the
+    // moved keys leave this file for .variables, each only once it reads back equal (the one-way gate).
+    const vars = variablesFile ? require('./variables.js') : null;
+    const { VARIABLE_KEYS, MEMBER_NEVER: NEVER_CHAINED } = require('../../stack/hooks/layout.js');
+    const MOVED = new Set(VARIABLE_KEYS);
+    const renameFrom = new Set((migrations.renames || []).filter(([, to]) => MOVED.has(to)).map(([from]) => from));
+    const movable = (key) => MOVED.has(key) || renameFrom.has(key);
+    const settingsEnvBefore = data.env === undefined ? null : JSON.stringify(data.env);
+    const settingsHad = new Set(plain(data.env) ? Object.keys(data.env).filter(movable) : []);
+    const fileValues = {};
+    if (vars && (data.env === undefined || plain(data.env)))
+    {
+        for (const [key, value] of Object.entries(vars.read(variablesFile).values)) if (movable(key)) fileValues[key] = value;
+        // The loader's order (D4): .variables over settings.json, settings.local.json over .variables - so a local-scope
+        // run's own file keeps a value typed there, and the move carries the value every reader already saw.
+        if (Object.keys(fileValues).length) data.env = label === 'settings.local.json' ? { ...fileValues, ...(data.env || {}) } : { ...(data.env || {}), ...fileValues };
+    }
     const envBefore = plain(data.env) ? { ...data.env } : {};
+    // A joined child (workspace.js envPlan): a copy a 2.12 child kept of an inherited value goes - the chain gives it the
+    // same value (D4 step 5) - and so do the part entries of its HOOKS_OFF a member's settings hold, which D4 merges back.
+    if (childEnv && plain(data.env))
+    {
+        for (const key of childEnv.copies || []) if (Object.hasOwn(data.env, key))
+        { delete data.env[key]; log(`  ${label} env: ${key} removed - a copy of the value the workspace gives this project`); }
+        for (const key of childEnv.seeds || []) if (Object.hasOwn(data.env, key))
+        { delete data.env[key]; log(`  ${label} env: ${key} removed - a stack seed, so the workspace's value reaches this project`); }
+        const drop = new Set(childEnv.hooksOffDrop || []);
+        const off = data.env.ALFRED_CODE_HOOKS_OFF;
+        if (drop.size && typeof off === 'string')
+        {
+            const now = off.split(',').map((e) => e.trim()).filter((e) => e && !drop.has(e)).join(',');
+            if (now !== off) { data.env.ALFRED_CODE_HOOKS_OFF = now; log(`  ${label} env: ALFRED_CODE_HOOKS_OFF = ${now || '(empty)'} - ${[...drop].join(', ')} come from the workspace at load`); }
+        }
+    }
     const denyBefore = plain(data.permissions) && Array.isArray(data.permissions.deny) ? [...data.permissions.deny] : [];
     const wiredBefore = new Set(wiringsOf(data.hooks).map((w) => w.id));
 
@@ -953,13 +982,23 @@ function writeSettings(opts)
     // ledger holds no env for (no stamp, or one from before the ledger) leaves the reseed to the value match, as it was.
     const stackWrote = (fileLabel, key, value) =>
     {
-        const rows = prior && prior.env ? prior.env[fileLabel] : null;
+        const held = prior && prior.env ? prior.env : {};
+        // A moved key's row sits under .variables; this run's own file reads both.
+        const rows = held[fileLabel] || (vars && fileLabel === label && held['.variables'])
+            ? { ...(held[fileLabel] || {}), ...(vars && fileLabel === label ? held['.variables'] || {} : {}) } : null;
         if (!rows) return true;
         const names = [key, ...(migrations.renames || []).filter(([, to]) => to === key).map(([from]) => from)];
         return names.some((n) => rows[n] === valueHash(value));
     };
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memory, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
-        overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote, workspaceEnv })) changed = true;
+        overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote,
+        seeds: childEnv ? (key) => !MOVED.has(key) || NEVER_CHAINED.has(key) || (childEnv.ignored || []).includes(key) : null, seedLabel: vars ? (key) => (MOVED.has(key) ? '.variables' : label) : null }) && !vars) changed = true;
+    // D5: a decision for a key settings.local.json holds lands there, where it takes effect over .variables - said so.
+    const overrides = new Set();
+    const overridden = (key) => { if (!overrides.has(key)) { overrides.add(key); log(`  variables: ${key} set in .claude/settings.local.json (it overrides .variables here)`); } };
+    if (vars && overlay)
+        for (const [key, flag] of [['ALFRED_CODE_AUTO_COMPACT', autoCompact], ['ALFRED_CODE_MEMORY', memory], ['ALFRED_CODE_DOCS_VERSIONING', docsVersioning]])
+            if (flag && flag.value && Object.hasOwn(overlay, key) && !sharedKeys.includes(key)) overridden(key);
     // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
     // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted
     // at 76k of a 100k window - so it is this project's standing setting, never a per-run one, written in the project's
@@ -1075,6 +1114,14 @@ function writeSettings(opts)
                 : `  ${otherName}: autoMemoryEnabled: false removed - ALFRED_CODE_MEMORY is no longer custom, so Claude's own memory is back on`);
         }
     }
+    // The move run at project and user scope (the migration, D5): a stack key settings.local.json holds at the value moved
+    // is a copy and goes; a different one stays, is named once, and wins over .variables (D4 step 2).
+    if (vars && overlay)
+        for (const key of Object.keys(overlay).filter((k) => MOVED.has(k) && settingsHad.has(k) && !sharedKeys.includes(k)))
+        {
+            if (plain(data.env) && String(overlay[key]) === String(data.env[key])) delete overlay[key];
+            else overridden(key);
+        }
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
     const reseeds = (key) => (migrations.reseed || []).filter(([k]) => k === key).flatMap(([, bad, to]) => [bad, to]);
     const seedsOf = (key) => [...catalog.filter((r) => r.key === key && !r.written && r.seed !== false).flatMap((r) => [String(r.default), ...(r.former_defaults || []).map(String)]), ...reseeds(key),
@@ -1084,9 +1131,17 @@ function writeSettings(opts)
     const priorEnv = (name) => (prior && prior.env ? prior.env[name] || {} : null);
     const managedEnv = {};
     const kept = docsPath && docsPath.keep ? ['ALFRED_CODE_DOCS_PATH'] : [];
-    const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorEnv(label), release: releaseEnv, seedsOf, written: writtenNow, kept, migrations, log });
-    if (envShared.changed) changed = true;
+    // The moved keys' rows sit under .variables since the move: read with this file's, written back there below.
+    const priorHere = vars && priorEnv(label) ? { ...priorEnv(label), ...priorEnv('.variables') } : priorEnv(label);
+    const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorHere, release: releaseEnv, seedsOf, written: writtenNow, kept, migrations, log });
+    if (envShared.changed && !vars) changed = true;
     managedEnv[label] = envShared.managed;
+    const moved = vars ? moveVariables({ vars, file: variablesFile, env: data.env, fileValues, MOVED, catalog, managedEnv, label, log }) : [];
+    if (vars)
+    {
+        if (settingsEnvBefore === null && plain(data.env) && !Object.keys(data.env).length) delete data.env;
+        if ((data.env === undefined ? null : JSON.stringify(data.env)) !== settingsEnvBefore) changed = true;
+    }
     if (overlay)
     {
         const envLocal = ledgerEnv({ name: localName, env: overlay, before: localEnvBefore, prior: priorEnv(localName), release: releaseEnv, seedsOf, written: writtenNow, kept, migrations, log });
@@ -1224,10 +1279,52 @@ function writeSettings(opts)
         }
     }
 
-    if (!changed) return { written: localChanged, refused: false, managed };
+    // The keys this file held before the run and no longer holds - each now in .variables (a renamed one under its new name).
+    const variablesMoved = moved.length ? [...settingsHad].filter((k) => !(plain(data.env) && Object.hasOwn(data.env, k))) : [];
+    if (!changed) return { written: localChanged, refused: false, managed, variablesMoved };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-    return { written: true, refused: false, managed };
+    return { written: true, refused: false, managed, variablesMoved };
+}
+
+// The split (D5, the one-way gate): every moved key in `env` is written to .variables - a key the file held that the env
+// pass renamed or retired leaves it - and read back; each key that reads back equal leaves `env`, its ledger row moving
+// under .variables. A value .variables cannot hold (it spans lines) or that reads back otherwise stays in the settings
+// file, out of .variables (where it would win, D4 step 3), and so does every key when the file cannot be written; one
+// `!!` line names them. Returns the keys that left `env`.
+function moveVariables({ vars, file, env, fileValues, MOVED, catalog, managedEnv, label, log })
+{
+    const layout = require('../../stack/hooks/layout.js');
+    const want = {};
+    for (const [key, value] of Object.entries(plain(env) ? env : {})) if (MOVED.has(key)) want[key] = String(value);
+    const unfit = Object.keys(want).filter((key) => /[\r\n]/.test(want[key]));
+    const updates = {};
+    for (const key of Object.keys(fileValues)) if (!Object.hasOwn(want, key)) updates[key] = null;
+    for (const key of unfit) if (Object.hasOwn(fileValues, key)) updates[key] = null;
+    for (const [key, value] of Object.entries(want)) if (!unfit.includes(key) && fileValues[key] !== value) updates[key] = value;
+    const order = catalog.map((r) => r.key);
+    const done = Object.keys(updates).length ? vars.write(file, updates, { order }) : { changed: false };
+    const rel = path.join(path.basename(path.dirname(file)), path.basename(file)).split(path.sep).join('/');
+    if (done.why)
+    {
+        log(`  !! variables: ${rel} is ${done.why === 'locked' ? 'locked by another run' : 'not writable'} - the keys are kept in ${label}; run the update again`);
+        return [];
+    }
+    const back = (layout.readDotenv(file) || {}).values || {};
+    const off = Object.keys(want).filter((key) => !unfit.includes(key) && back[key] !== want[key]);
+    if (off.length) vars.write(file, Object.fromEntries(off.map((key) => [key, null])), { order });
+    const keep = [...unfit, ...off];
+    if (keep.length) log(`  !! variables: ${keep.join(', ')} kept in ${label} - ${rel} could not hold ${keep.length === 1 ? 'its value' : 'their values'} as written (one line, read back equal)`);
+    const rows = managedEnv[label] || {};
+    // Catalog order, so the ledger's rows read the same whichever order the settings file held the keys in.
+    const moved = Object.keys(want).filter((key) => !keep.includes(key)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    managedEnv['.variables'] = {};
+    for (const key of moved)
+    {
+        delete env[key];
+        if (Object.hasOwn(rows, key)) { managedEnv['.variables'][key] = rows[key]; delete rows[key]; }
+    }
+    return moved;
 }
 
 // Rule: a narrower scope switches off an MCP server registered at a BROADER one for itself alone. MCP has no
@@ -1361,7 +1458,7 @@ function sharedOnlyDeny(claudeDir)
 // file - the user's own keys, allow list, hooks, `autoMemoryEnabled` - stays as it was. A file that
 // cannot be read or written moves nothing: half a move would strand entries in neither file.
 const ENV_PREFIX = 'ALFRED_CODE_';
-function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], ledgerEnv: recorded = null, ledgerSettings = null, ledgerDeny = null, log = () => {}, note = () => {} })
+function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], ledgerEnv: recorded = null, ledgerSettings = null, ledgerDeny = null, variablesFile = null, ledgerVariables = null, log = () => {}, note = () => {} })
 {
     const localFile = path.join(claudeDir, 'settings.local.json');
     const sharedFile = path.join(claudeDir, 'settings.json');
@@ -1375,8 +1472,23 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     let localChanged = false;
     let sharedChanged = false;
 
-    const env = isObj(local.env) ? local.env : null;
     const seeded = (key, v) => Object.hasOwn(seeds, key) && [].concat(seeds[key]).includes(v);
+    // 3.0.0 (workspace roles and variables, D5): a local run kept the stack's variables in `<data root>/.variables`, which
+    // git tracks from here on. R78 for that file: a seed stays there for the team; a value of the user's moves into this
+    // file, where it still reads over .variables (D4), and the loop below names it as theirs.
+    const lifted = [];
+    const vars = variablesFile ? require('./variables.js') : null;
+    for (const [key, v] of Object.entries(vars && fs.existsSync(variablesFile) ? vars.read(variablesFile).values : {}))
+    {
+        if (!key.startsWith(ENV_PREFIX) || written.includes(key)) continue;
+        if (seeded(key, v) && (!ledgerVariables || ledgerVariables[key] === valueHash(v))) continue;
+        if (!isObj(local.env)) local.env = {};
+        if (!Object.hasOwn(local.env, key)) local.env[key] = v;
+        lifted.push(key);
+        localChanged = true;
+    }
+    if (lifted.length) say(`${lifted.join(', ')} moved here from ${path.basename(path.dirname(variablesFile))}/.variables - git tracks that file from here on, and a value of yours stays this machine's own`);
+    const env = isObj(local.env) ? local.env : null;
     // C18 (R98): the seeds leave as ONE line - a count and the keys - not a line per key.
     const seedsGone = [];
     for (const key of Object.keys(env || {}).filter((k) => k.startsWith(ENV_PREFIX)))
@@ -1474,6 +1586,11 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     // which the next run reads the same way, never in neither.
     if (sharedChanged) fs.writeFileSync(sharedFile, `${JSON.stringify(shared, null, 2)}\n`);
     fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
+    if (lifted.length)
+    {
+        const done = vars.write(variablesFile, Object.fromEntries(lifted.map((key) => [key, null])));
+        if (done.why) say(`!! ${lifted.join(', ')} still in .variables too (${done.why}) - settings.local.json reads over it; run the update again`);
+    }
     return { moved: true, ledgerDeny: refileDeny(ledgerDeny, carried, landed) };
 }
 
@@ -1490,13 +1607,35 @@ function refileDeny(ledgerDeny, carried, landed)
     return out;
 }
 
+// The same for `<data root>/.variables`, where the stack's variables sit since 3.0.0 (workspace roles and variables, D5):
+// each ledgered row at its recorded value goes, a changed one is the user's and stays; a file left empty goes. At local
+// scope a file git tracks is the team's and is never written.
+function removeManagedVariables({ file, rows, scope, log, note })
+{
+    if (!file || !Object.keys(rows).length || !fs.existsSync(file)) return;
+    const vars = require('./variables.js');
+    if (scope === 'local' && vars.tracked(file)) return;
+    const held = vars.read(file).values;
+    const drop = {};
+    for (const [key, hash] of Object.entries(rows))
+    {
+        if (!Object.hasOwn(held, key)) continue;
+        if (valueHash(held[key]) !== hash) { log(`  .variables env: ${key} kept - changed since the stack wrote it, so it is yours (${String(held[key]).length} chars)`); continue; }
+        drop[key] = null;
+    }
+    if (!Object.keys(drop).length) return;
+    const done = vars.write(file, drop);
+    if (done.why) { note(`.variables could not be written (${done.why}) - the stack's keys stay in it`); return; }
+    if (!fs.readFileSync(file, 'utf8').trim()) fs.rmSync(file);
+}
+
 // R10 UNINSTALL, the settings half: every env key, deny entry and hook wiring the ledger lists for a
 // file, at the value it recorded - a value changed since is the user's and stays, said by its length
 // only. The .mcp.json approvals of the servers uninstall removed go with them. A file the ledger names
 // that is left holding nothing goes (an empty list the stack or the plugin CLI left there with it); one
 // it names nothing in is never tidied or deleted (review finding 12), and one that cannot be read is
 // left exactly as it is.
-function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRemoved = [], scope = 'project', log = () => {}, note = () => {} })
+function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRemoved = [], scope = 'project', variablesFile = null, log = () => {}, note = () => {} })
 {
     // Review finding 8: at user scope the core's user-scope row is printed, never removed, so it stays
     // loaded here - a seat denied and the hooks named off keep what the user switched off off.
@@ -1578,6 +1717,7 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         if (named && !Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
         else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree / auto-compact / memory keys removed`); }
     }
+    removeManagedVariables({ file: variablesFile, rows: (ledger.env || {})['.variables'] || {}, scope, log, note });
     if (keptOff.length)
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }

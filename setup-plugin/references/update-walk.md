@@ -178,17 +178,28 @@ answer, so the next update asks no more. The log names each rename. Unattended, 
 and its git history - except on `update=ask-local`, which takes 'Keep the AGENTS.md answer': the Recommended one writes over
 the user's own answer, and an unattended run replaces nothing of theirs (review 2026-10-23).
 
-**The workspace - in the same AskUserQuestion call as the other asks, one question each.** On `workspace: join <rel>`
-(a folder above holds an install this project never joined; `rejoin`: its parent no longer lists it):
+**The workspace - in the same AskUserQuestion call as the other asks, one question each.** On `workspace: role-ask
+<case> <rel>` the folders around this project changed since its role was answered. `node "$TMP/repo/scripts/workspace.js"
+role --root . --when update` prints the options as `ask: <label><TAB><answer>` lines, Recommended first; the question
+by case:
+
+- `never` - 'A folder above, `<rel>`, holds an install this project never joined. Join it?';
+- `above` - 'A new install sits above this project at `<rel>`. Join it?';
+- `rejoin` - '`<rel>` no longer lists this project as its child. Rejoin it?';
+- `parent-gone` - 'This project's parent, `<rel>`, holds no install now. Become standalone?' - the values it read
+  there go back to the defaults, named;
+- `between` - 'A new install sits at `<rel>`, between this project and its parent. Stay where it is?'.
 
 ```ask
-Join the workspace at <rel>? This project then takes that install's skills, seats, rules and env, and can ignore any of them.
-- 'Join (Recommended)' - the parent's set applies from this run; configure ignores an item later
-- 'Stay standalone' - parent none is written, so no update asks again
+<the case's question above>
+- '<the first ask: label up to its mark> (Recommended)' - what the case's words say it does
+- '<each next ask: label>' - the other way
 ```
 
-Run `node "$TMP/repo/scripts/workspace.js" join --root . --answer join|none` before the installer call; on exit 3 (the
-parent's file was locked) say the join is offered again at the next update. On `instructions-both: ask` (a CLAUDE.md
+Run `node "$TMP/repo/scripts/workspace.js" role --root . --answer <the chosen line's answer>` before the installer call;
+every answer is recorded, so the same folders are not asked about again; a leave keeps every value read through the
+workspace. On exit 3 (a workspace file was locked) say
+the ask comes back at the next update. Unattended, take the first. On `instructions-both: ask` (a CLAUDE.md
 above a joined child, and the account loads only one of the two files):
 
 ```ask

@@ -57,8 +57,9 @@ The confirmation names what goes (the stack's plugin rows at this project's scop
 earlier release recorded there, its settings entries, hook wirings and copied files, the stamp) and what stays
 (anything the user added or changed since the stack wrote it, a user-scope plugin row or MCP registration, the
 data root - `.alfred/` by default: the docs, and whatever an earlier release's servers left in it; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
-since the user-scope core stays loaded). In a workspace it names both sides: each `ok` child is released - its parent
-line and its own-picks record go, and it keeps its install, every item it holds its own - and a `workspace: parent
+since the user-scope core stays loaded). In a workspace it names both sides: each `ok` child is released - every value it
+read from this project is written into its own `.variables` first, so nothing it reads changes, then its parent line
+and its own-picks record go, and it keeps its install, every item it holds its own - and a `workspace: parent
 <rel>` line means this project leaves `<rel>`, whose child line for it comes out. Its 'Keep it' -> end the turn, nothing downloaded, whatever the seed answer.
 
 ## 3. Resolve the snapshot, then run the seed
@@ -86,8 +87,8 @@ makes a bare `$?` `tee`'s, and `${PIPESTATUS[0]}` reads empty in zsh. Exit 1 car
 ## 4. Report the seed's own lines
 
 One `grep -E 'removed|uninstalled|kept|claude plugin|claude mcp|stamp|workspace:|!!' "$TMP/install.log"`, then a short
-report in three parts, every `workspace:` line (a child released, this project's lines out of its parent) verbatim
-under Removed:
+report in three parts, every `workspace:` line (a child's values kept in its own file, a child released, this project's
+lines out of its parent) verbatim under Removed - a released child keeps its install and every value it read from here:
 
 - **Removed** - a count per kind (plugin rows, env keys, deny entries, hook wirings, servers, files).
 - **Kept as yours** - every `kept` line, verbatim: a value or file changed since the stack wrote it.

@@ -4,7 +4,9 @@
 // of it. Each project records its place in the tree in ONE machine-local file, `<data root>/workspace`:
 //
 //   parent <path>            at most one - `..` segments only, so moving the whole tree keeps it valid
-//   parent none              a declined join, so the join is not asked again
+//   role root|standalone     the answered role (roles spec D1); a 2.11 / 2.12 `parent none` reads as `role standalone`
+//                            and is rewritten at the file's next write
+//   above <path>|none        the nearest stamped folder above when the role was last answered - update's tree-change test
 //   child <path>             direct children only, relative, `/` separated
 //   ignore <category> <name> an inherited item this project leaves out (never its own)
 //
@@ -18,13 +20,13 @@ const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
 const brand = require('./brand.js');
 const { readJson, parseJson } = require('./json-file.js');
+const { sleepMs, takeLock } = require('./file-lock.js');
 const runtime = require('./runtime.js');
 const stamp = require('./stamp.js');
 
 const CATEGORIES = Object.freeze(['skill', 'agent', 'rule', 'hook', 'plugin', 'env', 'mcp', 'secret', 'doc', 'instructions']);
 const FILE = 'workspace';
 const LOCK = 'workspace.lock';
-const STEP_MS = 50;
 
 // ------------------------------------------------------------------ the lines
 
@@ -57,6 +59,14 @@ function parseLine(raw)
         if (value === 'none') return { kind: 'parent-none', raw };
         if (PARENT_RE.test(value)) return { kind: 'parent', value, raw };
     }
+    else if (word === 'role')
+    {
+        if (value === 'root' || value === 'standalone') return { kind: 'role', value, raw };
+    }
+    else if (word === 'above')
+    {
+        if (value === 'none' || PARENT_RE.test(value)) return { kind: 'above', value, raw };
+    }
     else if (word === 'child')
     {
         if (isChildPath(value)) return { kind: 'child', value, raw };
@@ -71,6 +81,7 @@ function parseLine(raw)
 }
 
 const keyOf = (e) => (e.kind === 'parent' || e.kind === 'parent-none' ? 'parent'
+    : e.kind === 'role' || e.kind === 'above' ? e.kind
     : e.kind === 'child' ? `child ${e.value}`
         : e.kind === 'ignore' ? `ignore ${e.category} ${e.name}` : null);
 
@@ -102,6 +113,7 @@ function renderEntry(e)
 {
     if (e.kind === 'parent') return `parent ${e.value}`;
     if (e.kind === 'parent-none') return 'parent none';
+    if (e.kind === 'role' || e.kind === 'above') return `${e.kind} ${e.value}`;
     if (e.kind === 'child') return `child ${e.value}`;
     if (e.kind === 'ignore') return `ignore ${e.category} ${e.name}`;
     return e.raw.replace(/\r$/, '');
@@ -111,11 +123,13 @@ const renderWorkspace = (model) => model.entries.map((e) => `${renderEntry(e)}\n
 
 function viewOf(model)
 {
-    const view = { parent: null, parentNone: false, children: [], ignores: [], unknown: [] };
+    const view = { parent: null, parentNone: false, role: null, above: null, children: [], ignores: [], unknown: [] };
     for (const e of model.entries)
     {
         if (e.kind === 'parent') view.parent = e.value;
-        else if (e.kind === 'parent-none') view.parentNone = true;
+        else if (e.kind === 'parent-none') { view.parentNone = true; view.role = view.role || 'standalone'; }
+        else if (e.kind === 'role') view.role = e.value;
+        else if (e.kind === 'above') view.above = e.value;
         else if (e.kind === 'child') view.children.push(e.value);
         else if (e.kind === 'ignore') view.ignores.push({ category: e.category, name: e.name });
         else if (e.kind === 'unknown') view.unknown.push(e.raw.trim());
@@ -133,6 +147,44 @@ function setParent(model, rel)
     if (rel === null) return model;
     const entry = rel === 'none' ? { kind: 'parent-none', raw: 'parent none' } : { kind: 'parent', value: rel, raw: `parent ${rel}` };
     model.entries.splice(at < 0 ? 0 : at, 0, entry);
+    return model;
+}
+
+// The answered role, or null to drop the line; a `parent none` goes with it (the role says what it said).
+function setRole(model, value)
+{
+    if (value !== null && value !== 'root' && value !== 'standalone') throw new Error(`workspace: role ${value} is not root or standalone`);
+    const at = model.entries.findIndex((e) => e.kind === 'role' || e.kind === 'parent-none');
+    model.entries = model.entries.filter((e) => e.kind !== 'role' && e.kind !== 'parent-none');
+    if (value !== null) model.entries.splice(at < 0 ? 0 : at, 0, { kind: 'role', value, raw: `role ${value}` });
+    return model;
+}
+
+// The nearest stamped folder above at the last answer (`none` when there was none), or null to drop the line. A new line
+// sits after the role and parent lines.
+function setAbove(model, rel)
+{
+    if (rel !== null && rel !== 'none' && !PARENT_RE.test(String(rel))) throw new Error(`workspace: above ${rel} is not a run of .. segments or none`);
+    const at = model.entries.findIndex((e) => e.kind === 'above');
+    model.entries = model.entries.filter((e) => e.kind !== 'above');
+    if (rel === null) return model;
+    const entry = { kind: 'above', value: rel, raw: `above ${rel}` };
+    if (at >= 0) model.entries.splice(at, 0, entry);
+    else
+    {
+        const last = model.entries.reduce((n, e, i) => (['role', 'parent', 'parent-none'].includes(e.kind) ? i + 1 : n), 0);
+        model.entries.splice(last, 0, entry);
+    }
+    return model;
+}
+
+// A 2.11 / 2.12 `parent none` is `role standalone` from 3.0.0 (D1): the next write rewrites it in place.
+function retireParentNone(model)
+{
+    const at = model.entries.findIndex((e) => e.kind === 'parent-none');
+    if (at < 0) return model;
+    const hasRole = model.entries.some((e) => e.kind === 'role');
+    model.entries.splice(at, 1, ...(hasRole ? [] : [{ kind: 'role', value: 'standalone', raw: 'role standalone' }]));
     return model;
 }
 
@@ -166,8 +218,8 @@ function removeIgnore(model, category, name)
 
 // ------------------------------------------------------------------ the switch
 
-// ALFRED_CODE_WORKSPACE, a catalog row the installers never write. OFF until 3.0.0 (the user's answer of 2026-10-27):
-// only a `1` turns it on. The hooks' loader decides it (layout.js workspaceOn): a launch `0` freezes it, else
+// ALFRED_CODE_WORKSPACE, a catalog row the installers never write. On by default since 3.0.0 (D9): only a `0` turns it
+// off. The hooks' loader decides it (layout.js workspaceOn): a launch `0` freezes it, else
 // settings.local.json, the project's .variables, then the settings env over the launch env.
 function workspaceOn({ env = {}, projectRoot })
 {
@@ -231,38 +283,6 @@ function readWorkspace(projectRoot, opts = {})
     return got;
 }
 
-// Atomics.wait blocks without spinning; the installer and the CLI are synchronous throughout.
-const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-
-// true once this run holds the lock, false when another run held it past `retryMs`. A lock older than `staleMs`
-// (by its mtime) is a run that died holding it, and is taken over.
-function takeLock(lock, { now, sleep, retryMs, staleMs })
-{
-    const start = now();
-    for (;;)
-    {
-        try
-        {
-            fs.closeSync(fs.openSync(lock, 'wx'));
-            return true;
-        }
-        catch (e)
-        {
-            if (!e || e.code !== 'EEXIST') throw e;
-        }
-        let age = 0;
-        try { age = now() - fs.statSync(lock).mtimeMs; }
-        catch { continue; }                 // released between the open and the stat: try again at once
-        if (age > staleMs)
-        {
-            try { fs.unlinkSync(lock); } catch { /* another run took it over first: the open decides */ }
-            continue;
-        }
-        if (now() - start >= retryMs) return false;
-        sleep(STEP_MS);
-    }
-}
-
 // Reads, changes and writes the project's workspace file under its lock. `mutate(model)` changes the model in place
 // (or returns a new one). Nothing is written when the change leaves the rendered file as it was, so a hand-saved
 // file keeps its bytes until a line in it really changes.
@@ -281,7 +301,7 @@ function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, now = Date.no
         const current = readAt(at.file);
         if (current.state === 'unreadable') return { ok: false, why: 'unwritable', view: current.view, wrote: false };
         const before = renderWorkspace(current.model);
-        const model = mutate(current.model) || current.model;
+        const model = retireParentNone(mutate(current.model) || current.model);
         const after = renderWorkspace(model);
         if (after === before) return { ok: true, view: viewOf(model), wrote: false };
         const tmp = `${at.file}.${process.pid}.${Date.now()}.tmp`;
@@ -383,21 +403,248 @@ function joinVerdict(projectRoot, { env = process.env, exec = runtime.execComman
     return { parent, ok: true };
 }
 
-// update's join ask (spec 3): `workspace: join <rel>` for a checkout below an installed folder whose file names no parent
-// yet, `\trejoin` once its parent line stands but the parent no longer lists it (hop rule 4 alone - AC18's recovery, the
-// consent left with the person). Null otherwise, and with the switch off.
-function joinLine(projectRoot, { env = process.env, exec = runtime.execCommand } = {})
+// ------------------------------------------------------------------ the role (roles spec D1, D2)
+
+// The derived role: a child of `rel` when the parent hop holds; else a root by `role root` or any `child` line; else
+// standalone. `asked` is false while the file holds no role, parent or above line (status: `standalone (not asked)`).
+function roleOf(projectRoot, { env = process.env } = {})
+{
+    const view = readWorkspace(projectRoot, { env }).view;
+    const children = view.children.length;
+    const asked = Boolean(view.role || view.parent || view.above);
+    if (view.parent && chain(projectRoot, { env, maxDepth: 1 }).members.length) return { kind: 'child', rel: view.parent, children, asked: true };
+    if (view.role === 'root' || children) return { kind: 'root', children, asked };
+    return { kind: 'standalone', asked };
+}
+
+const childCount = (n) => `${n} ${n === 1 ? 'child' : 'children'}`;
+// status's words for a roleOf answer; null (the switch off) reads `workspace off`.
+function roleText(role)
+{
+    if (!role) return 'workspace off';
+    if (role.kind === 'child') return `child of ${role.rel}${role.children ? `, root of ${childCount(role.children)}` : ''}`;
+    if (role.kind === 'root') return role.children ? `root of ${childCount(role.children)}` : 'root, no child yet';
+    return role.asked ? 'standalone' : 'standalone (not asked)';
+}
+
+const WHY = {
+    'same-repo': (rel) => `${rel} is the same git repository - this folder is part of it, not a project of its own`,
+    'not-a-checkout': (rel) => `this folder is no git checkout of its own, so it keeps no install record apart from ${rel}`,
+};
+
+// The role question for `when` (init, configure or update), its options Recommended first, each with the `--answer` word
+// it runs: { case, rel, options, answers, why? }, or null when nothing is asked - always at ALFRED_CODE_WORKSPACE=0.
+// update asks only on a tree change: never answered with a joinable folder above, `above` naming another folder than
+// the nearest stamped one now, a child whose chain is empty, or a stamped folder between a child and its parent. A
+// folder above that cannot be joined asks nothing, and `above` stays until an answer rewrites it.
+function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, when = 'configure' } = {})
 {
     if (!workspaceOn({ env, projectRoot })) return null;
     const v = joinVerdict(projectRoot, { env, exec });
-    if (!v.ok) return null;
+    const near = v.parent;
+    const opt = (label, answer) => ({ label, answer });
+    const out = (kind, rel, opts, extra = {}) => ({ case: kind, rel, options: opts.map((o) => o.label), answers: opts.map((o) => o.answer), ...extra });
+    const join = near && v.ok ? [opt(`Join ${near.rel}`, `join:${near.rel}`)] : [];
+    if (when === 'init')
+    {
+        if (near && v.ok) return out('init-child', near.rel, [opt(`Child of ${near.rel} (Recommended)`, 'child'), opt('Standalone', 'standalone'), opt('Root', 'root')]);
+        if (near) return out('init-why', near.rel, [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')], { why: WHY[v.why](near.rel) });
+        return out('init-none', null, isCheckout(projectRoot, { exec })
+            ? [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')] : [opt('Root (Recommended)', 'root'), opt('Standalone', 'standalone')]);
+    }
+    const role = roleOf(projectRoot, { env });
+    const keep = opt('Keep (Recommended)', 'stay');
+    if (when === 'configure')
+    {
+        if (role.kind === 'child') return out('configure-child', role.rel, [keep, opt('Leave and become standalone', 'leave:standalone'), opt('Leave and become a root', 'leave:root')]);
+        if (role.kind === 'root') return out('configure-root', near ? near.rel : null, [keep, ...join, opt('Become standalone', 'standalone')]);
+        return out('configure-standalone', near ? near.rel : null, [keep, ...join, opt('Become a root', 'root')]);
+    }
     const view = readWorkspace(projectRoot, { env }).view;
-    if (view.parentNone) return null;
-    if (!view.parent) return `workspace: join ${v.parent.rel}`;
-    const linked = chain(projectRoot, { env, maxDepth: 1 });
-    if (linked.members.length) return null;
-    if (realKey(path.resolve(realOf(projectRoot), ...view.parent.split('/'))) !== realKey(v.parent.root)) return null;
-    return linked.notes.some((n) => n.endsWith('does not list this folder as a child')) ? `workspace: join ${v.parent.rel}\trejoin` : null;
+    if (view.parent && role.kind !== 'child')
+    {
+        const lost = chain(projectRoot, { env, maxDepth: 1 }).notes.some((n) => n.endsWith('does not list this folder as a child'));
+        if (lost) return out('rejoin', view.parent, [opt(`Rejoin ${view.parent} (Recommended)`, 'rejoin'), opt('Become standalone', 'leave:standalone')]);
+        return out('parent-gone', view.parent, [opt('Become standalone (Recommended)', 'leave:standalone'), ...join]);
+    }
+    if (role.kind === 'child')
+    {
+        if (near && v.ok && near.rel !== view.parent && near.rel !== view.above)
+            return out('between', near.rel, [opt(`Stay child of ${view.parent} (Recommended)`, 'stay'), opt(`Join ${near.rel}`, `join:${near.rel}`)]);
+        return null;
+    }
+    if (!near || !v.ok) return null;
+    if (!view.role && !view.above) return out('never', near.rel, [opt(`Join ${near.rel} (Recommended)`, `join:${near.rel}`), opt(`Stay ${role.kind}`, role.kind)]);
+    // A role with no above line (a 2.12 `parent none`, a hand-typed role) was answered before above existed: quiet.
+    if (view.above !== null && near.rel !== view.above) return out('above', near.rel, [opt(`Join ${near.rel} (Recommended)`, `join:${near.rel}`), opt(`Keep ${role.kind}`, 'stay')]);
+    return null;
+}
+
+// The join itself: the parent's `child` line first, then this project's `parent` line - so a reader never finds a parent
+// line whose parent does not list it; a role line goes, and `above` is written when the join is an answer to the role ask.
+// { ok, code, rel, lines } - code 3 when a file is locked, 1 when one could not be written.
+function register(projectRoot, { env = process.env, exec = runtime.execCommand, dataRoot, above = false } = {})
+{
+    const root = realOf(projectRoot);
+    const v = joinVerdict(root, { env, exec });
+    if (!v.parent) return { ok: false, code: 2, lines: [`!! workspace: no installed folder above ${root} - nothing to join`] };
+    if (!v.ok) return { ok: false, code: 2, lines: [`!! workspace: ${v.parent.rel} cannot take this folder as a child (${v.why})`] };
+    const childRel = relPosix(v.parent.root, root);
+    const upEnv = ancestorEnv(env);
+    const up = writeWorkspace(v.parent.root, (m) => addChild(m, childRel), { env: upEnv });
+    if (!up.ok && up.why === 'locked') return { ok: false, code: 3, lines: [`!! workspace: the workspace file in ${v.parent.rel} is locked by another run - nothing was written; the join is offered again at the next update`] };
+    if (!up.ok) return { ok: false, code: 1, lines: [`!! workspace: the workspace file in ${v.parent.rel} could not be written - nothing was joined`] };
+    const here = writeWorkspace(root, (m) => setAbove(setRole(setParent(m, v.parent.rel), null), above ? v.parent.rel : null), { env, dataRoot });
+    if (!here.ok)
+    {
+        // The parent's line alone is a child the chain never reaches: take it back, unless it was there before.
+        if (up.wrote) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { env: upEnv });
+        return { ok: false, code: here.why === 'locked' ? 3 : 1, lines: [`!! workspace: this project's workspace file is ${here.why === 'locked' ? 'locked by another run' : 'not writable'} - nothing was joined; the join is offered again at the next update`] };
+    }
+    return { ok: true, code: 0, rel: v.parent.rel, lines: [`workspace: parent ${v.parent.rel} ${here.wrote ? 'written' : 'kept'}`, `workspace: child ${childRel} ${up.wrote ? 'written' : 'kept'} in ${v.parent.rel}`] };
+}
+
+// The stamp's managed-env line with `change(rows)` applied to its `.variables` rows - the rest of the stamp kept.
+function editVariablesLedger(projectRoot, change)
+{
+    const file = stamp.stampFiles({ projectRoot }).read;
+    if (!file) return;
+    const ledger = stamp.readLedger(file) || stamp.emptyLedger();
+    const env = { ...(ledger.env || {}) };
+    env['.variables'] = change({ ...(env['.variables'] || {}) });
+    if (!Object.keys(env['.variables']).length) delete env['.variables'];
+    stamp.markLine(file, 'managed-env', stamp.renderLedger({ env })[0].slice('managed-env: '.length));
+}
+
+// A join's prune (D5): every key of the joiner's `.variables` still at its managed-env ledger hash was seeded by the stack
+// and never changed, so it leaves (with its row) and the members' value reaches the project; a typed or changed key, and
+// DOCS_VERSIONING and WORKSPACE, stay as the project's own. One line names the count kept.
+function pruneOnJoin(projectRoot, { env = process.env, log = () => {} } = {})
+{
+    const variables = require('./variables.js');
+    const layout = require('../../stack/hooks/layout.js');
+    const file = variables.fileOf(projectRoot, { env });
+    const values = variables.read(file).values;
+    const stampFile = stamp.stampFiles({ projectRoot }).read;
+    const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
+    const dropped = [];
+    const own = [];
+    for (const [key, value] of Object.entries(values))
+    {
+        if (!layout.VARIABLE_KEYS.includes(key)) continue;
+        if (!layout.MEMBER_NEVER.has(key) && rows[key] && rows[key] === stamp.valueHash(value)) dropped.push(key);
+        else own.push(key);
+    }
+    if (dropped.length)
+    {
+        const done = variables.write(file, Object.fromEntries(dropped.map((k) => [k, null])));
+        if (done.why) { log(`!! workspace: ${path.relative(projectRoot, file)} could not be written (${done.why}) - its stack seeds stay and beat the workspace's values until the next join`); return { dropped: [], own }; }
+        editVariablesLedger(projectRoot, (r) => { for (const k of dropped) delete r[k]; return r; });
+    }
+    if (dropped.length || own.length)
+        log(`workspace: ${own.length} of this project's values kept as its own (${own.join(', ') || 'none'}) - ${dropped.length} stack seed${dropped.length === 1 ? '' : 's'} dropped, so the workspace's value reaches it`);
+    return { dropped, own };
+}
+
+// Leaving a tree (D5): every value the project reads through the chain is written into its own `.variables` first, so
+// nothing changes - a member's seed (its value at the member's ledger hash) keeps a seed's ledger row here. With the
+// parent gone there is no chain to read: the keys the project does not hold read the stack's defaults now, named, and
+// the next update seeds them as a standalone's.
+function keepOnLeave(projectRoot, { env = process.env, log = () => {} } = {})
+{
+    const variables = require('./variables.js');
+    const layout = require('../../stack/hooks/layout.js');
+    const root = realOf(projectRoot);
+    const view = readWorkspace(root, { env }).view;
+    const members = chain(root, { env }).members;
+    const file = variables.fileOf(root, { env });
+    if (!members.length)
+    {
+        const held = variables.read(file).values;
+        const defaults = layout.VARIABLE_KEYS.filter((k) => !layout.MEMBER_NEVER.has(k) && held[k] === undefined);
+        if (view.parent && defaults.length) log(`workspace: ${view.parent} is gone - ${defaults.length} values read the stack's defaults here now (${defaults.join(', ')}); the next update seeds them`);
+        return { written: [], defaults };
+    }
+    const { values, from } = layout.variablesOf(root, { env });
+    const byRel = new Map(members.map((m) => [m.rel, m]));
+    const updates = {};
+    const seeds = {};
+    for (const key of layout.VARIABLE_KEYS)
+    {
+        const member = byRel.get(from[key]);
+        if (!member || values[key] === undefined) continue;
+        updates[key] = values[key];
+        const memberStamp = stamp.stampFiles({ projectRoot: member.root }).read;
+        const rows = ((memberStamp && stamp.readLedger(memberStamp)) || { env: {} }).env?.['.variables'] || {};
+        if (rows[key] === stamp.valueHash(values[key])) seeds[key] = rows[key];
+    }
+    const written = Object.keys(updates);
+    if (!written.length) return { written, defaults: [] };
+    const done = variables.write(file, updates);
+    if (done.why) { log(`!! workspace: ${path.relative(root, file)} could not be written (${done.why}) - nothing was left; the values would change`); return { written: [], defaults: [], why: done.why }; }
+    if (Object.keys(seeds).length) editVariablesLedger(root, (r) => ({ ...r, ...seeds }));
+    log(`workspace: ${written.length} values this project read from the workspace written into ${path.relative(root, file).split(path.sep).join('/')} (${written.join(', ')}) - each reads the same after it leaves`);
+    return { written, defaults: [] };
+}
+
+// One answer to the role ask: { ok, code, lines }. Every answer rewrites `above`, so the same tree is never asked twice.
+function applyRole(projectRoot, answer, { env = process.env, exec = runtime.execCommand, dataRoot } = {})
+{
+    const root = realOf(projectRoot);
+    const lines = [];
+    const log = (l) => lines.push(l);
+    const fail = (code, line) => ({ ok: false, code, lines: [...lines, line] });
+    const nearRel = () => { const p = findParent(root, { env }); return p ? p.rel : 'none'; };
+    const write = (mutate) =>
+    {
+        const r = writeWorkspace(root, mutate, { env, dataRoot });
+        return r.ok ? null : fail(r.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${r.why})`);
+    };
+    const view = readWorkspace(root, { env, dataRoot }).view;
+    const role = roleOf(root, { env });
+    const leave = (to) =>
+    {
+        keepOnLeave(root, { env, log });
+        const r = leaveParent({ projectRoot: root, env, dataRoot, log });
+        if (r.why) return fail(r.why === 'locked' ? 3 : 1, `!! ${r.line}`);
+        return write((m) => setAbove(setRole(m, to), nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${to}`] };
+    };
+    const joinHere = (rel) =>
+    {
+        const v = joinVerdict(root, { env, exec });
+        if (!v.parent || !v.ok || (rel !== null && v.parent.rel !== rel)) return fail(2, `!! workspace: ${rel || 'the folder above'} is not a folder this project can join${v.parent && !v.ok ? ` (${v.why})` : ''}`);
+        if (view.parent && view.parent !== v.parent.rel)
+        {
+            const r = leaveParent({ projectRoot: root, env, dataRoot, log });
+            if (r.why) return fail(r.why === 'locked' ? 3 : 1, `!! ${r.line}`);
+        }
+        const r = register(root, { env, exec, dataRoot, above: true });
+        lines.push(...r.lines);
+        if (!r.ok) return { ok: false, code: r.code, lines };
+        pruneOnJoin(root, { env, log });
+        return { ok: true, code: 0, lines: [...lines, `role: child of ${r.rel}`] };
+    };
+    if (answer === 'stay') return write((m) => setAbove(m, nearRel())) || { ok: true, code: 0, lines: [`role: ${roleText(roleOf(root, { env }))}`] };
+    if (answer === 'leave:standalone' || answer === 'leave:root')
+    {
+        if (!view.parent) return fail(2, '!! workspace: this project has no parent to leave');
+        return leave(answer.slice('leave:'.length));
+    }
+    if (answer === 'standalone' || answer === 'root')
+    {
+        if (role.kind === 'child') return leave(answer);
+        if (answer === 'standalone' && view.children.length)
+            return fail(2, `!! workspace: this project is the root of ${view.children.join(', ')} - each child leaves first (its configure), or /alfred-code:uninstall here releases them`);
+        return write((m) => setAbove(setRole(m, answer), nearRel())) || { ok: true, code: 0, lines: [`role: ${answer}`] };
+    }
+    if (answer === 'child') return joinHere(null);
+    if (answer === 'rejoin')
+    {
+        if (!view.parent) return fail(2, '!! workspace: this project names no parent to rejoin');
+        return joinHere(view.parent);
+    }
+    if (answer.startsWith('join:')) return joinHere(answer.slice('join:'.length));
+    return fail(2, '!! workspace: --answer takes standalone, root, child, join:<rel>, leave:standalone, leave:root, stay or rejoin');
 }
 
 // The project's ancestors through its `parent` lines, nearest first. A hop counts only to a real strict ancestor that
@@ -541,53 +788,71 @@ function ownPicksAfter({ prior, final, parentLines, added = [], blind = false })
 
 // ------------------------------------------------------------------ the env
 
-// Never passed down: the data root and the docs mode are this project's own layout, and a `seed: false` row is set
-// only in the launch environment or by hand.
-const ENV_NEVER = new Set(['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_VERSIONING']);
-const HOOKS_OFF = 'ALFRED_CODE_HOOKS_OFF';
 const csv = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
-// What a child's env takes from its parent: `seeds` (the value each not-own key should hold), `force` (the present keys
-// whose value differs from its seed) and `own` (the keys the child set itself - sticky once own). `childEnv` is the
-// env of the file this run writes, `beneath` the env of the file Claude Code lays it over (a local-scope child's
-// settings.json, the team's): a key only there is own, so no parent value is written over it for this machine alone.
-function childEnv({ catalog, parentEnv = {}, childEnv: here = {}, beneath = {}, ownPrior, ledgerRows = {}, flagKeys = [], ignores = [] })
+// Step 5 of the loader (layout.js resolveVariables) alone: what the workspace chain hands this project, nearest member
+// first, `ignore env K` lines stopping K from that member on; never a layout MEMBER_NEVER key.
+function chainValues(projectRoot, { env = process.env } = {})
 {
-    const first = ownPrior === null || ownPrior === undefined;
-    const own = new Set(first ? [] : ownPrior);
-    const ignored = new Set(ignores.filter((i) => i.category === 'env').map((i) => i.name));
-    const seeds = {};
-    const force = [];
-    for (const row of catalog)
+    const layout = require('../../stack/hooks/layout.js');
+    const out = {};
+    if (!layout.workspaceOn({ env, projectRoot })) return out;
+    const { members, ignores } = layout.workspaceChain(projectRoot, { env });
+    const skip = new Set((ignores || []).filter((i) => i.category === 'env').map((i) => i.name));
+    for (const member of members)
     {
-        const key = row.key;
-        if (ENV_NEVER.has(key) || row.seed === false) continue;
-        const present = Object.hasOwn(here, key);
-        const value = present ? String(here[key]) : undefined;
-        const parentValue = Object.hasOwn(parentEnv, key) ? String(parentEnv[key]) : String(row.default);
-        if (flagKeys.includes(key)) own.add(key);
-        else if (!present && Object.hasOwn(beneath, key)) own.add(key);
-        else if (present && !own.has(key))
-        {
-            const row0 = ledgerRows[key];
-            if (first) { if (value !== parentValue) own.add(key); }
-            else if (row0) { if (valueHashOf(value) !== row0) own.add(key); }
-            else if (value !== String(row.default) && value !== parentValue) own.add(key);
-        }
-        if (own.has(key)) continue;
-        let target = ignored.has(key) ? String(row.default) : parentValue;
-        if (key === HOOKS_OFF && !ignored.has(key))
-        {
-            const whole = csv(here[key] ?? beneath[key]).filter((e) => !e.includes(':'));
-            const parts = csv(parentEnv[key]).filter((e) => e.includes(':'));
-            target = [...new Set([...whole, ...parts])].join(',');
-        }
-        seeds[key] = target;
-        if (present && value !== target) force.push(key);
+        const read = layout.readDotenv(path.join(member.root, ...member.dataRoot.split('/'), '.variables'));
+        for (const [key, value] of Object.entries((read && read.values) || {}))
+            if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !skip.has(key) && !Object.hasOwn(out, key)) out[key] = value;
+        for (const i of member.ignores || []) if (i.category === 'env') skip.add(i.name);
     }
-    return { seeds, force: force.sort(), own: [...own].sort() };
+    return out;
 }
-const valueHashOf = (v) => stamp.valueHash(v);
+
+// What the settings pass seeds and drops for a joined child (workspace roles and variables, D5), or null for any other
+// run. A child seeds only what it owns - the catalog default for each `ignore env K` it holds - and the chain hands it
+// the rest. A 2.12 child the switch joined by hand copied its parent's values (its stamp's `own-env:` line names the keys
+// it set itself): each copy still at its ledger hash, and given the same value by the chain now, goes (`copies`); a copy
+// the chain would answer otherwise - a parent not updated yet - stays as the child's own, so no value changes. Its
+// HOOKS_OFF loses the part entries a member's settings hold (`hooksOffDrop`), which the loader merges back at load.
+// A project with no `own-env:` record joined through the role answer, which the update walk runs BEFORE the installer:
+// its 2.12 seeds still sit in settings.json, so each one still at its ledger hash goes as the join's prune drops it from
+// `.variables` (`seeds`) - never DOCS_VERSIONING or an `ignore env` key - and the workspace's value reaches it.
+// A project whose own file names a parent it cannot reach - the switch at 0 (frozen) or a link that does not hold - gets
+// the same plan with nothing to drop: a default seeded now would shadow the chain once it reads again.
+function envPlan(ctx)
+{
+    const w = ctx.workspace;
+    if (!w || ctx.args.action === 'uninstall') return null;
+    const linked = Boolean(w.on && w.members.length);
+    const dataRoot = w.fileRoot ?? (ctx.dataInfo && !ctx.dataInfo.invalid ? ctx.dataInfo.root : undefined);
+    const view = linked ? { ignores: w.ignores } : readWorkspace(ctx.projectRoot, { env: ctx.env, dataRoot }).view;
+    if (!linked && !(view && view.parent)) return null;
+    const plan = { ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], seeds: [], hooksOffDrop: [] };
+    if (!linked) return plan;
+    const read = stamp.stampFiles({ projectRoot: ctx.projectRoot }).read;
+    const own = read ? stamp.readOwnEnv(read) : null;
+    const layout = require('../../stack/hooks/layout.js');
+    const target = ctx.args.scope === 'local' ? 'settings.local.json' : 'settings.json';
+    const data = readJson(path.join(ctx.claudeDir, target));
+    const env = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
+    const rows = ((ctx.ledger && ctx.ledger.env) || {})[target] || {};
+    if (own === null)
+    {
+        for (const [key, value] of Object.entries(env))
+            if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !plan.ignored.includes(key) && rows[key] && rows[key] === stamp.valueHash(value)) plan.seeds.push(key);
+        return plan;
+    }
+    const chained = chainValues(ctx.projectRoot, { env: ctx.env });
+    for (const [key, value] of Object.entries(env))
+    {
+        if (!layout.VARIABLE_KEYS.includes(key) || own.includes(key) || layout.MEMBER_NEVER.has(key)) continue;
+        if (rows[key] === stamp.valueHash(value) && chained[key] === String(value)) plan.copies.push(key);
+    }
+    const memberParts = new Set(w.members.flatMap((m) => csv(settingsEnv(m.root).ALFRED_CODE_HOOKS_OFF)).filter((e) => e.includes(':')));
+    plan.hooksOffDrop = csv(env.ALFRED_CODE_HOOKS_OFF).filter((e) => e.includes(':') && memberParts.has(e));
+    return plan;
+}
 
 // ------------------------------------------------------------------ the excludes (spec 2.5)
 
@@ -699,7 +964,7 @@ function settingsEnv(root)
 function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir() })
 {
     const read = stamp.stampFiles({ projectRoot }).read;
-    const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null, ownEnvPrior: read ? stamp.readOwnEnv(read) : null, parentEnv: {} };
+    const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null };
     if (args.action === 'uninstall' || !workspaceOn({ env, projectRoot })) return { ...base, on: false };
     const checked = args.dataPath ? dataRootMod.checkDataPath(args.dataPath) : null;
     // The file sits at --data-path once init registered there; on a root change it is still at the current root until
@@ -744,7 +1009,6 @@ function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime
     }
     if (!got.plan) return failed(got.why);
     at.parentLines = planLines(got.plan);
-    at.parentEnv = settingsEnv(parent.root);
     return at;
 }
 
@@ -783,37 +1047,14 @@ function listLines(lists)
     return uniqSorted(Object.entries(CATEGORY).flatMap(([key, c]) => (lists[key] || []).map((e) => `${c.line} ${c.name(e)}`)));
 }
 
-// Before the settings pass: a joined child whose parent was read gets the parent's env as seeds and forces
-// (childEnv); any other run leaves `workspaceEnv` null, so the env layer runs as a standalone one would - a force
-// against an unread parent would reset every inherited value to its catalog default.
-function envStep(ctx)
-{
-    const w = ctx.workspace;
-    ctx.workspaceEnv = null;
-    ctx.workspaceOwnEnv = null;
-    if (!w || !w.on || !w.parentLines) return;
-    const local = ctx.args.scope === 'local';
-    const target = local ? 'settings.local.json' : 'settings.json';
-    const envIn = (name) => { const data = readJson(path.join(ctx.claudeDir, name)); return data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {}; };
-    const catalog = (readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env) || [];
-    const flagKeys = [ctx.args.memory && 'ALFRED_CODE_MEMORY', ctx.args.docsVersioning && 'ALFRED_CODE_DOCS_VERSIONING', ctx.args.autoCompact && 'ALFRED_CODE_AUTO_COMPACT'].filter(Boolean);
-    const r = childEnv({
-        catalog, parentEnv: w.parentEnv, childEnv: envIn(target), beneath: local ? envIn('settings.json') : {},
-        ownPrior: w.ownEnvPrior, ledgerRows: ((ctx.ledger && ctx.ledger.env) || {})[target] || {}, flagKeys, ignores: w.ignores,
-    });
-    ctx.workspaceEnv = { seeds: r.seeds, force: r.force };
-    ctx.workspaceOwnEnv = r.own;
-}
-
 // After the settings pass: the excludes for every stamped folder above (joined or not), then the own lines. It never
 // writes a `child` line into a parent - the back-reference is the consent record. Frozen, it touches nothing: the
 // member rows still present are carried by the ledger, and so are the own lines. Returns { created } - true when the
 // excludes made settings.local.json, which the caller names when git does not ignore it.
 function workspaceStep(ctx)
 {
-    const w = ctx.workspace || { on: false, members: [], ownPrior: null, ownEnvPrior: null };
+    const w = ctx.workspace || { on: false, members: [], ownPrior: null };
     ctx.ownPicks = w.ownPrior;
-    ctx.ownEnv = w.ownEnvPrior;
     if (!w.on) { mcpHint(ctx); return { created: false }; }
     const ancestors = stampedAncestors(ctx.projectRoot, { env: ctx.env });
     const want = excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: w.ignores })), process.platform);
@@ -836,7 +1077,6 @@ function workspaceStep(ctx)
         ctx.ownPicks = w.parentLines || w.ownPrior !== null
             ? ownPicksAfter({ prior: w.ownPrior, final, parentLines: w.parentLines, added: ctx.userAdds || [], blind: Boolean(ctx.workspaceBlind) })
             : null;
-        if (ctx.workspaceOwnEnv) ctx.ownEnv = ctx.workspaceOwnEnv;
     }
     return { created: Boolean(r.created || d.created) };
 }
@@ -1118,7 +1358,8 @@ const readOr = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch {
 
 // ------------------------------------------------------------------ uninstall (spec 2.6)
 
-// A parent's uninstall: each direct child that names it loses its `parent` line and its stamp's `own-picks:` /
+// A parent's uninstall: each direct child that names it first gets every value it read through the chain written into
+// its own `.variables` (D5's keep, so nothing changes), then loses its `parent` line and its stamp's `own-picks:` /
 // `own-env:` lines, so it reads as standalone and every item it holds is its own; the parent's `child` lines go
 // with them. A gone child has nothing to release. Returns the released children's lines.
 function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () => {}, note = () => {} })
@@ -1134,6 +1375,8 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         // A child that names another parent is that parent's: its line here is stale, and it is left as it is.
         const held = readWorkspace(child, { env: ancestorEnv(env) });
         if (!points(held.model)) { stale.push(rel); continue; }
+        const kept = keepOnLeave(child, { env: ancestorEnv(env), log: (l) => log(l.replace(/^workspace: /, `workspace: ${rel}: `)) });
+        if (kept.why) { note(`workspace: ${rel} could not be released (${kept.why}) - run uninstall again`); continue; }
         const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env) });
         if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
@@ -1313,12 +1556,12 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
 }
 
 module.exports = {
-    CATEGORIES, workspaceOn, parseWorkspace, renderWorkspace, viewOf,
-    setParent, addChild, removeChild, addIgnore, removeIgnore,
+    CATEGORIES, workspaceOn, parseLine, parseWorkspace, renderWorkspace, viewOf,
+    setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
-    realKey, findParent, sameRepo, isCheckout, joinVerdict, joinLine, chain, subtree, rescan,
-    planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
-    readPlan, prepare, recordWord, listLines, envStep, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
+    realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
+    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs,
+    readPlan, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
     releaseChildren, leaveParent, managedSettingsFile, checkLoads,

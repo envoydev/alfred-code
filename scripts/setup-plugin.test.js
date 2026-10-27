@@ -624,7 +624,8 @@ test('router, status and configure read the local stack keys at every scope, and
     assert.ok(!/worktree/i.test(installed), `Installed still counts a worktree's main checkout: ${installed}`);
     const status = flat(cmdBody('status'));
     assert.match(status, /at EVERY scope a stack key `settings\.local\.json` holds applies over `settings\.json`/);
-    assert.match(status, /\*\*Environment\*\* - the install's knobs, one row each, from the STACK VIEW/);
+    assert.match(status, /\*\*Environment\*\* - the install's knobs, one row each\. The variables come from ONE `node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/variables\.js" show --root \.`/);
+    assert.match(status, /`ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` come from the\s+STACK VIEW/);
     assert.match(status, /`ALFRED_CODE_HOOKS_OFF` read from the stack view/);
     const configure = flat(cmdBody('configure'));
     assert.match(configure, /`<key> stays here \(your value, <n> chars\)/);
@@ -1441,7 +1442,7 @@ const firstOption = (text, question) =>
 test('setup-plugin: every new ask is a template with one Recommended option, listed first', () =>
 {
     const walk = refBody('update-walk');
-    assert.strictEqual(firstOption(walk, 'Join the workspace at'), 'Join (Recommended)');
+    assert.strictEqual(firstOption(walk, '<the case\'s question above>'), '<the first ask: label up to its mark> (Recommended)');
     assert.strictEqual(firstOption(walk, 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
     const cascade = refBody('update-workspace');
     assert.strictEqual(firstOption(cascade, 'Answer each project'), 'Take the recommended (Recommended)');
@@ -1450,8 +1451,9 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     const child = refBody('init-child');
     assert.strictEqual(firstOption(child, 'Where should the stack\'s plugins be enabled in this child'), 'local (Recommended)');
     assert.strictEqual(firstOption(child, 'Ignore these machine-local paths in this clone'), '.git/info/exclude (Recommended)');
-    // the child text is read only on child=yes, so a standalone install carries none of it
-    assert.match(flat(refBody('init-install')), /grep -q 'child=yes' "\$TMP\/parent\.txt" && cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md"/);
+    // the child text is read only on the role ask's Child answer, so a standalone install carries none of it
+    assert.ok(!/cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md"/.test(refBody('init-install')), 'init-install reads init-child.md unasked');
+    assert.match(flat(refBody('init-role')), /\*\*Child of `<rel>`\*\* - read `\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md` now/);
 });
 
 test('init-child: the local-scope hygiene lines come from git-hygiene.js --local-child, read and applied (AC8)', () =>
@@ -1507,4 +1509,91 @@ test('configure step 8 and init screen B ask the environment rows in calls of at
     assert.match(install, /in calls of at most four in catalog order - the rows past the first four in a second call, from `cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-env-more\.md"`/);
     const more = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'init-env-more.md'), 'utf8');
     assert.match(more, /^How many of a session's agents may run at once\?$/m);
+});
+
+// Workspace roles and variables (T16): the role asks at init and configure, the env steps through variables.js, and no
+// body that still places a moved key in a settings env.
+test('init reads init-role.md before screen A and its template marks the first option', () =>
+{
+    const install = refBody('init-install');
+    const detect = install.indexOf('workspace.js" role --root . --when init');
+    assert.ok(detect >= 0, 'the detection call runs workspace.js role --when init');
+    const read = install.indexOf('init-role.md', detect);
+    assert.ok(read > detect && read < install.indexOf('**Screen A'), 'init-role.md is read in the same call, before screen A');
+    assert.doesNotMatch(install, /workspace\.js" parent --root/, 'the silent parent check is gone');
+    const role = refBody('init-role');
+    const blocks = askBlocks(role);
+    assert.strictEqual(blocks.length, SETUP_ASK_TEMPLATES['setup-plugin/references/init-role.md']);
+    assert.strictEqual(blocks.length, 1);
+    assert.match(blocks[0][1], /\(Recommended\)/);
+    assert.ok(blocks[0].slice(2).every((l) => !/\(Recommended\)/.test(l)), 'only the first option is marked');
+    assert.match(role, /before screen A/i);
+    assert.match(role, /workspace\.js" role --root \. --answer/);
+    assert.match(role, /init-child\.md/);
+    assert.match(refBody('init-child'), /workspace\.js" role --root \. --answer child/, 'a child joins through the role verb');
+});
+
+test('configure\'s Role templates list Keep (Recommended) first', () =>
+{
+    const body = cmdBody('configure');
+    const blocks = askBlocks(body).filter((b) => /^This project's workspace role/.test(b[0]));
+    assert.strictEqual(blocks.length, 3, 'one template per role: standalone, root, child');
+    for (const b of blocks) assert.match(b[1], /^- 'Keep \(Recommended\)' - /, b[0]);
+    const labels = blocks.map((b) => b.slice(1).map((l) => /^- '([^']*)'/.exec(l)[1]));
+    assert.deepStrictEqual(labels, [
+        ['Keep (Recommended)', 'Join <rel>', 'Become a root'],
+        ['Keep (Recommended)', 'Join <rel>', 'Become standalone'],
+        ['Keep (Recommended)', 'Leave and become standalone', 'Leave and become a root'],
+    ], 'the labels are the ones workspace.js role prints');
+    assert.match(body, /workspace\.js" role --root \. --answer/);
+    assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/configure.md']);
+});
+
+test('no body hand-merges a settings env: init and configure set the stack\'s values through variables.js set', () =>
+{
+    for (const [name, body] of [['init-install', refBody('init-install')], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]])
+    {
+        assert.match(body, /scripts\/variables\.js" set --root \./, `${name} names variables.js set`);
+        assert.doesNotMatch(body, /a merge on the scope's settings(?: file|\.json) touching ONLY the chosen keys/, `${name} still hand-merges the env`);
+    }
+    assert.match(cmdBody('status'), /scripts\/variables\.js" show --root \./, 'status reads the values with their sources');
+    assert.match(cmdBody('validate'), /scripts\/variables\.js" show --root \./, 'validate reconciles what show reads');
+});
+
+test('no body places a moved key in a settings env', () =>
+{
+    const layout = require('../stack/hooks/layout.js');
+    const moved = layout.VARIABLE_KEYS.filter((k) => k !== 'ALFRED_CODE_WORKSPACE').map((k) => new RegExp(`${k}(?![A-Z0-9_])`));
+    const hits = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        {
+            const p = path.join(dir, e.name);
+            if (e.isDirectory()) walk(p);
+            else if (e.name.endsWith('.md'))
+                fs.readFileSync(p, 'utf8').split('\n').forEach((line, i) =>
+                {
+                    // A line naming .variables describes the move itself (the history entry, the way back).
+                    if (moved.some((re) => re.test(line)) && /settings(\.local)?\.json|the settings file|settings env/.test(line) && /\benv\b/.test(line) && !/\.variables/.test(line))
+                        hits.push(`${path.relative(ROOT, p)}:${i + 1}`);
+                });
+        }
+    };
+    for (const top of ['setup-plugin', 'stack']) walk(path.join(ROOT, top));
+    assert.deepStrictEqual(hits, []);
+});
+
+test('the 3.0.0 history entry opens with the update-together contract and the way back', () =>
+{
+    const history = refBody('update-history');
+    const at = history.indexOf('\n## in 3.0.0 - ');
+    assert.ok(at >= 0, 'a section owed below 3.0.0');
+    const next = history.indexOf('\n## ', at + 4);
+    const entry = history.slice(at, next < 0 ? undefined : next);
+    const first = entry.split('\n\n')[1];
+    assert.match(first, /update together/i, 'its first paragraph is the team contract');
+    assert.match(first, /2\.12\.0 or older reads none of them/);
+    assert.match(entry, /settings\.json by hand/, 'the way back');
+    for (const key of ['ALFRED_CODE_SCORER_LEVEL', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_MAXIMUM_RUN_AGENTS']) assert.ok(entry.includes(key), `${key} named`);
 });

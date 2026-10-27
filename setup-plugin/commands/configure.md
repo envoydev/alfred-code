@@ -199,7 +199,7 @@ Which areas to adjust this run? None ticked walks all four.
 - 'Rules + Agents + Skills (Recommended)' - the three catalog layers, walked first
 - 'Hooks' - the hook layer
 - 'Plugins' - the status line and the LSP picks
-- 'Environment' - the stack's env values, the memory mode and navigation
+- 'Environment' - the stack's values, the memory mode, navigation and the workspace role
 ```
  Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
 installer run at step 11, which works from the whole selection - and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
@@ -242,13 +242,13 @@ walk.md's Plugins layer, the plugin-settings ask included - applied at step 11a.
 ## 8. Environment - the stack env values (when picked)
 
 The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
-release owns in the scope's settings file `env` (`.claude/settings.local.json` at local scope, else
-`.claude/settings.json` - where a key `settings.local.json` also holds is read from, and written back
-to, that local file, since it applies over `settings.json`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
+release owns, each kept in the project's `<data root>/.variables` (`ALFRED_CODE_DATA_PATH` and
+`ALFRED_CODE_HOOKS_OFF` stay in the scope's settings file `env`; a key `.claude/settings.local.json` also holds is read
+from, and written back to, that file, since it applies over `.variables`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
 front of the user in its own words; do not carry a copy of the rows here, or the walk shows five
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
-step is the one place they change deliberately. A row whose key is missing from the file is one the
-release INTRODUCED - offer it with the catalog's default. A row with `"seed": false` is never MISSING and never
+step is the one place they change deliberately. A row `variables.js show` reads as `default` (no file holds it) is one
+the release INTRODUCED - offer it with the catalog's default. A row with `"seed": false` is never MISSING and never
 offered: it is set only in the launch environment or by hand (`ALFRED_CODE_WORKSPACE`). A row's `renamed_from` still present on
 disk is the old spelling, and accepting it moves the value, never resets it. `ALFRED_CODE_DOCS_VERSIONING`
 is the ONE row this does not apply to when it is missing: its value is DETECTED, not constant, so offering
@@ -260,7 +260,7 @@ git - ...)` line names it and why) as the recommended answer, never the catalog 
 
 Two behaviours live here rather than in the catalog, because they are about what this step DOES. The
 DATA ROOT (`ALFRED_CODE_DATA_PATH`) is where Alfred Code keeps this project's data - the docs, the
-hooks' state and the sensitive-data file - so changing it MOVES that data, and it goes through the installer, never the merge below. It is ONE question about
+hooks' state and the sensitive-data file - so changing it MOVES that data, and it goes through the installer, never `variables.js set`. It is ONE question about
 plugin data storage as a whole, the current value shown with what it holds. Step 1's `data-move:` line
 says whether any of it still sits outside the root (the same line update reads). On `data-move: offer <root> ...` the
 MOVE is the recommendation, whatever the current value: every Alfred Code file belongs under the data
@@ -293,7 +293,9 @@ data-root change carries the docs with it and re-stamps the rule. Claude Code's 
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
 
-Show the CURRENT values read from the file - never assume the defaults - then the keep-or-change consent
+Show the CURRENT values from ONE `node "$TMP/repo/scripts/variables.js" show --root .` - `<KEY>=<value> (<source>)`
+per key, the source `own`, `from <rel>` (a workspace member's), `settings.local.json` or `default`, then its `!!
+variables:` notes pasted as they are - never assume the defaults; then the keep-or-change consent
 covering every row (keep - recommended; change, the new values via Other) - one question per row, asked in calls
 of at most four questions, in catalog order (the tool takes four a call), and a row carrying `asked_with` rides
 along with the row it names rather than spending its own question. A row carrying `group_off` is ONE question for the whole FEATURE it owns
@@ -306,13 +308,13 @@ carries `ALFRED_CODE_AUTO_COMPACT`, so its question gains one answer: switch bet
 the triggers (`0`) and compacting there instead (`1`) - the value on disk is the kept one. A change is an env change,
 so step 11's installer runs and sets or removes each model's compaction window from the value just written; it
 applies from the next session. Nothing else
-needs editing. Apply on consent with a
-merge touching ONLY the chosen keys - everything else in settings.json is preserved, EXCEPT a
-MISSING `ALFRED_CODE_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that
-one by running `node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead
-of folding it into the merge, so the write re-probes at write time rather than trusting a preview a
-few turns stale, and report its printed line. A typed override (Other) for that same row is a
-deliberate decision like any other row's and goes through the generic merge as-is. Area
+needs editing. Apply on consent with ONE
+`node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> KEY=value ...` naming ONLY the chosen keys - it
+writes each where it takes effect and prints the file; a refused key is named with its reason. The one EXCEPTION is a
+MISSING `ALFRED_CODE_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that one by running
+`node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead, so the write re-probes at
+write time rather than trusting a preview a few turns stale, and report its printed line. A typed override (Other)
+for that same row is a deliberate decision like any other row's and goes through `variables.js set` as-is. Area
 skipped, or nothing changed: one narration line, nothing written.
 
 **Memory and navigation** ride this area. First `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project .` - paste its lines in ONE fenced block - then ONE AskUserQuestion with both questions, each carrying its current line:
@@ -332,6 +334,37 @@ Navigation in files? (now: <the modes navigation: line>)
 ```
 
 'Custom' follows `$TMP/repo/stack/skills/capture-preferences/references/tools-area.md` (read through Bash) inline for that job alone, start to finish - its step 4 asks that job's question even with one server candidate, since the user chose Custom; 'Agent decides' over an own navigation entry removes that entry through the same file's Write step (the id goes on its `Retired:` line), then its `lint`. After a custom memory answer run `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --memory custom`, which previews custom while the mode on disk is still the old one: a memory line saying `no memory tool is reachable` applies `default` instead, said as `No memory tool is ranked and reachable, so memory stays native (Claude's default place).` A memory answer other than the current mode rides step 11's ONE installer call as `--memory <default|custom>` - a change on its own, so that call runs - and applies from the next session.
+
+**The workspace role** rides this area too. `node "$TMP/repo/scripts/workspace.js" role --root .` prints `role:
+<current>` and one `ask: <label><TAB><answer>` line per option; ask the template for the current role, its `Join <rel>`
+option only when an `ask:` line offers it. `role: workspace off` (`ALFRED_CODE_WORKSPACE=0`) prints no `ask:` line:
+show the role line, ask nothing.
+
+```ask
+This project's workspace role is standalone - change it?
+- 'Keep (Recommended)' - nothing changes
+- 'Join <rel>' - a child of <rel>: it takes that install's set and values, and its own picks and values stay its own
+- 'Become a root' - projects below can join this one as children
+```
+
+```ask
+This project's workspace role is root of <n> children - change it?
+- 'Keep (Recommended)' - nothing changes
+- 'Join <rel>' - it becomes a child of <rel> and stays the root of its own children
+- 'Become standalone' - refused while a child line stands: each child leaves first (its own configure), or /alfred-code:uninstall here releases them
+```
+
+```ask
+This project's workspace role is child of <rel> - change it?
+- 'Keep (Recommended)' - nothing changes
+- 'Leave and become standalone' - every value it reads from the workspace is written into its own .variables first, so nothing changes
+- 'Leave and become a root' - the same, and projects below can join it
+```
+
+A change runs now, before step 11: `node "$TMP/repo/scripts/workspace.js" role --root . --answer <the chosen ask:
+line's answer>`, its lines pasted as they are; a `!!` line (a refusal naming the children, a locked file) means
+nothing changed. A join's values reach the project at once; the parent's set reaches it at the next
+`/alfred-code:update`.
 
 ## 9. Permission mode
 

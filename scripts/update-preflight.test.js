@@ -109,6 +109,25 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
     assert.ok(!out.includes('from-the-future'), 'a detect kind this release does not know never claims a detection');
 });
 
+// T12c (AC22): since 3.0.0 the stack's variables sit in <data root>/.variables - an env detect on one of them reads the
+// project's files through the loader, so a value only .variables holds still fires its migration.
+test('a preflight settings_env_value row matches a key only .variables holds', () => {
+    const migrations = [
+        { id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORER_LEVEL', equals: '70' } } },
+        { id: 'history-retired', detect: { settings_env_key: 'ALFRED_CODE_HISTORY' } },
+    ];
+    const s = scaffold({ migrations, settings: { env: {} } });
+    fs.mkdirSync(path.join(s.install, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=70\nALFRED_CODE_HISTORY=4\n');
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(s.install, 'no-account') };
+    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
+    const out = run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile], env).out;
+    assert.match(out, /^migration: level-reseed\tsettings_env_value$/m, out);
+    assert.match(out, /^migration: history-retired\tsettings_env_key$/m, out);
+    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=80\n');
+    assert.match(run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile], env).out, /^migrations: none detected$/m, 'another value does not fire');
+});
+
 test('settings_env_all fires only when every key holds the value, and names the off edit', () => {
     const migrations = [{ id: 'default-off-with-the-tiers',
         detect: { settings_env_all: { keys: ['ALFRED_CODE_A', 'ALFRED_CODE_B'], equals: '0' } },
@@ -879,7 +898,7 @@ test('update-preflight prints instructions-both: ask in a child', () =>
         fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
     }
     fs.writeFileSync(path.join(parent, 'CLAUDE.md'), '# team\n');
-    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
     delete env.ALFRED_CODE_UNATTENDED;
     const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env);
     assert.match(out, /^instructions-both: ask$/m, out);
@@ -888,8 +907,8 @@ test('update-preflight prints instructions-both: ask in a child', () =>
 });
 
 
-// The join ask (AC13, AC18, AC27): a nested standalone checkout is offered the join, `parent none` ends the offer, and a
-// child whose back-reference was deleted by hand is offered the rejoin.
+// The role ask (roles spec D2, AC3, AC4): a nested checkout never asked gets `role-ask never`, a 2.12 `parent none` and
+// any answer end it, and a child whose back-reference was deleted by hand gets `role-ask rejoin`.
 function nestedPreflight({ parentLine = null, childLine = null } = {})
 {
     const { snap, install, fixtureFile } = scaffold();
@@ -903,28 +922,41 @@ function nestedPreflight({ parentLine = null, childLine = null } = {})
         fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
     }
-    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // the workspace is off until 3.0.0
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
     delete env.ALFRED_CODE_UNATTENDED;
-    env.ALFRED_CODE_WORKSPACE = '1';   // off until 3.0.0; this case runs it on
     const full = (extra = {}) => run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], { ...env, ...extra }).out;
     const asks = (extra = {}) => run(['--asks', '--root', install], { ...env, ...extra }).out;
     return { install, parent, env, full, asks };
 }
 
-test('update-preflight prints workspace: join only for a nested standalone project, and nothing after parent none', () =>
+test('update-preflight prints workspace: role-ask never for a nested project never asked, never a join line, and nothing after parent none', () =>
 {
     const p = nestedPreflight();
-    assert.match(p.full(), /^workspace: join \.\.$/m);
-    assert.match(p.asks(), /^workspace: join \.\.$/m);
+    assert.match(p.full(), /^workspace: role-ask never \.\.$/m);
+    assert.match(p.asks(), /^workspace: role-ask never \.\.$/m);
+    assert.doesNotMatch(p.full() + p.asks(), /^workspace: join /m);
     const unattended = p.full({ ALFRED_CODE_UNATTENDED: '1' });
-    assert.ok(unattended.indexOf('workspace: join') < unattended.indexOf('unattended: on'), unattended);
+    assert.ok(unattended.indexOf('workspace: role-ask') < unattended.indexOf('unattended: on'), unattended);
     assert.doesNotMatch(p.full({ ALFRED_CODE_WORKSPACE: '0' }), /^workspace:/m, 'the kill switch asks nothing');
     fs.mkdirSync(path.join(p.install, '.alfred'), { recursive: true });
     fs.writeFileSync(path.join(p.install, '.alfred', 'workspace'), 'parent none\n');
-    assert.doesNotMatch(p.full(), /^workspace:/m);
+    assert.doesNotMatch(p.full(), /^workspace:/m, 'a 2.12 parent none was answered');
     assert.doesNotMatch(p.asks(), /^workspace:/m);
     const joined = nestedPreflight({ parentLine: 'child project\n', childLine: 'parent ..\n' });
     assert.doesNotMatch(joined.full(), /^workspace:/m, 'a joined child is asked nothing');
+});
+
+test('AC3: after either answer to role-ask never, two updates print no role-ask and change no project file', () =>
+{
+    for (const answer of ['join:..', 'standalone'])
+    {
+        const p = nestedPreflight();
+        execFileSync('node', [path.join(__dirname, 'workspace.js'), 'role', '--root', p.install, '--answer', answer], { encoding: 'utf8', env: p.env });
+        const files = () => ['.alfred/workspace', '.claude/alfred-code.stamp'].map((f) => [p.parent, p.install].map((d) => { try { return fs.readFileSync(path.join(d, f), 'utf8'); } catch { return null; } }));
+        const before = files();
+        for (let i = 0; i < 2; i++) assert.doesNotMatch(p.full() + p.asks(), /^workspace: role-ask/m, `${answer}: update ${i + 1}`);
+        assert.deepStrictEqual(files(), before, `${answer}: no file changed`);
+    }
 });
 
 test('update-preflight prints no workspace line in a project with nothing installed above it', () =>
@@ -932,17 +964,17 @@ test('update-preflight prints no workspace line in a project with nothing instal
     const { snap, install, fixtureFile } = scaffold();
     execFileSync('git', ['init', '-q', install]);
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(path.dirname(install), 'acct') };
-    env.ALFRED_CODE_WORKSPACE = '1';   // off until 3.0.0; this case runs it on
+    env.ALFRED_CODE_WORKSPACE = '1';   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
     assert.doesNotMatch(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out, /^workspace:/m);
     assert.doesNotMatch(run(['--asks', '--root', install], env).out, /^workspace:/m);
 });
 
-test('a child whose child line was deleted by hand gets workspace: join .. rejoin, and join --answer join brings the line back', () =>
+test('a child whose child line was deleted by hand gets workspace: role-ask rejoin .., and role --answer rejoin brings the line back', () =>
 {
     const p = nestedPreflight({ parentLine: '', childLine: 'parent ..\n' });
-    assert.match(p.full(), /^workspace: join \.\.\trejoin$/m);
-    const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'join', '--root', p.install, '--answer', 'join'], { encoding: 'utf8', env: p.env });
-    assert.match(joined, /join: join\n$/);
+    assert.match(p.full(), /^workspace: role-ask rejoin \.\.$/m);
+    const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'role', '--root', p.install, '--answer', 'rejoin'], { encoding: 'utf8', env: p.env });
+    assert.match(joined, /^role: child of \.\.$/m);
     assert.strictEqual(fs.readFileSync(path.join(p.parent, '.alfred', 'workspace'), 'utf8'), 'child project\n');
     assert.doesNotMatch(p.full(), /^workspace:/m);
 });

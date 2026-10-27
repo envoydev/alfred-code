@@ -14,8 +14,9 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'layout-ws-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const STAMP = 'sha: x\n';
 const env0 = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
-// `spec` maps a relative folder to { stamp, git, file, data, settings, local } - `file` is its workspace file's text,
-// written under `data` (default .alfred); `settings` / `local` are its .claude/settings.json / settings.local.json text.
+// `spec` maps a relative folder to { stamp, git, file, data, settings, local, vars } - `file` is its workspace file's
+// text and `vars` its `.variables` text, both under `data` (default .alfred); `settings` / `local` are its
+// .claude/settings.json / settings.local.json text.
 const tree = (spec) =>
 {
     const top = fs.mkdtempSync(path.join(TMP, 't-'));
@@ -27,12 +28,9 @@ const tree = (spec) =>
         if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), STAMP); }
         if (o.settings !== undefined) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), o.settings); }
         if (o.local !== undefined) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), o.local); }
-        if (o.file !== undefined)
-        {
-            const data = path.join(dir, ...(o.data || '.alfred').split('/'));
-            fs.mkdirSync(data, { recursive: true });
-            fs.writeFileSync(path.join(data, 'workspace'), o.file);
-        }
+        const data = path.join(dir, ...(o.data || '.alfred').split('/'));
+        if (o.file !== undefined) { fs.mkdirSync(data, { recursive: true }); fs.writeFileSync(path.join(data, 'workspace'), o.file); }
+        if (o.vars !== undefined) { fs.mkdirSync(data, { recursive: true }); fs.writeFileSync(path.join(data, '.variables'), o.vars); }
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 };
@@ -114,19 +112,35 @@ test('a symlinked spelling of the child reads the real chain, as chain() does', 
     assert.deepStrictEqual(layout.workspaceChain(path.join(at('ws'), 'api'), { env: env0 }).members.map((m) => m.root), [at('other')]);
 });
 
-// Off until 3.0.0 (the user's answer of 2026-10-27): only a `1` turns it on, a settings value over the launch env.
-test('workspaceOn reads env, then settings.local.json over settings.json, and is off with no 1 anywhere', () =>
+// On by default from 3.0.0 (D9): off only at 0. A launch 0 freezes; else the project's own value decides - settings.local.json,
+// .variables, settings.json, the account - and a 0 there beats a launch 1; a member's value is never read for it.
+test('the twins agree: unset on, launch 0 off, file 0 beats launch 1, settings.local.json 0 beats launch 1, .variables 0 off, a member\'s 0 is never read', () =>
 {
-    const at = tree({ 'p': {}, 'q': { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }) }, 'r': { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }), local: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '1' } }) }, 's': { local: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: 0 } }) }, 't': { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: 1 } }) } });
-    assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('p') }), false, 'no value anywhere: off');
-    assert.strictEqual(layout.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '1' }, projectRoot: at('p') }), true, 'a launch 1 turns it on');
-    assert.strictEqual(layout.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: 'yes' }, projectRoot: at('p') }), false, 'only 1 is on');
-    assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('t') }), true, 'a number 1 reads as 1');
-    assert.strictEqual(layout.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '0' }, projectRoot: at('p') }), false);
-    assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('q') }), false);
-    assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('r') }), true, 'the local file wins');
-    assert.strictEqual(layout.workspaceOn({ env: {}, projectRoot: at('s') }), false, 'a number 0 reads as 0');
-    for (const p of ['p', 'q', 'r', 's', 't']) for (const e of [{}, { ALFRED_CODE_WORKSPACE: '0' }, { ALFRED_CODE_WORKSPACE: '1' }]) assert.strictEqual(layout.workspaceOn({ env: e, projectRoot: at(p) }), ws.workspaceOn({ env: e, projectRoot: at(p) }), `${p} ${JSON.stringify(e)}`);
+    const at = tree({
+        p: {},
+        q: { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }) },
+        r: { settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }), local: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '1' } }) },
+        s: { local: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: 0 } }) },
+        v: { vars: 'ALFRED_CODE_WORKSPACE=0\n' },
+        ws: { stamp: true, file: 'child api\n', vars: 'ALFRED_CODE_WORKSPACE=0\n', settings: JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }) },
+        'ws/api': { stamp: true, file: 'parent ..\n' },
+    });
+    const ONE = { ALFRED_CODE_WORKSPACE: '1' };
+    const ZERO = { ALFRED_CODE_WORKSPACE: '0' };
+    const on = (rel, e = {}) => layout.workspaceOn({ env: { ...env0, ...e }, projectRoot: at(rel) });
+    assert.strictEqual(on('p'), true, 'unset is on');
+    assert.strictEqual(on('p', ZERO), false, 'a launch 0 freezes');
+    assert.strictEqual(on('p', { ALFRED_CODE_WORKSPACE: 'yes' }), true, 'only 0 is off');
+    assert.strictEqual(on('q'), false, 'a settings.json 0');
+    assert.strictEqual(on('q', ONE), false, 'a file 0 beats a launch 1');
+    assert.strictEqual(on('s', ONE), false, 'a settings.local.json 0 (a number) beats a launch 1');
+    assert.strictEqual(on('r'), true, 'settings.local.json 1 over settings.json 0');
+    assert.strictEqual(on('v'), false, 'a .variables 0 is off');
+    assert.strictEqual(on('v', ONE), false, 'a .variables 0 beats a launch 1');
+    assert.strictEqual(on('ws/api'), true, 'a member\'s 0 is never read');
+    assert.strictEqual(layout.workspaceChain(at('ws/api'), { env: env0 }).members.length, 1, 'the member is there to be read');
+    for (const p of ['p', 'q', 'r', 's', 'v', 'ws', 'ws/api']) for (const e of [{}, ZERO, ONE])
+        assert.strictEqual(on(p, e), ws.workspaceOn({ env: { ...env0, ...e }, projectRoot: at(p) }), `${p} ${JSON.stringify(e)}`);
 });
 
 test('a malformed workspace line is skipped and the chain still reads', () =>

@@ -5,10 +5,12 @@
 //   parent      the stamped folder above, and whether this project may join it
 //   register    the join itself: the parent's `child` line first, then this project's `parent` line
 //   unregister  both lines out again
-//   join        init's answer - `join` registers, `none` writes `parent none` so the ask is not put again
+//   join        rescan's answer - `join` joins as the role ask's Child does, `none` writes `role standalone`
+//   role        the project's role and its ask (`--when init|update|configure`), or one `--answer` applied
 //   ignore      one `ignore <category> <name>` line in or out
 //   children    the direct children, `ok` or `gone`, for uninstall
-//   status      the parent, the own, ignored and inherited lines, and the last load check
+//   status      the role, the parent, the own, ignored and inherited lines, the last load check, the variables'
+//               notes and the secrets chain's keys by source
 //   account-instructions  D5's account key: check, apply, decline or remove
 //   plan        update's cascade, before it runs: each project's row, projected add and drop, and its own asks
 //   answer      one project's answers to those asks, merged into the answers file the cascade reads
@@ -47,7 +49,6 @@ const bad = (line) => new Exit(2, `!! workspace: ${line}`);
 const env = process.env;
 const exec = rt.execCommand;
 const realOf = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
-const relPosix = (from, to) => path.relative(from, to).split(path.sep).join('/');
 
 function rootArg()
 {
@@ -75,25 +76,17 @@ function parentVerb(out)
     else out(`parent: ${v.parent.rel}\tchild=no\twhy=${v.why}`);
 }
 
-function register(out, root = rootArg(), dataRoot = dataPathArg())
+// A library result's lines, its failure as the exit code with the `!!` line last.
+function report(out, r)
 {
-    const v = ws.joinVerdict(root, { env, exec });
-    if (!v.parent) throw bad(`no installed folder above ${root} - nothing to join`);
-    if (!v.ok) throw bad(`${v.parent.rel} cannot take this folder as a child (${v.why})`);
-    const childRel = relPosix(v.parent.root, root);
-    const upEnv = ws.ancestorEnv(env);
-    const up = ws.writeWorkspace(v.parent.root, (m) => ws.addChild(m, childRel), { env: upEnv });
-    if (!up.ok && up.why === 'locked') throw new Exit(3, `!! workspace: the workspace file in ${v.parent.rel} is locked by another run - nothing was written; the join is offered again at the next update`);
-    if (!up.ok) throw new Exit(1, `!! workspace: the workspace file in ${v.parent.rel} could not be written - nothing was joined`);
-    const here = ws.writeWorkspace(root, (m) => ws.setParent(m, v.parent.rel), { env, dataRoot });
-    if (!here.ok)
-    {
-        // The parent's line alone is a child the chain never reaches: take it back, unless it was there before.
-        if (up.wrote) ws.writeWorkspace(v.parent.root, (m) => ws.removeChild(m, childRel), { env: upEnv });
-        throw new Exit(here.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file is ${here.why === 'locked' ? 'locked by another run' : 'not writable'} - nothing was joined; the join is offered again at the next update`);
-    }
-    out(`workspace: parent ${v.parent.rel} ${here.wrote ? 'written' : 'kept'}`);
-    out(`workspace: child ${childRel} ${up.wrote ? 'written' : 'kept'} in ${v.parent.rel}`);
+    if (r.ok) { for (const line of r.lines) out(line); return; }
+    for (const line of r.lines.slice(0, -1)) out(line);
+    throw new Exit(r.code, r.lines[r.lines.length - 1]);
+}
+
+function register(out)
+{
+    report(out, ws.register(rootArg(), { env, exec, dataRoot: dataPathArg() }));
 }
 
 function unregister(out)
@@ -107,15 +100,23 @@ function join(out)
 {
     const answer = arg('--answer');
     if (answer !== 'join' && answer !== 'none') throw bad('--answer takes join or none');
-    const root = rootArg();
-    const dataRoot = dataPathArg();
-    if (answer === 'join') register(out, root, dataRoot);
-    else
-    {
-        const r = ws.writeWorkspace(root, (m) => ws.setParent(m, 'none'), { env, dataRoot });
-        if (!r.ok) throw new Exit(r.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${r.why})`);
-    }
+    report(out, ws.applyRole(rootArg(), answer === 'join' ? 'child' : 'standalone', { env, exec, dataRoot: dataPathArg() }));
     out(`join: ${answer}`);
+}
+
+const WHEN = ['init', 'update', 'configure'];
+function roleVerb(out)
+{
+    const root = rootArg();
+    const answer = arg('--answer');
+    if (answer !== undefined) return report(out, ws.applyRole(root, answer, { env, exec, dataRoot: dataPathArg() }));
+    const when = arg('--when', 'configure');
+    if (!WHEN.includes(when)) throw bad(`--when takes ${WHEN.join(', ')}`);
+    out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env }) : null)}`);
+    const ask = ws.roleAsk(root, { env, exec, when });
+    if (!ask) return;
+    if (ask.why) out(`why: ${ask.why}`);
+    ask.options.forEach((label, i) => out(`ask: ${label}\t${ask.answers[i]}`));
 }
 
 function ignore(out)
@@ -145,6 +146,7 @@ const list = (lines) => (lines.length ? lines.join(', ') : '-');
 function status(out)
 {
     const root = rootArg();
+    out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env }) : null)}`);
     const own = ws.readWorkspace(root, { env });
     const linked = ws.chain(root, { env });
     for (const n of linked.notes) out(n);
@@ -172,6 +174,11 @@ function status(out)
     catch { /* no load check has run here */ }
     out(check && check.state && check.at ? `check: ${check.state} ${check.at}` : 'check: never');
     for (const line of ws.hintLines(root, { env })) out(line);
+    // variables.js show's notes (D7): a guard key, a key never read, a key named like a credential - never a value.
+    for (const note of require('../stack/hooks/layout.js').variablesOf(root, { env }).notes) out(note);
+    // The secrets chain by key and source - the nearest store's key wins - never a value.
+    const secrets = require('../stack/hooks/secret-chain.js').chainOf(root, { env });
+    for (const [key, rel] of Object.entries(secrets.from)) out(`secrets: ${key} ${rel === '.' ? 'own' : `from ${rel}`}`);
 }
 
 function accountInstructions(out)
@@ -258,7 +265,7 @@ function readBack(root, source, file, parentPlan)
     return read.plan ? { file, plan: read.plan } : { why: read.why };
 }
 
-const ASK = [/^data-move: offer /, /^docs-move: offer /, /^instructions-file: .*\bupdate=ask/, /^instructions-both: ask$/, /^workspace: join /];
+const ASK = [/^data-move: offer /, /^docs-move: offer /, /^instructions-file: .*\bupdate=ask/, /^instructions-both: ask$/, /^workspace: role-ask /];
 
 // The project's own asks, as update-preflight prints them for it.
 function asksOf(root)
@@ -274,7 +281,7 @@ function planVerb(out)
     // Off, update reads no cascade text: no tree, no projection, nothing cascades.
     if (!ws.workspaceOn({ env, projectRoot: top }))
     {
-        out('workspace-plan: off - ALFRED_CODE_WORKSPACE is not 1');
+        out('workspace-plan: off - ALFRED_CODE_WORKSPACE is 0');
         return;
     }
     let snapshot = '?';
@@ -430,7 +437,7 @@ function cascade(out)
     const answers = file ? readAnswers(file, { absentOk: true }) : {};
     if (!ws.workspaceOn({ env, projectRoot: top }))
     {
-        out('cascade: off - ALFRED_CODE_WORKSPACE is not 1');
+        out('cascade: off - ALFRED_CODE_WORKSPACE is 0');
         return;
     }
     const rows = ws.subtree(top, { env });
@@ -522,7 +529,7 @@ function checkLoadsVerb(out)
     else out(`!! check-loads: the probe failed - ${r.why}`);
 }
 
-const VERBS = { parent: parentVerb, register: (out) => register(out), unregister, join, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb };
+const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb };
 
 // Each line is written as it is made: a cascade that outruns its caller's budget leaves the rows it finished.
 function main()
