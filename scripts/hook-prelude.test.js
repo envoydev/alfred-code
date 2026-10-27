@@ -1044,12 +1044,12 @@ test('snapshotReview: one file per call, so calls started together all keep thei
 });
 
 // ---------------------------------------------------------------------------------------------
-// the scorer's shared state (habits-output-scorer): parses, the switch, the skill copy, the stack reader, row marks
+// the scorer's shared state (mode-output-scorer): parses, the switch, the skill copy, the stack reader, row marks
 // ---------------------------------------------------------------------------------------------
 const { skillCopyState, oursLoadable, scorerLevel, scorerRounds, scorerOutputs, scorerState, scorerFile, safeSession, stackNamed, producerMarks, sweepScorerFolders } = require(PRELUDE);
 const scorerWrite = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
 const scorerRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-root-')));
-scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'habits-output-scorer', 'SKILL.md'), '---\nname: habits-output-scorer\n---\n');
+scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\n---\n');
 // no CLAUDE_PLUGIN_ROOT, so neverSetUp is false; an empty config dir, so no account skill or override reaches in
 const scorerBase = { CLAUDE_PROJECT_DIR: scorerRoot, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-cfg-')) };
 const scorerOn = { ...scorerBase, ALFRED_CODE_SCORER: '1' };
@@ -1085,26 +1085,26 @@ test('scorerState: env, the flag file, a garbage file, and every switch that mak
 test('skillCopyState and scorerState: no copy and off are unusable; user-invocable-only is usable but not on (AC19, R24)', () => {
     for (const name of ['settings.local.json', 'settings.json'])
         for (const [v, state, usable] of [['off', 'off', false], ['user-invocable-only', 'user-invocable-only', true], ['on', 'on', true]]) {
-            scorerWrite(path.join(scorerRoot, '.claude', name), JSON.stringify({ skillOverrides: { 'habits-output-scorer': v } }));
-            assert.strictEqual(skillCopyState(scorerRoot, 'habits-output-scorer', scorerOn), state, `${name} ${v}`);
+            scorerWrite(path.join(scorerRoot, '.claude', name), JSON.stringify({ skillOverrides: { 'mode-output-scorer': v } }));
+            assert.strictEqual(skillCopyState(scorerRoot, 'mode-output-scorer', scorerOn), state, `${name} ${v}`);
             assert.deepStrictEqual([scorerState(scorerRoot, 's1', scorerOn).usable, scorerState(scorerRoot, 's1', scorerOn).on], [usable, v === 'on'], `${name} ${v}`);
-            assert.strictEqual(oursLoadable(scorerRoot, 'habits-output-scorer', scorerOn), v === 'on');
+            assert.strictEqual(oursLoadable(scorerRoot, 'mode-output-scorer', scorerOn), v === 'on');
             fs.rmSync(path.join(scorerRoot, '.claude', name));
         }
-    fs.rmSync(path.join(scorerRoot, '.claude', 'skills', 'habits-output-scorer'), { recursive: true });
-    assert.strictEqual(skillCopyState(scorerRoot, 'habits-output-scorer', scorerOn), 'absent');
+    fs.rmSync(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer'), { recursive: true });
+    assert.strictEqual(skillCopyState(scorerRoot, 'mode-output-scorer', scorerOn), 'absent');
     assert.strictEqual(scorerState(scorerRoot, 's1', scorerOn).usable, false);
-    scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'habits-output-scorer', 'SKILL.md'), '---\nname: habits-output-scorer\n---\n');
+    scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\n---\n');
 });
 
 test('stackNamed: the slash form, the bare name after a usage word, a command-args row; code, quotes and talk are not (final review 4)', () => {
-    for (const t of ['/task-version-upgrade /habits-output-scorer upgrade to .NET 10', '/habits-output-scorer explain closures',
-        'using habits-output-scorer, explain closures', 'explain closures with the habits-output-scorer', 'run habits-output-scorer on this plan',
-        '<command-name>/habits-explain-topic</command-name><command-args>/habits-output-scorer explain x</command-args>'])
+    for (const t of ['/task-version-upgrade /mode-output-scorer upgrade to .NET 10', '/mode-output-scorer explain closures',
+        'using mode-output-scorer, explain closures', 'explain closures with the mode-output-scorer', 'run mode-output-scorer on this plan',
+        '<command-name>/habits-explain-topic</command-name><command-args>/mode-output-scorer explain x</command-args>'])
         assert.ok(stackNamed(t), t);
-    for (const t of ['what does `/habits-output-scorer` do', '```\n/habits-output-scorer\n```', '> /habits-output-scorer x',
-        'my-habits-output-scorer-notes', 'habits-output-scorers', '| habits-output-scorer | row |',
-        'why did habits-output-scorer not run?', 'habits-output-scorer graded my plan at 71 - why?', 'is the habits-output-scorer on'])
+    for (const t of ['what does `/mode-output-scorer` do', '```\n/mode-output-scorer\n```', '> /mode-output-scorer x',
+        'my-mode-output-scorer-notes', 'mode-output-scorers', '| mode-output-scorer | row |',
+        'why did mode-output-scorer not run?', 'mode-output-scorer graded my plan at 71 - why?', 'is the mode-output-scorer on'])
         assert.ok(!stackNamed(t), t);
 });
 
@@ -1113,7 +1113,7 @@ test('producerMarks: a Skill call, a typed command, a command inside a tool resu
     const typed = (t) => JSON.stringify({ type: 'user', message: { role: 'user', content: t } });
     assert.deepStrictEqual(producerMarks(skill('task-implement')), ['task-implement']);
     assert.deepStrictEqual(producerMarks(skill('alfred-code:task-verify-plan')), ['task-verify-plan']);
-    assert.deepStrictEqual(producerMarks(typed('<command-name>/habits-output-scorer</command-name>')), ['habits-output-scorer']);
+    assert.deepStrictEqual(producerMarks(typed('<command-name>/mode-output-scorer</command-name>')), ['mode-output-scorer']);
     assert.deepStrictEqual(producerMarks(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: '<command-name>/task-implement</command-name>' }] } })), []);
     assert.deepStrictEqual(producerMarks(skill('javascript')), []);
     assert.deepStrictEqual(producerMarks('{"type":"assistant","mess'), []);

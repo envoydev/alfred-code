@@ -41,7 +41,11 @@ const fs = require('fs');
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
 let autoLive = () => false;   // hook-prelude.js autoStampLive - a live AUTO waiver of this session
-let stampOf = () => null;     // hook-prelude.js approvalStamp - the stamp's state, an auto-mode run's named session included
+let stampOf = () => null;     // hook-prelude.js approvalStamp - the stamp's state, an auto-run's named session included
+// hook-prelude.js runMarkerFile - this session's auto-run marker, open while a run goes; null without the prelude (no hold)
+let runMarkerOf = () => null;
+// hook-prelude.js modeFlags - a typed line's mode flags and request; without the prelude no line arms the solve-flow mark
+let modeFlagsOf = () => ({ request: '' });
 // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
@@ -62,6 +66,8 @@ if (require.main === module) {
     unattended = prelude.unattended || unattended;
     autoLive = prelude.autoStampLive || autoLive;
     stampOf = prelude.approvalStamp || stampOf;
+    if (prelude.runMarkerFile) runMarkerOf = (input) => prelude.runMarkerFile(process.env.CLAUDE_PROJECT_DIR || input.cwd, input.session_id);
+    modeFlagsOf = prelude.modeFlags || modeFlagsOf;
     houseDash = prelude.HOUSE_DASH || houseDash;
     withoutShortLived = prelude.withoutShortLived || withoutShortLived;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
@@ -986,13 +992,13 @@ function walkBack(start, fallback) {
   return fallback;
 }
 
-// --- the scorer backstop (habits-output-scorer, spec 5.9) ----------------------------------------------
+// --- the scorer backstop (mode-output-scorer, spec 5.9) ----------------------------------------------
 // What the cycle owes a grade for, read in ONE walk back to the row that opened it: the newest row the user typed (no
 // harness prompt, compaction summary or sibling hook's `Stop hook feedback:` row). The evidence triggers: T1 a draft the
 // loop wrote in this session's scorer folder (on, or the cycle stacked); T2 a plan file under the docs root's
 // work/plans/ (on, designer-plan listed); T3 a findings-file verdict or a diagnoser seat that settled (on, root-cause
 // listed) - neither where a draft was written, T2 not where a plan reader ran or the loop released that target; T4 the
-// cycle stacked /habits-output-scorer. A `Scored:` line after the newest trigger clears it only when a rounds.log the
+// cycle stacked /mode-output-scorer. A `Scored:` line after the newest trigger clears it only when a rounds.log the
 // script wrote holds a release or a final since the cycle opened (R34). Returns the owed trigger's words or null, the
 // cycle's key, and whether the receipt was there but unbacked.
 const SCORED_RE = /(?:^|\n)\s*\**Scored\**:\s*\d+\/100/;
@@ -1008,7 +1014,7 @@ const SCORER_TRIGGERS = {
   T1: 'a scorer draft was written',
   T2: 'a plan file was written under work/plans/',
   T3: 'a root-cause verdict was written or a diagnoser seat reported',
-  T4: 'the request stacked /habits-output-scorer',
+  T4: 'the request stacked /mode-output-scorer',
 };
 function scorerOwed(state, pre, root) {
   const path = require('path');
@@ -1052,15 +1058,17 @@ function scorerOwed(state, pre, root) {
       if (o.type !== 'user') return undefined;
       n += 1;
       const text = rowText(o);
+      // a flag-only line (`/mode-output-scorer --mode-output-scorer-off`) switches and starts nothing: no stack (spec section 4)
+      const flagOnly = Boolean(modeFlagsOf(text).flagOnly);
       if (text.includes('<command-name>')) {
         const marks = pre.producerMarks(JSON.stringify(o));
-        if (marks.includes('habits-output-scorer')) seen.stacked = true;
+        if (marks.includes('mode-output-scorer') && !flagOnly) seen.stacked = true;
         if (marks.some((m) => pre.PLAN_READERS.includes(m))) seen.planRead = true;
       }
       if (o.isCompactSummary || !typedMessage(o, row) || /^\s*Stop hook feedback:/.test(text)) return undefined;
       // the opening row: its uuid, else its timestamp, else the row's own hash keys the cycle
       const key = o.uuid || o.timestamp || `${payload.transcript_path}#${crypto.createHash('sha256').update(JSON.stringify(o)).digest('hex')}`;
-      return { ...seen, open: n, at: Date.parse(o.timestamp || ''), key: String(key), stacked: seen.stacked || pre.stackNamed(text) };
+      return { ...seen, open: n, at: Date.parse(o.timestamp || ''), key: String(key), stacked: seen.stacked || (!flagOnly && pre.stackNamed(text)) };
     };
   }, null);
   if (!found) {
@@ -1410,13 +1418,14 @@ function rotateAskAnswered() {
   return answer >= 0 && answer > any;
 }
 
-// The auto-continue count per stamp (HK05): this Stop's number under the live stamp, 1 for the first. The key is the stamp's
-// session and mtime - the start writes a stamp once and keeps a live one, so a rewritten stamp is a new run and starts
-// over. A torn or foreign file reads as 0; an unwritable one counts nothing (0), the uncapped reading.
+// The auto-continue count per run (HK05): this Stop's number under the open run marker, 1 for the first. The key is the
+// session and the marker's mtime - a typed run writes its marker once and a second expansion of the same line leaves it
+// (hook-prelude.js writeRunMarker), so a rewritten marker is a new run and starts over (stack-modes spec section 2). A torn
+// or foreign file reads as 0; an unwritable one counts nothing (0), the uncapped reading.
 const AUTO_CONTINUE_CAP = 50;
-function countAutoContinue(stamp) {
+function countAutoContinue(session, markerMtimeMs) {
   const file = autoCountFile(payload);
-  const key = `${stamp.session}@${stamp.mtimeMs}`;
+  const key = `${session}@${markerMtimeMs}`;
   let n = 0;
   try { const o = JSON.parse(fs.readFileSync(file, 'utf8')); if (o && o.stamp === key && Number.isInteger(o.count) && o.count > 0) n = o.count; } catch { /* absent or torn: 0 */ }
   try { fs.writeFileSync(file, JSON.stringify({ stamp: key, count: n + 1 })); } catch { return 0; }
@@ -1482,7 +1491,7 @@ function subagentOwnTools(file) {
   }
   return tools;
 }
-// --- the output-scorer's seal (habits-output-scorer, spec 5.10) ------------------------------------------
+// --- the output-scorer's seal (mode-output-scorer, spec 5.10) ------------------------------------------
 // The grader's report names its score file on its first line, and this hook writes it, sealed: `seal: sha256 <hex of the
 // report>` then the report as delivered, so a card the author typed or edited never grades (scorecard.js sealOf, the
 // same hash). Only into this session's scorer folder - both sides realpathed, so macOS's /var reads as /private/var and
@@ -1996,7 +2005,7 @@ if (payload.hook_event_name === 'Stop') {
           blockDetail('scorer', owed);
           process.stderr.write(`Stop: this request owes a grade - ${owed} - and the close carries no Scored: line the loop wrote. `
             + `${unbacked ? 'The Scored: line here has no rounds.log release behind it; only the line scorecard.js next prints after the loop counts. ' : ''}`
-            + 'Run the habits-output-scorer loop on that output now and close with the Scored: line `next` prints; '
+            + 'Run the mode-output-scorer loop on that output now and close with the Scored: line `next` prints; '
             + 'where no seat can grade, its Fallback (a SELF grade) applies. Held once for this request.\n');
           process.exit(2);
         }
@@ -2244,40 +2253,44 @@ if (payload.hook_event_name === 'Stop') {
       + '`none`) - and a headline that agrees with the leftovers. Nothing else changes.');
     process.exit(2);
   }
-  // AUTO-MODE (the user's ruling, 2026-10-14): an auto-mode run is over when its close deletes the stamp the start wrote
-  // (guard-fresh-session-start.js, a `session:` line naming this session) - until then nobody is at the terminal to say
-  // 'go on', and a turn that ends between steps idles the run until a person comes back. So a Stop under that stamp is
-  // sent back to the run. The Stop chain bounds it: once held, the next Stop passes unless a tool call ran in between
-  // (hook-prelude.js stopHeldThisCycle, workSince), so a run that can only wait - or only ask - ends its turn on the
-  // second Stop. A hand-written AUTO stamp (task-solve's, no session line) is never held here: its flow closes itself.
-  // The chain bounds a cycle, not the run: Claude Code's own 8-continuation cap 'resets each time Claude calls a tool'
-  // (code.claude.com/docs/en/hooks, Stop decision control), so a run that keeps calling tools was held for as long as its
-  // stamp stood - the week backstop. So the holds are counted per stamp, and the AUTO_CONTINUE_CAP-th Stop passes with one
-  // `auto-continue-cap` row (audit 2026-10-14 HK05, the user's ruling: 50); a new stamp counts from 0 again.
+  // AUTO-RUN (stack-modes spec section 2, 2026-10-27; auto-mode, the user's ruling of 2026-10-14): the session's AUTO stamp
+  // (guard-fresh-session-start.js, a `session:` line naming this session) is the MODE, and the run marker
+  // `<data root>/state/sessions/AUTO-RUN-<session>` is the RUN in it - open from a typed family command until the run's
+  // close deletes it. Until then nobody is at the terminal to say 'go on', and a turn that ends between steps idles the run
+  // until a person comes back, so a Stop under both is sent back to the run. Between runs the mode answers asks and holds
+  // nothing. A torn or garbage marker still counts (spec, Error handling). The Stop chain bounds a cycle: once held, the
+  // next Stop passes unless a tool call ran in between (hook-prelude.js stopHeldThisCycle, workSince). A hand-written AUTO
+  // stamp (task-solve's, no session line) is never held here: its flow closes itself. Claude Code's own 8-continuation cap
+  // 'resets each time Claude calls a tool' (code.claude.com/docs/en/hooks, Stop decision control), so the holds are counted
+  // per run marker, and the AUTO_CONTINUE_CAP-th Stop passes with one `auto-continue-cap` row (audit 2026-10-14 HK05, the
+  // user's ruling: 50); a new marker counts from 0 again.
   const autoStamp = payload.agent_id ? null : stampOf(payload);
-  if (autoStamp && autoStamp.live && autoStamp.session && /^AUTO\b/.test(autoStamp.first)) {
+  const autoMarker = autoStamp && autoStamp.live && autoStamp.session && /^AUTO\b/.test(autoStamp.first) ? runMarkerOf(payload) : null;
+  let markerStat = null;
+  try { markerStat = autoMarker ? fs.statSync(autoMarker) : null; } catch { markerStat = null; }
+  if (markerStat) {
     // A run waiting on work it launched itself is not idle: that work's completion notice re-invokes the session, so
     // nobody needs to send it back. Held anyway, every such wait cost one full-context turn that only restated the
     // wait - 9 in 71d5428a, 5 in 8a1fb350, ~3.4M tokens across the bundles (audit 2026-10-20 C02). The registry or the
     // transcript decides (liveBackgroundWork), never the close's wording; an idle run with nothing out is still held.
     if (liveBackgroundWork() === true) {
-      ledgerRow({ tool: '', mode: 'auto', kind: 'auto-wait', reason: 'auto-mode: the run waits on work this session launched - its notice wakes the run, not held' });
+      ledgerRow({ tool: '', mode: 'auto', kind: 'auto-wait', reason: 'auto-run: the run waits on work this session launched - its notice wakes the run, not held' });
       process.exit(0);
     }
-    const nth = countAutoContinue(autoStamp);
+    const nth = countAutoContinue(autoStamp.session, markerStat.mtimeMs);
     if (nth >= AUTO_CONTINUE_CAP) {
       if (nth === AUTO_CONTINUE_CAP) {
-        ledgerRow({ tool: '', mode: 'auto', kind: 'auto-continue-cap', detail: { count: nth, stamp: autoStamp.file },
-          reason: `auto-mode: the ${AUTO_CONTINUE_CAP}th Stop under this stamp passes - the run was sent back ${AUTO_CONTINUE_CAP - 1} times; the stamp stands until its close or the user's word to stop` });
+        ledgerRow({ tool: '', mode: 'auto', kind: 'auto-continue-cap', detail: { count: nth, marker: autoMarker },
+          reason: `auto-run: the ${AUTO_CONTINUE_CAP}th Stop under this run marker passes - the run was sent back ${AUTO_CONTINUE_CAP - 1} times; the marker stands until the run's close or --mode-auto-run-off` });
       }
       process.exit(0);
     }
     blockDetail('auto-continue', autoStamp.first.slice(0, 120));
-    process.stderr.write(`auto-mode is on and its run is not closed (${autoStamp.file} stands). Nobody is at the terminal to\n`
+    process.stderr.write(`auto-run is on and its run is not closed (${autoMarker} stands). Nobody is at the terminal to\n`
       + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
-      + `print its close and delete ${autoStamp.file} - that ends auto-mode. If it waits on work this session started, end the\n`
-      + 'turn with one line saying so; if only the user can decide the next step (an ask with no Recommended option, a push),\n'
-      + 'put that ask now.');
+      + `print its close and delete ${autoMarker} - that ends this run; auto-run stays on for the session until\n`
+      + '--mode-auto-run-off. If it waits on work this session started, end the turn with one line saying so; if only the\n'
+      + 'user can decide the next step (an ask with no Recommended option, a push), put that ask now.');
     process.exit(2);
   }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
@@ -3110,6 +3123,15 @@ function flowStateFile() {
   const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-flow-${key}`;
 }
+// One raw transcript line as its row, or null (the solve-flow mark's two typed-row reads, M1).
+function lineRow(line) {
+  try { const o = JSON.parse(line); return o && o.message ? o : null; } catch { return null; }
+}
+// A prompt the user typed (isTypedTurn), not a compaction summary or a harness prompt: what disarms the mark.
+function typedPromptRow(line) {
+  const o = lineRow(line);
+  return Boolean(o) && !o.isCompactSummary && !o.isSidechain && isTypedTurn(o) && !harnessPrompt(rowText(o));
+}
 function flowLine(line, at, state) {
   const FLOW_MARK_RE = /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(?:-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(?:-cross)?"/;
   const isUser = /"type"\s*:\s*"user"/.test(line);
@@ -3121,11 +3143,14 @@ function flowLine(line, at, state) {
     state.flowAt = at;
     state.cross = /task-solve-cross/.test(m[0]);
   }
-  // A /task-auto code change follows the installed solve flow by reading it (Claude Code refuses the model's own call of
-  // a disable-model-invocation skill): the first Read of a task-solve SKILL.md after each typed /task-auto row opens a
-  // run. Only the first - the re-read after a compaction keeps the cycle's start - and never without that row, so a
-  // session editing the skill's source marks nothing.
-  if (isUser && !line.includes('"tool_result"') && /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-auto\s*<\/command-name>/.test(line)) state.autoCmd = true;
+  // A /mode-auto-run code change follows the installed solve flow by reading it (Claude Code refuses the model's own call of
+  // a disable-model-invocation skill): the first Read of a task-solve SKILL.md after a typed /mode-auto-run row WITH a
+  // request opens a run (M1: an empty or flag-only line runs nothing), and the next typed prompt disarms it. Only the first
+  // read - the re-read after a compaction keeps the cycle's start - and never without that row, so a session editing the
+  // skill's source marks nothing.
+  const typedRow = isUser && !line.includes('"tool_result"');
+  if (typedRow && /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?mode-auto-run\s*<\/command-name>/.test(line)) state.autoCmd = Boolean(modeFlagsOf(rowText(lineRow(line))).request);
+  else if (state.autoCmd && typedRow && typedPromptRow(line)) state.autoCmd = false;
   else if (state.autoCmd && isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"Read"/.test(line)
     && /[\\/]+skills[\\/]+(?:alfred-)?task-solve[\\/]+SKILL\.md"/.test(line)) {
     state.flow = true;
@@ -3312,13 +3337,13 @@ function flowState() {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 7, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 8, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
       // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37), v7
-      // the /task-auto read mark
-      if (kept && kept.v === 7 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1)
+      if (kept && kept.v === 8 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {

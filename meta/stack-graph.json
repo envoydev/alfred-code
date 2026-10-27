@@ -237,10 +237,6 @@
       "mcps": [],
       "plugins": []
     },
-    "habits-output-scorer": {
-      "mcps": [],
-      "plugins": []
-    },
     "habits-plan-writing": {
       "mcps": [],
       "plugins": []
@@ -297,6 +293,14 @@
       "mcps": [],
       "plugins": []
     },
+    "mode-auto-run": {
+      "mcps": [],
+      "plugins": []
+    },
+    "mode-output-scorer": {
+      "mcps": [],
+      "plugins": []
+    },
     "npm": {
       "mcps": [],
       "plugins": []
@@ -318,10 +322,6 @@
       "plugins": []
     },
     "sqlite": {
-      "mcps": [],
-      "plugins": []
-    },
-    "task-auto": {
       "mcps": [],
       "plugins": []
     },

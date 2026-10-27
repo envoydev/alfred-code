@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scorecard.js - the habits-output-scorer's arithmetic and its loop, so no total, verdict or next move is left to the
+// scorecard.js - the mode-output-scorer's arithmetic and its loop, so no total, verdict or next move is left to the
 // model. `grade` recomputes a sealed scorecard against its rubric's json block and never reads the seat's own sum: a yes
 // with no quote is a no, an n/a counts only where the check allows one, a finding missing a field is discarded and named,
 // a kept BLOCKER caps the total at 60 and a self grade at 99, and the ceiling says how far the draft can still climb.

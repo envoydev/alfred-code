@@ -1,4 +1,4 @@
-# Calibration fixtures - habits-output-scorer
+# Calibration fixtures - mode-output-scorer
 
 One file per graded case, `<output>-<case>.md`. Line 1 is `<!-- planted: <the flaw> | none -->`, read by the
 calibration run only and never handed to the grader. `## TASK` holds the user's request as the grader's `task.md`

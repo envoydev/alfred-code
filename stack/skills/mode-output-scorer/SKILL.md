@@ -1,5 +1,5 @@
 ---
-name: habits-output-scorer
+name: mode-output-scorer
 description: "Use when a 'scorer: on' or 'scorer: stacked' line is in context and a plan, verdict or answer is drafted - grade it with a fresh seat before releasing it."
 ---
 
@@ -13,9 +13,10 @@ A drafted output is graded by a fresh, read-only output-scorer seat that never s
 - A `scorer: on (level <n>, rounds <r>, ...)` line is in context and a producer is about to release an output it names - a designer plan file, a root-cause verdict, an inline plan.
 - A `scorer: stacked for this request (...)` line is in context: whatever this request releases is graded, under its own rubric, or as `custom` when no producer ran.
 - No such line in context: do nothing; the producer releases as today.
+- The switch: `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a task-, capture-, loop-, issue- or mode- command turns the scorer on or off for the session. Typed with only mode flags (`/mode-output-scorer --mode-output-scorer-on`), this skill grades nothing: say in one line what the flag switched, and stop.
 - Each producer carries the line that brings it here, in one of two shapes:
-  - automatic outputs: 'Where a `scorer: on` line naming <output> or a `scorer: stacked` line is in context, the FIRST action before releasing <output> is the `habits-output-scorer` Skill call with output `<name>`.'
-  - typed-only outputs: 'Where a `scorer: stacked` line is in context, the FIRST action before releasing <output> is the `habits-output-scorer` Skill call with output `<name>`.'
+  - automatic outputs: 'Where a `scorer: on` line naming <output> or a `scorer: stacked` line is in context, the FIRST action before releasing <output> is the `mode-output-scorer` Skill call with output `<name>`.'
+  - typed-only outputs: 'Where a `scorer: stacked` line is in context, the FIRST action before releasing <output> is the `mode-output-scorer` Skill call with output `<name>`.'
 - Not for a code diff - the review skills own those - and never inside a seat: the session that receives a seat's report grades what it writes or acts on.
 
 ## The loop
@@ -24,7 +25,7 @@ The script, resolved from this skill's own folder (Node.js built-ins only; run f
 
 ```bash
 S="${CLAUDE_SKILL_DIR}/scripts/scorecard.js"
-[ -f "$S" ] || S=.claude/skills/habits-output-scorer/scripts/scorecard.js
+[ -f "$S" ] || S=.claude/skills/mode-output-scorer/scripts/scorecard.js
 node "$S" start --root "${CLAUDE_PROJECT_DIR}" --session "${CLAUDE_SESSION_ID}" --slug <slug> --output <output>
 ```
 
@@ -36,7 +37,7 @@ Every later call passes the same `--root`, `--session` and `--slug`.
 4. Write the draft with the Write tool to the printed `draft:` path - round 0 the original, each later round the revision.
 5. Dispatch ONE new output-scorer seat per grade, exactly as the roster spells it (`alfred-code:output-scorer` on the plugin route) - never a fork, never resumed, never told an earlier score, a finding or that this is a revision. The brief names the `task.md` path, the `inputs.md` path, the rubric path, the draft path, the seat's return format, and as its last line `score-file: <the printed score-file path>`. The hand-back hook writes the score file with its seal; never write or edit one. The seat runs in the background: the turn that dispatches it ends with the one line `Scoring <output> - the grader is running` and releases nothing; the loop resumes at the completion notification, and a message the user types meanwhile is answered without releasing the output.
 6. `node "$S" grade <score file> --output <output> --level <n>`, the level from the injected line. Exit 2 (malformed) or 3 (no seal, or a broken one) is a failed grade: the Fallback's retry.
-7. `node "$S" next --root ... --session ... --slug <slug> --level <n> --rounds <r>`, plus `--auto` when the injected line says `auto-mode`, and do exactly what its first line says:
+7. `node "$S" next --root ... --session ... --slug <slug> --level <n> --rounds <r>`, plus `--auto` when auto-run is on (the `scorer: on` line names auto-run, or an `auto-run: on` line is in context), and do exactly what its first line says:
    - `release <id>` - the pass below;
    - `revise` - step 8, then `start` again (a new round), step 4 and step 5;
    - `offer-fix <id> recommend <choice>` - Fix on a pass below; nothing is released yet;
@@ -55,7 +56,7 @@ The outputs, their producers, rubrics, runs and docs are the table in `reference
 
 ## Typed stack
 
-- The form: `/<producer> /habits-output-scorer <request>` at the start of a message, the producer first (a slash-only producer cannot be loaded later; this skill can) - `/habits-explain-topic /habits-output-scorer explain closures like for a 6-year-old`. `/habits-output-scorer <request>` alone works too, and so does the bare name right after 'using', 'with', 'via', 'run', 'stack' or 'through'; the bare name in other prose ('why did it not run?') is talk about the tool.
+- The form: `/<producer> /mode-output-scorer <request>` at the start of a message, the producer first (a slash-only producer cannot be loaded later; this skill can) - `/habits-explain-topic /mode-output-scorer explain closures like for a 6-year-old`. `/mode-output-scorer <request>` alone works too, and so does the bare name right after 'using', 'with', 'via', 'run', 'stack' or 'through'; the bare name in other prose ('why did it not run?') is talk about the tool.
 - What is graded: every output the stacked producer releases in this request, under its own rubric, listed or not; with no producer stacked, the output of the producer skill that loads in the request; with none, the reply as `custom`.
 - A stack naming `habits-adjust-agents-md` grades nothing: say so in one line.
 
@@ -75,8 +76,8 @@ The <output> scored <S>/100 (level <n>); the next revision can reach at most <ce
 ```
 
 - The option `next`'s `recommend` word names is the one marked `(Recommended)` and listed first; never pick it yourself.
-- 'Answer the open decisions' is left out in attempt 2 and under `--auto-mode`. On `withhold-final` the one question offers 'Accept it at <S>, marked' and 'Keep it withheld' only.
-- Under `--auto-mode` (the injected line says `auto-mode`; pass `--auto` to `next`) the call carries the continue question alone, with the `Findings:` line's count in place of the needs text: a finding's free text can carry a word that sends the whole ask to a person. On 'Revise once more' the revision applies each finding's recommended fix.
+- 'Answer the open decisions' is left out in attempt 2 and under auto-run. On `withhold-final` the one question offers 'Accept it at <S>, marked' and 'Keep it withheld' only.
+- Under auto-run (pass `--auto` to `next`) the call carries the continue question alone, with the `Findings:` line's count in place of the needs text: a finding's free text can carry a word that sends the whole ask to a person. On 'Revise once more' the revision applies each finding's recommended fix.
 
 Each finding question, BLOCKERs first, at most three:
 
@@ -105,7 +106,7 @@ The <output> passed at <S>/100 (level <n>) with <k> MATERIAL finding(s) one revi
 
 - On `recommend release` (no run left under the cap) 'Use it as it is' carries the mark and comes first, and 'Fix them first' says it buys one run past the cap.
 - Record the answer with `decide --choice <fix|release>`, then run `next` again: `fix` prints `fix <id>` (step 7), `release` the release.
-- Under `--auto-mode` no ask is put: `next` takes its own recommendation and prints `fix <id>` or the release.
+- Under auto-run no ask is put: `next` takes its own recommendation and prints `fix <id>` or the release.
 
 ## Fallback
 

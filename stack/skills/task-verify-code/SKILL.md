@@ -26,7 +26,7 @@ Both are the house review protocol; this skill just keeps it in your chat. The c
 - Not for a change no plan built - `review-code` reviews that one. To offload this review, dispatch the `<stack>-verifier`; this one stays inline by design.
 - Not the done gate on your own change - `habits-done-gate` is that gate, and this review loads it before its verdict.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
 
 ## The review - in order, all inline
 
@@ -63,8 +63,9 @@ Probe code: <deleted: <what>, or `none written`>
 Next run:   <what the next pass must cover, or `nothing owed`>
 ```
 
-Under auto-mode, when the stamp's `skill:` line names this skill (a direct run, not a phase of another flow), delete
-`<data root>/state/approvals/APPROVAL` once the six fields print - that is the run's close.
+Under auto-run, when the run marker's `skill:` line names this skill (a direct run, not a phase of another flow), delete
+`<data root>/state/sessions/AUTO-RUN-<session>` once the six fields print - that is the run's close; auto-run stays on
+for the session.
 
 `none`, `none written` and `nothing owed` are answers; an omitted line is not. `NOT RUN -
 environment: <what refused>` after the one boot attempt is an accepted verdict, beside the tests

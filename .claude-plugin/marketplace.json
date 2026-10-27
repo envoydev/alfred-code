@@ -360,7 +360,7 @@
         ],
         "UserPromptExpansion": [
           {
-            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
+            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|mode-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",
@@ -370,7 +370,7 @@
             ]
           },
           {
-            "matcher": "^((alfred-)?(capture|loop|task|issue)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
+            "matcher": "^((alfred-)?(capture|loop|task|issue|mode)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
             "hooks": [
               {
                 "type": "command",

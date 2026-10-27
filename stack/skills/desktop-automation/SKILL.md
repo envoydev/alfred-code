@@ -81,7 +81,7 @@ screen shows.
   - 'Stop the task' - the agent stops and reports where it halted
   ```
 
-  Under auto-mode (a live `AUTO` stamp) nobody is at the terminal to deal with such a prompt, so this ask
+  Under auto-run (a live `AUTO` stamp) nobody is at the terminal to deal with such a prompt, so this ask
   and the macOS grant ask below are never put: stop, quote the prompt and report where the task halted.
 
 ## Quality by app type

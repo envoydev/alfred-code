@@ -102,7 +102,7 @@ const NON_SKILL_TOKENS = new Set([
     'prefers-color-scheme',
     'aria-labelledby',
     'data-right',
-    // the old bare mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --auto-mode` is the flag) - not a skill.
+    // the old mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --mode-auto-run-on` is the flag now) - not a skill.
     'auto-mode',
     // the commit-gate hook, referenced by name from the git preferences seed and task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
@@ -167,7 +167,7 @@ const NON_SKILL_TOKENS = new Set([
     'windows-desktop',
     'macos-desktop',
     'appium-mcp',
-    // habits-output-scorer's output ids (scorecard.js OUTPUTS), three of the moves its `next` prints, and the two diagnoser
+    // mode-output-scorer's output ids (scorecard.js OUTPUTS), three of the moves its `next` prints, and the two diagnoser
     // seats its outputs table names - outputs, script words and seats, not skills.
     'designer-plan', 'root-cause', 'inline-plan', 'topic-explainer', 'upgrade-plan',
     'ask-continue', 'withhold-final', 'offer-fix',

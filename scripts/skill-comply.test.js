@@ -579,7 +579,7 @@ test('an execution-strategy trace grades the load before the first edit and no p
 
 test('an output-scorer trace grades the seat, the script\'s next before the plan, no plan after a withhold and one more attempt', () =>
 {
-    const exp = expectOf('habits-output-scorer');
+    const exp = expectOf('mode-output-scorer');
     // Each row is built per use: two rows from one call share a message id and the reader keeps one.
     const plan = () => tool('Write', { file_path: '/w/.alfred/docs/work/plans/cancel-reason.md', content: '# plan' });
     const seat = () => tool('Agent', { subagent_type: 'alfred-code:output-scorer', prompt: 'score-file: /w/s.md' });
@@ -617,7 +617,7 @@ test('an output-scorer trace grades the seat, the script\'s next before the plan
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
-    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-output-scorer', 'habits-root-cause', 'task-solve']);
+    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-solve']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });

@@ -228,11 +228,11 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
     // branch ends a session's own auto-mode or offers on a gap, and exits, so the slash offer never runs on an ordinary prompt.
     const submit = (block.UserPromptSubmit || []).filter((b) => b.hooks.some((h) => h.command.includes(file)));
     assert.ok(submit.length <= 1, 'at most once on UserPromptSubmit');
-    assert.match(src, /if \(EVENT === 'UserPromptSubmit'\) \{\s*if \(!autoModeEnd\(\)\) idleGapOffer\(\);\s*process\.exit\(0\);\s*\}/, 'and that route is the auto-mode end or the idle gap, then out');
+    assert.match(src, /if \(EVENT === 'UserPromptSubmit'\) \{\s*if \(!modePrompt\(\)\) idleGapOffer\(\);\s*process\.exit\(0\);\s*\}/, 'and that route is the mode prompt or the idle gap, then out');
     const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
     const names = ['loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage', 'capture-architecture',
         'capture-awareness', 'task-solve', 'task-solve-cross', 'task-verify-code', 'issue-diagnoser',
-        'security-review', 'alfred-code:init', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
+        'security-review', 'mode-auto-run', 'alfred-code:init', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
     for (const n of names) {
         assert.ok(orchestration.test(n), `${n} is one the hook judges`);
         assert.ok(matches(n) && matches(n.replace(/^.*:/, '')), `${n} reaches the hook under either spelling`);

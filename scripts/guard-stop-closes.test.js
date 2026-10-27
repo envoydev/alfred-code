@@ -494,13 +494,13 @@ test('H9: quoted output is no pending item, a real one still holds, and an exemp
   assert.deepStrictEqual(rows.map((x) => [x.mode, x.exempt]), [['probe', 'nothing-pending']]);
 });
 
-// --- the scorer backstop (habits-output-scorer, spec 5.9): a cycle that released an output the scorer owes a grade for,
+// --- the scorer backstop (mode-output-scorer, spec 5.9): a cycle that released an output the scorer owes a grade for,
 // with no Scored: line its loop wrote, is held once per typed prompt. CLAUDE_PROJECT_DIR holds a skill copy, so the
 // scorer is usable; the suite strips ALFRED_CODE_*, so the docs root is .alfred/docs (layout.js:25).
 const { scorerHeldFile } = require('../stack/hooks/hook-prelude.js');
 const ROOT = process.env.CLAUDE_PROJECT_DIR;
-fs.mkdirSync(path.join(ROOT, '.claude', 'skills', 'habits-output-scorer'), { recursive: true });
-fs.writeFileSync(path.join(ROOT, '.claude', 'skills', 'habits-output-scorer', 'SKILL.md'), '---\nname: habits-output-scorer\ndescription: x\n---\n');
+fs.mkdirSync(path.join(ROOT, '.claude', 'skills', 'mode-output-scorer'), { recursive: true });
+fs.writeFileSync(path.join(ROOT, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\ndescription: x\n---\n');
 let touched = [];
 test.beforeEach(() => { touched = []; });
 const logs = new Map();   // one log dir per transcript, so the Stop chain marker carries across its closes
@@ -571,17 +571,25 @@ test('scorer backstop: a withheld output whose continue ask is open (rounds.log 
   assert.strictEqual(scorer([typed('go'), T1('W2')], 'offered\nScored: 88/100 (level 80) - fix offered - 1 run(s)', { session_id: 'W2' }), 0);
 });
 test('scorer backstop: a typed stack (T4) is held once with the switch off; the name in inline code is not (AC25)', () => {
-  for (const [i, t] of [typed('/task-version-upgrade /habits-output-scorer upgrade to .NET 10'), typed('using habits-output-scorer, explain closures'),
-    typed('<command-name>/habits-explain-topic</command-name><command-args>/habits-output-scorer explain x</command-args>')].entries()) {
+  for (const [i, t] of [typed('/task-version-upgrade /mode-output-scorer upgrade to .NET 10'), typed('using mode-output-scorer, explain closures'),
+    typed('<command-name>/habits-explain-topic</command-name><command-args>/mode-output-scorer explain x</command-args>')].entries()) {
     assert.strictEqual(scorer([t], 'here', { session_id: `T4-${i}` }, { ALFRED_CODE_SCORER: '0' }), 2, rowText(t));
     backed(`T4b-${i}`);
     assert.strictEqual(scorer([t], `here\n${SCORED}`, { session_id: `T4b-${i}` }, { ALFRED_CODE_SCORER: '0' }), 0);
   }
-  assert.strictEqual(scorer([typed('what does `/habits-output-scorer` do')], 'it grades', { session_id: 'T4c' }, { ALFRED_CODE_SCORER: '0' }), 0);
+  assert.strictEqual(scorer([typed('what does `/mode-output-scorer` do')], 'it grades', { session_id: 'T4c' }, { ALFRED_CODE_SCORER: '0' }), 0);
+});
+test('scorer backstop: a flag-only /mode-output-scorer line is no stack and owes no Scored line (AC7, spec section 4)', () => {
+  for (const [i, t] of [typed('/mode-output-scorer --mode-output-scorer-off'),
+    typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-on</command-args>'),
+    typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-off</command-args>')].entries())
+    assert.strictEqual(scorer([t], 'switched', { session_id: `T4f-${i}` }, { ALFRED_CODE_SCORER: '0' }), 0, rowText(t));
+  assert.strictEqual(scorer([typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-on explain x</command-args>')],
+    'here', { session_id: 'T4f-x' }, { ALFRED_CODE_SCORER: '0' }), 2, 'a request after the run is a stack');
 });
 test('scorer backstop: a stacked cycle with the switch off owes a T1 draft too; an unstacked one does not (spec 5.9)', () => {
   const off = { ALFRED_CODE_SCORER: '0' };
-  assert.strictEqual(scorer([typed('/habits-explain-topic /habits-output-scorer explain x'), T1('Q1')], 'here', { session_id: 'Q1' }, off), 2);
+  assert.strictEqual(scorer([typed('/habits-explain-topic /mode-output-scorer explain x'), T1('Q1')], 'here', { session_id: 'Q1' }, off), 2);
   assert.strictEqual(scorer([typed('explain x'), T1('Q2')], 'here', { session_id: 'Q2' }, off), 0);
 });
 test('scorer backstop: two closes in one cycle with a notification turn between - held on the first only (AC11)', () => {
@@ -606,7 +614,7 @@ test('scorer backstop: a typed Scored line with no rounds.log behind it is no re
   assert.strictEqual(scorer([go, T1('R4')], `done\n${SCORED}`, { session_id: 'R4' }), 2);
   // a SELF log backs any session's receipt in its time window, so it runs after R4 and goes after the case
   backed('R3', 'released ab12cd34', 'self-0a1b2c3d');
-  assert.strictEqual(scorer([typed('/habits-output-scorer explain x')], `here\n${SCORED}`, { session_id: 'R3' }), 0);
+  assert.strictEqual(scorer([typed('/mode-output-scorer explain x')], `here\n${SCORED}`, { session_id: 'R3' }), 0);
   fs.rmSync(path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'self-0a1b2c3d'), { recursive: true, force: true });
 });
 test('scorer backstop: an ordinary reply, an Edit tick under task-implement, a task-verify-plan stamp - not held (AC14)', () => {
@@ -631,16 +639,16 @@ test('scorer backstop: the outputs list - root-cause alone holds T3, never T2 (A
   assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O3' }, { ALFRED_CODE_SCORER_OUTPUTS: 'designer-plan,root-cause' }), 2);
 });
 test('scorer backstop: user-invocable-only holds no T2 or T3, and still holds a typed stack (AC19)', () => {
-  writeOverride('habits-output-scorer', 'user-invocable-only');       // ROOT/.claude/settings.local.json
+  writeOverride('mode-output-scorer', 'user-invocable-only');       // ROOT/.claude/settings.local.json
   try {
     assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'U1' }), 0);
     assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'U2' }), 0);
-    assert.strictEqual(scorer([typed('/habits-output-scorer explain x')], 'here', { session_id: 'U3' }), 2);
+    assert.strictEqual(scorer([typed('/mode-output-scorer explain x')], 'here', { session_id: 'U3' }), 2);
   } finally { clearOverride(); }
 });
 test('scorer backstop: a live output-scorer seat in background_tasks - not held; settled - held (AC17)', () => {
   const seat = (status) => [{ id: 'g1', type: 'subagent', status, agent_type: 'alfred-code:output-scorer' }];
-  for (const [i, rowsOf] of [(sid) => [typed('go'), T1(sid)], () => [typed('/habits-output-scorer explain x')]].entries()) {
+  for (const [i, rowsOf] of [(sid) => [typed('go'), T1(sid)], () => [typed('/mode-output-scorer explain x')]].entries()) {
     assert.strictEqual(scorer(rowsOf(`L1-${i}`), 'Scoring custom - the grader is running', { session_id: `L1-${i}`, background_tasks: seat('running') }), 0);
     assert.strictEqual(scorer(rowsOf(`L2-${i}`), 'Scoring custom - the grader is running', { session_id: `L2-${i}`, background_tasks: seat('completed') }), 2);
   }
@@ -683,7 +691,7 @@ test('scorer backstop: all four keys unset, the switch at 0, or guard-stop-contr
 // --- the output-scorer's seal (spec 5.10): the seat's report is written to the score file its first line names, sealed,
 // from its SubagentHandback call or, with none, from SubagentStop - only inside this session's scorer folder, never twice.
 const crypto = require('node:crypto');
-const SCORECARD = path.join(__dirname, '..', 'stack', 'skills', 'habits-output-scorer', 'scripts', 'scorecard.js');
+const SCORECARD = path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'scripts', 'scorecard.js');
 const sha256 = (s) => crypto.createHash('sha256').update(String(s), 'utf8').digest('hex');
 const FOLDER = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 's1', 'x');
 fs.mkdirSync(FOLDER, { recursive: true });

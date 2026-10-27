@@ -6448,7 +6448,7 @@
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
-          "file": "stack/skills/habits-output-scorer/scripts/scorecard.js",
+          "file": "stack/skills/mode-output-scorer/scripts/scorecard.js",
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         }
       ]
@@ -6941,7 +6941,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/habits-output-scorer/SKILL.md",
+          "file": "stack/skills/mode-output-scorer/SKILL.md",
           "marker": "exactly as the roster spells it"
         }
       ]
@@ -6992,79 +6992,79 @@
       ]
     },
     "auto-mode-contract": {
-      "_note": "auto-mode's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14, 2026-10-15 - the issue family joined, and the word counts only as the first one after the command - and 2026-10-17: the capture family joined, the flag is spelled `--auto-mode`, and only the close of the run the stamp's `skill:` line names deletes it, so a capture a loop runs leaves the loop's stamp): the hooks stamp the run, answer each ask that marks one Recommended option and keep the session going (guard-fresh-session-start.js injects the full contract at the run's start, guard-stop-contract.js) - each skill carries the same short paragraph, so the word reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all.",
+      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, and the stack-modes spec of 2026-10-27 section 7: four mode flags in the leading run right after the command, auto-run lasting the session through the hook's AUTO stamp, each run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line the flag holds for that run only, M2): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph, so a flag reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
       "owner": {
         "file": "stack/skills/loop-code-quality/SKILL.md",
-        "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
       },
       "sites": [
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/task-implement/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/task-verify-plan/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/task-verify-code/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/task-solve/references/step-mechanics.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/issue-diagnoser/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/capture-architecture-quality/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/capture-architecture/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/capture-awareness/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/capture-code-quality/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/capture-project-code-style/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/capture-test-coverage/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/capture-usage-report/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         }
       ]
     },
@@ -7235,7 +7235,7 @@
       ]
     },
     "no-stops-waiver-solve-flows": {
-      "_note": "The typed no-stops waiver (a hand-written AUTO stamp) lives ONLY in the two solve flows, in the same words - the user's ruling of 2026-10-20 (stack audit S1): one request had four behaviours across the flows, and a hand-written AUTO makes every person-directed hook read the session as unattended for 8h. Every other flow answers the same words with `--auto-mode` (no-stops-points-to-auto-mode). task-solve-cross carries it in references/execution-modes.md, read before its first stop, because its SKILL.md sits at its 18,000-char cap.",
+      "_note": "The typed no-stops waiver (a hand-written AUTO stamp) lives ONLY in the two solve flows, in the same words - the user's ruling of 2026-10-20 (stack audit S1): one request had four behaviours across the flows, and a hand-written AUTO makes every person-directed hook read the session as unattended for 8h. Every other flow answers the same words with `--mode-auto-run-on` (no-stops-points-to-auto-mode). task-solve-cross carries it in references/execution-modes.md, read before its first stop, because its SKILL.md sits at its 18,000-char cap.",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
         "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
@@ -7248,80 +7248,80 @@
       ]
     },
     "no-stops-points-to-auto-mode": {
-      "_note": "Outside the two solve flows a typed 'no stops' is no waiver: the flow names `--auto-mode` and never hand-writes AUTO (the user's ruling of 2026-10-20, stack audit S1). Sits right after each flow's auto-mode paragraph.",
+      "_note": "Outside the two solve flows a typed 'no stops' is no waiver: the flow names `--mode-auto-run-on` and never hand-writes AUTO (the user's ruling of 2026-10-20, stack audit S1; the flag renamed by the stack-modes spec of 2026-10-27). Sits right after each flow's modes paragraph.",
       "owner": {
         "file": "stack/skills/task-implement/SKILL.md",
-        "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+        "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
       },
       "sites": [
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/issue-diagnoser/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
         }
       ]
     },
     "approval-stamp-auto-carve-out": {
-      "_note": "Every step that writes an APPROVED stamp leaves the hook's AUTO stamp standing under auto-mode (stack audit 2026-10-20 S2, SKF2-02): the registered auto-mode paragraph says write none over it, but the nearest instruction wrote APPROVED unconditionally, and an APPROVED overwrite stops the auto answers. scripts/stack-audit-2026-10-20-skills.test.js fails a stamp instruction without it.",
+      "_note": "Every step that writes an APPROVED stamp leaves the hook's AUTO stamp standing under auto-run (stack audit 2026-10-20 S2, SKF2-02; 'auto-mode' renamed by the stack-modes spec of 2026-10-27): the registered modes paragraph says write none over it, but the nearest instruction wrote APPROVED unconditionally, and an APPROVED overwrite stops the auto answers. scripts/stack-audit-2026-10-20-skills.test.js fails a stamp instruction without it.",
       "owner": {
         "file": "stack/skills/task-version-upgrade/SKILL.md",
-        "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
       },
       "sites": [
         {
           "file": "stack/skills/task-implement/SKILL.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
           "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
           "file": "stack/skills/task-solve/references/step-mechanics.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
           "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
           "file": "stack/skills/loop-code-quality/references/staged-mode.md",
-          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+          "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         }
       ]
     },
@@ -7741,7 +7741,7 @@
           "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
         },
         {
-          "file": "stack/skills/habits-output-scorer/scripts/scorecard.js",
+          "file": "stack/skills/mode-output-scorer/scripts/scorecard.js",
           "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
         }
       ]
@@ -8143,7 +8143,7 @@
       ]
     },
     "prose-of": {
-      "_note": "proseOf - the prose of a message with its code blocks, tables, quotes, inline spans and link targets dropped. The prelude's copy serves the scorer (the stack reader and the flags); guard-answer.js keeps its own because it runs fail-open without the prelude and its answer budget calls it (R32 of the habits-output-scorer plan). The marker is the whole body, so a change to either copy fails lint until the other matches.",
+      "_note": "proseOf - the prose of a message with its code blocks, tables, quotes, inline spans and link targets dropped. The prelude's copy serves the scorer (the stack reader and the flags); guard-answer.js keeps its own because it runs fail-open without the prelude and its answer budget calls it (R32 of the mode-output-scorer plan). The marker is the whole body, so a change to either copy fails lint until the other matches.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": ".replace(/```[\\s\\S]*?```/g, '')\n.replace(/^\\s*\\|.*$/gm, '')\n.replace(/^\\s*>.*$/gm, '')\n.replace(/`[^`\\n]*`/g, '')\n.replace(/\\]\\([^)\\s]*\\)/g, ']')\n.replace(/\\s+/g, ' ')\n.trim();"
@@ -8156,9 +8156,9 @@
       ]
     },
     "scorer-hook": {
-      "_note": "The producers' one line that sends an output through habits-output-scorer before it is released (spec section 6, R6): an automatic output's line names the `scorer: on` line and the stacked one, a typed-only output's only the stacked one; the skill's When to use states both shapes. issue-diagnoser's two lines (step 3 and 4a) share one site. habits-output-scorer sits in always.skills, so every producer that names it has it beside it.",
+      "_note": "The producers' one line that sends an output through mode-output-scorer before it is released (spec section 6, R6): an automatic output's line names the `scorer: on` line and the stacked one, a typed-only output's only the stacked one; the skill's When to use states both shapes. issue-diagnoser's two lines (step 3 and 4a) share one site. mode-output-scorer sits in always.skills, so every producer that names it has it beside it.",
       "owner": {
-        "file": "stack/skills/habits-output-scorer/SKILL.md",
+        "file": "stack/skills/mode-output-scorer/SKILL.md",
         "marker": "line is in context, the FIRST action before releasing"
       },
       "sites": [

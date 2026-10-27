@@ -1,5 +1,5 @@
 'use strict';
-// The habits-output-scorer card: the grader seat, and (later tasks) the skill, its rubrics, the outputs table and the
+// The mode-output-scorer card: the grader seat, and (later tasks) the skill, its rubrics, the outputs table and the
 // producers' one line - the files the scorer's behaviour is written in, held to the spec's text.
 const test = require('node:test');
 const assert = require('node:assert');
@@ -40,7 +40,7 @@ test('the output-scorer seat: read-only tools, sonnet/xhigh, one Scope, the atta
 // the Findings section, `opts.drop` / `opts.extra` remove or add a row id, `opts.evidence` replaces every quote.
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const SCORECARD = path.join(REPO, 'stack', 'skills', 'habits-output-scorer', 'scripts', 'scorecard.js');
+const SCORECARD = path.join(REPO, 'stack', 'skills', 'mode-output-scorer', 'scripts', 'scorecard.js');
 const { grade, parseRubric, sealOf } = require(SCORECARD);
 // Every CLI run and score file sits in a throwaway project; the CLI env drops the stack's keys and the session's project
 // and session ids, so no setting of the machine running the suite reaches a case.
@@ -396,7 +396,7 @@ test('next after a fix: the revision goes out only when it passes with fewer MAT
 // { total, flipped } at level 80. tableOf(md) parses outputs.md's one table per R21.
 const { OUTPUTS } = require(SCORECARD);
 const RUBRICS = [['designer-plan', 16], ['root-cause', 10], ['inline-plan', 5], ['topic-explainer', 12], ['ticket', 8], ['upgrade-plan', 8], ['pick', 6], ['custom', 8]];
-const rubricOf = (output) => parseRubric(read(`stack/skills/habits-output-scorer/references/rubric-${output}.md`));
+const rubricOf = (output) => parseRubric(read(`stack/skills/mode-output-scorer/references/rubric-${output}.md`));
 function full(output, na) {
     const rows = Object.keys(rubricOf(output).checks).map((id) => (na.includes(id) ? [id, 'n/a', 'the case the check names'] : [id, 'yes', '"quoted"']));
     const r = kv(cli(['grade', scoreFile(card(rows)), '--output', output, '--level', '80']));
@@ -414,7 +414,7 @@ const pickFields = (row) => ({ skills: row.skills, seats: row.seats, rubric: row
 const SIX_DOCS = ['ARCHITECTURE.md', 'PERSONAL-CODE-PREFERENCES.md', 'ARCHITECTURE-PREFERENCES.md', 'PROJECT-CODE-PREFERENCES.md', 'CODE-ASSESSMENT.md', 'ARCHITECTURE-ASSESSMENT.md'];
 
 test('the topic-explainer rubric grades the child level under A2 (item 6)', () => {
-    assert.match(read('stack/skills/habits-output-scorer/references/rubric-topic-explainer.md'), /child level/);
+    assert.match(read('stack/skills/mode-output-scorer/references/rubric-topic-explainer.md'), /child level/);
     assert.ok(rubricOf('topic-explainer').checks.A2, 'A2 still parses');
 });
 test('every rubric parses, sums to 100, and has the spec\'s check count; OUTPUTS names it', () => {
@@ -434,7 +434,7 @@ test('AC12: a code plan and a documentation plan reach 100; so do a proven and a
     assert.deepStrictEqual([full('root-cause', ['D4', 'D9', 'D10']).total, full('root-cause', ['D3', 'D8', 'D9', 'D10']).total], [100, 100]);
 });
 test('AC28: outputs.md and OUTPUTS agree on every name, producer, rubric, run count and doc; a planted difference fails', () => {
-    const md = read('stack/skills/habits-output-scorer/references/outputs.md');
+    const md = read('stack/skills/mode-output-scorer/references/outputs.md');
     const want = (o) => ({ skills: o.skills, seats: o.seats, rubric: o.rubric, runs: o.runs, automatic: o.automatic, docs: o.docs });
     const got = tableOf(md);
     assert.deepStrictEqual(Object.keys(got).sort(), Object.keys(OUTPUTS).sort());
@@ -447,7 +447,7 @@ test('the designer-plan and root-cause docs carry the six code and architecture 
 });
 test('every rubric carries the attached severity, caps and the five-field finding format', () => {
     for (const [output] of RUBRICS) {
-        const text = squash(read(`stack/skills/habits-output-scorer/references/rubric-${output}.md`));
+        const text = squash(read(`stack/skills/mode-output-scorer/references/rubric-${output}.md`));
         assert.ok(text.includes('BLOCKER: as written, the plan fails its goal, corrupts or loses data, breaks a contract, opens a security hole, or cannot be executed.'), output);
         assert.ok(text.includes('Every finding states failure mode, trigger condition, cost, evidence, and a one-line fix. A finding missing any of these is discarded.'), output);
         assert.ok(text.includes('MATERIAL: up to 5 in full, then extras as one line each.'), output);
@@ -455,7 +455,7 @@ test('every rubric carries the attached severity, caps and the five-field findin
 });
 
 test('SKILL.md: the description, the session-id layout line, the roster clause, the asks, the stack form and the auto-mode text', () => {
-    const { front, body } = split(read('stack/skills/habits-output-scorer/SKILL.md'));
+    const { front, body } = split(read('stack/skills/mode-output-scorer/SKILL.md'));
     assert.match(front, /^description: "Use when a 'scorer: on' or 'scorer: stacked' line is in context and a plan, verdict or answer is drafted - grade it with a fresh seat before releasing it\."$/m);
     assert.ok(!/^context: fork$/m.test(front), 'never forked - a fork ends a typed stack');
     assert.match(body, /--session "\$\{CLAUDE_SESSION_ID\}"/);
@@ -463,10 +463,10 @@ test('SKILL.md: the description, the session-id layout line, the roster clause, 
     assert.ok(squash(body).includes('exactly as the roster spells it'));
     assert.match(body, /```ask\n[^\n]+\?\n- 'Answer the open decisions \(Recommended\)' - /);
     assert.ok(body.includes("'Keep it withheld'") && body.includes('decide --choice'), 'the continue ask and its record');
-    assert.ok(body.includes('/<producer> /habits-output-scorer <request>'), 'the typed stack form');
+    assert.ok(body.includes('/<producer> /mode-output-scorer <request>'), 'the typed stack form');
     assert.ok(body.includes('the continue question alone') && body.includes('`task:` path') && body.includes('--auto'), 'auto-mode and TASK');
     assert.ok(body.includes('references/outputs.md'), 'the outputs table');
-    assert.ok(read('docs/alfred-code.html').includes('habits-output-scorer/references/outputs.md'), 'the HTML links the table (AC28)');
+    assert.ok(read('docs/alfred-code.html').includes('mode-output-scorer/references/outputs.md'), 'the HTML links the table (AC28)');
 });
 
 // The producers' one line (R6) and the producers' docs (spec 5.13).
@@ -496,7 +496,7 @@ test('the designer method, the diagnoser and both diagnoser seats name the six c
 });
 
 test('rubric P11 and the plan template carry the optional list', () => {
-    const rubric = read('stack/skills/habits-output-scorer/references/rubric-designer-plan.md');
+    const rubric = read('stack/skills/mode-output-scorer/references/rubric-designer-plan.md');
     const p11 = (rubric.match(/^- \*\*P11\*\*.*$/m) || [''])[0];
     for (const s of ['`## Optional`', 'Recommended - ', 'Not worth it - ']) assert.ok(p11.includes(s), s);
     assert.match(rubric, /"P11": \{ "points": 5, "na": null \}/);

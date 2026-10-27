@@ -53,31 +53,39 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   instead), no fresh-session offer, and the credential rotation ask becomes one
   `mode: unattended` row per exposure (it replaced 2 of 12 pilot-3 finals). Every protective denial is
   unchanged; a missing, empty or torn-last-row transcript reads as a person.
-  **auto-mode** (the user's ruling, 2026-10-14): `--auto-mode` as the FIRST word after a `task-*`, `capture-*`, `loop-*` or
-  `issue-*` command (the user's ruling of 2026-10-15, which added the issue family and dropped every other place: '/task-solve fix
-  the auto-mode banner' had started a run, and so could a mid-task question naming the word; 2026-10-17 added the capture
-  family and spelled it as the flag `--auto-mode` - the bare word starts nothing now, and the OFF banner names the miss) - typed
-  (`UserPromptExpansion`, `command_args` opening with it, `AUTO_FIRST_RE`; the matcher takes every `task-*` / `capture-*` /
-  `loop-*` / `issue-*` name, audit 2026-10-14 HK06) or the model's `Skill` call (`args`) only when the user's newest TYPED prompt in
-  the transcript is itself such a command opening with the word (`typedAutoCommand`: the `<command-name>` /
-  `<command-args>` row a typed slash command leaves, or a raw `/name args` line - a prose ask starts nothing; audit HK04:
-  a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt; a refused start writes an
-  `auto-start-refused` row), never a seat's - makes
-  `guard-fresh-session-start.js` write that session-named AUTO stamp (`AUTO - "<the typed words>"`, `session:`, `skill:`,
-  `at:`) before the run's first step, inject the contract as `additionalContext` and leave, so its own offers and every
-  person-directed hook read the session as unattended; a stamp already live for the session is kept, and another
-  session's stamp is never overwritten while that session is still RUNNING (its transcript beside this one written in
-  the last 10 minutes) - that run starts without auto-mode, its mode banner says why and how to take over (delete the
-  stamp), and it writes an `auto-start-refused` row (audit 2026-10-20, the hooks track's minor list: a second session on
-  one checkout took the first's approval; narrowed the same day from 'under 8h', which silently cost a fresh-session
-  hand-off, or any start after a run that left its stamp, its auto-mode). `/task-auto <request>` (2026-10-25) is its own
-  waiver: no flag, an empty request (or the flag alone) starts nothing and the banner says to type it, and its ON
-  contract carries a `Solve flow:` line naming the library copy of `task-solve/SKILL.md` (`skillCopyState`: personal,
-  then project, `on` or `user-invocable-only`, never the plugin cache's source). A code change READS that body and
-  follows it, because Claude Code refuses the model's own `Skill` call of a `disable-model-invocation` flow whatever a
-  hook says (code.claude.com/docs/en/skills); `flowLine` in the stop contract marks the solve run on the first Read of a
-  `task-solve/SKILL.md` after each typed `/task-auto` row, so the solve receipts hold and a re-read after a compaction
-  keeps the cycle's start. A typed `/task-auto <request>` mid-run keeps the run; the flag alone ends it.
+  **auto-run** (the stack-modes spec of 2026-10-27, the user's rulings of 2026-10-25/26; it was auto-mode, a per-run
+  `--auto-mode` first after the command, from the rulings of 2026-10-14 to 2026-10-17): four mode flags,
+  `--mode-auto-run-on|off` and `--mode-output-scorer-on|off`, count only in the LEADING RUN right after a `task-*`,
+  `capture-*`, `loop-*`, `issue-*` or `mode-*` command group (`hook-prelude.js modeFlags`, the ONE parser every reader
+  calls - the start and end hooks, the scorer switch, the ON line, the banner, the dispatch guard and the stop contract's
+  solve-flow mark; a flag later in the request only marks the line `late`, a prose mention starts nothing, off wins over
+  on; the expansion matcher takes every family name, audit 2026-10-14 HK06). Two files. The MODE STAMP
+  `<data root>/state/approvals/APPROVAL` (`AUTO - "<the typed words>"`, `session:`, `skill:`, `at:`, `taken-from:` on a
+  takeover) is written by the first `--mode-auto-run-on` or `/mode-auto-run <request>` (its typed request is its own
+  `-on`), kept while live for the session and deleted only by `--mode-auto-run-off`. The RUN MARKER
+  `<data root>/state/sessions/AUTO-RUN-<session>` (`skill:`, `prompt:` the typed line's 12-hex sha1, `at:`) is written by
+  each typed family command while the stamp is live - none by a flag-only `mode-` line; a writer finding the same
+  `skill:` and `prompt:` leaves the file and its mtime - and deleted by that run's close or `-off`. The typed route is
+  `UserPromptExpansion`; the model's `Skill` call writes or keeps the stamp only, never a marker, and only when its own
+  args lead with the flag and the user's newest TYPED prompt's `modeFlags` gives `family` and `autoRun: 'on'` (audit
+  HK04: a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt); a seat never starts one.
+  ONE refusal check, `autoRunRefusal` - another session RUNNING a stamped run here (its transcript beside this one
+  written in the last 10 minutes), a data root that cannot be written, an empty `/mode-auto-run`, a seat - is asked by
+  the start hook and the ON line alike; a refused start writes an `auto-start-refused` row and its banner says why. A
+  start over another session's idle stamp writes `taken-from:` and an `auto-takeover` row, and the losing session's next
+  typed prompt gets the takeover notice once (`AUTO-TAKEN-<session>`). Each run under the mode gets the full contract as
+  `additionalContext`, naming its marker, so its own offers and every person-directed hook read the session as
+  unattended. `/mode-auto-run <request>`'s ON contract carries a `Solve flow:` line naming the library copy of
+  `task-solve/SKILL.md` (`skillCopyState`: personal, then project, `on` or `user-invocable-only`; `switched off here` when
+  `skillOverrides` turns it off and `not installed here` only when absent, M8; never the plugin cache's source). A code
+  change READS that body and follows it, because Claude Code refuses the model's own `Skill` call of a
+  `disable-model-invocation` flow whatever a hook says (code.claude.com/docs/en/skills); `flowLine` in the stop contract
+  marks the solve run on the first Read of a `task-solve/SKILL.md` after a typed `/mode-auto-run` row with a request, and
+  the next typed prompt disarms it (M1). A refused `/mode-auto-run` start gets no fresh-session offer (M7). An old flag
+  (`--auto-mode`, `--score-on`, `--score-off`) is stripped with a pointer line - the auto one says the run is attended,
+  for the skew window where a flow skill copied before the update still reads the old flag - an unknown `--mode-*` gets
+  its reason line, and a flag run after a non-family command switches nothing and gets the 'count only after' line
+  (`mode-flag-old` / `mode-flag-unknown` rows).
   `guard-stop-contract.js`
   then answers - under a stamp naming THIS session only, never a hand-written one (audit HK02: it answered a second
   session's asks) - each `AskUserQuestion` whose every question marks ONE `(Recommended)` option - `allow` with the questions
@@ -89,22 +97,22 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
   in real transcripts the narrowed pattern drops 91 hits, all of those shapes or a `/purchases/` path, and adds none);
-  under a live auto-mode stamp of this session (`autoRun`) the new-cycle fresh-option deny and the fresh-session note
+  under a live auto-run stamp of this session (`autoRun`) the new-cycle fresh-option deny and the fresh-session note
   route stand down too, so no deny turns an auto-answered ask into one that waits;
-  and it sends a Stop back to the run while the stamp stands (`auto-continue`, bounded by the Stop chain's `workSince`:
-  held again only after a tool call; counted per stamp beside the chain marker, `<marker>.auto` keyed on the stamp's
-  session and mtime, and the 50th Stop passes with one `auto-continue-cap` row - audit HK05: Claude Code's own
-  8-continuation cap resets on every tool call; a Stop while the Stop input's `background_tasks` shows the run's own work
-  out passes with one `auto-wait` row, and so does the `auto-fields` hold - audit 2026-10-20 C02: 7 of 7 holds in one
-  session sent back a turn that could only wait, ~3.4M across three sessions), until the run's close deletes the stamp - or the user's word to stop it
-  (`UserPromptSubmit`, `autoModeEnd`; the user's ruling of 2026-10-15: a message typed mid-run is INPUT to the run, kept
-  with an `auto-input` row and a note saying so - ending on any typed prompt, the 2026-10-14 rule, sent every later ask
-  of a run the user had only added a remark to back to them). It ends on 'stop auto-mode' / 'auto-mode off'
-  (`AUTO_OFF_RE`, audit HK13), a bare 'stop' (`BARE_STOP_RE`; 'stop using X' is input), or a typed task,
-  capture, loop or issue command that starts no new auto-mode run - `--auto-mode` not its first word (its banner says OFF); a harness prompt - a task
-  notice, a command's output, a seat's hand-back, `hook-prelude.js` `harnessPrompt`, HK14 - and any other slash command
-  leave it, and a stop asked in other words, or a run already finished, is the model's to end by deleting the stamp, as
-  the note says. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
+  and it sends a Stop back to the run while the stamp is live for this session AND its run marker stands
+  (`auto-continue`, bounded by the Stop chain's `workSince`: held again only after a tool call; counted per marker beside
+  the chain marker, `<marker>.auto` keyed `<session>@<marker mtime>`, and the 50th Stop passes with one
+  `auto-continue-cap` row - audit HK05: Claude Code's own 8-continuation cap resets on every tool call; a Stop while the
+  Stop input's `background_tasks` shows the run's own work out passes with one `auto-wait` row, and so does the
+  `auto-fields` hold - audit 2026-10-20 C02: 7 of 7 holds in one session sent back a turn that could only wait, ~3.4M
+  across three sessions), until the run's close deletes the marker. Between runs, with the mode on, Stop is not held:
+  asks are still answered and the session waits for the next prompt. A message typed mid-run is INPUT to the run
+  (`UserPromptSubmit`, `modePrompt`; the user's ruling of 2026-10-15), kept with an `auto-input` row and a note saying so;
+  when it asks to stop the run, the model prints the close and deletes the marker, and the mode stays on. Only
+  `--mode-auto-run-off` after a command ends the mode: it deletes this session's stamp and the marker, writes an
+  `auto-end` row and injects 'auto-run is OFF for this session' ('stop auto-mode' and a bare 'stop' are plain input
+  since 2026-10-27). A harness prompt - a task notice, a command's output, a seat's hand-back, `hook-prelude.js`
+  `harnessPrompt`, HK14 - is no input. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
   session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
   compacted at 76k of a 100k window), so the installer seeds it per model where the project compacts instead
   (`ALFRED_CODE_AUTO_COMPACT=1`; `settings.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
@@ -113,11 +121,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   orchestration run and at an automatic compaction's start (the summary's 'continue' line stands there, no hold), and
   `guard-stop-contract.js` denies an `AskUserQuestion` still carrying a fresh-session option (check 13, once per ask
   text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left).
-  **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*` or `issue-*` command
-  (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
-  expansion fires once per typed command and the lines forbid a repeat: `**Auto-mode: ON**` (each ask answered with its
-  Recommended option, an outward one or an unmarked one still waiting) or `**Auto-mode: OFF**` (each ask waits; the flag
-  past the first argument, or the bare pre-2026-10-17 word first, is said to start a run only as `--auto-mode` first), then `**Context:**` - auto-mode or
+  **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*`
+  command (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
+  expansion fires once per typed command and the lines forbid a repeat: `**Auto-run: ON**` (each ask answered with its
+  Recommended option, an outward one or an unmarked one still waiting; on for the session until `--mode-auto-run-off`)
+  or `**Auto-run: OFF**` (each ask waits; a refused start says why, and a flag past the leading run is said to count only
+  right after the command), then `**Context:**` - auto-run or
   `COMPACT_INSTEAD` compacts (at the seeded `autoCompactWindow` when one is set, else Claude Code's own point), offers off
   compact too, and otherwise the fresh-session refresh past `ctxThreshold()` - with the window and model the engine read,
   no number invented for an unknown window, and an auto-compact window past the model's capacity (a `/model` switch to a
@@ -579,7 +588,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     passes a generic dispatch; another session's or a hand-written stamp naming no session is no exemption, and the
     generic denial ends in one AskUserQuestion and says never to delete or edit the stamp (one session ran `rm .../APPROVAL`
     on the old 'clear the stamp file' escape). Ruling S1 (2026-10-20): the implementer denial names a no-stops run as the
-    user's `--auto-mode` first after the command; a hand-written AUTO waiver belongs to task-solve and task-solve-cross
+    user's `--mode-auto-run-on` right after the command; a hand-written AUTO waiver belongs to task-solve and task-solve-cross
     alone. Ruling S3: an implementer dispatch on an APPROVED or AUTO stamp written after an ask the idle timeout closed
     (the answer hook's marker, under the hook temp dir) is denied once - 'the question timed out - re-ask' - and the
     marker is spent; a stamp older than the timeout stands.
@@ -918,15 +927,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off). The offer waits
     while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).
-    THE SCORER BACKSTOP (habits-output-scorer, spec 2026-10-24 5.9): while `scorerState` is usable (a loadable skill copy,
+    THE SCORER BACKSTOP (mode-output-scorer, spec 2026-10-24 5.9): while `scorerState` is usable (a loadable skill copy,
     neither hook nor its `scorer` part off), a close that owes a `Scored:` line and lacks it is held ONCE per typed prompt.
     One `walkBack` pass reads back to the cycle's opening row - the newest typed row that is no harness prompt, compaction
     summary or `Stop hook feedback:` row - so a grader's notification turn stays in the cycle. The evidence: T1 a Write of a
     `.draft.md` in this session's scorer folder (on, or the cycle stacked); T2 a plan Write under the docs root's
     `work/plans/` (on, `designer-plan` listed; not where a draft was written, a plan reader - `task-implement`,
     `task-verify-plan`, `task-verify-code` - ran, or the loop released that `target:`); T3 a findings write whose `Cause:`
-    is set, or a diagnoser seat that settled (on, `root-cause` listed); T4 a typed stack naming `habits-output-scorer` (on
-    or off). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
+    is set, or a diagnoser seat that settled (on, `root-cause` listed); T4 a typed stack naming `mode-output-scorer` (on
+    or off; a flag-only `/mode-output-scorer --mode-output-scorer-off` line is no stack, the stack-modes spec section 4). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
     holds a `released` / `final` line written since the cycle opened (2s slack); a typed one is no receipt and writes one
     `scorer-receipt-unbacked` row. The `SCORER-HELD-<session>` marker holds the cycle's key (the row's uuid, else its
     timestamp, else its hash), and the check sits BEFORE the `stopHeld` exit, so a rewrite after this hook's own hold for
@@ -1111,17 +1120,23 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     An ask the idle timeout closed (ruling S3, `hook-prelude.js` `askTimedOut`) gets one `ask-timeout` probe row, the
     session's timeout marker and a note that it is no answer - no approval, consent or pick, re-ask when the user is
     back; the next answered ask or typed prompt clears the marker.
-    THE SCORER'S LINES (habits-output-scorer, spec 2026-10-24 5.2 / 5.12): `--score-on` / `--score-off` in a typed prompt's
-    prose (never inside inline code, a fence or a `>` quote; off wins when both are typed) write the session's
-    `SCORER-<session>` file, which outranks `ALFRED_CODE_SCORER`; while on, every typed prompt - and a compaction's start,
-    which drops injected text - carries one `scorer: on (level, rounds, source[, auto-mode]) ...` line naming the listed
+    THE SCORER'S LINES (mode-output-scorer, spec 2026-10-24 5.2 / 5.12; the flags by the stack-modes spec of 2026-10-27):
+    `--mode-output-scorer-on` / `-off` in a family command's leading run (`modeFlags`; off wins when both are typed) write
+    the session's `SCORER-<session>` file, which outranks `ALFRED_CODE_SCORER`, and count for their own prompt even where
+    the file cannot be written; while on, every typed prompt - and a compaction's start, which drops injected text -
+    carries one `scorer: on (level, rounds, source[, auto-run]) ...` line naming the listed
     outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scorer: off for this
     session`. A typed stack - the skill's slash name as a word of the prose, a `<command-args>` row included, or the bare name
     right after a usage word (`using`, `with`, `via`, `run`, `stack`, `through`; final review 4) -
     adds `scorer: stacked for this request ...` with the switch off too, and on a `user-invocable-only` copy. All of it
     needs `scorerState` usable: either hook or its `scorer` part in `ALFRED_CODE_HOOKS_OFF`, or no loadable copy, and no
     line is injected, so nothing is graded and the backstop owes nothing (AC1-AC6, AC13, AC19, AC20, AC23-AC25;
-    `guard-answer.test.js`). A seat's prompt carries none: the session that receives its report grades what it acts on.
+    `guard-answer.test.js`). A flag-only line is no stack. While auto-run is on, the context also carries `auto-run: on
+    for this session - ...`. THE ON LINE (the stack-modes spec section 3): every typed prompt while a mode is on gets one
+    user-visible `systemMessage`, `Modes ON: auto-run, output-scorer (level N)`, listing only the modes on - each computed
+    from the prompt's own flag (auto-run's `-on` only when `autoRunRefusal` says nothing), else the stored state, never read
+    back after the start hook's write, since the two run in parallel; a compaction's start re-emits both context lines and
+    no `systemMessage`. A seat's prompt carries none: the session that receives its report grades what it acts on.
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is exactly "1". It runs `async: true` on both routes (`settings.js asyncFor`, the one async hook since the stop contract's shell-result halves went in the deep hooks review 2026-10-16 - a log never
     blocks or decides, so no call waits on its spawn; code.claude.com/docs/en/hooks, 'Run hooks in the background').

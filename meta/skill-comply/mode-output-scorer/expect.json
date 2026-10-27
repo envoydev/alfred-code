@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "skill": "habits-output-scorer",
+  "skill": "mode-output-scorer",
   "sources": [
-    "stack/skills/habits-output-scorer/SKILL.md"
+    "stack/skills/mode-output-scorer/SKILL.md"
   ],
   "extracted": "2026-10-25",
   "note": "Offline expectations only - no replay has been run (a replay is billed, the user's word first). The scaffold is a small orders service whose docs root carries one architecture preference (A1) and one code weakness (W1), with ALFRED_CODE_SCORER=1 in settings.local.json, and the task asks for an implementation plan, so the plan writer drafts a designer-plan the loop must grade before it reaches work/plans/. Five things are graded on what the run DID: the grade comes from an output-scorer seat, no plan reaches work/plans/ before the script's first `next`, no plan reaches it after a NOT PASSED line until a later release line, nor while a fix-on-pass offer waits on its answer, and answers.md is written at most once (attempt 2 is the last). The 'no ask of the producer after a withhold' half is not graded offline (R12): the continue ask is itself an AskUserQuestion. The fixtures/ folder holds the 25 calibration cases graded by the seat itself (Task 14 Step 5), not by this file.",
@@ -25,7 +25,7 @@
     "selection": {
       "skills": [
         "javascript",
-        "habits-output-scorer",
+        "mode-output-scorer",
         "habits-plan-writing"
       ],
       "rules": [
@@ -49,7 +49,7 @@
   "steps": [
     {
       "id": "grader-is-the-seat",
-      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "from": "stack/skills/mode-output-scorer/SKILL.md",
       "quote": "Dispatch ONE new output-scorer seat per grade",
       "graders": [
         {
@@ -63,7 +63,7 @@
     },
     {
       "id": "script-decides",
-      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "from": "stack/skills/mode-output-scorer/SKILL.md",
       "quote": "and do exactly what its first line says",
       "graders": [
         {
@@ -77,7 +77,7 @@
     },
     {
       "id": "no-plan-after-withhold",
-      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "from": "stack/skills/mode-output-scorer/SKILL.md",
       "quote": "the plan file is not written to its real path",
       "graders": [
         {
@@ -91,7 +91,7 @@
     },
     {
       "id": "no-plan-while-fix-offered",
-      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "from": "stack/skills/mode-output-scorer/SKILL.md",
       "quote": "Nothing is released while it is asked",
       "graders": [
         {
@@ -105,7 +105,7 @@
     },
     {
       "id": "one-more-attempt",
-      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "from": "stack/skills/mode-output-scorer/SKILL.md",
       "quote": "the next `start` joins them to TASK and opens attempt 2, a full run of its own; there is no attempt 3",
       "graders": [
         {

@@ -128,8 +128,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "task-auto",
-      "note": "/task-auto <request> - any request run start to finish in auto-mode: a code change follows the installed task-solve body read whole (a model Skill call on a flagged flow is refused by Claude Code), a question or doc is done directly, another user-typed flow is named under Left for you; no flag, an empty request starts nothing"
+      "name": "mode-auto-run",
+      "note": "/mode-auto-run <request> - turns auto-run on for the session and runs any request start to finish: a code change follows the installed task-solve body read whole (a model Skill call on a flagged flow is refused by Claude Code), a question or doc is done directly, another user-typed flow is named under Left for you; no flag, an empty request starts nothing, and a flag-only line only switches the mode"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -173,8 +173,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "habits-output-scorer",
-      "note": "grades a producer's draft with the output-scorer seat and releases it only on a pass (ALFRED_CODE_SCORER / --score-on, or a typed stack)"
+      "name": "mode-output-scorer",
+      "note": "grades a producer's draft with the output-scorer seat and releases it only on a pass (ALFRED_CODE_SCORER / --mode-output-scorer-on, or a typed stack)"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -521,7 +521,7 @@
     },
     {
       "file": "output-scorer.md",
-      "note": "habits-output-scorer's grader (sonnet/xhigh): read-only, one draft against one rubric and its producer's docs, a quote per yes"
+      "note": "mode-output-scorer's grader (sonnet/xhigh): read-only, one draft against one rubric and its producer's docs, a quote per yes"
     },
     {
       "file": "aspnet-solution-designer.md",
@@ -811,19 +811,19 @@
       "file": "guard-stop-contract.js",
       "matcher": "SubagentHandback",
       "event": "",
-      "note": "PreToolUse SubagentHandback: seal an output-scorer seat's report into its score file (habits-output-scorer); never decides"
+      "note": "PreToolUse SubagentHandback: seal an output-scorer seat's report into its score file (mode-output-scorer); never decides"
     },
     {
       "file": "guard-fresh-session-start.js",
       "matcher": "Skill",
       "event": "",
-      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. `--auto-mode` in the call's args on a task, capture, loop or issue skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead - only when the user's newest typed prompt is such a command opening with the flag (the user's rulings: 2026-10-15, a prose mention starts nothing; 2026-10-17, captures joined and the flag replaced the bare word). A message the user types mid-run is input to the run and keeps auto-mode on; it ends only on the user's word to stop ('stop auto-mode', a bare 'stop', or a new flow command without the flag) or the run's own close. COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on. BUILT-IN REVIEWS (the user's ruling of 2026-10-22, 'Stop the model using theirs'): the model's or a seat's call to bare code-review / security-review with no skill of that name on disk is denied, naming /review-code or /review-security, once the model can load ours (a personal or project copy skillOverrides leaves on - before update copies it, the built-in passes); guard-fresh-session-start:builtin-review in ALFRED_CODE_HOOKS_OFF switches it off."
+      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. AUTO-RUN (the stack-modes spec of 2026-10-27): `--mode-auto-run-on` leading the call's args on a task, capture, loop, issue or mode skill writes or keeps the session's AUTO stamp, never a run marker - only when the user's newest typed prompt is such a command whose leading run carries the flag (`modeFlags`; a prose mention starts nothing). Auto-run lasts the session: a message the user types mid-run is input to the run, a run's close deletes its marker, and only `--mode-auto-run-off` after a command ends the mode. COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on. BUILT-IN REVIEWS (the user's ruling of 2026-10-22, 'Stop the model using theirs'): the model's or a seat's call to bare code-review / security-review with no skill of that name on disk is denied, naming /review-code or /review-security, once the model can load ours (a personal or project copy skillOverrides leaves on - before update copies it, the built-in passes); guard-fresh-session-start:builtin-review in ALFRED_CODE_HOOKS_OFF switches it off."
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|mode-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
       "event": "",
-      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `--auto-mode` as the first word of command_args on a task, capture, loop or issue command (the user's rulings of 2026-10-15 and 2026-10-17; the bare word, or the flag anywhere else, is the task's text) writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer. Every capture-* and issue-* name spawns it too (the user's ruling of 2026-10-15): each typed task-*, capture-*, loop-* or issue-* command gets the MODE BANNER after whatever else it injects - two lines its first reply opens with, auto-mode ON or OFF and how the session meets a full context (it compacts, or offers a fresh session at its trigger), with the window numbers."
+      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). The leading run of mode flags right after a task, capture, loop, issue or mode command (`modeFlags`, the stack-modes spec of 2026-10-27; a flag anywhere else is the task's text): `--mode-auto-run-on` writes or keeps the session's AUTO stamp, and each typed family command while it is live writes the run marker `<data root>/state/sessions/AUTO-RUN-<session>` and gets the auto-run contract instead of any offer; `/mode-auto-run <request>` is its own -on, and an old flag gets a pointer line and starts nothing. Every capture-*, issue-* and mode-* name spawns it too: each typed family command gets the MODE BANNER after whatever else it injects - two lines its first reply opens with, auto-run ON or OFF and how the session meets a full context (it compacts, or offers a fresh session at its trigger), with the window numbers."
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -1007,7 +1007,7 @@
     },
     {
       "file": "preferences-session.js",
-      "matcher": "@UserPromptExpansion:^((alfred-)?(capture|loop|task|issue)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
+      "matcher": "@UserPromptExpansion:^((alfred-)?(capture|loop|task|issue|mode)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
       "event": "",
       "note": "a typed run emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse) - its expansion records the run, and a typed review is handed the code docs as a judge's start is, the rest with the main session's first reads; the matcher keeps every other prompt from spawning the hook; a typed design run (task-design, issue-diagnoser, task-build-from-scratch) is handed them the same way, never held"
     },
@@ -1168,7 +1168,9 @@
       "capture-agent-awareness",
       "capture-project-awareness",
       "capture-related-projects",
-      "habits-skill-writing"
+      "habits-skill-writing",
+      "task-auto",
+      "habits-output-scorer"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1270,6 +1272,8 @@
       "alfred-capture-stack-usage": "capture-usage-report",
       "create-ticket": "habits-create-ticket",
       "explain-code-tutor": "habits-explain-topic",
+      "task-auto": "mode-auto-run",
+      "habits-output-scorer": "mode-output-scorer",
       "alfred-capture-agent-capabilities": "capture-awareness",
       "capture-agent-capabilities": "capture-awareness",
       "alfred-capture-architecture": "capture-architecture",

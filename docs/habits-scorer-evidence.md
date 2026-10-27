@@ -6,6 +6,10 @@ The S8 calibration of the output scorer, run on 2026-10-25: every fixture under
 tokens, and the assumptions (AS3, AS8, AS9, AS11) the spec left for a real run to settle. Audit material: read it to
 learn why the band is 15 and what one grade costs, never to run the skill.
 
+Renamed 2026-10-27 (the stack-modes spec): the skill is `mode-output-scorer` now, its fixtures under
+`meta/skill-comply/mode-output-scorer/`, and `--score-on` / `--score-off` became `--mode-output-scorer-on` / `-off`; the
+history below keeps the names it ran under.
+
 ## How it ran
 
 - Claude Code 2.1.310. The parent session and every seat ran on Sonnet 5.5 (`claude-sonnet-5-5`, the seat's pin).

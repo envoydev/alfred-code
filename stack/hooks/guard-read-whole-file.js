@@ -2732,7 +2732,7 @@ if (!GATED_EXT.test(path)) {
   // read whole by design: a verifier denied its 65KB plan read it back through two ranges at once, so the block bought a
   // round trip and nothing else (audit 2026-10-10, session 05c925e9).
   const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  // A scorer draft (habits-output-scorer) is the grader's mandated input the same way: the seat reads the whole draft.
+  // A scorer draft (mode-output-scorer) is the grader's mandated input the same way: the seat reads the whole draft.
   const dataRel = (() => { try { return require('./layout.js').dataRoot(process.env); } catch { return '.alfred'; } })();
   const scorerDraft = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${dataRel}/state/sessions/scorer/`);
   const planFile = scorerDraft || (/\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d))); // plans/ is pre-2.8.0

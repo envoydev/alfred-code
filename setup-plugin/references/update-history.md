@@ -283,6 +283,8 @@ who asks about a name the log did not print.
 | seat `alfred-issue-diagnoser-ci` | seat `issue-diagnoser-ci` |
 | seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
 | `/habits-explain-code` | `/habits-explain-topic` |
+| `/task-auto` | `/mode-auto-run` |
+| `/habits-output-scorer` | `/mode-output-scorer` |
 
 ## after 2.9.0 - the stack's own code and security reviews
 
@@ -360,11 +362,11 @@ the card as the user's to run - only when they want that server again.
 ## after 2.10.1 - grade before release: the output scorer
 
 A designer's plan file, a diagnoser's root-cause verdict and an inline plan can be graded by a fresh, read-only
-`output-scorer` seat before they are released (the `habits-output-scorer` skill, always installed). It is OFF by
+`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It is OFF by
 default: `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
 `ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
-outputs (a csv; empty means all three). `--score-on` / `--score-off` in a message switch it for the session. A typed
-stack - `/habits-explain-topic /habits-output-scorer <request>` - grades that one request's output even while it is off,
+outputs (a csv; empty means all three). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
+stack - `/habits-explain-topic /mode-output-scorer <request>` - grades that one request's output even while it is off,
 an explainer answer, a ticket, an upgrade plan or a pick included. An output that cannot reach the level is withheld and
 the user decides: answer the open decisions, accept it marked, one more revision, or keep it withheld.
 `guard-answer:scorer` or `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` switches the whole scorer off. Update
@@ -437,3 +439,15 @@ scorer folder is swept; a session with none of the three prints those claims `no
 cites the rows and never recounts them. A `--from` / `--to` report grades the same window and says so in the section's
 note, and task-solve's design steps are graded only for a run that stated `Size: standard`. Update refreshes the skill
 copy; nothing else to report.
+
+## after 2.10.1 - modes: four flags that last the session
+
+Auto-run and the output scorer are modes now, each switched by a flag right after a `/task-*`, `/capture-*`,
+`/loop-*`, `/issue-*` or `/mode-*` command, before the request: `--mode-auto-run-on`, `--mode-auto-run-off`,
+`--mode-output-scorer-on` and `--mode-output-scorer-off`. `--auto-mode` is now `--mode-auto-run-on`. A mode once on
+stays on for the rest of the session - every later typed flow command runs unattended too - until its `-off` flag; a
+new session starts with both off. The old flag switches nothing: typed, it gets a one-line pointer to the new one and
+that run is attended, so a flow skill copied before this update never runs unattended by it. `/mode-auto-run <request>`
+turns auto-run on and runs the request start to finish; `/mode-auto-run --mode-auto-run-off` switches it off and runs
+nothing. While a mode is on, each prompt shows `Modes ON: ...`. Update refreshes the flow skill copies; nothing else
+to report.

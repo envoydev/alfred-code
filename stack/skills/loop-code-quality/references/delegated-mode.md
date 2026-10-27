@@ -35,7 +35,7 @@ resume that carries DELEGATED, because the stamp belongs to the session that dis
 - **Where and how.** Write it with the Write tool at the ABSOLUTE path
   `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL`. A relative Bash write follows whatever cwd the shell
   drifted to and lands the stamp in a phantom nested tree the hook never reads.
-- **First line.** `APPROVED staged - "<the mode-ask answer, verbatim>"` (under auto-mode the hook's `AUTO` stamp already stands - leave it), never fabricated or paraphrased - never
+- **First line.** `APPROVED staged - "<the mode-ask answer, verbatim>"` (under auto-run the hook's `AUTO` stamp already stands - leave it), never fabricated or paraphrased - never
   `AUTO`, which reads as nobody at the terminal. A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits.
 - **Ownership.** Written when this session's own decision lands, deleted at its own close (the run's end,
   or a stage close that ends the session). An earlier session's leftover stamp is not consent - the hook

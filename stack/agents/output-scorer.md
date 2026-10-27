@@ -1,6 +1,6 @@
 ---
 name: output-scorer
-description: "Use when habits-output-scorer dispatches the grade of one drafted plan, ticket, verdict or answer against the rubric its brief names: a fresh read-only grader that quotes evidence per check and ranks findings. Not for code review or for fixing the draft."
+description: "Use when mode-output-scorer dispatches the grade of one drafted plan, ticket, verdict or answer against the rubric its brief names: a fresh read-only grader that quotes evidence per check and ranks findings. Not for code review or for fixing the draft."
 tools: LSP, Read, Grep, Glob, WebFetch
 model: sonnet
 effort: xhigh

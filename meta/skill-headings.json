@@ -507,9 +507,6 @@
     "habits-explain-topic": [
       "c438f2b1003570e5"
     ],
-    "habits-output-scorer": [
-      "84c581b10ef15bf2"
-    ],
     "habits-plan-writing": [
       "30d9f464beea9d6c",
       "b21f07378e3a1957"
@@ -580,6 +577,13 @@
       "24d9d3007b646a71",
       "658d73eb5d5163f7"
     ],
+    "mode-auto-run": [
+      "62d0f9e3c129e7ce",
+      "a33b93ffece1fb9e"
+    ],
+    "mode-output-scorer": [
+      "72453ac82f099647"
+    ],
     "npm": [
       "0662540d79f09412",
       "2c8f078c229dee16",
@@ -617,9 +621,6 @@
       "708494b6c949b65d",
       "a7ea1fdf86dcb895",
       "cb7d567064508539"
-    ],
-    "task-auto": [
-      "2318070454adfd1b"
     ],
     "task-build-from-scratch": [
       "8ee42e435754aa8f"

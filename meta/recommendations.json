@@ -67,7 +67,7 @@
    "task-design",
    "task-solve-cross",
    "task-solve",
-   "task-auto",
+   "mode-auto-run",
    "capture-test-coverage",
    "loop-test-coverage",
    "task-verify-code",
@@ -75,7 +75,7 @@
    "review-code",
    "review-security",
    "task-version-upgrade",
-   "habits-output-scorer"
+   "mode-output-scorer"
   ]
  },
  "general": {

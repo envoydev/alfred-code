@@ -23,12 +23,12 @@ function walk(dir, out = [])
 }
 const skillFiles = () => walk(SK).map((p) => ({ rel: path.relative(ROOT, p).split(path.sep).join('/'), text: flat(fs.readFileSync(p, 'utf8')) }));
 
-const CARVE = "(under auto-mode the hook's `AUTO` stamp already stands - leave it)";
+const CARVE = "(under auto-run the hook's `AUTO` stamp already stands - leave it)";
 const TIMEOUT = "A question the idle timeout closed is no answer";
-const NOSTOPS = "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line.";
+const NOSTOPS = "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line.";
 
 // S1: one 'no stops' request had four behaviours. The hand-written AUTO waiver stays only in the two solve flows, in
-// the same words; every other flow names --auto-mode and never hand-writes AUTO.
+// the same words; every other flow names --mode-auto-run-on and never hand-writes AUTO.
 test('S1: only the two solve flows hand-write an AUTO stamp, and they say it the same way', () =>
 {
     const writers = skillFiles().filter((f) => /`AUTO - "<their words, verbatim>"`/.test(f.text)).map((f) => f.rel).sort();
@@ -46,13 +46,13 @@ test('S1: only the two solve flows hand-write an AUTO stamp, and they say it the
     for (const d of ['task-implement', 'task-build-from-scratch', 'task-version-upgrade', 'loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage', 'issue-diagnoser'])
     {
         const t = flat(read(`stack/skills/${d}/SKILL.md`));
-        assert.ok(t.includes(NOSTOPS), `${d} points a typed no-stops wish at --auto-mode`);
+        assert.ok(t.includes(NOSTOPS), `${d} points a typed no-stops wish at --mode-auto-run-on`);
         assert.doesNotMatch(t, /literal no-stops ask/, `${d} keeps no hand-written AUTO alternative`);
     }
 });
 
-// S2: every instruction that writes an APPROVED stamp leaves the hook's AUTO stamp standing under auto-mode.
-test('S2: each APPROVED-stamp instruction carries the auto-mode carve-out', () =>
+// S2: every instruction that writes an APPROVED stamp leaves the hook's AUTO stamp standing under auto-run.
+test('S2: each APPROVED-stamp instruction carries the auto-run carve-out', () =>
 {
     let sites = 0;
     for (const f of skillFiles())
@@ -64,7 +64,7 @@ test('S2: each APPROVED-stamp instruction carries the auto-mode carve-out', () =
             // the resumed small-tier variant rides the same sentence as the fresh one
             if (/resumed round/.test(m[0])) continue;
             sites++;
-            assert.ok(m[0].includes(CARVE), `${f.rel}: '${m[0].slice(0, 90)}' has no auto-mode carve-out`);
+            assert.ok(m[0].includes(CARVE), `${f.rel}: '${m[0].slice(0, 90)}' has no auto-run carve-out`);
         }
     }
     assert.ok(sites >= 11, `found ${sites} stamp instructions`);
@@ -73,7 +73,7 @@ test('S2: each APPROVED-stamp instruction carries the auto-mode carve-out', () =
 // S3: Claude Code's askUserQuestionTimeout auto-continues an unanswered question; such a close is no answer.
 test('S3: every stamp site says an idle-timeout close is no answer', () =>
 {
-    const stampers = skillFiles().filter((f) => /state\/approvals\/(?:[^/\s`]+\/)?APPROVAL/.test(f.text) && /`APPROVED (?:<[^>]+>|small-tier|staged) - "/.test(f.text));
+    const stampers = skillFiles().filter((f) => /state\/approvals\/(?:[^/\s`]+\/|<plan id>\/)?APPROVAL/.test(f.text) && /`APPROVED (?:<[^>]+>|small-tier|staged) - "/.test(f.text));
     assert.ok(stampers.length >= 9);
     for (const f of stampers)
     {
@@ -86,12 +86,12 @@ test('S3: every stamp site says an idle-timeout close is no answer', () =>
     assert.match(flat(read('stack/skills/task-solve/SKILL.md')), /`references\/step-mechanics\.md` holds the rest/);
 });
 
-// SKF2-08: an ask auto-mode answered is the go in the same turn - 'ENDS THE TURN' no longer holds the run on a Stop.
-test('SKF2-08: task-solve-cross ends the turn at an ask unless auto-mode answered it', () =>
+// SKF2-08: an ask auto-run answered is the go in the same turn - 'ENDS THE TURN' no longer holds the run on a Stop.
+test('SKF2-08: task-solve-cross ends the turn at an ask unless auto-run answered it', () =>
 {
     const b = flat(read('stack/skills/task-solve-cross/SKILL.md'));
-    assert.match(b, /fires AskUserQuestion and ENDS THE TURN \(an auto-mode answer is the go, same turn\);/);
-    assert.match(b, /then END THE TURN \(an auto-mode answer is the go, same turn\):/);
+    assert.match(b, /fires AskUserQuestion and ENDS THE TURN \(an auto-run answer is the go, same turn\);/);
+    assert.match(b, /then END THE TURN \(an auto-run answer is the go, same turn\):/);
 });
 
 // SKF2-09: the resume numbers have one source, the stop-contract hook's per-stop injection; no static range.
@@ -229,7 +229,7 @@ test('S9: habits-explain-topic agrees with the budget rule', () =>
 test('row 15: the small wording fixes hold', () =>
 {
     assert.match(read('stack/skills/task-build-from-scratch/SKILL.md'), /check the four paths, never list them by default/);
-    assert.match(read('stack/skills/task-version-upgrade/SKILL.md'), /`--auto-mode` is the user's typed flag only/);
+    assert.match(read('stack/skills/task-version-upgrade/SKILL.md'), /Auto-run is the user's to turn on \(`--mode-auto-run-on`\) only/);
     assert.match(read('stack/skills/dotnet-architecture-tests/SKILL.md'), /^## Pick the library: NetArchTest\.eNhancedEdition by default$/m);
     assert.match(flat(read('stack/skills/dotnet-migrate/SKILL.md')), /`dotnet package update <name>@<version>` on the \.NET 10 SDK, `dotnet add package <name> --version <version>` below it - never a hand edit of the version/);
     assert.doesNotMatch(read('stack/skills/markdown-style/SKILL.md'), /several would go through one AskUserQuestion/);

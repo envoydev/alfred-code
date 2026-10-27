@@ -12,7 +12,7 @@ seats do the specialist work. It is READ-ONLY from start to finish - no step her
 so no approval stamp and no commit gate come into play. The measurements behind these rules live in
 `references/evidence.md` - an audit appendix, not a run-time load.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line.
+**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line.
 
 ## When to use
 
@@ -141,7 +141,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    investigation passes.** If the cause stays ambiguous after 2, stop guessing and record the
    surviving hypotheses RANKED with what would decide between each. Where a `scorer: on` line
    naming the root-cause verdict or a `scorer: stacked` line is in context, the FIRST action before
-   releasing the verdict - stamping it, or putting the fork below - is the `habits-output-scorer`
+   releasing the verdict - stamping it, or putting the fork below - is the `mode-output-scorer`
    Skill call with output `root-cause`. Stamp `Cause:` with the file + symbol and the evidence that
    proves it, or `Cause: unproven - <n> hypotheses ranked`, once the scorer released it where one
    runs (`Cause: <pending>` until then).
@@ -162,7 +162,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
      document: the observable, the evidence tier, the proven cause with its located symbol, the
      blast radius and who it affects, severity + priority, and what a fix would have to change.
      Where a `scorer: on` line naming the root-cause verdict or a `scorer: stacked` line is in
-     context, the FIRST action before releasing the report is the `habits-output-scorer`
+     context, the FIRST action before releasing the report is the `mode-output-scorer`
      Skill call with output `root-cause`. No task cards. This is the outcome when the fix is someone else's, or not now.
    - **4b. PLAN TASKS** ('Plan the fix as tasks') - first load `habits-execution-strategy` (the Skill
      tool) over the minimal change: how the fix runs, not only what it changes. Its `Execution:` line sets the cards' split -
@@ -216,7 +216,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
 
 - Never pass a stop without the user's explicit word, and never take the fork yourself - step 4
   runs the branch the USER picked, and 'obviously they want the fix' is not an answer. Under
-  auto-mode the hook's answer to a marked ask is that word; the build stays the user's own command.
+  auto-run the hook's answer to a marked ask is that word; the build stays the user's own command.
 - Never end a stop's turn without its AskUserQuestion (or the plain-text fallback's option list).
 - Never write code, edit a file under test, or run a destructive repro - one that applies a
   migration against a real database, seeds or deletes tracked files, or commits. If the only

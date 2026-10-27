@@ -46,9 +46,9 @@
     {
       "id": "S1", "area": "scoring",
       "claim": "A scorer run's first verdict follows an output-scorer dispatch, and the script recorded that run's outcome - rounds.log `released` (passed, or accepted below the level) or `final` (withheld and kept) in the folder of the slug its `next` call names.",
-      "source": { "file": "stack/skills/habits-output-scorer/SKILL.md", "marker": "A drafted output is graded by a fresh, read-only output-scorer seat that never saw the conversation" },
+      "source": { "file": "stack/skills/mode-output-scorer/SKILL.md", "marker": "A drafted output is graded by a fresh, read-only output-scorer seat that never saw the conversation" },
       "window": { "opens": { "event": { "tool": "Bash", "field": "command", "text_match": "(?:scorecard\\.js|\\$S|\\$\\{S\\})\"? next\\b" },
-        "from": { "tool": "Skill", "field": "skill", "text_match": "^(?:[^:]*:)?habits-output-scorer$" } } },
+        "from": { "tool": "Skill", "field": "skill", "text_match": "^(?:[^:]*:)?(?:habits|mode)-output-scorer$" } } },
       "steps": [
         { "id": "seat-graded", "type": "tool_used", "tool": "Agent", "field": "subagent_type", "text_match": "output-scorer$", "min": 1 },
         { "id": "released", "type": "x_state", "source": "scorer", "match": { "line": "^(?:released|final) " },
@@ -58,9 +58,9 @@
     {
       "id": "S2", "area": "scoring",
       "claim": "No plan file is written after the scorer's NOT PASSED line, up to the run's stop.",
-      "source": { "file": "meta/skill-comply/habits-output-scorer/expect.json", "marker": "the plan file is not written to its real path" },
-      "window": { "opens": { "skill": "habits-output-scorer" } },
-      "steps": [ { "id": "no-plan-after-withhold", "from_expect": "habits-output-scorer" } ]
+      "source": { "file": "meta/skill-comply/mode-output-scorer/expect.json", "marker": "the plan file is not written to its real path" },
+      "window": { "opens": { "skill": ["habits-output-scorer", "mode-output-scorer"] } },
+      "steps": [ { "id": "no-plan-after-withhold", "from_expect": "mode-output-scorer" } ]
     },
     {
       "id": "P1", "area": "preferences",
@@ -150,9 +150,9 @@
     },
     {
       "id": "D1", "area": "decisions",
-      "claim": "A plan executed has its APPROVAL receipt - an APPROVED or AUTO stamp written to state/approvals/ - before the first implementer dispatch; an --auto-mode run, whose stamp the hook writes, opens no window.",
+      "claim": "A plan executed has its APPROVAL receipt - an APPROVED or AUTO stamp written to state/approvals/ - before the first implementer dispatch; a run under auto-run (`--mode-auto-run-on`, a typed `/mode-auto-run <request>`, or `--auto-mode` in a session recorded before 2026-10-27), whose stamp the hook writes, opens no window.",
       "source": { "file": "stack/hooks/guard-unapproved-dispatch.js", "marker": "it runs only after the user's explicit approval" },
-      "window": { "opens": { "event": { "ref": "implementer" }, "first": true, "lookback": "session", "unless": { "typed": "--auto-mode" } } },
+      "window": { "opens": { "event": { "ref": "implementer" }, "first": true, "lookback": "session", "unless": { "typed": "--auto-mode|--mode-auto-run-on|/mode-auto-run\\s+(?!--)\\S" } } },
       "steps": [ { "id": "stamp-first", "type": "tool_order", "after": { "ref": "implementer" }, "before": { "any": [
         { "all": [ { "tool": "Write", "field": "file_path", "text_match": "approvals[\\\\/](?:[^\\\\/]+[\\\\/])?APPROVAL$" }, { "tool": "Write", "field": "content", "text_match": "^(?:APPROVED|AUTO)\\b" } ] },
         { "all": [ { "tool": "Bash", "field": "command", "text_match": "approvals[\\\\/](?:[^\\\\/\\s]+[\\\\/])?APPROVAL" }, { "tool": "Bash", "field": "command", "text_match": "\\b(?:APPROVED|AUTO)\\b" } ] }

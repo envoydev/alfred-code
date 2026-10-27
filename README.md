@@ -106,6 +106,7 @@ Skills you start by name. Every install has these.
 | `/capture-architecture` | Write or refresh the architecture docs |
 | `/capture-awareness` | What is installed, the run book, sibling repos |
 | `/loop-code-quality` | Find and fix code-quality issues in rounds |
+| `/mode-auto-run` | Any request, start to finish, while you are away |
 
 Add what you want after the name:
 
@@ -116,6 +117,25 @@ Add what you want after the name:
 ```
 
 More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-guide.md).
+
+## Modes
+
+A mode stays on for the rest of the session once you turn it on. Its flag goes right after a `/task-*`,
+`/capture-*`, `/loop-*`, `/issue-*` or `/mode-*` command, before the request:
+
+| Flag | What it does |
+| --- | --- |
+| `--mode-auto-run-on` | Auto-run: each question takes its recommended option, so runs go on without you |
+| `--mode-auto-run-off` | Auto-run off: each question waits for your answer again |
+| `--mode-output-scorer-on` | A fresh grader scores plans and root-cause verdicts before they are released |
+| `--mode-output-scorer-off` | The grader is off again |
+
+```text
+/task-solve --mode-auto-run-on add paging to GET /api/loans
+```
+
+Nothing outward happens unasked under auto-run: no push, merge, deploy or publish. `/mode-auto-run <request>` turns
+auto-run on and runs the request in one go. Each prompt shows the modes that are on (`Modes ON: auto-run`).
 
 ## Supported stacks
 

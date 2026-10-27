@@ -27,12 +27,13 @@ const commandRow = (skill) => new RegExp(`^\\s*<command-name>/?(?:[\\w-]+:)?${es
 // `at`), to the skill's FIRST STOP - after the first AskUserQuestion at or past `from`, or at the next typed prompt or
 // command, whichever comes first (`to` exclusive). `mark` / `end` bound the marks inside; a window opening inside an
 // earlier one is part of it; `partial` when a compaction summary falls inside. A claim may close it at the next typed
-// turn instead (`prompt`) or at the run's end (`end`).
+// turn instead (`prompt`) or at the run's end (`end`). `skill` is one name or a list (a renamed skill opens on either).
 function windowsOf(run, skill, closes = 'stop') {
+  const names = [].concat(skill);
   const opens = [];
-  run.events.forEach((e, i) => { if (e.tool === 'Skill' && callsSkill(e, skill)) opens.push({ from: i, mark: -1 }); });
-  const named = commandRow(skill);
-  run.marks.forEach((m, k) => { if (m.kind === 'command' && named.test(m.text)) opens.push({ from: m.at, mark: k }); });
+  run.events.forEach((e, i) => { if (e.tool === 'Skill' && names.some((s) => callsSkill(e, s))) opens.push({ from: i, mark: -1 }); });
+  const named = names.map(commandRow);
+  run.marks.forEach((m, k) => { if (m.kind === 'command' && named.some((r) => r.test(m.text))) opens.push({ from: m.at, mark: k }); });
   opens.sort((a, b) => a.from - b.from);
   const out = [];
   for (const o of opens) {

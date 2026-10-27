@@ -19,7 +19,7 @@ audit and the build read it.
 
 One file per scope at `<docs-path>/work/plans/<feature>.md`. A new scope after `Completed:` starts a new file. `<feature>` doubles as the plan id the approval stamp and every implementer brief's `plan:` line carry, so it takes letters, digits, `.`, `_` and `-` only, starting with a letter or digit.
 
-Where a `scorer: on` line naming the designer plan file or a `scorer: stacked` line is in context, the FIRST action before releasing the plan file - before it is written to that path - is the `habits-output-scorer` Skill call with output `designer-plan`.
+Where a `scorer: on` line naming the designer plan file or a `scorer: stacked` line is in context, the FIRST action before releasing the plan file - before it is written to that path - is the `mode-output-scorer` Skill call with output `designer-plan`.
 
 ```text
 # <Feature> - plan

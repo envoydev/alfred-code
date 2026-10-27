@@ -84,7 +84,8 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
     DevOps, browser extension);
   - seven read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`,
-    `output-scorer` (habits-output-scorer's grader).
+    `output-scorer` (mode-output-scorer's grader; both mode skills took their names in the stack-modes rename of
+    2026-10-27, and the manifest's `renamed` rows hold the old ones).
   Every seat that judges or writes code holds `WebFetch` (alfred-quality-gates sends its outside-world claims to the
   documentation tools the start line ranks, the vendor's own page when nothing else is registered); the five read-only
   gatherers do not. A seat reports through

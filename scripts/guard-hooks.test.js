@@ -4890,15 +4890,21 @@ test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught howe
   assert.equal(rmIn('rm -rf ~/no-such-h6-dir'), 0, 'a leading tilde stays the symbolic rules\'');
 });
 
-// Audit 2026-10-20 H5: capture-usage-report's bundle authors are generic seats on a named model, and its own `--auto-mode`
+// Audit 2026-10-20 H5: capture-usage-report's bundle authors are generic seats on a named model, and its own auto-mode
 // stamp denied them as 'generic while stamped'; the denial's escape said to clear the stamp file, and one session ran
 // `rm .../flow/APPROVAL`. A stamp naming THIS session and that skill passes the generic dispatch; every other stamped
 // generic dispatch is still denied, and the denial ends in an ask - never a stamp deletion.
-test('H5: a session-named auto-mode stamp of a skill that dispatches generic seats passes them; the denial ends in an ask', () => {
+test('H5: a session-named auto-run whose run marker names a skill that dispatches generic seats passes them; the denial ends in an ask', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'h5-'));
   const flow = path.join(root, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
-  const stamp = (skill, session = 'h5-sess') => fs.writeFileSync(path.join(flow, 'APPROVAL'), `AUTO - "/${skill} --auto-mode"\nsession: ${session}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
+  // auto-run (stack-modes spec section 2): the session's stamp is the mode, and the run marker names the run's skill
+  const marker = path.join(root, '.alfred', 'state', 'sessions', 'AUTO-RUN-h5-sess');
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  const stamp = (skill, session = 'h5-sess') => {
+    fs.writeFileSync(path.join(flow, 'APPROVAL'), `AUTO - "/${skill} --mode-auto-run-on"\nsession: ${session}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
+    fs.writeFileSync(marker, `skill: ${skill}\nprompt: 0123456789ab\nat: ${new Date().toISOString()}\n`);
+  };
   const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', session_id: 'h5-sess', cwd: root, tool_input: { subagent_type: seat, prompt: 'write the bundle', model: 'sonnet' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
   stamp('capture-usage-report');
@@ -4911,6 +4917,9 @@ test('H5: a session-named auto-mode stamp of a skill that dispatches generic sea
   assert.match(denied.stderr, /Never delete or edit the stamp/);
   assert.match(denied.stderr, /AskUserQuestion/);
   assert.doesNotMatch(denied.stderr, /clear the\s+stamp file first/);
+  fs.rmSync(marker);
+  assert.equal(disp('general-purpose').status, 0, 'between runs the mode approves no seat and blocks none');
+  stamp('task-solve');
   stamp('capture-usage-report', 'another-session');
   assert.equal(disp('general-purpose').status, 0, 'another session\'s stamp is no live stamp here at all');
   fs.writeFileSync(path.join(flow, 'APPROVAL'), 'AUTO - "run without stops"\nskill: capture-usage-report\n');
@@ -4938,9 +4947,9 @@ test('H10: a bare built-in name is never a plugin command, the scoped one still 
 
 // Ruling S3 (2026-10-20): an APPROVAL stamp written after an ask the idle timeout closed records no one's approval -
 // the implementer dispatch is denied once ('the question timed out - re-ask'), the marker spent; a stamp written before
-// the timeout, or with no timeout marker, passes. Ruling S1: the unapproved denial names --auto-mode for a no-stops run
+// the timeout, or with no timeout marker, passes. Ruling S1: the unapproved denial names --mode-auto-run-on for a no-stops run
 // and keeps a hand-written AUTO waiver to the two solve flows.
-test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved denial names --auto-mode', () => {
+test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved denial names --mode-auto-run-on', () => {
   const root = fs.mkdtempSync(path.join(TMP, 's3d-'));
   const logDir = fs.mkdtempSync(path.join(TMP, 's3d-log-'));
   const flow = path.join(root, '.alfred', 'docs', 'flow');
@@ -4951,7 +4960,7 @@ test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved deni
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   const unapproved = disp();
   assert.equal(unapproved.status, 2);
-  assert.match(unapproved.stderr, /--auto-mode/, 'S1: a no-stops run is the typed flag');
+  assert.match(unapproved.stderr, /--mode-auto-run-on/, 'S1: a no-stops run is the typed flag');
   assert.match(unapproved.stderr, /only under task-solve and task-solve-cross/, 'S1: a hand-written AUTO is the solve flows\' alone');
   const past = new Date(Date.now() - 60000);
   fs.writeFileSync(marker, past.toISOString()); fs.utimesSync(marker, past, past);

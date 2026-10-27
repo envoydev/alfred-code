@@ -116,7 +116,7 @@ const SHELL_GREP = /^(?:grep|egrep|fgrep|rg|select-string|sls)$/i;
 // only: another plugin's skill is its own. A review run's first Skill call waits for the code docs, and a typed one is
 // handed them, its first reads bringing the rest (the user's ruling of 2026-10-22, 'Hold its first review skill'); the
 // architecture analyzer is handed the architecture doc only inside an architecture quality run, never the map capture's.
-const RUN_NAME = /^(?:(?:alfred-)?(?:capture|loop|task|issue)-[\w-]+|review-code|review-security|code-review|security-review)$/;
+const RUN_NAME = /^(?:(?:alfred-)?(?:capture|loop|task|issue|mode)-[\w-]+|review-code|review-security|code-review|security-review)$/;
 const REVIEW_RUN = /^(?:review-code|review-security|code-review|security-review|capture-code-quality|capture-architecture-quality|loop-code-quality|loop-architecture-quality)$/;
 const ARCH_RUN = /^(?:capture-architecture-quality|loop-architecture-quality)$/;
 // A design run in the chat ends in a plan and may never edit a scoped file, so no edit hold hands it the code docs: its

@@ -243,3 +243,20 @@ test('M8 D2: an ask the idle timeout closed is no answered ask, and past the his
     assert.strictEqual(one(many(61), 60).held, 1, 'the history keeps the last 60');
     assert.strictEqual(one(many(61), 59).violated, 1, 'one short of the cap is still a lost answer');
 });
+
+test('S1 and S2 open on the new name too (spec section 10)', () => {
+    const fixtures = path.join(__dirname, 'fixtures', 'conformance');
+    for (const id of ['S1', 'S2'])
+    {
+        const claim = cf.loadClaims().find((c) => c.id === id);
+        assert.strictEqual(cf.gradeClaims(cf.claimFixtures(id).held, [claim])[0].held, 1, `${id}: the recorded old-name session still holds`);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), `conformance-${id}-`));
+        fs.cpSync(path.join(fixtures, id, 'held'), dir, { recursive: true });
+        const transcript = path.join(dir, 's.jsonl');
+        const text = fs.readFileSync(transcript, 'utf8');
+        assert.ok(text.includes('habits-output-scorer'), `${id}: the fixture names the old skill`);
+        fs.writeFileSync(transcript, text.split('habits-output-scorer').join('mode-output-scorer'));
+        try { assert.strictEqual(cf.gradeClaims(cf.loadBundle(transcript), [claim])[0].held, 1, `${id}: the same session under the new name holds`); }
+        finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    }
+});
