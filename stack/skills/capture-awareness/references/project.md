@@ -206,9 +206,10 @@ this line; a key the store already holds with another value stops that move unti
 
   `--doc PROJECT-AWARENESS` also takes in an older capture's entries written without the prefix (every section they
   name is in this doc), so the first run after an update replaces them instead of leaving duplicates; the `seam
-  with` entries and the `notOwned` key are kept. An engine older than the merge answers with its usage line: then
-  edit `watch.json` by hand as before - replace the entries whose sections are all in `PROJECT-AWARENESS`, keep
-  every other entry and key - and say so in the report.
+  with` entries and the `notOwned` key are kept. An engine older than the merge answers with a line that opens
+  `usage: docs.js where`: then edit `watch.json` by hand as before - replace the entries whose sections are all in
+  `PROJECT-AWARENESS`, keep every other entry and key - and say so in the report; a line opening `watch-merge:` is
+  this call's own error - fix the call and run it again.
 
 Every repo fact cites its file; every gap nobody filled says `unknown` and names this capture. Then three checks,
 all before the report:

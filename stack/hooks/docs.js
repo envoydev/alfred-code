@@ -1858,6 +1858,10 @@ function watchMerge(domain, input, { kinds = [], kind = [], doc = [], seed = nul
       return { error: `cannot write ${domain}/watch.json: ${e.message}` };
     }
     resetDomains();
+  } else {
+    // The same entries still mark a capture that ran: the close skips a recomputed hit the capture saw by this file's
+    // time (docs-session.js captureSaw), and a recompute that changed nothing saw the change all the same (final review I1).
+    try { const now = new Date(); fs.utimesSync(file, now, now); } catch {}
   }
   return { kept: list.length - replaced, replaced, added: entries.length, file };
 }

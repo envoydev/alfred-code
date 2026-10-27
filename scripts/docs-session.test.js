@@ -2630,6 +2630,20 @@ test('a dead Scope is named at the close, and blocks once with no watch hit (AC2
   } finally { r.rm(); }
 });
 
+test('a dead Scope is named in every documented spelling: a folder, a bare path, a file-name glob, a rooted glob (final review I2)', () => {
+  for (const scope of ['src/Gone/', 'src/Gone', '*.gone.cs', '/src/Gone/**']) {
+    const r = qrepo({ files: { 'src/Gone/x.gone.cs': 'class X {}\n' } });
+    try {
+      r.write(ARCH_PREFS_DOC, PREFS_A2.replace('src/Gone/**', scope));
+      r.git('add', '-A'); r.git('commit', '-qm', 'prefs');
+      const s = sid(); start(r, s);
+      r.git('rm', '-qf', 'src/Gone/x.gone.cs');
+      const scopeRe = scope.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      assert.match(stopReason(r, s), new RegExp(`A2 - its Scope: \`${scopeRe}\` reaches no file`), scope);
+    } finally { r.rm(); }
+  }
+});
+
 test('a dead Scope with no preferences engine beside the hooks adds nothing (AC21)', () => {
   const r = goneRepo();
   const hooks = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'hooks-copy-'));

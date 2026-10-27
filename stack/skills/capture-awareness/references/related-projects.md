@@ -141,8 +141,8 @@ What grounds it: `src/Contracts/OrderCreated.cs` (this repo, publishes) and `acm
   A sibling whose seam now locates no file here, or whose section was removed, is named with no stdin entry (`[]`),
   which drops its entry; the run book's entries and the `notOwned` key are kept. Then `node .claude/hooks/docs.js
   watch <one seam file>` names the sibling's section - none named means its entry was dropped, fixed before the
-  report. An engine older than the merge answers with its usage line: skip the merge and the check, and say so in
-  the report.
+  report. An engine older than the merge answers with a line that opens `usage: docs.js where`: skip the merge and the
+  check, and say so in the report; a line opening `watch-merge:` is this call's own error - fix the call and run it again.
 
 Every entry is grounded in the located evidence or carries its UNVERIFIED marker - a relation is never smoothed
 over, a hint never overrides contradicting evidence silently (the contradiction is reported). Unreachable siblings

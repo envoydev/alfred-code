@@ -1587,9 +1587,13 @@ function deadScopeRows(root) {
   if (prefsReader === undefined) {
     try { prefsReader = require(path.join(__dirname, '..', 'skills', 'capture-preferences', 'scripts', 'preferences.js')); } catch { prefsReader = null; }
   }
-  if (!prefsReader || typeof prefsReader.deadScopes !== 'function' || typeof prefsReader.globRe !== 'function') return [];
+  if (!prefsReader || typeof prefsReader.deadScopes !== 'function' || typeof prefsReader.scopeOf !== 'function') return [];
   try {
-    return prefsReader.deadScopes(root).map((r) => ({ file: path.basename(String((r.doc && r.doc.file) || '')), id: r.id, glob: r.glob, re: prefsReader.globRe(r.glob) }));
+    // The vanished file is matched by the reader that found the Scope: dead, so every spelling it reads (a folder, a
+    // bare path, a file-name glob, a rooted glob) is judged one way (final review I2).
+    return prefsReader.deadScopes(root).map((r) => ({ file: path.basename(String((r.doc && r.doc.file) || '')), id: r.id, glob: r.glob, part: prefsReader.scopeOf(r.glob)[0] }))
+      .filter((r) => r.part && typeof r.part.test === 'function')
+      .map(({ part, ...r }) => ({ ...r, matches: part.test }));
   } catch { return []; }
 }
 
@@ -1656,7 +1660,7 @@ function stop(input, root, docs, state) {
     const gone = [...files, ...seatFiles].filter((f) => !fs.existsSync(path.join(root, f)));
     if (gone.length) {
       if (!scopeRows) scopeRows = deadScopeRows(root);
-      dead = scopeRows.filter((r) => gone.some((f) => r.re.test(f)));
+      dead = scopeRows.filter((r) => gone.some((f) => r.matches(f)));
     }
     if (!files.length && !dirs.length && !seatFiles.length && !dead.length) return;
     if (watched) {
@@ -1672,7 +1676,7 @@ function stop(input, root, docs, state) {
   const { asks, warnings } = hits.length || rcHits.length ? askPools(docs, hits, ASK_SECTIONS, undefined, rcHits) : { asks: [], warnings: [] };
   if (!asks.length && !warnings.length && !dead.length) return;
   const files = [...new Set([...hits, ...rcHits].flatMap((h) => h.files))];
-  for (const f of [...new Set(changed.files)]) if (!files.includes(f) && dead.some((r) => r.re.test(f))) files.push(f);
+  for (const f of [...new Set(changed.files)]) if (!files.includes(f) && dead.some((r) => r.matches(f))) files.push(f);
   const deadIds = dead.map((r) => `${r.file} ${r.id}`);
   // Nobody at the terminal (hook-prelude.js unattended): the ask would only turn the final answer into
   // 'docs ok' (8 of 12 print-mode cells, pilot 2). Logged, never made.

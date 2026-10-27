@@ -157,3 +157,20 @@ test('AC18: a hand-built assessment passes the capture\'s checks', () =>
     }
     finally { r.rm(); }
 });
+
+test('an older engine is named by its own usage line, never by a merge\'s argument error (final review M5)', () => {
+    for (const rel of ['stack/skills/capture-architecture-quality/SKILL.md', 'stack/skills/capture-architecture-quality/references/doc-shape.md',
+        'stack/skills/capture-awareness/references/related-projects.md', 'stack/skills/capture-awareness/references/project.md']) {
+        const text = fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\s+/g, ' ');
+        assert.ok(text.includes('opens `usage: docs.js where`'), `${rel}: the old engine's own line`);
+        assert.ok(text.includes('a line opening `watch-merge:` is this call\'s own error'), `${rel}: the new engine's refusal is the call's to fix`);
+        assert.ok(!text.includes('answers with its usage line'), `${rel}: no wording both engines match`);
+    }
+});
+
+test('an assessment entry with no located file gets no covers line and no watch entry (final review M3)', () => {
+    const shape = fs.readFileSync(path.join(ROOT, 'stack/skills/capture-architecture-quality/references/doc-shape.md'), 'utf8').replace(/\s+/g, ' ');
+    assert.ok(shape.includes('An entry with no located file has no covers line and no watch entry'), 'doc-shape says it');
+    const skill = fs.readFileSync(path.join(ROOT, 'stack/skills/capture-architecture-quality/SKILL.md'), 'utf8');
+    assert.ok(skill.includes('one entry per located Strength and Must-fix section'), 'the merge step pipes located entries only');
+});

@@ -2617,6 +2617,21 @@ test('watch-merge --doc takes in an older free-text entry and keeps one naming a
   } finally { r.rm(); }
 });
 
+test('watch-merge of the same entries still moves the file\'s time, so the close knows the capture ran (final review I1)', () => {
+  const r = repo();
+  try {
+    const entries = [entry('run book: build', ['PROJECT-AWARENESS#build'])];
+    assert.strictEqual(merge(r, 'awareness', ['--kinds', 'run book: '], entries).status, 0);
+    const before = r.read(AW);
+    const old = new Date(Date.now() - 3600 * 1000);
+    fs.utimesSync(`${r.root}/${AW}`, old, old);
+    const out = merge(r, 'awareness', ['--kinds', 'run book: '], entries);
+    assert.strictEqual(out.stdout.trim(), 'watch-merge awareness: kept 0, replaced 1 with 1');
+    assert.strictEqual(r.read(AW), before, 'the bytes are unchanged');
+    assert.ok(fs.statSync(`${r.root}/${AW}`).mtimeMs > Date.now() - 60 * 1000, 'the time is now');
+  } finally { r.rm(); }
+});
+
 test('watch-merge creates a missing file holding only the merged entries (AC15)', () => {
   const r = repo();
   try {

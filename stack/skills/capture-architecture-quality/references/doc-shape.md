@@ -174,7 +174,8 @@ written.
 
 **Covers are files.** Turn each entry's located code (`located: Invoicing/InvoiceBuilder -> Orders.Order` names
 types and modules) into the file paths the analyzer seats reported for them. An entry located only at module level
-takes the module folder's glob (`src/Invoicing/**`).
+takes the module folder's glob (`src/Invoicing/**`). An entry with no located file has no covers line and no watch entry -
+never a guessed glob.
 
 **A section rewritten at a session's close** keeps the entry's shape. A change that removed the weakness rewrites
 the body to one line - `Resolved by <what changed>, <YYYY-MM-DD> - the next capture drops it.`, with ` on <branch>`
@@ -229,5 +230,6 @@ Then two checks, both before the report: `node .claude/hooks/docs.js lint qualit
 fixed before the report.
 
 **An engine older than the merge** - the project's `.claude/hooks/docs.js` copy predates this skill until
-`/alfred-code:update` - answers with its usage line instead of `watch-merge quality: ...`: skip the merge and both
-checks for this run, and say so in the report. The doc is written, unwatched.
+`/alfred-code:update` - answers with a line that opens `usage: docs.js where` instead of `watch-merge quality: ...`:
+skip the merge and both checks for this run, and say so in the report. The doc is written, unwatched. On a current
+engine, a line opening `watch-merge:` is this call's own error - fix the call and run it again.
