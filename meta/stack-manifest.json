@@ -773,9 +773,21 @@
     },
     {
       "file": "guard-unapproved-dispatch.js",
-      "matcher": "Task|Agent",
+      "matcher": "Task|Agent|SendMessage",
       "event": "",
-      "note": "block *-implementer dispatch without its plan's data-root state/approvals/<plan id>/APPROVAL gate file (APPROVED/AUTO; the brief names the plan on a plan: line) or a root AUTO"
+      "note": "block *-implementer dispatch without its plan's data-root state/approvals/<plan id>/APPROVAL gate file (APPROVED/AUTO; the brief names the plan on a plan: line) or a root AUTO; and a dispatch, or a SendMessage that resumes a stopped seat, while ALFRED_CODE_MAXIMUM_RUN_AGENTS of the session's agents run (agent-cap.js)"
+    },
+    {
+      "file": "guard-unapproved-dispatch.js",
+      "matcher": "@SubagentStart",
+      "event": "",
+      "note": "the agent cap's registry: a started agent is counted (agent-cap.js), and a seat is told the session's number when it is not 5"
+    },
+    {
+      "file": "guard-unapproved-dispatch.js",
+      "matcher": "@SubagentStop",
+      "event": "",
+      "note": "the agent cap's registry: a stopped agent is marked, kept a while in case a hold sends it back"
     },
     {
       "file": "guard-ungated-commit.js",

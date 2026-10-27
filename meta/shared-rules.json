@@ -1674,43 +1674,99 @@
       ]
     },
     "fan-out-cap": {
-      "_note": "Implementer fan-out runs at most 3 seats at once by default, more only on the user's ask - every site that dispatches implementers in parallel states the cap in its own words. The vendored trio protocol once said 'all in parallel ... expose all of it' against the owner's cap (2026-10-08 audit BLOCKER 1), so each phrasing is pinned here.",
+      "_note": "Fan-out runs up to ALFRED_CODE_MAXIMUM_RUN_AGENTS seats at once, default 5 - the user's task of 2026-10-27 (a cap on how many of a session's agents run at once) replaced the pinned 3 implementers. Every site that dispatches seats in parallel states the cap in its own words, a session or seat reading its number from the 'Agents at once' start line, and none says how to lift it: the dispatch guard denies one past it, and the setting is the user's. The vendored trio protocol once said 'all in parallel ... expose all of it' against the owner's cap (2026-10-08 audit BLOCKER 1), so each phrasing is pinned here.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-        "marker": "fan-out is capped at 3 implementers at once by default, more only on the user's ask"
+        "marker": "fan-out is capped at `ALFRED_CODE_MAXIMUM_RUN_AGENTS` seats at once (the start line's 'Agents at once', else 5), queueing the rest as seats return - the dispatch guard denies one past it"
       },
       "sites": [
         {
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+          "marker": "domain designer -> up to the cap at once -> domain verifier"
+        },
+        {
           "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
-          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+          "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), queueing the rest as seats return"
         },
         {
           "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
-          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+          "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), queueing the rest as seats return"
         },
         {
           "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
-          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+          "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), queueing the rest as seats return"
         },
         {
           "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
-          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+          "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), queueing the rest as seats return"
         },
         {
           "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
-          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+          "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), queueing the rest as seats return"
         },
         {
           "file": "stack/skills/task-solve/references/step-mechanics.md",
-          "marker": "`<stack>-implementer` seat, up to 3 at once"
+          "marker": "`<stack>-implementer` seat, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
         },
         {
           "file": "stack/skills/task-implement/SKILL.md",
-          "marker": "up to 3 at once, each on its frontmatter model"
+          "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), each on its frontmatter model"
         },
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "up to 3 at once, routes a red build/test"
+          "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), routes a red build/test"
+        },
+        {
+          "file": "stack/skills/capture-project-code-style/SKILL.md",
+          "marker": "Dispatch up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` seats in one message (default 5), the next as each hands back"
+        },
+        {
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
+          "marker": "dispatch up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` seats in one message (default 5), the next as each hands back"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "in a single message where the modules are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
+        },
+        {
+          "file": "stack/skills/capture-architecture/SKILL.md",
+          "marker": "batched into a single message where the areas are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "in a single message where the areas are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
+        },
+        {
+          "file": "stack/skills/capture-test-coverage/SKILL.md",
+          "marker": "Fan out test-coverage-analyzer per surface, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
+        },
+        {
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
+          "marker": "several in parallel, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
+          "marker": "Evidence-gatherers may run in parallel (read-only), up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
+          "marker": "all read-only, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
+        },
+        {
+          "file": "stack/skills/issue-signatures-ci/references/gatherer-fan-out.md",
+          "marker": "(parallel, one per failing job, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "dispatching them in parallel across jobs, up to the 'Agents at once' your start context names, else 5"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-runtime.md",
+          "marker": "dispatching several in parallel, up to the 'Agents at once' your start context names, else 5"
+        },
+        {
+          "file": "stack/skills/capture-usage-report/SKILL.md",
+          "marker": "at most six at a time, and never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS`"
         }
       ]
     },

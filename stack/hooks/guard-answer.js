@@ -444,7 +444,11 @@ function scorerNow(flags, root, sid) {
 // The modes for this payload, once: `prompt` is the typed text (null on the compaction route - no flags, no stack,
 // no ON line). Returns the context lines and the ON line's text ('' when no mode is on).
 function modesText(prompt) {
-  const none = { context: '', message: '' };
+  // The agent cap's line (agent-cap.js startLine): '' at the default 5, so a session that never set it pays nothing.
+  let cap = '';
+  try { if (!payload.agent_id) cap = require('./agent-cap.js').startLine(process.env); } catch { /* no module: no line */ }
+  cap = cap ? ` ${cap}` : '';
+  const none = { context: cap, message: '' };
   try {
     if (!scorer || payload.agent_id) return none;
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
@@ -464,7 +468,7 @@ function modesText(prompt) {
     }
     if (auto) lines.push(AUTO_LINE);
     const on = [auto ? 'auto-run' : '', s && s.usable && s.on ? `output-scorer (level ${s.level})` : ''].filter(Boolean);
-    return { context: lines.map((l) => ` ${l}`).join(''), message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '' };
+    return { context: lines.map((l) => ` ${l}`).join('') + cap, message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '' };
   } catch { return none; }
 }
 
@@ -474,6 +478,12 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
   // every seat's hand-back - 351 of 960 injections in a week).
   if (harnessPrompt(payload.prompt)) process.exit(0);
   clearTimeoutMarker();
+  // A denial the agent cap recorded lives for one typed prompt: the Stop half never continues once the user moved on.
+  try {
+    const agentCap = require('./agent-cap.js');
+    const reg = agentCap.openRegistry(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.session_id, process.env);
+    if (reg) agentCap.clearDenied(reg);
+  } catch { /* no module: nothing recorded */ }
   const repeat =repeatsLastPrompt(payload.prompt) ? ' VERBATIM RE-ASK: this prompt is identical to ' +
     'the previous one. The last answer missed - do not re-answer it longer or from a different angle. ' +
     'Ask ONE AskUserQuestion about the goal, with the readings you are choosing between as options ' +
