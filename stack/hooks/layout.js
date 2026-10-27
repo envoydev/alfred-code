@@ -636,9 +636,81 @@ function applyVariables(projectRoot, env = process.env)
     return set;
 }
 
+// ---- release 3: an ancestor's memory folder and docs root, fs/path only ----------------------------------------------
+// The managed settings file per OS - a twin of scripts/install/workspace.js managedSettingsFile, which no hook requires.
+function managedSettingsFile(platform = process.platform, env = process.env)
+{
+    if (platform === 'darwin') return '/Library/Application Support/ClaudeCode/managed-settings.json';
+    if (platform === 'win32') return path.win32.join(env.ProgramFiles || 'C:\\Program Files', 'ClaudeCode', 'managed-settings.json');
+    return '/etc/claude-code/managed-settings.json';
+}
+const readObject = (file) =>
+{
+    try { const data = JSON.parse(fs.readFileSync(file, 'utf8')); return data && typeof data === 'object' && !Array.isArray(data) ? data : null; }
+    catch { return null; }
+};
+// R6: `autoMemoryDirectory` where Claude Code reads it first - the managed drop-ins (merged after the file in alphabetical
+// order, so the last wins), the managed file, the member's settings.local.json, its settings.json, the account's.
+function autoMemorySetting(root, { account, home, managed })
+{
+    const dropDir = path.join(path.dirname(managed), 'managed-settings.d');
+    let drops = [];
+    try { drops = fs.readdirSync(dropDir).filter((n) => n.endsWith('.json') && !n.startsWith('.')).sort().reverse().map((n) => path.join(dropDir, n)); }
+    catch { /* no drop-in folder */ }
+    for (const file of [...drops, managed, path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')])
+    {
+        const value = (readObject(file) || {}).autoMemoryDirectory;
+        if (typeof value !== 'string' || !value.trim()) continue;
+        const v = value.trim();
+        if (v === '~') return home;
+        return /^~[\\/]/.test(v) ? path.join(home, v.slice(2)) : path.resolve(root, v);
+    }
+    return null;
+}
+// The folder Claude Code keeps a project's auto memory in (A5, docs/workspace-layering-evidence.md): the setting, else
+// `<account>/projects/<name>/memory`, `<name>` the git top (a worktree's main checkout) with every character outside
+// [A-Za-z0-9] as `-`. Past 200 characters Claude Code cuts the name and appends `-<hash>`: every existing match is named.
+// [] when CLAUDE_CODE_PROJECT_DIR_NAME renames the folder.
+const MEMORY_NAME_MAX = 200;
+function memoryDirsOf(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env) } = {})
+{
+    if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
+    const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
+    const set = autoMemorySetting(root, { account, home, managed });
+    if (set) return [set];
+    const top = gitTopOf(root, { home });
+    const name = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
+    const projects = path.join(account, 'projects');
+    if (name.length <= MEMORY_NAME_MAX) return [path.join(projects, name, 'memory')];
+    const head = `${name.slice(0, MEMORY_NAME_MAX)}-`;
+    let names = [];
+    try { names = fs.readdirSync(projects).filter((n) => n.startsWith(head) && n.length > head.length); }
+    catch { /* no projects folder yet */ }
+    return names.sort().map((n) => path.join(projects, n, 'memory'));
+}
+// R2: an ancestor's docs root from its own settings (a leftover ALFRED_CODE_DOCS_PATH, settings.local.json first), never
+// the child's env, else `<its data root>/docs` - absolute.
+function docsRootOf(root, { env = process.env, dataRoot } = {})
+{
+    for (const file of [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json')])
+    {
+        const value = ((readObject(file) || {}).env || {}).ALFRED_CODE_DOCS_PATH;
+        if (typeof value === 'string' && value.trim()) return path.resolve(root, value.trim());
+    }
+    const data = dataRoot || dataRootOf(root, { env: { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR } });
+    return path.resolve(root, ...data.split('/'), 'docs');
+}
+// The workspace root (D3's 'root'): the chain's last linked member, null with no parent. The switch is the caller's.
+function topMember(projectRoot, { env = process.env } = {})
+{
+    const { members } = workspaceChain(projectRoot, { env });
+    return members.length ? members[members.length - 1] : null;
+}
+
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
+    memoryDirsOf, docsRootOf, topMember, managedSettingsFile,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

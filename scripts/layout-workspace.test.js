@@ -189,3 +189,109 @@ test('the kill switch is the caller\'s: workspaceChain reads the chain whatever 
     assert.strictEqual(layout.workspaceChain(at('ws/api'), { env: env0 }).members.length, 1);
     assert.strictEqual(layout.workspaceOn({ env: env0, projectRoot: at('ws/api') }), false);
 });
+
+// ---- release 3, T2: an ancestor's memory folder (R6) and docs root (R2) ---------------------------------------------
+// The folder Claude Code keys a project by, as T1 measured it (docs/workspace-layering-evidence.md, A5): the git top
+// with every character outside [A-Za-z0-9] as `-`; `<S>` is the measured temp prefix, here the test's own.
+const sanitized = (p) => p.normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
+const memTree = (spec) =>
+{
+    const at = tree(spec);
+    const home = path.join(at('.'), 'home');
+    const acct = path.join(home, '.claude');
+    fs.mkdirSync(acct, { recursive: true });
+    return { at, home, acct, env: { CLAUDE_CONFIG_DIR: acct }, managed: path.join(at('.'), 'managed', 'managed-settings.json') };
+};
+const memOf = (m, rel, extra = {}) => layout.memoryDirsOf(m.at(rel), { env: m.env, home: m.home, managed: m.managed, ...extra });
+
+test('memoryDirsOf names <account>/projects/<git top with - >/memory, from a sub-folder too', () =>
+{
+    const m = memTree({ 'Plain': { git: true }, 'Plain/sub': {} });
+    const want = [path.join(m.acct, 'projects', sanitized(m.at('Plain')), 'memory')];
+    assert.deepStrictEqual(memOf(m, 'Plain'), want);
+    assert.deepStrictEqual(memOf(m, 'Plain/sub'), want, 'keyed by the git top, not the folder');
+    const plainDir = memTree({ 'nogit': {} });
+    assert.deepStrictEqual(memOf(plainDir, 'nogit'), [path.join(plainDir.acct, 'projects', sanitized(plainDir.at('nogit')), 'memory')], 'no git: the root');
+});
+
+test('memoryDirsOf equals the folders T1 measured: a space and an e-acute each one -, the mixed case kept', () =>
+{
+    const m = memTree({ 'my projé': { git: true }, 'MixedCase': { git: true } });
+    const S = sanitized(m.at('.'));
+    assert.deepStrictEqual(memOf(m, 'my projé'), [path.join(m.acct, 'projects', `${S}-my-proj-`, 'memory')]);
+    assert.deepStrictEqual(memOf(m, 'MixedCase'), [path.join(m.acct, 'projects', `${S}-MixedCase`, 'memory')]);
+});
+
+test('autoMemoryDirectory in settings.local.json wins over settings.json, ~ expanded', () =>
+{
+    const m = memTree({ 'p': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '/shared/mem' }), local: JSON.stringify({ autoMemoryDirectory: '~/my-mem' }) }, 'q': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '~' }) } });
+    assert.deepStrictEqual(memOf(m, 'p'), [path.join(m.home, 'my-mem')]);
+    assert.deepStrictEqual(memOf(m, 'q'), [m.home]);
+});
+
+test('a managed-settings value wins over the member\'s, the member\'s over the account\'s; the last drop-in over the file', () =>
+{
+    const m = memTree({ 'p': { git: true, settings: JSON.stringify({ autoMemoryDirectory: '/member' }) }, 'q': { git: true } });
+    fs.writeFileSync(path.join(m.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: '/account' }));
+    assert.deepStrictEqual(memOf(m, 'p'), [path.resolve('/member')]);
+    assert.deepStrictEqual(memOf(m, 'q'), [path.resolve('/account')]);
+    fs.mkdirSync(path.join(path.dirname(m.managed), 'managed-settings.d'), { recursive: true });
+    fs.writeFileSync(m.managed, JSON.stringify({ autoMemoryDirectory: '/managed' }));
+    assert.deepStrictEqual(memOf(m, 'p'), [path.resolve('/managed')]);
+    fs.writeFileSync(path.join(path.dirname(m.managed), 'managed-settings.d', '10-a.json'), JSON.stringify({ autoMemoryDirectory: '/drop-a' }));
+    fs.writeFileSync(path.join(path.dirname(m.managed), 'managed-settings.d', '20-b.json'), JSON.stringify({ autoMemoryDirectory: '/drop-b' }));
+    fs.writeFileSync(path.join(path.dirname(m.managed), 'managed-settings.d', '30-c.json'), JSON.stringify({ model: 'x' }));
+    assert.deepStrictEqual(memOf(m, 'p'), [path.resolve('/drop-b')], 'drop-ins merge after the file in alphabetical order');
+});
+
+test('CLAUDE_CODE_PROJECT_DIR_NAME gives []', () =>
+{
+    const m = memTree({ 'p': { git: true } });
+    assert.deepStrictEqual(memOf(m, 'p', { env: { ...m.env, CLAUDE_CODE_PROJECT_DIR_NAME: 'renamed' } }), []);
+});
+
+test('a garbage settings.json or a non-string autoMemoryDirectory / ALFRED_CODE_DOCS_PATH falls through to the default', () =>
+{
+    const m = memTree({ 'p': { git: true, settings: '{ not json', local: JSON.stringify({ autoMemoryDirectory: 42, env: { ALFRED_CODE_DOCS_PATH: ['x'] } }) } });
+    assert.deepStrictEqual(memOf(m, 'p'), [path.join(m.acct, 'projects', sanitized(m.at('p')), 'memory')]);
+    assert.strictEqual(layout.docsRootOf(m.at('p'), { env: m.env }), path.join(m.at('p'), '.alfred', 'docs'));
+});
+
+test('a 201-character name lists <first 200>-* and returns every match; 199 and 200 are exact', () =>
+{
+    const m = memTree({});
+    const base = m.at('.');
+    const pad = (n, stem) => stem + 'x'.repeat(n - (sanitized(base).length + 1) - stem.length);
+    for (const n of [199, 200])
+    {
+        const dir = path.join(base, pad(n, `len${n}-`));
+        fs.mkdirSync(dir); execFileSync('git', ['init', '-q'], { cwd: dir });
+        const got = layout.memoryDirsOf(dir, { env: m.env, home: m.home, managed: m.managed });
+        assert.deepStrictEqual(got, [path.join(m.acct, 'projects', sanitized(dir), 'memory')]);
+        assert.strictEqual(sanitized(dir).length, n);
+    }
+    const long = path.join(base, pad(201, 'len201-'));
+    fs.mkdirSync(long); execFileSync('git', ['init', '-q'], { cwd: long });
+    const head = sanitized(long).slice(0, 200);
+    assert.deepStrictEqual(layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed }), [], 'past 200: only folders that exist');
+    for (const h of ['b5411q', 'zz09aa']) fs.mkdirSync(path.join(m.acct, 'projects', `${head}-${h}`, 'memory'), { recursive: true });
+    fs.mkdirSync(path.join(m.acct, 'projects', `${head}x`), { recursive: true });
+    assert.deepStrictEqual(layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed }).sort(),
+        ['b5411q', 'zz09aa'].map((h) => path.join(m.acct, 'projects', `${head}-${h}`, 'memory')).sort());
+});
+
+test('docsRootOf reads the ancestor\'s leftover ALFRED_CODE_DOCS_PATH, never the env\'s, else <dataRoot>/docs', () =>
+{
+    const m = memTree({ 'a': { settings: JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'shared/docs' } }), local: JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'mine/docs' } }) }, 'b': { settings: JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'data' } }) }, 'c': {} });
+    const env = { ...m.env, ALFRED_CODE_DOCS_PATH: 'child/docs', ALFRED_CODE_DATA_PATH: 'child-data' };
+    assert.strictEqual(layout.docsRootOf(m.at('a'), { env }), path.join(m.at('a'), 'mine', 'docs'));
+    assert.strictEqual(layout.docsRootOf(m.at('b'), { env }), path.join(m.at('b'), 'data', 'docs'));
+    assert.strictEqual(layout.docsRootOf(m.at('c'), { env, dataRoot: 'given' }), path.join(m.at('c'), 'given', 'docs'));
+});
+
+test('topMember is the last linked member, null for a project with no parent', () =>
+{
+    const at = tree({ 'ws': { stamp: true, file: 'child mid\n' }, 'ws/mid': { stamp: true, file: 'parent ..\nchild api\n' }, 'ws/mid/api': { stamp: true, file: 'parent ..\n' } });
+    assert.strictEqual(layout.topMember(at('ws/mid/api'), { env: env0 }).root, at('ws'));
+    assert.strictEqual(layout.topMember(at('ws'), { env: env0 }), null);
+});
