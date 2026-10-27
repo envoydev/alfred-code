@@ -1216,7 +1216,8 @@ if (auto) {
   const contract = `auto-run is ON for this /${auto.run} run: auto-run is on for this session (${auto.file} holds the user's words), and ${auto.marker} marks this run. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
-    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop) - waits for the user, so put only those. '
+    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop) - waits for the user, so put only those; '
+    + "write every AskUserQuestion's questions and labels in English while auto-run is on - the hook reads English only and an ask it cannot read waits for the user - and the rest of the run in the user's language. "
     + `(2) Do not end a turn between steps: the Stop hook sends you back while ${auto.marker} stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. `
     + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '
     + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '

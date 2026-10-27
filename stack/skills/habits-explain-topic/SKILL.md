@@ -150,11 +150,9 @@ Honor an explicit depth request. If none is given, infer it from how the questio
 
 ## Language
 
-- Answer in the same language the user asked in when it is English or Ukrainian.
-- If the user wrote in Ukrainian, answer in Ukrainian. If in English, answer in English. If mixed, follow the dominant language.
-- A request written in any other language is answered in English.
+- Answer in the language the user asked in, whatever it is; if mixed, follow the dominant language.
 - Code, identifiers, file names, and quoted snippets always stay verbatim in their original form regardless of answer language - never translate code or symbol names.
-- Technical terms keep their standard English form even in a Ukrainian answer (e.g. `dependency injection`, `observable`), introduced with a short gloss the first time.
+- Technical terms keep their standard English form even in an answer in another language (e.g. `dependency injection`, `observable`), introduced with a short gloss the first time.
 
 ## Last check before sending
 

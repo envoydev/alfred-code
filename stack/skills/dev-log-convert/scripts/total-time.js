@@ -10,8 +10,9 @@
 // digit the units below do not account for ('30 min', '2-3h') is UNREADABLE: the run names the line, prints
 // no total and exits 2 - a silent drop once printed a day 1h short (audit 2026-10-11, session 5f9fec85).
 
-// Only a letter closes a unit: a digit after it starts the next duration, so `1h15m` and `1г15хв` read whole.
-const UNIT = /(\d+(?:[.,]\d+)?)\s*(год|гг|хвил|хв|г|h|m)(?!\p{L})/giu;
+// Only a letter closes a unit: a digit after it starts the next duration, so `1h15m` reads whole. The log prints `h` / `m`
+// in every output language; a unit word of the notes' own language is normalised while drafting, so here it is unreadable.
+const UNIT = /(\d+(?:[.,]\d+)?)\s*(h|m)(?!\p{L})/giu;
 
 // The first bracket on the line, and only when no ' - ' separator precedes it: past the separator a
 // bracket belongs to the summary, not the task's time.
@@ -29,7 +30,7 @@ function minutesOf(line) {
   for (const m of token.matchAll(UNIT)) {
     const value = parseFloat(m[1].replace(',', '.'));
     const unit = m[2].toLowerCase();
-    const isHour = unit === 'h' || unit === 'г' || unit === 'год' || unit === 'гг';
+    const isHour = unit === 'h';
     total += isHour ? value * 60 : value;
     found = true;
   }
@@ -79,7 +80,7 @@ process.stdin.on('end', () => {
   });
   if (unreadable.length) {
     console.log(`No total: ${unreadable.length} time token(s) UNREADABLE - respell as <n>h <n>m and re-run.`);
-    console.error(`total-time: unreadable time on line ${unreadable.join(', line ')} - no total is valid until every bracketed time reads as h / m (or г / год / гг / хв / хвил).`);
+    console.error(`total-time: unreadable time on line ${unreadable.join(', line ')} - no total is valid until every bracketed time reads as h / m.`);
     process.exit(2);
   }
   console.log(`Total time: ${format(sum)}  (${sum}m over ${timed} timed line(s), ${untimed} without time)`);
