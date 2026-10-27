@@ -72,10 +72,13 @@ const isOwn = (type) => String(type).startsWith('own:');
 // The doc where the other preferences docs are looked for: this checkout, then a linked worktree's main checkout. A doc
 // that is a link is never read and never passed over for another copy - the start line pastes its purposes, and a cloned
 // repo could point one anywhere (the rule preferences.js keeps, audit 2026-10-21 PF-1).
-function readToolsDoc(projectRoot)
+// `dirs` is a reader's list (prefs.readDirs: the own dirs, then the ancestors'); the default is the project's own alone,
+// which every capture verb keeps.
+function readToolsDoc(projectRoot, { dirs } = {})
 {
-    for (const dir of prefs.prefsDirs(projectRoot))
+    for (const { dir, skip } of dirs || prefs.prefsDirs(projectRoot).map((d) => ({ dir: d })))
     {
+        if (skip && skip.has(TOOLS_DOC)) continue;
         const abs = path.join(dir, TOOLS_DOC);
         if (isLink(abs)) return null;
         const text = readText(abs);
@@ -744,7 +747,7 @@ function orderFor({ projectRoot, env = process.env, seat = null })
     const main = mainReach({ projectRoot, env, adapters, inventory });
     const reach = seat && typeof seat === 'object' ? seatReach(seat.frontmatter, main) : main;
     const agent = seat !== null && seat !== undefined;
-    const doc = readToolsDoc(projectRoot);
+    const doc = readToolsDoc(projectRoot, { dirs: prefs.readDirs(projectRoot, { env }) });
     let entries = defaultEntries(adapters);
     let problems = [];
     if (doc)
@@ -897,7 +900,7 @@ function modeLines({ projectRoot, env = process.env, memory = null })
 // that cannot be written still says yes, so an unwritable state folder costs a repeat, never the line.
 function suggestOnce(projectRoot)
 {
-    if (readToolsDoc(projectRoot)) return false;
+    if (readToolsDoc(projectRoot, { dirs: prefs.readDirs(projectRoot) })) return false;
     const marker = path.resolve(projectRoot, prefs.dataRoot(projectRoot), 'state', 'tool-preferences', 'suggested');
     if (fs.existsSync(marker)) return false;
     try { fs.mkdirSync(path.dirname(marker), { recursive: true }); fs.writeFileSync(marker, `${new Date().toISOString()}\n`); } catch { /* said again next start */ }

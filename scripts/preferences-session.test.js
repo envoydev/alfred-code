@@ -1666,3 +1666,84 @@ test('the session-start push writes one preferences-push probe row (item 7)', ()
     }
     finally { p.rm(); }
 });
+
+// ---- release 3, T4: a child of a workspace reads its ancestors' preferences after its own (R3, R4, R4b) --------------
+const ROOT_PERSONAL = PERSONAL.replace('put behaviour on the type that owns the data, never in a static helper class.', 'ROOT-ONLY: prefer composition over inheritance.');
+const layoutLib = require('../stack/hooks/layout.js');
+function wsProject({ rootDocs = {}, childDocs = {}, childFile = 'parent ..\n', engine = false } = {})
+{
+    const top = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-ws-')));
+    const ws = path.join(top, 'ws');
+    const root = path.join(ws, 'api');
+    const config = path.join(top, 'config');
+    const write = (abs, text) => { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.writeFileSync(abs, text); };
+    write(path.join(ws, '.claude', 'alfred-code.stamp'), 'sha: x\n'); write(path.join(ws, '.alfred', 'workspace'), 'child api\n');
+    write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: x\n'); write(path.join(root, '.alfred', 'workspace'), childFile);
+    spawnSync('git', ['init', '-q', '-b', 'develop'], { cwd: root });
+    write(path.join(root, '.gitignore'), '.alfred/\n'); write(path.join(root, 'src', 'app.ts'), 'export const x = 1;\n'); write(path.join(config, 'x'), '');
+    for (const [name, text] of Object.entries(rootDocs)) write(path.join(ws, PREFS, name), text);
+    for (const [name, text] of Object.entries(childDocs)) write(path.join(root, PREFS, name), text);
+    if (engine) { write(path.join(root, '.claude', 'hooks', 'docs.js'), '// engine\n'); write(path.join(root, PREFS, 'watch.json'), '{}\n'); }
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools,preferences-session:host' };
+    delete env.ALFRED_CODE_WORKSPACE;
+    const hook = (payload, extra = {}) => spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify({ cwd: root, ...payload }), encoding: 'utf8', env: { ...env, ...extra } });
+    return { top, ws, root, hook, rootDoc: (f) => path.join(layoutLib.docsRootOf(ws, { env }), 'preferences', f), rm: () => fs.rmSync(top, { recursive: true, force: true }) };
+}
+
+test('a child: its own preference doc wins over the root\'s of the same name; the root\'s applies where it has none, pushed at SessionStart and handed over at the first edit', () =>
+{
+    const p = wsProject({ rootDocs: { 'PERSONAL-CODE-PREFERENCES.md': ROOT_PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE, 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS }, childDocs: { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL } });
+    try
+    {
+        const held = reason(p.hook(edit('src/app.ts', sid())));
+        assert.match(held, /put behaviour on the type/, held);
+        assert.doesNotMatch(held, /ROOT-ONLY/, 'the child\'s copy wins');
+        assert.match(held, /a handler validates/, 'the root\'s architecture doc applies');
+        assert.match(pushed(p.hook(start(sid(), 'startup'))), /lead with the verdict/, 'the root\'s personal doc is pushed');
+        const off = reason(p.hook(edit('src/app.ts', sid()), { ALFRED_CODE_WORKSPACE: '0' }));
+        assert.doesNotMatch(off, /a handler validates/, 'the kill switch reads only the child\'s own');
+    }
+    finally { p.rm(); }
+});
+
+test('ignore doc PERSONAL-CODE-PREFERENCES.md takes only the root\'s copy out', () =>
+{
+    const p = wsProject({ rootDocs: { 'PERSONAL-CODE-PREFERENCES.md': ROOT_PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE }, childFile: 'parent ..\nignore doc PERSONAL-CODE-PREFERENCES.md\n' });
+    try
+    {
+        const held = reason(p.hook(edit('src/app.ts', sid())));
+        assert.match(held, /a handler validates/, held);
+        assert.doesNotMatch(held, /ROOT-ONLY/);
+    }
+    finally { p.rm(); }
+});
+
+test('a Read of the root\'s copy does not mark the doc while the child holds its own; it marks it when the child has none', () =>
+{
+    const p = wsProject({ rootDocs: { 'PERSONAL-CODE-PREFERENCES.md': ROOT_PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE }, childDocs: { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL } });
+    try
+    {
+        const s = sid();
+        p.hook(pre('Read', { file_path: p.rootDoc('PERSONAL-CODE-PREFERENCES.md') }, s));
+        p.hook(pre('Read', { file_path: p.rootDoc('ARCHITECTURE-PREFERENCES.md') }, s));
+        const held = reason(p.hook(edit('src/app.ts', s)));
+        assert.match(held, /put behaviour on the type/, 'the child\'s own copy is still owed');
+        assert.doesNotMatch(held, /a handler validates/, 'the root\'s copy, the one that applies, was read');
+        assert.ok(!denied(p.hook(pre('Read', { file_path: p.rootDoc('PERSONAL-CODE-PREFERENCES.md') }, sid()))), 'reading an ancestor doc is never held');
+    }
+    finally { p.rm(); }
+});
+
+test('an ancestor section is handed over with a Read line naming its absolute path, never docs.js show; the path is the additionalDirectories entry', () =>
+{
+    const p = wsProject({ rootDocs: { 'PROJECT-CODE-PREFERENCES.md': PROJECT }, engine: true });
+    try
+    {
+        const held = reason(p.hook(edit('src/app.ts', sid())));
+        const doc = p.rootDoc('PROJECT-CODE-PREFERENCES.md');
+        assert.ok(held.includes(`Read ${doc} ('C#')`), held);
+        assert.doesNotMatch(held, /docs\.js show PROJECT-CODE/);
+        assert.ok(doc.startsWith(layoutLib.docsRootOf(p.ws, { env: { CLAUDE_CONFIG_DIR: path.join(p.top, 'config') } }) + path.sep), 'one string with the installer\'s entry');
+    }
+    finally { p.rm(); }
+});

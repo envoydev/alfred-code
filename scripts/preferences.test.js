@@ -840,3 +840,23 @@ test('the capture asks about each new or changed glob Scope:\'s reach, keeping i
     assert.match(options[0], /^- 'Yes, those files \(Recommended\)' - /);
     assert.match(options[1], /^- 'Change the pattern' - [^\n]*run reach again$/);
 });
+
+// Release 3, T4 (R3): readDirs - the project's own dirs, then each linked member's; the own alone without layout.js.
+test('readDirs lists the own dirs first, then the root\'s; a copy with no layout.js beside it reads the own alone', () =>
+{
+    const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-readdirs-')));
+    try
+    {
+        const put = (rel, text) => { const f = path.join(work, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+        put('ws/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/.alfred/workspace', 'child api\n');
+        put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/.alfred/workspace', 'parent ..\n');
+        const api = path.join(work, 'ws', 'api');
+        const env = { CLAUDE_CONFIG_DIR: path.join(work, 'config') };
+        const real = require('../stack/skills/capture-preferences/scripts/preferences.js');
+        assert.deepStrictEqual(real.readDirs(api, { env }).map((e) => e.dir), [path.join(api, '.alfred', 'docs', 'preferences'), path.join(work, 'ws', '.alfred', 'docs', 'preferences')]);
+        put('lone/skills/capture-preferences/scripts/preferences.js', fs.readFileSync(require.resolve('../stack/skills/capture-preferences/scripts/preferences.js'), 'utf8'));
+        const lone = require(path.join(work, 'lone', 'skills', 'capture-preferences', 'scripts', 'preferences.js'));
+        assert.deepStrictEqual(lone.readDirs(api, { env }).map((e) => e.dir), [path.join(api, '.alfred', 'docs', 'preferences')]);
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
+});

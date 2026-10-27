@@ -295,3 +295,24 @@ test('topMember is the last linked member, null for a project with no parent', (
     assert.strictEqual(layout.topMember(at('ws/mid/api'), { env: env0 }).root, at('ws'));
     assert.strictEqual(layout.topMember(at('ws'), { env: env0 }), null);
 });
+
+// ---- release 3, T4: the ancestors' preferences folders (R0, R3) ------------------------------------------------------
+const prefsOf = (list) => list.map((e) => [e.dir, [...e.skip].sort()]);
+test('ancestorPrefsDirs lists each linked member\'s preferences nearest first; a grandchild keeps its parent\'s own copy of a file the parent ignores in the root, and loses one the parent ignores', () =>
+{
+    const at = tree({ 'ws': { stamp: true, file: 'child mid\n' }, 'ws/mid': { stamp: true, file: 'parent ..\nchild api\nignore doc GIT-PREFERENCES.md\n' }, 'ws/mid/api': { stamp: true, file: 'parent ..\n' } });
+    const env = { ...env0 };
+    assert.deepStrictEqual(prefsOf(layout.ancestorPrefsDirs(at('ws/mid/api'), { env })), [
+        [path.join(at('ws/mid'), '.alfred', 'docs', 'preferences'), []],
+        [path.join(at('ws'), '.alfred', 'docs', 'preferences'), ['GIT-PREFERENCES.md']],
+    ]);
+    assert.deepStrictEqual(layout.ancestorPrefsDirs(at('ws'), { env }), [], 'the root has no ancestor');
+});
+
+test('ancestorPrefsDirs: the child\'s own ignore doc skips every member, ignore docs root drops them, the kill switch reads none', () =>
+{
+    const at = tree({ 'ws': { stamp: true, file: 'child api\nchild web\n' }, 'ws/api': { stamp: true, file: 'parent ..\nignore doc PERSONAL-CODE-PREFERENCES.md\n' }, 'ws/web': { stamp: true, file: 'parent ..\nignore docs root\n' } });
+    assert.deepStrictEqual(prefsOf(layout.ancestorPrefsDirs(at('ws/api'), { env: env0 })), [[path.join(at('ws'), '.alfred', 'docs', 'preferences'), ['PERSONAL-CODE-PREFERENCES.md']]]);
+    assert.deepStrictEqual(layout.ancestorPrefsDirs(at('ws/web'), { env: env0 }), []);
+    assert.deepStrictEqual(layout.ancestorPrefsDirs(at('ws/api'), { env: { ...env0, ALFRED_CODE_WORKSPACE: '0' } }), []);
+});

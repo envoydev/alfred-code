@@ -700,6 +700,33 @@ function docsRootOf(root, { env = process.env, dataRoot } = {})
     const data = dataRoot || dataRootOf(root, { env: { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR } });
     return path.resolve(root, ...data.split('/'), 'docs');
 }
+// R3: each linked member's preferences folder, nearest first, read-only, while the switch is on. `skip` holds the files an
+// `ignore doc <file>` here or in a nearer member drops for THAT member (R0); `ignore docs root` drops the member and every
+// one past it, as it drops their docs roots.
+function ancestorPrefsDirs(projectRoot, { env = process.env } = {})
+{
+    if (!workspaceOn({ env, projectRoot })) return [];
+    const chain = workspaceChain(projectRoot, { env });
+    const skip = new Set();
+    let dropped = false;
+    const take = (ignores) =>
+    {
+        for (const i of ignores || [])
+        {
+            if (i.category === 'doc') { skip.add(i.name); if (i.name.startsWith('preferences/')) skip.add(i.name.slice('preferences/'.length)); }
+            else if (i.category === 'docs' && i.name === 'root') dropped = true;
+        }
+    };
+    take(chain.ignores);
+    const out = [];
+    for (const m of chain.members)
+    {
+        if (dropped) break;
+        out.push({ dir: path.join(docsRootOf(m.root, { env, dataRoot: m.dataRoot }), 'preferences'), skip: new Set(skip) });
+        take(m.ignores);
+    }
+    return out;
+}
 // The workspace root (D3's 'root'): the chain's last linked member, null with no parent. The switch is the caller's.
 function topMember(projectRoot, { env = process.env } = {})
 {
@@ -711,6 +738,6 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, docsRootOf, topMember, managedSettingsFile,
+    memoryDirsOf, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };
