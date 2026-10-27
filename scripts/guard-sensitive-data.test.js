@@ -448,6 +448,30 @@ test('workspace chain: under the kill switch the parent\'s values do not flow, a
     }
 });
 
+// GitHub's Windows runner, 2026-10-27: its temp dir is the 8.3 `RUNNER~1`, which the JS realpath keeps while the workspace
+// chain's native one expands it, so a parent's store read through the short spelling matched no store and passed. The
+// tree's top (`ws-XXXXXX`, past eight characters) has a short name wherever the volume makes them.
+const shortName = (p) =>
+{
+    if (process.platform !== 'win32') return p;
+    // verbatim: Node's own quoting of the inner quotes is not cmd's
+    const r = spawnSync('cmd.exe', ['/d', '/s', '/c', `"for %I in ("${p}") do @echo %~sI"`], { encoding: 'utf8', windowsVerbatimArguments: true });
+    return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : p;
+};
+const shortAlias = (at, rel = '.') => path.join(shortName(at()), ...rel.split('/'));
+const hasShort = (at) => shortAlias(at) !== at() && fs.existsSync(shortAlias(at));
+test('workspace chain: a parent\'s store reached through its 8.3 short name is still the store', { skip: !hasShort(wsTree({ x: {} })) && 'no 8.3 short names here' }, () =>
+{
+    const custom = wsThree({ ws: CUSTOM });
+    const store = path.join(shortAlias(custom, 'ws'), 'var', 'data', '.secrets');
+    assert.strictEqual(run({ tool_name: 'Read', tool_input: { file_path: store }, cwd: shortAlias(custom, 'ws/api'), session_id: 'suite' }).status, 2, 'the Read is denied by real path');
+    assert.strictEqual(bash(shortAlias(custom, 'ws/api'), 'tar cf - ../var/data'), 2, 'a tree verb reaching it is refused');
+    const at = wsThree();
+    const out = wrapped(shortAlias(at, 'ws/api'), node('out', 'A', 'B'), WS_ON);
+    assert.strictEqual(out.status, 0, out.stderr);
+    assert.match(out.stderr, /\.\.\/\.alfred\/\.secrets: B\b/, 'the parent is named from the child, not from the disk\'s root');
+});
+
 // R9 (AC21): the runner passes a server's stdout unmasked and secret-chain.js returns the values raw, so a command line
 // naming either, whatever its path, is refused and pointed to --with-sensitive. Only the store refusal's looks pass.
 const shellVerdict = (tool, cwd, command) => verdict(run({ tool_name: tool, tool_input: { command }, cwd, session_id: 'suite' }));

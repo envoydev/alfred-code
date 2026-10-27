@@ -52,7 +52,9 @@ function readStore(file)
 }
 
 const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
-const realOf = (f) => { try { return fs.realpathSync(f); } catch { return path.resolve(f); } };
+// The native realpath first, as layout.js's workspace chain takes it: the JS one keeps a Windows 8.3 short name
+// (`RUNNER~1`) the chain's members never carry, and a store compared in two spellings matched nothing.
+const realOf = (f) => { try { return fs.realpathSync.native(f); } catch { try { return fs.realpathSync(f); } catch { return path.resolve(f); } } };
 // The store files at one place: the first that exists, or with `all` every one of both names.
 function filesAt(place, dataRoot, all)
 {
