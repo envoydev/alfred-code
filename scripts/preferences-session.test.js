@@ -1687,7 +1687,7 @@ function wsProject({ rootDocs = {}, childDocs = {}, childFile = 'parent ..\n', e
     const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools,preferences-session:host' };
     delete env.ALFRED_CODE_WORKSPACE;
     const hook = (payload, extra = {}) => spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify({ cwd: root, ...payload }), encoding: 'utf8', env: { ...env, ...extra } });
-    return { top, ws, root, hook, rootDoc: (f) => path.join(layoutLib.docsRootOf(ws, { env }), 'preferences', f), rm: () => fs.rmSync(top, { recursive: true, force: true }) };
+    return { top, ws, root, config, env, write, hook, rootDoc: (f) => path.join(layoutLib.docsRootOf(ws, { env }), 'preferences', f), rm: () => fs.rmSync(top, { recursive: true, force: true }) };
 }
 
 test('a child: its own preference doc wins over the root\'s of the same name; the root\'s applies where it has none, pushed at SessionStart and handed over at the first edit', () =>
@@ -1746,4 +1746,122 @@ test('an ancestor section is handed over with a Read line naming its absolute pa
         assert.ok(doc.startsWith(layoutLib.docsRootOf(p.ws, { env: { CLAUDE_CONFIG_DIR: path.join(p.top, 'config') } }) + path.sep), 'one string with the installer\'s entry');
     }
     finally { p.rm(); }
+});
+
+// ---- release 3, T6: the workspace root's memory index at a child's start, inside the total budget (R6, R7) -----------
+const sanitized = (p) => p.normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
+const memDirOf = (p) => path.join(p.config, 'projects', sanitized(p.ws), 'memory');
+const memHead = (p) => `Workspace root memory (read-only): ${path.join(memDirOf(p), 'MEMORY.md')}`;
+const putIndex = (p, text) => p.write(path.join(memDirOf(p), 'MEMORY.md'), text);
+const indexOf = (n) => Array.from({ length: n }, (_, i) => `- line ${i + 1}`).join('\n') + '\n';
+
+test('the line names <dir>/MEMORY.md and its first 60 lines - indexes of 59, 60 and 61 lines', () =>
+{
+    const p = wsProject();
+    try
+    {
+        for (const n of [59, 60, 61])
+        {
+            putIndex(p, indexOf(n));
+            const text = pushed(p.hook(start(sid(), 'startup')));
+            assert.ok(text.includes(`${memHead(p)}\n- line 1\n`), text);
+            assert.ok(text.includes(`- line ${Math.min(n, 60)}`), `${n}: the last kept line`);
+            assert.doesNotMatch(text, /- line 61/, `${n}: no 61st line`);
+        }
+    }
+    finally { p.rm(); }
+});
+
+test('6 KB minus one byte is whole, 6 KB plus one byte is cut at a line', () =>
+{
+    const p = wsProject();
+    try
+    {
+        const lines = Array.from({ length: 9 }, (_, i) => `${i}`.padEnd(600, 'a'));
+        const head = lines.join('\n') + '\n'; // 9 x 601 = 5409 bytes
+        putIndex(p, `${head}${'z'.repeat(6143 - 5409)}`);
+        assert.ok(pushed(p.hook(start(sid(), 'startup'))).endsWith('z'.repeat(6143 - 5409)), 'whole at 6143 bytes');
+        putIndex(p, `${head}${'z'.repeat(6145 - 5409)}`);
+        const cut = pushed(p.hook(start(sid(), 'startup')));
+        assert.doesNotMatch(cut, /zzz/, 'the line past 6144 bytes goes');
+        assert.ok(cut.endsWith(lines[8]), 'cut at a line');
+    }
+    finally { p.rm(); }
+});
+
+test('a personal doc at its cap, the tools line and a 6 KB index stay under 10,000 characters of additionalContext, the index cut to fit', () =>
+{
+    const big = '# Personal preferences\n\n' + Array.from({ length: 80 }, (_, i) => `- rule ${i}: ${'keep answers short and lead with the verdict '.slice(0, 40)}`).join('\n') + '\n';
+    const p = wsProject({ childDocs: { 'PERSONAL-PREFERENCES.md': big } });
+    try
+    {
+        const index = Array.from({ length: 50 }, (_, i) => `- memory ${String(i).padStart(2, '0')} ${'m'.repeat(109)}`).join('\n');
+        assert.ok(Buffer.byteLength(index) <= 6144 && index.length > 6000);
+        putIndex(p, index);
+        const text = pushed(p.hook(start(sid(), 'startup'), { ALFRED_CODE_HOOKS_OFF: '' }));
+        assert.ok(text.length < 10000, `${text.length} chars`);
+        assert.match(text, /rule 0:/, 'the personal doc leads');
+        assert.ok(text.includes(`${memHead(p)}\n- memory 00`), 'the index starts');
+        assert.doesNotMatch(text, /- memory 49/, 'and is cut to fit');
+    }
+    finally { p.rm(); }
+});
+
+test('the path-only floor - 299 characters left gives the path alone, 300 and 301 give the cut index', () =>
+{
+    const { memoryLine, MEMORY_ROOM } = require('../stack/hooks/preferences-session.js');
+    const file = path.join(os.tmpdir(), 'mem', 'MEMORY.md');
+    const head = `Workspace root memory (read-only): ${file}`;
+    const index = indexOf(60);
+    const usedFor = (left) => MEMORY_ROOM - head.length - 1 - left;
+    assert.strictEqual(memoryLine(file, index, usedFor(299)), head);
+    for (const left of [300, 301])
+    {
+        const got = memoryLine(file, index, usedFor(left));
+        assert.ok(got.startsWith(`${head}\n- line 1\n`), got);
+        assert.ok(got.length - head.length - 1 <= left, `${left}: within the room`);
+        assert.ok(!got.endsWith('\n') && /- line \d+$/.test(got), `${left}: cut at a line`);
+    }
+});
+
+test('no memory line: an empty MEMORY.md, a missing MEMORY.md or folder, CLAUDE_CODE_PROJECT_DIR_NAME, ignore memory root, the kill switch, a seat\'s start', () =>
+{
+    const p = wsProject();
+    const ig = wsProject({ childFile: 'parent ..\nignore memory root\n' });
+    try
+    {
+        const none = (q, payload = start(sid(), 'startup'), extra = {}) => assert.doesNotMatch(pushed(q.hook(payload, extra)), /Workspace root memory/);
+        none(p);
+        fs.mkdirSync(memDirOf(p), { recursive: true });
+        none(p);
+        putIndex(p, '');
+        none(p);
+        putIndex(p, indexOf(3));
+        assert.match(pushed(p.hook(start(sid(), 'startup'))), /Workspace root memory/, 'the control');
+        none(p, start(sid(), 'startup'), { CLAUDE_CODE_PROJECT_DIR_NAME: 'x' });
+        none(p, start(sid(), 'startup'), { ALFRED_CODE_WORKSPACE: '0' });
+        none(p, { ...start(sid(), 'compact'), agent_id: 'seat-1', agent_type: 'alfred-code:reviewer' }, { ALFRED_CODE_HOOKS_OFF: '' });
+        putIndex(ig, indexOf(3));
+        none(ig);
+    }
+    finally { p.rm(); ig.rm(); }
+});
+
+test('ws/api\'s ignore memory root drops the index for ws/api/tool too (R0); a child whose memory folder equals the root\'s gets no line', () =>
+{
+    const p = wsProject({ childFile: 'parent ..\nchild tool\nignore memory root\n' });
+    const shared = wsProject();
+    try
+    {
+        const tool = path.join(p.root, 'tool');
+        p.write(path.join(tool, '.claude', 'alfred-code.stamp'), 'sha: x\n'); p.write(path.join(tool, '.alfred', 'workspace'), 'parent ..\n');
+        spawnSync('git', ['init', '-q'], { cwd: tool });
+        putIndex(p, indexOf(3));
+        const r = spawnSync(process.execPath, [HOOK], { cwd: tool, input: JSON.stringify({ cwd: tool, ...start(sid(), 'startup') }), encoding: 'utf8', env: { ...p.env, CLAUDE_PROJECT_DIR: tool } });
+        assert.doesNotMatch(pushed(r), /Workspace root memory/);
+        shared.write(path.join(shared.config, 'settings.json'), JSON.stringify({ autoMemoryDirectory: path.join(shared.top, 'mem') }));
+        shared.write(path.join(shared.top, 'mem', 'MEMORY.md'), indexOf(3));
+        assert.doesNotMatch(pushed(shared.hook(start(sid(), 'startup'))), /Workspace root memory/);
+    }
+    finally { p.rm(); shared.rm(); }
 });

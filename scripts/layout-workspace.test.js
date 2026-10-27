@@ -316,3 +316,49 @@ test('ancestorPrefsDirs: the child\'s own ignore doc skips every member, ignore 
     assert.deepStrictEqual(layout.ancestorPrefsDirs(at('ws/web'), { env: env0 }), []);
     assert.deepStrictEqual(layout.ancestorPrefsDirs(at('ws/api'), { env: { ...env0, ALFRED_CODE_WORKSPACE: '0' } }), []);
 });
+
+// ---- release 3, T6: the workspace root's memory folder (R0, R6) ------------------------------------------------------
+const wsMem = (m, rel, extra = {}) => layout.workspaceMemoryOf(m.at(rel), { env: m.env, home: m.home, managed: m.managed, ...extra });
+test('workspaceMemoryOf names the TOP member\'s memory folder from any child; null at the root and with the switch at 0', () =>
+{
+    const m = memTree({ 'ws': { stamp: true, git: true, file: 'child mid\n' }, 'ws/mid': { stamp: true, git: true, file: 'parent ..\nchild api\n' }, 'ws/mid/api': { stamp: true, git: true, file: 'parent ..\n' } });
+    const want = path.join(m.acct, 'projects', sanitized(m.at('ws')), 'memory');
+    assert.strictEqual(wsMem(m, 'ws/mid/api'), want);
+    assert.strictEqual(wsMem(m, 'ws/mid'), want);
+    assert.strictEqual(wsMem(m, 'ws'), null, 'the root has no ancestor');
+    assert.strictEqual(wsMem(m, 'ws/mid/api', { env: { ...m.env, ALFRED_CODE_WORKSPACE: '0' } }), null);
+    assert.strictEqual(wsMem(m, 'ws/mid/api', { env: { ...m.env, CLAUDE_CODE_PROJECT_DIR_NAME: 'x' } }), null);
+});
+
+test('workspaceMemoryOf: ignore memory root in the child or a nearer member drops it (R0); a folder equal to the child\'s own is null', () =>
+{
+    const m = memTree({ 'ws': { stamp: true, git: true, file: 'child mid\nchild web\n' }, 'ws/mid': { stamp: true, git: true, file: 'parent ..\nchild api\nignore memory root\n' }, 'ws/mid/api': { stamp: true, git: true, file: 'parent ..\n' }, 'ws/web': { stamp: true, git: true, file: 'parent ..\n' } });
+    assert.strictEqual(wsMem(m, 'ws/mid'), null, 'its own ignore');
+    assert.strictEqual(wsMem(m, 'ws/mid/api'), null, 'a nearer member\'s ignore');
+    assert.strictEqual(wsMem(m, 'ws/web'), path.join(m.acct, 'projects', sanitized(m.at('ws')), 'memory'));
+    fs.writeFileSync(path.join(m.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: '~/shared-mem' }));
+    assert.strictEqual(wsMem(m, 'ws/web'), null, 'one account-level folder is the child\'s own memory');
+});
+
+test('workspaceMemoryOf past 200 characters: a child sharing the root\'s first 200 cannot tell whose a folder is; with its own folder elsewhere, one match is the root\'s and two are none', () =>
+{
+    const m = memTree({});
+    const base = m.at('.');
+    const ws = path.join(base, 'w'.repeat(Math.max(1, 205 - (sanitized(base).length + 1))));
+    for (const [dir, file] of [[ws, 'child api\n'], [path.join(ws, 'api'), 'parent ..\n']])
+    {
+        fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), STAMP); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+        execFileSync('git', ['init', '-q'], { cwd: dir });
+    }
+    const head = sanitized(ws).slice(0, 200);
+    const api = path.join(ws, 'api');
+    const of = () => layout.workspaceMemoryOf(api, { env: m.env, home: m.home, managed: m.managed });
+    assert.strictEqual(of(), null, 'no folder yet');
+    fs.mkdirSync(path.join(m.acct, 'projects', `${head}-b5411q`, 'memory'), { recursive: true });
+    assert.strictEqual(of(), null, 'the child\'s own name lists the same folder');
+    fs.writeFileSync(path.join(api, '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: path.join(base, 'api-mem') }));
+    assert.strictEqual(of(), path.join(m.acct, 'projects', `${head}-b5411q`, 'memory'));
+    fs.mkdirSync(path.join(m.acct, 'projects', `${head}-zz09aa`, 'memory'), { recursive: true });
+    assert.strictEqual(of(), null, 'two matches: no line');
+});

@@ -734,10 +734,27 @@ function topMember(projectRoot, { env = process.env } = {})
     return members.length ? members[members.length - 1] : null;
 }
 
+// R6: the workspace root's (the top member's) memory folder, read-only to a child. Null at a root or with the switch at 0,
+// past an `ignore memory root` here or in a nearer member (R0), unless exactly one folder matches, and when it is one of
+// the child's own (a shared account-level value): that is not the root's memory to show.
+function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env) } = {})
+{
+    if (!workspaceOn({ env, projectRoot })) return null;
+    const chain = workspaceChain(projectRoot, { env });
+    const { members } = chain;
+    if (!members.length) return null;
+    const ignored = (ignores) => (ignores || []).some((i) => i.category === 'memory' && i.name === 'root');
+    if (ignored(chain.ignores) || members.slice(0, -1).some((m) => ignored(m.ignores))) return null;
+    const found = memoryDirsOf(members[members.length - 1].root, { env, home, managed });
+    if (found.length !== 1) return null;
+    const own = new Set(memoryDirsOf(projectRoot, { env, home, managed }).map(dirKey));
+    return own.has(dirKey(found[0])) ? null : found[0];
+}
+
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs,
+    memoryDirsOf, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

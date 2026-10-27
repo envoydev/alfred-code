@@ -821,6 +821,38 @@ function personalPush(ctx) {
     + `this session as alfred-preferences.md ranks them:\n\n${shown}`;
 }
 
+// R6/R7 (release 3): the workspace root's memory index at a child's main start. Claude Code swaps a hook context past
+// 10,000 characters for a path and a preview, so the index is sized last, by what the other parts used, with a 500 margin:
+// its first 60 lines, then 6 KB of UTF-8, then the room left, each cut at a line; under 300 left, the path alone.
+const MEMORY_ROOM = 9500;
+const MEMORY_LINES = 60;
+const MEMORY_BYTES = 6144;
+const MEMORY_FLOOR = 300;
+const cutAtLine = (s, fits) => {
+  let at = s.length;
+  while (at > 0 && !fits(s.slice(0, at))) at = s.lastIndexOf('\n', at - 1);
+  return at > 0 ? s.slice(0, at) : '';
+};
+// `used`: the characters the rest of the start's additionalContext holds, the separator before this part included.
+function memoryLine(file, text, used) {
+  const head = `Workspace root memory (read-only): ${file}`;
+  const left = MEMORY_ROOM - used - head.length - 1;
+  if (left < MEMORY_FLOOR) return head;
+  let body = String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n').slice(0, MEMORY_LINES).join('\n').trimEnd();
+  body = cutAtLine(body, (x) => Buffer.byteLength(x, 'utf8') <= MEMORY_BYTES);
+  body = cutAtLine(body, (x) => x.length <= left);
+  return body ? `${head}\n${body}` : head;
+}
+function memoryText(ctx, used) {
+  let dir = null;
+  try { dir = layout && layout.workspaceMemoryOf ? layout.workspaceMemoryOf(ctx.home) : null; } catch { dir = null; }
+  if (!dir) return '';
+  const file = path.join(dir, 'MEMORY.md');
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return ''; }
+  return text.trim() ? memoryLine(file, text, used) : '';
+}
+
 // A seat's start, or a typed review's: the docs it judges against (`seat` from seatDocs), every section of the project doc
 // as far as it fits. With a record to keep (`files`) what was handed is marked there, with `extra` beside it, and the
 // entries one room could not hold wait for its first reads; with none, they are named.
@@ -974,7 +1006,9 @@ function main() {
     }
     // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose; the host lines are short.
     const personal = personalPush(ctx);
-    const text = [personal, toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    const rest = [personal, toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    const memory = memoryText(ctx, rest ? rest.length + 2 : 0);
+    const text = [rest, memory].filter(Boolean).join('\n\n');
     // A measurement, never a block (`mode`): the usage analyzer's preferences claim reads it (item 7, 2026-10-25).
     if (personal) blockRow(ctx, input, 'preferences-push', `probe: preferences-push - ${PERSONAL_DOC.file}, ${personal.length} chars`, { mode: 'probe' });
     if (text) emit('SessionStart', { additionalContext: text });
@@ -1104,7 +1138,7 @@ function main() {
   emit('PreToolUse', { permissionDecision: 'deny', permissionDecisionReason: reasons.join('\n\n') });
 }
 
-module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP };
+module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
 if (require.main === module) {
   try { main(); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
 }
