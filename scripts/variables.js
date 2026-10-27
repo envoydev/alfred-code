@@ -39,7 +39,9 @@ function parse(argv)
     return cmd === 'set' && !out.pairs.length ? null : out;
 }
 
-function main()
+// `env` is the launch env: the prelude the entry loads for its blocking stdio also applies the stack's variables to
+// process.env, which would make show name every inherited value `env`.
+function main(env = process.env)
 {
     const args = parse(process.argv.slice(2));
     if (!args)
@@ -49,19 +51,20 @@ function main()
     }
     if (args.cmd === 'show')
     {
-        for (const row of variables.show(args.root)) console.log(`${row.key}=${row.value} (${row.source})`);
-        for (const note of layout.variablesOf(args.root).notes) console.log(note);
+        for (const row of variables.show(args.root, { env })) console.log(`${row.key}=${row.value} (${row.source})`);
+        for (const note of layout.variablesOf(args.root, { env }).notes) console.log(note);
         return 0;
     }
-    const got = variables.set(args.root, args.pairs, { scope: args.scope || undefined });
+    const got = variables.set(args.root, args.pairs, { scope: args.scope || undefined, env });
     return got.refused.length ? 1 : 0;
 }
 
 if (require.main === module)
 {
+    const launch = { ...process.env };
     // A pipe's write is async on POSIX: blocking first, so process.exit never cuts the output short.
     require('../stack/hooks/hook-prelude.js').blockingStdio();
-    process.exit(main());
+    process.exit(main(launch));
 }
 
 module.exports = { parse, main };

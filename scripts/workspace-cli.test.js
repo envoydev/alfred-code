@@ -238,6 +238,20 @@ test('status prints each chain key with its source and no value', () =>
     for (const n of [1, 2, 3, 4]) assert.ok(!r.out.includes(value(n)), 'no value printed');
 });
 
+// The CLI loads hook-prelude for its blocking stdio, and the prelude applies the chain to process.env at load: show must
+// still name where each value comes from, run from the project as status runs it - never `env` for an inherited one.
+test('variables.js show run from the project names an inherited value from <rel>, not env', () =>
+{
+    const at = joined();
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=90\n');
+    fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'ALFRED_CODE_HISTORY=4\n');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'variables.js'), 'show', '--root', '.'], { cwd: at('ws/api'), encoding: 'utf8', env: ENV });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^ALFRED_CODE_SCORER_LEVEL=90 \(from \.\.\)$/m, r.stdout);
+    assert.match(r.stdout, /^ALFRED_CODE_HISTORY=4 \(own\)$/m);
+    assert.match(r.stdout, /^ALFRED_CODE_TURN_CHECK=0 \(default\)$/m, 'a key no file holds reads its default, not the env the prelude filled');
+});
+
 test('ignore --add and --remove edit this project\'s ignore lines', () =>
 {
     const at = joined();
