@@ -22,6 +22,8 @@ function use(p) {
   _ignored = undefined;
   _started = undefined;
   _modelId = undefined;
+  _floor = undefined;
+  _firstUsage = undefined;
 }
 
 // The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each (the user's ruling of 2026-10-16;
@@ -359,24 +361,58 @@ function ctxThreshold() {
 // therefore goes quiet by design - a resume that recovers 16k per message is not worth a turn, and
 // the harness's own compaction covers that session.
 const MIN_RECOVERABLE_SHARE = 0.4;
-function coldFloor() {
+// The floor is the FIRST main-session reply's usage, read forward from the head in 512KB chunks up to 8MB: a head of
+// attachment rows or a long paste once hid it in a single 512KB read (and the floor then read as unmeasured), and a
+// sidechain or `<synthetic>` row stood in for it. Lines split on the newline byte, the bytes past a chunk's last one
+// carried into the next, so a line - and a multibyte character on the cut - is decoded whole. Memoized per payload.
+const FLOOR_CHUNK = 512 * 1024;
+const FLOOR_READ_MAX = 8 * 1024 * 1024;
+let _floor;
+let _firstUsage;
+function replyUsage(line) {
+  if (!line.includes('"assistant"')) return null;
+  let o;
+  try { o = JSON.parse(line); } catch { return null; }   // a partial or shapeless row - keep looking
+  if (!o || o.type !== 'assistant' || o.isSidechain || !o.message || o.message.model === '<synthetic>') return null;
+  return o.message.usage && typeof o.message.usage === 'object' ? o.message.usage : null;
+}
+function setFloor(u) { _firstUsage = u; _floor = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0); }
+function readFloor() {
+  if (_floor !== undefined) return;
+  _floor = null;
+  _firstUsage = null;
+  let fd;
   try {
     const p = payload.transcript_path;
-    if (!p) return null;
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(Math.min(fs.statSync(p).size, 512 * 1024));
-    fs.readSync(fd, buf, 0, buf.length, 0);   // the HEAD of the file - message 1, not the tail
-    fs.closeSync(fd);
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (!line.includes('"assistant"')) continue;
-      try {
-        const u = JSON.parse(line).message.usage;
-        if (u) return (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
-      } catch { /* a partial or shapeless row - keep looking */ }
+    if (!p) return;
+    fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(FLOOR_CHUNK);
+    let carry = Buffer.alloc(0);
+    let pos = 0;
+    let eof = false;
+    while (pos < FLOOR_READ_MAX) {
+      const n = fs.readSync(fd, buf, 0, Math.min(FLOOR_CHUNK, FLOOR_READ_MAX - pos), pos);
+      if (n <= 0) { eof = true; break; }
+      pos += n;
+      const data = carry.length ? Buffer.concat([carry, buf.subarray(0, n)]) : buf.subarray(0, n);
+      let start = 0;
+      for (let nl = data.indexOf(0x0a); nl !== -1; nl = data.indexOf(0x0a, start)) {
+        const u = replyUsage(data.toString('utf8', start, nl));
+        start = nl + 1;
+        if (u) { setFloor(u); return; }
+      }
+      carry = Buffer.from(data.subarray(start));
     }
-    return null;
-  } catch { return null; }
+    // a last line with no newline is whole only at the end of the file
+    const u = eof && carry.length ? replyUsage(carry.toString('utf8')) : null;
+    if (u) setFloor(u);
+  } catch { /* unreadable - no floor */ } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already closed */ }
+  }
 }
+function coldFloor() { readFloor(); return _floor; }
+// The first reply's usage object (its cached share is reported beside the verdict); null when the floor is unread.
+function firstUsage() { readFloor(); return _firstUsage; }
 // True when a resume is worth a turn: the carry MINUS this session's own floor is a real share of
 // what every message now costs. Anything unreadable - no floor, no context figure - answers yes.
 function worthResuming(ctx) {
@@ -532,7 +568,7 @@ function askAnsweredSince(from) {
 
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
-  tableWindow, recordSessionModel, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow,
+  tableWindow, recordSessionModel, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, firstUsage, worthResuming, contextNow,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

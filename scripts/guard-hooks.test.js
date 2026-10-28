@@ -3933,14 +3933,18 @@ test('fresh-session offer: what a resume would RECOVER, not the absolute carry -
         { type: 'assistant', message: { id: 'x', content: [{ type: 'text', text: 'hi' }] } },
         assistantRow('nu', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
     ]), w200()), 0, 'a row carrying no usage is not a billed message - the floor is the first one that is');
-    // The floor is read from the HEAD of the transcript. A session whose first half-megabyte holds
-    // no billed message at all (a giant paste before the first answer) has no readable floor, and
-    // the offer then goes out exactly as it did before this rule existed.
+    // The floor is read anywhere in the first 8MB, so a giant paste before the first answer no longer hides it: the
+    // reply at the floor's own size recovers nothing. Past 8MB with no reply the floor is unread, today's yes.
     const wall = transcript('recov-wall', [
         { type: 'user', message: { role: 'user', content: 'x'.repeat(600 * 1024) } },
         assistantRow('w1', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
     ]);
-    assert.equal(stop(wall, w200()), 2, 'an unreadable floor answers yes - fail open, never silent');
+    assert.equal(stop(wall, w200()), 0, 'the floor behind a 600KB head is read - the reply at the floor\'s own size recovers nothing');
+    const deep = transcript('recov-deep', [
+        { type: 'user', message: { role: 'user', content: 'x'.repeat(8.5 * 1024 * 1024) } },
+        assistantRow('d1', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
+    ]);
+    assert.equal(stop(deep, w200()), 2, 'no reply in the first 8MB - unread, today\'s yes until the switch');
 });
 
 test('guard-stop-contract: the three block shapes the audit reproduced', () => {
@@ -4511,6 +4515,58 @@ test('fresh-session engine: the arithmetic both fresh-session hooks share lives 
   eng.use({});
   assert.equal(eng.freshAt('NO_SUCH_FRESH_KEY', 7), 7, 'garbage or absent takes the default');
   assert.equal(eng.worthResuming(300000), true, 'an unreadable floor answers yes');
+});
+
+// The floor is the session's FIRST main-session reply wherever it sits in the first 8MB: a head of attachment rows, a
+// sidechain or a <synthetic> row before it, or a line cut by a read chunk never hides it or stands in for it.
+const floorEng = () => require(path.join(HOOKS, 'fresh-session.js'));
+const floorOf = (file) => { const eng = floorEng(); eng.use({ transcript_path: file }); return eng.coldFloor(); };
+const firstReply = () => assistantRow('r1', 'hi', { cache_creation_input_tokens: 79000 });
+const writeLines = (name, lines) => { const p = path.join(TMP, `${name}.jsonl`); fs.writeFileSync(p, lines.join('\n') + '\n'); return p; };
+
+test('coldFloor: a first reply behind 600KB of attachment rows is read', () => {
+  const head = Array.from({ length: 600 }, (_, i) => ({ type: 'attachment', attachment: { type: 'note', i, content: 'a'.repeat(1024) } }));
+  assert.equal(floorOf(transcript('floor-attach', [...head, firstReply()])), 79000);
+});
+
+test('coldFloor: a sidechain row and a <synthetic> row before the reply are skipped', () => {
+  assert.equal(floorOf(transcript('floor-side', [
+    { type: 'assistant', isSidechain: true, message: { id: 's1', content: [], usage: { cache_creation_input_tokens: 5000 } } },
+    { type: 'assistant', message: { id: 'y1', model: '<synthetic>', content: [], usage: { input_tokens: 0 } } },
+    firstReply(),
+  ])), 79000);
+});
+
+test('coldFloor: a row straddling the chunk boundary is read whole', () => {
+  const reply = JSON.stringify(assistantRow('r1', 'é'.repeat(200), { cache_creation_input_tokens: 79000 }));
+  // the reply's line starts so the 512KB cut lands 21 bytes into its run of two-byte characters - mid-character
+  const start = 512 * 1024 - reply.indexOf('é') - 21;
+  const base = JSON.stringify({ type: 'user', message: { role: 'user', content: '' } }).length;
+  const pad = JSON.stringify({ type: 'user', message: { role: 'user', content: 'x'.repeat(start - 1 - base) } });
+  const file = writeLines('floor-straddle', [pad, reply]);
+  const bytes = fs.readFileSync(file);
+  assert.equal(bytes[512 * 1024 - 1], 0xc3, 'the cut splits a character');
+  assert.equal(floorOf(file), 79000);
+});
+
+test('coldFloor: a line that does not parse is skipped', () => {
+  const cut = JSON.stringify(assistantRow('c1', 'cut', { cache_creation_input_tokens: 50000 })).slice(0, 60);
+  assert.equal(floorOf(writeLines('floor-garbage', ['{not json', cut, JSON.stringify(firstReply())])), 79000);
+});
+
+test('coldFloor: no path, a missing file and a 0-byte file give null', () => {
+  const eng = floorEng();
+  eng.use({});
+  assert.equal(eng.coldFloor(), null);
+  assert.equal(floorOf(path.join(TMP, 'floor-absent.jsonl')), null);
+  const empty = path.join(TMP, 'floor-empty.jsonl');
+  fs.writeFileSync(empty, '');
+  assert.equal(floorOf(empty), null);
+});
+
+test('coldFloor: no reply in the first 8MB gives null', () => {
+  const big = { type: 'user', message: { role: 'user', content: 'x'.repeat(8.5 * 1024 * 1024) } };
+  assert.equal(floorOf(transcript('floor-8mb', [big, firstReply()])), null);
 });
 
 test('fresh-session engine: both hooks run silent when the engine file is missing', () => {
