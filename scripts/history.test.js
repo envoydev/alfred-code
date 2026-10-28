@@ -7,8 +7,12 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const H = require('../stack/hooks/history.js');
 
+// Every folder a case makes is removed after the file: none was, and 1,410 were found in os.tmpdir() on 2026-10-28.
+const made = [];
+const tmpDir = (prefix) => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix)); made.push(dir); return dir; };
+test.after(() => { for (const dir of made) fs.rmSync(dir, { recursive: true, force: true }); });
 function project() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-'));
+  const root = tmpDir('hist-');
   const git = (...a) => execFileSync('git', a, { cwd: root, stdio: 'ignore' });
   git('init', '-q', '-b', 'feature/x'); git('config', 'user.email', 't@t'); git('config', 'user.name', 't');
   fs.writeFileSync(path.join(root, 'seed.txt'), 'seed'); git('add', '.'); git('commit', '-qm', 'seed');
@@ -16,7 +20,7 @@ function project() {
 }
 const row = (o) => JSON.stringify(o) + '\n';
 // the transcript lives OUTSIDE the project, as a real one does - inside it, it would count as a dirty file
-const transcriptFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hist-tr-')), 't.jsonl');
+const transcriptFile = () => path.join(tmpDir('hist-tr-'), 't.jsonl');
 const ruling = (q, a, ts = '2026-09-20T10:00:00.000Z') => row({ type: 'user', timestamp: ts, toolUseResult: { questions: [], answers: { [q]: a } }, message: { content: [{ type: 'tool_result', content: 'x' }] } });
 const planWrite = (p) => row({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: p } }] } });
 
@@ -120,7 +124,7 @@ test('the start block skips an empty entry and leaves out a plan no longer on di
 });
 
 test('garbage in, nothing out: no transcript, no git, a corrupt entry file', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-bad-'));
+  const root = tmpDir('hist-bad-');
   assert.doesNotThrow(() => H.upsert(root, { session_id: 's4', transcript_path: path.join(root, 'absent.jsonl'), cwd: root }));
   fs.mkdirSync(H.historyDir(root), { recursive: true });
   fs.writeFileSync(path.join(H.historyDir(root), 's5.json'), '{nope');
@@ -129,7 +133,7 @@ test('garbage in, nothing out: no transcript, no git, a corrupt entry file', () 
 });
 
 test('prune keeps the newest N and drops entries past the age limit', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-prune-'));
+  const dir = tmpDir('hist-prune-');
   for (let i = 0; i < 5; i++) { const p = path.join(dir, `s${i}.json`); fs.writeFileSync(p, '{}'); const t = new Date(Date.now() - i * 86400000); fs.utimesSync(p, t, t); }
   H.prune(dir, 3, 365);
   assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort(), ['s0.json', 's1.json', 's2.json']);
