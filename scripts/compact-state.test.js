@@ -380,8 +380,10 @@ test('compact-state: the first change after an automatic compaction is held once
     const call = (p, tp, tool, extra = {}) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, transcript_path: tp, ...extra }, env).status;
     const p = project();
     const tp = p.transcript(rows);
-    assert.match(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env)),
-        /without asking the user any further questions' - that is the harness's default line, and this hook supersedes it/);
+    const started = startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env));
+    assert.match(started, /without asking the user any further questions' - that is the harness's default line, and this hook supersedes it/);
+    assert.match(started, /when a fresh session would pay back with the cache warm/, 'the start states the cache-aware verdict');
+    assert.doesNotMatch(started, /recover a real share/, 'and no longer the 40% rule');
     // audit 2026-10-20 C12, add5a91e: before any post-compaction reading, a shell call that writes nothing passes
     assert.strictEqual(call(p, tp, 'Bash', { tool_input: { command: 'cat .alfred/docs/flow/COMPACT-STATE' } }), 0, 'a reading shell call passes');
     after(tp, usageRow('b', { cache_read_input_tokens: 120000 }));
@@ -390,7 +392,7 @@ test('compact-state: the first change after an automatic compaction is held once
     const held = p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: tp }, env);
     assert.strictEqual(held.status, 2, 'the first edit is held');
     assert.match(held.stderr, /~120k tokens per message/, 'the measured post-compaction carry');
-    assert.match(held.stderr, /~40k, this session's own first message/, 'and the cold floor');
+    assert.match(held.stderr, /A fresh session restarts at ~40k, written new at 1\.25x/, 'and the cold floor, priced');
     assert.strictEqual(call(p, tp, 'Bash'), 2, 'still held - no ask yet');
     assert.strictEqual(call(p, tp, 'Edit'), 0, 'two denials, then it gives way - never a loop');
     const q = project();
@@ -467,8 +469,9 @@ test('compact-state: the prompt ending an idle gap past the clock hours is offer
     assert.strictEqual(r.status, 0);
     const text = startText(r);
     assert.match(text, /sat idle 19\.0h since its last reply/);
-    assert.match(text, /~290k tokens of context/);
-    assert.match(text, /~78k, this session's own first message/);
+    assert.match(text, /This session carries ~290k tokens per message/);
+    assert.match(text, /A fresh session restarts at ~78k, written new at 1\.25x/);
+    assert.match(text, /this message has already re-written the context, so the choice is priced as from now/);
     assert.match(text, /Resume in a fresh session \(Recommended\)/);
     assert.strictEqual(prompt(p, tp).stdout, '', 'once per gap - the next prompt of the same gap is not offered again');
     const ledger = fs.readdirSync(log, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).map((f) => fs.readFileSync(path.join(log, String(f)), 'utf8')).join('')
@@ -519,7 +522,7 @@ test('compact-state: the idle gap leaves a hold the first change meets, released
     assert.strictEqual(held.status, 2, 'fdce35ae: the work prompt\'s first change is held');
     assert.match(held.stderr, /sat idle 19(?:\.0)?h/);
     assert.match(held.stderr, /~290k tokens per message/);
-    assert.match(held.stderr, /~78k, this session's own first message/);
+    assert.match(held.stderr, /A fresh session restarts at ~78k, written new at 1\.25x/);
     assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 2, 'a writing shell call is a change');
     assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
     const a = setup();
@@ -568,7 +571,7 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
     assert.strictEqual(held.status, 2, 'the first change after the answer is held');
     assert.match(held.stderr, /last ask waited 4\.8h for its answer/);
     assert.match(held.stderr, /~290k tokens per message/);
-    assert.match(held.stderr, /~78k, this session's own first message/);
+    assert.match(held.stderr, /A fresh session restarts at ~78k, written new at 1\.25x/);
     const ledger = fs.readFileSync(path.join(s.p.root, '.alfred', 'statistics', 'hook-blocks', `${s.p.sid}.jsonl`), 'utf8');
     assert.match(ledger, /"kind":"idle-gap-offer"[^\n]*"via":"ask-answer"/, 'one probe row says where it came from');
     fs.appendFileSync(s.tp, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'f2',
@@ -583,6 +586,77 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
     const seat = setup(4.8);
     assert.strictEqual(seat.p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: seat.tp, agent_id: 'seat-1' },
         { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'askgap-')) }).status, 0, 'a seat is never held');
+});
+
+// The cache-aware verdict (spec 2026-10-28, sections 1-3): claude-opus-5-5 reads at 0.05x, the 1h split writes at 2x and
+// the payback window is 30, so over a 79k floor a fresh session pays back past a 211,600 carry - and never at ctx 0.
+test('compact-state: the chained, hold and idle routes offer only where a fresh session pays back with the cache warm', () =>
+{
+    const F = 79000;
+    const H1 = { cache_creation_input_tokens: F, cache_creation: { ephemeral_1h_input_tokens: F, ephemeral_5m_input_tokens: 0 } };
+    const read = (n) => ({ cache_read_input_tokens: n });
+    const PAYS = /This session carries ~250k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x the input price\. A fresh session restarts at ~79k, written new at 2x, and pays back in about 23 messages\./;
+    const ledgerOf = (p) => { try { return fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8'); } catch { return ''; } };
+
+    // The chained run (the second typed command): judged on the verdict alone, no size floor.
+    const user = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+    const result = () => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
+    const call = (id, usage) => ({ type: 'assistant', message: { id, model: 'claude-opus-5-5', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }], ...(usage ? { usage } : {}) } });
+    const said = (id, text, usage) => ({ type: 'assistant', message: { id, model: 'claude-opus-5-5', content: [{ type: 'text', text }], ...(usage ? { usage } : {}) } });
+    const chain = (ctx, head) => [...(head ? [user('x'.repeat(600 * 1024))] : []), user('<command-name>/capture-architecture</command-name>'),
+        call('c1', ctx ? H1 : null), result(), call('c2', ctx ? read(F) : null), result(), said('c3', 'captured', ctx ? read(F) : null),
+        user('now the quality loop'), said('c4', 'ok', ctx ? read(ctx) : null), user('<command-name>/loop-code-quality</command-name>')];
+    const slash = (ctx, head) => {
+        const p = project();
+        const r = p.run({ hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'loop-code-quality', command_args: '',
+            prompt: '/loop-code-quality', transcript_path: p.transcript(chain(ctx, head)) }, { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'pay-chain-')) });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return (r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '').replace(/(?:^|\n\n)Open your reply to this command with these two lines[\s\S]*$/, '');
+    };
+    assert.strictEqual(slash(100000), '', '100k does not pay back');
+    assert.strictEqual(slash(200000), '', '200k does not either - the 40% rule offered it');
+    assert.strictEqual(slash(0), '', 'no reading: no offer');
+    assert.strictEqual(slash(100000, true), '', 'a floor behind a 600KB head is read, and 100k over it does not pay');
+    const chained = slash(250000);
+    assert.match(chained, /ALREADY run one/, '250k pays back - the offer');
+    assert.match(chained, PAYS, 'priced with the cache warm');
+    assert.doesNotMatch(chained, /re-sends/, 'no re-send claim');
+
+    // The compaction hold: holds where it pays, releases where it does not, and waits out a call with no reading.
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'pay-hold-')) };
+    const rows = [usageRow('f', H1), usageRow('a', read(316000)), boundary('auto', 317000)];
+    const edit = (p, tp) => p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: tp }, env);
+    const low = project();
+    const tl = low.transcript(rows);
+    low.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tl }, env);
+    fs.appendFileSync(tl, JSON.stringify(usageRow('b', read(110000))) + '\n');
+    assert.strictEqual(edit(low, tl).status, 0, '110k does not pay back: the change goes through');
+    assert.match(ledgerOf(low), /"kind":"compact-hold"[^\n]*"outcome":"not-worth-resuming"/, 'released, one row');
+    const zero = project();
+    const tz = zero.transcript(rows);
+    zero.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tz }, env);
+    assert.strictEqual(edit(zero, tz).status, 0, 'ctx 0 - no reading after the compaction: the call passes');
+    const holdFile = path.join(env.ALFRED_CODE_HOOK_LOG_DIR, `guard-fresh-compact-${tz.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.hold`);
+    assert.ok(fs.existsSync(holdFile), 'the hold stays armed');
+    assert.strictEqual(JSON.parse(fs.readFileSync(holdFile, 'utf8')).denied, 0, 'no denial spent');
+    fs.appendFileSync(tz, JSON.stringify(usageRow('b', read(250000))) + '\n');
+    const held = edit(zero, tz);
+    assert.strictEqual(held.status, 2, 'the next changing call, at 250k, is held');
+    assert.match(held.stderr, PAYS, 'with the paying text');
+    assert.doesNotMatch(held.stderr, /re-sends|re-writes all/);
+
+    // The idle-gap offer after a 3h gap.
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const idle = (carry) => {
+        const p = project();
+        const tp = p.transcript([{ ...usageRow('f', H1), timestamp: ago(4) }, { ...usageRow('l', read(carry)), timestamp: ago(3) }]);
+        const r = p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next card', transcript_path: tp }, { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'pay-idle-')) });
+        return r.stdout ? startText(r) : '';
+    };
+    assert.strictEqual(idle(100000), '', '100k after 3h: no offer');
+    const offer = idle(250000);
+    assert.match(offer, /sat idle 3\.0h since its last reply; this message has already re-written the context, so the choice is priced as from now: /);
+    assert.match(offer, PAYS);
 });
 
 // Audit 2026-10-10 C19, b35afe70: spec-check printed `path: gated`, the plan was written and task-verify-plan ran 8s

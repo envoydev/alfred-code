@@ -543,7 +543,7 @@ test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line ar
     fs.rmSync(p.gate);
     const attended = ask(p, 'pay2', [outward], { transcript_path: cycle() });
     assert.strictEqual(attended.status, 2, 'off auto-mode the new cycle\'s first ask is still sent back');
-    assert.match(attended.stderr, /Resume in a fresh session \(Recommended\)/);
+    assert.match(attended.stderr, /add a fresh-session option to this first ask of a new cycle - This session carries ~362k tokens per message/);
 });
 
 // audit 2026-10-14 SKF-04 (the user's ruling, option A): the upgrade's hard stop is a rail. Put as the attended run puts

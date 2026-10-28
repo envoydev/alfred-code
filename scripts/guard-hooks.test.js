@@ -1574,16 +1574,16 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and fix
   const bare = [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }];
   const numbered = ask(hot, bare);
   assert.equal(numbered.status, 0, numbered.stderr);
-  assert.match(updOf(numbered).questions[0].options[0].description, /^start clean Measured now: ~900k tokens per message in this session/, 'the measured carry appended to its description');
+  assert.match(updOf(numbered).questions[0].options[0].description, /^start clean Measured now: This session carries ~900k tokens per message; with the cache warm/, 'the measured carry appended to its description');
   assert.equal(updOf(numbered).questions[0].options[1].description, 'here', 'the other option untouched');
   assert.match(ctxOf(numbered), /fixed in place by the hook/, 'and the model is told what went out');
   assert.ok(updOf(ask(hot, bare)), 'every send is fixed - no once-per-text pass-through');
   const staleNum = ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~150k here vs ~90k fresh' }, { label: 'Continue', description: 'here' }] }]);
   assert.equal(staleNum.status, 0);
-  assert.match(updOf(staleNum).questions[0].options[0].description, /Measured now: ~900k/, 'a stale number - 150k quoted while the carry is 900k - is corrected too');
+  assert.match(updOf(staleNum).questions[0].options[0].description, /Measured now: This session carries ~900k/, 'a stale number - 150k quoted while the carry is 900k - is corrected too');
   const mixedReasons = ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
   assert.equal(mixedReasons.status, 2, 'numbers beside an unmarked question still deny once - the mark is no mechanical fix');
-  assert.match(mixedReasons.stderr, /Measured now: ~900k/, 'with the numbers in the corrected questions');
+  assert.match(mixedReasons.stderr, /Measured now: This session carries ~900k/, 'with the numbers in the corrected questions');
   assert.doesNotMatch(ctxOf(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }] }])), /offered no fresh session/i,
     'an ask that already offers it is not told to offer it');
 
@@ -3809,7 +3809,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     assert.match(offered, /ALREADY run one/, 'the offer names the reason - the prior run, not the size');
     assert.match(offered, /fresh session/, 'and carries the same offer the size trigger does');
     // c6142301 (audit 2026-10-10 C09): the chained variant dropped the measured carry, so the ask said 'size unmeasured'
-    assert.match(offered, /already carries ~60k tokens per message/, 'and the session\'s own carry');
+    assert.match(offered, /This session carries ~60k tokens per message/, 'and the session\'s own carry');
     // Spent only once ANSWERED (audit 2026-10-10 C09, ca65b406): a double-submitted command put the offer on the
     // abandoned branch, and the live branch's re-expansion found it spent - so an unanswered offer is made again ...
     assert.match(slash(second, env), /ALREADY run one/, 'an offer nobody answered is made again on the next expansion');
@@ -3923,10 +3923,12 @@ test('fresh-session offer: what a resume would RECOVER, not the absolute carry -
     const real = rows('recov-real', 12000, 159363);
     assert.equal(stop(real), 2, 'the same 159k with a small floor is 92% recoverable - offer it');
     assert.equal(askLoop(real, w200()), 2, '... and the gate blocks the chained run there');
-    // Exactly at the 40% line, from both sides.
-    assert.equal(stop(rows('recov-40', 120000, 200000)), 2, '40% recoverable is enough');
-    assert.equal(stop(rows('recov-39', 122000, 200000)), 0, '39% is not');
-    // An unreadable floor answers YES - the behaviour that shipped before the rule existed.
+    // The cache-aware verdict replaced the 40% line (2026-10-29): 120k under a 200k carry still pays back.
+    assert.equal(stop(rows('recov-40', 120000, 200000)), 2, 'a 120k floor under a 200k carry pays back');
+    // At the payback line, from both sides - Haiku 4.5 reads at 0.1x, no cache split is 5m (1.25x), payback 30: floor
+    // 131,578 costs 166,264,700 < 166,266,000 saved; 131,579 costs 166,265,850 > 166,263,000.
+    assert.equal(stop(rows('recov-pays', 131578, 200000)), 2, 'floor 131,578 pays back inside 30 messages');
+    assert.equal(stop(rows('recov-pays-not', 131579, 200000)), 0, 'floor 131,579 does not');
     assert.equal(stop(transcript('recov-nofloor', [assistantRow('nf', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 })]), w200()), 0,
         'a one-row session is all floor by its own arithmetic');
     assert.equal(stop(transcript('recov-noutoken', [
@@ -3934,7 +3936,8 @@ test('fresh-session offer: what a resume would RECOVER, not the absolute carry -
         assistantRow('nu', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
     ]), w200()), 0, 'a row carrying no usage is not a billed message - the floor is the first one that is');
     // The floor is read anywhere in the first 8MB, so a giant paste before the first answer no longer hides it: the
-    // reply at the floor's own size recovers nothing. Past 8MB with no reply the floor is unread, today's yes.
+    // reply at the floor's own size recovers nothing. Past 8MB with no reply the floor is unread, and an unmeasured
+    // floor answers no.
     const wall = transcript('recov-wall', [
         { type: 'user', message: { role: 'user', content: 'x'.repeat(600 * 1024) } },
         assistantRow('w1', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
@@ -3944,7 +3947,7 @@ test('fresh-session offer: what a resume would RECOVER, not the absolute carry -
         { type: 'user', message: { role: 'user', content: 'x'.repeat(8.5 * 1024 * 1024) } },
         assistantRow('d1', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
     ]);
-    assert.equal(stop(deep, w200()), 2, 'no reply in the first 8MB - unread, today\'s yes until the switch');
+    assert.equal(stop(deep, w200()), 0, 'an unmeasured floor answers no');
 });
 
 test('guard-stop-contract: the three block shapes the audit reproduced', () => {
@@ -4514,7 +4517,7 @@ test('fresh-session engine: the arithmetic both fresh-session hooks share lives 
   }
   eng.use({});
   assert.equal(eng.freshAt('NO_SUCH_FRESH_KEY', 7), 7, 'garbage or absent takes the default');
-  assert.equal(eng.worthResuming(300000), true, 'an unreadable floor answers yes');
+  assert.equal(eng.worthResuming(300000), false, 'an unread floor answers no');
 });
 
 // The floor is the session's FIRST main-session reply wherever it sits in the first 8MB: a head of attachment rows, a
@@ -4907,7 +4910,7 @@ test('guard-stop-contract: only an option that IS the fresh-session hand-off tak
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!updOf(r) || !JSON.stringify(updOf(r)).includes('Measured now'), 'an option that only mentions a fresh session is not the hand-off');
   const desc = ask(hot, [{ question: 'Next?', options: [{ label: 'Hand off (Recommended)', description: 'Resume in a fresh session from the plan file' }, { label: 'Continue', description: 'here' }] }]);
-  assert.match(JSON.stringify(updOf(desc)), /Measured now: ~900k/, 'a description that opens on the move is the hand-off');
+  assert.match(JSON.stringify(updOf(desc)), /Measured now: This session carries ~900k/, 'a description that opens on the move is the hand-off');
   const near = transcript('c07-near', [assistantRow('n1', 'ok', { cache_creation_input_tokens: 78000 }), assistantRow('n2', 'ok', { cache_read_input_tokens: 80000 })]);
   const atFloor = ask(near, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
   assert.equal(atFloor.status, 0, atFloor.stderr);

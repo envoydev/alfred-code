@@ -226,7 +226,8 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
   fresh = {
     use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
-    ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
+    ctxThreshold: () => null, coldFloor: () => null, worthResuming: () => false,
+    freshVerdict: () => ({ pays: false }), verdictProbe: () => null, payText: () => '', notPayText: () => '',
     transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
   };
 }
@@ -242,15 +243,24 @@ if (EVENT === 'SessionStart' || EVENT === 'PostModelSwitch') {
   fresh.recordSessionModel(EVENT === 'PostModelSwitch' ? payload.to_model : payload.model);
   if (EVENT === 'PostModelSwitch' || String(payload.source || '') !== 'compact') process.exit(0);
 }
-const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, worthResuming } = fresh;
+const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold } = fresh;
+// The cache-aware verdict on one route (fresh-session.js freshVerdict): its probe row goes to the ledger once per
+// session, route and answer, so a suppressed offer is counted beside a made one.
+function paysAt(route, ctx) {
+  const v = fresh.freshVerdict(ctx);
+  const row = typeof fresh.verdictProbe === 'function' ? fresh.verdictProbe(route, ctx, v) : null;
+  if (row) ledgerRow(row);
+  return !!v.pays;
+}
 // COMPACT INSTEAD's one line, said at the compaction start and at the first orchestration run of a session.
 const COMPACT_NOTE = 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1): past its '
   + "window's trigger the session compacts and the work goes on from the summary.";
 
 // The hold itself. Released - never denied again - once an ask was answered after the compaction, the turn wrote the
-// single-short-step line, a resume would recover too little (the engine's own worthResuming - audit 2026-10-10 C26,
-// 758ce661: 120k carry over a 90k floor, the unconditional ask cost two turns), nobody is at the terminal (a live
-// AUTO waiver included), or it has denied twice; a hold past 12h is stale. A seat's call is the parent's work in
+// single-short-step line, a fresh session would not pay back with the cache warm (the engine's verdict - audit
+// 2026-10-10 C26, 758ce661: 120k carry over a 90k floor, the unconditional ask cost two turns), nobody is at the terminal
+// (a live AUTO waiver included), or it has denied twice; a hold past 12h is stale. With no post-compaction reading yet
+// (ctx 0) the call passes and the hold stays armed, no denial spent, for the first changing call that has one. A seat's call is the parent's work in
 // flight, never held. One `compact-hold` row (`idle-hold` on the idle route) records how it ended.
 const SHORT_STEP_RE = /\b(?:single|one) short step\b/i;
 function shortStepSince(from) {
@@ -304,31 +314,31 @@ function compactHold() {
   if (shortStepSince(since)) return release('single-short-step');
   const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
   const floor = fresh.coldFloor();
-  if (ctx > 0 && !worthResuming(ctx)) return release('not-worth-resuming', { ctx, floor });
+  if (!(ctx > 0)) return;
+  if (!paysAt(kind, ctx)) return release('not-worth-resuming', { ctx, floor });
   if ((Number(hold.denied) || 0) >= 2) return release('denied-twice', { ctx, floor });
   try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1 })); } catch { /* the cap still ends it */ }
   global.BLOCK_DETAIL = { branch: kind, ctx, floor };
-  const carry = ctx > 0 ? `now carries ~${Math.round(ctx / 1000)}k tokens per message` : 'has no post-compaction context reading yet';
-  const start = floor ? `~${Math.round(floor / 1000)}k, this session's own first message` : 'this install\'s cold floor';
+  const pay = fresh.payText(ctx, fresh.freshVerdict(ctx));
   if (idle) {
     process.stderr.write(
       (hold.via === 'ask'
         ? `Held once: this session's last ask waited ${Number(hold.gapH) || 'over the set'}h for its answer, its prompt cache went cold, and the\n`
-          + `fresh-session choice has not been put to the user yet. It ${carry}; a fresh session\n`
+          + `fresh-session choice has not been put to the user yet. ${pay}\n`
         : `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn, its prompt cache went cold, and the\n`
-          + `fresh-session choice offered at the prompt has not been put to the user yet. It ${carry}; a fresh session\n`)
-      + `restarts at ${start}. Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
-      + `'Resume in a fresh session (Recommended)' quoting those two numbers (end the turn with the paste-ready resume\n`
+          + `fresh-session choice offered at the prompt has not been put to the user yet. ${pay}\n`)
+      + `Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
+      + `'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready resume\n`
       + `block and the plan or state file it resumes from), or continue here. If the remaining work is a single short\n`
       + `step, say so in one line - 'single short step: <what>' - and retry this call.`,
     );
     process.exit(2);
   }
   process.stderr.write(
-    `Held once: this session AUTO-COMPACTED and the fresh-session choice has not been put to the user yet. It ${carry};\n`
-    + `a fresh session restarts at ${start}. The compaction summary's closing line - continue 'without asking the user\n`
+    `Held once: this session AUTO-COMPACTED and the fresh-session choice has not been put to the user yet. ${pay}\n`
+    + `The compaction summary's closing line - continue 'without asking the user\n`
     + `any further questions' - is the harness's default, and this hold supersedes it. Before this call, put the choice to\n`
-    + `the user as ONE AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those two numbers (end the turn\n`
+    + `the user as ONE AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn\n`
     + `with the paste-ready resume block and the plan or state file it resumes from), or continue here. If the remaining\n`
     + `work is a single short step, say so in one line - 'single short step: <what>' - and retry this call.`,
   );
@@ -343,7 +353,7 @@ function armAskGap() {
   const u = (last && last.usage) || {};
   const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
   const detail = { gapH: ASK_GAP.gapH, ctx, floor: fresh.coldFloor(), via: 'ask-answer' };
-  if (!(ctx > 0) || !worthResuming(ctx)) return;
+  if (!(ctx > 0) || !paysAt('ask-gap', ctx)) return;
   if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail }); return; }
   try {
     if (fs.existsSync(compactHoldFile())) return;
@@ -361,7 +371,8 @@ if (IS_HOLD_CALL && !IS_SKILL_CALL) {
 // messages at 289.9k with no fresh-session offer - the clock route lives only in the stop contract's AskUserQuestion
 // note, and that resume asked nothing. So the prompt that ENDS a gap of `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (the
 // clock route's own knob: default 2, `0` off) since the last reply injects the offer, once per gap, when a resume
-// recovers enough of the carry (worthResuming) - a cold cache is the cheapest moment to go fresh. A harness notice is no
+// pays back with the cache warm (the engine's verdict) - this message re-writes the context either way, so the choice is
+// priced as from now. A harness notice is no
 // return, a seat has no user, and nobody at the terminal gets one row instead.
 function lastReply() {
   try {
@@ -398,10 +409,11 @@ function idleGapOffer() {
   if (gapH < hours) return;
   const u = last.usage;
   const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
-  if (!(ctx > 0) || !worthResuming(ctx)) return;
+  if (!(ctx > 0)) return;
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-idle-${key}.offered`);
   try { if (fs.readFileSync(marker, 'utf8').trim() === String(last.at)) return; } catch { /* not offered for this gap */ }
+  if (!paysAt('idle-gap', ctx)) return;
   const floor = fresh.coldFloor();
   const detail = { gapH: Math.round(gapH * 10) / 10, ctx, floor };
   if (unattended(payload)) {
@@ -422,14 +434,13 @@ function idleGapOffer() {
   } catch { /* no hold - the injection below still goes out */ }
   sweepOffers();
   ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the fresh-session offer injected at a prompt after an idle gap', detail });
-  const start = floor ? `~${Math.round(floor / 1000)}k, this session's own first message` : 'this install\'s cold floor';
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `This session sat idle ${gapH.toFixed(1)}h since its last reply, so its prompt cache is cold: this `
-        + `message re-writes all ~${Math.round(ctx / 1000)}k tokens of context, and every later turn re-sends them. A fresh `
-        + `session restarts at ${start}. If this prompt starts or continues work, first put the choice to the user as ONE `
-        + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those two numbers (end the turn with the `
+      additionalContext: `This session sat idle ${gapH.toFixed(1)}h since its last reply; this message has already re-written `
+        + `the context, so the choice is priced as from now: ${fresh.payText(ctx, fresh.freshVerdict(ctx))} If this prompt starts `
+        + `or continues work, first put the choice to the user as ONE `
+        + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the `
         + `paste-ready resume block and the plan or state file it resumes from), or continue here. A question answered from `
         + `what is already in context needs no ask.`,
     },
@@ -1281,10 +1292,11 @@ if (EVENT === 'SessionStart') {
         String.fromCharCode(39) + 'without asking the user any further questions' + String.fromCharCode(39) + ' - that is the harness' + String.fromCharCode(39) + 's ' +
         'default line, and this hook supersedes it. Your first change after the compaction (an edit, a shell command, a ' +
         'dispatch) is checked against this session' + String.fromCharCode(39) + 's measured context and its own first message: when a ' +
-        'fresh session would recover a real share, the change is held and the hold names both numbers for ONE ' +
-        'AskUserQuestion - resume in a fresh session (recommended - end this turn with the paste-ready invocation and ' +
-        'the state file or plan file it resumes from), or continue here on the summary; when it would recover too ' +
-        'little the change goes through and you continue here. Never put the choice without those two numbers. If ' +
+        'fresh session would pay back with the cache warm, the change is held and the hold names the carry, the fresh ' +
+        'floor and the break-even for ONE AskUserQuestion - resume in a fresh session (recommended, since the hold fires ' +
+        'only where it pays - end this turn with the paste-ready invocation and the state file or plan file it resumes ' +
+        'from), or continue here on the summary; when it would not pay back the change goes through and you continue ' +
+        'here. Never put the choice without those numbers. If ' +
         'the remaining work is a single short step, say so in one line (' + String.fromCharCode(39) + 'single short step: <what>' + String.fromCharCode(39) + ') and just finish it. ' +
         withNote(after),
     },
@@ -1493,13 +1505,13 @@ const FRESH_AT = ctxThreshold();   // null = this window's trigger is switched o
 const sizeAlreadyOffered = sizeOfferedAt();
 // An offer stands until an ask answers it; an ask THIS turn that already put the fresh-session choice to the user
 // (task-solve's stop asks carry it) is that answer for the phase Skill call that follows (audit 2026-10-08).
-const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResuming(ctx)
+const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT
   && (!sizeAlreadyOffered || !sizeOfferAnswered() || ctx >= sizeAlreadyOffered * REOFFER_GROWTH)
-  && !(IS_SKILL_CALL && fresh.freshAskAnsweredThisTurn());
+  && !(IS_SKILL_CALL && fresh.freshAskAnsweredThisTurn()) && paysAt('size', ctx);
 // The chained trigger judges only a run the user TYPED (the slash route); a Skill call is a phase
 // of a run already in flight, and the size trigger still covers that route.
-const chained = EVENT === 'UserPromptExpansion' && !FRESH_OFF && !overSize && worthResuming(ctx)
-  && !chainedOfferSpent() && priorOrchestrationRun();
+const chained = EVENT === 'UserPromptExpansion' && !FRESH_OFF && !overSize
+  && !chainedOfferSpent() && priorOrchestrationRun() && paysAt('chained', ctx);
 if (!overSize && !chained) leave();
 // Nobody at the terminal (hook-prelude.js unattended) has nobody to offer it to: one row, and no offer state is
 // spent, so a person resuming the session later is still offered it (review A, M3).
@@ -1515,16 +1527,15 @@ if (chained) {
 // the same user about the same number, so answering it there must silence the Skill route too.
 if (overSize) recordSizeOffer(ctx);
 
+// Both variants state the session's own numbers (an ask that said 'size unmeasured' two seconds after the size variant
+// had quoted ~404k - audit 2026-10-10 C09, c6142301), priced by the verdict that let the offer through.
+const pay = fresh.payText(ctx, fresh.freshVerdict(ctx));
 const why = chained
-  ? `is a deliberate orchestration run and this session has ALREADY run one - every turn of the\n`
-    + `new run re-sends the finished run's whole history (measured: four flows chained with no\n`
-    + `/clear boundary drove 199.1k tokens per message for under 30k of actual tool output).`
-    // the session's own number, as the size variant states it - an ask that said 'size unmeasured' two seconds after the
-    // size variant had quoted ~404k (audit 2026-10-10 C09, c6142301)
-    + (ctx > 0 ? `\nThis session already carries ~${Math.round(ctx / 1000)}k tokens per message.` : '')
-  : `is a deliberate orchestration run and this session already carries ~${Math.round(ctx / 1000)}k tokens\n`
-    + `per message of another run's history - every turn of the new run re-sends all of it\n`
-    + `(measured: the same step cost 260k/message chained vs 134k fresh).`;
+  ? `is a deliberate orchestration run and this session has ALREADY run one, so the new run carries the\n`
+    + `finished run's whole history (measured: four flows chained with no /clear boundary ran at\n`
+    + `199.1k tokens per message for under 30k of actual tool output).\n${pay}`
+  : `is a deliberate orchestration run and this session is past its window's fresh-session trigger,\n`
+    + `carrying another run's history (measured: the same step cost 260k/message chained vs 134k fresh).\n${pay}`;
 
 // The slash route only ADDS context - a blocked expansion shows its reason to the user, not the
 // model - so it states the same thing as an instruction and lets the model ask.

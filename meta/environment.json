@@ -241,9 +241,22 @@
       "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
       "default": "2",
       "ask": false,
-      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends a gap of this many HOURS since the last reply (or since an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a resume recovers enough - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). Decimals work (`0.5`); `0` turns the idle offer off. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
+      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends a gap of this many HOURS since the last reply (or since an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). Decimals work (`0.5`); `0` turns the idle offer off. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
       "validate": {
         "type": "hours",
+        "off": "0"
+      }
+    },
+    {
+      "key": "ALFRED_CODE_FRESH_SESSION_PAYBACK",
+      "default": "30",
+      "ask": false,
+      "seed": false,
+      "what": "fresh-session.js: the payback window of the cache-aware fresh-session verdict - a fresh session is offered only when it pays back within this many messages, priced with the cache warm. A whole number from 0 to 1000; anything else reads as 30. `0` turns every fresh-session offer off. Not seeded: set it in .variables.",
+      "validate": {
+        "type": "int",
+        "min": 0,
+        "max": 1000,
         "off": "0"
       }
     },

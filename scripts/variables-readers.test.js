@@ -42,6 +42,7 @@ const ALLOWED = {
     'stack/hooks/fresh-session.js:CONTEXT_WINDOW_FOR_1M': 'freshAt reads the process env, which applyVariables fills',
     'stack/hooks/fresh-session.js:CONTEXT_WINDOW_FOR_300K': 'freshAt reads the process env, which applyVariables fills',
     'stack/hooks/fresh-session.js:CONTEXT_WINDOW_FOR_200K': 'freshAt reads the process env, which applyVariables fills',
+    'stack/hooks/fresh-session.js:FRESH_SESSION_PAYBACK': 'paybackOf reads the env it is handed - the process env applyVariables fills',
 };
 
 // A file that names a settings file in a string literal or calls a settings reader.

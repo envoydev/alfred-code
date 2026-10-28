@@ -354,21 +354,10 @@ function ctxThreshold() {
   if (seen && at >= seen * 0.9) at = Math.floor(seen * 0.9);
   return at > 0 ? at : null;   // 0 = this trigger's offer is switched off
 }
-// --- what a resume would actually RECOVER: the session's own cold floor ----------------------
-// The trigger is absolute context, and a large share of it can be the INSTALL's own standing
-// inventory - system prompt, CLAUDE.md, the always-on rules, every MCP tool schema - which a fresh
-// session pays again on its first message. Measured across the nine projects in the audited
-// collection that floor runs 87k-134k per message, and one 18-minute single-command run that
-// STARTED from `/clear` (first message 103,964) tripped the 150,000 gate at 159,363 after ~55k of
-// actual conversation: the ask and its close cost two messages and 320,973 context and moved
-// nothing. So the offer also asks what it would BUY - the part of the carry a resume does NOT
-// re-pay - and stays quiet while that is under 40% of what a message now costs. This is not a
-// percentage of the WINDOW (the retired PCT knob, where the clamps decided and the number lied);
-// it is read from this session's own first message, and an unreadable floor answers yes, which is
-// the behaviour that shipped before it. On an install whose floor is most of its window the offer
-// therefore goes quiet by design - a resume that recovers 16k per message is not worth a turn, and
-// the harness's own compaction covers that session.
-const MIN_RECOVERABLE_SHARE = 0.4;
+// --- what a fresh session restarts at: the session's own cold floor ---------------------------
+// A large share of the carry can be the INSTALL's own standing inventory - system prompt, CLAUDE.md, the always-on
+// rules - which a fresh session pays again on its first message (87k-134k across the nine audited projects). The
+// verdict below prices that restart against the warm cache.
 // The floor is the FIRST main-session reply's usage, read forward from the head in 512KB chunks up to 8MB: a head of
 // attachment rows or a long paste once hid it in a single 512KB read (and the floor then read as unmeasured), and a
 // sidechain or `<synthetic>` row stood in for it. Lines split on the newline byte, the bytes past a chunk's last one
@@ -549,12 +538,9 @@ function verdictProbe(route, ctx, v) {
   } catch { return null; }
   return verdictRow(route, ctx, v);
 }
-// True when a resume is worth a turn: the carry MINUS this session's own floor is a real share of
-// what every message now costs. Anything unreadable - no floor, no context figure - answers yes.
+// True when a fresh session is worth offering: the verdict pays. An unread floor or carry answers no.
 function worthResuming(ctx) {
-  const floor = coldFloor();
-  if (!ctx || floor === null || floor <= 0) return true;
-  return (ctx - floor) >= ctx * MIN_RECOVERABLE_SHARE;
+  return freshVerdict(ctx).pays;
 }
 
 // The context the LAST assistant message carried, read BACKWARDS from a small tail - for a hook that
@@ -704,7 +690,7 @@ function askAnsweredSince(from) {
 
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
-  tableWindow, recordSessionModel, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, firstUsage, worthResuming, contextNow,
+  tableWindow, recordSessionModel, knownWindow, ctxThreshold, coldFloor, firstUsage, worthResuming, contextNow,
   RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
   verdictRow, verdictProbe,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,

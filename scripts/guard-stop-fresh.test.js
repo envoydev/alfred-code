@@ -786,7 +786,7 @@ test('guard-stop-contract: a new cycle after a finished one is sent back once wi
   const env = logEnv();
   const r = askIn(transcript('nc-new', [...base, next, hot]), q, env);
   assert.equal(r.status, 2, 'the new cycle\'s first ask is sent back');
-  assert.match(r.stderr, /Resume in a fresh session \(Recommended\)' quoting ~362k per message here and ~40k for a fresh start/);
+  assert.match(r.stderr, /add a fresh-session option to this first ask of a new cycle - This session carries ~362k tokens per message/);
   assert.equal(askIn(transcript('nc-new', [...base, next, hot]), [{ ...q[0], question: `${q[0].question} Now?` }], env).status, 0, 'once per Completed stamp');
   assert.equal(askIn(transcript('nc-close', [...base, hot]), q, logEnv()).status, 0, 'the finished cycle\'s own close ask, before any new prompt, is left alone');
   const withFresh = [{ ...q[0], options: [{ label: 'Resume in a fresh session (Recommended)', description: '~362k here, ~40k fresh' }, { label: 'Build here', description: 'x' }] }];
@@ -828,6 +828,9 @@ test('guard-stop-contract: the fresh-session note carries the two absolute numbe
   assert.match(note, /90k/, "this session's own cold floor - the number a resume restarts at");
   assert.match(note, /400k/, 'and the trigger it crossed');
   assert.doesNotMatch(note, /80-105k/, 'the generic range is gone - the skill step needs THIS session\'s numbers');
+  assert.match(note, /This session carries ~500k tokens per message; with the cache warm \(5m TTL\) a turn re-reads it at 0\.1x the input price\. A fresh session restarts at ~90k, written new at 1\.25x, and pays back in about 3 messages\./,
+    'the paying text, priced with the cache warm');
+  assert.doesNotMatch(note, /re-sends all of it/, 'no re-send claim');
 });
 
 test('guard-stop-contract: a long or idle run offers the fresh session before the context trigger', () => {
@@ -852,6 +855,41 @@ test('guard-stop-contract: a long or idle run offers the fresh session before th
     { ...assistantRow('fb', 'ok', { cache_read_input_tokens: 120000 }), timestamp: ts(6) },
   ]);
   assert.equal(ctxOf(askIn(floorBound, oneQ)), '', 'six hours whose carry is 83% cold floor is not worth a resume');
+});
+
+// The cache-aware verdict (spec 2026-10-28, sections 1-3): claude-opus-5-5 reads at 0.05x, the 1h split writes at 2x and
+// the payback window is 30, so over a 79k floor a fresh session pays back past a 211,600 carry - and never at ctx 0.
+test('guard-stop-contract: the new-cycle deny, the post-answer note and the Stop offer go only where a fresh session pays back', () => {
+  const F = 79000;
+  const H1 = { cache_creation_input_tokens: F, cache_creation: { ephemeral_1h_input_tokens: F, ephemeral_5m_input_tokens: 0 } };
+  const row = (id, text, usage, timestamp) => ({ type: 'assistant', ...(timestamp ? { timestamp } : {}),
+    message: { id, model: 'claude-opus-5-5', content: [{ type: 'text', text }], ...(usage ? { usage } : {}) } });
+
+  // Check 10: a new cycle's first ask is sent back for a fresh option only where one pays.
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
+  const cycle = (name, ctx) => transcript(name, [{ type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
+    row('f', 'first', ctx ? H1 : null), completed, { type: 'user', message: { role: 'user', content: 'now the manager view' } },
+    row('h', 'Result: design done. Progress: 1 of 6 steps. Leftovers: none.', ctx ? { cache_read_input_tokens: ctx } : null)]);
+  const q = [{ question: 'Result: design done. Progress: 1 of 6 steps. Leftovers: none. Build it?', options: [{ label: 'Build (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  assert.equal(askIn(cycle('pay-nc-100', 100000), q).status, 0, 'check 10: 100k does not pay back - no deny');
+  assert.equal(askIn(cycle('pay-nc-0', 0), q).status, 0, 'check 10: no reading - no deny');
+  const denied = askIn(cycle('pay-nc-250', 250000), q);
+  assert.equal(denied.status, 2, 'check 10: 250k pays back - sent back');
+  assert.match(denied.stderr, /add a fresh-session option to this first ask of a new cycle - This session carries ~250k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x the input price\. A fresh session restarts at ~79k, written new at 2x, and pays back in about 23 messages\./);
+  assert.match(denied.stderr, /`Size:`/, 'the Size sentence stays');
+
+  // The post-answer note on the clock route: open 3h, priced by the same verdict.
+  const clock = (name, ctx) => transcript(name, [row(`${name}-f`, 'the first turn', H1, ts(0)), row(name, 'ok', { cache_read_input_tokens: ctx }, ts(3))]);
+  assert.equal(ctxOf(askIn(clock('pay-clock-100', 100000), oneQ)), '', '3h at 100k: no note');
+  assert.match(ctxOf(askIn(clock('pay-clock-250', 250000), oneQ)), /has been open 3\.0h[^]*This session carries ~250k tokens per message; with the cache warm \(1h TTL\)/, '3h at 250k: the note, priced');
+
+  // The finished-turn Stop offer past the 1M tier's trigger.
+  const stop = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript('pay-stop', [row('s-f', 'the first turn', H1),
+    row('s', 'Applied the change; tests pass.', { cache_read_input_tokens: 401000 })]) }, { env: logEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000' }) });
+  assert.equal(stop.status, 2, '401k past the 400k trigger pays back: the offer');
+  assert.match(stop.stderr, /This session carries ~401k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x the input price\. A fresh session restarts at ~79k, written new at 2x, and pays back in about 12 messages\./);
+  assert.doesNotMatch(stop.stderr, /re-sends all of it|NOT a tenth/);
 });
 
 test('guard-stop-contract: the prose written before an ask is checked for house voice', () => {

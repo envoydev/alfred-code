@@ -215,11 +215,20 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
   fresh = {
     use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
-    ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
+    ctxThreshold: () => null, coldFloor: () => null, worthResuming: () => false,
+    freshVerdict: () => ({ pays: false }), verdictProbe: () => null, payText: () => '', notPayText: () => '',
   };
 }
 fresh.use(payload);
-const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, coldFloor, worthResuming } = fresh;
+const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, coldFloor } = fresh;
+// The cache-aware verdict on one route (fresh-session.js freshVerdict): its probe row goes to the ledger once per
+// session, route and answer, so a suppressed offer is counted beside a made one.
+function paysAt(route, ctx) {
+  const v = fresh.freshVerdict(ctx);
+  const row = typeof fresh.verdictProbe === 'function' ? fresh.verdictProbe(route, ctx, v) : null;
+  if (row) ledgerRow(row);
+  return !!v.pays;
+}
 // The CLOCK the same offer is judged against in the AskUserQuestion branch (never in the Stop
 // branch, which blocks). Context is not the only thing that makes a resume worth it: 63.5% of the
 // audited collection's cache-read was paid under the 1M window's own trigger, and the flows' stop
@@ -2345,10 +2354,6 @@ if (payload.hook_event_name === 'Stop') {
     // null = this window's trigger is 0, which is the user switching the offer off.
     const _fresh_at = ctxThreshold();
     if (_fresh_at === null || ctx <= _fresh_at) process.exit(0);
-    if (!worthResuming(ctx)) {
-      breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} is mostly this session's own cold floor`);
-      process.exit(0);
-    }
     if (FRESH_RE.test(prose)) process.exit(0); // the OFFER is prose - a fenced example is not one
     if (freshAskAnsweredThisTurn()) {
       breadcrumb('Stop: fresh-session offer skipped, a fresh-session ask was answered this turn');
@@ -2368,24 +2373,20 @@ if (payload.hook_event_name === 'Stop') {
       breadcrumb('Stop: fresh-session offer deferred, work this session launched is still running');
       process.exit(0);
     }
+    if (!paysAt('stop', ctx)) {
+      breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} does not pay back with the cache warm`);
+      process.exit(0);
+    }
     recordBlockCtx(ctx);
     blockDetail('fresh-session', `ctx ${ctx} > trigger ${_fresh_at}`);
-    // The floor is this session's OWN first message when it is readable - the number the user can
-    // check - and the measured range across the audited projects when it is not.
-    const _floor = coldFloor();
-    const floorLine = _floor ? `measured at ~${Math.round(_floor / 1000)}k per message on this session's first turn`
-      : 'measured at 87-134k per message across the projects in the audit';
     process.stderr.write(
       // The old text claimed a resume 'costs roughly a tenth' - a ratio no measurement held, which reached users verbatim
       // inside the option descriptions they then acted on. State the absolute numbers instead, the ones the model can
-      // actually read: this turn's own per-message context and the session's cold floor.
-      `The work in this turn is finished and this session now carries ~${Math.round(ctx / 1000)}k tokens per\n` +
-      `message - every further turn re-sends all of it. A fresh session restarts at this\n` +
-      `session's own cold floor, ${floorLine},\n` +
-      `so the resume saves the difference (NOT a tenth of the carry - quote the two absolute\n` +
-      `numbers, never a ratio). Before continuing here, put the choice to the user with ONE\n` +
+      // actually read: this turn's own per-message context, the session's cold floor and the break-even.
+      `The work in this turn is finished. ${fresh.payText(ctx, fresh.freshVerdict(ctx))}\n` +
+      `Quote those absolute numbers, never a ratio. Before continuing here, put the choice to the user with ONE\n` +
       `AskUserQuestion call: first option 'Resume in a fresh session (Recommended)' carrying those\n` +
-      `two numbers, second option continuing here. Say in the description that the harness's own\n` +
+      `numbers, second option continuing here. Say in the description that the harness's own\n` +
       `auto-compaction would recover a similar floor unaided, so what the resume buys is the\n` +
       `difference plus keeping the choice theirs. If they pick the resume, answer with a short ack\n` +
       `and the paste-ready\n` +
@@ -2710,7 +2711,7 @@ if (payload.tool_name === 'AskUserQuestion') {
       const stale = questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt)
         && !quotes([q.question, ...q.options.map((o) => `${(o && o.label) || ''} ${(o && o.description) || ''}`)].join(' ')).some(near));
       // ...and only where a resume recovers something: at a carry near the cold floor the numbers argue for nothing (C07)
-      if (ctxNow > 0 && stale && worthResuming(ctxNow)) numbers = { ctx: ctxNow, floor: coldFloor() };
+      if (ctxNow > 0 && stale && paysAt('numbers', ctxNow)) numbers = { ctx: ctxNow, floor: coldFloor() };
     }
     // 8. TYPE IT INTO OTHER (OTHER_RE, above).
     const typeIntoOther = questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => o && OTHER_RE.test(`${o.label || ''} ${o.description || ''}`)));
@@ -2752,7 +2753,7 @@ if (payload.tool_name === 'AskUserQuestion') {
       if (fs2.flow && fs2.completed !== null && fs2.typedAfter) {
         const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
         const ctxNow = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
-        if (!ctxNow || worthResuming(ctxNow)) newCycle = { ctx: ctxNow, floor: coldFloor(), at: fs2.completed };
+        if (ctxNow > 0 && paysAt('new-cycle', ctxNow)) newCycle = { ctx: ctxNow, floor: coldFloor(), at: fs2.completed };
       }
     }
     // 11. APPROVAL OVER NOTHING SHOWN. An ask to approve, post, file or execute something is answered on what the chat
@@ -2778,7 +2779,7 @@ if (payload.tool_name === 'AskUserQuestion') {
       const fixAbove = (t) => (pointsAbove ? String(t).replace(ASK_ABOVE_RE, 'the resume block, printed after this answer') : String(t));
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const k = (n) => `~${Math.round(n / 1000)}k`;
-      const numberLine = numbers ? ` Measured now: ${k(numbers.ctx)} tokens per message in this session; a fresh one starts at ${numbers.floor ? k(numbers.floor) : 'this install\'s cold floor'}.` : '';
+      const numberLine = numbers ? ` Measured now: ${fresh.payText(numbers.ctx, fresh.freshVerdict(numbers.ctx))}` : '';
       const MARK = /\s*\(Recommended\)/i;
       const dropFresh = (opts) => {
         const kept = opts.filter((o) => !isFreshOpt(o));
@@ -2851,7 +2852,7 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (misMarked ? ` Put the mark on the option the question recommends, or reword the question so both say the same pick.` : '')
           + (noReview ? `${noReview.from === 'text' ? '' : ' State the cycle\'s `Size:` on the close - a trivial run has no stop, so a run that stops here is small at least.'} The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
           + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
-          + (newCycle ? ` A new cycle after a finished one recommends the fresh-session hand-off first: add 'Resume in a fresh session (Recommended)' quoting ${newCycle.ctx ? `${k(newCycle.ctx)} per message here` : 'this session\'s carry'} and ${newCycle.floor ? `${k(newCycle.floor)} for a fresh start` : 'the fresh start\'s floor'}, and state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
+          + (newCycle ? ` A finished cycle closed in this chat, so add a fresh-session option to this first ask of a new cycle - ${fresh.payText(newCycle.ctx, fresh.freshVerdict(newCycle.ctx))} Also state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
           + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
         process.exit(2);
@@ -2893,9 +2894,9 @@ if (payload.tool_name === 'AskUserQuestion') {
     // TWO routes to the same note. The context one is the trigger; the CLOCK one is the flows' own
     // 'spans hours / resumes after an idle gap' clause, which is prose and slipped in 3 of 3 bundles
     // that tested it - measured: 12 asks over 3h+ and a two-day idle gap carried no option at all
-    // and the resume then re-carried ~346k. The clock route makes no offer the resume would not pay
-    // for: worthResuming() is the same arithmetic the size trigger uses, so a carry that is mostly
-    // this install's own cold floor stays quiet however long the session has been open.
+    // and the resume then re-carried ~346k. Both routes make no offer a fresh session would not pay
+    // back: the verdict is the one the size trigger uses, so a carry that is mostly this install's
+    // own cold floor stays quiet however long the session has been open.
     if (!FRESH_OFF && !autoRun && !FRESH_RE.test(askText)) {
       const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
       const ctx = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
@@ -2904,21 +2905,18 @@ if (payload.tool_name === 'AskUserQuestion') {
       const clock = sessionClock();
       const overHours = FRESH_AFTER_HOURS > 0 && Math.max(clock.spanH, clock.gapH) >= FRESH_AFTER_HOURS;
       const overCtx = at !== null && ctx > at;
-      if ((overCtx || (overHours && ctx > 0 && worthResuming(ctx))) && !(since && ctx < since * REOFFER_GROWTH)) {
-        // The two ABSOLUTE numbers the flows' stop step has to quote and measured 0 of 2 in one run
-        // and 'a fraction of the token cost' in another: what a message costs now, and what a fresh
-        // one starts at. Both are read from this session, never estimated.
-        const floor = coldFloor();
+      if ((overCtx || overHours) && ctx > 0 && !(since && ctx < since * REOFFER_GROWTH) && paysAt('post-answer', ctx)) {
+        // The ABSOLUTE numbers the flows' stop step has to quote and measured 0 of 2 in one run and 'a fraction of the
+        // token cost' in another: what a message costs now, what a fresh one starts at, and when it pays back. All are
+        // read from this session, never estimated.
         const why = overCtx
           ? `is past this window's fresh-session trigger (${at === null ? 'off' : Math.round(at / 1000) + 'k'})`
           : `has been open ${Math.max(clock.spanH, clock.gapH).toFixed(1)}h`;
         // The moment is part of the number: an ask quoted a 74-minute-old '~192k' while the carry was 284.5k (C09, e6a68237).
-        notes.push(`This session carries ~${Math.round(ctx / 1000)}k tokens per message (measured at this ask, `
-          + `${new Date().toISOString().slice(11, 16)} UTC - quote a later ask's own number, never this one), ${why}, and every `
-          + `further turn re-sends all of it. A fresh session restarts at `
-          + `${floor ? `~${Math.round(floor / 1000)}k - this session's own first message` : 'this install\'s cold floor, 87-134k across the audited projects'}. `
+        notes.push(`This session ${why} (measured at this ask, ${new Date().toISOString().slice(11, 16)} UTC - quote a later `
+          + `ask's own number, never this one). ${fresh.payText(ctx, fresh.freshVerdict(ctx))} `
           + `The ask just answered offered no fresh session: if the work goes on, put an option to resume in a `
-          + `fresh session in the NEXT ask about what to do next, quoting those two absolute numbers in its `
+          + `fresh session in the NEXT ask about what to do next, quoting those absolute numbers in its `
           + `description - never a ratio.`);
       }
     }
