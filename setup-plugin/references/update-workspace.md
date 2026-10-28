@@ -23,25 +23,29 @@ Show the project rows in your message as one table - project, scope, version, ad
 Asked whenever a project below would run: the plan names a second project, or a `rescan:` row (counted as if joined);
 a plan whose only rows below are `gone:` asks nothing and runs the cascade, which only removes their lines. `<n>` is
 the plan's count less this project, plus the `rescan:` rows. In the same AskUserQuestion call as step 2's own asks
-while it holds fewer than four questions, else a call of its own right after. When a child row carries its own asks:
+while it holds fewer than four questions, else a call of its own right after. The scope ask and the join ask go in one
+call, the scope ask first; when step 2's own call has no room for both, they take a call of their own right after. When
+a child row carries its own asks:
 
 ```ask
-Update the <n> projects joined below this one as well? <each project: its rel and its asks, in a few words>.
+Update the <n> project(s) below this one as well? <each project: its rel and its asks, in a few words>.
 - 'Yes, their questions the recommended way (Recommended)' - each child updates now, top-down; each ask takes the Recommended option its own update would offer
 - 'Yes, I pick per project' - each child updates now; one question per ask next, headed with the project, its own options
 - 'Yes, their questions left for later' - each child updates now; nothing is passed, each offer stays an offer, asked again at that project's own update
-- 'No, only this project' - nothing below runs; each keeps its set until it is updated
+- 'No, only this project' - nothing below runs; each keeps its own copies and settings until it is updated
 ```
 
 When no child row carries one, the question offers the two ends:
 
 ```ask
-Update the <n> projects joined below this one as well? <each project's rel>.
+Update the <n> project(s) below this one as well? <each project's rel>.
 - 'Yes, update them too (Recommended)' - each child updates now, top-down, from this project's new set
-- 'No, only this project' - nothing below runs; each keeps its set until it is updated
+- 'No, only this project' - nothing below runs; each keeps its own copies and settings until it is updated
 ```
 
-A held child reads this project's new set at its own next update, so the cascade is the default, not a duty.
+A held child reads this project's new set at its own next update, so the cascade is the default, not a duty. A held
+child is not frozen whole: its folder is left as it is, but a core plugin installed for the whole account moves for
+every project, so its sessions run the new hooks and agents beside its older copies until its own update.
 On 'No, only this project', record it now, in step 2, and write no child's answers:
 
 ```bash
@@ -71,7 +75,7 @@ Recommended option for every ask, `update=ask-local` excepted, as the walk does.
 
 ```ask
 Join these installed projects as children of this one? <each rescan: rel>. Each then takes this install's set and keeps its own picks.
-- 'Join as children (Recommended)' - each join is written now, and the cascade below updates them unless the answer above was 'No, only this project'
+- 'Join as children (Recommended)' - each join is written now, and the cascade below updates them unless the scope ask's answer was 'No, only this project'
 - 'Leave them standalone' - nothing is written; the next --rescan lists them again
 ```
 
@@ -88,8 +92,8 @@ node "$TMP/repo/scripts/workspace.js" cascade --root . --source "$TMP/repo" --an
 ```
 
 The call is the same on either answer. With the hold recorded it reads nothing back and runs nothing: it names every
-project below `held` and ends on the same `cascade: done` line, so the close reports them as it reports a cascade, and
-a `gone` child keeps its line until a cascade runs.
+project below `held` (a gone one `gone-kept`, out of the count) and ends on the same `cascade: done` line, so the close
+reports them as it reports a cascade, and a gone child keeps its line until a cascade runs.
 
 Each row reaches `$TMP/cascade.txt` as its project finishes. A cascade that outruns it comes back BACKGROUNDED and
 keeps running: never start it again (two cascades would update the same children at once). Wait for its completion

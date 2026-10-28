@@ -477,9 +477,10 @@ function cascade(out)
     // The user answered 'only this project': no read-back, no run, and a gone child keeps its line until a real cascade.
     if (has('--hold') || answers['.'] === HOLD)
     {
+        // A gone row is no project to update later, only its line: it is named apart and left out of the count.
         const below = ws.subtree(top, { env }).filter((r) => r.depth > 0);
-        for (const r of below) out(`cascade: ${r.rel}\theld`);
-        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.length} held`);
+        for (const r of below) out(`cascade: ${r.rel}\t${r.state === 'gone' ? 'gone-kept' : 'held'}`);
+        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.filter((r) => r.state !== 'gone').length} held`);
         return;
     }
     const source = sourceArg();

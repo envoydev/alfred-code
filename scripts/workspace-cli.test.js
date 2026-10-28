@@ -464,7 +464,7 @@ test('cascade refuses an answers entry outside the allow-list before that projec
     assert.match(cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers).out, /^cascade: done 3 updated, 0 failed, 0 skipped$/m, 'an answers file never written is no answer');
 });
 
-test('cascade --hold runs nothing, keeps a gone line and names every project below as held', () =>
+test('cascade --hold runs nothing, names every project below held and a gone one gone-kept, out of the count', () =>
 {
     const at = cascadeTree();
     const wsFile = path.join(at('ws'), '.alfred', 'workspace');
@@ -472,7 +472,7 @@ test('cascade --hold runs nothing, keeps a gone line and names every project bel
     const { src, runs } = fakeSource('==> done\n');
     const r = cli('cascade', '--root', at('ws'), '--source', src, '--hold');
     assert.strictEqual(r.code, 0, r.err);
-    assert.strictEqual(r.out, 'cascade: api\theld\ncascade: api/tool\theld\ncascade: web\theld\ncascade: old\theld\ncascade: done 0 updated, 0 failed, 0 skipped, 4 held\n');
+    assert.strictEqual(r.out, 'cascade: api\theld\ncascade: api/tool\theld\ncascade: web\theld\ncascade: old\tgone-kept\ncascade: done 0 updated, 0 failed, 0 skipped, 3 held\n');
     assert.deepStrictEqual(runs(), [], 'no read-back and no installer run');
     assert.strictEqual(fs.readFileSync(wsFile, 'utf8'), 'child api\nchild web\nchild old\n', 'the gone child keeps its line');
     for (const c of ['ws/api', 'ws/api/tool', 'ws/web']) assert.ok(!fs.existsSync(path.join(at(c), '.claude', 'runs')), c);
