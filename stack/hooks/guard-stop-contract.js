@@ -2696,19 +2696,19 @@ if (payload.tool_name === 'AskUserQuestion') {
     // 284.5k (e6a68237). Mechanical, so it is fixed here: the fresh option whose question quotes no number within 20%
     // of the measured carry gets both numbers appended to its description.
     const FRESH_OPT_RE = /\b(?:fresh session|new session|fresh chat)\b/i;
-    // The option IS the hand-off when its label says so, or its description opens on the move; a description that only
-    // mentions one ('runs the fresh-session self-check') is another option, which took the numbers line at 80k (audit
-    // 2026-10-20 C07, 8f130789).
+    // isFreshOpt is any option naming a fresh session - checks 10, 13 and 14 read it. The numbers check and check 15 judge
+    // only a HAND-OFF (isFreshHandoff, its label): a description that only mentions one ('runs the fresh-session
+    // self-check') took the numbers line at 80k (audit 2026-10-20 C07, 8f130789), and a setting is no hand-off (2026-10-29).
     const FRESH_DESC_RE = /^\s*(?:resume|start|continue|run|open|move|hand)\b[^.]{0,40}\b(?:fresh session|new session|fresh chat)\b/i;
     const isFreshOpt = (o) => o && typeof o === 'object' && (FRESH_OPT_RE.test(String(o.label || '')) || FRESH_DESC_RE.test(String(o.description || '')));
     let numbers = null;
-    if (!FRESH_OFF && questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
+    if (!FRESH_OFF && questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshHandoff))) {
       const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
       const ctxNow = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
       const quotes = (t) => [...String(t).matchAll(/(\d{2,4}(?:\.\d+)?)\s?k\b/gi)].map((m) => parseFloat(m[1]) * 1000)
         .concat([...String(t).matchAll(/\b(\d{1,3}(?:,\d{3})+|\d{5,7})\s*tokens?\b/gi)].map((m) => parseInt(m[1].replace(/,/g, ''), 10)));
       const near = (n) => Math.abs(n - ctxNow) <= ctxNow * 0.2;
-      const stale = questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt)
+      const stale = questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshHandoff)
         && !quotes([q.question, ...q.options.map((o) => `${(o && o.label) || ''} ${(o && o.description) || ''}`)].join(' ')).some(near));
       // ...and only where a resume recovers something: at a carry near the cold floor the numbers argue for nothing (C07)
       if (ctxNow > 0 && stale && paysAt('numbers', ctxNow)) numbers = { ctx: ctxNow, floor: coldFloor() };
@@ -2774,26 +2774,49 @@ if (payload.tool_name === 'AskUserQuestion') {
     // audit) - the block comes after the pick, so the pointer is rewritten to say that. Mechanical, fixed in place.
     const pointsAbove = !compactFresh && questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => isFreshOpt(o)
       && new RegExp(ASK_ABOVE_RE.source, 'i').test(`${o.label || ''} ${o.description || ''}`))) && !fencedPasteShown(shownSinceTyped());
-    if (voice.length || numbers || typeIntoOther || unmarked || misMarked || newCycle || blind || noReview || compactFresh || pointsAbove) {
+    // 15. A FRESH-SESSION HAND-OFF THAT DOES NOT PAY BACK (the cache-aware verdict, spec 2026-10-28 section 4): check 13's
+    // drop with the verdict in place of COMPACT_INSTEAD, and it only removes. Judged on a single-select question's hand-off
+    // options (isFreshHandoff); never with its part off (`guard-stop-contract:fresh-ask`), under FRESH_OFF or auto-run,
+    // for nobody at the terminal, in a seat, at ctx 0 or an unmeasured floor, or when the user's newest typed prompt names
+    // a fresh session, a new one or /clear - the user asked, so the answer may recommend it.
+    let handoff = null;
+    if (!partOff('guard-stop-contract', 'fresh-ask') && !FRESH_OFF && !autoRun && !unattended(payload) && !payload.agent_id
+      && questions.some((q) => q && !q.multiSelect && Array.isArray(q.options) && q.options.some(isFreshHandoff))) {
+      const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
+      const ctxNow = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
+      if (ctxNow > 0 && !/\b(?:fresh|new) (?:session|chat)\b|\/clear\b/i.test(newestTypedPrompt())) {
+        const v = fresh.freshVerdict(ctxNow);
+        if (!v.unmeasured && !v.pays) handoff = { ctx: ctxNow, v };
+      }
+    }
+    const dropHandoff = !!handoff;
+    if (voice.length || numbers || typeIntoOther || unmarked || misMarked || newCycle || blind || noReview || compactFresh || pointsAbove || dropHandoff) {
       const fixProse = (t) => (voice.length ? String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["“”]/g, "'") : String(t));
       const fixAbove = (t) => (pointsAbove ? String(t).replace(ASK_ABOVE_RE, 'the resume block, printed after this answer') : String(t));
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const k = (n) => `~${Math.round(n / 1000)}k`;
       const numberLine = numbers ? ` Measured now: ${fresh.payText(numbers.ctx, fresh.freshVerdict(numbers.ctx))}` : '';
       const MARK = /\s*\(Recommended\)/i;
-      const dropFresh = (opts) => {
-        const kept = opts.filter((o) => !isFreshOpt(o));
+      const dropBy = (test) => (opts) => {
+        const kept = opts.filter((o) => !test(o));
         if (kept.length === opts.length || !kept.length || kept.some((o) => o && MARK.test(String(o.label || '')))) return kept;
-        if (!opts.some((o) => isFreshOpt(o) && MARK.test(String(o.label || '')))) return kept;
+        if (!opts.some((o) => test(o) && MARK.test(String(o.label || '')))) return kept;
         return [{ ...kept[0], label: `${String(kept[0].label || '').replace(MARK, '')} (Recommended)` }, ...kept.slice(1)];
       };
+      const dropFresh = dropBy(isFreshOpt);
+      const dropHandoffs = dropBy(isFreshHandoff);
       const fixed = questions.map((q) => (q && typeof q === 'object' ? {
         ...q,
         ...(q.question !== undefined ? { question: fix(q.question) } : {}),
         ...(q.header !== undefined ? { header: fix(q.header) } : {}),
-        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: (isFreshOpt(o) ? fixAbove(fix(o.description || '')) : fix(o.description || '')) + (numbers && isFreshOpt(o) ? numberLine : '') } : o)) } : {}),
+        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : dropHandoff && !q.multiSelect ? dropHandoffs(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: (isFreshOpt(o) ? fixAbove(fix(o.description || '')) : fix(o.description || '')) + (numbers && isFreshHandoff(o) ? numberLine : '') } : o)) } : {}),
       } : q));
-      const tooFew = compactFresh && fixed.some((q) => q && Array.isArray(q.options) && q.options.length < 2);
+      // check 15's drop leaves a question with one option only where it removed one; that question is refused, naming it
+      const leftAlone = dropHandoff ? fixed.find((q, i) => q && Array.isArray(q.options) && q.options.length < 2
+        && Array.isArray((questions[i] || {}).options) && questions[i].options.length > q.options.length) : null;
+      const tooFew = (compactFresh && fixed.some((q) => q && Array.isArray(q.options) && q.options.length < 2)) || !!leftAlone;
+      const notPay = dropHandoff ? fresh.notPayText(handoff.ctx, handoff.v) : '';
+      if (dropHandoff) ledgerRow(fresh.verdictRow('fresh-ask', handoff.ctx, handoff.v));
       const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
       const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-askvoice-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${key}.denied`;
       // Once per ask text: a marker that cannot be written where HOOK_LOG_DIR points is written under the temp dir, and
@@ -2815,7 +2838,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         try { fs.writeFileSync(`${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-newcycle-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${newCycle.at}.denied`, '', { flag: 'wx' }); }
         catch { newCycle = null; }
       }
-      const mechanical = voice.length || numbers || compactFresh || pointsAbove;
+      const mechanical = voice.length || numbers || compactFresh || pointsAbove || dropHandoff;
       const fixesInPlace = mechanical && !tooFew && !(typeIntoOther || unmarked || misMarked || newCycle || blind || noReview);
       if (!fixesInPlace) spend();
       // A MECHANICAL-ONLY ask is fixed IN PLACE (the 2026-10-17 usage audit: an ask refused only for its missing
@@ -2826,11 +2849,12 @@ if (payload.tool_name === 'AskUserQuestion') {
       // would leave with one option, or any reason with no mechanical fix, still denies once below.
       if (fixesInPlace) {
         askFixed = fixed;
-        const what = [voice.length ? 'its dashes and double quotes' : '', numbers ? 'the fresh option\'s two measured numbers' : '', compactFresh ? 'the fresh-session option dropped (this project compacts instead)' : '', pointsAbove ? 'its pointer at a resume block above (none is on screen) reworded' : ''].filter(Boolean);
-        pendAskFixed({ tool: 'AskUserQuestion', mode: 'rewrite', kind: 'ask-fixed', reason: `ask fixed in place: ${what.join(', ')}`, detail: { voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, compactFresh, pointsAbove } });
+        const what = [voice.length ? 'its dashes and double quotes' : '', numbers ? 'the fresh option\'s measured numbers' : '', compactFresh ? 'the fresh-session option dropped (this project compacts instead)' : '', pointsAbove ? 'its pointer at a resume block above (none is on screen) reworded' : '', dropHandoff ? 'the fresh-session hand-off dropped (a fresh session does not pay back here)' : ''].filter(Boolean);
+        pendAskFixed({ tool: 'AskUserQuestion', mode: 'rewrite', kind: 'ask-fixed', reason: `ask fixed in place: ${what.join(', ')}`, detail: { voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, compactFresh, pointsAbove, dropHandoff } });
         notes.push(`The ask just answered went out with ${what.join(' and ')} fixed in place by the hook - the user saw the fixed text. `
           + (voice.length ? 'Keep the house voice (alfred-interaction.md) in every later ask: single dashes, single quotes. ' : '')
           + (numbers ? 'Quote this session\'s carry and a fresh start\'s floor in any later fresh-session option. ' : '')
+          + (dropHandoff ? `${notPay} So no later ask offers the hand-off until a hook's fresh-session text says it pays back. ` : '')
           + (pointsAbove ? 'If the user picks the fresh session, this turn ends with the resume block in its own fenced block. ' : ''));
       } else if (first && (mechanical || typeIntoOther || unmarked || misMarked || newCycle || blind || noReview)) {
         const reasons = [...voice];
@@ -2844,7 +2868,8 @@ if (payload.tool_name === 'AskUserQuestion') {
         if (misMarked) reasons.push(`${misMarked} question(s) whose 'Recommended:' text names another option than the one marked`);
         if (newCycle) reasons.push('no fresh-session option, while this ask opens new work after this session already finished a solve-task cycle');
         if (pointsAbove) reasons.push('a fresh-session option pointing at a resume block above that the chat never showed');
-        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, misMarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove };
+        if (dropHandoff) reasons.push('a fresh-session hand-off where a fresh session does not pay back with the cache warm');
+        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, misMarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove, dropHandoff };
         process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
@@ -2854,7 +2879,8 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
           + (newCycle ? ` A finished cycle closed in this chat, so add a fresh-session option to this first ask of a new cycle - ${fresh.payText(newCycle.ctx, fresh.freshVerdict(newCycle.ctx))} Also state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
-          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
+          + (dropHandoff ? ` ${notPay}${leftAlone ? ` A question left with one option is no question: take that option${leftAlone.options[0] ? ` - '${String(leftAlone.options[0].label || '')}' -` : ''} and drop the question.` : ''}` : '')
+          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : '', dropHandoff ? 'the fresh-session hand-off dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
         process.exit(2);
       }
       else if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
@@ -3147,6 +3173,20 @@ function lineRow(line) {
 function typedPromptRow(line) {
   const o = lineRow(line);
   return Boolean(o) && !o.isCompactSummary && !o.isSidechain && isTypedTurn(o) && !harnessPrompt(rowText(o));
+}
+// The text of the newest prompt the user typed (typedPromptRow's test), read back through walkBack; '' when there is none.
+function newestTypedPrompt() {
+  try {
+    return walkBack(() => (o) => (o && o.type === 'user' && o.message && !o.isCompactSummary && !o.isSidechain
+      && isTypedTurn(o) && !harnessPrompt(rowText(o)) ? rowText(o) : undefined), '');
+  } catch { return ''; }
+}
+// A fresh-session HAND-OFF option (spec 2026-10-28 section 4): its label opens on the move - Resume, Start, Continue or
+// Build - and names a fresh or new session or chat further on. A setting ('Offer a fresh session', the init walk) and an
+// audit's own hand-off ('Hand off to a fresh session', capture-usage-report) are none. A declaration, so the ask branch
+// above can call it (a module-scope const read there is in its dead zone, and that branch's try fails open).
+function isFreshHandoff(o) {
+  return !!o && typeof o === 'object' && /^\s*(?:resume|start|continue|build)\b[^\n]*\b(?:fresh|new) (?:session|chat)\b/i.test(String(o.label || ''));
 }
 function flowLine(line, at, state) {
   const FLOW_MARK_RE = /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(?:-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(?:-cross)?"/;

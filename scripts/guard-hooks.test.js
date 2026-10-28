@@ -4898,7 +4898,7 @@ test('deep review: guard-unapproved-dispatch passes a first dispatch with no Exe
 
 // Audit 2026-10-20 C07 (8f130789 L68): an ask whose options only MENTIONED a fresh session ('noted for a fresh-session run')
 // was read as carrying the hand-off, and at ~80k - its own cold floor - got the numbers line on 'Current session only'.
-test('guard-stop-contract: only an option that IS the fresh-session hand-off takes the numbers, and only where a resume recovers something (C07)', () => {
+test('guard-stop-contract: only an option that IS the fresh-session hand-off takes the numbers, and only where a fresh session pays back (C07)', () => {
   const logDir = fs.mkdtempSync(path.join(TMP, 'c07-'));
   const ask = (tp, questions) => runIn('guard-stop-contract.js',
     { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
@@ -4909,12 +4909,21 @@ test('guard-stop-contract: only an option that IS the fresh-session hand-off tak
   const r = ask(hot, mentions);
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!updOf(r) || !JSON.stringify(updOf(r)).includes('Measured now'), 'an option that only mentions a fresh session is not the hand-off');
+  // since 2026-10-29 the numbers check judges the hand-off LABEL alone (isFreshHandoff): a description that opens on the move
+  // no longer makes the option one
   const desc = ask(hot, [{ question: 'Next?', options: [{ label: 'Hand off (Recommended)', description: 'Resume in a fresh session from the plan file' }, { label: 'Continue', description: 'here' }] }]);
-  assert.match(JSON.stringify(updOf(desc)), /Measured now: This session carries ~900k/, 'a description that opens on the move is the hand-off');
+  assert.equal(desc.status, 0, desc.stderr);
+  assert.ok(!updOf(desc) || !JSON.stringify(updOf(desc)).includes('Measured now'), 'a description-only hand-off takes no numbers line');
   const near = transcript('c07-near', [assistantRow('n1', 'ok', { cache_creation_input_tokens: 78000 }), assistantRow('n2', 'ok', { cache_read_input_tokens: 80000 })]);
-  const atFloor = ask(near, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
-  assert.equal(atFloor.status, 0, atFloor.stderr);
-  assert.ok(!updOf(atFloor) || !JSON.stringify(updOf(atFloor)).includes('Measured now'), 'at the cold floor no numbers are appended');
+  // 80k over a 78k floor (no model, no split): no more than the floor plus the resume read, so check 15 drops the hand-off -
+  // and a question left with one option is refused once, naming it
+  const floorAsk = [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }];
+  const atFloor = ask(near, floorAsk);
+  assert.equal(atFloor.status, 2, 'at the cold floor the two-option hand-off ask is refused once');
+  assert.match(atFloor.stderr, /no more than a fresh session's ~78k floor plus the ~13k it re-reads, so a fresh session saves nothing/);
+  assert.match(atFloor.stderr, /take that option - 'Continue \(Recommended\)' - and drop the question/);
+  assert.ok(!atFloor.stderr.includes('Measured now'), 'and no numbers are appended');
+  assert.equal(ask(near, floorAsk).status, 0, 'its re-send passes');
 });
 
 // Audit 2026-10-20 H6 (replayed): `rm -rf "${HOME:?}"`, the home directory spelled absolute, `"$(pwd)"` and
