@@ -522,3 +522,10 @@ are older than the stack - until it is updated. An unattended run updates them, 
 When a graded designer plan's finding would add a guard or rule the request did not ask for, the revision now keeps
 today's behaviour as a Decision and puts the guard on one `## Optional` line, marked Recommended or Not worth it - a
 card only when you asked for it or the request cannot be met safely without it.
+
+## after 3.2.0 - a held child keeps its folder, not an account-wide core
+
+'No, only this project' changes nothing in the folders below, but the core plugin moves wherever it is installed: where
+it is installed for your whole account, a held project runs the new hooks and agents beside its older skill and rule
+copies, and may say its copies are older than the stack, until `/alfred-code:update` runs there. The close now lists a
+held child whose folder no longer holds an install as `gone-kept`, apart from the held count.
