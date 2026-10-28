@@ -135,12 +135,12 @@ DELEGATED, one run over the Orders module:
 
 ## Bounded and honest
 - **Hard cap: 3 improve rounds.** Architecture changes are expensive and consequential; do not loop indefinitely chasing the last debatable con.
-- **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the map plus a fresh findings capture is the handoff (there is no pruned doc to hand off - the next session's step 1 recomputes the findings). A step, not advice: at each LOOP decision, ask - the fresh-session option is ALWAYS one of its options (a continue-ask without it is the measured failure step 3's receipt exists to catch); on 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else - the new session must be able to start from it alone.
+- **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the map plus a fresh findings capture is the handoff (there is no pruned doc to hand off - the next session's step 1 recomputes the findings). A step, not advice: at each LOOP decision, ask - the fresh-session option is ALWAYS one of its options (a continue-ask without it is the measured failure step 3's receipt exists to catch), and when the hook refuses the ask because a fresh session does not pay back, start the next round here (its receipt `next: continue - "refused: a fresh session does not pay back"`). Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names. On 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else - the new session must be able to start from it alone.
 
   ```ask
   Round <N>: LOOP - <what is left>. A fresh session restarts at <M>k.
-  - 'Resume in a fresh session (Recommended)' - the RESUME BLOCK, then this turn ends
-  - 'Continue here' - the next round in this chat
+  - 'Continue here (Recommended)' - the next round in this chat
+  - 'Resume in a fresh session' - the RESUME BLOCK, then this turn ends
   ```
 - Never weaken a test or delete an assertion to make a con look resolved - that is a new weakness, not a fix.
 - Make the smallest change that resolves each weakness; a rewrite that introduces new coupling makes the loop diverge.

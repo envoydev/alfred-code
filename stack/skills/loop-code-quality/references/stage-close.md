@@ -17,8 +17,8 @@ the next session nothing to start from.
    else - the per-decision rationale is not carryover.
 2. `<LOOP_DIR>/DECISIONS.md` - the full per-decision rationale appends here, in either mode, as each
    call lands. It is a side file: no resume reads it whole.
-3. Then the AskUserQuestion: continue in a fresh session from the loops folder (recommended) vs
-   continue here. Append `continue: <fresh|here> - "<answer>"` to the finished file's outcome line
+3. Then the AskUserQuestion: continue here (recommended) vs continue in a fresh session from the
+   loops folder. Append `continue: <fresh|here> - "<answer>"` to the finished file's outcome line
    before the next stage's first audit or dispatch runs.
 
 ## On 'fresh' - the RESUME BLOCK

@@ -173,5 +173,6 @@ test('C07: task-solve puts the fresh-session option and resume block only past a
     assert.match(mech, /## Conformance - step 5 The reviewer the step-4 stop chose RUNS: a Skill tool call on `task-verify-code`, or an Agent dispatch of the seat/);
     assert.match(mech, /a punch-list fix is unreviewed code/);
     assert.match(mech, /- Conformance - step 5 /, 'listed in the contents');
-    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17500, `task-solve keeps room under its cap: ${body('stack/skills/task-solve/SKILL.md').length}`);
+    // the room this kept under the 17,700 re-attach cap went to the fresh-session shared line (spec 2026-10-28 section 5)
+    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17700, `task-solve stays under its cap: ${body('stack/skills/task-solve/SKILL.md').length}`);
 });

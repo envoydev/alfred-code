@@ -9,6 +9,6 @@ during a diagnosis.
   local-runtime catalogue and the findings file still said 'none installed'.
 - **GATHER ends on its own stop (step 2).** Measured: one run skipped this checkpoint and ran GATHER
   straight into ROOT CAUSE as a single 36-call stretch.
-- **A proven cause is a closing point - recommend the fresh session (step 4).** Measured: a 17h15m
+- **A proven cause is a closing point - offer the fresh session (step 4).** Measured: a 17h15m
   diagnosis chat carried four auto-compactions, ~1.46M tokens dropped, while the findings file
   already held the history it re-sent - no `Stop` gate caught it, since that session never closed.

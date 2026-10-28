@@ -105,14 +105,14 @@ test('C20 a6a24815#2: the step-4 stop opens on the gate\'s own verdict line, nev
     assert.match(skill('task-solve'), /a red the run root-caused outside the diff is quoted red, its cause named, never called green/);
 });
 
-test('C20 a6a24815#3 + C09 e6a68237#5: the close puts the diff and the next scope in two questions, the next one recommending a fresh session', () => {
+test('C20 a6a24815#3 + C09 e6a68237#5: the close puts the diff and the next scope in two questions, the next one leading with this chat (spec 2026-10-28 section 5)', () => {
     const all = asks(solveText());
     const diff = all.find((a) => a.options.includes('Commit now (Recommended)'));
     assert.deepStrictEqual(diff.options, ['Commit now (Recommended)', 'Hold - review the diff first'], 'no third fork beside the diff');
     const next = all.find((a) => /^Next: /.test(a.question));
     assert.ok(next, 'the next-scope question is its own template');
     assert.match(next.question, /It opens a NEW cycle in a NEW plan file\./);
-    assert.strictEqual(next.options[0], 'Start it in a fresh session (Recommended)');
+    assert.deepStrictEqual(next.options, ['Start it here (Recommended)', 'Leave it for later', 'Start it in a fresh session']);
     assert.match(skill('task-solve'), /A deferred item or follow-up is a SECOND question in the same AskUserQuestion call/);
 });
 
@@ -147,13 +147,13 @@ test('C20 ca65b406#5: a reply for another session is drafted after the commit / 
 test('C09 05c925e9#1: a mid-build compaction is a build-time stop with its own ask', () => {
     const compacted = asks(solveText()).find((a) => /^Context compacted during task <N>/.test(a.question));
     assert.ok(compacted, 'the compaction stop is a template');
-    assert.strictEqual(compacted.options[0], 'Resume in a fresh session (Recommended)');
+    assert.deepStrictEqual(compacted.options, ['Continue the build here (Recommended)', 'Resume in a fresh session']);
     assert.match(skill('task-solve'), /The harness compacting the context mid-build is a stop too \(under AUTO, one line, then continue\)/);
 });
 
 test('C09 f450ea64#3 f450ea64#5: AUTO starts after one fresh-session ask, and its close lists the deviations', () => {
     const t = skill('task-solve');
-    assert.match(t, /A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer/);
+    assert.match(t, /A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here \(Recommended\)', then the fresh-session resume - and AUTO starts after its answer\./);
     assert.match(t, /`Deviations: <each Decisions entry that departs from the Asked: words, one apiece \| none>`/);
 });
 
@@ -313,4 +313,37 @@ test('C08 C09 9a4ef375#3 c6142301#2 c6142301#6 e6a68237#6 0d070bcc#6 (skill half
     assert.match(t, /or resumes after a 2h\+ idle gap, the fresh-session resume IS one of the next ask's options/);
     assert.match(t, /quote THIS stop's, or say they are unmeasured/);
     assert.match(t, /`references\/step-mechanics\.md` holds the rest/, 'the AUTO paragraph points at the mechanics');
+});
+
+// ---- the cache-aware fresh-session verdict (spec 2026-10-28 section 5): the in-session option leads every fresh-session ask
+const FRESH_FLOWS = ['task-solve', 'issue-diagnoser', 'task-solve-cross', 'loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage'];
+const SHARED_FRESH = "mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names";
+const HANDOFF_LABEL = /^(?:Resume|Start|Continue|Build)\b.*\b(?:fresh|new) (?:session|chat)\b/;
+test('fresh-session cache 2026-10-28: each flow skill carries the shared line, and its fresh-session asks lead with this chat', () => {
+    const raw = (n) => read(`stack/skills/${n}/SKILL.md`);
+    // task-solve-cross keeps it in the reference it reads before its first stop, its SKILL.md being at its 18,000 cap
+    const home = (n) => (n === 'task-solve-cross' ? flat(read('stack/skills/task-solve-cross/references/execution-modes.md')) : skill(n));
+    assert.match(skill('task-solve-cross'), /`references\/execution-modes\.md` says when it takes the mark/);
+    for (const n of FRESH_FLOWS) {
+        assert.ok(home(n).toLowerCase().includes(SHARED_FRESH.toLowerCase()), `${n}: the shared line, verbatim`);
+        for (const a of asks(raw(n))) for (const l of a.options)
+            if (/fresh session|new session/i.test(l)) assert.match(l, HANDOFF_LABEL, `${n}: '${l}' opens on Resume, Start, Continue or Build`);
+    }
+    for (const n of ['loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage']) {
+        const round = asks(raw(n)).find((a) => /^Round <N>: LOOP/.test(a.question));
+        assert.deepStrictEqual(round.options, ['Continue here (Recommended)', 'Resume in a fresh session'], `${n}: the round ask`);
+        assert.match(skill(n), /when the hook refuses the ask because a fresh session does not pay back, start the next round here/, `${n}: the refused round`);
+    }
+    const diag = asks(raw('issue-diagnoser'));
+    assert.deepStrictEqual(diag.find((a) => /^<The report is written/.test(a.question)).options, ['Stop here (Recommended)', 'Resume from <findings path> in a fresh session']);
+    assert.deepStrictEqual(diag.find((a) => /^The fix is planned in/.test(a.question)).options,
+        ['Build it here: /task-solve <findings path> (Recommended)', 'Build it in a fresh session: /task-solve <findings path>', 'Stop here']);
+    assert.doesNotMatch(skill('issue-diagnoser'), /or spans hours|Recommend it once the chat has run for hours|the fresh-session option takes the mark/);
+    assert.doesNotMatch(skill('task-solve'), /recommends the fresh-session hand-off/);
+    assert.doesNotMatch(skill('task-solve-cross'), /TAKES the recommended slot|recommend resuming the next phase/);
+    assert.match(flat(read('stack/skills/loop-code-quality/references/stage-close.md')), /continue here \(recommended\) vs continue in a fresh session from the loops folder/);
+    // the evidence notes behind those rules lose their unconditional recommend
+    assert.match(flat(read('stack/skills/task-solve/references/evidence.md')), /offers the fresh-session hand-off when a hook's fresh-session text says it pays back, priced with the cache warm/);
+    assert.match(flat(read('stack/skills/task-solve-cross/references/evidence.md')), /offer resuming the next phase in a fresh session; the hook prices it with the cache warm/);
+    assert.match(flat(read('stack/skills/issue-diagnoser/references/evidence.md')), /offer the fresh session \(step 4\)/);
 });

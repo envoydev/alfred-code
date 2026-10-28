@@ -137,12 +137,12 @@ DELEGATED, one run over `src/Orders/`, with the 1.x starter prompts in `loops/`:
 
 ## Bounded and honest
 - **Hard cap: 3 improve rounds.** Do not loop indefinitely chasing the last debatable finding. Say it in the first reply, unattended runs included: '3 rounds, then STOP with the remainder listed'.
-- **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the loops folder plus a fresh capture is the handoff. A step, not advice: at each LOOP decision, ask - the fresh-session option ALWAYS one of its options; on 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else.
+- **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the loops folder plus a fresh capture is the handoff. A step, not advice: at each LOOP decision, ask - the fresh-session option ALWAYS one of its options, and when the hook refuses the ask because a fresh session does not pay back, start the next round here (its receipt `next: continue - "refused: a fresh session does not pay back"`). Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names. On 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else.
 
   ```ask
   Round <N>: LOOP - <what is left>. A fresh session restarts at <M>k.
-  - 'Resume in a fresh session (Recommended)' - the RESUME BLOCK, then this turn ends
-  - 'Continue here' - the next round in this chat
+  - 'Continue here (Recommended)' - the next round in this chat
+  - 'Resume in a fresh session' - the RESUME BLOCK, then this turn ends
   ```
 - Never weaken, skip or delete a test or an assertion to make a finding look resolved - that is a new finding, not a fix, and the anti-gaming sweep exists to catch it.
 - Make the smallest change that resolves each finding; a rewrite that introduces new findings makes the loop diverge.

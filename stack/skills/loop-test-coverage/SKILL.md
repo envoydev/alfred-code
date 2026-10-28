@@ -117,12 +117,12 @@ INLINE, one round over a two-surface workspace:
 
 ## Bounded and honest
 - **Hard cap: 3 improve rounds** - each round re-runs the instrumented capture; do not loop chasing the last decimal.
-- **Each round boundary is a fresh-session resume point** - the reconciled `<docs-path>/quality/test-coverage/COVERAGE.md` is the handoff; carried-forward conversation (not tool output) is what a fresh session sheds. A step, not advice: at each LOOP decision, ask:
+- **Each round boundary is a fresh-session resume point** - the reconciled `<docs-path>/quality/test-coverage/COVERAGE.md` is the handoff; carried-forward conversation (not tool output) is what a fresh session sheds. A step, not advice: at each LOOP decision, ask - the fresh-session option ALWAYS one of its options, and when the hook refuses the ask because a fresh session does not pay back, start the next round here (its receipt `next: continue - "refused: a fresh session does not pay back"`). Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.
 
   ```ask
   Round <N>: LOOP - <what is left>. A fresh session restarts from the reconciled doc at <M>k.
-  - 'Resume in a fresh session (Recommended)' - the RESUME BLOCK, then this turn ends
-  - 'Continue here' - the next round in this chat
+  - 'Continue here (Recommended)' - the next round in this chat
+  - 'Resume in a fresh session' - the RESUME BLOCK, then this turn ends
   ```
 
   On 'fresh', end the turn with this RESUME BLOCK and nothing else - the new session must be able to start from it alone, and the invocation names the rounds already consumed so the 3-round cap survives:
