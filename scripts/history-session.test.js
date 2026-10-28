@@ -106,6 +106,60 @@ test('ALFRED_CODE_HISTORY sets how many earlier sessions the start block shows, 
   } finally { rmDir(root); }
 });
 
+// The plan's state (the user's run order, 2026-10-28): read when the block renders, never recorded at Stop - a task ticked
+// after the session ended shows at the next start.
+const planDoc = (done, all, resume) => ['# F - plan', '', `Resume: ${resume}`, '', '## Tasks', '',
+  ...Array.from({ length: all }, (_, i) => `### Task ${i + 1} - s${i + 1}\n\n- status: ${i < done ? 'DONE (ok)' : 'TODO'}\n`)].join('\n');
+function planSession(root, session, plan) {
+  const p = path.join(root, `${session}.jsonl`);
+  fs.writeFileSync(p, `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: path.join(root, plan) } }] } })}\n`);
+  return run(root, { hook_event_name: 'Stop', session_id: session, transcript_path: p });
+}
+test('the start block shows the plan as it stands now: a task ticked after the session ended', () => {
+  const root = project();
+  try {
+    fs.mkdirSync(path.join(root, 'docs', 'plans'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'docs', 'plans', 'x.md'), planDoc(0, 2, 'next task 1'));
+    assert.strictEqual(planSession(root, 's1', 'docs/plans/x.md').status, 0);
+    fs.writeFileSync(path.join(root, 'docs', 'plans', 'x.md'), planDoc(1, 2, 'next task 2 - card 1 done'));
+    assert.match(startBlock(root, {}), /, plan docs\/plans\/x\.md \(1\/2 done; Resume: next task 2 - card 1 done\)$/m);
+    fs.writeFileSync(path.join(root, 'docs', 'plans', 'x.md'), `${planDoc(2, 2, 'done')}\nCompleted: 2026-10-28\n`);
+    assert.match(startBlock(root, {}), /, plan docs\/plans\/x\.md \(completed\)$/m);
+    fs.writeFileSync(path.join(root, 'docs', 'plans', 'x.md'), Buffer.from([0xff, 0xfe, 0x00, 0x01]));
+    assert.match(startBlock(root, {}), /, plan docs\/plans\/x\.md$/m, 'garbage bytes: the path alone, no error');
+  } finally { rmDir(root); }
+});
+test('a plan path that is no regular file keeps the path alone and never blocks the start', { skip: process.platform === 'win32' && 'mkfifo' }, () => {
+  const root = project();
+  try {
+    fs.mkdirSync(path.join(root, 'docs', 'plans'), { recursive: true });
+    execFileSync('mkfifo', [path.join(root, 'docs', 'plans', 'x.md')]);
+    planSession(root, 's1', 'docs/plans/x.md');
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'now', source: 'startup', transcript_path: path.join(root, 'absent.jsonl') }), encoding: 'utf8', env: env(root), cwd: root, timeout: 4000 });
+    assert.strictEqual(r.status, 0, `the start hook was killed waiting on the fifo: ${r.signal}`);
+    assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /, plan docs\/plans\/x\.md$/m);
+  } finally { rmDir(root); }
+});
+test('with a plan state on every session the block stays within its cap at ALFRED_CODE_HISTORY 1, 3 and 10', () => {
+  const root = project();
+  try {
+    fs.mkdirSync(path.join(root, 'docs', 'plans'), { recursive: true });
+    for (let i = 1; i <= 12; i++) {
+      fs.writeFileSync(path.join(root, 'docs', 'plans', `p${i}.md`), planDoc(1, 4, `next task 2 of plan ${i} - ${'w'.repeat(90)}`));
+      planSession(root, `s${i}`, `docs/plans/p${i}.md`);
+      const t = new Date(Date.now() - (13 - i) * 60000);
+      fs.utimesSync(entryFile(root, `s${i}`), t, t);
+    }
+    for (const count of [1, 3, 10]) {
+      const block = startBlock(root, { ALFRED_CODE_HISTORY: String(count) });
+      assert.ok(block.length <= 150 + 150 * count, `${count}: ${block.length} chars`);
+      assert.match(block, /plan docs\/plans\/p12\.md \(1\/4 done/, `${count}: the newest session keeps its plan state`);
+      assert.doesNotMatch(block, /w{78}/, `${count}: the Resume: text is cut`);
+      assert.match(block, /More: node \.claude\/hooks\/history\.js rulings$/, `${count}: the footer stays whole`);
+    }
+  } finally { rmDir(root); }
+});
+
 test('2.8.0: the start injection reads a legacy <docs>/history/ record while state/history/ has none for the branch', () => {
   const root = project();
   try {

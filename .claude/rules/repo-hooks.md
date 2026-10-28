@@ -1329,9 +1329,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     historyCount`) in at most 150 chars plus 150 per record (600 at the seed - a flat 200 per record left no room for one
     record beside the ~160-char frame), framed as history, never instructions - a record that read no
     transcript row and holds no commit, ruling or plan takes no slot, and a plan no longer on disk is left out (audit
-    2026-10-10 C23); a question is shown once, at its newest answer, and past the cap the ruling lines leave round-robin
-    across sessions, each session's newest kept longest, before an older session's own line (audit 2026-10-11 SD16,
-    e90a1845: the older session's rulings were cut whole and re-asked) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
+    2026-10-10 C23); a plan still on disk carries where it stands NOW (`planStates`, the user's run order of 2026-10-28:
+    the next session had to open the plan to find its next task) - `(<done>/<all> done; <its Resume: line>)` from the
+    habits-plan-writing cards and the Resume: line that skill rewrites after every tick, or `(completed)` once its
+    `Completed:` line is there - read from the plan as the block renders, never recorded at Stop, the Resume: text
+    scrubbed and cut at 80 chars; another format, no regular file (a fifo would hold the start), an unreadable one or one
+    over 1 MB keeps the path alone; a question is
+    shown once, at its newest answer, and past the cap the ruling lines leave round-robin across sessions, each session's
+    newest kept longest, then the older sessions' plan states (oldest first), then an older session's own line (audit
+    2026-10-11 SD16, e90a1845: the older session's rulings were cut whole and re-asked), and the newest session's plan
+    state last, its Resume: text before its count - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
     old on seed `1` to `3` (`history-switch-is-a-count`).
   - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
     stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
