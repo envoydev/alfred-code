@@ -233,7 +233,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `references/init-role.md` beside `role --when init` and `references/init-child.md` only on its Child answer,
   every role change runs `role --answer <answer>`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
   child or a rescan row, and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
-  skips its subtree, a run is failed on its summary line since the installer exits 0). `workspace.js` writes each
+  skips its subtree, a run is failed on its summary line since the installer exits 0). Update asks first whether the projects below
+  run at all (the user's ask of 2026-10-28): 'only this project' is written at the ask as `answer --hold` (the answers
+  file's `.` entry), so the one `cascade` line then reads nothing back, runs nothing and names each project below
+  `held`, a gone one `gone-kept` and out of the count (`cascade --hold` does the same by flag). `workspace.js` writes each
   line as it is made, so a cascade that outruns the Bash call's 10 minutes leaves the rows it finished, and the walk
   waits for a backgrounded one instead of starting a second. `check-loads` proves the excludes
   with one logged-out `claude -p` in a throwaway account: rules by the `InstructionsLoaded` events, AGENTS.md by the

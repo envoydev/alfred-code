@@ -1445,8 +1445,8 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     assert.strictEqual(firstOption(walk, '<the case\'s question above>'), '<the first ask: label up to its mark> (Recommended)');
     assert.strictEqual(firstOption(walk, 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
     const cascade = refBody('update-workspace');
-    assert.strictEqual(firstOption(cascade, 'Update the <n> projects joined below this one as well\\? <each project: its rel and its asks'), 'Yes, their questions the recommended way (Recommended)');
-    assert.strictEqual(firstOption(cascade, 'Update the <n> projects joined below this one as well\\? <each project\'s rel>'), 'Yes, update them too (Recommended)');
+    assert.strictEqual(firstOption(cascade, 'Update the <n> project\\(s\\) below this one as well\\? <each project: its rel and its asks'), 'Yes, their questions the recommended way (Recommended)');
+    assert.strictEqual(firstOption(cascade, 'Update the <n> project\\(s\\) below this one as well\\? <each project\'s rel>'), 'Yes, update them too (Recommended)');
     assert.strictEqual(firstOption(cascade, 'Join these installed projects'), 'Join as children (Recommended)');
     assert.strictEqual(firstOption(refBody('init-bootstrap'), 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
     const child = refBody('init-child');
@@ -1512,7 +1512,13 @@ test('update asks whether the children update too, and \'only this project\' run
     assert.match(flatCascade, /on 'No, only this project' no child's root: nothing below is written/, 'a held child gets no account-instructions write');
     assert.ok(!/'Answer each project|'Leave them all'/.test(cascade), 'the children\'s own asks are options of the one scope question now');
     const close = flat(refBody('update-close'));
-    assert.match(close, /`updated` \/ `unchanged` \/ `failed` \/ `skipped` \/ `gone` \/ `held`/);
+    assert.match(close, /`updated` \/ `unchanged` \/ `failed` \/ `skipped` \/ `gone` \/ `held` \/ `gone-kept`/);
+    // Minors of the 2026-10-28 review: a held row did not move, a gone-kept row is only its line, and a row step 2 never
+    // printed has no version.
+    assert.match(close, /for a `held` row the stamped version alone \(the left side of its `version=` field\), and `-` for a project step 2's plan printed no row for, a `gone` or a newly joined one;/);
+    assert.match(close, /A `gone-kept` row is a folder that no longer holds an install: its line stays in this project's file until a cascade runs\./);
+    assert.match(flatCascade, /The scope ask and the join ask go in one call, the scope ask first; when step 2's own call has no room for both, they take a call of their own right after\./);
+    assert.ok(!/joined below this one as well/.test(cascade), 'a rescan row is not joined yet');
     assert.match(close, /Any `held` row puts ONE line on the follow-ups card: '`\/alfred-code:update` here again, answering yes, updates the held projects'/);
     assert.match(flat(refBody('update-walk')), /With `\$TMP\/plan\.txt` naming a child, run `update-workspace\.md`'s cascade call now - the same call on either answer/);
     // Review 2026-10-28: the slow path ran no cascade at all - it now points at the same call before the close.
