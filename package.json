@@ -27,7 +27,7 @@
   "scripts": {
     "lint": "node scripts/lint-skills.js",
     "graph": "node scripts/stack-graph.js --write",
-    "test": "node --test",
+    "test": "node scripts/run-tests.js",
     "gate": "node scripts/gate.js",
     "corpus": "node scripts/corpus-replay.js",
     "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --write-marketplace",
