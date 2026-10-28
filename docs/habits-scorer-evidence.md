@@ -295,9 +295,136 @@ The result:
     reach the plan skill and its plan file every time, not 15 times in 18.
   - `ALFRED_CODE_SCORER` stays seeded `0`. Turning it on by default is the user's ruling.
 
+## Fixes, phase 3: stack modes (2026-10-28)
+
+Task 7 of the scorer fixes plan, re-pointed at the stack modes: the scorer switched on by `--mode-output-scorer-on`,
+the live runs started by `/mode-auto-run <request>`. Every call ran on Sonnet 5.5 under `claude -p`, billed through
+the setup-token, with the account and home folders isolated.
+
+How it ran:
+
+- **The tree.** Twelve orders projects were installed by the copy route from develop at 23ed42ca, each with
+  `ALFRED_CODE_SCORER` 0. The re-run below was installed from d97431b0, and the three env runs from ed9b88f0 with
+  `ALFRED_CODE_SCORER` 1.
+- **The switch.** Each run's first call was the flag alone: `/mode-output-scorer --mode-output-scorer-<on|off>`.
+  The task prompt then resumed that session. A probe ($0.14) read the switch through the installed prelude as `on`,
+  both before and after the resume. That first call puts the skill's text in context in both arms, so the on arm
+  differs from phase 2's env switch by that text too. The env-route control below takes the text out.
+- **The judge.** The judge folder was rebuilt from a fresh install, with the scorer's 14 files and every line
+  naming it dropped. All 104 tell hits in the mirror were read, and none names the scorer or the old flag. No pair
+  had a tell hit.
+- **The stops.** Each step stopped at a cumulative total of this phase's own spend: plans $21, judges $43, noise $49
+  and live runs $57. No call was refused.
+- **The direct-route question.** It was re-pointed at `POST /orders/:id/cancel`, since the scaffold has no GET
+  route.
+- **The pairs.** In 3a, six of the nine scored runs (t1-on-p3-1..3, t2-on-p3-1..3) are each paired with one of
+  phase 2's off runs of the same task; t2-on-p3-4..6 count toward routing and step 4 only. In 3b, three of them
+  (t1-on-p3-1, t2-on-p3-1..2) are paired with a fresh off run under the same install, which isolates scoring alone.
+
+| Step | Bar | Target | Measured | Verdict |
+|---|---|---|---|---|
+| 2 | Scored runs that reach a plan file | 9 of 9 | 9 of 9 | PASS |
+| 2 | `## Optional` lines marked | every line | 9 plans, 0 unmarked | PASS |
+| 3a | On wins, both orders agreeing | 5 of 6 (baseline 3) | 6 of 6 | PASS |
+| 3a | Mean In-scope (C5) gap | 0 or better (baseline -0.5) | +0.17 (first +0.00) | PASS |
+| 3a | Mean Correct-about-the-code (C3) gap | above 0 (baseline +0.67) | +1.00 (first +0.92) | PASS |
+| 3a | Mean Meets-the-task (C4) gap | above 0 (baseline +1.0) | +1.00 | PASS |
+| 3b | Mean C5 gap, scoring alone | 0 or better | +0.33 (first -0.17, FAIL) | PASS after fix 1 |
+| 4 | Re-grade lines | none | 0 over 21 grades | PASS |
+| 4 | Minutes per grade | 2.1 or less | 1.9 (first 2.0) | PASS |
+| 4 | Minutes per scored run | 7.4 or less | 6.1 (first 6.2) | PASS |
+| 4 | USD per scored run, without the flag call | 1.20 or less | 0.96 (first 0.98) | PASS |
+| 5 | Strong grades at 80 or more | 12 of 12 | 12 of 12 (first 11 of 12, FAIL) | PASS after fix 2 |
+| 5 | Widest spread per strong fixture | 15 or less | 15 | PASS |
+| 5 | Planted fixtures under 80, flaw named | 4 of 4 | 4 of 4 | PASS |
+| 5 | Mean tokens per grade | 240k or less | 180k | PASS |
+| 6 | The ask answered by the hook | asked, no denial, the named file | never asked | FAIL |
+| 6 | Code route, all ten bars | each met | - | NOT RUN |
+| 6 | Direct route, four bars | each met | 4 of 4 (first 3 of 4) | PASS after fix 3 |
+| Optional | Env route: scored by `ALFRED_CODE_SCORER=1`, no flag call | informative | 3 of 3 plan files | PASS |
+
+The step 4 time and cost bars leave out the flag call, because phase 2 had none. The flag call cost $0.10 and took
+under a minute per run.
+
+**Three failed bars, each traced to its cause:**
+
+1. **3b, In scope.** The first 3b measure was -0.17. One pair caused it. Its scored plan added a guard that rejects a
+   second cancel, which the request never asked for.
+   - **Why the guard was added.** The scorer's first grade asked for a repeat cancel to be ruled on. The revision
+     met that by adding the guard to a card. The next grade named it as unmet scope (P11).
+   - **Why it shipped anyway.** The fix-on-pass rule kept the revision because it left 2 MATERIAL findings open
+     where the draft before it had 5.
+   - **The fix (d97431b0, reworded in 5fca3c49).** The revise step now says that, in a designer plan, a finding a
+     Decision on today's behaviour can meet is met that way: a new guard or rule the request did not ask for becomes
+     one `## Optional` line, marked Recommended or Not worth it. It is a card only when the user asked for it or the
+     request cannot be met safely without it, and a Decision then says why - P11's two exceptions, which the first
+     wording dropped and the final review put back. Before d97431b0 the revise step did not mention P11 at all.
+   - **Checks.** A pin test went red then green, for each wording. A temp-project matrix of 10/10, run for each
+     wording, covered the plugin and copy routes at project scope: a fresh install, an update over v3.1.0, a re-run,
+     and the user's own settings key, hook and skill kept. Not run there: missing or garbage input, since no script
+     parses the sentence, and the user and local scopes.
+   - **The re-run.** One re-run of that plan from the fix met the same first-grade finding the new way, and P11 was
+     met. On won both of its pairs in both orders. One re-run on the same trigger is not a rate.
+2. **Step 5, strong grades.** The first measure was 11 of 12, with pick-strong graded 80, 65 and 80.
+   - **What all three seats found.** K1 was unmet: option B was 'the same shape in Python', so the draft offered one
+     architecture in two languages. All three also raised that A's deciding reason assumed a JavaScript UI, which
+     the brief left to the user. One seat also scored that as K5 unmet.
+   - **A swing on identical input.** The fixture, the rubric and the seat were byte-identical to calibration batch
+     c2 (100, 85 and 85), on the same grader model, so the drop to 80, 65 and 80 is the grader's spread between
+     batches. All three seats named the same unmet K1, so the fixture was fixed rather than the swing set aside.
+   - **The fix (ed9b88f0).** The calibration's own rule edits a strong fixture where a seat's `no` holds up. B is now
+     a different shape, and A's reason names no UI language. Graded three times again: 100, 100 and 100. Each of
+     those grades still left one MATERIAL open: the install line named a 'Linux ARM tarball', which says neither
+     32-bit nor 64-bit, and no Node version floor (`node:sqlite` needs no flag from 22.13). That line was fixed in
+     5fca3c49 - the linux-arm64 tarball on a 64-bit Raspberry Pi OS, Node 22.13 or later - with A's deciding
+     reason cut to one and its assumption named, after the last grade and not re-graded.
+3. **Direct route, the answer.** The harness read only the result row, which held the closing message ('see
+   above'). The answer itself was the reply before it. After a harness fix that reads every main-session reply,
+   the same transcript passes 4 of 4. No call was re-made.
+
+**Not fixed: the ask path.** The ask probe assumed that the stack's PreToolUse hook would answer an AskUserQuestion
+call. That assumption (A7) is false under `claude -p` (Claude Code 2.1.312, from the probe's init row): the tool
+is absent from the session, whether or not `--allowed-tools` names it.
+
+- Both probes ($0.11 and $0.10) took the marked option themselves and listed it under 'Decisions auto-run made for
+  you:', which is mode-auto-run's own fallback.
+- No stack defect was found, but the hook's answer cannot be shown headless.
+- By the plan's rule, the code route (a whole solve flow under auto-run) was not run.
+
+**The env-route control.** Three order-lookup runs were scored by `ALFRED_CODE_SCORER=1`, with no flag call. All
+three reached a graded, released plan file, for $2.73. So the routing fix holds without the skill text the flag call
+loads. In phase 2, 15 of 18 scored runs reached a plan file; here, all 13 did: the 9 first runs, the re-run and the
+3 env runs.
+
+**Cost.** Phase 3 billed $26.93, by the runs' own result rows:
+
+| Part | USD |
+|---|---|
+| 12 plan runs and the one re-run | 11.78 |
+| Env-route control (3 runs) | 2.73 |
+| 3a judges (14 calls) | 3.74 |
+| 3b judges (8 calls) | 2.50 |
+| Noise batch and the pick-strong re-grade | 5.63 |
+| Ask probes and the direct route | 0.35 |
+| Probes before the runs (A1, the flag probe) | 0.21 |
+
+Each part is rounded to the cent, so the parts sum to $26.94. A scored run averaged $0.96 without the flag call; an
+unscored run cost $0.13-0.21.
+
+**What follows:**
+
+- With the three fixes in place, every quality bar of steps 2-5 passes, and so do the direct route and the env
+  control.
+- The ask bar failed and the code route was not run, so the stack modes are not called proven. The hook's answer to
+  an ask, and a whole solve flow under `/mode-auto-run`, still need an interactive session.
+
 ## Not run
 
 - The withhold path: every A/B run released its draft. Revise, re-grade, the fix after an offer and an answered
   question opening a second attempt ran in the A/B (above), through resumed `claude -p` calls.
 - An interactive (non-`-p`) session and the default permission mode: every batch, the replay and the A/B ran under
   `claude -p`.
+- The stack modes in an interactive session: the session-start ON line, the PreToolUse hook answering an
+  AskUserQuestion under `/mode-auto-run` (the tool is absent under `claude -p`), and the code route - a whole solve
+  flow under auto-run (phase 3, above).
+- A Workflow agent as the producer: every phase ran its plans in the main session.

@@ -264,7 +264,7 @@ restart for the hook delta.
 
 Then:
 
-- With `$TMP/plan.txt` naming a child, run `update-workspace.md`'s cascade call now.
+- With `$TMP/plan.txt` naming a child, run `update-workspace.md`'s cascade call now - the same call on either answer.
 - Reconcile the project's AGENTS.md (`update-close.md`'s step 6).
 - Report per its step 7.
 - On the copy route, NAME every `installed-only: adopting hook <name>` line in the report with what it blocks; a

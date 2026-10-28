@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing Alfred Code install to the newest release - no selection questions (it asks only when the release adds an item this install would not otherwise carry, or a root or the instruction file needs a decision): every installed item and stack plugin moves to the release's own content and pins, and what the stack itself retired or renamed upstream since the stamp is pruned - computed from the stamp compare and meta/migrations.json, never guessed, the MCP servers an earlier release registered included, each with its add-back line; user-authored artifacts and the generated rules are never touched, and one confirmation comes before any migration removal. NOT for choosing items to add or drop - that is /alfred-code:configure; not a first install - that is /alfred-code:init."
+description: "FAST refresh of an existing Alfred Code install to the newest release - no selection questions (it asks only when the release adds an item this install would not otherwise carry, or a root, the instruction file or the projects joined below need a decision): every installed item and stack plugin moves to the release's own content and pins, and what the stack itself retired or renamed upstream since the stamp is pruned - computed from the stamp compare and meta/migrations.json, never guessed, the MCP servers an earlier release registered included, each with its add-back line; user-authored artifacts and the generated rules are never touched, and one confirmation comes before any migration removal. NOT for choosing items to add or drop - that is /alfred-code:configure; not a first install - that is /alfred-code:init."
 disable-model-invocation: true
 ---
 
@@ -79,7 +79,7 @@ call (audit 2026-10-20 C15: a refused run carried the whole 36.5k-char walk, ~9k
    "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-walk.md"`. Act on the word per the walk's step 1; the walk
    holds steps 1-3 and the Do-not list.
 3. **The delta** - the walk's step 2: ONE preflight call, then its asks (new items, the data root, the docs root, the instruction
-   file's name) before the installer runs. A non-empty prune list takes `update-slow-path.md`'s steps 4-5.
+   file's name, whether the projects joined below update too) before the installer runs. A non-empty prune list takes `update-slow-path.md`'s steps 4-5.
 4. **The refresh** - step 3's installer call (10-minute timeout, exit code read), then its ONE post-install grep. The
    installer also moves an older project's folders onto the current layout, with no ask (`layout:` lines).
 5. **The restart verdict, and the close** - ONE call: step 3's `--log` call with `; cat

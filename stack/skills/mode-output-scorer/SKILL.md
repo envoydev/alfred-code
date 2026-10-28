@@ -45,7 +45,7 @@ Every later call passes the same `--root`, `--session` and `--slug`.
    - `ask-continue <id> recommend <choice>` or `withhold-final <id> recommend <choice>` - Release and withhold below;
    - `final <id>` - the output stays withheld; say so with the lines it printed;
    - `incomplete <id>` - the Fallback's retry.
-8. Revise: fix every BLOCKER, then every MATERIAL, a MINOR only when trivial; each finding gets one disposition - fixed, rejected with the evidence, or needs-human. Never delete substance to dodge a check, never add an empty section to satisfy one, never edit a rubric during a run.
+8. Revise: fix every BLOCKER, then every MATERIAL, a MINOR only when trivial; each finding gets one disposition - fixed, rejected with the evidence, or needs-human. Never delete substance to dodge a check, never add an empty section to satisfy one, never edit a rubric during a run. In a designer plan, a finding a Decision on today's behaviour can meet is met that way: a new guard or rule `Asked:` does not name becomes one `## Optional` line, marked Recommended or Not worth it with the reason - a card only when the user asked for it or the request cannot be met safely without it, and a Decision says why (P11).
 9. Nothing of a grade's table goes into the reply; the files hold it. Never state a total or a verdict the script did not print.
 
 The files, under `<data root>/state/sessions/scorer/<session id>/<slug>/`: `task.md`, `inputs.md`, `<id>.draft.md` and `<id>.score.md` per grade, `rounds.log` (written by the script) and `answers.md`. A folder is swept 7 days after its newest file, so a withheld draft keeps that long.

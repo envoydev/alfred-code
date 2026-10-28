@@ -1262,8 +1262,9 @@ const SETUP_ASK_TEMPLATES = {
     // +2: the workspace join ask and the account's both-instruction-files ask (workspace layering, 2026-10-26).
     // The join ask became the role ask, one template over its five cases (workspace roles and variables D2, 2026-10-27).
     'setup-plugin/references/update-walk.md': 6,
-    // the children's asks and the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26).
-    'setup-plugin/references/update-workspace.md': 2,
+    // the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26); the children's
+    // asks became the scope ask - the children too, or only this project - one template with and one without them (2026-10-28).
+    'setup-plugin/references/update-workspace.md': 3,
     'setup-plugin/references/update-close.md': 2,
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
     // area pick; init's machine-install ask.

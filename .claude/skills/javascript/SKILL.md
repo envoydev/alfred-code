@@ -6,7 +6,7 @@ user-invocable: false
 
 # JavaScript conventions - the base language layer
 
-For any runtime or package API surface not pinned down here, reach for the `documentation` MCP rather than memory - never by grepping `node_modules` bundles.
+For any runtime or package API surface not pinned down here, reach for the documentation tools rather than memory - never by grepping `node_modules` bundles.
 
 These are the language rules for every piece of JS-family code, independent of where it runs. The TypeScript type-layer skill stacks on top of this baseline and owns everything type-system: strict flags, type modeling, and checked-JS-via-JSDoc. A framework adds its own layer above that. **A project's own config and code-style docs are higher priority - follow the project where it diverges.**
 
@@ -53,4 +53,4 @@ Covers ES modules only, named exports and boundary barrels, async/await discipli
 - Default test runner for plain JS/TS projects: **Vitest** (ESM-first, Jest-compatible API) - jest only where the project already signals it (existing jest config/deps, CRA, a monorepo sibling on jest); `node:test` is the zero-dependency floor for small libraries. Frameworks bring their own harness and win in their own projects.
 - Performance work - Core Web Vitals in the browser, the never-block-the-event-loop discipline in Node, and the profiling toolbox - is `references/performance.md`; measure before optimizing.
 - Lint and format per the project's own config; in a TypeScript project the TypeScript type-layer skill's style reference owns the concrete setup.
-- Before any done word: run the project's lint and its test command over what you changed and quote both result lines. A JS change that was never executed is a change nobody has run - the language gives you no compiler to catch it.
+- Before any done word: run the project's lint and its test command over what you changed and close with `lint: <command> -> <result line>` and `tests: <command> -> <result line>`. A JS change that was never executed is a change nobody has run - the language gives you no compiler to catch it.

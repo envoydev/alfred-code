@@ -507,3 +507,16 @@ project or the home folder opens nothing.
 
 When a revised draft scores lower than an earlier round and the scorer asks for one more revision, its `revise` line
 now names the best round's draft and that round's findings to revise from, so the lower draft is not built on.
+
+## after 3.1.0 - update asks whether the projects joined below update too
+
+With projects joined below this one, `/alfred-code:update` now asks once whether they update too (recommended, as
+before) or only this project. Where a child has questions of its own, the same question carries them. 'No, only this
+project' leaves every project below as it is: the close lists each one as `held`, and `/alfred-code:update` here again,
+answering yes, updates them. An unattended run updates them, as before.
+
+## after 3.1.0 - the output scorer meets an unasked guard with a Decision
+
+When a graded designer plan's finding would add a guard or rule the request did not ask for, the revision now keeps
+today's behaviour as a Decision and puts the guard on one `## Optional` line, marked Recommended or Not worth it - a
+card only when you asked for it or the request cannot be met safely without it.
