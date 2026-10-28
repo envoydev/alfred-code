@@ -954,11 +954,42 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     keeps its 1M trigger, held at 360k - tiering by the lowered window had dropped it to the 300k DEFAULT trigger of that time (2026-10-14). A context read stops at a `compact_boundary` row (unknown until
     the next model call), and the model id read widens to 8MB and takes the harness's `model` attachment row. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it (90% of it). The offer fires only
-    when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
+    when a fresh session pays back with the cache warm (THE VERDICT below),
     re-arms at 1.5x growth - counted from its own block or the newest fresh-session ask answered in ANY turn, at that
     ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off). The offer waits
     while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).
+    THE VERDICT (the cache-aware design of 2026-10-28; the user's report of offers near 100k with the prompt cache warm):
+    every route that offers, recommends, holds for or demands a fresh session asks `fresh-session.js` `freshVerdict(ctx)`
+    (`worthResuming` returns its `pays`; the 40% rule, `MIN_RECOVERABLE_SHARE`, is retired). The floor F is the
+    session's first main-session assistant row with a usage (`coldFloor`: forward in 512KB chunks to 8MB, a row that
+    straddles a chunk read whole, never a sidechain or `<synthetic>` row - the old single 512KB read found none in 93 of
+    212 sessions, whose first reply sat 511KB to 1,159KB in, and answered yes at any carry). A fresh session carries
+    G = F + R (`RESUME_READ`, 13,000: what a resumed session re-reads). With r the session model's cache read rate
+    (`CACHE_READ_RATES`, thousandths of the input price: 50 for claude-opus-5-5 and claude-sonnet-5-5, 25 for
+    claude-fable-5-1 and claude-mythos-5-1, 100 for any other model or none; held to `meta/model-prices.json` by a test),
+    w its TTL's write rate (2000 for 1h, 1250 for 5m; the newest usage row's `cache_creation` split, else 5m) and P the
+    payback window (`ALFRED_CODE_FRESH_SESSION_PAYBACK`, a whole number 0 to 1000, anything else 30, unseeded, `0` no
+    offer), a fresh session pays when ctx > G and G x (w - r) < P x (ctx - G) x r - integers, so the comparison is exact
+    (claude-opus-5-5, 1h, F 79k: no at 211,600, yes from 211,601). A carry of 0, an unmeasured floor and P 0 never pay.
+    Every route is priced WARM: each one speaks after the request that would have met a cold cache (the idle-gap offer
+    rides that prompt, the holds deny a later call), so the carry is cached again when the choice is put; a block of the
+    prompt itself would be a new interaction. The texts state the price ('... a turn re-reads it at <r>x the input price.
+    A fresh session restarts at ~<F>k, written new at <w>x, and pays back in about <N> messages'), never 're-sends all of
+    it'. The compact and idle holds pass a changing call at a carry of 0 without spending the hold, so the first call
+    with a reading is judged, and a hold whose verdict does not pay releases (`not-worth-resuming`). Each route that
+    reaches the verdict writes one `mode: probe`, `kind: fresh-verdict` row per session, route and value of `pays`
+    (route, ctx, floor, ttl, ttlFrom, version, readRate, readShare, breakEven, payback, resumeRead, and the old 40% answer
+    as `share40`) - the rows the design's reopen list reads. CHECK 15 (the ask branch): a single-select question carrying
+    a fresh-session HAND-OFF (`isFreshHandoff`: a label opening on Resume, Start, Continue or Build that names a fresh or
+    new session or chat - a setting such as 'Offer a fresh session' and capture-usage-report's 'Hand off to a fresh
+    session' are none) where the verdict does not pay has it dropped in place, the mark moved to the first option left,
+    the not-pay text as the note and one `fresh-ask` verdict row; a question the drop would leave with one option is
+    refused once, naming the option to take. It stands down for `guard-stop-contract:fresh-ask` in
+    `ALFRED_CODE_HOOKS_OFF`, `FRESH_OFF`, a live auto-run stamp of this session, nobody at the terminal, a seat, no
+    measured carry, a multi-select question and a newest typed prompt naming a fresh or new session or `/clear`. The
+    numbers check reads hand-offs only. The skills list the in-session option first and mark the fresh one only where a
+    hook's text says it pays. The measurements are `docs/fresh-session-cache-evidence.md`.
     THE SCORER BACKSTOP (mode-output-scorer, spec 2026-10-24 5.9): while `scorerState` is usable (a loadable skill copy,
     neither hook nor its `scorer` part off), a close that owes a `Scored:` line and lacks it is held ONCE per typed prompt.
     One `walkBack` pass reads back to the cycle's opening row - the newest typed row that is no harness prompt, compaction
@@ -1019,7 +1050,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     wired on (`Write` / `Edit` / `MultiEdit` / `NotebookEdit` and the shell route - both rows fold into their
     dispatcher, which runs the hook in-process, one process per call (2.1.5 M3) - `Agent` / `Task`, a `Skill`) is denied with this session's measured
     carry and cold floor until an ask is answered or the turn writes 'single short step', released with no deny when a
-    resume would recover too little, nobody is at the terminal, a seat made the call or it has denied twice (audit
+    fresh session would not pay back (THE VERDICT), nobody is at the terminal, a seat made the call or it has denied twice (audit
     2026-10-10 C09: the injection alone lost to the summary line in six sessions), plus two lines: answer in
     the language of the user's prompts (unless a loaded skill sets it), and re-read a live plan file's header first. `PreCompact` writes
     `<data root>/state/sessions/COMPACT-STATE-<session>` first (one per session, so a parallel session's PreCompact never
@@ -1029,7 +1060,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     says to re-read its body, which the harness re-attaches only for a Skill call - even with every fresh-session offer off.
     `UserPromptSubmit` carries only the idle-gap offer: the prompt that ends a gap past the clock route's
     `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` since the last reply injects the ask once per gap (`guard-fresh-idle-*`), with
-    the carry and cold floor, when a resume recovers enough - never for a task notice, a seat, a carry past a compaction
+    the carry and cold floor, when a fresh session pays back with the cache warm - never for a task notice, a seat, a carry past a compaction
     or nobody at the terminal (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). The
     injection was spent on a question answered from context (audit 2026-10-11 SD11, fdce35ae / 2ca8e8ee), so the gap
     also leaves the compaction route's one-shot hold marked `idle` (a compaction hold already standing is kept): a

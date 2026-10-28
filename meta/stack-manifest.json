@@ -853,7 +853,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
-      "note": "the idle-gap offer: the prompt that ends a gap past ALFRED_CODE_FRESH_SESSION_AFTER_HOURS (the clock route's knob, default 2, 0 off) since the last reply injects the fresh-session ask once per gap, with the carry and cold floor, when a resume recovers enough (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). A harness notice, a seat and nobody at the terminal get no offer"
+      "note": "the idle-gap offer: the prompt that ends a gap past ALFRED_CODE_FRESH_SESSION_AFTER_HOURS (the clock route's knob, default 2, 0 off) since the last reply injects the fresh-session ask once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). A harness notice, a seat and nobody at the terminal get no offer"
     },
     {
       "file": "guard-fresh-session-start.js",
