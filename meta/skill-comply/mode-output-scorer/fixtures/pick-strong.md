@@ -9,15 +9,15 @@ Build a small tool to track watering for the office plants. It must work with no
 
 Two architectures fit an offline tool one person keeps on a Raspberry Pi.
 
-- **A - one Node process with a SQLite file** - Node LTS serving plain HTML pages and a small JSON API, the data in one SQLite file on the Pi. What decides it: one language end to end - the server and the pages the UI library will later drive are both JavaScript, so the UI choice adds no second language.
-- **B - Python with Flask and SQLite** - the same shape in Python. What decides it: Python ships on Raspberry Pi OS, so nothing to install. Its cost: the pages the UI library drives are JavaScript, so the tool runs on two languages.
+- **A - a small server on the Pi** - one Node LTS process serving plain HTML pages and a small JSON API, the data in one SQLite file through Node's built-in `node:sqlite` module (still marked experimental), so no native driver is built on a machine with no internet. What decides it: anyone on the office network logs a watering from their own phone or laptop, and the one SQLite file is the whole backup.
+- **B - no server, the data in the browser** - one plain HTML page opened in the Pi's own browser, the records in that browser's IndexedDB. What decides it: nothing is installed and no process runs. Its cost: the records live in one browser on one device, so nobody logs a watering from their phone, and clearing that browser's data loses them.
 
-Constraints: no internet - both run entirely on the Pi, no cloud service or CDN; one maintainer - A and B are each a single process and a single file; the UI library - left open in both: the pages stay plain HTML until you choose one.
+Constraints: no internet - both run entirely on the Pi, no cloud service or CDN, and A's one-time Node install comes from a USB copy of the Linux ARM tarball; one maintainer - A is one process and one file, B one file; the UI library - left open in both: the pages stay plain HTML until you choose one.
 
-What A gives up: B's zero-install start on Raspberry Pi OS - A needs Node installed once.
+What A gives up: B's nothing-to-run start - A needs Node copied onto the Pi once and its one process kept running.
 
 ```ask
 Two architectures fit an offline plant-watering tool on the office Raspberry Pi. Which one?
-- 'One Node process with a SQLite file (Recommended)' - Node LTS and one SQLite file; one language for the server and the pages, works offline
-- 'Python with Flask and SQLite' - ships with Raspberry Pi OS, nothing to install; a second language to maintain
+- 'A small server on the Pi (Recommended)' - one Node process and one SQLite file; anyone on the office network shares the records, works offline
+- 'No server, the data in the browser' - one HTML page, nothing to install or run; the records stay in one browser on one device
 ```
