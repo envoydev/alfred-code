@@ -320,3 +320,22 @@ test('commonJsScope: marks a folder of stack copies, keeps the user\'s own, prun
     assert.strictEqual(copy.commonJsScope({ dir, stackFiles, note: () => {} }), 'user', 'an unreadable package.json is the user\'s too');
     assert.strictEqual(fs.readFileSync(marker, 'utf8'), 'not json');
 });
+
+// F12 (2026-10-28 workspace run): a library skill's scripts/ ride the generic tree copy, so the marker shipped beside
+// them keeps them CommonJS inside a "type": "module" project.
+test('install-copy: a library skill script runs as CommonJS in an ESM project', () =>
+{
+    const { spawnSync } = require('node:child_process');
+    const probe = 'module.exports = 1;\nconsole.log(typeof require);\n';
+    for (const marked of [true, false])
+    {
+        const { base, src } = fixture({ 'SKILL.md': '---\nname: s\n---\n', 'scripts/probe.js': probe,
+            ...(marked ? { 'scripts/package.json': copy.COMMONJS_MARKER } : {}) });
+        fs.writeFileSync(path.join(base, 'package.json'), '{"type":"module"}\n');
+        const dest = path.join(base, '.claude', 'skills', 's');
+        copy.syncTree({ src, dest });
+        const r = spawnSync(process.execPath, [path.join(dest, 'scripts', 'probe.js')], { cwd: base, encoding: 'utf8' });
+        if (marked) assert.deepStrictEqual([r.status, r.stdout.trim()], [0, 'function'], r.stderr);
+        else assert.notStrictEqual(r.status, 0, 'without the marker the project\'s "type": "module" takes the script');
+    }
+});

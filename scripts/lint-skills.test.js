@@ -1431,3 +1431,31 @@ test('check 61: init-install.md is held at 31,960 bytes, and init-env-more.md ca
     assert.strictEqual(SETUP_ASK_TEMPLATES['setup-plugin/references/init-env-more.md'], 1);
     assert.strictEqual(SETUP_ASK_TEMPLATES[rel], 9);
 });
+
+// F12 (2026-10-28 workspace run): a skill script copied into a "type": "module" project died on its first require, so
+// each skill's scripts/ folder ships the CommonJS marker, and check 69 fails a folder of .js files without it.
+test('check 69 flags a skill script folder with no CommonJS marker', () =>
+{
+    const os = require('node:os');
+    const { checkSkillScriptMarkers } = require('./lint-skills.js');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-69-'));
+    try
+    {
+        const scripts = path.join(root, 'stack', 'skills', 'a', 'scripts');
+        fs.mkdirSync(scripts, { recursive: true });
+        fs.writeFileSync(path.join(scripts, 'x.js'), 'module.exports = 1;\n');
+        const found = checkSkillScriptMarkers(root);
+        assert.strictEqual(found.length, 1, found.join(' | '));
+        assert.match(found[0], /stack\/skills\/a\/scripts\/package.json: .*check 69/);
+        fs.writeFileSync(path.join(scripts, 'package.json'), '{"type":"commonjs"}');
+        assert.strictEqual(checkSkillScriptMarkers(root).length, 1, 'other bytes are no marker');
+        fs.writeFileSync(path.join(scripts, 'package.json'), '{ "type": "commonjs" }\n');
+        assert.deepStrictEqual(checkSkillScriptMarkers(root), []);
+        const plain = path.join(root, 'stack', 'skills', 'b', 'scripts');
+        fs.mkdirSync(plain, { recursive: true });
+        fs.writeFileSync(path.join(plain, 'data.json'), '{}');
+        assert.deepStrictEqual(checkSkillScriptMarkers(root), [], 'a folder with no .js needs no marker');
+        assert.deepStrictEqual(checkSkillScriptMarkers(path.join(__dirname, '..')), [], 'every shipped skill script folder carries it');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

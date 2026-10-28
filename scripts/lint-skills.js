@@ -1148,6 +1148,30 @@ function lintSkillHeadings(root = ROOT)
     return out;
 }
 
+// 69. Every skill folder whose scripts/ holds a .js ships the CommonJS marker beside it (F12, the 2026-10-28 workspace
+// run): the scripts are CommonJS, and copied into a project whose package.json says "type": "module" they died on their
+// first require. The marker rides the copy, the hash and uninstall like any other file of the skill.
+function checkSkillScriptMarkers(root = ROOT)
+{
+    const { COMMONJS_MARKER } = require('./install/copy.js');
+    const skillsDir = path.join(root, 'stack', 'skills');
+    const out = [];
+    let names = [];
+    try { names = fs.readdirSync(skillsDir).sort(); } catch { return out; }
+    for (const name of names)
+    {
+        const dir = path.join(skillsDir, name, 'scripts');
+        let files = [];
+        try { files = fs.readdirSync(dir); } catch { continue; }
+        if (!files.some((f) => f.endsWith('.js'))) continue;
+        let have = null;
+        try { have = fs.readFileSync(path.join(dir, 'package.json'), 'utf8'); } catch { have = null; }
+        if (have !== COMMONJS_MARKER)
+            out.push(`stack/skills/${name}/scripts/package.json: missing or not { "type": "commonjs" } - a skill script dies in a "type": "module" project (check 69)`);
+    }
+    return out;
+}
+
 // 43. A seat grants no MCP server, and a seat that runs the handoff bus holds Bash. The user's ruling of 2026-10-24:
 // the stack depends on no MCP server - a seat navigates with the LSP and grep, checks docs with WebFetch, and hands off
 // through `node .claude/hooks/handoff.js`, which needs Bash (the alfred-memory grant this check required before is
@@ -2600,6 +2624,8 @@ function main()
     try { const cf = require('./conformance.js'); conformanceDrift = cf.lintConformance(cf.loadClaims()); }
     catch (err) { conformanceDrift = [`meta/conformance.json could not be read (${err.message}), so no claim's marker was checked (check 68)`]; }
     for (const finding of conformanceDrift) flag(finding);
+    // 69. Each skill's scripts/ folder carries the CommonJS marker.
+    for (const finding of checkSkillScriptMarkers()) flag(finding);
     // 64. meta/skill-headings.json holds every stack skill's CURRENT heading, so the next description change still knows
     // this one (the installer's M3 claim of an older copy the stamp does not record, scripts/install/skill-headings.js).
     for (const finding of lintSkillHeadings()) flag(finding);
@@ -3247,6 +3273,7 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
 
 module.exports = {
     hiddenChars,
+    checkSkillScriptMarkers,
     lintSkillHeadings,
     lintWorkflows,
     lintPluginPlacement,
