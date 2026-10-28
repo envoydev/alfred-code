@@ -4503,7 +4503,7 @@ test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits i
 });
 
 // --- one home for the fresh-session arithmetic ---------------------------------------------------
-const FRESH_FNS = ['freshAt', 'tableWindow', 'coldFloor', 'worthResuming', 'ctxThreshold', 'sessionModelId'];
+const FRESH_FNS = ['freshAt', 'tableWindow', 'coldFloor', 'worthResuming', 'ctxThreshold', 'sessionModelId', 'freshVerdict'];
 
 test('fresh-session engine: the arithmetic both fresh-session hooks share lives in ONE file', () => {
   const eng = require(path.join(HOOKS, 'fresh-session.js'));
