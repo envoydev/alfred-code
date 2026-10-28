@@ -32,7 +32,7 @@ Update the <n> project(s) below this one as well? <each project: its rel and its
 - 'Yes, their questions the recommended way (Recommended)' - each child updates now, top-down; each ask takes the Recommended option its own update would offer
 - 'Yes, I pick per project' - each child updates now; one question per ask next, headed with the project, its own options
 - 'Yes, their questions left for later' - each child updates now; nothing is passed, each offer stays an offer, asked again at that project's own update
-- 'No, only this project' - nothing below runs; each keeps its set until it is updated
+- 'No, only this project' - nothing below runs; each keeps its own copies and settings until it is updated
 ```
 
 When no child row carries one, the question offers the two ends:
@@ -40,10 +40,12 @@ When no child row carries one, the question offers the two ends:
 ```ask
 Update the <n> project(s) below this one as well? <each project's rel>.
 - 'Yes, update them too (Recommended)' - each child updates now, top-down, from this project's new set
-- 'No, only this project' - nothing below runs; each keeps its set until it is updated
+- 'No, only this project' - nothing below runs; each keeps its own copies and settings until it is updated
 ```
 
-A held child reads this project's new set at its own next update, so the cascade is the default, not a duty.
+A held child reads this project's new set at its own next update, so the cascade is the default, not a duty. A held
+child is not frozen whole: its folder is left as it is, but a core plugin installed for the whole account moves for
+every project, so its sessions run the new hooks and agents beside its older copies until its own update.
 On 'No, only this project', record it now, in step 2, and write no child's answers:
 
 ```bash

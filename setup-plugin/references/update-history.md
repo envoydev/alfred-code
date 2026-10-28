@@ -512,8 +512,10 @@ now names the best round's draft and that round's findings to revise from, so th
 
 With projects joined below this one, `/alfred-code:update` now asks once whether they update too (recommended, as
 before) or only this project. Where a child has questions of its own, the same question carries them. 'No, only this
-project' leaves every project below as it is: the close lists each one as `held`, and `/alfred-code:update` here again,
-answering yes, updates them. An unattended run updates them, as before.
+project' changes nothing in the folders below: the close lists each one as `held`, and `/alfred-code:update` here
+again, answering yes, updates them. Where the core plugin is installed for your whole account, it still moves for every
+project, so a held one runs the new hooks and agents beside its older skill and rule copies - and may say its copies
+are older than the stack - until it is updated. An unattended run updates them, as before.
 
 ## after 3.1.0 - the output scorer meets an unasked guard with a Decision
 

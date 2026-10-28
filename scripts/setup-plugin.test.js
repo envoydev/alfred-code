@@ -1501,7 +1501,7 @@ test('update asks whether the children update too, and \'only this project\' run
     for (const q of ['<each project: its rel and its asks', '<each project\'s rel>'])
     {
         const block = cascade.slice(cascade.indexOf(`as well? ${q}`)).split('```')[0];
-        assert.match(block, /\n- 'No, only this project' - nothing below runs; each keeps its set until it is updated\n$/, `the last option holds the children (${q})`);
+        assert.match(block, /\n- 'No, only this project' - nothing below runs; each keeps its own copies and settings until it is updated\n$/, `the last option holds the children (${q})`);
     }
     const flatCascade = flat(cascade);
     assert.match(flatCascade, /a plan whose only rows below are `gone:` asks nothing and runs the cascade, which only removes their lines/);
@@ -1517,6 +1517,13 @@ test('update asks whether the children update too, and \'only this project\' run
     // printed has no version.
     assert.match(close, /for a `held` row the stamped version alone \(the left side of its `version=` field\), and `-` for a project step 2's plan printed no row for, a `gone` or a newly joined one;/);
     assert.match(close, /A `gone-kept` row is a folder that no longer holds an install: its line stays in this project's file until a cascade runs\./);
+    // A side note of 2026-10-28: a hold leaves the folders below as they are, but a core installed for the whole account
+    // moves for every project - the ask, the close and the release notes say so instead of 'as it is'.
+    assert.match(flat(cascade), /A held child is not frozen whole: its folder is left as it is, but a core plugin installed for the whole account moves for every project, so its sessions run the new hooks and agents beside its older copies until its own update\./);
+    assert.match(close, /updates the held projects' - and, where the core is installed for the whole account, that a held project already runs its new hooks and agents beside its older copies\./);
+    const notes = flat(refBody('update-history'));
+    assert.ok(!/leaves every project below as it is/.test(notes), 'the notes no longer say a hold freezes everything');
+    assert.match(notes, /Where the core plugin is installed for your whole account, it still moves for every project/);
     assert.match(flatCascade, /The scope ask and the join ask go in one call, the scope ask first; when step 2's own call has no room for both, they take a call of their own right after\./);
     assert.ok(!/joined below this one as well/.test(cascade), 'a rescan row is not joined yet');
     assert.match(close, /Any `held` row puts ONE line on the follow-ups card: '`\/alfred-code:update` here again, answering yes, updates the held projects'/);

@@ -114,7 +114,8 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   a `gone` or a newly joined one; and `updated` / `unchanged` / `failed` / `skipped` / `gone` / `held` / `gone-kept` -
   each `!!` line under it verbatim, then the `cascade: done ...` line. A `gone-kept` row is a folder that no longer
   holds an install: its line stays in this project's file until a cascade runs. Any `held` row puts ONE line on the
-  follow-ups card: '`/alfred-code:update` here again, answering yes, updates the held projects'.
+  follow-ups card: '`/alfred-code:update` here again, answering yes, updates the held projects' - and, where the core is
+  installed for the whole account, that a held project already runs its new hooks and agents beside its older copies.
   Then ONE call,
   `node "$TMP/repo/scripts/workspace.js" check-loads --root <rel>` for each `updated` child (none: no call), joined by ` ; ` (each is
   one logged-out `claude -p` in a throwaway account, up to 90 s), and paste every `!!` line it prints. A `loaded twice`
