@@ -14,7 +14,8 @@
 //   account-instructions  D5's account key: check, apply, decline or remove
 //   plan        update's cascade, before it runs: each project's row, projected add and drop, and its own asks
 //   answer      one project's answers to those asks, merged into the answers file the cascade reads
-//   cascade     the update itself, every child top-down from its parent's read-back - a failed parent skips its subtree
+//   cascade     the update itself, every child top-down from its parent's read-back - a failed parent skips its subtree;
+//               with --hold (the user's 'only this project') nothing runs and every project below is named held
 //   check-loads the exclude check: one logged-out `claude -p` here, naming every ancestor file that loaded twice
 //
 // Exit 0 on success, 2 with a `!!` line on bad input, 3 when the parent's file is locked, 1 when a write failed.
@@ -384,9 +385,24 @@ function readAnswers(file, { absentOk })
     return data;
 }
 
+// `--hold` is the user's 'No, only this project', kept as the top project's entry: written at the ask, so the cascade call
+// after this project's own run is one line on either answer.
+const HOLD = 'hold';
+
 function answer(out)
 {
     const file = arg('--file');
+    if (has('--hold'))
+    {
+        if (!file) throw bad('answer --hold takes --file <json>');
+        const data = readAnswers(file, { absentOk: true });
+        data['.'] = HOLD;
+        const tmp = `${file}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
+        fs.renameSync(tmp, file);
+        out('answer: . hold - the cascade runs nothing below');
+        return;
+    }
     const rel = arg('--project');
     if (!file || !rel) throw bad('answer takes --file <json> --project <rel> -- <flag> <value>...');
     if (!projectRel(rel)) throw bad(`--project ${rel} is not a path inside the top project`);
@@ -450,15 +466,23 @@ const FAILED_LINE = /^(?:==>)?\s*\d+ step\(s\) reported a failure above/m;
 function cascade(out)
 {
     const top = rootArg();
-    const source = sourceArg();
-    const file = arg('--answers');
-    // An absent file is a walk that answered nothing: each offer stays an offer.
-    const answers = file ? readAnswers(file, { absentOk: true }) : {};
     if (!ws.workspaceOn({ env, projectRoot: top }))
     {
         out('cascade: off - ALFRED_CODE_WORKSPACE is 0');
         return;
     }
+    const file = arg('--answers');
+    // An absent file is a walk that answered nothing: each offer stays an offer. An explicit --hold reads none.
+    const answers = file && !has('--hold') ? readAnswers(file, { absentOk: true }) : {};
+    // The user answered 'only this project': no read-back, no run, and a gone child keeps its line until a real cascade.
+    if (has('--hold') || answers['.'] === HOLD)
+    {
+        const below = ws.subtree(top, { env }).filter((r) => r.depth > 0);
+        for (const r of below) out(`cascade: ${r.rel}\theld`);
+        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.length} held`);
+        return;
+    }
+    const source = sourceArg();
     const rows = ws.subtree(top, { env });
     const byRel = new Map(rows.map((r) => [r.rel, r]));
     const hasChildren = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));

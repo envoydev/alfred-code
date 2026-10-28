@@ -464,6 +464,46 @@ test('cascade refuses an answers entry outside the allow-list before that projec
     assert.match(cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers).out, /^cascade: done 3 updated, 0 failed, 0 skipped$/m, 'an answers file never written is no answer');
 });
 
+test('cascade --hold runs nothing, keeps a gone line and names every project below as held', () =>
+{
+    const at = cascadeTree();
+    const wsFile = path.join(at('ws'), '.alfred', 'workspace');
+    fs.writeFileSync(wsFile, 'child api\nchild web\nchild old\n');
+    const { src, runs } = fakeSource('==> done\n');
+    const r = cli('cascade', '--root', at('ws'), '--source', src, '--hold');
+    assert.strictEqual(r.code, 0, r.err);
+    assert.strictEqual(r.out, 'cascade: api\theld\ncascade: api/tool\theld\ncascade: web\theld\ncascade: old\theld\ncascade: done 0 updated, 0 failed, 0 skipped, 4 held\n');
+    assert.deepStrictEqual(runs(), [], 'no read-back and no installer run');
+    assert.strictEqual(fs.readFileSync(wsFile, 'utf8'), 'child api\nchild web\nchild old\n', 'the gone child keeps its line');
+    for (const c of ['ws/api', 'ws/api/tool', 'ws/web']) assert.ok(!fs.existsSync(path.join(at(c), '.claude', 'runs')), c);
+    assert.strictEqual(cli('cascade', '--root', at('ws'), '--hold').out, r.out, 'a hold needs no source');
+    const off = spawnSync(process.execPath, [CLI, 'cascade', '--root', at('ws'), '--hold'], { encoding: 'utf8', env: { ...ENV, ALFRED_CODE_WORKSPACE: '0' } });
+    assert.strictEqual(off.stdout, 'cascade: off - ALFRED_CODE_WORKSPACE is 0\n');
+    const alone = tree({ solo: { stamp: true } });
+    assert.strictEqual(cli('cascade', '--root', alone('solo'), '--hold').out, 'cascade: done 0 updated, 0 failed, 0 skipped, 0 held\n', 'a standalone project holds nothing');
+});
+
+// Review 2026-10-28: the user's 'No, only this project' is written down at the ask, so the cascade call ten minutes later
+// is the same line on either answer and cannot run the children against it.
+test('answer --hold records \'only this project\' in the answers file, and the cascade then holds', () =>
+{
+    const at = cascadeTree();
+    const answers = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
+    fs.writeFileSync(answers, JSON.stringify({ api: ['--data-move', 'keep'] }));
+    const w = cli('answer', '--file', answers, '--hold');
+    assert.strictEqual(w.code, 0, w.out);
+    assert.strictEqual(w.out, 'answer: . hold - the cascade runs nothing below\n');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(answers, 'utf8')), { api: ['--data-move', 'keep'], '.': 'hold' });
+    const { src, runs } = fakeSource('==> done\n');
+    const r = cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers);
+    assert.strictEqual(r.out, 'cascade: api\theld\ncascade: api/tool\theld\ncascade: web\theld\ncascade: done 0 updated, 0 failed, 0 skipped, 3 held\n');
+    assert.deepStrictEqual(runs(), []);
+    const fresh = path.join(path.dirname(answers), 'none.json');
+    assert.strictEqual(cli('answer', '--file', fresh, '--hold').code, 0, 'a walk with no other answer starts the file');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(fresh, 'utf8')), { '.': 'hold' });
+    assert.strictEqual(cli('answer', '--hold').code, 2, '--hold still needs --file');
+});
+
 test('cascade with ALFRED_CODE_WORKSPACE=0 runs nothing', () =>
 {
     const at = cascadeTree();

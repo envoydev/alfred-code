@@ -1445,7 +1445,8 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     assert.strictEqual(firstOption(walk, '<the case\'s question above>'), '<the first ask: label up to its mark> (Recommended)');
     assert.strictEqual(firstOption(walk, 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
     const cascade = refBody('update-workspace');
-    assert.strictEqual(firstOption(cascade, 'Answer each project'), 'Take the recommended (Recommended)');
+    assert.strictEqual(firstOption(cascade, 'Update the <n> projects joined below this one as well\\? <each project: its rel and its asks'), 'Yes, their questions the recommended way (Recommended)');
+    assert.strictEqual(firstOption(cascade, 'Update the <n> projects joined below this one as well\\? <each project\'s rel>'), 'Yes, update them too (Recommended)');
     assert.strictEqual(firstOption(cascade, 'Join these installed projects'), 'Join as children (Recommended)');
     assert.strictEqual(firstOption(refBody('init-bootstrap'), 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
     const child = refBody('init-child');
@@ -1491,6 +1492,32 @@ test('validate and configure never offer a seed:false row', () =>
     const sentence = /A row with `"seed": false` is never MISSING and never offered: it is set only in the launch environment or by hand \(`ALFRED_CODE_WORKSPACE`\)\./;
     assert.match(flat(cmdBody('validate')), sentence);
     assert.match(flat(cmdBody('configure')), sentence);
+});
+
+// The user's ask of 2026-10-28: update asks whether the projects joined below update too; 'only this project' holds them.
+test('update asks whether the children update too, and \'only this project\' runs the hold call instead of the cascade', () =>
+{
+    const cascade = refBody('update-workspace');
+    for (const q of ['<each project: its rel and its asks', '<each project\'s rel>'])
+    {
+        const block = cascade.slice(cascade.indexOf(`as well? ${q}`)).split('```')[0];
+        assert.match(block, /\n- 'No, only this project' - nothing below runs; each keeps its set until it is updated\n$/, `the last option holds the children (${q})`);
+    }
+    const flatCascade = flat(cascade);
+    assert.match(flatCascade, /a plan whose only rows below are `gone:` asks nothing and runs the cascade, which only removes their lines/);
+    // Review 2026-10-28: the No is written at the ask, and the cascade call is ONE line on either answer.
+    assert.match(flatCascade, /On 'No, only this project', record it now, in step 2, and write no child's answers: ```bash node "\$TMP\/repo\/scripts\/workspace\.js" answer --file "\$TMP\/answers\.json" --hold ```/);
+    assert.strictEqual((cascade.match(/workspace\.js" cascade /g) || []).length, 1, 'one cascade call, the same on either answer');
+    assert.ok(!/cascade --root \. --hold/.test(cascade), 'no second call for the hold');
+    assert.match(flatCascade, /on 'No, only this project' no child's root: nothing below is written/, 'a held child gets no account-instructions write');
+    assert.ok(!/'Answer each project|'Leave them all'/.test(cascade), 'the children\'s own asks are options of the one scope question now');
+    const close = flat(refBody('update-close'));
+    assert.match(close, /`updated` \/ `unchanged` \/ `failed` \/ `skipped` \/ `gone` \/ `held`/);
+    assert.match(close, /Any `held` row puts ONE line on the follow-ups card: '`\/alfred-code:update` here again, answering yes, updates the held projects'/);
+    assert.match(flat(refBody('update-walk')), /With `\$TMP\/plan\.txt` naming a child, run `update-workspace\.md`'s cascade call now - the same call on either answer/);
+    // Review 2026-10-28: the slow path ran no cascade at all - it now points at the same call before the close.
+    assert.match(flat(refBody('update-slow-path')), /With `\$TMP\/plan\.txt` naming a child, run `update-workspace\.md`'s cascade call now - the same call on either answer\. Then step 6 of `update-close\.md`\./);
+    assert.match(flat(cmdBody('update')), /whether the projects joined below update too/);
 });
 
 test('update-close reads the cascade rows and runs check-loads only when cascade.txt exists', () =>

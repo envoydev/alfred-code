@@ -60,7 +60,8 @@ scopes it to ONE matcher when the file stays wired for its other events, and a
 `settings_hook_wired` detect matches on that wiring being present rather than on a file;
 parse-edit-rewrite,
 never regex, never touching other wiring). A migration's `then` line goes in the step-7 report
-as a next step - run nothing on the user's behalf. Then step 6 of `update-close.md`.
+as a next step - run nothing on the user's behalf. With `$TMP/plan.txt` naming a child, run `update-workspace.md`'s
+cascade call now - the same call on either answer. Then step 6 of `update-close.md`.
 
 ## The data root move - on `data-move: offer`
 

@@ -106,13 +106,15 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   and apply the answer with `--apply gitignore` or `--apply exclude`, reporting its `applied` /
   `current` line. A `none (...)` line is not reported. Unattended, take the Recommended option and log
   it.
-- **WORKSPACE** - read only when `$TMP/cascade.txt` exists (`update-workspace.md` ran the cascade): append
+- **WORKSPACE** - read only when `$TMP/cascade.txt` exists (`update-workspace.md` ran the cascade or its hold call): append
   `; [ -f "$TMP/cascade.txt" ] && cat "$TMP/cascade.txt"` to the hygiene call. A `cascade.txt` with no
   `cascade: done` line is a cascade still running: wait for its completion notice and read it again. One row per
   project from its `cascade: <rel><TAB><state>` line - `<rel>`, its version from step 2's plan row, and `updated` /
-  `unchanged` / `failed` / `skipped` / `gone` - each `!!` line under it verbatim, then the `cascade: done ...` line.
+  `unchanged` / `failed` / `skipped` / `gone` / `held` - each `!!` line under it verbatim, then the `cascade: done ...`
+  line. Any `held` row puts ONE line on the follow-ups card: '`/alfred-code:update` here again, answering yes, updates
+  the held projects'.
   Then ONE call,
-  `node "$TMP/repo/scripts/workspace.js" check-loads --root <rel>` for each `updated` child, joined by ` ; ` (each is
+  `node "$TMP/repo/scripts/workspace.js" check-loads --root <rel>` for each `updated` child (none: no call), joined by ` ; ` (each is
   one logged-out `claude -p` in a throwaway account, up to 90 s), and paste every `!!` line it prints. A `loaded twice`
   line, and each `failed` or `skipped` child, puts `/alfred-code:update in <rel>` on the follow-ups card.
 - **SERVERS** - the `mcp servers:` block the grep caught (an install an earlier release gave MCP servers, on its
