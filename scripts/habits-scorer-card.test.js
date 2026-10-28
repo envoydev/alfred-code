@@ -499,6 +499,13 @@ test('SKILL.md: the description, the session-id layout line, the roster clause, 
     assert.ok(read('docs/alfred-code.html').includes('mode-output-scorer/references/outputs.md'), 'the HTML links the table (AC28)');
 });
 
+// The A/B's phase 3 (2026-10-28): a round-0 finding asked for a repeat cancel to be ruled on, the revision added a reject
+// guard to a card, and the next grade's P11 named it - released anyway at 95, since the revision closed more than it opened.
+test('SKILL.md revise step: in a designer plan, a fix that would add unasked behaviour is a Decision plus an ## Optional line, never card work', () => {
+    const body = squash(split(read('stack/skills/mode-output-scorer/SKILL.md')).body);
+    assert.ok(body.includes("In a designer plan, a fix that would add behaviour `Asked:` does not name - a new guard, rule or card - is a Decision that keeps today's behaviour plus one `## Optional` line for the change, marked Recommended; never card work, which fails P11 in the next grade."));
+});
+
 // The producers' one line (R6) and the producers' docs (spec 5.13).
 const PRODUCER_SITES = [['stack/skills/habits-plan-writing/SKILL.md', 'designer-plan', true], ['stack/skills/habits-execution-strategy/SKILL.md', 'inline-plan', true],
     ['stack/skills/issue-diagnoser/SKILL.md', 'root-cause', true], ['stack/skills/task-solve-cross/references/issue-investigation.md', 'root-cause', true],
