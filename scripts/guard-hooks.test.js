@@ -5299,3 +5299,28 @@ test('guard-cross-project-write: a root with its own autoMemoryDirectory under a
     assert.equal(w.write('ws/api', path.join(w.acct, 'shared-mem', 'MEMORY.md')).status, 0, 'the child\'s own user-level memory');
   } finally { w.rm(); }
 });
+
+// F14 (the 2026-10-28 workspace run): a project kept under the harness's scratch root (/tmp/claude-<uid>/...) drops the
+// whole root by the containment rule, and with it the session's own scratchpad - the run could not write its notes.
+// Only <scratch root>/<one segment>/<session id> comes back, and never when that folder holds the project.
+{
+  const UIDX = typeof process.getuid === 'function' ? process.getuid() : null;
+  const S = UIDX == null ? null : `/tmp/claude-${UIDX}`;
+  const BASE = S && path.join(S, `alfred-t-${process.pid}`);
+  const made = S && !fs.existsSync(S);
+  const run = (root, payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    input: JSON.stringify(payload), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
+  }).status;
+  const write = (file, sid) => ({ tool_name: 'Write', tool_input: { file_path: file }, ...(sid ? { session_id: sid } : {}) });
+  test('F14: a project under the scratch root keeps its session\'s scratchpad, and only that', { skip: !S && 'no process.getuid' }, (t) => {
+    t.after(() => { fs.rmSync(BASE, { recursive: true, force: true }); if (made) fs.rmSync(S, { recursive: true, force: true }); });
+    const proj = path.join(BASE, 'proj');
+    const proj2 = path.join(BASE, 'sid1', 'proj2');
+    for (const d of [proj, proj2, path.join(BASE, 'sid1', 'scratchpad'), path.join(BASE, 'other')]) fs.mkdirSync(d, { recursive: true });
+    assert.equal(run(proj, write(path.join(BASE, 'sid1', 'scratchpad', 'x.txt'), 'sid1')), 0, 'the session\'s own scratchpad');
+    assert.equal(run(proj, write(path.join(BASE, 'other', 'x.txt'), 'sid1')), 2, 'another session\'s folder');
+    assert.equal(run(proj2, write(path.join(BASE, 'sid1', 'y.txt'), 'sid1')), 2, 'a session folder that holds the project');
+    assert.equal(run(proj, write(path.join(BASE, 'sid1', 'scratchpad', 'x.txt'))), 2, 'no session id, no scratchpad');
+  });
+}

@@ -22,8 +22,8 @@ plugins. Dependencies only point FORWARD through the walk, so an earlier answer 
 never invalidated by a later one.
 
 - **FRESH:** hold ONE running `raw.json` (in the temp dir) of the user's DIRECT picks per category
-  (`rules`, `agents`, `skills`, `hooks`, `plugins`); locked items never enter it - the
-  closure re-adds them at emit time.
+  (`rules`, `agents`, `skills`, `hooks`, `plugins`); `required` and `locked` rows never enter it - the
+  emit re-adds both, the always-on baseline whatever the file holds.
 - **DELTA:** hold TWO running files in the temp dir: `raw.json` - the remaining selection
   (installed + adds - drops, every category incl. `hooks`) - and `dropped.json` -
   everything dropped so far, per category. Seed BOTH before the first recompute - `raw.json` from
@@ -95,7 +95,8 @@ grep at 258k context to confirm this shape):
 
    FRESH rows are labeled `required` (closure-locked, reason in the last column), `evidence` (the
    scan matched a signal - PRE-SELECTED, the matched signal as the reason, droppable like any
-   seed), `recommended` / `stack:<name>` (seeded, droppable), `added` (the user's own pick), `-`
+   seed), `recommended` / `stack:<name>` (seeded, droppable), `added` (the user's own pick), `locked` (an always-on
+   rule or skill every install carries - never droppable, in a child too), `-`
    (not selected), and in a child `from root` (the parent install holds it - kept unless unpicked, and an unpick is an
    ignore line, never a drop). Recommended = the union of `always` + each confirmed stack in
    `$TMP/repo/meta/recommendations.json`, pre-selected:
@@ -109,8 +110,8 @@ grep at 258k context to confirm this shape):
     3 | wpf-implementer             | -            | -
    ```
 
-   DELTA rows are labeled in the `installed` column - `yes`, `orphaned` (with the cascade origin)
-   or `-`, and in a child `from root` (installed because the parent holds it) or `ignored` (the parent holds it and this
+   DELTA rows are labeled in the `installed` column - `yes`, `locked` (the always-on baseline every install carries),
+   `orphaned` (with the cascade origin) or `-`, and in a child `from root` (installed because the parent holds it) or `ignored` (the parent holds it and this
    child ignores it) - and the `required by` column carries the lock reason for a kept item something else
    kept needs:
 
@@ -127,20 +128,28 @@ grep at 258k context to confirm this shape):
    whole-layer verdicts: the per-row change is a pick from options built out of the table's own
    labels. Every ask is one AskUserQuestion call at most 4 options wide, the Recommended one first
    (AskUserQuestion takes 1-4 questions per call, 2-4 options each, and adds Other itself).
-   - FRESH - step 1, ONE single-select per layer, the question line carrying the counts from the
-     table just pasted; the layer's own template is in its section below. The four options are always
+   - FRESH - step 1, ONE single-select per layer, the question line carrying the numbers of the
+     table's `counts:` line (right above its `total:` footer), copied, never counted; the layer's own template is in
+     its section below. The four options are always
      the same moves: **Keep the marked rows** (Recommended - the table exactly as shown), **Pick ...**
      (opens step 2), **Add every ...** and **Only the locked rows**. Other still takes `add 3 7 12` /
      `drop 5` for a user who prefers numbers.
-   - FRESH - step 2, only on 'Pick': ONE AskUserQuestion call of up to 4 multi-select questions, each
-     question 2-4 options, each option a GROUP taken from the table's own labels - a stack's
-     designer-implementer-verifier trio, a stack's skill set, a hook family - its description naming
-     the rows (`#21-23 wpf-solution-designer, wpf-implementer, wpf-verifier`). More than 16 groups:
-     put the likeliest first and leave the rest to Other. Every question's `header` is at most 12
-     characters. A question the layer has no rows for is not asked. The answer names rows, so the
-     off-by-one risk of typed numbers is gone; the name read-back below still runs.
+   - FRESH - step 2, only on 'Pick': the tool deals the rows, never you. Run `node "$TMP/repo/scripts/stack-select.js"
+     --selection "$TMP/raw.json" --deal fresh <layer>` with the other flags of that layer's `--table` call (output to
+     `$TMP/deal.out`; it is no table, so it is not pasted). Each `call <c>` number is
+     ONE AskUserQuestion call of up to 4 multi-select questions: a `call <c> question <q> (<side>): #<n> <name>, ...`
+     line is one question whose options are its rows, each labelled `<name>` and described `row #<n> of the table`. A
+     `call <c> <side>: groups - <n> rows` line takes that call's 4 questions, each option a GROUP taken from the table's own labels - a stack's
+     designer-implementer-verifier trio, a stack's skill set, a hook family - its description naming the rows
+     (`#21-23 wpf-solution-designer, wpf-implementer, wpf-verifier`), the likeliest first and the rest left to Other;
+     the layer's own 'Step 2' line below names its groups. A `<side>: none` line asks nothing for that side, and
+     `deal: nothing to pick - re-ask step 1` re-asks step 1 once. Every question's `header` is at most 12 characters.
+     The answer names rows, so the off-by-one risk of typed numbers is gone; the name read-back below still runs.
    - DELTA - ONE call of two single-select questions per layer, ADD and DROP, each a template below;
-     'Pick' on either opens the same grouped multi-select call for that side. When the recompute
+     'Pick' on either runs `--deal add <layer>` or `--deal drop <layer>` with the flags of that layer's DELTA `--table`
+     call and asks its lines the same way. When the table's `counts:` line gives a side exactly 1 row (1 droppable, or
+     1 not installed), that side's question omits its 'Pick rows to add' / 'Pick rows to drop' option and keeps its
+     other two, so a Pick never reaches a `none - 1 row` deal. When the recompute
      printed `orphan:` lines the drop question leads with **Drop the k orphaned rows** (Recommended,
      each orphan's cascade origin in the description) instead of 'Drop nothing'. A drop naming a
      LOCKED row is not refused: run `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --dependents
@@ -148,24 +157,26 @@ grep at 258k context to confirm this shape):
      required by rule csharp-conventions, rule dotnet-repair-agents + 4 agents; drop them ALL
      together, or keep it?' On consent, the item AND its dependents fold into `dropped.json` -
      dependents from already-walked layers are named right there, and the next recompute's orphan
-     lines surface immediately. On refusal, the row stays.
+     lines surface immediately. On refusal, the row stays. When it prints a `locked:` line (an always-on item, or one
+     the always-on baseline requires), the row stays with no drop offered: quote that line and go on.
    - A drop naming a LOCKED row in FRESH (a typed `drop 5`) is refused with its reason shown ('#2
      stays - required by rule dotnet-repair-agents; drop that rule first (reopening step 4) or keep
      it'), never silently honored or silently ignored.
 
-   The DELTA questions, the same for every layer (`<layer>` and the counts filled from the table):
+   The DELTA questions, the same for every layer (`<layer>` filled in, every number copied from the table's
+   `counts:` line, never counted):
 
    ```ask
    Add to the installed <layer>? <m> catalog rows are not installed.
    - 'Add nothing (Recommended)' - keep the installed set as it is
-   - 'Pick rows to add' - the next call groups the <m> uninstalled rows by their table labels
+   - 'Pick rows to add' - the next call offers the <m> uninstalled rows, dealt by `--deal add`
    - 'Add all <m> uninstalled' - every catalog row of this layer
    ```
 
    ```ask
    Drop from the installed <layer>? <k> rows are droppable, <o> orphaned.
    - 'Drop nothing (Recommended)' - keep every installed row
-   - 'Pick rows to drop' - the next call groups the droppable rows by their table labels
+   - 'Pick rows to drop' - the next call offers the droppable rows, dealt by `--deal drop`
    - 'Drop all droppable' - keep only the locked rows
    ```
 
@@ -181,23 +192,24 @@ grep at 258k context to confirm this shape):
 
 ## Rules
 
-Nothing in the graph depends on a rule, so this layer never has locked rows - it is the one fully
-free pick, which is why it goes first: the rules chosen here decide what later layers must keep. In
-DELTA every installed rule is freely droppable and every catalog rule addable, and a rule drop is
+Nothing in the graph depends on a rule, so its only locked rows are the always-on baseline, which every install
+carries - past them it is the one fully free pick, which is why it goes first: the rules chosen here decide what
+later layers must keep. In DELTA every installed rule but that baseline is freely droppable and every catalog rule
+addable, and a rule drop is
 where cascades START: what it alone pulled in surfaces as orphan offers in the layers ahead.
 
-FRESH ask, counts from the table (20 rows on aspnet + web-angular: 16 marked, 4 unmarked):
+FRESH ask, counts copied from the table's `counts:` line (20 rows on aspnet + web-angular: 16 marked, 4 unmarked):
 
 ```ask
 Rules: install the 16 marked rows? 4 are unmarked (devops, sql, winforms, wpf conventions).
 - 'Keep the marked rows (Recommended)' - the 7 baseline rules, the authoring rules and the confirmed stacks' conventions
-- 'Pick rules to add or drop' - next call lists the unmarked rules and the marked groups
+- 'Pick rules to add or drop' - next call offers the unmarked rules and the droppable marked ones, dealt by `--deal fresh`
 - 'Add every rule' - all 20 rows of the catalog
 - 'Only the always-on baseline' - the 7 baseline rules; stack and authoring rules left out
 ```
 
-Step 2: 'Add which?' (multi-select, one option per unmarked row, at most 4) and 'Drop which?'
-(multi-select over the marked groups: the stack's convention rules, the authoring rules).
+Step 2: no side of this layer passes 16 rows, so `--deal fresh rules` always deals it row by row - 'Add which?' and
+'Drop which?' questions of 2-4 rows each.
 
 
 ## Agents
@@ -215,7 +227,7 @@ Agents: install the marked rows? The unmarked ones are other stacks' trios and r
 - 'Only the locked rows' - what the kept rules require
 ```
 
-Step 2: multi-select questions of 4 trios each ('Add trios 1/2', 'Add trios 2/2'), plus a
+Step 2, on a `groups` line: multi-select questions of 4 trios each ('Add trios 1/2', 'Add trios 2/2'), plus a
 'related-project-analyzer' question (Add it / Leave it out) when it is unmarked.
 
 
@@ -256,7 +268,7 @@ Skills: install the marked rows? The unmarked ones are mostly other stacks' skil
 - 'Only the locked rows' - what the kept rules and agents require
 ```
 
-Step 2: two multi-select questions of 4 stack sets each (the wpf, winforms, console and
+Step 2, on a `groups` line: two multi-select questions of 4 stack sets each (the wpf, winforms, console and
 windows-service sets; ionic-angular, data, browser-extension, js), plus one question on the
 `general` opt-ins (dotnet-hosted-services, dotnet-data-access, capture-usage-report).
 
@@ -294,7 +306,7 @@ Hooks: keep all 18 on? The build check and the instrumenter stay inert until swi
 - 'None - every hook off' - writes `hook none`
 ```
 
-Step 2: multi-select questions of 4 - session (docs-session, preferences-session, history-session, forge-session), optional (check-turn-build, instrument-tool-usage, guard-answer,
+Step 2, on a `groups` line: multi-select questions of 4 - session (docs-session, preferences-session, history-session, forge-session), optional (check-turn-build, instrument-tool-usage, guard-answer,
 guard-fresh-session-start) and the guards in groups of 4, the last group padded from the
 neighbouring one so no question has fewer than 2 options.
 
@@ -310,7 +322,7 @@ retired `claude-md-management` and `security-guidance` (the core's AGENTS.md ski
 cover them): neither is a row, and `/alfred-code:update` removes each from this project's scope with the
 line that adds it back.
 
-FRESH ask, counts from the table (claude-hud marked, typescript-lsp on evidence):
+FRESH ask, counts copied from the table's `counts:` line (claude-hud marked, typescript-lsp on evidence):
 
 ```ask
 Plugins: install the <n> marked rows? <the marked rows and their reasons, one clause each>.
@@ -371,7 +383,7 @@ Apply the recommended plugin settings? <n> missing, <m> differing, <k> matching.
 ```
 
 
-No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the
+No kept plugin with a row, or a report whose last line reads `plugin-settings: nothing to offer`: skip this silently, ask nothing. A target that needs a block the
 plugin's own setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports
 itself as `skipped` rather than inventing it - say so once; the block lands once a statusLine
 exists, whether `/alfred-code:init` writes claude-hud's own or the user already has one of their own.

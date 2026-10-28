@@ -94,14 +94,24 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     (`.claude/*`, `!.claude/skills/`, `.claude/skills/*`, `!.claude/skills/plugin-authoring/`).
   - The `/alfred-code` router is a SKILL and the workers are COMMANDS on purpose (commands list
     namespaced, skills list bare) - do not convert either back.
-  - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
-    (up to 3 times per table since the last answered ask; it waits for the ask's own transcript row - only when a table call sits in the tail since the typed prompt, M15 - and fails open) whose decision table was run but never pasted - a `stack-select.js
-    --table` catalog, the `plugin-settings.js` report or validate's install audit - and, inside an init / configure walk
+  - Table before question: `hooks/guard-layer-table.js` voids, at PostToolUse `AskUserQuestion`, the answer to an ask
+    (up to 3 times per table since the last answered ask; fails open, and on a `tool_response` with no answers object) whose decision table was run but never pasted - a `stack-select.js
+    --table` catalog, the `plugin-settings.js` report or validate's install audit. F4, 2026-10-28: the ask's own message
+    reaches the transcript only after the PreToolUse hooks finish, so a PreToolUse paste check never saw the paste
+    (`docs/workspace-layering-evidence.md`, 'Fix run'); the void is `decision: block` plus `updatedToolOutput`, each answer
+    replaced by the denial line, so the stored result carries the marker every reader counts, a void Claude Code did not
+    apply is read from its `hook_blocking_error` row and writes one `void-not-applied` probe row, and
+    `guard-layer-table:void` in `ALFRED_CODE_HOOKS_OFF` switches it off. F27, the same run: Sonnet answered six voids with
+    the table written in thinking only, so a void whose table output was read back prints it in the block reason, which
+    the user sees in full under 'hook returned blocking error' - a plain line for the user, the table alone (`tableAlone`:
+    a layer table to its `total:` line, the workspace plan from its header row), then the model's line - and the re-ask
+    after that one void passes unpasted (`PRINTED`); a table call a hook denied or that failed (`is_error`) is never the
+    latest table (the final review's I1). At PreToolUse it denies, inside an init / configure walk
     holding a `stack-select.js` call, a layer's own selection ask (`Agents: ...`, `Add to the installed skills?`) whose `--table <layer>` never ran (validate's `<Layer>: ...` consent asks are no walk ask - commands track
     T2-03, 2026-10-21) (2.1.7, the user's report of 2026-10-06; its own valve of three per layer). Audit 2026-10-11 added
     configure step 1's `update-preflight.js --inventory` table (proof: its `total:` line) with its closing ask, which needs that
     call to have run, and - inside a typed init / configure / validate run that printed a banner - a gap in the `[step n/N`
-    numbers, each with its own valve. A walk that never ASKS gave it nothing to judge (2026-10-21: a real init run narrated
+    numbers (voided at PostToolUse like the paste), each with its own valve. A walk that never ASKS gave it nothing to judge (2026-10-21: a real init run narrated
     the hooks table and moved on, and rendered the plugins table through `node -e`), so it also rides PreToolUse `Bash`
     behind `if: Bash(node *)` and judges the walk's NEXT step - a `stack-select.js`, `plugin-settings.js` or installer
     call - inside a typed init / configure run: denied while the latest `--table` has no answered ask after it (a re-run
@@ -202,7 +212,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 - **Workspace layering (2026-10-26, on by default from 3.0.0).** A project installed inside an installed folder can join it as a CHILD: it takes the parent's set and
   the variables it reads through the chain, adds its own picks and can ignore any inherited item. Every project has a
-  ROLE - `role root|standalone` in its file, or a `parent` line (`roleOf`; no line reads `standalone (not asked)`) - and
+  ROLE - `role root|standalone` in its file, or a `parent` line (`roleOf`; no line reads `standalone (no role recorded)`) - and
   `above <rel>|none` records the tree it was asked against, so the role ask (`roleAsk`) comes back only when that
   changes: init asks it before screen A, configure offers it in the Environment area, and update's preflight prints
   `workspace: role-ask <case> <rel>` for the walk to ask. The record is `<data root>/workspace` (`repo-memory-data.md`)

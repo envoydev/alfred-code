@@ -406,7 +406,9 @@ function joinVerdict(projectRoot, { env = process.env, exec = runtime.execComman
 // ------------------------------------------------------------------ the role (roles spec D1, D2)
 
 // The derived role: a child of `rel` when the parent hop holds; else a root by `role root` or any `child` line; else
-// standalone. `asked` is false while the file holds no role, parent or above line (status: `standalone (not asked)`).
+// standalone. `asked` is false while the file holds no role, parent or above line (status:
+// `standalone (no role recorded)` - never 'not asked', which elsewhere is a verdict to skip an ask: Sonnet skipped the
+// init role ask on it, F28 in the fix run).
 function roleOf(projectRoot, { env = process.env } = {})
 {
     const view = readWorkspace(projectRoot, { env }).view;
@@ -424,7 +426,7 @@ function roleText(role)
     if (!role) return 'workspace off';
     if (role.kind === 'child') return `child of ${role.rel}${role.children ? `, root of ${childCount(role.children)}` : ''}`;
     if (role.kind === 'root') return role.children ? `root of ${childCount(role.children)}` : 'root, no child yet';
-    return role.asked ? 'standalone' : 'standalone (not asked)';
+    return role.asked ? 'standalone' : 'standalone (no role recorded)';
 }
 
 const WHY = {
@@ -843,7 +845,7 @@ function envPlan(ctx)
     const dataRoot = w.fileRoot ?? (ctx.dataInfo && !ctx.dataInfo.invalid ? ctx.dataInfo.root : undefined);
     const view = linked ? { ignores: w.ignores } : readWorkspace(ctx.projectRoot, { env: ctx.env, dataRoot }).view;
     if (!linked && !(view && view.parent)) return null;
-    const plan = { ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], seeds: [], hooksOffDrop: [], memberEnv: {} };
+    const plan = { linked, ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], seeds: [], hooksOffDrop: [], memberEnv: {} };
     if (!linked) return plan;
     // D4 step 5 for the settings pass's own readers (the compaction windows, the memory switch): what the members hand it.
     plan.memberEnv = chainValues(ctx.projectRoot, { env: ctx.env });

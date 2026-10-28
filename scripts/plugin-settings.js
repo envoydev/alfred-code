@@ -231,7 +231,10 @@ function report(plugins, plan, opts)
     }
 
     lines.push('');
-    lines.push(`plugin-settings: ${missing} to add, ${differs} already set differently (kept unless you choose replace), ${match} already match`);
+    // F16: every row already matching is no offer - the walk and the gate read 'nothing to offer' as skip.
+    lines.push(missing || differs
+        ? `plugin-settings: ${missing} to add, ${differs} already set differently (kept unless you choose replace), ${match} already match`
+        : `plugin-settings: nothing to offer - ${match} already match`);
     if (opts.applied) lines.push(`applied: ${opts.applied.changed} key(s) across ${opts.applied.written} file(s)`);
     if (opts.applied && opts.applied.backup) lines.push(`backup: ${opts.applied.backup}`);
 

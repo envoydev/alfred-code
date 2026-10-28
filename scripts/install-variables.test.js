@@ -321,3 +321,22 @@ test('the CLI names its usage on a bad call', (t) =>
         assert.match(run.stderr, /usage: node scripts\/variables\.js/);
     }
 });
+
+// F3 / F15: `recommend` states the docs-versioning answer the walk lists first.
+test('recommend: a folder with no repository, a local-scope child, a bad flag', () =>
+{
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'rec-'));
+    try
+    {
+        const none = cli(['recommend', '--root', bare]);
+        assert.strictEqual(none.status, 0, none.stderr);
+        assert.strictEqual(none.stdout, 'docs-versioning: recommend local - no git repository, so nothing can commit the docs\n');
+        git(bare, 'init', '-q');
+        const kid = cli(['recommend', '--root', bare, '--scope', 'local', '--child']);
+        assert.strictEqual(kid.stdout, 'docs-versioning: recommend local - a local-scope child keeps its data root out of git\n');
+        const plain = cli(['recommend', '--root', bare]);
+        assert.strictEqual(plain.stdout, 'docs-versioning: recommend git - a git repository - the docs are committed and versioned per branch\n');
+        assert.strictEqual(cli(['recommend', '--bogus']).status, 2);
+    }
+    finally { fs.rmSync(bare, { recursive: true, force: true }); }
+});

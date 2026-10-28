@@ -253,6 +253,43 @@
             ]
           }
         ],
+        "PostToolUse": [
+          {
+            "matcher": "AskUserQuestion",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Bash|PowerShell|Monitor",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__.*",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
         "SessionStart": [
           {
             "matcher": "startup|clear|resume",
@@ -437,38 +474,6 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
-                "timeout": 10
-              }
-            ]
-          }
-        ],
-        "PostToolUse": [
-          {
-            "matcher": "AskUserQuestion",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "Bash|PowerShell|Monitor",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "^mcp__.*",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
                 "timeout": 10
               }
             ]

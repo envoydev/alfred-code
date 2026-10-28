@@ -750,12 +750,15 @@ function ancestorPrefsDirs(projectRoot, { env = process.env } = {})
     };
     take(chain.ignores);
     const out = [];
-    for (const m of chain.members)
+    // F25: each entry names its member's role - the chain's last member is the workspace root, its first the parent.
+    const top = chain.members.length - 1;
+    chain.members.forEach((m, i) =>
     {
-        if (dropped) break;
-        out.push({ dir: path.join(docsRootOf(m.root, { env, dataRoot: m.dataRoot }), 'preferences'), skip: new Set(skip) });
+        if (dropped) return;
+        const role = i === top ? 'root' : i === 0 ? 'parent' : 'ancestor';
+        out.push({ dir: path.join(docsRootOf(m.root, { env, dataRoot: m.dataRoot }), 'preferences'), skip: new Set(skip), role });
         take(m.ignores);
-    }
+    });
     return out;
 }
 // The workspace root (D3's 'root'): the chain's last linked member, null with no parent. The switch is the caller's.

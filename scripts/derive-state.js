@@ -432,6 +432,19 @@ function floor({ plugins = [], deny = [], skillsDir = null, overrides = {} } = {
     return out;
 }
 
+// F18: a child's preview over what it gets, not only what it picked - the parent plan's lines (less the child's ignores)
+// the selection lacks are added, so an inherited seat reads on and an inherited hook wired. A hook line added retires
+// the selection's `hook none`.
+function inheritedSelection(selectionText, plan, ignores)
+{
+    const ws = require('./install/workspace.js');
+    const lines = selectionText.split('\n').map((l) => l.trim()).filter(Boolean);
+    const have = new Set(lines);
+    const added = ws.effectiveLists({ parentLines: ws.planLines(plan), ignores, own: [] }).filter((l) => !have.has(l));
+    const kept = added.some((l) => l.startsWith('hook ')) ? lines.filter((l) => l !== 'hook none') : lines;
+    return [...kept, ...added].join('\n');
+}
+
 function main(argv)
 {
     const arg = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
@@ -458,7 +471,7 @@ function main(argv)
     const selection = arg('--selection');
     if (!selection)
     {
-        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope project|user|local]\n       derive-state.js --floor --plugins <enabled entries, csv> [--skills-dir <.claude/skills>] [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
+        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope project|user|local] [--inherited <parent plan json> [--ignores <file>]]\n       derive-state.js --floor --plugins <enabled entries, csv> [--skills-dir <.claude/skills>] [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
         return 1;
     }
     if (argv.includes('--delta'))
@@ -476,8 +489,23 @@ function main(argv)
         console.log([...(lines.length ? lines : ['none']), ...keptOff.map((l) => `kept-off ${l}`), ...keepParked.map((l) => `keep-parked ${l}`)].join('\n'));
         return 0;
     }
+    // --inherited <parent plan json> [--ignores <file>]: a joined child's preview (F18). An unreadable plan is an error -
+    // a preview missing what the child inherits is the misreport this flag exists to stop.
+    const inheritedFile = arg('--inherited');
+    let selectionText;
+    if (inheritedFile)
+    {
+        let plan;
+        try { plan = JSON.parse(fs.readFileSync(path.resolve(inheritedFile), 'utf8')); }
+        catch (err) { console.error(`derive-state: --inherited ${inheritedFile} - ${err.code === 'ENOENT' ? 'not found' : 'does not parse'}`); return 1; }
+        let ignoreText = '';
+        try { ignoreText = arg('--ignores') ? fs.readFileSync(path.resolve(arg('--ignores')), 'utf8') : ''; } catch { ignoreText = ''; }
+        const ignores = ignoreText.split('\n').map((l) => l.trim().split(/\s+/)).filter((p) => p.length === 2).map(([category, name]) => ({ category, name }));
+        selectionText = inheritedSelection(fs.readFileSync(path.resolve(selection), 'utf8'), plan, ignores);
+    }
     const state = deriveState({
         selection: path.resolve(selection),
+        selectionText,
         sourceDir: arg('--source') ? path.resolve(arg('--source')) : REPO,
         marketplace: arg('--marketplace') || 'envoydev',
     });
@@ -536,4 +564,4 @@ function delta({ installed = {}, selectionText, picked = null })
 }
 
 module.exports = {
-    delta, stampCarried, classifyNew, homeOf, splitPick, deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };
+    delta, stampCarried, classifyNew, homeOf, splitPick, deriveState, inheritedSelection, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };

@@ -535,21 +535,24 @@ test('the layer-table gate runs the prelude gates and leaves a block row where t
             row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tb', content: 'a | b\ntotal: 3 skills' }] } }),
             row({ type: 'assistant', message: { id: 'm2', role: 'assistant', content: [{ type: 'text', text: 'pasted below' }, { type: 'tool_use', id: 'ask', name: 'AskUserQuestion', input: {} }] } }),
         ].join('\n') + '\n');
-        const ask = { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'ask', session_id: 'lg', transcript_path: tp, cwd: root };
+        // F4 (2026-10-28): the paste check runs at PostToolUse and voids the answer (exit 0, a block decision on stdout).
+        const ask = { hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'ask', session_id: 'lg', transcript_path: tp, cwd: root,
+            tool_input: {}, tool_response: { questions: [], answers: { q: 'A' }, annotations: {} } };
         // Launched as the plugin launches it: CLAUDE_PLUGIN_ROOT set, which is what GATE 4's neverSetUp reads.
-        const env = { PATH: process.env.PATH, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'cfg'), CLAUDE_PROJECT_DIR: root, CLAUDE_PLUGIN_ROOT: path.join(__dirname, '..'), ALFRED_CODE_LAYER_GATE_WAIT_MS: '0' };
+        const env = { PATH: process.env.PATH, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'cfg'), CLAUDE_PROJECT_DIR: root, CLAUDE_PLUGIN_ROOT: path.join(__dirname, '..') };
         const run = (extra = {}, input = ask) => spawnSync(process.execPath, [hook], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, ...extra } });
+        const voids = (r) => r.status === 0 && /"decision":"block"/.test(r.stdout);
         const ledger = path.join(root, '.alfred', 'statistics', 'hook-blocks', 'lg.jsonl');
-        assert.strictEqual(run().status, 2, 'a never-set-up repo keeps the gate - it serves setup');
+        assert.ok(voids(run()), 'a never-set-up repo keeps the gate - it serves setup');
         assert.ok(!fs.existsSync(path.join(root, '.alfred')), 'and is written nothing (R54)');
         fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.1.5\n');
-        assert.strictEqual(run().status, 2);
+        assert.ok(voids(run()));
         const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
         assert.deepStrictEqual([rows.length, rows[0].hook, rows[0].mode], [1, 'guard-layer-table.js', undefined], 'one block row, counted as a block');
-        assert.strictEqual(run({ ALFRED_CODE_HOOKS_OFF: 'guard-layer-table' }).status, 0, 'the csv names it');
-        assert.strictEqual(run({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }).status, 0, 'minimal keeps only the protective guards');
-        assert.strictEqual(run({}, { ...ask, cursor_version: '2.1.0', hook_event_name: 'preToolUse' }).status, 0, 'a Cursor payload stands it down');
+        assert.deepStrictEqual([run({ ALFRED_CODE_HOOKS_OFF: 'guard-layer-table' }).stdout], [''], 'the csv names it');
+        assert.deepStrictEqual([run({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }).stdout], [''], 'minimal keeps only the protective guards');
+        assert.deepStrictEqual([run({}, { ...ask, cursor_version: '2.1.0', hook_event_name: 'postToolUse' }).stdout], [''], 'a Cursor payload stands it down');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

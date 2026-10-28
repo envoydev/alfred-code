@@ -519,7 +519,7 @@ function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null,
 // `seeds` (a joined child, workspace.js envPlan): the keys a seed may fill - the workspace hands a child the rest (D4 step
 // 5), and a decision this run took (a flag, the hooks walk's answer) is written whatever it says. `seedLabel` names the
 // file a seed is said to land in (writeSettings moves the stack's variables into .variables).
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null, seeds = null, seedLabel = null })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null, seeds = null, seedLabel = null, chain = null })
 {
     // Where a seed is said to land: a moved key goes to .variables (writeSettings' split), the rest to this file.
     const seedAt = (key) => (seedLabel ? seedLabel(key) : label);
@@ -570,10 +570,24 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
         }
     }
 
+    // F10 (the 2026-10-28 workspace run): a linked child (`chain`, the members' values) given the value the workspace
+    // already hands it writes nothing - an own copy would freeze it against a later change at the root. A key no member
+    // sets is handed the catalog default, which the hooks read then; an `ignore env` key is the child's own (seeded below).
+    const fromChain = (key, flag, value) =>
+    {
+        if (!chain || (chain.ignored || []).includes(key)) return false;
+        const handed = Object.hasOwn(chain.values, key) ? chain.values[key] : String((catalog.find((r) => r.key === key) || {}).default ?? '');
+        if (handed !== value) return false;
+        const { into, lab, mine } = at(key);
+        if (Object.hasOwn(into, key)) { delete into[key]; if (mine) changed = true; }
+        log(`  ${lab} env: ${key} '${value}' comes from the workspace - nothing written (the --${flag} answer equals it)`);
+        return true;
+    };
+
     // 3d. COMPACT INSTEAD OF A FRESH SESSION (`--auto-compact on|off`, setup's screen-B answer), written over a value
     // already there like the two roots above; without the flag the absent-only seed below writes `0`. The window pass
     // in writeSettings reads the value this leaves.
-    if (autoCompact && autoCompact.value)
+    if (autoCompact && autoCompact.value && !fromChain('ALFRED_CODE_AUTO_COMPACT', 'auto-compact', autoCompact.value))
     {
         const { into, lab, mine } = at('ALFRED_CODE_AUTO_COMPACT');
         const old = into.ALFRED_CODE_AUTO_COMPACT;
@@ -584,7 +598,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
 
     // 3e. WHICH MEMORY (`--memory default|custom`, init's and configure's answer), written over a value already there like
     // 3d; without the flag the absent-only seed below writes `default`. writeSettings' memory pass reads the value this leaves.
-    if (memory && memory.value)
+    if (memory && memory.value && !fromChain('ALFRED_CODE_MEMORY', 'memory', memory.value))
     {
         const { into, lab, mine } = at('ALFRED_CODE_MEMORY');
         const old = into.ALFRED_CODE_MEMORY;
@@ -994,7 +1008,8 @@ function writeSettings(opts)
     };
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memory, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote,
-        seeds: childEnv ? (key) => !MOVED.has(key) || NEVER_CHAINED.has(key) || (childEnv.ignored || []).includes(key) : null, seedLabel: vars ? (key) => (MOVED.has(key) ? '.variables' : label) : null }) && !vars) changed = true;
+        seeds: childEnv ? (key) => !MOVED.has(key) || NEVER_CHAINED.has(key) || (childEnv.ignored || []).includes(key) : null, seedLabel: vars ? (key) => (MOVED.has(key) ? '.variables' : label) : null,
+        chain: childEnv && childEnv.linked ? { values: memberEnv, ignored: childEnv.ignored || [] } : null }) && !vars) changed = true;
     // D5: a decision for a key settings.local.json holds lands there, where it takes effect over .variables - said so.
     const overrides = new Set();
     const overridden = (key) => { if (!overrides.has(key)) { overrides.add(key); log(`  variables: ${key} set in .claude/settings.local.json (it overrides .variables here)`); } };

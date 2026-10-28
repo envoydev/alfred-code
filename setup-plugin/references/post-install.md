@@ -39,6 +39,9 @@ it the plugin reads enabled and answers nothing, and symbol lookups fall back to
 
 ## 2. Git hygiene - keep the machine-local artifacts out of the repo
 
+In no-repo mode this section is skipped: the close card's line reads exactly `git hygiene: skipped - no git repository`,
+and nothing about `.claude/AGENTS.md`.
+
 The install creates machine-local state that should not be committed. Two homes - pick one:
 the committed `.gitignore` (shares the policy with the team) or `.git/info/exclude` (local-only,
 touches no committed file). The lines, minus anything the project already covers:

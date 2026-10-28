@@ -835,3 +835,62 @@ test('floor (2.1.0): the project\'s skill copies count - a manual-only, overridd
     const cli = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', 'alfred-code', '--skills-dir', dir, '--settings', settingsFile], { encoding: 'utf8' }));
     assert.deepStrictEqual([cli.skills.count, cli.agents.count, cli.agents.denied], [1, 44, ['aspnet-implementer']]);
 });
+
+// F18 (the 2026-10-28 workspace run): a child's preview derived from its own selection only, so the seats and hooks the
+// root hands it read as denied and off - the walk reported 'agents: 0 on' for a child that inherits a dozen.
+const { inheritedSelection } = require('./derive-state.js');
+const HOOKS5 = ['guard-protected-force-push', 'guard-catastrophic-rm', 'guard-read-whole-file', 'guard-secret-value', 'guard-unapproved-dispatch'];
+const SEATS3 = ['architecture-analyzer', 'code-quality-analyzer', 'evidence-gatherer'];
+const PARENT_PLAN = { hooks: HOOKS5, agents: SEATS3, skills: [], rules: [] };
+
+test('F18: inheritedSelection adds the parent lines a child lacks, an ignore left out, and drops hook none', () =>
+{
+    const lines = inheritedSelection('hook none\nskill a', PARENT_PLAN, []).split('\n');
+    for (const h of HOOKS5) assert.ok(lines.includes(`hook ${h}`), h);
+    for (const s of SEATS3) assert.ok(lines.includes(`agent ${s}`), s);
+    assert.ok(lines.includes('skill a'));
+    assert.ok(!lines.includes('hook none'));
+    const ignored = inheritedSelection('hook none\nskill a', PARENT_PLAN, [{ category: 'hook', name: HOOKS5[0] }]).split('\n');
+    assert.ok(!ignored.includes(`hook ${HOOKS5[0]}`));
+    assert.ok(ignored.includes(`hook ${HOOKS5[1]}`));
+    const noHooks = inheritedSelection('hook none\nskill a', { agents: SEATS3 }, []).split('\n');
+    assert.ok(noHooks.includes('hook none'), 'hook none stays when no hook line is added');
+});
+
+test('F18: a child preview shows the inherited seats on and the inherited hooks on', () =>
+{
+    const state = fromText(inheritedSelection('hook none\nskill javascript', PARENT_PLAN, []).split('\n'));
+    for (const s of SEATS3) assert.ok(state.agents.on.includes(s), s);
+    for (const s of SEATS3) assert.ok(!state.agents.deny.includes(`Agent(alfred-code:${s})`), s);
+    for (const h of HOOKS5) assert.ok(state.hooks.on.includes(h), h);
+});
+
+test('F18: a missing or garbage --inherited is one error line and exit 1', () =>
+{
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'inherited-'));
+    try
+    {
+        const sel = path.join(dir, 'sel.txt');
+        fs.writeFileSync(sel, 'hook none\nskill javascript\n');
+        const bad = path.join(dir, 'bad.json');
+        fs.writeFileSync(bad, '{ not json');
+        const cli = (...a) => spawnSync(process.execPath, [path.join(__dirname, 'derive-state.js'), '--selection', sel, '--source', ROOT, ...a], { encoding: 'utf8' });
+        for (const [file, why] of [[path.join(dir, 'none.json'), 'not found'], [bad, 'does not parse']])
+        {
+            const r = cli('--inherited', file);
+            assert.strictEqual(r.status, 1, r.stdout);
+            assert.deepStrictEqual(r.stderr.trim().split('\n'), [`derive-state: --inherited ${file} - ${why}`]);
+        }
+        const plan = path.join(dir, 'parent.json');
+        fs.writeFileSync(plan, JSON.stringify(PARENT_PLAN));
+        const ign = path.join(dir, 'ignores.txt');
+        fs.writeFileSync(ign, `hook ${HOOKS5[0]}\n`);
+        const ok = cli('--inherited', plan, '--ignores', ign);
+        assert.strictEqual(ok.status, 0, ok.stderr);
+        const state = JSON.parse(ok.stdout);
+        assert.ok(state.hooks.on.includes(HOOKS5[1]) && !state.hooks.on.includes(HOOKS5[0]), JSON.stringify(state.hooks.on));
+        assert.strictEqual(cli('--inherited', plan, '--ignores', path.join(dir, 'gone.txt')).status, 0, 'a missing ignores file is none');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

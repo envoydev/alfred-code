@@ -168,6 +168,15 @@ The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it
 
 `/alfred-code:uninstall` removes only what the install recorded. Every file, process and token, in detail: [`docs/install-footprint.md`](docs/install-footprint.md).
 
+## Workspaces
+
+A folder of several projects can share one install's skills, rules, hooks and seats.
+
+- Run `/alfred-code:init` at the workspace root first, then in each project below; init asks each one to join.
+- In a project below, install with `--scope local` (or `user`): `--scope project` writes the core into the child's committed `.claude/settings.json`.
+- Unattended, init runs only its second (bootstrap) phase: install in an interactive session and restart first, then run `ALFRED_CODE_UNATTENDED=1 claude -p "/alfred-code:init" --permission-mode auto` - print mode without a permission mode refuses every Bash call.
+- Before a project joins, its first session can ask 'allow external imports?' for the root's awareness rule. 'No' is safe: after the join that rule is excluded there.
+
 ## FAQ
 
 <details>

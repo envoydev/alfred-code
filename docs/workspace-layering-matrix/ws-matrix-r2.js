@@ -292,8 +292,8 @@ run('AC6', (sb) =>
     sb.install('fresh', ROOT_SEL, [], { extra: { ALFRED_CODE_WORKSPACE: '0' } });
     const role = (rel, extra) => (/^role: (.*)$/m.exec(sb.ws(rel, 'status', [], extra).out) || [])[1];
     const got = { api: role('api'), root: role('.'), solo: role('solo'), fresh: role('fresh'), off: role('solo', { ALFRED_CODE_WORKSPACE: '0' }) };
-    check('AC6 status: child of .., root of 2 children, standalone, standalone (not asked), workspace off',
-        got.api === 'child of ..' && got.root === 'root of 2 children' && got.solo === 'standalone' && got.fresh === 'standalone (not asked)' && got.off === 'workspace off', JSON.stringify(got));
+    check('AC6 status: child of .., root of 2 children, standalone, standalone (no role recorded), workspace off',
+        got.api === 'child of ..' && got.root === 'root of 2 children' && got.solo === 'standalone' && got.fresh === 'standalone (no role recorded)' && got.off === 'workspace off', JSON.stringify(got));
 });
 
 // ---------------------------------------------------------------- AC7 - a fresh install at each scope

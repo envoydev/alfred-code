@@ -121,8 +121,30 @@ Verdicts:
 - A10 holds: a stdio server starts before the logged-out auth stop, in the session's project folder, with the project
   settings' `env` in its environment. No logged-in run was needed (R7).
 - A11 holds: with the project server approved, the LOCAL entry of the same name starts.
-- A3 NOT RUN - needs an interactive approval: open a session in a child under a root whose .mcp.json holds a server,
-  approve it, then open one in a second child and see whether it asks again.
+- A3 FAILS - an approval covers only the folder it was given in (section 'A3' below).
+
+## A3 - a root `.mcp.json` approval does not reach a sibling (2026-10-28, Claude Code 2.1.312, macOS)
+
+Tree: `<S>/ws` (git) whose `.mcp.json` holds one stdio server, `probe`, that appends its cwd to a log when it starts and
+speaks no protocol; three git children `<S>/ws/a`, `b`, `c`. Each session was a real interactive `claude` driven
+through `expect` in a 160x50 pty, a throwaway `CLAUDE_CONFIG_DIR` and `HOME` (the account file seeded only with
+`hasCompletedOnboarding`), logged in by `CLAUDE_CODE_OAUTH_TOKEN`, no prompt sent. Each screen was rendered through pyte
+0.8.2; the highlighted option was read by its colour, then confirmed by the file the answer wrote.
+
+The dialog, in every folder the first time: `New MCP server found in this project: probe` with 'Use this MCP server',
+'Use this and all future MCP servers in this project' and 'Continue without using this MCP server', the last one
+highlighted by default.
+
+| Run | Answer | Written | Server started |
+|---|---|---|---|
+| child `a` | 'Use this MCP server' | `<S>/ws/a/.claude/settings.local.json`: `enabledMcpjsonServers: ["probe"]`; the account `projects` entry for `a` kept `enabledMcpjsonServers: []` | in `a` |
+| sibling `b` | none - the same dialog came back | nothing | no |
+| root `ws` | 'Use this MCP server' | `<S>/ws/.claude/settings.local.json`: `enabledMcpjsonServers: ["probe"]` | in `ws` |
+| new child `c`, after the root's yes | none - the same dialog came back | nothing | no |
+
+Verdict: the approval is the cwd project's own `settings.local.json` row, and a git child does not read its root's
+settings, so every child asks once for each server in an ancestor's `.mcp.json` - whether the root or a sibling said
+yes first. Not run: the 'all future' answer (`enableAllProjectMcpServers`, the same file), and Windows.
 
 ## Release 3 - A5, the memory folder's name (2026-10-27, Claude Code 2.1.311 macOS, 2.1.309 Windows 11 VM)
 
@@ -169,3 +191,35 @@ Verdicts:
   - a Read of a file in the root's docs folder returned its marker line with no denial;
   - the control, a Read of a sibling folder no setting lists, was denied - `permission_denied`, 'Path is outside allowed
     working directories' - so the run can tell the two apart.
+
+## Fix run - the paste gate measurements (2026-10-28, Claude Code 2.1.312, macOS)
+
+Each probe ran in a real interactive `claude` (Sonnet) under a throwaway `CLAUDE_CONFIG_DIR` and `HOME`, driven in a
+160x50 pty and read through pyte 0.8.2; each probe hook was removed after its run.
+
+- F4 measurement. A PreToolUse and a PostToolUse hook on AskUserQuestion polled the transcript every 100ms for 3000ms;
+  the model sent one message holding the line `MARKER-7Q9`, a 5-row table, then the ask.
+  - PreToolUse: its own `tool_use` row was absent at the start and through 3000ms, and so was the marker text row (24
+    rows on disk).
+  - PostToolUse: both were present at its start (rows 25 text and 26 tool_use, of 27).
+  - So the whole assistant message is written only after the PreToolUse hooks finish: a paste check there can never
+    see the paste, and its 2000ms wait was spent on every walk ask for nothing.
+- Void probe. A PostToolUse AskUserQuestion hook returned `decision: block`, a `reason` and
+  `hookSpecificOutput.updatedToolOutput` - the `tool_response` with each `answers` value replaced by a marker line. One
+  ask, answered 'A'.
+  - The model saw only the replaced answer ('Pick one? -> VOID-MARK-3K ...'), plus 'PostToolUse:AskUserQuestion hook
+    returned blocking error' and the reason.
+  - The transcript's `tool_result` content and its `toolUseResult` both hold the replaced answer. The reason is a
+    separate `attachment` row, `type: hook_blocking_error`, carrying `toolUseID`. The original answer appears only in
+    the hook's input.
+  - The `tool_response` shape: `{questions: [...], answers: {<question>: <label>}, annotations: {}}`.
+- Void probe 2, the same setup:
+  - one call of two multiSelect questions, answered 'Apple, Pear' and 'Blue': `answers` is
+    `{"Pick fruits?": "Apple, Pear", "Pick colors?": "Blue"}`, one string per question with the labels joined by
+    `, `; replaced, the model saw only the marker, both stored copies hold it, and the model re-asked on its own;
+  - an ask a PreToolUse hook answered (`permissionDecision: allow` plus `updatedInput.answers`): PostToolUse fires, its
+    `tool_response` carries the hook's answers with no `annotations` key, and the replacement lands the same way;
+  - an ask the user cancelled (Esc): no PostToolUse call; the result is the rejection text.
+
+Verdict: the paste and banner checks move to PostToolUse, where the message is on disk, and a failed check replaces
+the answers through `updatedToolOutput`, so every reader of the stored result sees the gate's marker. Not run: Windows.

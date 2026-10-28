@@ -2705,3 +2705,34 @@ test('no workspace docs line: a root with no domain, a seat\'s start, the kill s
     assert.doesNotMatch(ctx(ig.hook({})) || '', /Workspace root docs/);
   } finally { none.rm(); w.rm(); ig.rm(); }
 });
+
+// F25 (the 2026-10-28 workspace run): in a three-level chain every ancestor's line read 'root', so a leaf could not tell
+// its parent's docs from the workspace root's. Each line names the member's role.
+test('a three-level chain names parent then root', () => {
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-ws3-')));
+  const put = (rel, text) => { const f = path.join(top, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+  try {
+    put('ws/.claude/alfred-code.stamp', 'sha: x\n');
+    put('ws/.alfred/workspace', 'child api\n');
+    put('ws/.alfred/docs/architecture/ARCHITECTURE.md', '# A\n');
+    put('ws/.alfred/docs/preferences/watch.json', '{}\n');
+    put('ws/api/.claude/alfred-code.stamp', 'sha: x\n');
+    put('ws/api/.alfred/workspace', 'parent ..\nchild tool\n');
+    put('ws/api/.alfred/docs/architecture/ARCHITECTURE.md', '# Api\n');
+    put('ws/api/tool/.claude/alfred-code.stamp', 'sha: x\n');
+    put('ws/api/tool/.alfred/workspace', 'parent ..\n');
+    const leaf = path.join(top, 'ws', 'api', 'tool');
+    spawnSync('git', ['init', '-q'], { cwd: leaf });
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: leaf, CLAUDE_CONFIG_DIR: path.join(top, 'cfg') };
+    for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_WORKSPACE', 'ALFRED_CODE_DATA_PATH']) delete env[k];
+    const out = spawnSync(process.execPath, [path.join(HOOKS, 'docs-session.js')], { cwd: leaf, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid(), cwd: leaf }), encoding: 'utf8', env });
+    const text = ctx(out);
+    const parentLine = `Workspace parent docs (read-only): ${path.join(top, 'ws', 'api', '.alfred', 'docs')} - architecture`;
+    const rootLine = `Workspace root docs (read-only): ${path.join(top, 'ws', '.alfred', 'docs')} - architecture, preferences`;
+    assert.ok(text.includes(parentLine), out.stdout + out.stderr);
+    assert.ok(text.includes(rootLine), out.stdout + out.stderr);
+    assert.ok(text.indexOf(parentLine) < text.indexOf(rootLine), 'parent first, then root');
+    const layout = require(path.join(HOOKS, 'layout.js'));
+    assert.deepStrictEqual(layout.ancestorPrefsDirs(leaf, { env }).map((e) => e.role), ['parent', 'root']);
+  } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});

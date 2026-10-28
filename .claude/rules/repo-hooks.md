@@ -899,8 +899,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the rate a change to one is measured on (C03 had no row). THE ASK-FIXED ROW WAITS (the hooks track's minor list):
     PreToolUse hooks on one matcher run in parallel, and on `AskUserQuestion` the core lists the plugin's
     `guard-layer-table.js` first and this hook second - each a node start per ask, p50 28ms and 44ms on an 830KB
-    transcript (measured 2026-10-20, this machine), the layer gate waiting up to 2s for its own row when a decision table
-    ran since the typed prompt. So the layer gate can deny the ask this hook fixed in place: the `ask-fixed` row waits in
+    transcript (measured 2026-10-20, this machine); since 2026-10-28 (F4) the layer gate's PreToolUse half judges only a
+    layer table that never ran and configure step 1's inventory, and its paste check voids at PostToolUse. So the layer
+    gate can deny the ask this hook fixed in place: the `ask-fixed` row waits in
     `guard-stop-askfixed-<session>.jsonl` (hook temp dir) with the call's `tool_use_id`, and this hook's next ask or Stop
     writes it once the call's result is on disk - dropped when that result is a hook's denial, written as it stands past a
     day - and a fix in place spends no deny marker (only a deny does, so a sibling's denial never costs the re-sent ask its

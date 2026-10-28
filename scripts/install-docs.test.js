@@ -1117,3 +1117,32 @@ test('tickets/ is a stack docs folder (item 5)', () => { assert.ok(docs.STACK_DO
 test('explanations/ and the old tutorial/ are stack docs folders (item 6)', () => {
   for (const n of ['explanations', 'tutorial']) assert.ok(docs.STACK_DOCS.has(n), n);
 });
+
+// F3 / F15 (the 2026-10-28 workspace run): the walk recommended the docs-versioning answer from its own reading - `git`
+// for a folder with no repository, and for a local-scope child whose data root git never sees. A script states it.
+test('docsVersioningAdvice: no repository, a local-scope child, kept-out docs, a project-scope child, a fresh repo', () =>
+{
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'no-git-'));
+    try
+    {
+        const none = docs.docsVersioningAdvice({ projectRoot: bare, docsPath: '.alfred/docs' });
+        assert.strictEqual(none.value, 'local');
+        assert.match(none.reason, /no git repository/);
+    }
+    finally { fs.rmSync(bare, { recursive: true, force: true }); }
+    const repo = project();
+    const child = docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'local', child: true });
+    assert.deepStrictEqual(child, { value: 'local', reason: 'a local-scope child keeps its data root out of git' });
+    assert.strictEqual(docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'project', child: true }).value, 'git');
+    const kept = project({ ignore: '.claude/docs/\n' });
+    fs.mkdirSync(path.join(kept, '.claude', 'docs'), { recursive: true });
+    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: kept, docsPath: '.claude/docs' }), { value: 'local', reason: 'the docs are kept out of git here' });
+    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: project(), docsPath: '.claude/docs' }), { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' });
+});
+
+test('docsVersioningAdvice: a fake git with only tracked / ignored keeps today\'s answers', () =>
+{
+    const fake = { tracked: () => false, ignored: () => true };
+    assert.strictEqual(docs.docsVersioningAdvice({ projectRoot: project(), docsPath: '.claude/docs', git: fake }).value, 'local');
+    assert.strictEqual(docs.docsVersioningAdvice({ projectRoot: project(), docsPath: '.claude/docs', git: { tracked: () => false, ignored: () => false } }).value, 'git');
+});

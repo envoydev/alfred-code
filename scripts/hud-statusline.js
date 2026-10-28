@@ -360,7 +360,7 @@ function planHud({ configDir, project, platform = process.platform, env = proces
     const own = install.ok && install.scope === 'project';
     const settingsFile = own ? path.join(project, '.claude', 'settings.local.json') : accountFile;
     const settings = own ? readDoc(settingsFile) : account;
-    const plan = { configDir, platform, settingsFile, settings, where: own ? 'project (.claude/settings.local.json)' : 'account', changes: 0, install };
+    const plan = { configDir, platform, settingsFile, settings, where: own ? 'project (.claude/settings.local.json)' : 'account', account: !own, changes: 0, install };
     if (!plan.install.ok) return { ...plan, item: { state: 'skip', detail: plan.install.why } };
     if (settings.bad)
     {
@@ -410,8 +410,9 @@ function applyHud(plan, run = {})
     const lines = [];
     let changes = 0;
     const sl = plan.statusLine;
-    // The settings file is copied before the run's first write to it (setup.md:487-505).
-    if (plan.writesLine || plan.targets.some((t) => t.file === path.basename(plan.settingsFile) && !t.skipped && t.rows.some((r) => r.status === 'missing')))
+    // The account settings file is copied before the run's first write to it (setup.md:487-505); a project's own
+    // settings.local.json is not (F13) - a .bak there is a stray file in the project's tree.
+    if (plan.account && (plan.writesLine || plan.targets.some((t) => t.file === path.basename(plan.settingsFile) && !t.skipped && t.rows.some((r) => r.status === 'missing'))))
     {
         try
         {

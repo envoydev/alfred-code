@@ -113,6 +113,12 @@ function coreEntry(options = {})
                 matcher: 'Bash',
                 hooks: [{ type: 'command', if: 'Bash(node *)', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
             }],
+            // F4 (2026-10-28): the ask's own message is on disk only once the PreToolUse hooks finish, so the paste and
+            // banner checks run here and void an unpasted answer through updatedToolOutput.
+            PostToolUse: [{
+                matcher: 'AskUserQuestion',
+                hooks: [{ type: 'command', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
+            }],
             // Library copies move only on /alfred-code:update, so a session on a newer stack says
             // so at each fresh context - a startup, a /clear and a resume (loading audit 2026-10-21 G12: a cleared
             // or resumed session never carried it) - and not at a compaction, which would show the user the line again.

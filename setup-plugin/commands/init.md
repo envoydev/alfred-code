@@ -73,7 +73,8 @@ and acceptEdits mode, while a read-only Bash command carries the broader read ac
 (code.claude.com/docs/en/security, 'Working directory boundary') and a sandboxed one runs without a
 prompt (code.claude.com/docs/en/permissions) - an unattended run has nobody to answer that ask. A
 launcher that wants the Read tool to reach them too starts the session with
-`--add-dir "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" --add-dir "${TMPDIR:-/tmp}"`.
+`--add-dir "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" --add-dir "${TMPDIR:-/tmp}"`. Never read the installer's
+source to check a preview - `derive-state.js` IS the installer's plan.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` in ONE Bash `cat` (never in ranges, never twice) before the phase starts and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool from that snapshot (the install phase hands it to the installer with `--source`), and remove `$TMP` per its 'Clean up' section on every exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per recompute, no pasted tool output except the plan and the decision tables, one narration line between steps.
 

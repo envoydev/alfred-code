@@ -59,6 +59,12 @@ const realGit = (projectRoot) => ({
         try { rt.execCommand('git', ['check-ignore', '-q', '--', `${rel}/`], { cwd: projectRoot, stdio: 'ignore' }); return true; }
         catch { return false; }
     },
+    // F3: a folder no repository holds has nothing that could commit its docs.
+    inRepo()
+    {
+        try { return String(rt.execCommand('git', ['rev-parse', '--is-inside-work-tree'], { cwd: projectRoot, stdio: ['ignore', 'pipe', 'ignore'] })).trim() === 'true'; }
+        catch { return false; }
+    },
 });
 
 // A domain whose watch.json says `"recomputed": true` (quality/: rewritten whole by its capture) casts no versioning
@@ -73,9 +79,25 @@ function recomputedDomain(dir)
 // domain exists (so there is something to have committed) or git ignores the docs root outright.
 // Everything else, a fresh project included, is `git`. The git doc every install seeds (2026-10-21) is the stack's
 // text, so a preferences domain holding nothing else casts no vote, and neither does a recomputed domain.
-function docsVersioningSeed({ projectRoot, docsPath, git })
+function docsVersioningSeed(o)
+{
+    return docsVersioningAdvice(o).value;
+}
+
+// The answer and the reason the walk shows beside it (F3, F15): no repository, then a local-scope child (its data root
+// stays out of git), then the kept-out rule below; `git` otherwise. A fake git with no inRepo skips the first test.
+function docsVersioningAdvice({ projectRoot, docsPath, git, scope, child })
 {
     const g = git || realGit(projectRoot);
+    if (typeof g.inRepo === 'function' && !g.inRepo()) return { value: 'local', reason: 'no git repository, so nothing can commit the docs' };
+    if (child && scope === 'local') return { value: 'local', reason: 'a local-scope child keeps its data root out of git' };
+    return keptOutOfGitHere({ projectRoot, docsPath, g })
+        ? { value: 'local', reason: 'the docs are kept out of git here' }
+        : { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' };
+}
+
+function keptOutOfGitHere({ projectRoot, docsPath, g })
+{
     const root = String(projectRoot).replace(/\\/g, '/').replace(/\/+$/, '');
     const parts = String(docsPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
     const base = [root, ...parts].join('/');
@@ -87,8 +109,7 @@ function docsVersioningSeed({ projectRoot, docsPath, git })
     };
     const names = domains(base).filter((name) => !seedOnly(name) && !recomputedDomain(`${base}/${name}`));
     const committed = names.some((name) => g.tracked(`${base}/${name}`));
-    const keptOut = !committed && (names.length > 0 || g.ignored(parts.join('/')));
-    return keptOut ? 'local' : 'git';
+    return !committed && (names.length > 0 || g.ignored(parts.join('/')));
 }
 
 // ABSENT-ONLY: never overwrites a file at the new path, never touches a missing old one. A plain
@@ -1659,6 +1680,7 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
+    docsVersioningAdvice,
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,

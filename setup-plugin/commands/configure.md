@@ -47,7 +47,7 @@ This command's extra stake in the snapshot: its revision is what step 1 compares
 to report what an update would bring - an archive's `RELEASE-SOURCE` commit, or the `v<version>` tag of
 a plugin-cache copy, which carries no `RELEASE-SOURCE` (never probe for one there).
 
-**Table before question - no exceptions.** Any table or report the user decides from (step 1's `--inventory` table, every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
+**Table before question - no exceptions.** Any table or report the user decides from (step 1's `--inventory` table, every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook voids the answer to an ask whose table is missing and prints the table itself.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
 marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
@@ -95,10 +95,11 @@ comparable banner by banner; the content varies, the skeleton never does.
   `--print-plan` run writes nothing:
 
   ```bash
-  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1 ; node "$TMP/repo/scripts/workspace.js" status --root . | grep '^workspace: parent '
+  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1 ; node "$TMP/repo/scripts/workspace.js" status --root . | grep -E '^(workspace: parent |role: )'
   ```
 
-  `workspace: parent none` - a standalone install, nothing more. `workspace: parent <rel>` - a child: read the parent's
+  A `role:` line matching `root of (\d+)` means that many projects below - a root or a middle project (the Post-check's
+  note). `workspace: parent none` - a standalone install, nothing more. `workspace: parent <rel>` - a child: read the parent's
   set once, `(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node
   "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" >
   "$TMP/parent.out" 2>&1) ; echo "parent-read: $?"`, and every `--table` call of the walk adds `--inherited
@@ -567,7 +568,8 @@ names what this project dropped'). No AskUserQuestion over them: the walk's asks
 installer (a write still gets its consent ask where it happens - step 12's AGENTS.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a
 prose next step was ignored 3 of 3 in one audited session, which is why the reason rides beside
-every step. Close with this line, verbatim:
+every step. When step 1's `role:` line matched `root of (\d+)` and the run changed anything, the card's next-to-last
+line is 'The <n> project(s) below get this change when /alfred-code:update runs here.' Close with this line, verbatim:
 'Nothing is pending on this run - these are yours to run when you choose.' The stop-contract
 guard reads that sentence as a finished close; without it a 'done + next step' card is blocked
 as a stall and the guard demands the very ask this paragraph removes.

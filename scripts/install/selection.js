@@ -876,7 +876,15 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
     return out;
 }
 
+// The always-on rules and skills are locked: the read-back adopts them whatever the disk says, so a drop of one would
+// come straight back on the next update. One home for the installer's drop refusal and stack-select's `locked` rows.
+function lockedLines(always)
+{
+    const list = (k) => (always && Array.isArray(always[k]) ? always[k] : []);
+    return new Set([...list('rules').map((n) => `rule ${n}`), ...list('skills').map((n) => `skill ${n}`)]);
+}
+
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    lockedLines, addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, GENERATED_FILES, FORMER_PLUGINS,
 };
