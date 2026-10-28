@@ -198,6 +198,14 @@ test('a plan with neither cards nor a Resume: line, an unreadable one and one ov
   assert.match(planLine(planBlock(planText({ cards: ['TODO'], resume: 'next task 1' }), { noRoot: true })), /, plan docs\/plans\/x\.md$/, 'no root: shown as recorded, never read');
   assert.strictEqual(planLine(planBlock(null)).includes('x.md'), false, 'a plan removed since the session is left out');
 });
+// A side agent's note (2026-10-28): a superpowers plan has '### Task N:' headings and checkbox steps, no status lines -
+// counted as cards, a finished one read '(0/N done)'.
+test('task headings with no status lines are not counted: a superpowers plan keeps the path alone', () => {
+  const sp = ['# X Implementation Plan', '', '### Task 1: Hook', '', '- [x] **Step 1: Write the failing test**', '- [x] **Step 2: Run it**', '',
+    '### Task 2: Docs', '', '- [x] **Step 1: Edit**', ''].join('\n');
+  assert.match(planLine(planBlock(sp)), /, plan docs\/plans\/x\.md$/, 'no count from cards that carry no status');
+  assert.match(planLine(planBlock(`${sp}\nResume: next task 3\n`)), /, plan docs\/plans\/x\.md \(Resume: next task 3\)$/, 'its Resume: line alone still shows');
+});
 test('the Resume: text is scrubbed, folded and cut at 80 characters', () => {
   assert.match(planBlock(planText({ cards: ['TODO'], resume: 'paste ghp_abcdefghijklmnopqrstuvwxyz0123 into   the\tconfig' })), /\(0\/1 done; Resume: paste \[redacted\] into the config\)$/m);
   const at80 = `Resume: ${'a'.repeat(72)}`;

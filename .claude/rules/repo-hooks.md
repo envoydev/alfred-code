@@ -1331,7 +1331,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     transcript row and holds no commit, ruling or plan takes no slot, and a plan no longer on disk is left out (audit
     2026-10-10 C23); a plan still on disk carries where it stands NOW (`planStates`, the user's run order of 2026-10-28:
     the next session had to open the plan to find its next task) - `(<done>/<all> done; <its Resume: line>)` from the
-    habits-plan-writing cards and the Resume: line that skill rewrites after every tick, or `(completed)` once its
+    habits-plan-writing cards (counted only beside a `status:` line - a superpowers plan's `### Task N:` headings carry
+    none, and a finished one read `(0/N done)`) and the Resume: line that skill rewrites after every tick, or `(completed)` once its
     `Completed:` line is there - read from the plan as the block renders, never recorded at Stop, the Resume: text
     scrubbed and cut at 80 chars; another format, no regular file (a fifo would hold the start), an unreadable one or one
     over 1 MB keeps the path alone; a question is

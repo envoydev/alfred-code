@@ -209,8 +209,11 @@ function planStates(plan, root) {
     if (!st.isFile() || st.size > PLAN_READ_MAX) return [];   // a fifo would hold the start until its timeout
     const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
     if (lines.some((l) => /^Completed:\s*\S/.test(l))) return ['(completed)'];
-    const cards = lines.filter((l) => /^###\s+Task\b/.test(l)).length;
-    const done = Math.min(cards, lines.filter((l) => /^\s*-\s*status:\s*DONE\b/.test(l)).length);
+    // a card counts only beside a status line: a superpowers plan's '### Task N:' headings carry none, and a finished one
+    // read '(0/N done)'
+    const statuses = lines.filter((l) => /^\s*-\s*status:\s*\S/.test(l));
+    const cards = statuses.length ? lines.filter((l) => /^###\s+Task\b/.test(l)).length : 0;
+    const done = Math.min(cards, statuses.filter((l) => /^\s*-\s*status:\s*DONE\b/.test(l)).length);
     const line = lines.find((l) => /^Resume:/.test(l));
     // plan text the model wrote: scrubbed and folded like every recorded string, then cut
     let resume = line ? scrub(line) : '';
