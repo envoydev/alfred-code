@@ -9,10 +9,10 @@ Build a small tool to track watering for the office plants. It must work with no
 
 Two architectures fit an offline tool one person keeps on a Raspberry Pi.
 
-- **A - a small server on the Pi** - one Node LTS process serving plain HTML pages and a small JSON API, the data in one SQLite file through Node's built-in `node:sqlite` module (still marked experimental), so no native driver is built on a machine with no internet. What decides it: anyone on the office network logs a watering from their own phone or laptop, and the one SQLite file is the whole backup.
+- **A - a small server on the Pi** - one Node process (22.13 or later, where `node:sqlite` needs no flag) serving plain HTML pages and a small JSON API, the data in one SQLite file through that built-in module (still marked experimental), so no native driver is built on a machine with no internet. What decides it: the records are shared - whoever waters a plant logs it from their own phone or laptop on the office network (assumed: more than one person waters).
 - **B - no server, the data in the browser** - one plain HTML page opened in the Pi's own browser, the records in that browser's IndexedDB. What decides it: nothing is installed and no process runs. Its cost: the records live in one browser on one device, so nobody logs a watering from their phone, and clearing that browser's data loses them.
 
-Constraints: no internet - both run entirely on the Pi, no cloud service or CDN, and A's one-time Node install comes from a USB copy of the Linux ARM tarball; one maintainer - A is one process and one file, B one file; the UI library - left open in both: the pages stay plain HTML until you choose one.
+Constraints: no internet - both run entirely on the Pi, no cloud service or CDN, and A's one-time Node install comes from a USB copy of the official linux-arm64 tarball, so the Pi runs a 64-bit Raspberry Pi OS; one maintainer - A is one process and one file, B one file; the UI library - left open in both: the pages stay plain HTML until you choose one.
 
 What A gives up: B's nothing-to-run start - A needs Node copied onto the Pi once and its one process kept running.
 

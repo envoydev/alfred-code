@@ -501,9 +501,13 @@ test('SKILL.md: the description, the session-id layout line, the roster clause, 
 
 // The A/B's phase 3 (2026-10-28): a round-0 finding asked for a repeat cancel to be ruled on, the revision added a reject
 // guard to a card, and the next grade's P11 named it - released anyway at 95, since the revision closed more than it opened.
-test('SKILL.md revise step: in a designer plan, a fix that would add unasked behaviour is a Decision plus an ## Optional line, never card work', () => {
+// The final review: the line keeps P11's two exceptions and the producer's mark-with-a-reason, as habits-plan-writing words them.
+test('SKILL.md revise step: in a designer plan, a fix that a Decision on today\'s behaviour can meet adds no unasked card work, P11\'s exceptions kept', () => {
     const body = squash(split(read('stack/skills/mode-output-scorer/SKILL.md')).body);
-    assert.ok(body.includes("In a designer plan, a fix that would add behaviour `Asked:` does not name - a new guard, rule or card - is a Decision that keeps today's behaviour plus one `## Optional` line for the change, marked Recommended; never card work, which fails P11 in the next grade."));
+    assert.ok(body.includes("In a designer plan, a finding a Decision on today's behaviour can meet is met that way: a new guard or rule `Asked:` does not name becomes one `## Optional` line, marked Recommended or Not worth it with the reason - a card only when the user asked for it or the request cannot be met safely without it, and a Decision says why (P11)."));
+    assert.ok(!body.includes('never card work, which fails P11'), 'the earlier wording dropped P11\'s exceptions');
+    const producer = squash(read('stack/skills/habits-plan-writing/SKILL.md'));
+    assert.ok(producer.includes('unless the user asked for it (a Decision carries `asked: <the answer>`) or the request cannot be met safely without it - then it is a card, and a Decision says why'), 'the producer\'s rule the line mirrors');
 });
 
 // The producers' one line (R6) and the producers' docs (spec 5.13).
