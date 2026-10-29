@@ -1386,7 +1386,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
     The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
     `autoStampLive`, the stamp must name the session), `scorerState` and the newest open plan's `Resume:` text from
-    `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). Written at SessionStart (always), at Stop
+    `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). `fullContext` reads `compact` wherever no
+    fresh session is offered - `autoRun` true, or nobody at the terminal (`hook-prelude.js unattended`, which also reads
+    the hand-written `AUTO` stamp `autoRunFor` refuses) - else fresh-session's rule; a Stop whose second read finds
+    `autoRun` changed rebuilds. Written at SessionStart (always), at Stop
     when a field but `updatedAt` changed (an unchanged file over 24 hours old gets its mtime moved) and at
     guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). The
     gates are this hook's (`historyOff`, Cursor), so `HOOKS_OFF=history-session` stops it at all three events. The

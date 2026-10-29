@@ -564,3 +564,10 @@ files` in the repository's `info/exclude`, never a `.gitignore`. `ALFRED_CODE_HO
 together with history. To remove it by hand, delete the `.claude/session-inspector/` folders, the
 `# alfred-code: session-inspector status files` lines (and the line under each) in `info/exclude`, and
 `<data root>/state/sessions/status-folders.json`.
+
+## after 3.3.0 - the status file says compact under auto-run
+
+A session's status file (`.claude/session-inspector/status/<session id>.json`) now reads `fullContext: "compact"`
+while auto-run is on or nobody is at the terminal (`ALFRED_CODE_UNATTENDED=1`, print mode, a hand-written `AUTO`
+stamp) - no fresh session is offered there, the session compacts. A file 3.3.0 wrote in such a session said
+`fresh-session` (or `off`); the session's next Stop rewrites it. Nothing to do by hand.
