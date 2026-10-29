@@ -133,6 +133,15 @@ function buildStatus(payload, fields, deps) {
   const root = rootOf(p, d.env);
   const out = { schema: 1, session: id, fullContext: 'off', updatedAt: new Date().toISOString(), model: null, window: null, resumeAt: null, autoRun: false, scorer: null, handoffPrompt: null };
   try {
+    if ('autoRun' in f) out.autoRun = Boolean(f.autoRun);
+    else if (d.prelude && d.prelude.autoRunFor) out.autoRun = d.prelude.autoRunFor(p, d.env, null);
+  } catch { out.autoRun = false; }
+  // Auto-run offers no fresh session - the session compacts (guard-fresh-session-start's context line) - whatever the
+  // trigger; nor does a session nobody attends (hook-prelude.js unattended: the gate leaves the pointer, never the offer).
+  let noOffer = out.autoRun;
+  try { noOffer = noOffer || Boolean(d.prelude && d.prelude.unattended && d.prelude.unattended(p, d.env)); } catch { /* attended */ }
+  if (noOffer) out.fullContext = 'compact';
+  try {
     const F = d.fresh;
     if (F) {
       F.use(p);
@@ -141,13 +150,9 @@ function buildStatus(payload, fields, deps) {
       out.model = typeof model === 'string' && model ? model : null;
       out.window = posInt(F.knownWindow());
       out.resumeAt = posInt(at);
-      out.fullContext = F.COMPACT_INSTEAD ? 'compact' : F.FRESH_OFF || at == null ? 'off' : 'fresh-session';
+      out.fullContext = noOffer || F.COMPACT_INSTEAD ? 'compact' : F.FRESH_OFF || at == null ? 'off' : 'fresh-session';
     }
   } catch { /* the engine's fields stay null */ }
-  try {
-    if ('autoRun' in f) out.autoRun = Boolean(f.autoRun);
-    else if (d.prelude && d.prelude.autoRunFor) out.autoRun = d.prelude.autoRunFor(p, d.env, null);
-  } catch { out.autoRun = false; }
   try {
     if ('scorer' in f) out.scorer = f.scorer || null;
     else if (d.prelude && d.prelude.scorerState && root) out.scorer = scorerField(d.prelude.scorerState(root, id, d.env));
@@ -236,7 +241,7 @@ function writeStatus(payload, fields, { when = 'always', deps } = {}) {
       f.autoRun = current.autoRun;
       f.scorer = current.scorer;
     }
-    const next = buildStatus(p, f, d);
+    let next = buildStatus(p, f, d);
     if (when === 'changed' && current) {
       if (sameButTime(next, current)) {
         // a live session's file never reaches the prune age
@@ -244,7 +249,9 @@ function writeStatus(payload, fields, { when = 'always', deps } = {}) {
         return 'unchanged';
       }
       const again = readStatusFile(file, id);   // a prompt landing since the first read keeps its values
-      if (again) { next.autoRun = again.autoRun; next.scorer = again.scorer; }
+      // a changed autoRun changes fullContext too: rebuilt, the handoff prompt carried so history is not read twice
+      if (again && !same(again.autoRun, next.autoRun)) next = buildStatus(p, { ...f, autoRun: again.autoRun, scorer: again.scorer, handoffPrompt: next.handoffPrompt }, d);
+      else if (again) next.scorer = again.scorer;
     }
     const dir = path.dirname(file);
     const dirExisted = fs.existsSync(dir);

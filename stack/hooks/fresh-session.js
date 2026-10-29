@@ -25,6 +25,7 @@ function use(p) {
   _floor = undefined;
   _firstUsage = undefined;
   _ttl = undefined;
+  _settleRan = false;
 }
 
 // The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each (the user's ruling of 2026-10-16;
@@ -254,7 +255,7 @@ function compactWindowIgnored() {
     const sid = String(payload.session_id || '');
     const mine = (r) => sid && r.session === sid && (c.mtimeMs == null || (sessionStartedAt() || 0) >= c.mtimeMs);
     const after = (r) => c.mtimeMs != null && Date.parse(r.started || '') >= c.mtimeMs;
-    const over = readCompactPoints().filter((r) => r.model === id && Number(r.tokens) > c.n * IGNORED_SLACK && (mine(r) || after(r)));
+    const over = truePoints().filter((r) => r.model === id && Number(r.tokens) > c.n * IGNORED_SLACK && (mine(r) || after(r)));
     if (over.length) _ignored = { configured: c.n, seen: Math.max(...over.map((r) => Number(r.tokens))), source: c.source };
   } catch { /* unreadable - the key stands */ }
   return _ignored;
@@ -300,7 +301,7 @@ function readCompactPoints() {
     return Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object' && Number(r.tokens) >= 50000 && typeof r.model === 'string') : [];
   } catch { return []; }
 }
-function recordCompactPoint(tokens, model) {
+function recordCompactPoint(tokens, model, { held } = {}) {
   try {
     const n = Math.round(Number(tokens));
     if (!(n >= 50000) || !model) return false;
@@ -308,7 +309,7 @@ function recordCompactPoint(tokens, model) {
     const rows = readCompactPoints().filter((r) => Date.parse(r.at) >= cut);
     const started = sessionStartedAt();
     rows.push({ at: new Date().toISOString(), session: String(payload.session_id || ''), model: String(model).toLowerCase(), tokens: n,
-      ...(started ? { started: new Date(started).toISOString() } : {}) });
+      ...(started ? { started: new Date(started).toISOString() } : {}), ...(held ? { held: true } : {}) });
     const file = compactPointsFile(true);
     fs.mkdirSync(require('path').dirname(file), { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
@@ -319,11 +320,242 @@ function recordCompactPoint(tokens, model) {
     return true;
   } catch { return false; }
 }
+// The points that count. A HELD one - a compaction after a 50-minute gap, so perhaps Claude Code's idle compaction
+// (hook-prelude.js idleByTiming) - counts only once the settle pass found no idle notice after its boundary.
+function truePoints() {
+  if (!_settleRan) { _settleRan = true; settleCompactPoints(); }
+  return readCompactPoints().filter((r) => !r.held);
+}
+// --- the settle pass (2026-10-30): each pending point confirmed against its own transcript ---------
+// Once per process. A row with no session, or one that is no id (hook-prelude.js SESSION_ID_RE), is out of reach: kept,
+// counted, never read. Else, read the transcript beside this session's own: missing 10 min on - dropped (untied); not
+// 30 s old - wait; its boundary's idle notice - dropped; no boundary while the session went on 10 min, or after an hour -
+// dropped (untied); a boundary 30 s past with no notice - settled, a true point. Untied is DROPPED, not kept: a kept one
+// can hold a wrong trigger for 30 days, a dropped true one costs until the next real compaction (the seeded tier till then).
+const SETTLE_BUDGET = 64 * 1024 * 1024;
+const READ_CAP = 32 * 1024 * 1024;
+const READ_SLACK = 1200000;
+let _settleRan = false;
+const pointKey = (r) => `${r.at}|${r.session}|${r.tokens}`;
+function settleCompactPoints({ now = Date.now(), budgetBytes = SETTLE_BUDGET, capBytes = READ_CAP } = {}) {
+  const res = { dropped: 0, settled: 0 };
+  try {
+    const own = String(payload.transcript_path || '');
+    const sid = String(payload.session_id || '');
+    const path = require('path');
+    const byFile = new Map();
+    for (const r of readCompactPoints()) {
+      const at = Date.parse(r.at);
+      if (r.settled || !r.session || !prelude.SESSION_ID_RE.test(String(r.session)) || !Number.isFinite(at) || !own) continue;
+      if (now < at + 30000) continue;
+      const file = r.session === sid ? own : path.join(path.dirname(own), `${r.session}.jsonl`);
+      if (!byFile.has(file)) byFile.set(file, []);
+      byFile.get(file).push(r);
+    }
+    const decide = new Map();
+    let spent = 0;
+    for (const [file, rows] of byFile) {
+      let st = null;
+      try { st = fs.statSync(file); } catch { /* missing */ }
+      if (!st) { for (const r of rows) if (now >= Date.parse(r.at) + 600000) decide.set(pointKey(r), 'drop'); continue; }
+      // one window per run of rows under 15 min apart, so the hours between two compactions are never read
+      const sorted = rows.slice().sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+      const runs = [];
+      for (const r of sorted) {
+        const last = runs[runs.length - 1];
+        if (last && Date.parse(r.at) - Date.parse(last[last.length - 1].at) <= 900000) last.push(r); else runs.push([r]);
+      }
+      for (const run of runs) {
+        if (spent >= budgetBytes) break;
+        const w = readWindow(file, Date.parse(run[0].at) - 120000, Date.parse(run[run.length - 1].at) + 750000, { capBytes });
+        spent += w.bytes;
+        // a row is decided only on what the read reached: a cut read decides nothing it stopped short of, and an hour on drops it
+        const reached = (t) => w.reachedTo >= t + READ_SLACK;
+        for (const r of run) {
+          const at = Date.parse(r.at);
+          const b = w.boundaries.find((x) => x.trigger === 'auto' && x.at - (Number(x.durationMs) || 0) - 120000 <= at && at <= x.at + 120000);
+          if (!reached(b ? b.at + 30000 : at + 750000)) { if (now >= at + 3600000) decide.set(pointKey(r), 'drop'); continue; }
+          if (!b) { if (st.mtimeMs >= at + 600000 || now >= at + 3600000) decide.set(pointKey(r), 'drop'); continue; }
+          if (w.notices.some((n) => n >= b.at - 1000 && n <= b.at + 30000)) decide.set(pointKey(r), 'drop');
+          else if (now >= b.at + 30000) decide.set(pointKey(r), 'settle');
+        }
+      }
+    }
+    if (!decide.size) return res;
+    // applied to a fresh read, by key: a point another hook recorded since this pass began survives it
+    const rows = [];
+    for (const r of readCompactPoints()) {
+      const d = decide.get(pointKey(r));
+      if (d === 'drop') { res.dropped++; continue; }
+      if (d === 'settle' && !r.settled) {
+        const { held, ...rest } = r;
+        rows.push({ ...rest, settled: true });
+        res.settled++;
+        continue;
+      }
+      rows.push(r);
+    }
+    if (!res.dropped && !res.settled) return res;
+    const out = compactPointsFile(true);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    const tmp = `${out}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(rows, null, 1) + '\n');
+    fs.renameSync(tmp, out);
+    _ignored = undefined;
+    _knownWindow = undefined;
+  } catch { /* the points stand as they are; the next pass tries again */ }
+  return res;
+}
+// A point's WINDOW of its transcript, never the whole file (real ones run to hundreds of MB): a binary search over 64KB
+// blocks by the newest timestamp in each, for the first block 20 min before `fromMs` - the slack over the worst lag a row
+// was measured to sit behind the newest before it (14.5 min over the twelve largest transcripts, 2026-10-30) - then one
+// forward read until the newest timestamp passes `toMs` + the slack, or `capBytes`. Only boundary and notice lines parse.
+// `reachedTo`: the newest timestamp the forward read saw, Infinity once it read to the file's end.
+function readWindow(file, fromMs, toMs, { slackMs = READ_SLACK, capBytes = READ_CAP } = {}) {
+  const out = { boundaries: [], notices: [], bytes: 0, reachedTo: NaN };
+  const TS_RE = /"timestamp"\s*:\s*"([^"]+)"/g;
+  const newest = (text) => {
+    let best = NaN;
+    for (const m of text.matchAll(TS_RE)) { const t = Date.parse(m[1]); if (Number.isFinite(t) && !(t <= best)) best = t; }
+    return best;
+  };
+  const take = (line) => {
+    if (!line.includes('"compact_boundary"') && !line.includes('Compacted ')) return;   // either notice spelling (hook-prelude.js)
+    let o;
+    try { o = JSON.parse(line); } catch { return; }   // a garbage line, or one still being written
+    const at = Date.parse((o && o.timestamp) || '');
+    if (!Number.isFinite(at)) return;
+    if (o.type === 'system' && o.subtype === 'compact_boundary') {
+      const m = o.compactMetadata || {};
+      out.boundaries.push({ at, durationMs: Number(m.durationMs), preTokens: Number(m.preTokens), trigger: m.trigger });
+    } else if (prelude.isIdleNotice(o)) out.notices.push(at);
+  };
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const BLOCK = 64 * 1024;
+    const probe = Buffer.alloc(BLOCK);
+    // the newest timestamp from block `i` on, reading up to 16 blocks past a stretch with none (one huge row)
+    const stamp = (k) => {
+      const n = fs.readSync(fd, probe, 0, BLOCK, k * BLOCK);
+      out.bytes += n;
+      return newest(probe.toString('utf8', 0, n));
+    };
+    // ... and with none ahead (a row of over 1 MB whose timestamp ends it), the nearest one behind stands for the block
+    const blockAt = (i) => {
+      for (let k = i; k < i + 16 && k * BLOCK < size; k++) { const t = stamp(k); if (Number.isFinite(t)) return t; }
+      for (let k = i - 1; k >= 0 && k > i - 16; k--) { const t = stamp(k); if (Number.isFinite(t)) return t; }
+      return NaN;
+    };
+    let lo = 0;
+    let hi = Math.ceil(size / BLOCK);
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const t = blockAt(mid);
+      if (!Number.isFinite(t) || t >= fromMs - slackMs) hi = mid; else lo = mid + 1;
+    }
+    let pos = Math.max(0, lo - 1) * BLOCK;
+    const first = pos;
+    const chunk = Buffer.alloc(1024 * 1024);
+    let rest = '';
+    let seen = NaN;
+    let read = 0;
+    while (pos < size && read < capBytes && !(seen >= toMs + slackMs)) {
+      const n = fs.readSync(fd, chunk, 0, chunk.length, pos);
+      if (n <= 0) break;
+      pos += n;
+      read += n;
+      out.bytes += n;
+      const lines = (rest + chunk.toString('utf8', 0, n)).split('\n');
+      rest = lines.pop();
+      if (first > 0 && read === n) lines.shift();   // the block's cut first line
+      for (const line of lines) {
+        const t = newest(line);
+        if (Number.isFinite(t) && !(t <= seen)) seen = t;
+        take(line);
+      }
+    }
+    if (rest) take(rest);   // the file's last line, with no newline after it yet
+    out.reachedTo = pos >= size ? Infinity : seen;
+  } finally { fs.closeSync(fd); }
+  return out;
+}
+// --- the idle compaction (2026-10-30) ------------------------------------------------------------
+// What a compaction's transcript says about it, from a 4MB tail: the last main-thread reply before it, whether anything
+// that could start a model call came since (a typed prompt, a prompt command, a task notification, a tool result - a
+// local command or a `!` line cannot), its start and context, and at the boundary the idle notice when already written.
+const COMMAND_ROW_RE = /^\s*<command-(?:name|message)>/;
+const LOCAL_OUTPUT_RE = /^\s*<local-command-std(?:out|err)>/;
+function rowText(o) {
+  const c = o && o.message && o.message.content;
+  return typeof c === 'string' ? c : Array.isArray(c) && c[0] && c[0].type === 'text' ? String(c[0].text || '') : '';
+}
+function compactionFacts({ atBoundary = false } = {}) {
+  const p = String(payload.transcript_path || '');
+  if (!p) return null;
+  const size = fs.statSync(p).size;
+  const from = Math.max(0, size - 4 * 1024 * 1024);
+  const fd = fs.openSync(p, 'r');
+  const buf = Buffer.alloc(size - from);
+  try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+  const rows = [];
+  for (const line of buf.toString('utf8').split('\n')) {
+    if (!line) continue;
+    try { const o = JSON.parse(line); if (o && typeof o === 'object') rows.push(o); } catch { /* the tail's cut first line */ }
+  }
+  let b = -1;
+  if (atBoundary) {
+    for (let i = rows.length - 1; i >= 0 && b < 0; i--) if (rows[i].type === 'system' && rows[i].subtype === 'compact_boundary') b = i;
+    if (b < 0) return null;
+  }
+  const before = b < 0 ? rows : rows.slice(0, b);
+  let reply = -1;
+  for (let i = before.length - 1; i >= 0 && reply < 0; i--) {
+    const o = before[i];
+    if (o.type === 'assistant' && !o.isSidechain && o.message && o.message.model !== '<synthetic>') reply = i;
+  }
+  // a command row is a prompt command unless a local command's output row follows it
+  let promptSince = false;
+  let command = false;
+  for (const o of before.slice(reply + 1)) {
+    if (o.type !== 'user') continue;
+    if (prelude.localOnlyRow(o)) { if (LOCAL_OUTPUT_RE.test(rowText(o))) command = false; continue; }
+    if (COMMAND_ROW_RE.test(rowText(o))) { command = true; continue; }
+    promptSince = true;
+    break;
+  }
+  if (command) promptSince = true;
+  const lastReplyAt = reply < 0 ? NaN : Date.parse(before[reply].timestamp || '');
+  if (!atBoundary) return { lastReplyAt, promptSince, start: Date.now(), preTokens: NaN, boundaryAt: NaN, notice: false };
+  const meta = rows[b].compactMetadata || {};
+  const boundaryAt = Date.parse(rows[b].timestamp || '');
+  const duration = Number(meta.durationMs);
+  let notice = false;
+  for (const o of rows.slice(b + 1)) {
+    if (o.type === 'system' && o.subtype === 'compact_boundary') break;
+    if (prelude.isIdleNotice(o) && Math.abs(Date.parse(o.timestamp || '') - boundaryAt) <= 30000) notice = true;
+  }
+  return { lastReplyAt, promptSince, start: boundaryAt - (Number.isFinite(duration) ? duration : 0), preTokens: Number(meta.preTokens), boundaryAt, notice };
+}
+// The verdict on this session's compaction: `idle` - the notice, else the timing (hook-prelude.js idleByTiming); `held`
+// - `idle`, or a gap of 50 minutes or more whatever came since and whatever the tokens (PreCompact's count is the last
+// reply's input side, 1-5k under the boundary's preTokens, so a floor test there lets an idle one through). A reader that
+// fails answers neither, and the point is recorded as before.
+function idleCompaction({ atBoundary = false, preTokens } = {}) {
+  try {
+    const f = compactionFacts({ atBoundary });
+    if (!f) return { idle: false, held: false };
+    const gapMs = f.start - f.lastReplyAt;
+    const idle = f.notice || prelude.idleByTiming({ gapMs, promptSince: f.promptSince, preTokens: atBoundary ? f.preTokens : Number(preTokens),
+      floor: prelude.idleFloor(process.env) });
+    return { idle: !!idle, held: !!idle || (Number.isFinite(gapMs) && gapMs >= prelude.IDLE_GAP_MS) };
+  } catch { return { idle: false, held: false }; }
+}
 function observedCompaction() {
   const id = String(sessionModelId() || '').toLowerCase();
   if (!id) return null;
   const cut = Date.now() - COMPACT_POINTS_DAYS * 86400000;
-  const seen = readCompactPoints().filter((r) => r.model === id && Date.parse(r.at) >= cut).map((r) => Number(r.tokens));
+  const seen = truePoints().filter((r) => r.model === id && Date.parse(r.at) >= cut).map((r) => Number(r.tokens));
   return seen.length ? Math.min(...seen) : null;
 }
 let _knownWindow;
@@ -699,5 +931,6 @@ module.exports = {
   RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
   verdictRow, verdictProbe,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
+  truePoints, compactionFacts, idleCompaction, settleCompactPoints, readWindow,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

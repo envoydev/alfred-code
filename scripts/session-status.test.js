@@ -190,6 +190,127 @@ test('T2 fullContext', () =>
     assert.strictEqual(build({}).fullContext, 'fresh-session');
 });
 
+// Auto-run offers no fresh session (guard-fresh-session-start's context line), so the file says compact while it is on,
+// whatever the trigger; resumeAt, window and model stay the engine's.
+const OFF4 = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '0' };
+const sonnetSession = () =>
+{
+    const root = project();
+    const p = { session_id: 's1', cwd: root, transcript_path: transcript(root, 'claude-sonnet-4-5') };
+    return { root, p, P: JSON.stringify(p), FILE: JSON.stringify(statusOf(root, 's1')) };
+};
+test('T2b fullContext under auto-run', () =>
+{
+    const { root, P } = sonnetSession();
+    const build = (env, fields, deps = 'undefined') => inChild({ CLAUDE_PROJECT_DIR: root, ...env }, `return S.buildStatus(${P}, ${JSON.stringify(fields)}, ${deps});`);
+    const on = build({}, { entry: null, autoRun: true });
+    const off = build({}, { entry: null, autoRun: false });
+    assert.strictEqual(on.fullContext, 'compact');
+    assert.strictEqual(off.fullContext, 'fresh-session');
+    assert.ok(Number.isInteger(on.resumeAt) && on.resumeAt > 0);
+    assert.deepStrictEqual([on.resumeAt, on.window, on.model], [off.resumeAt, off.window, off.model], 'the engine\'s numbers either way');
+    const offOn = build(OFF4, { entry: null, autoRun: true });
+    assert.deepStrictEqual([offOn.fullContext, offOn.resumeAt], ['compact', null], 'FRESH_OFF under auto-run');
+    assert.strictEqual(build(OFF4, { entry: null, autoRun: false }).fullContext, 'off');
+    for (const autoRun of [true, false]) assert.strictEqual(build({ ALFRED_CODE_AUTO_COMPACT: '1' }, { entry: null, autoRun }).fullContext, 'compact', `AUTO_COMPACT, autoRun ${autoRun}`);
+    const derived = build({}, { entry: null }, '{ prelude: { autoRunFor: () => true } }');
+    assert.deepStrictEqual([derived.autoRun, derived.fullContext], [true, 'compact'], 'the derived autoRun counts too');
+});
+
+test('auto-run reads compact without the fresh engine', () =>
+{
+    const root = project();
+    for (const [autoRun, want] of [[true, 'compact'], [false, 'off']])
+    {
+        const s = S().buildStatus({ session_id: 's1', cwd: root }, { entry: null, autoRun }, { env: {}, fresh: null, prelude: null, history: null });
+        assert.strictEqual(s.fullContext, want, `autoRun ${autoRun}`);
+        assert.deepStrictEqual([s.model, s.window, s.resumeAt], [null, null, null]);
+    }
+});
+
+// Nobody at the terminal (hook-prelude.js unattended) is never offered a fresh session either - the gate leaves the
+// pointer and the session compacts - though autoRunFor, which needs the session's own stamp, reads false there.
+test('nobody at the terminal reads compact, autoRun false', () =>
+{
+    const handWritten = (root) =>
+    {
+        const file = require(path.join(HOOKS, 'layout.js')).statePath(root, 'approvals', 'APPROVAL', {});
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, 'AUTO - the user is away\n');
+    };
+    for (const [label, env, setUp] of [['UNATTENDED', { ALFRED_CODE_UNATTENDED: '1' }], ['print mode', { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }], ['a hand-written AUTO stamp', {}, handWritten]])
+    {
+        const { root, P } = sonnetSession();
+        if (setUp) setUp(root);
+        const build = (more) => inChild({ CLAUDE_PROJECT_DIR: root, ...env, ...more }, `return S.buildStatus(${P}, { entry: null });`);
+        const s = build({});
+        assert.deepStrictEqual([s.autoRun, s.fullContext], [false, 'compact'], label);
+        assert.ok(Number.isInteger(s.resumeAt) && s.resumeAt > 0, `${label}: the engine's numbers stay`);
+        assert.strictEqual(build(OFF4).fullContext, 'compact', `${label}: FRESH_OFF`);
+        const bare = inChild({ CLAUDE_PROJECT_DIR: root, ...env }, `return S.buildStatus(${P}, { entry: null }, { fresh: null, history: null });`);
+        assert.strictEqual(bare.fullContext, 'compact', `${label}: without the fresh engine`);
+    }
+    const { root, P } = sonnetSession();
+    assert.strictEqual(inChild({ CLAUDE_PROJECT_DIR: root, CLAUDE_CODE_ENTRYPOINT: 'cli' }, `return S.buildStatus(${P}, { entry: null });`).fullContext, 'fresh-session', 'a person at the terminal');
+});
+
+test('the prompt\'s auto-run flip rewrites fullContext', () =>
+{
+    for (const [env, offValue] of [[{}, 'fresh-session'], [OFF4, 'off']])
+    {
+        const { root, P, FILE } = sonnetSession();
+        const got = inChild({ CLAUDE_PROJECT_DIR: root, ...env }, `const read = () => JSON.parse(require('fs').readFileSync(${FILE}, 'utf8'));
+            const p = { ...${P}, hook_event_name: 'UserPromptSubmit' };
+            const on = S.onPrompt(p, { autoRun: true, scorer: null }); const a = read();
+            const off = S.onPrompt(p, { autoRun: false, scorer: null }); const b = read();
+            return [on, a.autoRun, a.fullContext, off, b.autoRun, b.fullContext];`);
+        assert.deepStrictEqual(got, ['written', true, 'compact', 'written', false, offValue]);
+    }
+});
+
+test('a Stop keeps compact while the file says auto-run', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const got = inChild({ CLAUDE_PROJECT_DIR: root }, `const fs = require('fs');
+        S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        const bytes = fs.readFileSync(${FILE}, 'utf8');
+        const r = [1, 2].map(() => S.onStop({ ...${P}, hook_event_name: 'Stop' }, null));
+        return { r, same: fs.readFileSync(${FILE}, 'utf8') === bytes, s: JSON.parse(bytes) };`);
+    assert.deepStrictEqual(got.r, ['unchanged', 'unchanged']);
+    assert.ok(got.same, 'the bytes the prompt wrote');
+    assert.strictEqual(got.s.fullContext, 'compact');
+});
+
+// Every fixture is a whole buildStatus object (readStatusFile takes nothing less), the named fields then set by hand.
+const fixture = (FILE, P, fields, patch) => `const fs = require('fs');
+    fs.mkdirSync(require('path').dirname(${FILE}), { recursive: true });
+    fs.writeFileSync(${FILE}, JSON.stringify({ ...S.buildStatus(${P}, ${JSON.stringify(fields)}), ...${JSON.stringify(patch)} }));`;
+test('a 3.3.0 file under auto-run is corrected at the next Stop', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: true, scorer: null }, { fullContext: 'fresh-session' })}
+        const prompt = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        const stop = S.onStop({ ...${P}, hook_event_name: 'Stop' }, null);
+        return { prompt, stop, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
+    assert.strictEqual(got.prompt, 'unchanged', 'the prompt compares autoRun and scorer only: stale for one turn');
+    assert.deepStrictEqual([got.stop, got.s.autoRun, got.s.fullContext], ['written', true, 'compact']);
+});
+
+// buildStatus calls history.entryFor when the fields carry no entry and no handoffPrompt - after the Stop's first read
+// and before its second, where a prompt landing mid-write shows up.
+test('the second read\'s autoRun decides fullContext', () =>
+{
+    for (const [from, to, want] of [[false, true, 'compact'], [true, false, 'fresh-session']])
+    {
+        const { root, P, FILE } = sonnetSession();
+        const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: from, scorer: null }, { fullContext: from ? 'compact' : 'fresh-session', model: null })}
+            const entryFor = () => { fs.writeFileSync(${FILE}, JSON.stringify({ ...JSON.parse(fs.readFileSync(${FILE}, 'utf8')), autoRun: ${to} })); return null; };
+            const r = S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, {}, { when: 'changed', deps: { history: { entryFor } } });
+            return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
+        assert.deepStrictEqual([got.r, got.s.autoRun, got.s.fullContext], ['written', to, want], `autoRun ${from} then ${to}`);
+    }
+});
+
 test('T3 model, window and resumeAt are the engine\'s', () =>
 {
     const root = project();

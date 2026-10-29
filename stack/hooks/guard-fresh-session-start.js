@@ -252,6 +252,9 @@ function paysAt(route, ctx) {
   if (row) ledgerRow(row);
   return !!v.pays;
 }
+// The idle compaction's line (fresh-session.js idleCompaction): no full context caused it, so nothing is offered.
+const IDLE_NOTE = "This session was compacted while idle - Claude Code's idle compaction, about an hour after the last reply, "
+  + 'before the prompt cache expired - not because the context filled up, so no fresh session is offered. Continue the work from the summary.';
 // COMPACT INSTEAD's one line, said at the compaction start and at the first orchestration run of a session.
 const COMPACT_NOTE = 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1): past its '
   + "window's trigger the session compacts and the work goes on from the summary.";
@@ -773,10 +776,13 @@ const REATTACH_CHARS = 18000;
 const REATTACH_LATER = 5;
 // The context this compaction happened at, kept per project for the fresh-session trigger (fresh-session.js
 // observedCompaction - audit 2026-10-10 C08). PreCompact carries no token count (code.claude.com/docs/en/hooks), so it
-// records the last real model call's context; the compact start below adds the boundary row's own `preTokens`.
-function recordCompaction(tokens) {
-  if (typeof fresh.recordCompactPoint === 'function' && tokens) fresh.recordCompactPoint(tokens, fresh.sessionModelId());
+// records the last real model call's context; the compact start below adds the boundary row's own `preTokens`. A HELD
+// point (fresh-session.js idleCompaction: a 50-minute gap, perhaps Claude Code's idle compaction) counts toward no trigger
+// until the settle pass reads its transcript.
+function recordCompaction(tokens, held) {
+  if (typeof fresh.recordCompactPoint === 'function' && tokens) fresh.recordCompactPoint(tokens, fresh.sessionModelId(), { held });
 }
+const idleVerdict = (o) => (typeof fresh.idleCompaction === 'function' ? fresh.idleCompaction(o) : { idle: false, held: false });
 function boundaryPreTokens() {
   try {
     const p = payload.transcript_path;
@@ -797,10 +803,16 @@ function boundaryPreTokens() {
   return null;
 }
 if (EVENT === 'PreCompact') {
+  let idle = false;
   try {
     if (String(payload.trigger || '') === 'auto') {
       const u = lastUsage();
-      if (u) recordCompaction((u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0));
+      if (u) {
+        const tokens = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+        const v = idleVerdict({ atBoundary: false, preTokens: tokens });
+        idle = v.idle;
+        recordCompaction(tokens, v.held);
+      }
     }
   } catch { /* the snapshot below still runs */ }
   try {
@@ -812,7 +824,7 @@ if (EVENT === 'PreCompact') {
       '# COMPACT-STATE - written by guard-fresh-session-start.js at PreCompact, no model call. Read it before re-orienting.',
       `session: ${payload.session_id || ''}`,
       `written: ${new Date().toISOString()}`,
-      `trigger: ${payload.trigger || ''}`,
+      `trigger: ${payload.trigger || ''}${idle ? ' (idle)' : ''}`,
       `live plan: ${plan || 'none found'}`,
       flow ? `active flow: /${flow.name} (${flow.route === 'slash' ? 'slash command - its body is not re-attached after a compaction' : 'Skill call - the harness re-attaches its body up to 5,000 tokens'})` : 'active flow: none found',
       ...(flow && flow.body ? [`flow body: ${flow.body.split(nodePath.sep).join('/')}`] : []),
@@ -1255,14 +1267,17 @@ if (EVENT === 'SessionStart') {
   if (String(payload.source || '') !== 'compact') process.exit(0);
   const pointer = compactPointer();
   const boundary = boundaryPreTokens();
-  // The boundary row's own measurement of where the harness compacted (fresh-session.js observedCompaction).
-  if (boundary && boundary.trigger === 'auto' && boundary.preTokens) recordCompaction(boundary.preTokens);
+  // The boundary row's own measurement of where the harness compacted (fresh-session.js observedCompaction) - held, and
+  // no fresh session offered, when it is Claude Code's idle compaction, which no full context caused.
+  const verdict = boundary && boundary.trigger === 'auto' ? idleVerdict({ atBoundary: true }) : { idle: false, held: false };
+  const idle = verdict.idle;
+  if (boundary && boundary.trigger === 'auto' && boundary.preTokens) recordCompaction(boundary.preTokens, verdict.held);
   // a configured window this compaction (or an earlier one) shows was not honoured is said here, once (C10)
   const acwNote = acwIgnoredNote();
   const withNote = (t) => (acwNote ? (t ? `${t} ${acwNote}` : acwNote) : t);
   // Nobody at the terminal (hook-prelude.js unattended) has nobody to ask: the pointer, never the offer - and the
   // skipped offer leaves its row (review A, M3). A compaction the USER asked for (`/compact`) is no ceiling reached.
-  const quiet = !FRESH_OFF && unattended(payload);
+  const quiet = !FRESH_OFF && !idle && unattended(payload);
   if (quiet) ledgerRow({ mode: 'unattended', kind: 'compact-offer', reason: UNATTENDED_SKIP });
   const manual = !!boundary && boundary.trigger === 'manual';
   const after = 'Two more things for the moment after a compaction. The summary above is the harness' + String.fromCharCode(39) + 's own ' +
@@ -1271,10 +1286,10 @@ if (EVENT === 'SessionStart') {
     'live, re-read its HEADER first - it holds the anchors and the next step - before re-orienting ' +
     'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +
     'opening the plan whose header already named the ranges).' + (pointer ? ` ${pointer}` : '');
-  if (FRESH_OFF || quiet || manual) {
+  if (FRESH_OFF || quiet || manual || idle) {
     // Compacting IS this project's answer to a full context (fresh-session.js COMPACT_INSTEAD): the summary's own
     // 'continue' line stands, and the two notes after it still apply.
-    const text = withNote(manual ? after : COMPACT_INSTEAD ? `${COMPACT_NOTE} Continue the work from the summary. ${after}` : pointer);
+    const text = withNote(idle ? `${IDLE_NOTE} ${after}` : manual ? after : COMPACT_INSTEAD ? `${COMPACT_NOTE} Continue the work from the summary. ${after}` : pointer);
     if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } }));
     process.exit(0);
   }

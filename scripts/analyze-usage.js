@@ -71,6 +71,9 @@ const fmt = (n) => {
 const approxTok = (chars) => Math.round(chars / 4);
 const sharePct = (part, whole) => `${((100 * part) / whole).toFixed(1)}%`;
 const ACTIVITY_ROW_TYPES = new Set(['user', 'assistant', 'system', 'attachment']);
+// Claude Code's idle compaction (hook-prelude.js idleByTiming): about an hour after the last reply, before the prompt
+// cache expires - no context limit, so the report labels it and keeps it out of the session span.
+const { idleByTiming, idleFloor, isIdleNotice, localOnlyRow } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
 // The stack's orchestration flows and their phases (guard-fresh-session-start.js ORCHESTRATION, skills half): a Skill
 // call of one of these opens a phase; any other skill loaded while one is open serves it.
 const FLOW_SKILL_RE = /^(?:task-(?:solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|loop-[a-z-]+|capture-[a-z-]+|issue-diagnoser)$/;
@@ -1913,6 +1916,9 @@ async function analyzeTranscript(file, window) {
   // ms apart) - counting both doubled the number in four audited bundles. Count boundaries;
   // fall back to summaries only for a transcript that carries no boundary lines at all.
   let compactMeta = 0, compactSummary = 0;
+  // The idle-compaction timing: the last main-thread reply and whether anything since it could start a model call (a
+  // command row is a prompt command unless a local command's output row follows it); the span before each boundary.
+  let idleReplyTs = null, idlePrompt = false, idleCommand = false, replySinceBoundary = true, spanBeforeBoundary = null;
   // attributionSkill drops to undefined at an async task-notification and never recovers for
   // the rest of a run (measured: ~2h of one skill's session unattributed). Carry the last
   // stamp forward - reset at a compaction or a new slash command - and count carried msgs
@@ -2175,10 +2181,24 @@ async function analyzeTranscript(file, window) {
     // The session's window is its ACTIVITY - a user, assistant, system or attachment row. A queued `/clear` 3h41m after
     // the last turn (a `queue-operation` row) stretched 'Session 5h 17m' and read the ledger as covering ~30% of it
     // (audit 2026-10-10, bc2fa83e); such a tail is kept apart and printed as idle.
+    const lastBefore = s.lastTs;
     if (o.timestamp) {
       if (!s.anyFirstTs) s.anyFirstTs = o.timestamp;
       if (!s.anyLastTs || o.timestamp >= s.anyLastTs) { s.anyLastTs = o.timestamp; s.anyLastType = o.type || null; }
       if (ACTIVITY_ROW_TYPES.has(o.type)) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
+    }
+    if (o.type === 'assistant' && !o.isSidechain && o.message && o.message.model !== '<synthetic>') {
+      idleReplyTs = o.timestamp || null; idlePrompt = false; idleCommand = false; replySinceBoundary = true;
+    } else if (o.type === 'user' && o.message) {
+      const c = o.message.content;
+      const first = typeof c === 'string' ? c : Array.isArray(c) && c[0] && c[0].type === 'text' ? String(c[0].text || '') : '';
+      if (localOnlyRow(o)) { if (/^\s*<local-command-std(?:out|err)>/.test(first)) idleCommand = false; }
+      else if (/^\s*<command-(?:name|message)>/.test(first)) idleCommand = true;
+      else idlePrompt = true;
+    }
+    if (isIdleNotice(o)) {
+      const last = s.compactionEvents[s.compactionEvents.length - 1];
+      if (last && last.ts && Math.abs(Date.parse(o.timestamp || '') - Date.parse(last.ts)) <= 30000) last.idle = true;
     }
     if (!s.ccVersion && o.version) s.ccVersion = o.version;
     // TWO records name the model, and they can DISAGREE: `cost-state.modelUsage` keys off the id
@@ -2240,7 +2260,11 @@ async function analyzeTranscript(file, window) {
         dropped: pre != null && post != null ? pre - post : null,
         durationMs: cm.durationMs ?? cm.duration ?? null,
         trigger: cm.trigger || null,
+        idle: cm.trigger === 'auto' && idleByTiming({ gapMs: Date.parse(o.timestamp || '') - (Number(cm.durationMs ?? cm.duration) || 0) - Date.parse(idleReplyTs || ''),
+          promptSince: idlePrompt || idleCommand, preTokens: Number(pre), floor: idleFloor(process.env) }),
       });
+      spanBeforeBoundary = lastBefore;
+      replySinceBoundary = false;
       if (lastSkill) s.skillTimeline.push({ ts: o.timestamp || null, skill: null });
       lastSkill = null;
       openCompactionTracker(o.timestamp);
@@ -2984,6 +3008,9 @@ async function analyzeTranscript(file, window) {
   // Sets do not survive JSON.stringify - the --json dump is the report's own input.
   s.availableSkills = s.availableSkills ? [...s.availableSkills].sort() : null;
   s.availableAgents = s.availableAgents ? [...s.availableAgents].sort() : null;
+  // an idle compaction nobody came back from ends the session at the activity before it, not at its own rows
+  const lastCompaction = s.compactionEvents[s.compactionEvents.length - 1];
+  if (lastCompaction && lastCompaction.idle && !replySinceBoundary && spanBeforeBoundary) s.lastTs = spanBeforeBoundary;
   if (!s.firstTs) { s.firstTs = s.anyFirstTs || null; s.lastTs = s.anyLastTs || null; }
   if (s.lastTs && s.anyLastTs && Date.parse(s.anyLastTs) > Date.parse(s.lastTs)) s.idleTail = { from: s.lastTs, to: s.anyLastTs, rowType: s.anyLastType };
   delete s.anyFirstTs; delete s.anyLastTs; delete s.anyLastType;
@@ -3998,7 +4025,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     if (il) console.log(il);
   }
   if (main.totalCostUSD != null) console.log(`billed $${Number(main.totalCostUSD).toFixed(2)} (cost-state)`);
-  if (main.untranscribed) console.log('untranscribed calls: cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + (main.untranscribed.seatsCacheRead ? ' + seats ' + fmt(main.untranscribed.seatsCacheRead) : '') + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row - the bundle reconciles to its bill only with this line');
+  if (main.untranscribed) console.log('untranscribed calls: cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + (main.untranscribed.seatsCacheRead ? ' + seats ' + fmt(main.untranscribed.seatsCacheRead) : '') + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap or compaction call(s) are billed and written to no transcript row - the bundle reconciles to its bill only with this line');
   if (main.forkPrefix && main.forkPrefix.msgs) console.log('fork prefix: ' + main.forkPrefix.msgs + ' msgs / ' + fmt(main.forkPrefix.cacheRead) + ' cache-read / ' + main.forkPrefix.toolCalls + ' tool calls carry another session' + String.fromCharCode(39) + 's id (' + main.forkPrefix.sessionIds.join(', ') + ') - a copied prefix of that transcript, counted there; this file' + String.fromCharCode(39) + 's own tail is ' + (main.total.msgs - main.forkPrefix.msgs) + ' msgs / ' + fmt(main.total.cacheRead - main.forkPrefix.cacheRead) + ' cache-read, and the ledger cross-check is judged over that tail only');
   if (main.stopHookBlocks) console.log(`Stop-hook denials ${main.stopHookBlocks} - these arrive as meta user TEXT, not tool results, so they are absent from the hook-blk column below`);
   if (main.harnessDenials) console.log(`Harness denials ${main.harnessDenials} - read as a block (auto-mode classifier, a foreground sleep, a tool-schema failure) but no stack hook ran: excluded from hook-blk, never charge a guard for them`);
@@ -4009,7 +4036,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     if (dj.matched) console.log(`  joined by ledger timestamp (within ${Math.round(dj.worstMs)}ms): ${Object.entries(dj.joined).map(([h, n]) => `${h}×${n}`).join(', ')}${dj.matched < dj.total ? ` - ${dj.total - dj.matched} still unattributed` : ''}`);
   }
   for (const c of main.compactionEvents || []) {
-    console.log(`  compaction ${c.ts || '?'}: ${c.pre != null ? fmt(c.pre) : '?'} -> ${c.post != null ? fmt(c.post) : '?'} tok, dropped ${c.dropped != null ? fmt(c.dropped) : '?'}${c.durationMs ? `, ${dur(c.durationMs)}` : ''}${c.trigger ? ` (${c.trigger})` : ''}`);
+    console.log(`  compaction ${c.ts || '?'}: ${c.pre != null ? fmt(c.pre) : '?'} -> ${c.post != null ? fmt(c.post) : '?'} tok, dropped ${c.dropped != null ? fmt(c.dropped) : '?'}${c.durationMs ? `, ${dur(c.durationMs)}` : ''}${c.trigger ? ` (${c.trigger}${c.idle ? ', idle' : ''})` : ''}`);
   }
   {
     const evs = (main.apiErrorEvents || []).filter((e) => e.ctx != null);
@@ -4342,7 +4369,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, confo
     if (il) extraFacts.push(`- **Interrupts** ${il.replace(/^user interrupts /, '')}`);
   }
   if (main.totalCostUSD != null) extraFacts.push(`- **Billed** $${Number(main.totalCostUSD).toFixed(2)} (\`cost-state\`).`);
-  if (main.untranscribed) extraFacts.push('- **Untranscribed calls** cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + (main.untranscribed.seatsCacheRead ? ' + seats ' + fmt(main.untranscribed.seatsCacheRead) : '') + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row.');
+  if (main.untranscribed) extraFacts.push('- **Untranscribed calls** cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + (main.untranscribed.seatsCacheRead ? ' + seats ' + fmt(main.untranscribed.seatsCacheRead) : '') + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap or compaction call(s) are billed and written to no transcript row.');
   if (main.forkPrefix && main.forkPrefix.msgs) extraFacts.push('- **Fork prefix** ' + main.forkPrefix.msgs + ' msgs / ' + fmt(main.forkPrefix.cacheRead) + ' cache-read / ' + main.forkPrefix.toolCalls + ' tool calls carry another session' + String.fromCharCode(39) + 's id (' + main.forkPrefix.sessionIds.join(', ') + ') - a copied prefix, counted under that transcript; this file' + String.fromCharCode(39) + 's own tail is ' + (main.total.msgs - main.forkPrefix.msgs) + ' msgs / ' + fmt(main.total.cacheRead - main.forkPrefix.cacheRead) + ' cache-read.');
   if (main.stopHookBlocks) extraFacts.push(`- **Stop-hook denials** ${main.stopHookBlocks} - meta user TEXT, not tool results, so absent from the \`hook-blk\` column.`);
   if (main.harnessDenials) extraFacts.push(`- **Harness denials** ${main.harnessDenials} - the auto-mode classifier, a foreground \`sleep\`, or a tool-schema failure. They read as a block and no stack hook ran: excluded from \`hook-blk\`, and never charged to a guard.`);
@@ -4353,7 +4380,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, confo
     if (dj.matched) extraFacts.push(`- **Unattributed denials joined by ledger timestamp** (within ${Math.round(dj.worstMs)}ms): ${Object.entries(dj.joined).map(([h, n]) => `\`${h}\` x${n}`).join(', ')}${dj.matched < dj.total ? ` - ${dj.total - dj.matched} still unattributed.` : '.'}`);
   }
   for (const c of main.compactionEvents || []) {
-    extraFacts.push(`- **Compaction** ${c.ts || '?'}: ${c.pre != null ? fmt(c.pre) : '?'} -> ${c.post != null ? fmt(c.post) : '?'} tokens, dropped ${c.dropped != null ? fmt(c.dropped) : '?'}${c.durationMs ? `, ${dur(c.durationMs)}` : ''}.`);
+    extraFacts.push(`- **Compaction** ${c.ts || '?'}: ${c.pre != null ? fmt(c.pre) : '?'} -> ${c.post != null ? fmt(c.post) : '?'} tokens, dropped ${c.dropped != null ? fmt(c.dropped) : '?'}${c.durationMs ? `, ${dur(c.durationMs)}` : ''}${c.idle ? ' (auto, idle)' : ''}.`);
   }
   const agg = computeAggregates(main, agents);
   const out = [];

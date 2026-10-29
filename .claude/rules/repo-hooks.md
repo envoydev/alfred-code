@@ -950,7 +950,27 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `modelSettings` entry for the model first, then its top-level `autoCompactWindow` - the USER file's included, 'Scope:
     Any file' with no model limit in the settings reference; the Opus 5 / Fable 5.1 limit is `effortLevel`'s, audit HK03)
     and 90% of the lowest automatic compaction this project recorded for the model
-    (`<data root>/state/sessions/compact-points.json`, 30 days). The TIER is the model's own window (its table row; no row is no tier): a lowered window only clamps the trigger inside it, so a 1M model under the 400k window the installer seeds
+    (`<data root>/state/sessions/compact-points.json`, 30 days). Claude Code's IDLE compaction (about an hour after the
+    last reply, before the prompt cache expires; `idleCompaction` left at its default, nothing seeded) is no such point
+    (2026-10-30, the user's must-hold: it never lowers the trigger nor the status file's `resumeAt`). Its boundary says
+    only `trigger: auto`, and its notice row (`system` / `informational`, 'Compacted while idle ...' in the terminal,
+    'Compacted using a summary written while you were away ...' in VS Code and the desktop app) lands after the
+    compact start's hooks run (hooks 14.795, notice 14.804 on a 2026-10-23 transcript), so the hooks judge by timing
+    (`hook-prelude.js idleByTiming`: 50 min or more from the last main-thread reply to the compaction's start, no row
+    since that could start a model call - a local command and a `!` line cannot, a tool result can - and the context at
+    or over `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS`, else 200,000). That VERDICT decides COMPACT-STATE's `trigger: auto
+    (idle)` and the compact start's line (no fresh session, no hold); the HOLD - the 50-minute gap alone, since
+    PreCompact's count runs 1-5k under the boundary's `preTokens` - marks the point `held`, which counts toward no
+    trigger until `fresh-session.js settleCompactPoints` reads its transcript: once per process, one binary-searched
+    window per run of points under 15 min apart (never the whole file - real ones reach 214 MB; 32 MB a window, 64 MB a
+    pass, the rest waiting for the next), a point decided only once that read reached past it (a
+    probe inside a row of over 1 MB takes the nearest timestamp behind it), the notice drops it, a boundary 30 s past
+    with none settles it, and an UNTIED point (no transcript 10 min on, no boundary while the session went on 10 min, or
+    an hour on with no boundary or no read reaching it) is dropped - a kept one could hold a wrong trigger 30 days, a
+    dropped true one costs only until the next real compaction. The final review of 2026-10-30 measured the window rule:
+    one read per transcript, cut at 32 MB, had dropped 22 of the 40 true points a 214 MB session left; per run, all 40
+    settled over three passes. Points an older release recorded are judged the same way on the first reads; `analyze-usage.js` labels
+    the event `(auto, idle)` and ends the session span before it. The TIER is the model's own window (its table row; no row is no tier): a lowered window only clamps the trigger inside it, so a 1M model under the 400k window the installer seeds
     keeps its 1M trigger, held at 360k - tiering by the lowered window had dropped it to the 300k DEFAULT trigger of that time (2026-10-14). A context read stops at a `compact_boundary` row (unknown until
     the next model call), and the model id read widens to 8MB and takes the harness's `model` attachment row. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it (90% of it). The offer fires only
@@ -1386,7 +1406,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
     The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
     `autoStampLive`, the stamp must name the session), `scorerState` and the newest open plan's `Resume:` text from
-    `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). Written at SessionStart (always), at Stop
+    `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). `fullContext` reads `compact` wherever no
+    fresh session is offered - `autoRun` true, or nobody at the terminal (`hook-prelude.js unattended`, which also reads
+    the hand-written `AUTO` stamp `autoRunFor` refuses) - else fresh-session's rule; a Stop whose second read finds
+    `autoRun` changed rebuilds. Written at SessionStart (always), at Stop
     when a field but `updatedAt` changed (an unchanged file over 24 hours old gets its mtime moved) and at
     guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). The
     gates are this hook's (`historyOff`, Cursor), so `HOOKS_OFF=history-session` stops it at all three events. The

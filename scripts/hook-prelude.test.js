@@ -1207,3 +1207,67 @@ test('autoRunFor matches autoRunNow\'s cases (T10)', () =>
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// ---- idle compaction (2026-10-30): Claude Code's compaction about an hour after the last reply is no context limit ----
+test('idleFloor: CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS, raised to 100,000 under it, else 200,000', () => {
+    const { idleFloor } = require(PRELUDE);
+    for (const v of [undefined, '', 'x', '0', '-5', '1.5'])
+        assert.strictEqual(idleFloor(v === undefined ? {} : { CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS: v }), 200000, String(v));
+    assert.strictEqual(idleFloor({ CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS: '50000' }), 100000);
+    assert.strictEqual(idleFloor({ CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS: '100000' }), 100000);
+    assert.strictEqual(idleFloor({ CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS: ' 250000 ' }), 250000);
+});
+
+test('isIdleNotice: a system informational row opening "Compacted while idle", string or text parts', () => {
+    const { isIdleNotice } = require(PRELUDE);
+    const notice = (content, extra = {}) => ({ type: 'system', subtype: 'informational', content, ...extra });
+    assert.strictEqual(isIdleNotice(notice('Compacted while idle, before the prompt cache expired · turn off with "idleCompaction": false in settings.json')), true);
+    assert.strictEqual(isIdleNotice(notice('Compacted while idle - some other trailing text')), true, 'the second spelling: the prefix alone binds');
+    assert.strictEqual(isIdleNotice(notice([{ type: 'text', text: 'Compacted while idle, before the prompt cache expired' }])), true);
+    assert.strictEqual(isIdleNotice(notice('Compacted using a summary written while you were away · turn off with "idleCompaction": false in settings.json')), true,
+        'the VS Code and desktop spelling (settings-reference#idle-compaction-in-vs-code-and-the-desktop-app)');
+    assert.strictEqual(isIdleNotice(notice('Compacted using a summary')), false, 'that spelling binds through "while you were away"');
+    assert.strictEqual(isIdleNotice(notice('Context left until auto-compact: 5%')), false);
+    assert.strictEqual(isIdleNotice({ type: 'user', message: { role: 'user', content: 'Compacted while idle, before' } }), false);
+    assert.strictEqual(isIdleNotice(notice('Compacted while idle', { subtype: 'compact_boundary' })), false);
+    assert.strictEqual(isIdleNotice(notice('Not compacted while idle')), false, 'the prefix opens the text');
+    assert.strictEqual(isIdleNotice(null), false);
+});
+
+test('idleByTiming: 50 min or more, no prompt since, at or over the floor; false on a number that is not finite', () => {
+    const { idleByTiming, IDLE_GAP_MS } = require(PRELUDE);
+    assert.strictEqual(IDLE_GAP_MS, 3000000);
+    const t = (o) => idleByTiming({ gapMs: 3000000, promptSince: false, preTokens: 230000, floor: 200000, ...o });
+    assert.strictEqual(t({}), true, 'at 50 min exactly');
+    assert.strictEqual(t({ gapMs: 2999000 }), false, '49:59');
+    assert.strictEqual(t({ promptSince: true }), false);
+    assert.strictEqual(t({ preTokens: 200000 }), true, 'at the floor');
+    assert.strictEqual(t({ preTokens: 199999 }), false, 'one under');
+    assert.strictEqual(t({ gapMs: NaN }), false);
+    assert.strictEqual(t({ preTokens: undefined }), false);
+    assert.strictEqual(t({ floor: NaN }), false);
+});
+
+test('localOnlyRow: rows that cannot start a model call', () => {
+    const { localOnlyRow } = require(PRELUDE);
+    const user = (content, extra = {}) => ({ type: 'user', message: { role: 'user', content }, ...extra });
+    assert.strictEqual(localOnlyRow(user('<local-command-caveat>The command below was run directly in Claude Code', { isMeta: true })), true);
+    assert.strictEqual(localOnlyRow(user('<bash-input> ls</bash-input>')), true);
+    assert.strictEqual(localOnlyRow(user('<bash-stdout>a\nb</bash-stdout><bash-stderr></bash-stderr>')), true);
+    assert.strictEqual(localOnlyRow(user('<bash-stderr>no</bash-stderr>')), true);
+    assert.strictEqual(localOnlyRow(user('<local-command-stdout>Set model to Opus</local-command-stdout>')), true);
+    assert.strictEqual(localOnlyRow(user('<local-command-stderr>x</local-command-stderr>')), true);
+    assert.strictEqual(localOnlyRow(user('This session is being continued ...', { isCompactSummary: true })), true);
+    assert.strictEqual(localOnlyRow(user('please go on')), false, 'a typed prompt');
+    assert.strictEqual(localOnlyRow(user('<command-message>solve-task</command-message>\n<command-name>/solve-task</command-name>')), false);
+    assert.strictEqual(localOnlyRow(user('<task-notification>\n<task-id>b1</task-id>')), false);
+    assert.strictEqual(localOnlyRow(user([{ type: 'tool_result', tool_use_id: 't', content: 'done' }])), false);
+    assert.strictEqual(localOnlyRow({ type: 'assistant', message: { content: [] } }), false, 'not a user row');
+});
+
+test('SESSION_ID_RE: an id that can join a path - a UUID, never a separator or ..', () => {
+    const { SESSION_ID_RE } = require(PRELUDE);
+    assert.ok(SESSION_ID_RE.test('64da2f9e-1b2c-4d5e-8f90-123456789abc'));
+    assert.ok(SESSION_ID_RE.test('sess-12'));
+    for (const bad of ['', '../x', 'a/b', 'a\\b', '.hidden', '-x', 'x'.repeat(129)]) assert.ok(!SESSION_ID_RE.test(bad), bad);
+});

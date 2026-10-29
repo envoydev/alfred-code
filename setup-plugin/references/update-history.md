@@ -564,3 +564,19 @@ files` in the repository's `info/exclude`, never a `.gitignore`. `ALFRED_CODE_HO
 together with history. To remove it by hand, delete the `.claude/session-inspector/` folders, the
 `# alfred-code: session-inspector status files` lines (and the line under each) in `info/exclude`, and
 `<data root>/state/sessions/status-folders.json`.
+
+## after 3.3.0 - the status file says compact under auto-run
+
+A session's status file (`.claude/session-inspector/status/<session id>.json`) now reads `fullContext: "compact"`
+while auto-run is on or nobody is at the terminal (`ALFRED_CODE_UNATTENDED=1`, print mode, a hand-written `AUTO`
+stamp) - no fresh session is offered there, the session compacts. A file 3.3.0 wrote in such a session said
+`fresh-session` (or `off`); the session's next Stop rewrites it. Nothing to do by hand.
+
+## after 3.4.0 - an idle compaction no longer lowers the fresh-session trigger
+
+Claude Code compacts an idle session on its own about an hour after the last reply, before the prompt cache expires.
+That compaction is no full context, so the stack no longer counts it as one: it never lowers the fresh-session trigger
+nor the status file's `resumeAt`, offers no fresh session after it, and says 'compacted while idle' to the model. A
+compaction after a 50-minute gap waits for its transcript to say which kind it was (about 30 seconds), and the first
+reads after the update check each point an older release recorded in the last 30 days against its transcript: an idle
+one is dropped, a true one kept, and one whose transcript is gone dropped too. Nothing to do by hand.

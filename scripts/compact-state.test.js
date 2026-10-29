@@ -822,3 +822,372 @@ test('PF-23: after a compaction the answer language follows the personal prefere
     p.run({ hook_event_name: 'PreCompact', trigger: 'auto' });
     assert.match(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact' })), /unless a loaded skill or the personal preferences doc \(PERSONAL-PREFERENCES\.md\) sets the answer language/);
 });
+
+// ---- 2026-10-30: Claude Code's idle compaction (about an hour after the last reply, before the prompt cache expires)
+// is no context limit, so it never lowers the fresh-session trigger nor the status file's resumeAt (the user's must-hold).
+const STATUS_JS = path.join(__dirname, '..', 'stack', 'hooks', 'session-status.js');
+const FRESH_JS = path.join(__dirname, '..', 'stack', 'hooks', 'fresh-session.js');
+const MIN = 60000;
+const ago = (ms) => new Date(Date.now() - ms).toISOString();
+const stamped = (row, msAgo) => ({ ...row, timestamp: ago(msAgo) });
+const IDLE_TEXT = 'Compacted while idle, before the prompt cache expired · turn off with "idleCompaction": false in settings.json';
+const idleNotice = (atMs) => ({ type: 'system', subtype: 'informational', content: IDLE_TEXT, timestamp: new Date(atMs + 600).toISOString() });
+const summaryRow = (atMs) => ({ type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued ...' }, timestamp: new Date(atMs).toISOString() });
+const boundaryRow = (preTokens, atMs) => ({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'auto', preTokens, durationMs: 49000 }, timestamp: new Date(atMs).toISOString() });
+// the engine and the status file, read the way a hook process reads them: a child with this session's payload
+function engine(p, tp, code, env = {})
+{
+    const script = `const S = require(${JSON.stringify(STATUS_JS)}); const F = require(${JSON.stringify(FRESH_JS)});`
+        + ` const payload = { session_id: ${JSON.stringify(p.sid)}, cwd: ${JSON.stringify(p.root)}, transcript_path: ${JSON.stringify(tp)} }; F.use(payload);`
+        + ` const out = (() => { ${code} })(); process.stdout.write(JSON.stringify(out === undefined ? null : out));`;
+    const r = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8',
+        env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: p.root, TMPDIR: p.tmpdir, TEMP: p.tmpdir, TMP: p.tmpdir, ...env } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout);
+}
+const thresholdOf = (p, tp, env) => engine(p, tp, 'return F.ctxThreshold();', env);
+const resumeAtOf = (p, tp, env) => engine(p, tp, 'return S.buildStatus(payload, { entry: null }).resumeAt;', env);
+const settle = (p, tp, now, env) => engine(p, tp, `return F.settleCompactPoints({ now: ${now} });`, env);
+const pointsOf = (p) => { try { return JSON.parse(fs.readFileSync(path.join(p.sessions, 'compact-points.json'), 'utf8')); } catch { return []; } };
+const holdOf = (p, tp) => path.join(p.tmpdir, `guard-fresh-compact-${tp.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.hold`);
+// one compaction through the real hooks: PreCompact, then the boundary and its summary, then the compact start
+function compaction(p, rows, { preTokens, env = {} } = {})
+{
+    const tp = path.join(p.root, 'transcripts', `${p.sid}.jsonl`);
+    fs.mkdirSync(path.dirname(tp), { recursive: true });
+    fs.writeFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const before = { threshold: thresholdOf(p, tp, env), resumeAt: resumeAtOf(p, tp, env) };
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tp }, env);
+    const bAt = Date.now();
+    fs.appendFileSync(tp, [boundaryRow(preTokens, bAt), summaryRow(bAt)].map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const start = startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env));
+    return { tp, bAt, before, start, state: fs.readFileSync(p.state, 'utf8'),
+        after: { threshold: thresholdOf(p, tp, env), resumeAt: resumeAtOf(p, tp, env) } };
+}
+const reply = (tokens, msAgo, id = 'r1') => stamped(usageRow(id, { cache_read_input_tokens: tokens }), msAgo);
+
+test('idle compaction: an idle compaction leaves the threshold and resumeAt unchanged', () =>
+{
+    const p = project();
+    const c = compaction(p, [stamped(userRow('go on'), 60 * MIN), reply(230000, 55 * MIN)], { preTokens: 232000 });
+    assert.strictEqual(c.before.threshold, 400000);
+    assert.match(c.state, /^trigger: auto \(idle\)$/m);
+    assert.match(c.start, /compacted while idle/);
+    assert.doesNotMatch(c.start, /AUTO-COMPACTED/);
+    assert.ok(!fs.existsSync(holdOf(p, c.tp)), 'no compact hold: no fresh session is offered');
+    assert.deepStrictEqual(c.after, c.before, 'the threshold and resumeAt are unchanged');
+    const rows = pointsOf(p);
+    assert.deepStrictEqual(rows.map((r) => [r.tokens, r.held]), [[230000, true], [232000, true]]);
+    fs.appendFileSync(c.tp, JSON.stringify(idleNotice(c.bAt)) + '\n');
+    settle(p, c.tp, c.bAt + 31000);
+    assert.deepStrictEqual(pointsOf(p).filter((r) => r.session === p.sid), [], 'the notice drops both');
+    assert.strictEqual(thresholdOf(p, c.tp), 400000);
+});
+
+test('idle compaction: a compaction after a prompt that follows a long break is still recorded', () =>
+{
+    const toolUse60 = { ...stamped(usageRow('t1', { cache_read_input_tokens: 230000 }), 60 * MIN) };
+    toolUse60.message = { ...toolUse60.message, content: [{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'sleep 3600' } }] };
+    const cases = {
+        prompt: [reply(230000, 55 * MIN), stamped(userRow('next step please'), 1 * MIN)],
+        notification: [reply(230000, 55 * MIN), stamped(userRow('<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>'), 1 * MIN)],
+        'tool result': [toolUse60, stamped({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'done' }] } }, 1000)],
+    };
+    for (const [name, rows] of Object.entries(cases))
+    {
+        const p = project();
+        const c = compaction(p, rows, { preTokens: 232000 });
+        assert.match(c.start, /AUTO-COMPACTED/, name);
+        assert.match(c.state, /^trigger: auto$/m, name);
+        assert.ok(fs.existsSync(holdOf(p, c.tp)), `${name}: the fresh-session hold is armed`);
+        assert.deepStrictEqual(pointsOf(p).map((r) => [r.tokens, r.held]), [[230000, true], [232000, true]], `${name}: held after a 50-min gap`);
+        assert.deepStrictEqual(c.after, c.before, `${name}: nothing lowered before the transcript is read`);
+        settle(p, c.tp, c.bAt + 31000);
+        assert.deepStrictEqual(pointsOf(p).map((r) => [r.tokens, r.held, r.settled]), [[230000, undefined, true], [232000, undefined, true]], name);
+        assert.strictEqual(thresholdOf(p, c.tp), 207000, `${name}: 90% of the lower point`);
+        assert.strictEqual(resumeAtOf(p, c.tp), 207000, name);
+    }
+});
+
+test('idle compaction: a local command or a ! line since the reply is no prompt', () =>
+{
+    const caveat = { type: 'user', isMeta: true, message: { role: 'user', content: '<local-command-caveat>The command below was run directly in Claude Code, not sent to you.</local-command-caveat>' } };
+    const cases = {
+        'local command': [reply(230000, 55 * MIN), stamped(caveat, 54 * MIN), stamped(userRow('<command-name>/reload-plugins</command-name>\n<command-message>reload-plugins</command-message>\n<command-args></command-args>'), 54 * MIN),
+            stamped(userRow('<local-command-stdout>Reloaded 4 plugins</local-command-stdout>'), 54 * MIN)],
+        '! line': [reply(230000, 55 * MIN), stamped(userRow('<bash-input> git status</bash-input>'), 54 * MIN), stamped(userRow('<bash-stdout>clean</bash-stdout><bash-stderr></bash-stderr>'), 54 * MIN)],
+    };
+    for (const [name, rows] of Object.entries(cases))
+    {
+        const p = project();
+        const c = compaction(p, rows, { preTokens: 232000 });
+        assert.match(c.start, /compacted while idle/, name);
+        assert.match(c.state, /^trigger: auto \(idle\)$/m, name);
+        assert.ok(!fs.existsSync(holdOf(p, c.tp)), name);
+        assert.deepStrictEqual(c.after, c.before, name);
+    }
+});
+
+test('idle compaction: a compaction under the floor is not called idle', () =>
+{
+    const p = project();
+    const c = compaction(p, [reply(150000, 55 * MIN)], { preTokens: 151000 });
+    assert.match(c.start, /AUTO-COMPACTED/);
+    assert.match(c.state, /^trigger: auto$/m);
+    assert.deepStrictEqual(pointsOf(p).map((r) => r.held), [true, true], 'held by the gap alone');
+    assert.deepStrictEqual(c.after, c.before);
+    settle(p, c.tp, c.bAt + 31000);
+    assert.strictEqual(thresholdOf(p, c.tp), 135000, 'counted once no notice came');
+    for (const floor of ['120000', '50000'])   // 50000 is raised to 100,000
+    {
+        const q = project();
+        const d = compaction(q, [reply(150000, 55 * MIN)], { preTokens: 151000, env: { CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS: floor } });
+        assert.match(d.start, /compacted while idle/, floor);
+        assert.match(d.state, /^trigger: auto \(idle\)$/m, floor);
+    }
+});
+
+test('idle compaction: an idle compaction at the floor is held at PreCompact too', () =>
+{
+    // PreCompact counts the last reply's input side, 1-5k under the boundary's preTokens in real sessions
+    const p = project();
+    const c = compaction(p, [reply(198000, 55 * MIN)], { preTokens: 200000 });
+    assert.match(c.state, /^trigger: auto$/m, "PreCompact's count is under the floor");
+    assert.deepStrictEqual(pointsOf(p).map((r) => [r.tokens, r.held]), [[198000, true], [200000, true]]);
+    assert.deepStrictEqual(c.after, c.before);
+    assert.match(c.start, /compacted while idle/);
+});
+
+test('idle compaction: a reply with no timestamp is no idle gap', () =>
+{
+    const p = project();
+    const c = compaction(p, [usageRow('a', { cache_read_input_tokens: 316849 })], { preTokens: 317321 });
+    assert.match(c.start, /AUTO-COMPACTED/);
+    assert.deepStrictEqual(pointsOf(p).map((r) => [r.tokens, r.held]), [[316849, undefined], [317321, undefined]]);
+    assert.strictEqual(c.after.threshold, 285164, 'counted at once, as before');
+});
+
+// ---- the settle pass: each pending point confirmed against its own transcript (2026-10-30) ----
+// A project whose points belong to other sessions, their transcripts beside the payload's own.
+function history(rowsBySession, { own = 'cur-0' } = {})
+{
+    const p = project();
+    const dir = path.join(p.root, 'transcripts');
+    fs.mkdirSync(dir, { recursive: true });
+    const tp = path.join(dir, `${own}.jsonl`);
+    fs.writeFileSync(tp, JSON.stringify(stamped(usageRow('c', { cache_read_input_tokens: 1000 }), 1000)) + '\n');
+    const write = (sid, rows) => fs.writeFileSync(path.join(dir, `${sid}.jsonl`), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    for (const [sid, rows] of Object.entries(rowsBySession)) if (rows) write(sid, rows);
+    const points = (rows) => { fs.mkdirSync(p.sessions, { recursive: true }); fs.writeFileSync(path.join(p.sessions, 'compact-points.json'), JSON.stringify(rows, null, 1) + '\n'); };
+    return { p, dir, tp, write, points, file: path.join(p.sessions, 'compact-points.json') };
+}
+const point = (session, tokens, atMs, extra = {}) => ({ at: new Date(atMs).toISOString(), session, model: 'claude-opus-5-5', tokens, ...extra });
+const DAY = 86400000;
+// in a child, counting the bytes read from (and the opens of) files whose name holds `watch`
+const counted = (watch, call) => `const fs = require('fs'); const fds = new Set(); let bytes = 0, opens = 0; const oo = fs.openSync, rs = fs.readSync;`
+    + ` fs.openSync = function (f, ...a) { const fd = oo.call(fs, f, ...a); if (String(f).includes(${JSON.stringify(watch)})) { fds.add(fd); opens++; } return fd; };`
+    + ` fs.readSync = function (fd, ...a) { const n = rs.call(fs, fd, ...a); if (fds.has(fd)) bytes += n; return n; };`
+    + ` const r = (() => { ${call} })(); return { r, bytes, opens };`;
+
+test('settle: the history cleanup drops a point followed by the notice and keeps one that isn\'t', () =>
+{
+    const t0 = Date.now() - 2 * DAY;
+    const h = history({
+        'aaaa-1': [boundaryRow(230500, t0 + 49000), idleNotice(t0 + 49000)],
+        'bbbb-2': [boundaryRow(368500, t0 + 49000)],
+    });
+    h.points([point('aaaa-1', 230000, t0), point('bbbb-2', 368000, t0), point('cccc-3', 300000, t0)]);   // written by 3.4.0: no held, no settled
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    assert.strictEqual(thresholdOf(p, h.tp), 331200, '90% of 368k: A dropped (idle), C dropped (untied), B settled');
+    assert.deepStrictEqual(pointsOf(p).map((r) => [r.session, r.tokens, r.settled]), [['bbbb-2', 368000, true]]);
+    const bytes = fs.readFileSync(h.file);
+    const mtime = fs.statSync(h.file).mtimeMs;
+    assert.strictEqual(thresholdOf(p, h.tp), 331200);
+    assert.ok(fs.readFileSync(h.file).equals(bytes) && fs.statSync(h.file).mtimeMs === mtime, 'a second read writes nothing');
+});
+
+test('settle: a point read while its compaction runs is kept', () =>
+{
+    const at = Date.now() - 60000;
+    const h = history({ 'dddd-4': [stamped(usageRow('d', { cache_read_input_tokens: 250000 }), 61000)] });
+    h.points([point('dddd-4', 250000, at)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    settle(p, h.tp, at + 31000);
+    assert.deepStrictEqual(pointsOf(p).map((r) => [r.tokens, r.settled]), [[250000, undefined]], 'no boundary yet: kept, pending');
+    assert.strictEqual(thresholdOf(p, h.tp), 225000, 'counted while it waits');
+    const later = new Date(at + 11 * MIN);
+    fs.utimesSync(path.join(h.dir, 'dddd-4.jsonl'), later, later);
+    settle(p, h.tp, at + 11 * MIN);
+    assert.deepStrictEqual(pointsOf(p), [], 'the session went on with no boundary of it: untied, dropped');
+});
+
+test('settle: a held point never counts before the notice decides', () =>
+{
+    const bAt = Date.now() - 5000;
+    const h = history({ 'eeee-5': [boundaryRow(240000, bAt)] });
+    h.points([point('eeee-5', 240000, bAt + 600, { held: true })]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    settle(p, h.tp, bAt + 5000);
+    assert.deepStrictEqual(pointsOf(p).map((r) => r.held), [true], 'pending');
+    assert.strictEqual(thresholdOf(p, h.tp), 400000, 'a held point counts toward nothing');
+    fs.appendFileSync(path.join(h.dir, 'eeee-5.jsonl'), JSON.stringify(idleNotice(bAt)) + '\n');
+    settle(p, h.tp, bAt + 31000);
+    assert.deepStrictEqual(pointsOf(p), [], 'the notice drops it');
+});
+
+test('settle: a large transcript is never read whole', () =>
+{
+    const h = history({});
+    const big = path.join(h.dir, 'ffff-6.jsonl');
+    const t0 = Date.now() - 20 * 3600000;
+    const pad = 'x'.repeat(900);
+    const fd = fs.openSync(big, 'w');
+    let bAt = 0;
+    for (let i = 0; i < 64000; i += 1000)
+    {
+        const chunk = [];
+        for (let j = i; j < i + 1000; j++)
+        {
+            chunk.push(JSON.stringify({ type: 'user', message: { role: 'user', content: pad }, timestamp: new Date(t0 + j * 1000).toISOString() }));
+            if (j === 32000) { bAt = t0 + j * 1000; chunk.push(JSON.stringify(boundaryRow(260000, bAt))); }
+        }
+        fs.writeSync(fd, chunk.join('\n') + '\n');
+    }
+    fs.closeSync(fd);
+    assert.ok(fs.statSync(big).size >= 60 * 1024 * 1024);
+    h.points([point('ffff-6', 259000, bAt - 49000), point('ffff-6', 260000, bAt + 600)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    const first = engine(p, h.tp, counted('ffff-6', `return F.settleCompactPoints({ now: ${bAt + 31000} });`));
+    assert.deepStrictEqual(first.r, { dropped: 0, settled: 2 });
+    assert.ok(first.bytes <= 6 * 1024 * 1024, `read ${first.bytes} bytes of a 64 MB transcript`);
+    const again = engine(p, h.tp, counted('ffff-6', 'let t; for (let i = 0; i < 5; i++) { F.use(payload); t = F.ctxThreshold(); } return t;'));
+    assert.deepStrictEqual([again.r, again.bytes], [233100, 0], 'a settled row is never read again');
+    for (let i = 0; i < 3; i++) assert.strictEqual(engine(p, h.tp, counted('ffff-6', 'return F.ctxThreshold();')).bytes, 0);
+    // a session that ended 1 s after its boundary still settles, at the next pass of any session
+    const e = history({ 'gggg-7': [boundaryRow(270000, Date.now() - 2 * MIN)] });
+    const ended = Date.now() - 2 * MIN;
+    e.points([point('gggg-7', 270000, ended + 600, { held: true })]);
+    const q = Object.assign(e.p, { sid: 'cur-0' });
+    const one = engine(q, e.tp, counted('gggg-7', `return F.settleCompactPoints({ now: ${ended + 31000} });`));
+    assert.deepStrictEqual([one.r, one.opens], [{ dropped: 0, settled: 1 }, 1]);
+});
+
+test('settle: a pass stops at its budget', () =>
+{
+    const t0 = Date.now() - 2 * DAY;
+    const h = history({ 'hhhh-1': [boundaryRow(300000, t0 + 49000)], 'hhhh-2': [boundaryRow(310000, t0 + 49000)], 'hhhh-3': [boundaryRow(320000, t0 + 49000)] });
+    h.points([point('hhhh-1', 300000, t0), point('hhhh-2', 310000, t0), point('hhhh-3', 320000, t0)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    assert.deepStrictEqual(engine(p, h.tp, `return F.settleCompactPoints({ now: ${Date.now()}, budgetBytes: 1 });`), { dropped: 0, settled: 1 });
+    assert.deepStrictEqual(pointsOf(p).map((r) => r.settled), [true, undefined, undefined]);
+    assert.deepStrictEqual(engine(p, h.tp, `return F.settleCompactPoints({ now: ${Date.now()}, budgetBytes: 1 });`), { dropped: 0, settled: 1 });
+});
+
+test('settle: a session id that is no id is never read', () =>
+{
+    const t0 = Date.now() - 2 * DAY;
+    const h = history({});
+    fs.writeFileSync(path.join(h.p.root, 'x.jsonl'), JSON.stringify(boundaryRow(300000, t0 + 49000)) + '\n');
+    h.points([point('../x', 300000, t0)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    const before = fs.readFileSync(h.file);
+    const r = engine(p, h.tp, counted('x.jsonl', 'return F.ctxThreshold();'));
+    assert.deepStrictEqual([r.r, r.opens], [270000, 0], 'kept and counted, never read');
+    assert.ok(fs.readFileSync(h.file).equals(before), 'never rewritten');
+});
+
+test('settle: the settle keeps a point recorded during it', () =>
+{
+    const t0 = Date.now() - 2 * DAY;
+    const h = history({ 'iiii-1': [boundaryRow(300000, t0 + 49000)] });
+    h.points([point('iiii-1', 300000, t0)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    // another writer records a point while this pass reads the transcript
+    engine(p, h.tp, `const fs = require('fs'); const oo = fs.openSync; let done = false;`
+        + ` fs.openSync = function (f, ...a) { if (!done && String(f).endsWith('iiii-1.jsonl')) { done = true; const file = F.compactPointsFile(true);`
+        + ` const rows = JSON.parse(fs.readFileSync(file, 'utf8')); rows.push({ at: new Date().toISOString(), session: 'new-9', model: 'claude-opus-5-5', tokens: 280000 });`
+        + ` fs.writeFileSync(file, JSON.stringify(rows)); } return oo.call(fs, f, ...a); }; return F.settleCompactPoints({ now: ${Date.now()} });`);
+    assert.deepStrictEqual(pointsOf(p).map((r) => [r.session, r.settled]), [['iiii-1', true], ['new-9', undefined]]);
+});
+
+test('settle: the VS Code and desktop notice drops an idle point too', () =>
+{
+    const t0 = Date.now() - 2 * DAY;
+    const away = { type: 'system', subtype: 'informational', timestamp: new Date(t0 + 49600).toISOString(),
+        content: 'Compacted using a summary written while you were away · turn off with "idleCompaction": false in settings.json' };
+    const h = history({ 'kkkk-1': [boundaryRow(240000, t0 + 49000), away] });
+    h.points([point('kkkk-1', 240000, t0, { held: true })]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    assert.strictEqual(thresholdOf(p, h.tp), 400000);
+    assert.deepStrictEqual(pointsOf(p), [], 'dropped as idle, never settled');
+});
+
+// a transcript of 1 KB rows `stepMs` apart, with an auto boundary after each index in `at`; rows past `rows` none
+function spaced(file, { t0, rows, stepMs, at = [], row = (_, ts) => ({ type: 'user', message: { role: 'user', content: 'x'.repeat(900) }, timestamp: ts }) })
+{
+    const out = [];
+    const bAts = [];
+    for (let i = 0; i < rows; i++)
+    {
+        out.push(JSON.stringify(row(i, new Date(t0 + i * stepMs).toISOString())));
+        if (at.includes(i)) { const bAt = t0 + i * stepMs + 1000; bAts.push(bAt); out.push(JSON.stringify(boundaryRow(260000 + i, bAt))); }
+    }
+    fs.writeFileSync(file, out.join('\n') + '\n');
+    return bAts;
+}
+
+test('settle: points hours apart in one transcript each get their own window', () =>
+{
+    const h = history({});
+    const t0 = Date.now() - 2 * DAY;
+    const [b1, b2] = spaced(path.join(h.dir, 'llll-1.jsonl'), { t0, rows: 8000, stepMs: 10000, at: [200, 7800] });
+    assert.ok(b2 - b1 > 20 * 3600000 && fs.statSync(path.join(h.dir, 'llll-1.jsonl')).size > 7.5 * 1024 * 1024);
+    h.points([point('llll-1', 260200, b1 - 49000), point('llll-1', 260200, b1 + 600), point('llll-1', 267800, b2 - 49000), point('llll-1', 267800, b2 + 600)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    const r = engine(p, h.tp, counted('llll-1', `return F.settleCompactPoints({ now: ${Date.now()}, capBytes: 1024 * 1024 });`));
+    assert.deepStrictEqual(r.r, { dropped: 0, settled: 4 }, 'a read capped short of the later boundary drops none of its points');
+    assert.ok(r.bytes <= 3 * 1024 * 1024, `two windows, never the hours between: read ${r.bytes} of 8 MB`);
+});
+
+test('settle: a read cut short never settles a point whose notice it did not reach', () =>
+{
+    const h = history({});
+    const file = path.join(h.dir, 'mmmm-1.jsonl');
+    const bAt = Date.now() - 5 * MIN;
+    const filler = Array.from({ length: 1600 }, () => JSON.stringify({ type: 'progress', data: 'y'.repeat(1000), timestamp: new Date(bAt + 300).toISOString() }));
+    fs.writeFileSync(file, [JSON.stringify(boundaryRow(240000, bAt)), ...filler, JSON.stringify(idleNotice(bAt))].join('\n') + '\n');
+    h.points([point('mmmm-1', 240000, bAt + 600, { held: true })]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    const call = (now) => engine(p, h.tp, `return F.settleCompactPoints({ now: ${now}, capBytes: 1024 * 1024 });`);
+    assert.deepStrictEqual(call(bAt + 31000), { dropped: 0, settled: 0 }, 'the notice lies past the cap: wait');
+    assert.deepStrictEqual(pointsOf(p).map((r) => r.held), [true]);
+    assert.deepStrictEqual(call(bAt + 61 * MIN), { dropped: 1, settled: 0 }, 'an hour on, still unread: dropped, never counted');
+});
+
+test('settle: a row longer than one probe still lands the search at its window', () =>
+{
+    const h = history({});
+    const file = path.join(h.dir, 'nnnn-1.jsonl');
+    const t0 = Date.now() - 2 * DAY;
+    // rows of 1.2 MB, 30 min apart, the timestamp the last key - a probe inside one finds none ahead within 1 MB
+    const huge = (_, ts) => ({ type: 'user', message: { role: 'user', content: 'z'.repeat(1200 * 1024) }, timestamp: ts });
+    const [bAt] = spaced(file, { t0, rows: 12, stepMs: 30 * MIN, at: [8], row: huge });
+    h.points([point('nnnn-1', 260008, bAt + 600)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    const r = engine(p, h.tp, counted('nnnn-1', `return F.settleCompactPoints({ now: ${Date.now()}, capBytes: 4 * 1024 * 1024 });`));
+    assert.deepStrictEqual(r.r, { dropped: 0, settled: 1 }, 'the search landed by the boundary, not at the file start');
+});
+
+test('settle: garbage in, the threshold as with no points, no throw', () =>
+{
+    const t0 = Date.now() - 2 * DAY;
+    const h = history({ 'jjjj-1': null });
+    fs.writeFileSync(path.join(h.dir, 'jjjj-1.jsonl'), '{not json\n\u0000\u0001garbage\n' + JSON.stringify(boundaryRow(300000, t0 + 49000)) + '\n{"type":"system","subtype":"compact_boundary","timestamp":"never"}\n');
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    fs.mkdirSync(p.sessions, { recursive: true });
+    fs.writeFileSync(h.file, '{not json');
+    assert.strictEqual(thresholdOf(p, h.tp), 400000);
+    h.points([point('jjjj-1', 300000, t0), { at: 'yesterday', session: 'jjjj-1', model: 'claude-opus-5-5', tokens: 290000 }]);
+    assert.strictEqual(thresholdOf(p, h.tp), 270000, 'the garbage lines skipped, the boundary found and the point settled');
+    assert.deepStrictEqual(pointsOf(p).map((r) => [r.at, r.settled]), [[new Date(t0).toISOString(), true], ['yesterday', undefined]]);
+});
