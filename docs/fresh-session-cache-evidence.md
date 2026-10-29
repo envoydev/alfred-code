@@ -105,3 +105,23 @@ Method: for each session of 20 or more main-session assistant messages, the carr
 at its first. The re-run that checks A7 also takes the same growth over the sessions whose first typed prompt is a
 resume (a `task-*`, `issue-*` or `loop-*` command naming a plan, findings or ledger file, or a pasted resume block); a
 median under 8k or over 20k reopens R.
+
+## Idle compaction (2026-10-30)
+
+Claude Code's idle compaction (`idleCompaction`, on by default) compacts a session about an hour after the last reply,
+before the prompt cache expires, once its context is at or over `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS` (default
+200,000, a value under 100,000 raised to it - <https://code.claude.com/docs/en/env-vars>). It is no context limit, so
+it must not lower the fresh-session trigger. Measured:
+
+- Row order, a 2026-10-23 transcript of this repo: the `compact_boundary` row at 11:34:14.160 (`trigger: auto`,
+  `preTokens` 212,239, `durationMs` 49,233), the compact start's hook rows at 14.795-14.796, the notice
+  (`system` / `informational`, 'Compacted while idle, before the prompt cache expired ...') at 14.804 - after the
+  hooks, so a hook judges by timing and a later read confirms from the notice. The stack wires no PostCompact hook.
+- The user's 56 idle compactions came 54.5-55.0 min after the last assistant row, at `preTokens` 212k-361k; seven in
+  this repo started 53.5-53.9 min after it.
+- On seven idle compactions, the boundary's `preTokens` ran 1,069-4,999 over the last reply's input-side usage (what
+  PreCompact can count), so the hold that keeps a point out of the trigger is the 50-minute gap alone, never the floor.
+- Transcripts here reach 214 MB; over the twelve largest (17-214 MB) no row sat more than 14.5 min behind the newest
+  row before it, which sets the window read's 20-minute slack.
+- One of 26 idle compactions had a local command (`/reload-plugins`) between the last reply and the boundary: a local
+  command makes no model call, so it does not end the idle gap.

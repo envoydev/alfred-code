@@ -264,7 +264,7 @@ test('peak and floor context, and one row per compaction with its dropped tokens
   assert.strictEqual(main.floorCtx, 12000, 'the cold floor is the standing inventory');
   assert.strictEqual(main.compactions, 1);
   assert.deepStrictEqual(main.compactionEvents, [{
-    ts: '2026-07-15T07:15:00.000Z', pre: 390000, post: 12000, dropped: 378000, durationMs: 122000, trigger: 'auto',
+    ts: '2026-07-15T07:15:00.000Z', pre: 390000, post: 12000, dropped: 378000, durationMs: 122000, trigger: 'auto', idle: false,
   }], 'the dropped tokens and the wall clock were read and never printed');
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -2424,4 +2424,72 @@ test('--no-conformance leaves the section out; the probe kinds the shell guards 
   assert.doesNotMatch(md, /locate with serena/);
   assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--no-conformance', '--out', dest]).status, 0);
   assert.doesNotMatch(fs.readFileSync(dest, 'utf8'), /^## Conformance/m);
+});
+
+// Claude Code's idle compaction (2026-10-30): about an hour after the last reply, before the prompt cache expires - no
+// context limit. Its notice row lands right after the boundary; the report labels the event and keeps it out of the span.
+const IDLE_TEXT = 'Compacted while idle, before the prompt cache expired \u00b7 turn off with "idleCompaction": false in settings.json';
+function idleSession(dir, { between = [], after = [], notice = true } = {}) {
+  const reply = (id, ts) => ({ type: 'assistant', timestamp: ts, message: { id, model: 'claude-sonnet-5', usage: usage(0, 0, 230000, 1), content: [] } });
+  return fixture(dir, [
+    { type: 'user', timestamp: '2026-07-15T06:59:00.000Z', message: { content: 'go on' } },
+    reply('a1', '2026-07-15T07:00:00.000Z'),
+    ...between,
+    { type: 'system', subtype: 'compact_boundary', timestamp: '2026-07-15T07:55:00.000Z', compactMetadata: { trigger: 'auto', preTokens: 230500, postTokens: 12000, durationMs: 49000 } },
+    { type: 'user', timestamp: '2026-07-15T07:55:00.000Z', isCompactSummary: true, message: { content: 'summary' } },
+    { type: 'attachment', timestamp: '2026-07-15T07:55:00.500Z', attachment: { type: 'hook_success' } },
+    ...(notice ? [{ type: 'system', subtype: 'informational', timestamp: '2026-07-15T07:55:00.600Z', content: IDLE_TEXT }] : []),
+    ...after.map((ts, i) => reply(`b${i}`, ts)),
+  ]);
+}
+
+test('an idle compaction is labelled and kept out of the session span', () => {
+  const dir = tmp();
+  const file = idleSession(dir);
+  const { main } = run([file]);
+  assert.strictEqual(main.compactionEvents[0].idle, true);
+  assert.deepStrictEqual(main.idleTail, { from: '2026-07-15T07:00:00.000Z', to: '2026-07-15T07:55:00.600Z', rowType: 'system' }, 'the span ends at the last reply');
+  const text = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(text, /compaction 2026-07-15T07:55:00\.000Z: .*\(auto, idle\)$/m);
+  assert.match(text, /idle tail 55m/);
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\*\*Compaction\*\* 2026-07-15T07:55:00\.000Z: .* \(auto, idle\)\./);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('an idle compaction with a reply after it: the span ends at that reply', () => {
+  const dir = tmp();
+  const { main } = run([idleSession(dir, { after: ['2026-07-15T09:00:00.000Z'] })]);
+  assert.strictEqual(main.compactionEvents[0].idle, true);
+  assert.ok(!main.idleTail, 'no idle tail: the session went on');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a compaction with no notice after a prompt that ended a long break is no idle one', () => {
+  const dir = tmp();
+  const file = idleSession(dir, { notice: false, between: [{ type: 'user', timestamp: '2026-07-15T07:54:00.000Z', message: { content: 'next step please' } }] });
+  const { main } = run([file]);
+  assert.strictEqual(main.compactionEvents[0].idle, false);
+  assert.match(execFileSync('node', [SCRIPT, file], { encoding: 'utf8' }), /compaction 2026-07-15T07:55:00\.000Z: .*\(auto\)$/m);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a local command and its output between the reply and the boundary leave it idle', () => {
+  const dir = tmp();
+  const file = idleSession(dir, { notice: false, between: [
+    { type: 'user', isMeta: true, timestamp: '2026-07-15T07:01:00.000Z', message: { content: '<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>' } },
+    { type: 'user', timestamp: '2026-07-15T07:01:00.000Z', message: { content: '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>' } },
+    { type: 'user', timestamp: '2026-07-15T07:01:00.100Z', message: { content: '<local-command-stdout>Set model to Opus</local-command-stdout>' } },
+  ] });
+  assert.strictEqual(run([file]).main.compactionEvents[0].idle, true, 'by the timing alone');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the untranscribed line names a compaction call too', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1'),
+    { type: 'cost-state', sessionId: 'x', modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1, thinkingTokens: 0, cacheReadInputTokens: 22, cacheCreationInputTokens: 0 } } }]);
+  assert.match(execFileSync('node', [SCRIPT, file], { encoding: 'utf8' }), /post-turn recap or compaction call\(s\) are billed/);
+  assert.match(execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' }), /post-turn recap or compaction call\(s\) are billed/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

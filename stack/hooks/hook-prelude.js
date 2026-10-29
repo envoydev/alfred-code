@@ -525,6 +525,51 @@ function harnessPrompt(prompt)
     return HARNESS_PROMPT_RE.test(String(prompt || ''));
 }
 
+// IDLE COMPACTION (2026-10-30): Claude Code compacts a session on its own about an hour after the last reply, before the
+// prompt cache expires (`idleCompaction`, on by default), once its context is at or over CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS
+// (code.claude.com/docs/en/env-vars: default 200000, a value under 100000 raised to it, one that is no positive whole
+// number ignored). Its boundary says only `trigger: auto`; the `system` / `informational` row after it ('Compacted while
+// idle, ...') is written after the compact start's hooks run, so a hook judges by the timing and fresh-session.js's settle
+// pass confirms from the notice. Such a compaction is no context limit, so it lowers no fresh-session trigger. The notice
+// has two spellings: the terminal's, and VS Code's and the desktop app's ('Compacted using a summary written while you were
+// away', code.claude.com/docs/en/settings-reference, 'Idle compaction in VS Code and the desktop app').
+const IDLE_NOTICE_RE = /^Compacted (?:while idle\b|using a summary written while you were away\b)/;
+const IDLE_GAP_MS = 50 * 60000;
+// A session id a points row may join into a path: Claude Code's are UUIDs; a separator or a leading dot never steers a read.
+const SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+function idleFloor(env)
+{
+    const raw = String((env || process.env).CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS || '').trim();
+    const n = /^\d+$/.test(raw) ? Number(raw) : 0;
+    return n > 0 ? Math.max(n, 100000) : 200000;
+}
+function isIdleNotice(row)
+{
+    if (!row || row.type !== 'system' || row.subtype !== 'informational') return false;
+    const c = row.content;
+    const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((p) => p && p.type === 'text').map((p) => p.text || '').join('') : '';
+    return IDLE_NOTICE_RE.test(text);
+}
+// A user row that cannot start a model call: a compaction summary, a meta row (a local command's caveat, a reminder), a
+// `!` line's rows and a local command's output. A command row (`<command-name>` / `<command-message>`) is judged by the
+// caller: a local command's output row follows it, a prompt command's model call does not.
+const LOCAL_ONLY_RE = /^\s*<(?:bash-input|bash-stdout|bash-stderr|local-command-stdout|local-command-stderr|local-command-caveat)>/;
+function localOnlyRow(row)
+{
+    if (!row || row.type !== 'user') return false;
+    if (row.isMeta || row.isCompactSummary) return true;
+    const c = row.message && row.message.content;
+    const text = typeof c === 'string' ? c : Array.isArray(c) && c[0] && c[0].type === 'text' ? String(c[0].text || '') : '';
+    return LOCAL_ONLY_RE.test(text);
+}
+// The timing verdict: 50 minutes or more from the last reply to the compaction's start, nothing since that could start a
+// model call, and the context at or over the idle floor.
+function idleByTiming({ gapMs, promptSince, preTokens, floor } = {})
+{
+    if (![gapMs, preTokens, floor].every(Number.isFinite)) return false;
+    return gapMs >= IDLE_GAP_MS && !promptSince && preTokens >= floor;
+}
+
 // TEXT A HOOK CANNOT READ (deep hooks review 2026-10-16, the user's ruling: the hooks read English only). Their word lists
 // are English, so a text whose letters are 30% or more outside ASCII is one they cannot judge - measured, the Ukrainian the
 // user and the model wrote read 72-100%, an English prompt quoting UI copy at most 29.7% - and each hook takes its safe
@@ -1264,4 +1309,4 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
