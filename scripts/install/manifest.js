@@ -57,6 +57,9 @@ function loadManifest(sourceDir)
             mcps: { ...((raw.renamed || {}).mcps || {}) },
             // A hook by its bare name (2026-10-20: guard-answer-length -> guard-answer); its old file is retired too.
             hooks: { ...((raw.renamed || {}).hooks || {}) },
+            // A MERGE's old names by the part each became (2026-10-29: the three quality captures in capture-quality) -
+            // the top-level `renamedTopics` block; a skillOverrides value and a command re-spelling read it.
+            topics: { ...(raw.renamedTopics || {}) },
         },
         rows: raw,
     };

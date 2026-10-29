@@ -1350,7 +1350,7 @@ test('2026-10-22 review proof: a VERIFIED line naming a review needs a run of th
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: none, session_id: 'sess-rc' }).status, 2, 'a ledger row for review-code is no run');
   // every old spelling the manifest renames into a review is a run of it, and a receipt naming one is met by today's run
   const renamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed.skills;
-  const REVIEWS = /^(?:task-verify-(?:code|plan)|loop-(?:code-quality|architecture-quality|test-coverage)|review-(?:code|security))$/;
+  const REVIEWS = /^(?:task-verify-(?:code|plan)|loop-(?:code-quality|architecture-quality|test-coverage(?:-quality)?)|review-(?:code|security))$/;
   const rows = Object.entries(renamed).filter(([, now]) => REVIEWS.test(now));
   assert.ok(rows.length >= 11, 'the manifest renames the reviews');
   for (const [old, now] of rows) {
@@ -1370,6 +1370,28 @@ test('2026-10-22 review proof: a VERIFIED line naming a review needs a run of th
       assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: wrong }).status, 2, `a Findings line is no ${now} result`);
     }
   }
+});
+
+// 2026-10-29: the coverage loop is loop-test-coverage-quality; a VERIFIED line naming either spelling is met by its run.
+test('a VERIFIED line naming loop-test-coverage-quality is met by its run', () => {
+  const dir = scratchRepo();
+  const skill = (id, name) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `t${id}`, name: 'Skill', input: { skill: name } }] } });
+  const ran = writeTranscript(dir, 'coverage-loop', [skill('a', 'loop-test-coverage-quality'), resultRow(undefined, '**Outcome**: SATISFIED on round 1')]);
+  // the first name, on an older copy: read from the rename map, its one home
+  const { renamed } = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
+  const olds = Object.keys(renamed.skills).filter((k) => renamed.skills[k] === 'loop-test-coverage-quality' && !/^(alfred|project)-/.test(k));
+  assert.ok(olds.length >= 1, 'the map renames the loop');
+  for (const named of ['loop-test-coverage-quality', ...olds]) {
+    writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: `VERIFIED ${named} passed` }));
+    const r = gateWith(dir, 'git commit -am x', { transcript_path: ran });
+    assert.equal(r.status, 0, `VERIFIED ${named}: ${r.stderr}`);
+  }
+  // the name is read as a review: a session that ran only another review does not meet it
+  const other = writeTranscript(dir, 'other-review', [skill('b', 'review-code'), resultRow()]);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED loop-test-coverage-quality passed' }));
+  const unmet = gateWith(dir, 'git commit -am x', { transcript_path: other });
+  assert.equal(unmet.status, 2, 'a review-code run is no coverage loop run');
+  assert.match(unmet.stderr, /names loop-test-coverage-quality, but no run of it/);
 });
 
 // 2026-10-22, a side agent's note on the fix above: a VERIFIED line naming NO review skipped that check, so `VERIFIED the

@@ -345,6 +345,7 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
     const prelude = require('../stack/hooks/hook-prelude.js');
     const history = require('../stack/hooks/history.js');
     const cap = require('../stack/hooks/agent-cap.js');
+    const fresh = require('../stack/hooks/fresh-session.js');
     const tools = require('../stack/skills/capture-preferences/scripts/tools.js');
     const installDocs = require('./install/docs.js');
     const empty = fs.mkdtempSync(path.join(TMP, 'empty-'));
@@ -382,6 +383,7 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
         MEMORY: (e) => tools.memoryMode({ projectRoot: empty, env: e }),
         FRESH_SESSION_AFTER_HOURS: (e) => prelude.envOf(e, 'FRESH_SESSION_AFTER_HOURS')
             || ['stack/hooks/guard-stop-contract.js', 'stack/hooks/guard-fresh-session-start.js'].map((f) => [...source(f).matchAll(/'FRESH_SESSION_AFTER_HOURS'\)\);\s*(?:const hours = |return )Number\.isNaN\(n\) \|\| n < 0 \? (\d+) : n/g)].map((m) => m[1])).flat().join(','),
+        FRESH_SESSION_PAYBACK: (e) => fresh.paybackOf(e),
         FORGE_WATCH: (e) => (/=== 'loud-only' \|\| watchSetting\(env\) === 'publish-only'\) watch = watchSetting\(env\)/.test(source('stack/hooks/forge-session.js'))
             && ['loud-only', 'publish-only'].includes(String(prelude.envOf(e, 'FORGE_WATCH') || '')) ? prelude.envOf(e, 'FORGE_WATCH') : 'all'),
         WORKSPACE: (e) => layout.workspaceOn({ env: e, projectRoot: empty }),

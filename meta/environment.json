@@ -241,9 +241,22 @@
       "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
       "default": "2",
       "ask": false,
-      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends a gap of this many HOURS since the last reply (or since an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a resume recovers enough - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). Decimals work (`0.5`); `0` turns the idle offer off. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
+      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends a gap of this many HOURS since the last reply (or since an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). Decimals work (`0.5`); `0` turns the idle offer off. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
       "validate": {
         "type": "hours",
+        "off": "0"
+      }
+    },
+    {
+      "key": "ALFRED_CODE_FRESH_SESSION_PAYBACK",
+      "default": "30",
+      "ask": false,
+      "seed": false,
+      "what": "fresh-session.js: the payback window of the cache-aware fresh-session verdict - a fresh session is offered only when it pays back within this many messages, priced with the cache warm. A whole number from 0 to 1000; anything else reads as 30. `0` turns every fresh-session offer off. Not seeded: set it in .variables.",
+      "validate": {
+        "type": "int",
+        "min": 0,
+        "max": 1000,
         "off": "0"
       }
     },
@@ -265,7 +278,7 @@
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22), `guard-unapproved-dispatch:cap` (the agent cap, ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27) - each but the last two was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here. `guard-answer:scorer` (the scorer lines and flags) and `guard-stop-contract:scorer` (the scorer backstop and the sealed scorecard) - either one turns the whole scorer off, stacks included.",
+      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22), `guard-unapproved-dispatch:cap` (the agent cap, ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27), `guard-layer-table:void` (the paste gate's void of an answer given with no table or banner on screen, 2026-10-28), `guard-stop-contract:fresh-ask` (the drop of a fresh-session hand-off that does not pay back with the cache warm, 2026-10-28) - each but the last four was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here. `guard-answer:scorer` (the scorer lines and flags) and `guard-stop-contract:scorer` (the scorer backstop and the sealed scorecard) - either one turns the whole scorer off, stacks included.",
       "validate": {
         "type": "csv"
       }

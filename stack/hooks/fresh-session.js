@@ -22,6 +22,9 @@ function use(p) {
   _ignored = undefined;
   _started = undefined;
   _modelId = undefined;
+  _floor = undefined;
+  _firstUsage = undefined;
+  _ttl = undefined;
 }
 
 // The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each (the user's ruling of 2026-10-16;
@@ -176,18 +179,25 @@ function recordSessionModel(model) {
 // Bedrock version (`-v1:0`), Claude Code's `[1m]` suffix and a provider-prefixed id
 // (`us.anthropic.claude-opus-5-v1:0`); the longest matching key wins. Nothing else may follow the key: a
 // bare `-` let `claude-opus-5-5` read as a snapshot of `claude-opus-5` and take its window silently (2.1.5 M6).
+// The one key rule for both tables keyed by model: the windows here, the cache read rates below.
+function modelKey(id, keys) {
+  const s = String(id || '').toLowerCase();
+  if (!s) return null;
+  let best = null;
+  for (const key of keys) {
+    const k = String(key).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!new RegExp(`(^|[./])${k}(?=$|-\\d{8}(?!\\d)|-v\\d|@|:|\\[)`).test(s)) continue;
+    if (!best || key.length > best.length) best = key;
+  }
+  return best;
+}
 function tableWindow() {
-  const id = String(sessionModelId() || '').toLowerCase();
+  const id = sessionModelId();
   if (!id) return null;
   let models = {};
   try { models = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'model-windows.json'), 'utf8')).models || {}; } catch { return null; }
-  let best = null;
-  for (const [key, n] of Object.entries(models)) {
-    const k = key.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (!(Number(n) >= 100000) || !new RegExp(`(^|[./])${k}(?=$|-\\d{8}(?!\\d)|-v\\d|@|:|\\[)`).test(id)) continue;
-    if (!best || key.length > best.key.length) best = { key, n: Number(n) };
-  }
-  return best ? best.n : null;
+  const key = modelKey(id, Object.keys(models).filter((k) => Number(models[k]) >= 100000));
+  return key ? Number(models[key]) : null;
 }
 // The install's own AUTO-COMPACT window, when it is set (code.claude.com/docs/en/model-config, 'Set the auto-compact
 // window': 'how full the context window can get before Claude Code compacts'; settings-reference `autoCompactWindow` /
@@ -344,45 +354,198 @@ function ctxThreshold() {
   if (seen && at >= seen * 0.9) at = Math.floor(seen * 0.9);
   return at > 0 ? at : null;   // 0 = this trigger's offer is switched off
 }
-// --- what a resume would actually RECOVER: the session's own cold floor ----------------------
-// The trigger is absolute context, and a large share of it can be the INSTALL's own standing
-// inventory - system prompt, CLAUDE.md, the always-on rules, every MCP tool schema - which a fresh
-// session pays again on its first message. Measured across the nine projects in the audited
-// collection that floor runs 87k-134k per message, and one 18-minute single-command run that
-// STARTED from `/clear` (first message 103,964) tripped the 150,000 gate at 159,363 after ~55k of
-// actual conversation: the ask and its close cost two messages and 320,973 context and moved
-// nothing. So the offer also asks what it would BUY - the part of the carry a resume does NOT
-// re-pay - and stays quiet while that is under 40% of what a message now costs. This is not a
-// percentage of the WINDOW (the retired PCT knob, where the clamps decided and the number lied);
-// it is read from this session's own first message, and an unreadable floor answers yes, which is
-// the behaviour that shipped before it. On an install whose floor is most of its window the offer
-// therefore goes quiet by design - a resume that recovers 16k per message is not worth a turn, and
-// the harness's own compaction covers that session.
-const MIN_RECOVERABLE_SHARE = 0.4;
-function coldFloor() {
+// --- what a fresh session restarts at: the session's own cold floor ---------------------------
+// A large share of the carry can be the INSTALL's own standing inventory - system prompt, CLAUDE.md, the always-on
+// rules - which a fresh session pays again on its first message (87k-134k across the nine audited projects). The
+// verdict below prices that restart against the warm cache.
+// The floor is the FIRST main-session reply's usage, read forward from the head in 512KB chunks up to 8MB: a head of
+// attachment rows or a long paste once hid it in a single 512KB read (and the floor then read as unmeasured), and a
+// sidechain or `<synthetic>` row stood in for it. Lines split on the newline byte, the bytes past a chunk's last one
+// carried into the next, so a line - and a multibyte character on the cut - is decoded whole. Memoized per payload.
+const FLOOR_CHUNK = 512 * 1024;
+const FLOOR_READ_MAX = 8 * 1024 * 1024;
+let _floor;
+let _firstUsage;
+function replyUsage(line) {
+  if (!line.includes('"assistant"')) return null;
+  let o;
+  try { o = JSON.parse(line); } catch { return null; }   // a partial or shapeless row - keep looking
+  if (!o || o.type !== 'assistant' || o.isSidechain || !o.message || o.message.model === '<synthetic>') return null;
+  const u = o.message.usage && typeof o.message.usage === 'object' ? o.message.usage : null;
+  // a reply that reports no tokens (an error row) is no floor - one read as 0 left the session unmeasured for good
+  return u && (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) > 0 ? u : null;
+}
+function setFloor(u) { _firstUsage = u; _floor = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0); }
+function readFloor() {
+  if (_floor !== undefined) return;
+  _floor = null;
+  _firstUsage = null;
+  let fd;
   try {
     const p = payload.transcript_path;
-    if (!p) return null;
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(Math.min(fs.statSync(p).size, 512 * 1024));
-    fs.readSync(fd, buf, 0, buf.length, 0);   // the HEAD of the file - message 1, not the tail
-    fs.closeSync(fd);
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (!line.includes('"assistant"')) continue;
-      try {
-        const u = JSON.parse(line).message.usage;
-        if (u) return (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
-      } catch { /* a partial or shapeless row - keep looking */ }
+    if (!p) return;
+    fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(FLOOR_CHUNK);
+    let carry = Buffer.alloc(0);
+    let pos = 0;
+    let eof = false;
+    while (pos < FLOOR_READ_MAX) {
+      const n = fs.readSync(fd, buf, 0, Math.min(FLOOR_CHUNK, FLOOR_READ_MAX - pos), pos);
+      if (n <= 0) { eof = true; break; }
+      pos += n;
+      const data = carry.length ? Buffer.concat([carry, buf.subarray(0, n)]) : buf.subarray(0, n);
+      let start = 0;
+      for (let nl = data.indexOf(0x0a); nl !== -1; nl = data.indexOf(0x0a, start)) {
+        const u = replyUsage(data.toString('utf8', start, nl));
+        start = nl + 1;
+        if (u) { setFloor(u); return; }
+      }
+      carry = Buffer.from(data.subarray(start));
     }
-    return null;
-  } catch { return null; }
+    // a last line with no newline is whole only at the end of the file
+    const u = eof && carry.length ? replyUsage(carry.toString('utf8')) : null;
+    if (u) setFloor(u);
+  } catch { /* unreadable - no floor */ } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already closed */ }
+  }
 }
-// True when a resume is worth a turn: the carry MINUS this session's own floor is a real share of
-// what every message now costs. Anything unreadable - no floor, no context figure - answers yes.
-function worthResuming(ctx) {
+function coldFloor() { readFloor(); return _floor; }
+// The first reply's usage object (its cached share is reported beside the verdict); null when the floor is unread.
+function firstUsage() { readFloor(); return _firstUsage; }
+
+// --- the cache-aware VERDICT: does a fresh session pay back with the prompt cache warm? ---------------------------------
+// Prices in thousandths of the model's input price, held equal to meta/model-prices.json by fresh-verdict.test.js: a
+// cached re-read per model, a new cache write per TTL. Continuing re-reads this session's carry every message; a fresh
+// session writes its floor new (a full write - sequential sessions rarely share a prefix) and re-reads what a resume
+// reads (RESUME_READ, an upper bound). Over P messages fresh is cheaper exactly when G * (w - r) < P * (ctx - G) * r,
+// G = F + R - every term an integer, so the boundary is exact. The cache is judged warm on every route: by the time a
+// hook speaks the request it rides has already been paid (spec 2026-10-28, 'The finding that shapes the design').
+const RESUME_READ = 13000;
+const CACHE_READ_RATES = Object.freeze({ 'claude-opus-5-5': 50, 'claude-sonnet-5-5': 50, 'claude-fable-5-1': 25, 'claude-mythos-5-1': 25 });
+const OTHER_READ_RATE = 100;   // an unknown model over-states the read: more offers, the old direction
+const WRITE_RATES = Object.freeze({ '1h': 2000, '5m': 1250 });
+const PAYBACK_DEFAULT = 30;
+function readRateOf(id) {
+  const key = modelKey(id, Object.keys(CACHE_READ_RATES));
+  return key ? CACHE_READ_RATES[key] : OTHER_READ_RATE;
+}
+// ALFRED_CODE_FRESH_SESSION_PAYBACK: a whole number from 0 to 1000; anything else is 30, and 0 lets no offer pay.
+function paybackOf(env = process.env) {
+  const raw = envOf(env, 'FRESH_SESSION_PAYBACK');
+  const s = raw === undefined || raw === null ? '' : String(raw).trim();
+  return /^\d+$/.test(s) && Number(s) <= 1000 ? Number(s) : PAYBACK_DEFAULT;
+}
+// The session's cache TTL: the newest main-session reply that WROTE cache says which (`cache_creation`'s 1h or 5m
+// split), read backward from a 64KB tail widened once to 1MB. It reads on past a `compact_boundary` - the TTL is the
+// session's, not the context's - and skips a line that does not parse (the tail's cut first one included). No split
+// found is the API default, 5m. `version` is the newest parsed row's Claude Code version. Memoized per payload.
+let _ttl;
+function cacheTtl() {
+  if (_ttl === undefined) _ttl = readTtl();
+  return _ttl;
+}
+function readTtl(tail = 64 * 1024) {
+  let version = null;
+  try {
+    const p = payload.transcript_path;
+    if (p) {
+      const size = fs.statSync(p).size;
+      const start = Math.max(0, size - tail);
+      const fd = fs.openSync(p, 'r');
+      const buf = Buffer.alloc(size - start);
+      try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+      const lines = buf.toString('utf8').split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (!lines[i]) continue;
+        let o;
+        try { o = JSON.parse(lines[i]); } catch { continue; }
+        if (!o || typeof o !== 'object') continue;
+        if (version === null && typeof o.version === 'string') version = o.version;
+        if (o.type !== 'assistant' || o.isSidechain || !o.message || o.message.model === '<synthetic>') continue;
+        const split = o.message.usage && o.message.usage.cache_creation;
+        if (!split) continue;
+        if (split.ephemeral_1h_input_tokens > 0) return { ttl: '1h', ttlFrom: 'split', version };
+        if (split.ephemeral_5m_input_tokens > 0) return { ttl: '5m', ttlFrom: 'split', version };
+      }
+      if (start > 0 && tail < 1024 * 1024) return readTtl(1024 * 1024);
+    }
+  } catch { /* unreadable - the default */ }
+  return { ttl: '5m', ttlFrom: 'fallback', version };
+}
+// The verdict at this carry. No reading (ctx 0), an unmeasured floor and P 0 each answer no: the arithmetic cannot be
+// done, and no route offers at an unknown carry. `breakEven` is the messages fresh needs to pay back, rounded up; null
+// when the carry is no more than G (or unread). `readShare` is reported, never priced.
+function freshVerdict(ctx) {
   const floor = coldFloor();
-  if (!ctx || floor === null || floor <= 0) return true;
-  return (ctx - floor) >= ctx * MIN_RECOVERABLE_SHARE;
+  const unmeasured = !(floor > 0);
+  const { ttl, ttlFrom, version } = cacheTtl();
+  const readRate = readRateOf(sessionModelId());
+  const writeRate = WRITE_RATES[ttl];
+  const payback = paybackOf();
+  const u = firstUsage();
+  const readShare = unmeasured || !u ? null : Math.round(1000 * (u.cache_read_input_tokens || 0) / floor) / 1000;
+  const carry = Number(ctx) > 0 ? Math.floor(Number(ctx)) : 0;
+  const G = unmeasured ? null : floor + RESUME_READ;
+  let breakEven = null;
+  let pays = false;
+  if (carry > 0 && G !== null && carry > G) {
+    const cost = G * (writeRate - readRate);
+    const saving = (carry - G) * readRate;
+    breakEven = Math.floor(cost / saving);
+    if (breakEven * saving < cost) breakEven += 1;   // integer ceiling, whatever the float quotient rounded to
+    pays = payback > 0 && cost < payback * saving;
+  }
+  return { pays, ttl, ttlFrom, version, readRate, writeRate, floor: unmeasured ? null : floor, resumeRead: RESUME_READ, readShare, payback, breakEven, unmeasured };
+}
+// A rate in thousandths as the texts print it: 50 -> '0.05x', 2000 -> '2x'.
+const rateX = (thousandths) => `${Number((thousandths / 1000).toFixed(3))}x`;
+const kTokens = (n) => `~${Math.round(n / 1000)}k`;
+// What the hooks say (spec section 3): the two absolute numbers and the break-even, never a ratio of the carry.
+function payText(ctx, v) {
+  if (!v || !v.pays) return '';
+  return `This session carries ${kTokens(ctx)} tokens per message; with the cache warm (${v.ttl} TTL) a turn re-reads it at ${rateX(v.readRate)} the input price. `
+    + `A fresh session restarts at ${kTokens(v.floor)}, written new at ${rateX(v.writeRate)}, and pays back in about ${v.breakEven} messages.`;
+}
+function notPayText(ctx, v) {
+  if (!v || v.pays || v.unmeasured || !(ctx > 0)) return '';
+  if (v.payback === 0) return `This session carries ${kTokens(ctx)} tokens per message; fresh-session offers are off here (ALFRED_CODE_FRESH_SESSION_PAYBACK is 0).`;
+  if (v.breakEven === null) {
+    return `This session carries ${kTokens(ctx)} tokens per message, no more than a fresh session's ${kTokens(v.floor)} floor plus the ${kTokens(v.resumeRead)} it re-reads, `
+      + 'so a fresh session saves nothing.';
+  }
+  return `This session carries ${kTokens(ctx)} tokens per message; with the cache warm (${v.ttl} TTL) a turn re-reads it at ${rateX(v.readRate)}. `
+    + `A fresh session restarts at ${kTokens(v.floor)}, written new at ${rateX(v.writeRate)}, and would pay back only after about ${v.breakEven} messages, `
+    + (v.breakEven > v.payback ? `past the ${v.payback}-message window.` : `no sooner than the ${v.payback}-message window ends.`);
+}
+// The verdict's probe row for the hook-blocks ledger (`mode: probe`, which the block rate skips): what each route decided,
+// beside the retired 40% rule's answer (`share40`; an unread floor or carry answered yes), so a suppressed offer counts.
+function verdictRow(route, ctx, v) {
+  const floor = v.floor;
+  return {
+    mode: 'probe', kind: 'fresh-verdict', reason: `probe: fresh-session verdict on the ${route} route - ${v.pays ? 'pays' : 'does not pay'}`,
+    detail: {
+      route, ctx, floor, ttl: v.ttl, ttlFrom: v.ttlFrom, version: v.version, readRate: v.readRate, readShare: v.readShare,
+      breakEven: v.breakEven, payback: v.payback, resumeRead: v.resumeRead, pays: v.pays,
+      share40: !(ctx > 0) || !(floor > 0) ? true : (ctx - floor) >= ctx * 0.4,
+      // nobody at the terminal: such a row was never put to a person, so the reopen counts can leave it out
+      unattended: typeof prelude.unattended === 'function' ? !!prelude.unattended(payload) : false,
+    },
+  };
+}
+// That row at most once per session per route per value of `pays` (an exclusive marker in the hook log dir); null when
+// it was written already or the marker cannot be.
+function verdictProbe(route, ctx, v) {
+  try {
+    const dir = envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir();
+    const key = String(payload.session_id || payload.transcript_path || 'nosession').replace(/[^\w-]/g, '_').slice(-80);
+    fs.writeFileSync(require('path').join(dir, `guard-fresh-verdict-${key}-${String(route).replace(/[^\w-]/g, '_')}-${v.pays}`), new Date().toISOString(), { flag: 'wx' });
+    if (typeof prelude.sweepStale === 'function') prelude.sweepStale(dir, 'guard-fresh-verdict-');
+  } catch { return null; }
+  return verdictRow(route, ctx, v);
+}
+// True when a fresh session is worth offering: the verdict pays. An unread floor or carry answers no.
+function worthResuming(ctx) {
+  return freshVerdict(ctx).pays;
 }
 
 // The context the LAST assistant message carried, read BACKWARDS from a small tail - for a hook that
@@ -532,7 +695,9 @@ function askAnsweredSince(from) {
 
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
-  tableWindow, recordSessionModel, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow,
+  tableWindow, recordSessionModel, knownWindow, ctxThreshold, coldFloor, firstUsage, worthResuming, contextNow,
+  RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
+  verdictRow, verdictProbe,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

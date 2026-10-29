@@ -44,6 +44,20 @@ test('removeManagedFiles: a copy whose hash still matches goes, an edited one an
     assert.match(logs.join('\n'), /rule edited: kept - changed since the stack wrote it, so it is yours/);
 });
 
+// F12: the CommonJS marker in a skill's scripts/ is part of the copy, so it goes with its folder.
+test('removeManagedFiles: the skill marker goes with its folder', () =>
+{
+    const claudeDir = path.join(TMP, `f-${seq++}`, '.claude');
+    const skill = path.join(claudeDir, 'skills', 'capture-awareness');
+    put(path.join(skill, 'SKILL.md'), 'stack');
+    put(path.join(skill, 'scripts', 'capabilities-inventory.js'), 'module.exports = 1;\n');
+    put(path.join(skill, 'scripts', 'package.json'), '{ "type": "commonjs" }\n');
+    const library = { skills: { 'capture-awareness': hashItem(skill) }, agents: {}, rules: {} };
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library, files: {}, log: () => {} });
+    assert.ok(!fs.existsSync(path.join(skill, 'scripts', 'package.json')));
+    assert.ok(!fs.existsSync(skill));
+});
+
 // --instructions-at root: the seed sits at the project root, and an unedited one goes like the .claude/ one - on the
 // user's 'remove' answer (2026-10-23); an edited one, a root AGENTS.md beside a .claude/ seed, and any other root file stay.
 test('removeManagedFiles: an unedited root seed goes on remove, an edited one stays, and the .claude/ seed is the row while it is there', () =>
@@ -656,4 +670,77 @@ test('a local custom install moved to project scope keeps memory off in settings
         assert.match(steps[i].stamp, /settings\.local\.json:autoMemoryEnabled=/, steps[i].stamp);
     }
     assert.ok(!/autoMemoryEnabled/.test(outs[2]), `the second update said: ${outs[2]}`);
+});
+
+// F26 (the 2026-10-28 workspace run): a rule a capture generated is the user's file, so uninstall kept it - and with
+// the docs it names left behind it still loaded in every session. One its generator would write as is now goes.
+const REPO_ROOT = path.join(__dirname, '..');
+const inventory = require('../stack/skills/capture-awareness/scripts/capabilities-inventory.js');
+const ARCH_TEXT = (() =>
+{
+    const shapes = fs.readFileSync(path.join(REPO_ROOT, 'stack', 'skills', 'capture-architecture', 'references', 'doc-shapes.md'), 'utf8');
+    const after = shapes.slice(shapes.indexOf('## .claude/rules/alfred-architecture.md'));
+    return /```markdown\n([\s\S]*?)```/.exec(after)[1];
+})();
+let genSeq = 0;
+function genProject(rules, { awareness = false } = {})
+{
+    const root = path.join(TMP, `gen-${genSeq++}`);
+    if (awareness) put(path.join(root, '.alfred', 'docs', 'awareness', 'PROJECT-AWARENESS.md'), '# Project awareness\n\nRun `npm test`.\n');
+    for (const [name, body] of Object.entries(rules)) put(path.join(root, '.claude', 'rules', `${name}.md`), typeof body === 'function' ? body(root) : body);
+    const lines = [];
+    uninstall.removeGeneratedRules({ claudeDir: path.join(root, '.claude'), projectRoot: root, sourceDir: REPO_ROOT, docsPath: '.alfred/docs', log: (l) => lines.push(l) });
+    return { root, lines, has: (name) => fs.existsSync(path.join(root, '.claude', 'rules', `${name}.md`)) };
+}
+
+test('F26: a fresh architecture rule goes, CRLF and all', () =>
+{
+    const g = genProject({ 'alfred-architecture': ARCH_TEXT.replace(/\n/g, '\r\n') });
+    assert.ok(!g.has('alfred-architecture'), g.lines.join('\n'));
+    assert.deepStrictEqual(g.lines, ['  rule removed: alfred-architecture (generated)']);
+});
+
+test('F26: an edited architecture rule stays and is named', () =>
+{
+    const g = genProject({ 'alfred-architecture': `${ARCH_TEXT}\nMy own note.\n` });
+    assert.ok(g.has('alfred-architecture'));
+    assert.deepStrictEqual(g.lines, ['  kept: .claude/rules/alfred-architecture.md - edited since it was generated']);
+});
+
+test('F26: an awareness rule equal to its generator goes; one with no docs left is kept', () =>
+{
+    const text = (root) => inventory.composeAwarenessRule({ projectRoot: root, docs: '.alfred/docs' }).text;
+    const g = genProject({ 'alfred-awareness': text }, { awareness: true });
+    assert.ok(!g.has('alfred-awareness'), g.lines.join('\n'));
+    assert.deepStrictEqual(g.lines, ['  rule removed: alfred-awareness (generated)']);
+    const bare = genProject({ 'alfred-awareness': '---\ndescription: x\n---\n\n@.alfred/docs/awareness/PROJECT-AWARENESS.md\n' });
+    assert.ok(bare.has('alfred-awareness'));
+    assert.deepStrictEqual(bare.lines, ['  kept: .claude/rules/alfred-awareness.md - its generator writes nothing here now']);
+});
+
+test('F26: a legacy name is kept and named; an absent rule writes no line', () =>
+{
+    const g = genProject({ 'project-code-style': '# style\n' });
+    assert.ok(g.has('project-code-style'));
+    assert.deepStrictEqual(g.lines, ['  kept: .claude/rules/project-code-style.md - no generator to compare it with']);
+    assert.deepStrictEqual(genProject({}).lines, []);
+});
+
+test('F26: uninstall under a custom data root removes the awareness rule the capture wrote under .data/docs', POSIX_ONLY, () =>
+{
+    const { result, outs } = seedRun(['install', 'uninstall'], 'skill csharp\n', {
+        plugins: LISTING,
+        args: [['--data-path', '.data'], []],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            put(path.join(repo, '.data', 'docs', 'awareness', 'PROJECT-AWARENESS.md'), '# Project awareness\n\nRun `npm test`.\n');
+            put(path.join(repo, '.claude', 'rules', 'alfred-awareness.md'), inventory.composeAwarenessRule({ projectRoot: repo, docs: '.data/docs' }).text);
+            return null;
+        },
+        inspect: (repo) => ({ rule: fs.existsSync(path.join(repo, '.claude', 'rules', 'alfred-awareness.md')) }),
+    });
+    assert.strictEqual(result.rule, false, outs[1]);
+    assert.match(outs[1], /rule removed: alfred-awareness \(generated\)/);
+    assert.doesNotMatch(outs[1], /edited since it was generated/);
 });

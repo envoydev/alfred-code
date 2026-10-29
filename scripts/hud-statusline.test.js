@@ -589,3 +589,25 @@ test('PL7 the claude-hud row was verified on a version no older than the newest 
     const newest = cached.reduce((a, b) => (newer(b, a) ? b : a));
     assert.ok(!newer(newest, verified), `claude-hud ${newest} is cached, the row was verified on ${verified} - re-read it and re-stamp meta/plugin-settings.json`);
 });
+
+// F13 (the 2026-10-28 workspace run): a project-scope claude-hud's status line lands in the project's own
+// settings.local.json, which the account-file backup rule never covered - the run left a .bak there for git to see.
+test('a project-scope apply writes no .bak in the project; the account case still copies its settings.json', () =>
+{
+    const dir = account({ registry: false, settings: { model: 'opus' } });
+    const project = path.join(TMP, `proj-${seq++}`);
+    fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { allow: [] } }));
+    const installPath = path.join(dir, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0');
+    fs.writeFileSync(path.join(dir, 'plugins', 'installed_plugins.json'),
+        JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'project', projectPath: project, installPath, version: '0.8.0' }] } }));
+    const plan = planHud({ configDir: dir, project, platform: 'darwin', runtime: NODE });
+    assert.strictEqual(plan.where, 'project (.claude/settings.local.json)');
+    const res = applyHud(plan, { now: new Date(2026, 9, 28, 9, 0, 0) });
+    assert.ok(read(project, path.join('.claude', 'settings.local.json')).statusLine, res.lines.join('\n'));
+    assert.deepStrictEqual(fs.readdirSync(path.join(project, '.claude')).filter((n) => n.includes('.bak.')), [], res.lines.join('\n'));
+    assert.ok(!res.lines.some((l) => /^hud: backup/.test(l)), res.lines.join('\n'));
+    const acct = account({ settings: { model: 'opus' } });
+    applyHud(planHud({ configDir: acct, platform: 'darwin', runtime: NODE }), { now: new Date(2026, 9, 28, 9, 0, 0) });
+    assert.strictEqual(baks(acct).length, 1);
+});

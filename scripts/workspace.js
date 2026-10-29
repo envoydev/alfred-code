@@ -294,6 +294,17 @@ function asksOf(root)
     return String(r.stdout || '').split('\n').filter((l) => ASK.some((re) => re.test(l)));
 }
 
+// F24 (the 2026-10-28 workspace run): update-workspace.md asked for the project rows as one table and the model built it
+// by hand. The plan prints it, ending on a `total:` line the paste gate (guard-layer-table.js) proves before update asks.
+function renderPlanTable(entries)
+{
+    const head = ['project', 'scope', 'version', 'adds', 'drops', 'asks'];
+    const rows = entries.map((e) => [e.rel, e.scope, e.version, e.add, e.drop, e.asks.length ? e.asks.join('; ') : '-']);
+    const width = head.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)));
+    const line = (cells) => cells.map((c, i) => String(c).padEnd(width[i])).join(' | ').trimEnd();
+    return [line(head), ...rows.map(line), `total: ${entries.length} projects`];
+}
+
 function planVerb(out)
 {
     const top = rootArg();
@@ -312,6 +323,7 @@ function planVerb(out)
     try
     {
         out(`workspace-plan: ${rows.filter((r) => r.state === 'ok').length} projects`);
+        const entries = [];
         const plans = new Map();
         const parents = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
         for (const [i, row] of rows.entries())
@@ -327,7 +339,9 @@ function planVerb(out)
                     if (got.plan) plans.set(row.rel, got.file);
                     else out(`!! workspace-plan: the read-back of . failed (${got.why}) - no child is projected`);
                 }
-                out(`project: .\tscope=${stamp.installScope(row.root)}\tversion=${stamp.readVersion(stamp.stampFiles({ projectRoot: row.root }).read) || '?'}->${snapshot}\tadd=-\tdrop=-`);
+                const entry = { rel: '.', scope: stamp.installScope(row.root), version: `${stamp.readVersion(stamp.stampFiles({ projectRoot: row.root }).read) || '?'}->${snapshot}`, add: '-', drop: '-', asks: [] };
+                entries.push(entry);
+                out(`project: .\tscope=${entry.scope}\tversion=${entry.version}\tadd=-\tdrop=-`);
                 continue;
             }
             const version = stamp.readVersion(stamp.stampFiles({ projectRoot: row.root }).read) || '?';
@@ -348,12 +362,16 @@ function planVerb(out)
                 }
                 else why = `no projection - ${got.why}`;
             }
-            out(`project: ${row.rel}\tscope=${stamp.installScope(row.root)}\tversion=${version}->${snapshot}\tadd=${add}\tdrop=${drop}`);
+            const entry = { rel: row.rel, scope: stamp.installScope(row.root), version: `${version}->${snapshot}`, add, drop, asks: [] };
+            entries.push(entry);
+            out(`project: ${row.rel}\tscope=${entry.scope}\tversion=${entry.version}\tadd=${add}\tdrop=${drop}`);
             if (why) out(`  !! ${why}`);
-            for (const l of asksOf(row.root)) out(`  ${l}`);
+            for (const l of asksOf(row.root)) { out(`  ${l}`); entry.asks.push(l.trim()); }
         }
         for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${row.rel}`);
-        if (has('--rescan')) for (const rel of ws.rescan(top, { env })) out(`rescan: ${rel}`);
+        let rescanned = 0;
+        if (has('--rescan')) for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
+        if (entries.length >= 2 || rescanned) for (const l of renderPlanTable(entries)) out(l);
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
@@ -597,4 +615,4 @@ function main()
 
 if (require.main === module) process.exitCode = main();
 
-module.exports = { main };
+module.exports = { main, renderPlanTable };

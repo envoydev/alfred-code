@@ -5,6 +5,7 @@
 //
 //   node scripts/variables.js set --root <dir> [--scope project|user|local] KEY=value ...   (KEY= removes the key)
 //   node scripts/variables.js show --root <dir>
+//   node scripts/variables.js recommend --root <dir> [--scope project|user|local] [--child]   (the docs-versioning answer)
 //
 // set exits 1 when a pair is refused (the key is named, never the value), 2 on a bad call.
 const path = require('node:path');
@@ -14,14 +15,15 @@ const variables = require('./install/variables.js');
 const USAGE = [
     'usage: node scripts/variables.js set --root <dir> [--scope project|user|local] KEY=value ...',
     '       node scripts/variables.js show --root <dir>',
+    '       node scripts/variables.js recommend --root <dir> [--scope project|user|local] [--child]',
 ].join('\n');
 const SCOPES = ['project', 'user', 'local'];
 
 function parse(argv)
 {
     const [cmd, ...rest] = argv;
-    if (cmd !== 'set' && cmd !== 'show') return null;
-    const out = { cmd, root: process.cwd(), scope: '', pairs: [] };
+    if (!['set', 'show', 'recommend'].includes(cmd)) return null;
+    const out = { cmd, root: process.cwd(), scope: '', pairs: [], child: false };
     for (let i = 0; i < rest.length; i++)
     {
         const word = rest[i];
@@ -34,6 +36,7 @@ function parse(argv)
             else return null;
         }
         else if (cmd === 'set' && /^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) out.pairs.push(word);
+        else if (cmd === 'recommend' && word === '--child') out.child = true;
         else return null;
     }
     return cmd === 'set' && !out.pairs.length ? null : out;
@@ -48,6 +51,14 @@ function main(env = process.env)
     {
         console.error(USAGE);
         return 2;
+    }
+    if (args.cmd === 'recommend')
+    {
+        const scope = args.scope || 'project';
+        const docsPath = require('./install/copy.js').resolveDocsRoot(args.root, scope);
+        const advice = require('./install/docs.js').docsVersioningAdvice({ projectRoot: args.root, docsPath, scope, child: args.child });
+        console.log(`docs-versioning: recommend ${advice.value} - ${advice.reason}`);
+        return 0;
     }
     if (args.cmd === 'show')
     {

@@ -83,7 +83,7 @@ test('the real wiring boots and answers', async () => {
 
 ## Coverage
 
-- The % bar is the USER's, owned and recorded by the `capture-test-coverage` capture -
+- The % bar is the USER's, owned and recorded by `capture-quality`'s coverage part -
   this skill sets no number.
 - What this skill owns is the mechanics: coverage is computed after exclusions so the number
   reflects real logic coverage, not padding - the catalog below is that list for plain TS/JS.

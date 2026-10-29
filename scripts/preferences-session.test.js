@@ -1124,7 +1124,7 @@ test('the main session\'s first review skill waits for the code docs, in parts; 
     {
         const skill = (q, name, s, extra) => q.hook(pre('Skill', { skill: name }, s, extra));
         // the stack's own reviews (2026-10-22, the user's ruling 'use ours'), and the built-ins a user may still type
-        for (const name of ['review-code', 'review-security', '/review-code', 'code-review', 'security-review', 'capture-code-quality', 'capture-architecture-quality', 'loop-code-quality', 'loop-architecture-quality', '/code-review'])
+        for (const name of ['review-code', 'review-security', '/review-code', 'code-review', 'security-review', 'capture-quality', 'loop-code-quality', 'loop-architecture-quality', '/code-review'])
         {
             const s = sid();
             const r = skill(small, name, s);
@@ -1138,7 +1138,7 @@ test('the main session\'s first review skill waits for the code docs, in parts; 
         }
         const s = sid();
         const texts = [];
-        for (let r = skill(big, 'capture-code-quality', s); denied(r); r = skill(big, 'capture-code-quality', s)) { texts.push(reason(r)); assert.ok(texts.length < 6, 'the holds end'); }
+        for (let r = skill(big, 'capture-quality', s); denied(r); r = skill(big, 'capture-quality', s)) { texts.push(reason(r)); assert.ok(texts.length < 6, 'the holds end'); }
         const seen = texts.flatMap((t) => [...t.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
         assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every entry once, in parts');
         assert.match(texts[0], /now start the review again for the next part/);
@@ -1154,6 +1154,40 @@ test('the main session\'s first review skill waits for the code docs, in parts; 
     finally { big.rm(); small.rm(); }
 });
 
+// capture-quality holds three captures (2026-10-29): the topic word picks the part, so only the code and architecture
+// parts, and the chain, are review runs, and only the architecture part and the chain are architecture runs.
+test('a quality run is read by its part: code and the chain review, architecture and the chain read the architecture doc, coverage neither', () =>
+{
+    const p = project();
+    try
+    {
+        const layout = require(path.join(HOOKS, 'layout.js'));
+        const marks = (s) => JSON.parse(fs.readFileSync(layout.statePath(p.root, 'sessions', `preferences-${s}-main.json`), 'utf8'));
+        const who = { agent_id: 'a1', agent_type: 'alfred-code:architecture-analyzer' };
+        const archPush = (s) => String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who })).additionalContext || '');
+        for (const [args, review, arch, part] of [['code', true, false, 'code-quality'], ['architecture', true, true, 'architecture-quality'], ['coverage', false, false, 'test-coverage-quality'], ['', true, true, 'chain']])
+        {
+            const s = sid();
+            assert.strictEqual(denied(p.hook(pre('Skill', { skill: 'capture-quality', args }, s))), review, `${args || 'chain'}: a review run`);
+            assert.strictEqual(marks(s).run, 'capture-quality');
+            assert.strictEqual(marks(s).part, part, `${args || 'chain'}: its part`);
+            assert.strictEqual(/The user's architecture preferences/.test(archPush(s)), arch, `${args || 'chain'}: an architecture run`);
+        }
+        const typedArgs = (args, s) => ({ hook_event_name: 'UserPromptExpansion', session_id: s, expansion_type: 'slash_command', command_name: 'capture-quality', command_args: args, prompt: `/capture-quality ${args}` });
+        for (const [args, review, part] of [['code', true, 'code-quality'], [' coverage', false, 'test-coverage-quality']])
+        {
+            const s = sid();
+            assert.strictEqual(/put behaviour on the type/.test(String(out(p.hook(typedArgs(args, s))).additionalContext || '')), review, `typed ${args}: the code docs`);
+            assert.strictEqual(marks(s).part, part, `typed ${args}: its part`);
+        }
+        // an older copy still installed under a merged name: read from the rename map, its one home
+        const { renamed } = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
+        const older = Object.keys(renamed.topics).find((k) => renamed.topics[k] === 'code-quality');
+        assert.ok(older && denied(p.hook(pre('Skill', { skill: older }, sid()))), `an older copy (${older}) is still a review run`);
+    }
+    finally { p.rm(); }
+});
+
 // The architecture seat judged nothing, so its briefs listed the entries by hand (the user's answer 'Hook pushes the arch
 // doc'): inside an architecture quality run its start hands it the architecture entries alone - never the code docs -
 // and its first reads the rest. The map capture dispatches the same seat to describe the code as it is, so outside such
@@ -1167,7 +1201,7 @@ test('architecture-analyzer is handed the architecture entries alone in an archi
     try
     {
         const who = { agent_id: 'a1', agent_type: 'alfred-code:architecture-analyzer' };
-        const qualityRun = (q) => { const s = sid(); q.hook(typed('capture-architecture-quality', s)); return s; };
+        const qualityRun = (q) => { const s = sid(); q.hook(typed('capture-quality', s)); return s; };
         const push = String(out(small.hook({ hook_event_name: 'SubagentStart', session_id: qualityRun(small), ...who })).additionalContext || '');
         assert.match(push, /The user's architecture preferences/);
         assert.match(push, /a handler validates/);
@@ -1217,7 +1251,7 @@ test('a typed review is handed the code docs at its expansion; past one room the
     const small = project();
     try
     {
-        for (const command of ['review-code', 'review-security', 'code-review', 'security-review', 'capture-code-quality', 'loop-architecture-quality'])
+        for (const command of ['review-code', 'review-security', 'code-review', 'security-review', 'capture-quality', 'loop-architecture-quality'])
         {
             const s = sid();
             const r = small.hook(typed(command, s));
@@ -1262,8 +1296,8 @@ test('a run ends at the user\'s next typed turn: the analyzer and a reviewing ma
         let seat = 0;
         const analyzer = (s) => /a handler validates/.test(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: s, transcript_path: T, agent_id: `a${++seat}`, agent_type: 'alfred-code:architecture-analyzer' })).additionalContext || ''));
         let s = sid();
-        p.hook({ ...typed('capture-architecture-quality', s), transcript_path: T });
-        fs.appendFileSync(T, human('<command-message>capture-architecture-quality is running</command-message>\n<command-name>/capture-architecture-quality</command-name>'));
+        p.hook({ ...typed('capture-quality', s), transcript_path: T });
+        fs.appendFileSync(T, human('<command-message>capture-quality is running</command-message>\n<command-name>/capture-quality</command-name>'));
         fs.appendFileSync(T, row({ type: 'user', isMeta: true, message: { role: 'user', content: 'Base directory for this skill: ...' } }));
         fs.appendFileSync(T, row({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Dispatching.' }] } }));
         fs.appendFileSync(T, row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'done' }] } }));
@@ -1285,12 +1319,12 @@ test('a run ends at the user\'s next typed turn: the analyzer and a reviewing ma
         assert.ok(analyzer(s), 'a go-on reply keeps the run');
         fs.appendFileSync(T, human('continue with the login bug'));
         assert.ok(!analyzer(s), 'a typed turn ends it, a go-on word opening it included');
-        p.hook({ ...pre('Skill', { skill: 'capture-architecture-quality' }, s), transcript_path: T });
+        p.hook({ ...pre('Skill', { skill: 'capture-quality' }, s), transcript_path: T });
         assert.ok(analyzer(s), 'a run called again starts again');
         fs.appendFileSync(T, human([{ type: 'text', text: 'and the next thing' }]));
         assert.ok(!analyzer(s), 'a typed turn as text blocks ends it too');
         s = sid();
-        p.hook({ ...typed('capture-architecture-quality', s), transcript_path: path.join(p.root, 'gone.jsonl') });
+        p.hook({ ...typed('capture-quality', s), transcript_path: path.join(p.root, 'gone.jsonl') });
         assert.ok(analyzer(s), 'a transcript that cannot be read keeps the run');
         // The reviewing main session: held while the review is the turn, free once a typed turn ended it.
         const read = (q) => p.hook({ ...pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, q), transcript_path: T });
@@ -1307,11 +1341,11 @@ test('a run ends at the user\'s next typed turn: the analyzer and a reviewing ma
         const result = (id, error) => fs.appendFileSync(T, row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, ...(error ? { is_error: true } : {}), content: error ? 'PreToolUse:Skill hook error: denied' : 'Launching skill' }] } }));
         s = sid();
         let n = 0;
-        for (; n < 20 && denied(call('capture-architecture-quality', s, `ca${n}`)); n++) result(`ca${n}`, true);   // its own hand-over
+        for (; n < 20 && denied(call('capture-quality', s, `ca${n}`)); n++) result(`ca${n}`, true);   // its own hand-over
         assert.ok(n > 0 && n < 20, `the code docs came in ${n} parts, then the call passed this hook`);
         result(`ca${n}`, true);
         assert.ok(!analyzer(s), 'a run whose call another hook refused hands the analyzer nothing');
-        assert.ok(!denied(call('capture-architecture-quality', s, 'cb')), 'called again');
+        assert.ok(!denied(call('capture-quality', s, 'cb')), 'called again');
         result('cb', false);
         assert.ok(analyzer(s), 'and run, it does');
         s = sid();

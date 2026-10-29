@@ -230,7 +230,7 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
     assert.ok(submit.length <= 1, 'at most once on UserPromptSubmit');
     assert.match(src, /if \(EVENT === 'UserPromptSubmit'\) \{\s*if \(!modePrompt\(\)\) idleGapOffer\(\);\s*process\.exit\(0\);\s*\}/, 'and that route is the mode prompt or the idle gap, then out');
     const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
-    const names = ['loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage', 'capture-architecture',
+    const names = ['loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage-quality', 'capture-architecture',
         'capture-awareness', 'task-solve', 'task-solve-cross', 'task-verify-code', 'issue-diagnoser',
         'security-review', 'mode-auto-run', 'alfred-code:init', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
     for (const n of names) {

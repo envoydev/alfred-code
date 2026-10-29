@@ -117,6 +117,32 @@ test('--hooks-answered reaches the emitted file through the CLI', () => {
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// The 2026-10-28 fix run, live: the walk keeps locked rows out of raw.json ('the closure re-adds them at emit time'), and
+// once the always-on rows read `locked` (F21) a fresh root install carried none of its 7 baseline rules and 31 skills.
+// So the emit and the prerequisite check close over the snapshot's always-on rules and skills whatever raw.json holds.
+test('--emit carries the always-on rules and skills, and what they require, though raw.json names none', () => {
+    const { execFileSync } = require('node:child_process');
+    const always = require('../meta/recommendations.json').always;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stacksel-always-'));
+    try
+    {
+        for (const raw of [{}, { rules: ['typescript-conventions'], skills: ['ts-js-testing'] }])
+        {
+            fs.writeFileSync(path.join(dir, 'raw.json'), JSON.stringify(raw));
+            const out = path.join(dir, 'sel.txt');
+            const said = execFileSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', path.join(dir, 'raw.json'), '--emit', out], { encoding: 'utf8' });
+            const lines = fs.readFileSync(out, 'utf8').split('\n');
+            for (const r of always.rules) assert.ok(lines.includes(`rule ${r}`), `rule ${r} emitted from ${JSON.stringify(raw)}`);
+            for (const s of always.skills) assert.ok(lines.includes(`skill ${s}`), `skill ${s} emitted from ${JSON.stringify(raw)}`);
+            for (const s of computeClosure(graph, { rules: always.rules, skills: always.skills }).skills) assert.ok(lines.includes(`skill ${s}`), `required skill ${s}`);
+            assert.ok(!lines.some((l) => l.startsWith('hook ')), 'no hook line rides the always set');
+            assert.ok(!/^required: (rule|skill) alfred-/m.test(said), 'an always-on item is no required: line - it rides every install itself');
+            assert.match(said, /^required: skill docs-as-code - required by rule markdown-docs$/m, 'what the baseline requires is a required: line, so a drop of it is blocked');
+        }
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('raw.mcps are direct picks the closure keeps and emits', () => {
     const c = computeClosure(graph, { mcps: ['browser'] });
     assert.ok(c.mcps.includes('browser'), 'a directly chosen mcp survives the closure');
@@ -289,9 +315,10 @@ test('emitTable emits a perfectly aligned, fully labeled layer table', () => {
     const table = emitTable(orphanGraph, 'skills', { raw: { rules: ['r2'], skills: ['s2'] } });
     const lines = table.trimEnd().split('\n');
     const pos = l => JSON.stringify([...l].flatMap((c, i) => (c === '|' ? [i] : [])));
-    for (const l of lines.slice(2, -2)) assert.strictEqual(pos(l), pos(lines[0]), `separators shear on: ${l}`);
-    // the trailing footer names the row count so a truncated display is self-evident
-    assert.strictEqual(lines[lines.length - 1], `total: ${lines.length - 4} skills - if fewer rows are visible above, the render was truncated: re-paste it verbatim`, 'row-count footer');
+    for (const l of lines.slice(2, -3)) assert.strictEqual(pos(l), pos(lines[0]), `separators shear on: ${l}`);
+    // the trailing footer names the row count so a truncated display is self-evident; the counts line sits above it (F21)
+    assert.strictEqual(lines[lines.length - 1], `total: ${lines.length - 5} skills - if fewer rows are visible above, the render was truncated: re-paste it verbatim`, 'row-count footer');
+    assert.match(lines[lines.length - 2], /^counts: /);
     assert.match(lines[0], /# \| skill/, 'header names the layer singular');
     assert.match(table, /1 \| s1 +\| required +\| rule r2/, 's1 is closure-locked with its reason');
     assert.match(table, /2 \| s2 +\| added +\| -/, 's2 is a bare direct pick');
@@ -1121,4 +1148,197 @@ test("stack-select --table marks a row the parent holds 'from root' in fresh mod
     const installed = table('--inherited', inh, '--installed', inv);
     assert.deepStrictEqual(['sqlite', 'javascript', 'npm'].map((n) => statusOf(installed, n)), ['from root', 'ignored', 'yes'], installed);
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// F5, F11, F21 (the 2026-10-28 workspace run): the walk counted the table by hand and got it wrong, and an always-on rule
+// read as freely droppable. The table marks the always-on baseline `locked` and prints the counts the walk copies.
+const { tableRows } = require('./stack-select.js');
+const ALWAYS = recommendations.always;
+
+// Review (2026-10-28, Important): the walk keeps `locked` rows out of raw.json, so what an always-on item requires fell
+// out of the FRESH table and the deal while the emit installed it. The table closes over the baseline as the emit does.
+test('a FRESH table reads what the always-on baseline requires as required, and the deal never offers it', () => {
+    const opts = { raw: {}, recs: recommendations, stacks: [], always: ALWAYS };
+    const rows = tableRows(graph, 'skills', opts);
+    for (const name of graph.rules['markdown-docs'].skills)
+    {
+        const row = rows.find((r) => r.name === name);
+        assert.strictEqual(row.status, 'required', `${name}: ${JSON.stringify(row)}`);
+        assert.match(row.why, /rule markdown-docs/);
+    }
+    const { dealSides } = require('./stack-select.js');
+    const sides = dealSides(rows, 'fresh');
+    assert.ok(!JSON.stringify(sides).includes('"docs-as-code"'), JSON.stringify(sides).slice(0, 300));
+});
+
+test('--dependents of a skill the baseline requires says it is locked by the always-on rule', () => {
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stacksel-dep-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'raw.json'), '{}');
+        const out = execFileSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', path.join(dir, 'raw.json'), '--dependents', 'skill:docs-as-code'], { encoding: 'utf8' });
+        assert.match(out, /^locked: skill:docs-as-code - required by the always-on rule markdown-docs, which every install carries; it cannot be dropped$/m, out);
+        assert.ok(!/^dependent:/m.test(out), 'no consent-drop is offered: the rule holding it cannot be dropped');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+const rowLine = (t, name) => t.split('\n').find((l) => (l.split('|')[1] || '').trim() === name) || '';
+const countsOf = (rows, installed) =>
+{
+    const n = (f) => rows.filter(f).length;
+    if (!installed) return `counts: ${n((r) => r.status !== '-')} marked (${n((r) => ['locked', 'required', 'dependency'].includes(r.status))} locked), ${n((r) => r.status === '-')} unmarked`;
+    const inst = (r) => ['yes', 'from root', 'locked'].includes(r.status);
+    const drop = (r) => inst(r) && r.status !== 'locked' && !r.held;
+    return `counts: ${n(inst)} installed (${n(drop)} droppable, ${n((r) => inst(r) && !drop(r))} locked), ${n((r) => r.status === 'orphaned')} orphaned, ${n((r) => ['-', 'ignored'].includes(r.status))} not installed`;
+};
+
+test('F21: an always rule reads locked in both modes, an always agent recommended', () =>
+{
+    const fresh = emitTable(graph, 'rules', { raw: {}, recs: recommendations, always: ALWAYS });
+    assert.match(rowLine(fresh, 'alfred-interaction'), /\| locked +\| every install carries it$/);
+    const inst = emitTable(graph, 'rules', { raw: {}, recs: recommendations, always: ALWAYS, installed: { rules: ['alfred-interaction', 'csharp-conventions'] } });
+    assert.match(rowLine(inst, 'alfred-interaction'), /\| locked +\| every install carries it$/);
+    assert.match(rowLine(inst, 'csharp-conventions'), /\| yes +\|/);
+    assert.match(rowLine(emitTable(graph, 'agents', { raw: {}, recs: recommendations, always: ALWAYS }), 'security-auditor'), /\| recommended +\|/);
+    assert.match(inst, /^total: \d+ rules - if fewer rows/m);
+});
+
+test('F21: in a child, locked outranks from root, ignored and orphaned', () =>
+{
+    const child = { inherited: { rules: ['alfred-interaction'], skills: ['habits-clarify'] }, orphans: [{ category: 'skill', name: 'habits-clarify', why: 'x' }] };
+    for (const installed of [null, { rules: [], skills: [] }])
+        for (const [layer, name] of [['rules', 'alfred-interaction'], ['skills', 'habits-clarify']])
+        {
+            const t = emitTable(graph, layer, { raw: {}, recs: recommendations, always: ALWAYS, installed, ...child });
+            assert.match(rowLine(t, name), /\| locked +\| every install carries it$/, `${layer} ${name}, installed mode ${!!installed}`);
+        }
+});
+
+test('F21: the counts line equals the rows, in both modes', () =>
+{
+    const raw = { agents: ['aspnet-solution-designer'] };
+    const reasons = computeClosure(graph, raw).reasons;
+    const required = Object.keys(graph.skills).find((s) => reasons[s] && !ALWAYS.skills.includes(s));
+    const noted = Object.keys(graph.skills).find((s) => !reasons[s] && !ALWAYS.skills.includes(s));
+    const evidence = { skills: { [noted]: 'x in src/a.csproj' } };
+    for (const installed of [null, { skills: [required, noted, ALWAYS.skills[0]] }])
+    {
+        const opts = { raw, recs: recommendations, always: ALWAYS, installed, evidence };
+        const t = emitTable(graph, 'skills', opts);
+        assert.strictEqual(t.match(/^counts: .*$/m)[0], countsOf(tableRows(graph, 'skills', opts), !!installed), t);
+        if (installed)
+        {
+            const rows = tableRows(graph, 'skills', opts);
+            assert.strictEqual(rows.find((r) => r.name === noted).held, false, 'evidence is no closure reason: droppable');
+            assert.strictEqual(rows.find((r) => r.name === required).held, true, 'a closure reason holds it');
+        }
+    }
+    assert.doesNotMatch(emitTable(graph, 'rules', { raw: {}, recs: recommendations, always: {} }), /\| locked +\|/, 'no always list: no locked row');
+});
+
+test('F21: --dependents names an always skill locked and lists no dependent', () =>
+{
+    const rawFile = path.join(os.tmpdir(), `dep-${process.pid}.json`);
+    fs.writeFileSync(rawFile, JSON.stringify({ skills: ['habits-clarify'], agents: ['aspnet-solution-designer'] }));
+    try
+    {
+        const out = execFileSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--dependents', 'skill:habits-clarify'], { encoding: 'utf8' });
+        assert.match(out, /^locked: skill:habits-clarify - every install carries it; it cannot be dropped$/m);
+        assert.doesNotMatch(out, /^dependent:/m);
+    }
+    finally { fs.rmSync(rawFile, { force: true }); }
+});
+
+// F22 (the 2026-10-28 workspace run): the walk built its Pick call by hand and dealt rows unevenly or lost some. The
+// tool deals the rows: at most 4 questions of 2-4 options per call, every row in exactly one question.
+const { spread, dealSides, dealPick } = require('./stack-select.js');
+const synth = (k, status = '-', extra = {}) => Array.from({ length: k }, (_, i) => ({ n: i + 1, name: `r${i + 1}`, status, why: '-', held: false, ...extra }));
+
+test('F22: spread deals n rows into at most 4 questions of 2-4', () =>
+{
+    assert.deepStrictEqual(spread(2), [2]);
+    assert.deepStrictEqual(spread(5), [3, 2]);
+    assert.deepStrictEqual(spread(9), [3, 3, 3]);
+    assert.deepStrictEqual(spread(13), [4, 3, 3, 3]);
+    assert.deepStrictEqual(spread(16), [4, 4, 4, 4]);
+});
+
+test('F22: dealPick over one add side of 0 to 17 rows', () =>
+{
+    const deal = (k) => dealPick({ add: synth(k), drop: [] }, 'add');
+    assert.deepStrictEqual(deal(0), ['add: none - 0 rows']);
+    assert.deepStrictEqual(deal(1), ["add: none - 1 row; step 1's 'Add all 1 uninstalled' covers it"]);
+    assert.deepStrictEqual(deal(2), ['call 1 question 1 (add): #1 r1, #2 r2']);
+    for (const [k, lines] of [[5, 2], [9, 3], [13, 4], [16, 4]])
+    {
+        const out = deal(k);
+        assert.strictEqual(out.length, lines, `${k} rows`);
+        assert.match(out[0], /^call 1 question 1 \(add\): #1 r1, /);
+        const dealt = out.flatMap((l) => l.replace(/^[^:]+: /, '').split(', '));
+        assert.strictEqual(dealt.length, k, `${k} rows dealt once each`);
+    }
+    assert.deepStrictEqual(deal(17), ['call 1 add: groups - 17 rows']);
+});
+
+test('F22: fresh shares call 1 while both sides fit in 4 questions', () =>
+{
+    const both = dealPick({ add: synth(4), drop: synth(4, 'recommended') }, 'fresh');
+    assert.strictEqual(both.length, 2);
+    assert.match(both[0], /^call 1 question 1 \(add\): /);
+    assert.match(both[1], /^call 1 question 2 \(drop\): /);
+    const split = dealPick({ add: synth(6), drop: synth(9, 'recommended') }, 'fresh');
+    assert.deepStrictEqual(split.map((l) => l.replace(/:.*/, '')),
+        ['call 1 question 1 (add)', 'call 1 question 2 (add)', 'call 2 question 1 (drop)', 'call 2 question 2 (drop)', 'call 2 question 3 (drop)']);
+    assert.deepStrictEqual(dealPick({ add: synth(1), drop: [] }, 'fresh'), ['deal: nothing to pick - re-ask step 1']);
+    assert.deepStrictEqual(dealPick({ add: synth(1), drop: synth(3, 'recommended') }, 'fresh'),
+        ["add: none - 1 row; step 1's 'Add every ...' covers it", 'call 1 question 1 (drop): #1 r1, #2 r2, #3 r3']);
+});
+
+test('F22: dealSides never offers a locked, held or orphaned row to drop', () =>
+{
+    const rows = [
+        { n: 1, name: 'a', status: 'yes', why: '-', held: false },
+        { n: 2, name: 'b', status: 'locked', why: 'every install carries it', held: false },
+        { n: 3, name: 'c', status: 'yes', why: 'rule x', held: true },
+        { n: 4, name: 'd', status: 'orphaned', why: 'was: rule y', held: false },
+        { n: 5, name: 'e', status: 'from root', why: '-', held: false },
+        { n: 6, name: 'f', status: '-', why: '-', held: false },
+        { n: 7, name: 'g', status: 'ignored', why: '-', held: false },
+    ];
+    assert.deepStrictEqual(dealSides(rows, 'drop').drop.map((r) => r.name), ['a', 'e']);
+    assert.deepStrictEqual(dealSides(rows, 'add').add.map((r) => r.name), ['f', 'g']);
+    const fresh = [
+        { n: 1, name: 'a', status: 'recommended', why: '-', held: false },
+        { n: 2, name: 'b', status: 'locked', why: '-', held: false },
+        { n: 3, name: 'c', status: 'required', why: 'rule x', held: false },
+        { n: 4, name: 'd', status: 'dependency', why: '-', held: false },
+        { n: 5, name: 'e', status: '-', why: '-', held: false },
+        { n: 6, name: 'f', status: 'evidence', why: 'x in y', held: false },
+    ];
+    const s = dealSides(fresh, 'fresh');
+    assert.deepStrictEqual(s.add.map((r) => r.name), ['e']);
+    assert.deepStrictEqual(s.drop.map((r) => r.name), ['a', 'f']);
+});
+
+test('F22: --deal fresh rules prints only deal lines; a bad mode or layer exits 2', () =>
+{
+    const rawFile = path.join(os.tmpdir(), `deal-${process.pid}.json`);
+    fs.writeFileSync(rawFile, JSON.stringify({ rules: ['csharp-conventions'] }));
+    const run = (...a) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, ...a], { encoding: 'utf8' });
+    try
+    {
+        const ok = run('--deal', 'fresh', 'rules', '--recs', path.join(__dirname, '..', 'meta', 'recommendations.json'), '--stacks', 'aspnet');
+        assert.strictEqual(ok.status, 0, ok.stderr);
+        const lines = ok.stdout.trim().split('\n');
+        assert.ok(lines.length > 0);
+        for (const l of lines) assert.match(l, /^(call \d|add: none|drop: none|deal: )/, l);
+        for (const bad of [['--deal', 'sideways', 'rules'], ['--deal', 'fresh', 'nope']])
+        {
+            const r = run(...bad);
+            assert.strictEqual(r.status, 2);
+            assert.strictEqual(r.stderr.trim().split('\n').length, 1);
+        }
+    }
+    finally { fs.rmSync(rawFile, { force: true }); }
 });

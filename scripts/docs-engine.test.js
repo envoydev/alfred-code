@@ -151,6 +151,8 @@ test('declared git versioning writes in place although git ignores the docs', ()
     const st = r.cli(['status'], undefined, GIT).stdout;
     assert.match(st, /^mode: git \(declared by ALFRED_CODE_DOCS_VERSIONING/m);
     assert.match(st, /^Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git - the setting wins, so doc sections are written in place/m);
+    // F15: the line names where to switch it off.
+    assert.match(st, /Switch it to local in \/alfred-code:configure's Environment area when these docs are never meant to be committed\./);
   } finally { r.rm(); }
 });
 

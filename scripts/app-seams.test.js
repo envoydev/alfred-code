@@ -138,8 +138,8 @@ test('every quoter names the by hand line', () =>
         assert.ok(text.includes('where no `by hand:` line follows a summary'), `${rel}: the older-script fallback`);
     }
     const row = (rel, field) => read(rel).split('\n').find((l) => l.includes(field)) || '';
-    assert.ok(row('stack/skills/capture-architecture-quality/SKILL.md', 'Preferences:').includes('`by hand:`'), 'the architecture capture reports it');
-    assert.ok(row('stack/skills/capture-code-quality/SKILL.md', 'Rules:').includes('`by hand:`'), 'the code capture reports it');
+    assert.ok(row('stack/skills/capture-quality/references/architecture-quality.md', 'Preferences:').includes('`by hand:`'), 'the architecture capture reports it');
+    assert.ok(row('stack/skills/capture-quality/references/code-quality.md', 'Rules:').includes('`by hand:`'), 'the code capture reports it');
 });
 
 // ---- The review's fix pass ---------------------------------------------------------------------------------------------

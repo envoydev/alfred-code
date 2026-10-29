@@ -34,7 +34,10 @@ const frontmatter = (text) =>
 };
 const body = (text) => text.replace(/^---\n[\s\S]*?\n---\n/, '');
 
-const CAPTURE = 'stack/skills/capture-code-quality';
+// 2026-10-29: the capture is capture-quality's code-quality part - a reference beside the router skill.
+const ROUTER = 'stack/skills/capture-quality';
+const CAPTURE = `${ROUTER}/references/code-quality.md`;
+const ARCH_CAPTURE = `${ROUTER}/references/architecture-quality.md`;
 const LOOP = 'stack/skills/loop-code-quality';
 const SEAT = 'stack/agents/code-quality-analyzer.md';
 
@@ -60,7 +63,7 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
     // 2.1.0: every skill is a project copy, every seat rides the core.
     const p = placement();
     const core = p.plugins[CORE];
-    for (const s of ['capture-architecture-quality', 'loop-architecture-quality', 'loop-code-quality', 'capture-code-quality'])
+    for (const s of ['capture-quality', 'loop-architecture-quality', 'loop-code-quality'])
     {
         assert.ok(p.library.skills.includes(s), `${s} is a project copy`);
         assert.ok(!core.skills.includes(s), `${s} rides no plugin`);
@@ -72,27 +75,27 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
     }
 
     const recs = JSON.parse(read('meta/recommendations.json'));
-    assert.ok(recs.always.skills.includes('capture-code-quality'), 'seeded where the quality loop is');
+    assert.ok(recs.always.skills.includes('capture-quality'), 'seeded where the quality loop is');
     assert.ok(recs.always.skills.includes('loop-code-quality'));
     assert.ok(recs.always.agents.includes('code-quality-analyzer'), 'the capture seeds the seat it fans out');
 
     const manifest = JSON.parse(read('meta/stack-manifest.json'));
-    assert.ok(manifest.skills.some((s) => s.name === 'capture-code-quality' && /CODE-ASSESSMENT\.md/.test(s.note)), 'manifest skill row');
+    assert.ok(manifest.skills.some((s) => s.name === 'capture-quality' && /CODE-ASSESSMENT\.md/.test(s.note)), 'manifest skill row');
     assert.ok(manifest.agents.some((a) => a.file === 'code-quality-analyzer.md' && /read-only/.test(a.note)), 'manifest agent row');
 
     const graph = JSON.parse(read('meta/stack-graph.json'));
-    assert.ok(graph.skills['capture-code-quality'], 'graph skill node');
+    assert.ok(graph.skills['capture-quality'], 'graph skill node');
     assert.ok(graph.agents['code-quality-analyzer'], 'graph agent node');
 
     const entries = JSON.stringify(JSON.parse(read('meta/plugin-entries.json')));
-    assert.ok(!entries.includes('./stack/skills/capture-code-quality"'), 'the skill is a project copy - no entry lists it');
+    assert.ok(!entries.includes('./stack/skills/capture-quality"'), 'the skill is a project copy - no entry lists it');
     assert.ok(entries.includes('./stack/agents/code-quality-analyzer.md"'), 'the generated core entry lists the seat');
 
     // The loop invokes the capture as a Skill call, so it carries no disable-model-invocation - and the
     // generated usage policy lists it with the orchestration skills, marked as the by-design exception.
     const inventory = read('stack/skills/capture-awareness/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
-    assert.ok(set && set[1].includes("'capture-code-quality'"), 'the capture is model-invocable by design');
+    assert.ok(set && set[1].includes("'capture-quality'"), 'the capture is model-invocable by design');
 });
 
 test('the seat is a read-only sonnet support seat whose findings each name a file:line and a rule', () =>
@@ -135,15 +138,16 @@ test('the seat is a read-only sonnet support seat whose findings each name a fil
 
 test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and ORIENT -> GATHER -> JUDGE -> RE-GATHER -> WRITE -> REPORT', () =>
 {
-    const text = read(`${CAPTURE}/SKILL.md`);
-    const fm = frontmatter(text);
-    assert.strictEqual(fm.name, 'capture-code-quality');
+    const fm = frontmatter(read(`${ROUTER}/SKILL.md`));
+    assert.strictEqual(fm.name, 'capture-quality');
     assert.match(fm.description, /^Use when /);
     assert.match(fm.description, /Not for /);
-    assert.ok(!('disable-model-invocation' in fm), 'the loop invokes it, like the architecture-quality capture');
-    assert.ok(fm.description.length <= 1000, 'lint 15 cap');
+    assert.ok(!('disable-model-invocation' in fm), 'the loop invokes it');
+    assert.ok(fm.description.length <= 160, 'lint 15c cap');
 
-    const b = squash(body(text));
+    const text = read(CAPTURE);
+    assert.ok(!/^---\n/.test(text), 'a part reference carries no frontmatter');
+    const b = squash(text);
     let at = -1;
     for (const step of ['### 1. ORIENT', '### 2. GATHER', '### 3. JUDGE', '### 4. RE-GATHER', '### 5. WRITE', '### 6. REPORT'])
     {
@@ -166,10 +170,10 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /Deliberate only, never mid-build|deliberate only, never mid-build/i);
     for (const field of ['`References:`', '`Rules:`', '`Decisions:`', '`Findings gate:`', '`Write:`', '`Model:`'])
         assert.ok(b.includes(field), `the REPORT receipt carries ${field}`);
-    assert.match(b, /Read `references\/doc-shape\.md` before JUDGE/);
+    assert.match(b, /Read `references\/code-quality-doc-shape\.md` before JUDGE/);
 
     // GATHER fans out ONE seat PER MODULE, in parallel - judged on the step's body, not its heading.
-    const raw = body(text);
+    const raw = text;
     const gatherAt = raw.indexOf('### 2. GATHER');
     const gather = squash(raw.slice(raw.indexOf('\n', gatherAt), raw.indexOf('### 3. JUDGE')));
     assert.match(gather, /Dispatch code-quality-analyzer per module/, 'one seat per module');
@@ -186,15 +190,15 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     // The neighbours with their destinations live in the body's When to use (the 160-char description cannot hold them).
     const whenToUse = raw.slice(raw.indexOf('## When to use'), raw.indexOf('## Execution modes'));
     assert.ok(whenToUse.length > 0, 'the body has a When to use section before Execution modes');
-    for (const dest of ['/loop-code-quality', 'capture-architecture-quality', 'capture-project-code-style', 'review-security', 'task-verify-code'])
+    for (const dest of ['/loop-code-quality', 'the architecture-quality part', 'capture-project-code-style', 'review-security', 'task-verify-code'])
         assert.ok(whenToUse.includes(dest), `Not for ... (${dest})`);
-    assert.ok(read('stack/skills/capture-architecture-quality/SKILL.md').split('\n')[2].includes('(capture-code-quality)'),
-        'the architecture-quality capture sends code quality to its new neighbour');
+    assert.match(squash(read(ARCH_CAPTURE).slice(read(ARCH_CAPTURE).indexOf('## When to use'))), /the code-quality part/,
+        'the architecture-quality part sends code quality to its neighbour');
 });
 
 test('the doc shape ties every finding to file:line and to the rule it breaks, outside the docs engine', () =>
 {
-    const shape = read(`${CAPTURE}/references/doc-shape.md`);
+    const shape = read(`${ROUTER}/references/code-quality-doc-shape.md`);
     const head = shape.split('\n').slice(0, 15).join('\n');
     assert.match(head, /## Contents/, 'a reference over 100 lines opens with its contents');
     const s = squash(shape);
@@ -242,9 +246,17 @@ test('a quality/ folder with no watch.json is no docs domain - the engine never 
     assert.match(root, /`quality\/ARCHITECTURE-ASSESSMENT\.md` and `quality\/CODE-ASSESSMENT\.md`/, 'the docs-root rule names both beside each other');
 });
 
+test('the docs-root rule names the coverage doc and its raw folder in quality/, never the old test-coverage/ folder', () =>
+{
+    const root = squash(read('stack/rules/alfred-docs-root.md'));
+    assert.match(root, /`quality\/COVERAGE-QUALITY\.md`/);
+    assert.match(root, /`coverage-raw\/`/);
+    assert.doesNotMatch(root, /`test-coverage\/`/);
+});
+
 test('an existing loops folder is the capture\'s rule source: numbered stages in numeric order, never the fix discipline or the run records', () =>
 {
-    const block = bashBlocks(read(`${CAPTURE}/SKILL.md`)).find((b) => b.includes('<docs-path>/quality/loops'));
+    const block = bashBlocks(read(CAPTURE)).find((b) => b.includes('<docs-path>/quality/loops'));
     assert.ok(block, 'the capture ships its rule-source command');
     const script = block.replace(/<docs-path>/g, '.claude/docs');
 
@@ -312,7 +324,7 @@ test('the loop runs the capture each round and routes its findings by tier', () 
         assert.ok(i > at, `${step} follows the step before it`);
         at = i;
     }
-    assert.match(b, /`capture-code-quality`/, 'ANALYZE runs the capture');
+    assert.match(b, /`capture-quality` with `code-quality <DELEGATED\|INLINE> <target>`/, 'ANALYZE runs the capture part');
     assert.match(b, /`<docs-path>\/quality\/CODE-ASSESSMENT\.md`/);
     // Each tier is judged on its OWN bullet - a match that may span the whole body proves nothing.
     const raw = body(text);
@@ -381,7 +393,7 @@ test('every skill the inventory calls orchestration is on the fresh-session guar
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
     assert.ok(set, 'the inventory names its model-invocable orchestration skills');
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
-    assert.ok(names.includes('capture-code-quality'));
+    assert.ok(names.includes('capture-quality'));
     const roster = orchestration();
     for (const name of names)
         assert.match(name, roster, `${name} is orchestration in the inventory, so the guard gates it too`);
@@ -409,13 +421,12 @@ test('a code-quality capture started past the fresh-session trigger is offered a
         };
         const call = (skill, tp) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js')],
             { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, transcript_path: tp }), encoding: 'utf8', env });
-        const hot = call('alfred-code:capture-code-quality', transcript('hot-code', 450000));
+        const hot = call('alfred-code:capture-quality', transcript('hot-code', 450000));
         assert.strictEqual(hot.status, 2, 'blocked past the trigger');
-        assert.match(hot.stderr, /^Blocked: alfred-code:capture-code-quality/);
+        assert.match(hot.stderr, /^Blocked: alfred-code:capture-quality/);
         assert.match(squash(hot.stderr), /ONE AskUserQuestion: start it in a fresh session \(recommended/);
-        assert.strictEqual(call('capture-code-quality', transcript('hot-bare', 450000)).status, 2, 'the bare name too');
-        assert.strictEqual(call('alfred-code:capture-architecture-quality', transcript('hot-arch', 450000)).status, 2, 'and its architecture twin');
-        assert.strictEqual(call('alfred-code:capture-code-quality', transcript('cold', 50000)).status, 0, 'under the trigger it runs');
+        assert.strictEqual(call('capture-quality', transcript('hot-bare', 450000)).status, 2, 'the bare name too');
+        assert.strictEqual(call('alfred-code:capture-quality', transcript('cold', 50000)).status, 0, 'under the trigger it runs');
     }
     finally
     {
@@ -437,7 +448,7 @@ test('the shared-rules registry pins the new homes of the loop and capture rules
     const rules = JSON.parse(read('meta/shared-rules.json')).rules;
     const sites = (id) => [rules[id].owner, ...(rules[id].sites || [])].map((x) => x.file);
     for (const id of ['findings-gate-four-questions', 'finding-count-is-output'])
-        assert.ok(sites(id).includes(`${CAPTURE}/SKILL.md`), `${id} pins the capture`);
+        assert.ok(sites(id).includes(CAPTURE), `${id} pins the capture`);
     for (const id of ['loop-round-receipt', 'small-tier-dispatch-consent', 'loop-close-commit-ask', 'mode-ask-at-start', 'fresh-session-at-boundaries'])
         assert.ok(sites(id).includes(`${LOOP}/SKILL.md`), `${id} pins the loop`);
     for (const id of ['domain-trio-protocol-vendored', 'implementer-worktree-step-zero', 'memories-purge-count'])
@@ -452,7 +463,7 @@ test('the shared-rules registry pins the new homes of the loop and capture rules
 test('the two quality captures write the whole file whatever the brief, and the loops hand them no findings status', () =>
 {
     const flat = (t) => t.replace(/\s+/g, ' ');
-    for (const cap of ['stack/skills/capture-architecture-quality/SKILL.md', `${CAPTURE}/SKILL.md`])
+    for (const cap of [ARCH_CAPTURE, CAPTURE])
     {
         const step5 = flat(read(cap)).split('### 5. WRITE')[1].split('### 6.')[0];
         assert.match(step5, /one Write of the whole file - (?:never a per-claim edit stream: )?no Edit, no `sed`, no patch of the old text, the spill pass included/, cap);
@@ -470,13 +481,13 @@ test('the two quality captures write the whole file whatever the brief, and the 
 // architecture quality run only - the map capture dispatches the same seat to describe the code as it is.
 test('the preferences reach each quality seat once: the hook hands the code and the architecture entries, the loop names them', () =>
 {
-    const capture = squash(read('stack/skills/capture-code-quality/SKILL.md'));
+    const capture = squash(read(CAPTURE));
     assert.ok(!capture.includes('hand them to every seat'), 'the capture no longer pastes the entries');
     assert.match(capture, /the preferences hook hands them to each code-quality-analyzer at its start[^.]*so a brief never pastes them/, 'the hook is the one hand-over');
     const seat = squash(read('stack/agents/code-quality-analyzer.md'));
     assert.match(seat, /come at your start from the preferences hook, not in the brief; when none came and `PERSONAL-CODE-PREFERENCES\.md` exists, Read it whole/, 'the seat reads the doc where no hook ran');
     assert.match(seat, /an `A<n>` entry handed beside them is the architecture pair's - a breach of one is a `handoff:` line/, 'an architecture entry stays a hand-off');
-    const archCapture = squash(read('stack/skills/capture-architecture-quality/SKILL.md'));
+    const archCapture = squash(read(ARCH_CAPTURE));
     assert.ok(!archCapture.includes('each brief lists the'), 'the brief no longer lists the entries');
     assert.match(archCapture, /the preferences hook hands each architecture-analyzer the `ARCHITECTURE-PREFERENCES\.md` entries at its start during this run[^.]*so a brief never lists them/, 'the hook is the one hand-over');
     const archSeat = squash(read('stack/agents/architecture-analyzer.md'));
@@ -486,14 +497,14 @@ test('the preferences reach each quality seat once: the hook hands the code and 
     // Hooks off (the user's answer 'Yes, the brief marks the run'): the quality brief marks the run, and the seat reads the doc itself.
     assert.match(archCapture, /Open each brief with the line `Run: architecture quality`/, 'the brief marks the run');
     assert.match(archSeat, /unless the brief opens with `Run: architecture quality`: then Read `<docs-path>\/preferences\/ARCHITECTURE-PREFERENCES\.md` whole when it exists/, 'the seat reads the doc where no hook handed it');
-    assert.match(squash(read('stack/skills/loop-code-quality/SKILL.md')), /`capture-code-quality`, which judges the code against the user's code preferences, the loops prompts, the convention rules and the recorded code style/, 'the loop names the preferences first');
+    assert.match(squash(read('stack/skills/loop-code-quality/SKILL.md')), /`capture-quality` with `code-quality <DELEGATED\|INLINE> <target>` \(the run's mode, then the target\), which judges the code against the user's code preferences, the loops prompts, the convention rules and the recorded code style/, 'the loop names the preferences first');
 });
 
 // 2026-10-22: the hook's start push pastes the recorded style's sections as far as its room allows, so a brief that
 // pasted the relevant ones too sent them twice; the brief now names them, and the seat reads one its start did not bring.
 test('the recorded style reaches the analyzer once: the brief names its sections by id, the seat reads one its start did not bring', () =>
 {
-    const capture = squash(read('stack/skills/capture-code-quality/SKILL.md'));
+    const capture = squash(read(CAPTURE));
     assert.ok(!capture.includes('sections pasted rather than the whole doc'), 'the brief no longer pastes the sections');
     assert.match(capture, /the RELEVANT `PROJECT-CODE-PREFERENCES\.md` sections named by id \(`PROJECT-CODE-PREFERENCES\.md#<id>`\), never pasted - the preferences hook pastes the doc at the seat's start as far as its room allows and names the rest/, 'named, the hook pastes');
     const seat = squash(read('stack/agents/code-quality-analyzer.md'));

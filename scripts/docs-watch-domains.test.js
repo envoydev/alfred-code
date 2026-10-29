@@ -14,9 +14,12 @@ const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (s) => s.replace(/\s+/g, ' ');
 
-const AQ = 'stack/skills/capture-architecture-quality';
+// capture-quality's parts are references beside its router (2026-10-29)
+const QREF = 'stack/skills/capture-quality/references';
+const AQ_PART = `${QREF}/architecture-quality.md`;
+const AQ_SHAPE = `${QREF}/architecture-quality-doc-shape.md`;
 const AW = 'stack/skills/capture-awareness/references';
-const SEED = `watch-merge quality --seed '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"]}' --kinds 'weakness: ' 'strength: '`;
+const SEED = `watch-merge quality --seed '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","COVERAGE-QUALITY.md","references/**"]}' --kinds 'weakness: ' 'strength: '`;
 
 // A text that still calls quality/ watch-less, or no docs domain at all.
 const WATCHLESS_RE = /quality\/`? carries no `?watch\.json|watch-less|quality\/`? is no docs domain|no docs domain at all|lives outside the docs-domain engine|recomputed with the doc and no docs domain|recomputed, not a domain|no domain of its own/i;
@@ -39,7 +42,7 @@ const filesUnder = (rel, keep) =>
 
 test('AC9: the assessment is written as sections with covers, then merged into its recomputed watch', () =>
 {
-    const s = squash(read(`${AQ}/references/doc-shape.md`) + '\n' + read(`${AQ}/SKILL.md`));
+    const s = squash(read(AQ_SHAPE) + '\n' + read(AQ_PART));
     assert.match(s, /## Why this doc is a recomputed domain/);
     assert.match(s, /`###` section/, 'each entry is a ### section');
     assert.match(s, /slug of the entry's title/, 'the id is the title slug');
@@ -78,7 +81,7 @@ test('AC9: the quality loop names the seat skip', () =>
 
 test('AC9: the code assessment is notOwned in the recomputed domain', () =>
 {
-    for (const f of ['stack/skills/capture-code-quality/SKILL.md', 'stack/skills/capture-code-quality/references/doc-shape.md'])
+    for (const f of [`${QREF}/code-quality.md`, `${QREF}/code-quality-doc-shape.md`])
         assert.match(squash(read(f)), /recomputed domain[^.]*`notOwned`/, f);
 });
 
@@ -133,13 +136,13 @@ test('AC18: a hand-built assessment passes the capture\'s checks', () =>
     {
         assert.ok(!r.exists(`${Q}/watch.json`), 'the run starts from no quality/watch.json');
         r.write(`${Q}/ARCHITECTURE-ASSESSMENT.md`, doc);
-        const seed = '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"]}';
+        const seed = '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","COVERAGE-QUALITY.md","references/**"]}';
         const merged = r.cli(['watch-merge', 'quality', '--seed', seed, '--kinds', 'weakness: ', 'strength: '], JSON.stringify(entries));
         assert.strictEqual(merged.status, 0, merged.stdout + merged.stderr);
         assert.match(merged.stdout, /^watch-merge quality: kept 0, replaced 0 with 2$/m);
         const watch = JSON.parse(r.read(`${Q}/watch.json`));
         assert.strictEqual(watch.recomputed, true);
-        assert.deepStrictEqual(watch.notOwned, ['CODE-ASSESSMENT.md', 'references/**']);
+        assert.deepStrictEqual(watch.notOwned, ['CODE-ASSESSMENT.md', 'COVERAGE-QUALITY.md', 'references/**']);
 
         const lint = r.cli(['lint', 'quality']);
         assert.match(lint.stdout, /^0 problems, /m, lint.stdout);
@@ -159,7 +162,7 @@ test('AC18: a hand-built assessment passes the capture\'s checks', () =>
 });
 
 test('an older engine is named by its own usage line, never by a merge\'s argument error (final review M5)', () => {
-    for (const rel of ['stack/skills/capture-architecture-quality/SKILL.md', 'stack/skills/capture-architecture-quality/references/doc-shape.md',
+    for (const rel of [AQ_PART, AQ_SHAPE,
         'stack/skills/capture-awareness/references/related-projects.md', 'stack/skills/capture-awareness/references/project.md']) {
         const text = fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\s+/g, ' ');
         assert.ok(text.includes('opens `usage: docs.js where`'), `${rel}: the old engine's own line`);
@@ -169,8 +172,8 @@ test('an older engine is named by its own usage line, never by a merge\'s argume
 });
 
 test('an assessment entry with no located file gets no covers line and no watch entry (final review M3)', () => {
-    const shape = fs.readFileSync(path.join(ROOT, 'stack/skills/capture-architecture-quality/references/doc-shape.md'), 'utf8').replace(/\s+/g, ' ');
+    const shape = fs.readFileSync(path.join(ROOT, AQ_SHAPE), 'utf8').replace(/\s+/g, ' ');
     assert.ok(shape.includes('An entry with no located file has no covers line and no watch entry'), 'doc-shape says it');
-    const skill = fs.readFileSync(path.join(ROOT, 'stack/skills/capture-architecture-quality/SKILL.md'), 'utf8');
+    const skill = fs.readFileSync(path.join(ROOT, AQ_PART), 'utf8');
     assert.ok(skill.includes('one entry per located Strength and Must-fix section'), 'the merge step pipes located entries only');
 });

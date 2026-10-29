@@ -1574,16 +1574,16 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and fix
   const bare = [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }];
   const numbered = ask(hot, bare);
   assert.equal(numbered.status, 0, numbered.stderr);
-  assert.match(updOf(numbered).questions[0].options[0].description, /^start clean Measured now: ~900k tokens per message in this session/, 'the measured carry appended to its description');
+  assert.match(updOf(numbered).questions[0].options[0].description, /^start clean Measured now: This session carries ~900k tokens per message; with the cache warm/, 'the measured carry appended to its description');
   assert.equal(updOf(numbered).questions[0].options[1].description, 'here', 'the other option untouched');
   assert.match(ctxOf(numbered), /fixed in place by the hook/, 'and the model is told what went out');
   assert.ok(updOf(ask(hot, bare)), 'every send is fixed - no once-per-text pass-through');
   const staleNum = ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~150k here vs ~90k fresh' }, { label: 'Continue', description: 'here' }] }]);
   assert.equal(staleNum.status, 0);
-  assert.match(updOf(staleNum).questions[0].options[0].description, /Measured now: ~900k/, 'a stale number - 150k quoted while the carry is 900k - is corrected too');
+  assert.match(updOf(staleNum).questions[0].options[0].description, /Measured now: This session carries ~900k/, 'a stale number - 150k quoted while the carry is 900k - is corrected too');
   const mixedReasons = ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
   assert.equal(mixedReasons.status, 2, 'numbers beside an unmarked question still deny once - the mark is no mechanical fix');
-  assert.match(mixedReasons.stderr, /Measured now: ~900k/, 'with the numbers in the corrected questions');
+  assert.match(mixedReasons.stderr, /Measured now: This session carries ~900k/, 'with the numbers in the corrected questions');
   assert.doesNotMatch(ctxOf(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }] }])), /offered no fresh session/i,
     'an ask that already offers it is not told to offer it');
 
@@ -3809,7 +3809,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     assert.match(offered, /ALREADY run one/, 'the offer names the reason - the prior run, not the size');
     assert.match(offered, /fresh session/, 'and carries the same offer the size trigger does');
     // c6142301 (audit 2026-10-10 C09): the chained variant dropped the measured carry, so the ask said 'size unmeasured'
-    assert.match(offered, /already carries ~60k tokens per message/, 'and the session\'s own carry');
+    assert.match(offered, /This session carries ~60k tokens per message/, 'and the session\'s own carry');
     // Spent only once ANSWERED (audit 2026-10-10 C09, ca65b406): a double-submitted command put the offer on the
     // abandoned branch, and the live branch's re-expansion found it spent - so an unanswered offer is made again ...
     assert.match(slash(second, env), /ALREADY run one/, 'an offer nobody answered is made again on the next expansion');
@@ -3923,24 +3923,31 @@ test('fresh-session offer: what a resume would RECOVER, not the absolute carry -
     const real = rows('recov-real', 12000, 159363);
     assert.equal(stop(real), 2, 'the same 159k with a small floor is 92% recoverable - offer it');
     assert.equal(askLoop(real, w200()), 2, '... and the gate blocks the chained run there');
-    // Exactly at the 40% line, from both sides.
-    assert.equal(stop(rows('recov-40', 120000, 200000)), 2, '40% recoverable is enough');
-    assert.equal(stop(rows('recov-39', 122000, 200000)), 0, '39% is not');
-    // An unreadable floor answers YES - the behaviour that shipped before the rule existed.
+    // The cache-aware verdict replaced the 40% line (2026-10-29): 120k under a 200k carry still pays back.
+    assert.equal(stop(rows('recov-40', 120000, 200000)), 2, 'a 120k floor under a 200k carry pays back');
+    // At the payback line, from both sides - Haiku 4.5 reads at 0.1x, no cache split is 5m (1.25x), payback 30: floor
+    // 131,578 costs 166,264,700 < 166,266,000 saved; 131,579 costs 166,265,850 > 166,263,000.
+    assert.equal(stop(rows('recov-pays', 131578, 200000)), 2, 'floor 131,578 pays back inside 30 messages');
+    assert.equal(stop(rows('recov-pays-not', 131579, 200000)), 0, 'floor 131,579 does not');
     assert.equal(stop(transcript('recov-nofloor', [assistantRow('nf', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 })]), w200()), 0,
         'a one-row session is all floor by its own arithmetic');
     assert.equal(stop(transcript('recov-noutoken', [
         { type: 'assistant', message: { id: 'x', content: [{ type: 'text', text: 'hi' }] } },
         assistantRow('nu', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
     ]), w200()), 0, 'a row carrying no usage is not a billed message - the floor is the first one that is');
-    // The floor is read from the HEAD of the transcript. A session whose first half-megabyte holds
-    // no billed message at all (a giant paste before the first answer) has no readable floor, and
-    // the offer then goes out exactly as it did before this rule existed.
+    // The floor is read anywhere in the first 8MB, so a giant paste before the first answer no longer hides it: the
+    // reply at the floor's own size recovers nothing. Past 8MB with no reply the floor is unread, and an unmeasured
+    // floor answers no.
     const wall = transcript('recov-wall', [
         { type: 'user', message: { role: 'user', content: 'x'.repeat(600 * 1024) } },
         assistantRow('w1', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
     ]);
-    assert.equal(stop(wall, w200()), 2, 'an unreadable floor answers yes - fail open, never silent');
+    assert.equal(stop(wall, w200()), 0, 'the floor behind a 600KB head is read - the reply at the floor\'s own size recovers nothing');
+    const deep = transcript('recov-deep', [
+        { type: 'user', message: { role: 'user', content: 'x'.repeat(8.5 * 1024 * 1024) } },
+        assistantRow('d1', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
+    ]);
+    assert.equal(stop(deep, w200()), 0, 'an unmeasured floor answers no');
 });
 
 test('guard-stop-contract: the three block shapes the audit reproduced', () => {
@@ -4499,7 +4506,7 @@ test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits i
 });
 
 // --- one home for the fresh-session arithmetic ---------------------------------------------------
-const FRESH_FNS = ['freshAt', 'tableWindow', 'coldFloor', 'worthResuming', 'ctxThreshold', 'sessionModelId'];
+const FRESH_FNS = ['freshAt', 'tableWindow', 'coldFloor', 'worthResuming', 'ctxThreshold', 'sessionModelId', 'freshVerdict'];
 
 test('fresh-session engine: the arithmetic both fresh-session hooks share lives in ONE file', () => {
   const eng = require(path.join(HOOKS, 'fresh-session.js'));
@@ -4510,7 +4517,59 @@ test('fresh-session engine: the arithmetic both fresh-session hooks share lives 
   }
   eng.use({});
   assert.equal(eng.freshAt('NO_SUCH_FRESH_KEY', 7), 7, 'garbage or absent takes the default');
-  assert.equal(eng.worthResuming(300000), true, 'an unreadable floor answers yes');
+  assert.equal(eng.worthResuming(300000), false, 'an unread floor answers no');
+});
+
+// The floor is the session's FIRST main-session reply wherever it sits in the first 8MB: a head of attachment rows, a
+// sidechain or a <synthetic> row before it, or a line cut by a read chunk never hides it or stands in for it.
+const floorEng = () => require(path.join(HOOKS, 'fresh-session.js'));
+const floorOf = (file) => { const eng = floorEng(); eng.use({ transcript_path: file }); return eng.coldFloor(); };
+const firstReply = () => assistantRow('r1', 'hi', { cache_creation_input_tokens: 79000 });
+const writeLines = (name, lines) => { const p = path.join(TMP, `${name}.jsonl`); fs.writeFileSync(p, lines.join('\n') + '\n'); return p; };
+
+test('coldFloor: a first reply behind 600KB of attachment rows is read', () => {
+  const head = Array.from({ length: 600 }, (_, i) => ({ type: 'attachment', attachment: { type: 'note', i, content: 'a'.repeat(1024) } }));
+  assert.equal(floorOf(transcript('floor-attach', [...head, firstReply()])), 79000);
+});
+
+test('coldFloor: a sidechain row and a <synthetic> row before the reply are skipped', () => {
+  assert.equal(floorOf(transcript('floor-side', [
+    { type: 'assistant', isSidechain: true, message: { id: 's1', content: [], usage: { cache_creation_input_tokens: 5000 } } },
+    { type: 'assistant', message: { id: 'y1', model: '<synthetic>', content: [], usage: { input_tokens: 0 } } },
+    firstReply(),
+  ])), 79000);
+});
+
+test('coldFloor: a row straddling the chunk boundary is read whole', () => {
+  const reply = JSON.stringify(assistantRow('r1', 'é'.repeat(200), { cache_creation_input_tokens: 79000 }));
+  // the reply's line starts so the 512KB cut lands 21 bytes into its run of two-byte characters - mid-character
+  const start = 512 * 1024 - reply.indexOf('é') - 21;
+  const base = JSON.stringify({ type: 'user', message: { role: 'user', content: '' } }).length;
+  const pad = JSON.stringify({ type: 'user', message: { role: 'user', content: 'x'.repeat(start - 1 - base) } });
+  const file = writeLines('floor-straddle', [pad, reply]);
+  const bytes = fs.readFileSync(file);
+  assert.equal(bytes[512 * 1024 - 1], 0xc3, 'the cut splits a character');
+  assert.equal(floorOf(file), 79000);
+});
+
+test('coldFloor: a line that does not parse is skipped', () => {
+  const cut = JSON.stringify(assistantRow('c1', 'cut', { cache_creation_input_tokens: 50000 })).slice(0, 60);
+  assert.equal(floorOf(writeLines('floor-garbage', ['{not json', cut, JSON.stringify(firstReply())])), 79000);
+});
+
+test('coldFloor: no path, a missing file and a 0-byte file give null', () => {
+  const eng = floorEng();
+  eng.use({});
+  assert.equal(eng.coldFloor(), null);
+  assert.equal(floorOf(path.join(TMP, 'floor-absent.jsonl')), null);
+  const empty = path.join(TMP, 'floor-empty.jsonl');
+  fs.writeFileSync(empty, '');
+  assert.equal(floorOf(empty), null);
+});
+
+test('coldFloor: no reply in the first 8MB gives null', () => {
+  const big = { type: 'user', message: { role: 'user', content: 'x'.repeat(8.5 * 1024 * 1024) } };
+  assert.equal(floorOf(transcript('floor-8mb', [big, firstReply()])), null);
 });
 
 test('fresh-session engine: both hooks run silent when the engine file is missing', () => {
@@ -4839,7 +4898,7 @@ test('deep review: guard-unapproved-dispatch passes a first dispatch with no Exe
 
 // Audit 2026-10-20 C07 (8f130789 L68): an ask whose options only MENTIONED a fresh session ('noted for a fresh-session run')
 // was read as carrying the hand-off, and at ~80k - its own cold floor - got the numbers line on 'Current session only'.
-test('guard-stop-contract: only an option that IS the fresh-session hand-off takes the numbers, and only where a resume recovers something (C07)', () => {
+test('guard-stop-contract: only an option that IS the fresh-session hand-off takes the numbers, and only where a fresh session pays back (C07)', () => {
   const logDir = fs.mkdtempSync(path.join(TMP, 'c07-'));
   const ask = (tp, questions) => runIn('guard-stop-contract.js',
     { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
@@ -4850,12 +4909,21 @@ test('guard-stop-contract: only an option that IS the fresh-session hand-off tak
   const r = ask(hot, mentions);
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!updOf(r) || !JSON.stringify(updOf(r)).includes('Measured now'), 'an option that only mentions a fresh session is not the hand-off');
+  // since 2026-10-29 the numbers check judges the hand-off LABEL alone (isFreshHandoff): a description that opens on the move
+  // no longer makes the option one
   const desc = ask(hot, [{ question: 'Next?', options: [{ label: 'Hand off (Recommended)', description: 'Resume in a fresh session from the plan file' }, { label: 'Continue', description: 'here' }] }]);
-  assert.match(JSON.stringify(updOf(desc)), /Measured now: ~900k/, 'a description that opens on the move is the hand-off');
+  assert.equal(desc.status, 0, desc.stderr);
+  assert.ok(!updOf(desc) || !JSON.stringify(updOf(desc)).includes('Measured now'), 'a description-only hand-off takes no numbers line');
   const near = transcript('c07-near', [assistantRow('n1', 'ok', { cache_creation_input_tokens: 78000 }), assistantRow('n2', 'ok', { cache_read_input_tokens: 80000 })]);
-  const atFloor = ask(near, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
-  assert.equal(atFloor.status, 0, atFloor.stderr);
-  assert.ok(!updOf(atFloor) || !JSON.stringify(updOf(atFloor)).includes('Measured now'), 'at the cold floor no numbers are appended');
+  // 80k over a 78k floor (no model, no split): no more than the floor plus the resume read, so check 15 drops the hand-off -
+  // and a question left with one option is refused once, naming it
+  const floorAsk = [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }];
+  const atFloor = ask(near, floorAsk);
+  assert.equal(atFloor.status, 2, 'at the cold floor the two-option hand-off ask is refused once');
+  assert.match(atFloor.stderr, /no more than a fresh session's ~78k floor plus the ~13k it re-reads, so a fresh session saves nothing/);
+  assert.match(atFloor.stderr, /take that option - 'Continue \(Recommended\)' - and drop the question/);
+  assert.ok(!atFloor.stderr.includes('Measured now'), 'and no numbers are appended');
+  assert.equal(ask(near, floorAsk).status, 0, 'its re-send passes');
 });
 
 // Audit 2026-10-20 H6 (replayed): `rm -rf "${HOME:?}"`, the home directory spelled absolute, `"$(pwd)"` and
@@ -5299,3 +5367,28 @@ test('guard-cross-project-write: a root with its own autoMemoryDirectory under a
     assert.equal(w.write('ws/api', path.join(w.acct, 'shared-mem', 'MEMORY.md')).status, 0, 'the child\'s own user-level memory');
   } finally { w.rm(); }
 });
+
+// F14 (the 2026-10-28 workspace run): a project kept under the harness's scratch root (/tmp/claude-<uid>/...) drops the
+// whole root by the containment rule, and with it the session's own scratchpad - the run could not write its notes.
+// Only <scratch root>/<one segment>/<session id> comes back, and never when that folder holds the project.
+{
+  const UIDX = typeof process.getuid === 'function' ? process.getuid() : null;
+  const S = UIDX == null ? null : `/tmp/claude-${UIDX}`;
+  const BASE = S && path.join(S, `alfred-t-${process.pid}`);
+  const made = S && !fs.existsSync(S);
+  const run = (root, payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    input: JSON.stringify(payload), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
+  }).status;
+  const write = (file, sid) => ({ tool_name: 'Write', tool_input: { file_path: file }, ...(sid ? { session_id: sid } : {}) });
+  test('F14: a project under the scratch root keeps its session\'s scratchpad, and only that', { skip: !S && 'no process.getuid' }, (t) => {
+    t.after(() => { fs.rmSync(BASE, { recursive: true, force: true }); if (made) fs.rmSync(S, { recursive: true, force: true }); });
+    const proj = path.join(BASE, 'proj');
+    const proj2 = path.join(BASE, 'sid1', 'proj2');
+    for (const d of [proj, proj2, path.join(BASE, 'sid1', 'scratchpad'), path.join(BASE, 'other')]) fs.mkdirSync(d, { recursive: true });
+    assert.equal(run(proj, write(path.join(BASE, 'sid1', 'scratchpad', 'x.txt'), 'sid1')), 0, 'the session\'s own scratchpad');
+    assert.equal(run(proj, write(path.join(BASE, 'other', 'x.txt'), 'sid1')), 2, 'another session\'s folder');
+    assert.equal(run(proj2, write(path.join(BASE, 'sid1', 'y.txt'), 'sid1')), 2, 'a session folder that holds the project');
+    assert.equal(run(proj, write(path.join(BASE, 'sid1', 'scratchpad', 'x.txt'))), 2, 'no session id, no scratchpad');
+  });
+}

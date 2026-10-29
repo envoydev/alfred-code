@@ -13,7 +13,7 @@ Best run in Claude Code, where you can dispatch the analysis and build seats and
 ## When to use
 
 - The deliberate analyze-triage-fix loop over the code: each round recomputes the code-quality assessment against the project's own rules (the numbered prompts under the loops folder, the convention rules, the recorded code style) and works its fixable findings by tier. `staged` keeps the numbered-prompt pipeline, one stage at a time.
-- Not for architecture restructuring (loop-architecture-quality), measuring or raising test coverage (the coverage capture and loop), an assessment with no fixes (capture-code-quality alone), or a single diff (task-verify-code, review-code or review-security).
+- Not for architecture restructuring (loop-architecture-quality), measuring or raising test coverage (the coverage capture and loop), an assessment with no fixes (/capture-quality code alone), or a single diff (task-verify-code, review-code or review-security).
 
 **Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line.
 
@@ -39,7 +39,7 @@ The numbered prompt files under `<docs-path>/quality/loops/` are the rules the c
 ### 1. ANALYZE
 Round 1 opens with the green baseline (build + tests, command-first) - a red one is fixed first through the matching resolver or recorded, so the round is measured against a green start - and records the sweep baseline: HEAD, or on a dirty tree the sha `git stash create` prints. The final anti-gaming sweep diffs against it.
 
-Then the code-quality capture, a Skill call - `capture-code-quality`, which judges the code against the user's code preferences, the loops prompts, the convention rules and the recorded code style and recomputes `<docs-path>/quality/CODE-ASSESSMENT.md` fresh; it has no zero-drift shortcut, so it always runs in full. Hand it the run's mode and TARGET only - never a status of the findings (which shipped, which remain): the capture recomputes them from the code, and a status brief turns a reconcile into a patch of the old file. A Skill call the fresh-session guard blocks is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it:
+Then the code-quality capture, a Skill call - `capture-quality` with `code-quality <DELEGATED|INLINE> <target>` (the run's mode, then the target), which judges the code against the user's code preferences, the loops prompts, the convention rules and the recorded code style and recomputes `<docs-path>/quality/CODE-ASSESSMENT.md` fresh; it has no zero-drift shortcut, so it always runs in full. Hand it the run's mode and TARGET only - never a status of the findings (which shipped, which remain): the capture recomputes them from the code, and a status brief turns a reconcile into a patch of the old file. A Skill call the fresh-session guard blocks is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it:
 
 ```ask
 The fresh-session guard held the capture at <N>k; a fresh session restarts at <M>k.
@@ -137,12 +137,12 @@ DELEGATED, one run over `src/Orders/`, with the 1.x starter prompts in `loops/`:
 
 ## Bounded and honest
 - **Hard cap: 3 improve rounds.** Do not loop indefinitely chasing the last debatable finding. Say it in the first reply, unattended runs included: '3 rounds, then STOP with the remainder listed'.
-- **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the loops folder plus a fresh capture is the handoff. A step, not advice: at each LOOP decision, ask - the fresh-session option ALWAYS one of its options; on 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else.
+- **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the loops folder plus a fresh capture is the handoff. A step, not advice: at each LOOP decision, ask - the fresh-session option ALWAYS one of its options, and when the hook refuses the ask because a fresh session does not pay back, start the next round here (its receipt `next: continue - "refused: a fresh session does not pay back"`). Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names. On 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else.
 
   ```ask
   Round <N>: LOOP - <what is left>. A fresh session restarts at <M>k.
-  - 'Resume in a fresh session (Recommended)' - the RESUME BLOCK, then this turn ends
-  - 'Continue here' - the next round in this chat
+  - 'Continue here (Recommended)' - the next round in this chat
+  - 'Resume in a fresh session' - the RESUME BLOCK, then this turn ends
   ```
 - Never weaken, skip or delete a test or an assertion to make a finding look resolved - that is a new finding, not a fix, and the anti-gaming sweep exists to catch it.
 - Make the smallest change that resolves each finding; a rewrite that introduces new findings makes the loop diverge.

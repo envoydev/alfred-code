@@ -715,7 +715,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     large change to one). Each line closes the NEWEST open review when it is that review's kind and nothing otherwise, so
     a review left unfinished stays open under a later one; a refused call takes none. The typed command is held the same
     way, and the snapshot its expansion took (no call id) counts beside a typed review that counted, started within two
-    minutes of it. review-security's Report carries the line since this ruling, and loop-test-coverage names its
+    minutes of it. review-security's Report carries the line since this ruling, and loop-test-coverage-quality names its
     `**Outcome**` field. The model can write the line without the review: the rule catches an abandoned or interrupted
     review, not a forged one.
     THE TOOL-USAGE LEDGER IS NO EVIDENCE ('Fix ALL left gaps'): its row is written at PreToolUse and keeps no target, no
@@ -899,8 +899,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the rate a change to one is measured on (C03 had no row). THE ASK-FIXED ROW WAITS (the hooks track's minor list):
     PreToolUse hooks on one matcher run in parallel, and on `AskUserQuestion` the core lists the plugin's
     `guard-layer-table.js` first and this hook second - each a node start per ask, p50 28ms and 44ms on an 830KB
-    transcript (measured 2026-10-20, this machine), the layer gate waiting up to 2s for its own row when a decision table
-    ran since the typed prompt. So the layer gate can deny the ask this hook fixed in place: the `ask-fixed` row waits in
+    transcript (measured 2026-10-20, this machine); since 2026-10-28 (F4) the layer gate's PreToolUse half judges only a
+    layer table that never ran and configure step 1's inventory, and its paste check voids at PostToolUse. So the layer
+    gate can deny the ask this hook fixed in place: the `ask-fixed` row waits in
     `guard-stop-askfixed-<session>.jsonl` (hook temp dir) with the call's `tool_use_id`, and this hook's next ask or Stop
     writes it once the call's result is on disk - dropped when that result is a hook's denial, written as it stands past a
     day - and a fix in place spends no deny marker (only a deny does, so a sibling's denial never costs the re-sent ask its
@@ -953,11 +954,45 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     keeps its 1M trigger, held at 360k - tiering by the lowered window had dropped it to the 300k DEFAULT trigger of that time (2026-10-14). A context read stops at a `compact_boundary` row (unknown until
     the next model call), and the model id read widens to 8MB and takes the harness's `model` attachment row. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it (90% of it). The offer fires only
-    when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
+    when a fresh session pays back with the cache warm (THE VERDICT below),
     re-arms at 1.5x growth - counted from its own block or the newest fresh-session ask answered in ANY turn, at that
     ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off). The offer waits
     while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).
+    THE VERDICT (the cache-aware design of 2026-10-28; the user's report of offers near 100k with the prompt cache warm):
+    every route that offers, recommends, holds for or demands a fresh session asks `fresh-session.js` `freshVerdict(ctx)`
+    (`worthResuming` returns its `pays`; the 40% rule, `MIN_RECOVERABLE_SHARE`, is retired). The floor F is the
+    session's first main-session assistant row with a usage (`coldFloor`: forward in 512KB chunks to 8MB, a row that
+    straddles a chunk read whole, never a sidechain or `<synthetic>` row - the old single 512KB read found none in 93 of
+    212 sessions, whose first reply sat 511KB to 1,159KB in, and answered yes at any carry). A fresh session carries
+    G = F + R (`RESUME_READ`, 13,000: what a resumed session re-reads). With r the session model's cache read rate
+    (`CACHE_READ_RATES`, thousandths of the input price: 50 for claude-opus-5-5 and claude-sonnet-5-5, 25 for
+    claude-fable-5-1 and claude-mythos-5-1, 100 for any other model or none; held to `meta/model-prices.json` by a test),
+    w its TTL's write rate (2000 for 1h, 1250 for 5m; the newest usage row's `cache_creation` split, else 5m) and P the
+    payback window (`ALFRED_CODE_FRESH_SESSION_PAYBACK`, a whole number 0 to 1000, anything else 30, unseeded, `0` no
+    offer), a fresh session pays when ctx > G and G x (w - r) < P x (ctx - G) x r - integers, so the comparison is exact
+    (claude-opus-5-5, 1h, F 79k: no at 211,600, yes from 211,601). A carry of 0, an unmeasured floor and P 0 never pay.
+    Every route is priced WARM: each one speaks after the request that would have met a cold cache (the idle-gap offer
+    rides that prompt, the holds deny a later call), so the carry is cached again when the choice is put; a block of the
+    prompt itself would be a new interaction. The texts state the price ('... a turn re-reads it at <r>x the input price.
+    A fresh session restarts at ~<F>k, written new at <w>x, and pays back in about <N> messages'), never 're-sends all of
+    it'. The compact and idle holds pass a changing call at a carry of 0 without spending the hold, so the first call
+    with a reading is judged, and a hold whose verdict does not pay releases (`not-worth-resuming`). Each route that
+    reaches the verdict writes one `mode: probe`, `kind: fresh-verdict` row per session, route and value of `pays`
+    (route, ctx, floor, ttl, ttlFrom, version, readRate, readShare, breakEven, payback, resumeRead, the old 40% answer
+    as `share40`, and `unattended` when nobody was at the terminal) - the rows the design's reopen list reads. CHECK 15 (the ask branch): a single-select question carrying
+    a fresh-session HAND-OFF (`isFreshHandoff`: a label opening on Resume, Start, Continue or Build that moves the work
+    'in a fresh session' - or a new one, or a chat - with no 'no', 'not', 'never' or 'without' before it; 'Build the new
+    session expiry check', a setting such as 'Offer a fresh session' and capture-usage-report's 'Hand off to a fresh
+    session' are none) where the verdict does not pay has it dropped in place, the mark moved to the first option left,
+    the not-pay text as the note and one `fresh-ask` verdict row; a question of hand-offs alone is left as written, and
+    one the drop would leave with one option is refused once, naming the option to take, and left out of the re-send.
+    It stands down for `guard-stop-contract:fresh-ask` in
+    `ALFRED_CODE_HOOKS_OFF`, `FRESH_OFF`, a live auto-run stamp of this session, nobody at the terminal, a seat, no
+    measured carry or floor, a multi-select question and a newest typed prompt naming a fresh or new session, chat or
+    conversation, `/clear`, clearing the context or starting over. The
+    numbers check reads hand-offs only. The skills list the in-session option first and mark the fresh one only where a
+    hook's text says it pays. The measurements are `docs/fresh-session-cache-evidence.md`.
     THE SCORER BACKSTOP (mode-output-scorer, spec 2026-10-24 5.9): while `scorerState` is usable (a loadable skill copy,
     neither hook nor its `scorer` part off), a close that owes a `Scored:` line and lacks it is held ONCE per typed prompt.
     One `walkBack` pass reads back to the cycle's opening row - the newest typed row that is no harness prompt, compaction
@@ -1018,7 +1053,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     wired on (`Write` / `Edit` / `MultiEdit` / `NotebookEdit` and the shell route - both rows fold into their
     dispatcher, which runs the hook in-process, one process per call (2.1.5 M3) - `Agent` / `Task`, a `Skill`) is denied with this session's measured
     carry and cold floor until an ask is answered or the turn writes 'single short step', released with no deny when a
-    resume would recover too little, nobody is at the terminal, a seat made the call or it has denied twice (audit
+    fresh session would not pay back (THE VERDICT), nobody is at the terminal, a seat made the call or it has denied twice (audit
     2026-10-10 C09: the injection alone lost to the summary line in six sessions), plus two lines: answer in
     the language of the user's prompts (unless a loaded skill sets it), and re-read a live plan file's header first. `PreCompact` writes
     `<data root>/state/sessions/COMPACT-STATE-<session>` first (one per session, so a parallel session's PreCompact never
@@ -1028,7 +1063,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     says to re-read its body, which the harness re-attaches only for a Skill call - even with every fresh-session offer off.
     `UserPromptSubmit` carries only the idle-gap offer: the prompt that ends a gap past the clock route's
     `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` since the last reply injects the ask once per gap (`guard-fresh-idle-*`), with
-    the carry and cold floor, when a resume recovers enough - never for a task notice, a seat, a carry past a compaction
+    the carry and cold floor, when a fresh session pays back with the cache warm - never for a task notice, a seat, a carry past a compaction
     or nobody at the terminal (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). The
     injection was spent on a question answered from context (audit 2026-10-11 SD11, fdce35ae / 2ca8e8ee), so the gap
     also leaves the compaction route's one-shot hold marked `idle` (a compaction hold already standing is kept): a
@@ -1168,6 +1203,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     from the prompt's own flag (auto-run's `-on` only when `autoRunRefusal` says nothing), else the stored state, never read
     back after the start hook's write, since the two run in parallel; a compaction's start re-emits both context lines and
     no `systemMessage`. A seat's prompt carries none: the session that receives its report grades what it acts on.
+    After its stdout write it hands `modesText`'s own `autoRun` and `scorer` to `session-status.js onPrompt`, under
+    `standDown('history-session')`, which rewrites the status file only when one of the two changed (spec section 4).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is exactly "1". It runs `async: true` on both routes (`settings.js asyncFor`, the one async hook since the stop contract's shell-result halves went in the deep hooks review 2026-10-16 - a log never
     blocks or decides, so no call waits on its spawn; code.claude.com/docs/en/hooks, 'Run hooks in the background').
@@ -1328,10 +1365,36 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     historyCount`) in at most 150 chars plus 150 per record (600 at the seed - a flat 200 per record left no room for one
     record beside the ~160-char frame), framed as history, never instructions - a record that read no
     transcript row and holds no commit, ruling or plan takes no slot, and a plan no longer on disk is left out (audit
-    2026-10-10 C23); a question is shown once, at its newest answer, and past the cap the ruling lines leave round-robin
-    across sessions, each session's newest kept longest, before an older session's own line (audit 2026-10-11 SD16,
-    e90a1845: the older session's rulings were cut whole and re-asked) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
+    2026-10-10 C23); a plan still on disk carries where it stands NOW (`planStates`, the user's run order of 2026-10-28:
+    the next session had to open the plan to find its next task) - `(<done>/<all> done; <its Resume: line>)` from the
+    habits-plan-writing cards (counted only beside a `status:` line - a superpowers plan's `### Task N:` headings carry
+    none, and a finished one read `(0/N done)`) and the Resume: line that skill rewrites after every tick, or `(completed)` once its
+    `Completed:` line is there - read from the plan as the block renders, never recorded at Stop, the Resume: text
+    scrubbed and cut at 80 chars; another format, no regular file (a fifo would hold the start), an unreadable one or one
+    over 1 MB keeps the path alone; a question is
+    shown once, at its newest answer, and past the cap the ruling lines leave round-robin across sessions, each session's
+    newest kept longest, then the older sessions' plan states (oldest first), then an older session's own line (audit
+    2026-10-11 SD16, e90a1845: the older session's rulings were cut whole and re-asked), and the newest session's plan
+    state last, its Resume: text before its count - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
     old on seed `1` to `3` (`history-switch-is-a-count`).
+    THE STATUS FILE (session-inspector, the user's contract of 2026-10-29; the sections cited are its spec's):
+    `session-status.js`, a module with
+    no stdin carried beside the hooks (`HOOK_MODULES`, lint's ENGINES), keeps `<cwd>/.claude/session-inspector/status/<session
+    id>.json`, schema 1 - `schema`, `session`, `fullContext`, `updatedAt`, `model`, `window`, `resumeAt`, `autoRun`,
+    `scorer`, `handoffPrompt`, a public contract that only ever gains fields. The base is the live `cwd` (A1), written only
+    when it is the project's own (inside its root, or a linked worktree of its checkout - A8), the id matches
+    `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
+    The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
+    `autoStampLive`, the stamp must name the session), `scorerState` and the newest open plan's `Resume:` text from
+    `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). Written at SessionStart (always), at Stop
+    when a field but `updatedAt` changed (an unchanged file over 24 hours old gets its mtime moved) and at
+    guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). The
+    gates are this hook's (`historyOff`, Cursor), so `HOOKS_OFF=history-session` stops it at all three events. The
+    SessionStart prunes every status file past 7 days (`now - mtime > 7 days`, the session's own kept) under the `cwd` and
+    each base in `<data root>/state/sessions/status-folders.json` (at most 32), and puts an anchored
+    `/<rel>/.claude/session-inspector/status/` line under `# alfred-code: session-inspector status files` into the common
+    dir's `info/exclude` - one `gitSafe` spawn per common dir, none past 8s of the process (section 6). Each write leaves a
+    `status-write` probe row (`ok`, `slow` past 200ms, `failed`), an exclude that failed or came late a `status-exclude` one.
   - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
     stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
     `<data root>/forge-lexicon.json`) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,

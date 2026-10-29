@@ -39,6 +39,9 @@ it the plugin reads enabled and answers nothing, and symbol lookups fall back to
 
 ## 2. Git hygiene - keep the machine-local artifacts out of the repo
 
+In no-repo mode this section is skipped: the close card's line reads exactly `git hygiene: skipped - no git repository`,
+and nothing about `.claude/AGENTS.md`.
+
 The install creates machine-local state that should not be committed. Two homes - pick one:
 the committed `.gitignore` (shares the policy with the team) or `.git/info/exclude` (local-only,
 touches no committed file). The lines, minus anything the project already covers:
@@ -76,7 +79,7 @@ touches no committed file). The lines, minus anything the project already covers
 The deliberate captures turn a fresh install into an oriented one. Init runs each whose skill AND
 seat are installed, in this order, by following its SKILL.md (`/alfred-code:configure` adds a
 missing one); do not shuffle it. A later re-run is yours to type: all but the two analyzers
-(`capture-architecture`, `capture-test-coverage`) are manual-only
+(`capture-architecture`, `capture-quality`) are manual-only
 (`disable-model-invocation`), so the assistant cannot invoke one on your behalf:
 
 1. `/capture-architecture` - writes the durable architecture docs every seat reads to
@@ -92,7 +95,7 @@ missing one); do not shuffle it. A later re-run is yours to type: all but the tw
    `../client`), never scanned for. The `related-project-analyzer` seat that characterizes a sibling
    is an opt-in add via `/alfred-code:configure`.
 
-Optional, whenever you want the coverage picture: `/capture-test-coverage` - it
+Optional, whenever you want the coverage picture: `/capture-quality test-coverage-quality` - it
 measures the suite and asks for YOUR coverage bar on first capture, recording it for every later
 run.
 

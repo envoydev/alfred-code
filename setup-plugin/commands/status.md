@@ -67,7 +67,7 @@ One table, no ask - it is seven rows and every other area reads against it:
 - `initialised`: the stamp's `initialised:` line - a date, or `pending` (run `/alfred-code:init`).
 - `workspace`: one call, `node "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" status --root . ; node
   "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" children --root .`. Its first line, `role: <role>`, opens the row:
-  `child of <rel>`, `root of <n> children`, `root, no child yet`, `standalone`, `standalone (not asked)` or
+  `child of <rel>`, `root of <n> children`, `root, no child yet`, `standalone`, `standalone (no role recorded)` or
   `workspace off`. A child adds ` - own <n>, ignored <n> - load check <state> <at>` (the counts of its `own:` and
   `ignored:` lines, its `check:` line, `never` when none ran); a `gone` child line adds `, <n> gone`. Pasted under the
   table as they are: a child's `docs:` and `memory:` lines (the ancestor docs roots it reads and the workspace root's
@@ -317,7 +317,7 @@ the seat handoff notes still on the bus (`node .claude/hooks/handoff.js left` - 
 | awareness/AGENTS-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/PROJECT-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/RELATED-PROJECTS-AWARENESS.md | no | - | - |
-| quality/test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
+| quality/COVERAGE-QUALITY.md | yes | (bar 85%) | 2026-07-25 |
 | quality/loops/ | yes | 3 prompt files | 2026-07-24 |
 | handoff notes (state/handoff) | yes | 4 notes | - |
 

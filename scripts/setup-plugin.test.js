@@ -296,19 +296,18 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
 // has no one to dispatch (how code-style-analyzer went unseeded).
 test('every always-seeded capture skill seeds the seat it fans out', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    // capture-quality fans out one seat per part (2026-10-29)
     const PAIRS = {
-        'capture-architecture': 'architecture-analyzer',
-        'capture-architecture-quality': 'architecture-analyzer',
-        'capture-code-quality': 'code-quality-analyzer',
-        'capture-project-code-style': 'code-style-analyzer',
-        'capture-test-coverage': 'test-coverage-analyzer',
+        'capture-architecture': ['architecture-analyzer'],
+        'capture-quality': ['architecture-analyzer', 'code-quality-analyzer', 'test-coverage-analyzer'],
+        'capture-project-code-style': ['code-style-analyzer'],
     };
-    for (const [skill, seat] of Object.entries(PAIRS))
+    for (const [skill, seats] of Object.entries(PAIRS))
     {
         for (const bucket of ['always', 'general'])
         {
             if (!((recs[bucket] || {}).skills || []).includes(skill)) continue;
-            assert.ok(((recs[bucket] || {}).agents || []).includes(seat), `${bucket} seeds ${skill} without ${seat}`);
+            for (const seat of seats) assert.ok(((recs[bucket] || {}).agents || []).includes(seat), `${bucket} seeds ${skill} without ${seat}`);
         }
     }
 });
@@ -1145,6 +1144,39 @@ test('every layer ask in walk.md offers 2-4 options with the recommended one fir
     assert.match(walk, /one AskUserQuestion call of up to 4 multi-select questions/i, 'the Pick follow-up is one call of up to 4 questions');
 });
 
+// F22 (the 2026-10-28 workspace run): the Pick call is dealt by `stack-select.js --deal`, and a DELTA side of exactly one
+// row offers no Pick (the deal would have nothing to ask) - its step-1 'Add all 1' / 'Drop all droppable' covers it.
+test('a one-row DELTA side offers no Pick, and the Pick step names --deal', () =>
+{
+    const walk = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8'));
+    assert.match(walk, /--deal fresh <layer>/, 'the FRESH Pick step runs the deal');
+    assert.match(walk, /`--deal add <layer>` or `--deal drop <layer>`/, 'the DELTA Pick runs the deal per side');
+    assert.match(walk, /When the table's `counts:` line gives a side exactly 1 row \(1 droppable, or 1 not installed\), that side's question omits its 'Pick rows to add' \/ 'Pick rows to drop' option/);
+});
+
+// Group D (the 2026-10-28 workspace run): the templates say what is true in a no-repo root, a local child and a root
+// with children - F1, F2, F6, F16, F20, F23.
+test('group D wording: the no-repo root, the scope, git hygiene, nothing to offer, the rename, the children note', () =>
+{
+    const ref = (rel) => fs.readFileSync(path.join(PLUGIN_DIR, ...rel.split('/')), 'utf8');
+    const install = ref('references/init-install.md');
+    assert.ok(install.includes("- 'Install here (Recommended)' - this directory is the project root, or a workspace root above the projects; move the mark to Stop when this directory sits inside the project you meant"), 'F1');
+    assert.ok(install.includes("- 'project (Recommended)' - .claude/settings.json - shared: committed with the repo, or read by every session in this folder"), 'F2');
+    for (const rel of ['references/init-install.md', 'references/post-install.md'])
+        assert.match(flat(ref(rel)), /no-repo mode[^.]*`git hygiene: skipped - no git repository`, and nothing about `\.claude\/AGENTS\.md`/, `F6 ${rel}`);
+    assert.ok(flat(ref('references/walk.md')).includes('No kept plugin with a row, or a report whose last line reads `plugin-settings: nothing to offer`: skip this silently, ask nothing.'), 'F16');
+    const place = ref('references/instructions-place.md');
+    assert.ok(place.includes("- 'Rename to <other>' - git mv at the root, in .claude/ and in each part that holds one, so history follows; a file already named <other> is never overwritten"), 'F20');
+    assert.ok(!place.includes('(web/<have>)'), 'F20 example path gone');
+    const configure = ref('commands/configure.md');
+    assert.ok(configure.includes("grep -E '^(workspace: parent |role: )'"), 'F23 step 1');
+    assert.match(flat(configure), /`role:` line matching `root of \(\\d\+\)`/, 'F23 step 1 names the match');
+    const note = 'The <n> project(s) below get this change when /alfred-code:update runs here.';
+    const close = "'Nothing is pending on this run - these are yours to run when you choose.'";
+    assert.ok(configure.includes(note), 'F23 note');
+    assert.ok(configure.indexOf(note) < configure.lastIndexOf(close), 'F23 note sits before the pinned close');
+});
+
 // The data-root question (2.1.0) rides the same template shape as the walk's layer asks, so lint 61 holds
 // its recommended option - '.alfred (Recommended)' - first in both homes that ask it.
 // M12: setup has no data yet, so .alfred is its recommendation; configure reads a live install, and the walk's rule
@@ -1636,4 +1668,15 @@ test('the 3.0.0 history entry opens with the update-together contract and the wa
     assert.match(first, /2\.12\.0 or older reads none of them/);
     assert.match(entry, /settings\.json by hand/, 'the way back');
     for (const key of ['ALFRED_CODE_SCORER_LEVEL', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_MAXIMUM_RUN_AGENTS']) assert.ok(entry.includes(key), `${key} named`);
+});
+
+test('the capture-quality history entry tells an account-file override to be re-keyed by hand (spec 5.4)', () =>
+{
+    const history = refBody('update-history');
+    const at = history.indexOf('\n## after 3.2.1 - the three quality captures become capture-quality');
+    assert.ok(at >= 0, 'the capture-quality section');
+    const next = history.indexOf('\n## ', at + 4);
+    const entry = history.slice(at, next < 0 ? undefined : next).replace(/\s+/g, ' ');
+    assert.match(entry, /`~\/\.claude\/settings\.json`/, 'the account file named');
+    assert.match(entry, /by hand/, 'the re-key is the user\'s');
 });

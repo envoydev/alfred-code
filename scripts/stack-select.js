@@ -245,6 +245,15 @@ function categoryOf(closure, name)
     return 'item';
 }
 
+// The picks plus the always-on rules and skills, which ride every install whatever raw.json holds - the walk keeps
+// locked rows out of it, so a closure over raw alone reads what the baseline requires as unrequired (the 2026-10-28
+// fix run: a root install emitted without its baseline, and a FRESH table offered docs-as-code as a free pick).
+function withAlways(raw, always)
+{
+    const join = (k) => [...new Set([...(Array.isArray(raw[k]) ? raw[k] : []), ...(always && Array.isArray(always[k]) ? always[k] : [])])];
+    return { ...raw, rules: join('rules'), skills: join('skills') };
+}
+
 // The inverse cascade: everything in the remaining selection that (transitively)
 // requires <name> - the rules/agents (and, for mcps/plugins, skills; for a skill, the
 // servers that bring it) whose own closure reaches it. Dropping a locked item honestly means dropping these too;
@@ -304,11 +313,9 @@ function findOrphans(graph, remaining, dropped)
     return orphans;
 }
 
-// Presentation-ready layer table for the guided walks - emitted by the tool so
-// alignment never depends on a streaming markdown renderer (long tables re-measure
-// per flush segment and shear). The commands paste this verbatim inside a code
-// fence. Numbering is the sorted catalog, so it is stable across rounds.
-function emitTable(graph, layer, opts)
+// The layer table's rows - `{ n, name, status, why, held }`, the sorted catalog numbered from 1 - or null for an unknown
+// layer. `held` (installed mode only) is a row a closure requires: the why column cannot tell it from evidence or a note.
+function tableRows(graph, layer, opts)
 {
     opts = opts || {};
     const catalog = {
@@ -322,7 +329,7 @@ function emitTable(graph, layer, opts)
     if (!catalog) return null;
 
     const raw = opts.raw || {};
-    const closure = computeClosure(graph, raw);
+    const closure = computeClosure(graph, withAlways(raw, opts.always));
     const reasons = closure.reasons;
     const direct = new Set(raw[layer] || []);
 
@@ -358,10 +365,13 @@ function emitTable(graph, layer, opts)
     const orphanWhy = {};
     for (const o of opts.orphans || []) if (o.category === layer.slice(0, -1)) orphanWhy[o.name] = o.why;
 
-    const singular = { rules: 'rule', agents: 'agent', skills: 'skill', hooks: 'hook', mcps: 'mcp', plugins: 'plugin' }[layer];
+    // F21 (the 2026-10-28 workspace run): the always-on baseline is in every install whatever the walk answers, so it reads
+    // `locked` in both modes, over from root, ignored and orphaned - the installer refuses its drop (selection.lockedLines).
+    const always = new Set(['rules', 'skills'].includes(layer) && opts.always && Array.isArray(opts.always[layer]) ? opts.always[layer] : []);
     const judge = (name) =>
     {
         let status, why;
+        if (always.has(name)) return ['locked', 'every install carries it'];
         if (installed)
         {
             status = orphanSet.has(name) ? 'orphaned' : installed.has(name) ? (fromRoot(name) ? 'from root' : 'yes') : fromRoot(name) ? 'ignored' : '-';
@@ -392,13 +402,89 @@ function emitTable(graph, layer, opts)
         return [status, why];
     };
 
-    const names = [...catalog];
-    const rows = names.sort().map((name, i) =>
+    return [...catalog].sort().map((name, i) =>
     {
         const [status, why] = judge(name);
-        return [String(i + 1), name, status, why.replace(/^required by /, '')];
+        return { n: i + 1, name, status, why, held: Boolean(installed && status !== 'locked' && reasons[name]) };
     });
+}
 
+// The counts the walk copies, never counts (F21): FRESH marked vs unmarked, DELTA installed vs droppable vs locked.
+function countsLine(list, installed)
+{
+    const n = (f) => list.filter(f).length;
+    if (!installed) return `counts: ${n((r) => r.status !== '-')} marked (${n((r) => ['locked', 'required', 'dependency'].includes(r.status))} locked), ${n((r) => r.status === '-')} unmarked`;
+    const inst = (r) => ['yes', 'from root', 'locked'].includes(r.status);
+    const droppable = (r) => inst(r) && r.status !== 'locked' && !r.held;
+    return `counts: ${n(inst)} installed (${n(droppable)} droppable, ${n((r) => inst(r) && !droppable(r))} locked), `
+        + `${n((r) => r.status === 'orphaned')} orphaned, ${n((r) => ['-', 'ignored'].includes(r.status))} not installed`;
+}
+
+// F22: the walk's Pick call, dealt by the tool - which rows each side offers, then at most 4 questions of 2-4 options per
+// call with every row in exactly one. A side of over 16 rows keeps the grouping by the table's labels (a whole call).
+const LOCKED_STATUS = ['locked', 'required', 'dependency'];
+function dealSides(rows, mode)
+{
+    if (mode === 'fresh') return { add: rows.filter((r) => r.status === '-'), drop: rows.filter((r) => r.status !== '-' && !LOCKED_STATUS.includes(r.status)) };
+    if (mode === 'add') return { add: rows.filter((r) => ['-', 'ignored'].includes(r.status)), drop: [] };
+    return { add: [], drop: rows.filter((r) => ['yes', 'from root'].includes(r.status) && !r.held) };
+}
+
+// n rows (2-16) as ceil(n / 4) questions, the first n % q of them one row longer: 5 -> [3, 2], 13 -> [4, 3, 3, 3].
+function spread(n)
+{
+    const q = Math.ceil(n / 4);
+    const base = Math.floor(n / q);
+    return Array.from({ length: q }, (_, i) => base + (i < n % q ? 1 : 0));
+}
+
+// The step-1 option that already covers a one-row side - walk.md's own labels.
+const ONE_ROW_LABEL = { fresh: { add: 'Add every ...', drop: 'Only the locked rows' }, delta: { add: 'Add all 1 uninstalled', drop: 'Drop all droppable' } };
+
+function dealPick(sides, mode)
+{
+    const labels = ONE_ROW_LABEL[mode === 'fresh' ? 'fresh' : 'delta'];
+    const plan = (mode === 'fresh' ? ['add', 'drop'] : [mode]).map((side) =>
+    {
+        const rows = sides[side] || [];
+        return { side, rows, questions: rows.length > 16 ? 4 : rows.length >= 2 ? spread(rows.length).length : 0 };
+    });
+    if (mode === 'fresh' && plan.every((p) => p.questions === 0)) return ['deal: nothing to pick - re-ask step 1'];
+    const out = [];
+    let call = 1;
+    let used = 0;
+    for (const { side, rows, questions } of plan)
+    {
+        if (rows.length < 2)
+        {
+            out.push(rows.length ? `${side}: none - 1 row; step 1's '${labels[side]}' covers it` : `${side}: none - 0 rows`);
+            continue;
+        }
+        if (used + questions > 4) { call += 1; used = 0; }
+        if (rows.length > 16) { out.push(`call ${call} ${side}: groups - ${rows.length} rows`); used += 4; continue; }
+        let at = 0;
+        for (const size of spread(rows.length))
+        {
+            used += 1;
+            out.push(`call ${call} question ${used} (${side}): ${rows.slice(at, at + size).map((r) => `#${r.n} ${r.name}`).join(', ')}`);
+            at += size;
+        }
+    }
+    return out;
+}
+
+// Presentation-ready layer table for the guided walks - emitted by the tool so
+// alignment never depends on a streaming markdown renderer (long tables re-measure
+// per flush segment and shear). The commands paste this verbatim inside a code
+// fence. Numbering is the sorted catalog, so it is stable across rounds.
+function emitTable(graph, layer, opts)
+{
+    opts = opts || {};
+    const list = tableRows(graph, layer, opts);
+    if (!list) return null;
+    const singular = { rules: 'rule', agents: 'agent', skills: 'skill', hooks: 'hook', mcps: 'mcp', plugins: 'plugin' }[layer];
+    const installed = Boolean(opts.installed);
+    const rows = list.map((r) => [String(r.n), r.name, r.status, r.why.replace(/^required by /, '')]);
     const header = ['#', singular, installed ? 'installed' : 'selected', 'required by'];
     const width = c => Math.max(header[c].length, ...rows.map(r => r[c].length));
     const w = [width(0), width(1), width(2), width(3)];
@@ -408,7 +494,7 @@ function emitTable(graph, layer, opts)
     // rows than it names (or missing it) is self-evidently truncated - the user's check,
     // not a prose guard on the model.
     const footer = `total: ${rows.length} ${layer} - if fewer rows are visible above, the render was truncated: re-paste it verbatim`;
-    return [line(header), rule, ...rows.map(line), rule, footer].join('\n') + '\n';
+    return [line(header), rule, ...rows.map(line), rule, countsLine(list, installed), footer].join('\n') + '\n';
 }
 
 // The judgment catalog's installed-set half (meta/judgment.json):
@@ -578,6 +664,14 @@ function normalizeInventory(inv)
     return out;
 }
 
+// The snapshot's own always-on lists (meta/recommendations.json beside this script), whatever --recs names: the lock is
+// the installer's, which reads the same file. Unreadable reads as none.
+function snapshotAlways()
+{
+    try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'recommendations.json'), 'utf8')).always || {}; }
+    catch { return {}; }
+}
+
 function main(argv)
 {
     const arg = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
@@ -710,10 +804,13 @@ function main(argv)
     // a {name,scope} plugin read as `[object Object]` and was dropped from the emit (measured
     // 2026-09-15), and a `.claude/hooks/*.js` filename misclassified every hook as unknown.
     raw = normalizeInventory(raw);
-    const unknownOut = argv.includes('--table') ? console.error : console.log;   // keep the table paste-clean
+    const unknownOut = argv.includes('--table') || argv.includes('--deal') ? console.error : console.log;   // keep the table paste-clean
     const unknown = findUnknownNames(graph, raw);
     for (const u of unknown) unknownOut(`unknown: ${u.category} '${u.name}' - not in this release (your own item, retired upstream, renamed, or a typo); excluded from the selection`);
-    const closure = computeClosure(graph, unknown.length ? dropUnknownNames(raw, unknown) : raw);
+    const picks = unknown.length ? dropUnknownNames(raw, unknown) : raw;
+    // The emit, the prerequisite check and the `required:` lines close over the always-on baseline too (withAlways).
+    const always = snapshotAlways();
+    const closure = computeClosure(graph, withAlways(picks, always));
 
     const emit = arg('--emit');
     if (emit) fs.writeFileSync(emit, emitSelectionFile(closure, { hooksAnswered: argv.includes('--hooks-answered') }));
@@ -721,7 +818,8 @@ function main(argv)
     // --table is a pure presentation mode: stdout carries ONLY the table, so the
     // guided walks can paste it verbatim; the required:/orphan: diagnostics are
     // already baked into its columns.
-    const tableMode = !!arg('--table');
+    const dealMode = arg('--deal');   // fresh|add|drop, then the layer - the Pick call's deal, the --table call's flags
+    const tableMode = !!arg('--table') || !!dealMode;
     if (!tableMode) for (const [name, why] of Object.entries(closure.reasons)) console.log(`required: ${categoryOf(closure, name)} ${name} - ${why}`);
 
     const droppedFile = arg('--dropped');
@@ -731,21 +829,34 @@ function main(argv)
         if (dropped && !tableMode) for (const o of findOrphans(graph, raw, dropped)) console.log(`orphan: ${o.category} ${o.name} - ${o.why} (dropped); nothing kept still needs it`);
     }
 
-    const tableLayer = arg('--table');   // rules|agents|skills|hooks|mcps|plugins - print the layer's presentation table
-    if (tableLayer)
+    const tableOpts = () =>
     {
-        const rawRecs = readJson('--recs', arg('--recs'));
+        const recs = readJson('--recs', arg('--recs'));
         const installed = readJson('--installed', arg('--installed'));
         const droppedForTable = readJsonSoft('--dropped', arg('--dropped'));
         const orphans = droppedForTable ? findOrphans(graph, raw, droppedForTable) : [];
-        const stacks = parseStacks(rawRecs);
-        const recs = rawRecs;
+        const stacks = parseStacks(recs);
         const foundFile = readJsonSoft('--found', arg('--found'));
         const evidence = foundFile ? (foundFile.found || foundFile) : null;
         const inherited = normalizeInventory(readJson('--inherited', arg('--inherited')));
-        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence, inherited });
+        return { raw, recs, stacks, installed, orphans, evidence, inherited, always };
+    };
+
+    const tableLayer = arg('--table');   // rules|agents|skills|hooks|mcps|plugins - print the layer's presentation table
+    if (tableLayer)
+    {
+        const table = emitTable(graph, tableLayer, tableOpts());
         if (table === null) { console.error(`stack-select: unknown table layer '${tableLayer}'`); process.exit(2); }
         process.stdout.write(table);
+    }
+
+    if (dealMode)
+    {
+        const dealLayer = argv[argv.indexOf('--deal') + 2];
+        if (!['fresh', 'add', 'drop'].includes(dealMode)) { console.error(`stack-select: --deal wants fresh|add|drop, got '${dealMode}'`); process.exit(2); }
+        const rows = tableRows(graph, dealLayer, tableOpts());
+        if (rows === null) { console.error(`stack-select: unknown deal layer '${dealLayer}'`); process.exit(2); }
+        for (const line of dealPick(dealSides(rows, dealMode), dealMode)) console.log(line);
     }
 
     const dependentsOf = arg('--dependents');   // '<category>:<name>', singular category, e.g. skill:csharp
@@ -755,7 +866,13 @@ function main(argv)
         const cat = { skill: 'skills', agent: 'agents', mcp: 'mcps', plugin: 'plugins' }[dependentsOf.slice(0, i)];
         const name = dependentsOf.slice(i + 1);
         if (!cat || !name) { console.error(`stack-select: --dependents wants <skill|agent|mcp|plugin>:<name>, got '${dependentsOf}'`); process.exit(2); }
-        for (const d of findDependents(graph, raw, cat, name)) console.log(`dependent: ${d.category} ${d.name} - requires ${dependentsOf.slice(0, i)} ${name}`);
+        // An item the baseline itself requires is held by a rule or skill no drop can take, so a consent-drop of it fails.
+        const reaches = (sel) => (computeClosure(graph, sel)[cat] || []).includes(name);
+        const holders = [...(always.rules || []).filter((r) => reaches({ rules: [r] })).map((r) => `rule ${r}`),
+            ...(always.skills || []).filter((s) => s !== name && reaches({ skills: [s] })).map((s) => `skill ${s}`)];
+        if (cat === 'skills' && (always.skills || []).includes(name)) console.log(`locked: ${dependentsOf} - every install carries it; it cannot be dropped`);
+        else if (holders.length) console.log(`locked: ${dependentsOf} - required by the always-on ${holders.join(', ')}, which every install carries; it cannot be dropped`);
+        else for (const d of findDependents(graph, raw, cat, name)) console.log(`dependent: ${d.category} ${d.name} - requires ${dependentsOf.slice(0, i)} ${name}`);
     }
 
     if (has('--check'))
@@ -776,7 +893,7 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, withAlways, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, emitSelectionFile, emitTable, tableRows, dealSides, spread, dealPick, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module)
 {

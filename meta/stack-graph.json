@@ -33,15 +33,7 @@
       "mcps": [],
       "plugins": []
     },
-    "capture-architecture-quality": {
-      "mcps": [],
-      "plugins": []
-    },
     "capture-awareness": {
-      "mcps": [],
-      "plugins": []
-    },
-    "capture-code-quality": {
       "mcps": [],
       "plugins": []
     },
@@ -53,7 +45,7 @@
       "mcps": [],
       "plugins": []
     },
-    "capture-test-coverage": {
+    "capture-quality": {
       "mcps": [],
       "plugins": []
     },
@@ -285,7 +277,7 @@
       "mcps": [],
       "plugins": []
     },
-    "loop-test-coverage": {
+    "loop-test-coverage-quality": {
       "mcps": [],
       "plugins": []
     },

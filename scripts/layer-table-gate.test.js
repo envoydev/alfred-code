@@ -11,7 +11,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 
 const HOOK = path.join(__dirname, '..', 'setup-plugin', 'hooks', 'guard-layer-table.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'layer-table-'));
@@ -23,17 +23,157 @@ const result = (id, content, is_error = false) => ({ type: 'user', message: { ro
 const table = (layer) => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ${layer} --recs r.json` });
 const ask = { questions: [{ question: 'Keep as shown?', header: 'Agents', multiSelect: false, options: [{ label: 'Recommended', description: 'x' }, { label: 'All', description: 'y' }] }] };
 
-function run(rows, input = ask) {
+function run(rows, input = ask, env = {}) {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: input, transcript_path: p }), encoding: 'utf8', ...inProject() });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: input, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
   return { status: r.status, stderr: r.stderr };
 }
 
-test('denies the layer ask when the table ran but was never pasted', () => {
-  const r = run([typed('/alfred-code:init'), say('[step 5/12 - agents] adjust the agent roster · next: skills'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')]);
-  assert.strictEqual(r.status, 2);
-  assert.match(r.stderr, /agents table ran/);
+// F4 (the 2026-10-28 workspace run): the ask's own message reaches the transcript only after the PreToolUse hooks finish
+// (docs/workspace-layering-evidence.md, 'Fix run'), so the paste and banner checks run at PostToolUse, where it is on
+// disk, and a failed check replaces the answers through `updatedToolOutput`: the stored result carries the marker every
+// reader below already counts. runPost writes the ask's own call row, as Claude Code has by then.
+const ANS = { questions: ask.questions, answers: { 'Keep as shown?': 'Recommended' }, annotations: {} };
+function runPost(rows, toolResponse = ANS, env = {}, input = ask) {
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  fs.writeFileSync(p, [...rows, call('a9', 'AskUserQuestion', input)].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_input: input,
+    tool_use_id: 'a9', tool_response: toolResponse, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
+}
+const voided = (r) => r.status === 0 && !!r.out && r.out.decision === 'block';
+const UNPASTED = () => [typed('/alfred-code:init'), say('[step 5/12 - agents] adjust the agent roster · next: skills'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')];
+
+test('PostToolUse voids an unpasted ask', () => {
+  const r = runPost(UNPASTED());
+  assert.strictEqual(r.status, 0);
+  assert.strictEqual(r.out.decision, 'block');
+  assert.match(r.out.reason, /agents table ran but its output is not in your message/);
+  assert.strictEqual(r.out.hookSpecificOutput.hookEventName, 'PostToolUse');
+  const out = r.out.hookSpecificOutput.updatedToolOutput;
+  assert.ok(out.answers['Keep as shown?'].startsWith('alfred-code layer-table gate: '), out.answers['Keep as shown?']);
+  assert.deepStrictEqual(out.annotations, {});
+  assert.deepStrictEqual(out.questions, ask.questions);
+  // An ask a hook answered carries no annotations key, and the replacement adds none.
+  const bare = runPost(UNPASTED(), { questions: ask.questions, answers: { 'Keep as shown?': 'Recommended' } });
+  assert.ok(!('annotations' in bare.out.hookSpecificOutput.updatedToolOutput));
+});
+
+// F27 (the 2026-10-28 fix run, live): Sonnet answered six voids with thinking and the ask, no text block - the table
+// written in thinking, which is never on screen - whatever the void line said. So the gate prints the table itself: in
+// the block reason, which the user sees in full, and the replaced answer says so. The re-ask then passes unpasted.
+const printedOf = (reason) => reason.split('\n').slice(1, -1).join('\n');
+const thought = () => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'thinking', thinking: '```\n 1  x\ntotal: 43 agents - if fewer\n```', signature: 's' }] } });
+test('a table written only in thinking is void, the reason prints the table and says the message held no text', () => {
+  const r = runPost([...UNPASTED(), thought()]);
+  assert.ok(voided(r));
+  assert.match(r.out.reason, /agents table ran but its output is not in your message - your message held no text at all, only thinking/);
+  assert.match(r.out.reason, /the gate printed the table for the user; send this same ask again, unchanged/);
+  assert.strictEqual(printedOf(r.out.reason), ' 1  x\ntotal: 43 agents - if fewer', r.out.reason);
+  const answer = r.out.hookSpecificOutput.updatedToolOutput.answers['Keep as shown?'];
+  assert.match(answer, /the gate printed the table for the user/);
+  assert.ok(!answer.includes('total: 43 agents'), 'the answer carries no second copy');
+});
+
+test('prose with no table gets the general void line, and the table printed', () => {
+  const r = runPost([...UNPASTED(), say('The agents table is pasted below.')]);
+  assert.ok(voided(r));
+  assert.doesNotMatch(r.out.reason, /held no text at all/);
+  assert.match(r.out.reason, /the user answered without it on screen - this answer is void; the gate printed the table for the user/);
+  assert.strictEqual(printedOf(r.out.reason), ' 1  x\ntotal: 43 agents - if fewer', r.out.reason);
+});
+
+test('a re-ask after a void that printed the table passes unpasted', () => {
+  const first = runPost([...UNPASTED(), thought()]);
+  const line = first.out.hookSpecificOutput.updatedToolOutput.answers['Keep as shown?'];
+  assert.strictEqual(runPost([...UNPASTED(), thought(), call('a1', 'AskUserQuestion', ask), result('a1', line, true), thought()]).stdout, '');
+});
+
+test('a table run with no output read back keeps the paste instruction and prints nothing', () => {
+  const r = runPost([typed('/alfred-code:init'), table('agents'), result('t1', ''), thought()]);
+  if (!r.out) return;   // nothing to prove against is no void either
+  assert.doesNotMatch(r.out.reason, /the gate printed the table/);
+});
+
+test('PostToolUse passes a pasted ask', () => {
+  assert.strictEqual(runPost([...UNPASTED(), say('```\n 1  x\ntotal: 43 agents - if fewer\n```')]).stdout, '');
+});
+
+test('a voided ask leaves the next --emit denied', () => {
+  const voidText = 'User has answered your questions: "Agents: keep?"="alfred-code layer-table gate: the agents table ran but its output is not in your message - this answer is void"';
+  const rows = [typed('/alfred-code:init'), ...walked('rules'), tbl('agents'), result('t-agents', 'total: 43 agents'),
+    call('a1', 'AskUserQuestion', layerAsk('Agents: keep the marked rows?')), result('a1', voidText)];
+  const r = runBash(rows, EMIT);
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /agents ask never happened/);
+});
+
+test('the valve passes the fourth void of one kind, and a banner gap still voids', () => {
+  const rows = [typed('/alfred-code:configure'), b(1), b(2), table('agents'), result('t1', 'total: 43 agents'), ...denied(1, 'agents'), ...denied(2, 'agents'), ...denied(3, 'agents')];
+  assert.strictEqual(runPost(rows).stdout, '');
+  const gap = runPost([...rows, b(4)]);
+  assert.ok(voided(gap), gap.stdout);
+  assert.match(gap.out.reason, /step banner missing - step 3 of 13 printed none/);
+});
+
+test('PreToolUse never waits, and judges no paste', () => {
+  const t0 = Date.now();
+  const r = run(UNPASTED());
+  assert.strictEqual(r.status, 0);
+  assert.ok(Date.now() - t0 < 1000, `took ${Date.now() - t0}ms`);
+  assert.ok(!fs.readFileSync(HOOK, 'utf8').includes('LAYER_GATE_WAIT_MS'));
+});
+
+test('no answers object, or an empty one, passes (Review Focus 1)', () => {
+  assert.strictEqual(runPost(UNPASTED(), { questions: ask.questions }).stdout, '');
+  assert.strictEqual(runPost(UNPASTED(), { questions: ask.questions, answers: {} }).stdout, '');
+  assert.strictEqual(runPost(UNPASTED(), { questions: ask.questions, answers: ['A'] }).stdout, '');
+});
+
+// A void Claude Code did not apply (an output it judged off-schema) still leaves its `hook_blocking_error` row carrying
+// the marker: the readers take that row as the void, and the next gate run writes one `void-not-applied` probe row.
+const blocking = (id, top = false) => (top
+  ? { type: 'attachment', toolUseID: id, attachment: { type: 'hook_blocking_error', blockingError: 'alfred-code layer-table gate: the agents table ran but its output is not in your message - void' } }
+  : { type: 'attachment', attachment: { type: 'hook_blocking_error', toolUseID: id, blockingError: 'alfred-code layer-table gate: the agents table ran but its output is not in your message - void' } });
+const rawAnswer = (id) => [call(id, 'AskUserQuestion', layerAsk('Agents: keep the marked rows?')), result(id, 'User has answered your questions: "Keep as shown?"="Recommended"')];
+
+test('an unapplied void still holds the walk, and writes one probe row', () => {
+  for (const top of [false, true]) {
+    const proj = fs.mkdtempSync(path.join(TMP, 'probe-'));
+    fs.mkdirSync(path.join(proj, '.claude'));
+    fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'version: 3.2.1\n');
+    const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+    fs.writeFileSync(p, [typed('/alfred-code:init'), ...walked('rules'), tbl('agents'), result('t-agents', 'total: 43 agents'), ...rawAnswer('a1'), blocking('a1', top)]
+      .map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const go = () => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: 'pv', tool_name: 'Bash', tool_input: { command: EMIT }, transcript_path: p, tool_use_id: 'own' }),
+      encoding: 'utf8', cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj } });
+    const r = go();
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /agents ask never happened/);
+    go();
+    const rows = fs.readFileSync(path.join(proj, '.alfred', 'statistics', 'hook-blocks', 'pv.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const probes = rows.filter((x) => x.mode === 'probe' && x.kind === 'void-not-applied');
+    assert.deepStrictEqual(probes.map((x) => x.detail.id), ['a1'], `top-level toolUseID ${top}: one probe row, a second run writes none`);
+  }
+});
+
+test('four unapplied voids of one kind - the fourth passes', () => {
+  const rows = [...UNPASTED(), ...rawAnswer('v1'), blocking('v1'), ...rawAnswer('v2'), blocking('v2'), ...rawAnswer('v3'), blocking('v3')];
+  assert.strictEqual(runPost(rows).stdout, '');
+  assert.ok(voided(runPost([...UNPASTED(), ...rawAnswer('v1'), blocking('v1'), ...rawAnswer('v2'), blocking('v2')])), 'the third still voids');
+});
+
+test('the void part switch', () => {
+  const off = { ALFRED_CODE_HOOKS_OFF: 'guard-layer-table:void' };
+  assert.strictEqual(runPost(UNPASTED(), ANS, off).stdout, '');
+  const r = run([typed('/alfred-code:configure'), recompute, result('r1', '')], layerAsk('Agents: install the marked rows?'), off);
+  assert.strictEqual(r.status, 2, 'the never-ran check is no part of the void');
+});
+
+test('a table before a compaction summary is not judged (Review Focus 2)', () => {
+  const summary = { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'summary' } };
+  assert.strictEqual(runPost([table('agents'), result('t1', 'total: 43 agents'), summary]).stdout, '');
 });
 
 // 2.8.0: the block row goes to the data root's statistics/ (stack/hooks/layout.js's home, read here by its pinned
@@ -45,64 +185,63 @@ test('2.8.0: the block row lands in <data root>/statistics/hook-blocks/', () => 
     fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'version: 2.8.0\n');
     const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
     fs.writeFileSync(p, [typed('/alfred-code:init'), say('[step 5/12 - agents]'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')].map((r) => JSON.stringify(r)).join('\n') + '\n');
-    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: 'lt', tool_name: 'AskUserQuestion', tool_input: ask, transcript_path: p }),
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: 'lt', hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_input: ask, tool_use_id: 'a9', tool_response: ANS, transcript_path: p }),
       encoding: 'utf8', cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj, ...env } });
-    assert.strictEqual(r.status, 2, r.stderr);
+    assert.strictEqual(JSON.parse(r.stdout).decision, 'block', r.stderr);
     const rows = fs.readFileSync(path.join(proj, data, 'statistics', 'hook-blocks', 'lt.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-    assert.deepStrictEqual(rows.map((x) => x.hook), ['guard-layer-table.js'], `${data}: one row`);
+    assert.deepStrictEqual(rows.map((x) => [x.hook, x.event]), [['guard-layer-table.js', 'PostToolUse']], `${data}: one row`);
     assert.ok(!fs.existsSync(path.join(proj, '.alfred', 'docs', 'hook-blocks')), `${data}: none under the docs root`);
   }
 });
 
 test('allows the ask once the footer line is in the assistant text', () => {
-  const r = run([typed('/alfred-code:init'), table('agents'), result('t1', 'total: 43 agents'), say('```\n 1  x\ntotal: 43 agents - if fewer rows are visible above\n```')]);
-  assert.strictEqual(r.status, 0);
+  const r = runPost([typed('/alfred-code:init'), table('agents'), result('t1', 'total: 43 agents'), say('```\n 1  x\ntotal: 43 agents - if fewer rows are visible above\n```')]);
+  assert.strictEqual(r.stdout, '');
 });
 
 test('a footer for a DIFFERENT layer does not satisfy the gate', () => {
-  const r = run([say('```\ntotal: 18 rules\n```'), table('agents'), result('t1', 'total: 43 agents')]);
-  assert.strictEqual(r.status, 2);
+  assert.ok(voided(runPost([say('```\ntotal: 18 rules\n```'), table('agents'), result('t1', 'total: 43 agents')])));
 });
 
 const denied = (n, layer = 'skills') => [call(`a${n}`, 'AskUserQuestion', ask), result(`a${n}`, `alfred-code layer-table gate: the ${layer} table ran but its output is not in your message`, true)];
 
 test('keeps denying a retry that only CLAIMS the paste - the measured skills turn did it three times', () => {
-  const r = run([table('skills'), result('t1', 'total: 78 skills'), ...denied(1), say('[step 6/12 - skills] full 78-row catalog, pasted below'), ...denied(2)]);
-  assert.strictEqual(r.status, 2);
+  assert.ok(voided(runPost([table('skills'), result('t1', 'total: 78 skills'), ...denied(1), say('[step 6/12 - skills] full 78-row catalog, pasted below'), ...denied(2)])));
 });
 
 test('the table only in the ask preview panel does not count', () => {
   const withPreview = { questions: [{ ...ask.questions[0], options: [{ label: 'Recommended', description: 'x', preview: 'total: 78 skills' }, { label: 'All', description: 'y' }] }] };
-  assert.strictEqual(run([table('skills'), result('t1', 'total: 78 skills')], withPreview).status, 2);
+  assert.ok(voided(runPost([table('skills'), result('t1', 'total: 78 skills')], ANS, {}, withPreview)));
 });
 
 test('lets the ask through after three denials for the same table call - never loops the walk', () => {
-  const r = run([table('skills'), result('t1', 'total: 78 skills'), ...denied(1), ...denied(2), ...denied(3)]);
-  assert.strictEqual(r.status, 0);
+  assert.strictEqual(runPost([table('skills'), result('t1', 'total: 78 skills'), ...denied(1), ...denied(2), ...denied(3)]).stdout, '');
 });
 
 test('a new table call resets the denial count', () => {
-  const r = run([table('agents'), ...denied(1, 'agents'), ...denied(2, 'agents'), ...denied(3, 'agents'), say('```\ntotal: 43 agents\n```'), table('skills'), result('t1', 'total: 78 skills')]);
-  assert.strictEqual(r.status, 2);
+  assert.ok(voided(runPost([table('agents'), ...denied(1, 'agents'), ...denied(2, 'agents'), ...denied(3, 'agents'), say('```\ntotal: 43 agents\n```'), table('skills'), result('t1', 'total: 78 skills')])));
 });
 
 const settings = (extra = '') => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/plugin-settings.js" --catalog c.json --config-dir ~/.claude --installed claude-hud${extra}` });
 const report = 'claude-hud  display.showTools  missing\nclaude-hud  missing: 2 · differs: 0 · match: 5';
 
 test('the plugin-settings report counts as a decision table - its closing line must be pasted', () => {
-  assert.strictEqual(run([settings(), result('t1', report)]).status, 2);
-  assert.strictEqual(run([settings(), result('t1', report), say('```\n' + report + '\n```')]).status, 0);
+  assert.ok(voided(runPost([settings(), result('t1', report)])));
+  assert.strictEqual(runPost([settings(), result('t1', report), say('```\n' + report + '\n```')]).stdout, '');
 });
 
 test('the plugin-settings --apply run is not a decision table', () => {
-  assert.strictEqual(run([settings(' --apply'), result('t1', 'applied: 2')]).status, 0);
+  assert.strictEqual(runPost([settings(' --apply'), result('t1', 'applied: 2')]).stdout, '');
 });
 
 // Measured 2026-09-15: setup skips the report silently on `nothing to offer`, and every later ask
 // (CLAUDE.md, gitignore, blockers) was denied three times over a table that never existed.
 test('a plugin-settings run with nothing to offer is no table - later asks pass', () => {
   const none = 'plugin-settings: nothing to offer (no catalog row for the installed plugins)';
-  assert.strictEqual(run([settings(), result('t1', none), say('Next: the CLAUDE.md step.')]).status, 0);
+  assert.strictEqual(runPost([settings(), result('t1', none), say('Next: the CLAUDE.md step.')]).stdout, '');
+  // F16: every row already matching is nothing to offer too.
+  const matched = '# claude-hud\n  settings.json\n    match    statusLine.refreshInterval -> 5\n\nplugin-settings: nothing to offer - 1 already match';
+  assert.strictEqual(runPost([settings(), result('t1', matched), say('Next: the CLAUDE.md step.')]).stdout, '');
 });
 
 // validate's post-check pastes the install audit before its one ask on a high row.
@@ -110,24 +249,24 @@ const installAudit = (extra = '') => call('t1', 'Bash', { command: `node "$TMP/r
 const auditTable = '| Severity | Where | Finding | Fix |\n|---|---|---|---|\n| high | .mcp.json | mcp server a launches an unpinned package | pin it to a version, or re-run the stack update |';
 
 test('the install audit counts as a decision table - its last row must be pasted', () => {
-  assert.strictEqual(run([installAudit(), result('t1', auditTable)]).status, 2);
-  assert.strictEqual(run([installAudit(), result('t1', auditTable), say('```\n' + auditTable + '\n```')]).status, 0);
+  assert.ok(voided(runPost([installAudit(), result('t1', auditTable)])));
+  assert.strictEqual(runPost([installAudit(), result('t1', auditTable), say('```\n' + auditTable + '\n```')]).stdout, '');
 });
 
 test('an install audit with nothing to report, or its --json form, is no table', () => {
-  assert.strictEqual(run([installAudit(), result('t1', 'install audit: nothing to report'), say('Clean.')]).status, 0);
-  assert.strictEqual(run([installAudit(' --json'), result('t1', '[]')]).status, 0);
+  assert.strictEqual(runPost([installAudit(), result('t1', 'install audit: nothing to report'), say('Clean.')]).stdout, '');
+  assert.strictEqual(runPost([installAudit(' --json'), result('t1', '[]')]).stdout, '');
 });
 
 // A command continued over lines with a trailing backslash is the same table call.
 test('a multi-line stack-select --table command is still a table call', () => {
   const multi = call('t1', 'Bash', { command: 'node "$TMP/repo/scripts/stack-select.js" \\\n  --selection "$TMP/raw.json" \\\n  --table skills --recs r.json' });
-  assert.strictEqual(run([multi, result('t1', ' 1  x\ntotal: 78 skills')]).status, 2);
-  assert.strictEqual(run([multi, result('t1', 'total: 78 skills'), say('```\ntotal: 78 skills\n```')]).status, 0);
+  assert.ok(voided(runPost([multi, result('t1', ' 1  x\ntotal: 78 skills')])));
+  assert.strictEqual(runPost([multi, result('t1', 'total: 78 skills'), say('```\ntotal: 78 skills\n```')]).stdout, '');
 });
 
 test('a result given as content blocks is read the same way', () => {
-  assert.strictEqual(run([settings(), result('t1', [{ type: 'text', text: report }])]).status, 2);
+  assert.ok(voided(runPost([settings(), result('t1', [{ type: 'text', text: report }])])));
 });
 
 // validate's own audit battery (--redundant/--missing/--evidence-gaps/--judgment) redirects to a
@@ -137,24 +276,23 @@ const audit = (flag) => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/s
 
 test('validate audit flags gate their own ask too - denied with no state word pasted', () => {
   for (const flag of ['redundant', 'missing', 'evidence-gaps', 'judgment']) {
-    const r = run([audit(flag), result('t1', '')]);
-    assert.strictEqual(r.status, 2, `--${flag} should deny`);
-    assert.match(r.stderr, /audit ran/);
+    const r = runPost([audit(flag), result('t1', '')]);
+    assert.ok(voided(r), `--${flag} should void`);
+    assert.match(r.out.reason, /audit ran/);
   }
 });
 
 test('validate audit flags pass once the layer table state word is pasted', () => {
-  const r = run([audit('redundant'), result('t1', ''), say('```\n 1 | x | REDUNDANT | owned by wpf, not detected\n```')]);
-  assert.strictEqual(r.status, 0);
+  assert.strictEqual(runPost([audit('redundant'), result('t1', ''), say('```\n 1 | x | REDUNDANT | owned by wpf, not detected\n```')]).stdout, '');
 });
 
 test('the judgment audit passes on its own JUDGMENT-DROP/ADD words, not REDUNDANT/MISSING', () => {
-  const r = run([audit('judgment'), result('t1', ''), say('```\n 1 | skill x | JUDGMENT-DROP | reason\n```')]);
-  assert.strictEqual(r.status, 0);
+  assert.strictEqual(runPost([audit('judgment'), result('t1', ''), say('```\n 1 | skill x | JUDGMENT-DROP | reason\n```')]).stdout, '');
 });
 
 test('an ask with no table call in the transcript is untouched', () => {
   assert.strictEqual(run([typed('which branch?'), say('Looking.')]).status, 0);
+  assert.strictEqual(runPost([typed('which branch?'), say('Looking.')]).stdout, '');
 });
 
 test('fail-open on a missing transcript or garbage payload', () => {
@@ -162,93 +300,45 @@ test('fail-open on a missing transcript or garbage payload', () => {
   assert.strictEqual(r.status, 0);
   const r2 = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', transcript_path: path.join(TMP, 'nope.jsonl') }), encoding: 'utf8', ...inProject() });
   assert.strictEqual(r2.status, 0);
+  const r3 = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_response: ANS, transcript_path: path.join(TMP, 'nope.jsonl') }), encoding: 'utf8', ...inProject() });
+  assert.deepStrictEqual([r3.status, r3.stdout], [0, '']);
 });
 
-// The ask's own message (text rows + the AskUserQuestion tool_use, one message.id) is written to the
-// transcript asynchronously, so at PreToolUse time it may not be on disk yet. The hook waits for the
-// row carrying the payload's tool_use_id, and fails open when it never lands.
-const OWN = 'own1';
-const own = (text) => [
-  { type: 'assistant', message: { id: 'm9', role: 'assistant', content: [{ type: 'text', text }] } },
-  { type: 'assistant', message: { id: 'm9', role: 'assistant', content: [{ type: 'tool_use', id: OWN, name: 'AskUserQuestion', input: ask }] } },
-];
+// The ask's own message (its text rows and the AskUserQuestion tool_use, one message.id) is on disk by PostToolUse, so a
+// paste in it counts there.
 const footer = '```\n 1  x\ntotal: 20 rules\n```';
 const base = () => [typed('/alfred-code:init'), table('rules'), result('t1', ' 1  x\ntotal: 20 rules')];
-const write = (rows) => {
-  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
-  fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  return p;
-};
-const payloadFor = (p) => JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: ask, transcript_path: p, tool_use_id: OWN });
-const runWith = (rows, env = {}) => {
-  const t0 = Date.now();
-  const r = spawnSync(process.execPath, [HOOK], { input: payloadFor(write(rows)), encoding: 'utf8', ...inProject(env) });
-  return { status: r.status, stderr: r.stderr, ms: Date.now() - t0 };
-};
+const own = (text) => [{ type: 'assistant', message: { id: 'm9', role: 'assistant', content: [{ type: 'text', text }] } }];
 
-test('a paste in the ask own message that lands after the hook starts passes', async () => {
-  const p = write(base());
-  const child = spawn(process.execPath, [HOOK], inProject({ ALFRED_CODE_LAYER_GATE_WAIT_MS: '3000' }));
-  child.stdin.end(payloadFor(p));
-  setTimeout(() => fs.appendFileSync(p, own(footer).map((r) => JSON.stringify(r)).join('\n') + '\n'), 300);
-  const status = await new Promise((res) => child.on('close', res));
-  assert.strictEqual(status, 0);
+test('own message on disk and no paste anywhere voids', () => {
+  assert.ok(voided(runPost([...base(), ...own('Here is the roster.')])));
 });
 
-test('the ask own row never landing within the wait fails open', () => {
-  const r = runWith(base(), { ALFRED_CODE_LAYER_GATE_WAIT_MS: '150' });
-  assert.strictEqual(r.status, 0);
-  assert.ok(r.ms < 1500, `took ${r.ms}ms`);
-});
-
-// M15: the wait buys a view of the ask's own message, which matters only when a table call could need
-// proving. An ask with no table call since the typed prompt returns at once - otherwise a CLI that wrote
-// its row late would cost every ask in every session the whole budget.
-test('M15 an ask with no table call in the tail never waits for its own row', () => {
-  const r = runWith([typed('which branch?'), say('Looking.'), call('b1', 'Bash', { command: 'git branch' }), result('b1', 'main')], { ALFRED_CODE_LAYER_GATE_WAIT_MS: '3000' });
-  assert.strictEqual(r.status, 0);
-  assert.ok(r.ms < 1500, `took ${r.ms}ms - it waited for a row it had nothing to judge against`);
-  // A table call answered by an earlier ask before the typed prompt is no table for this one either.
-  const old = runWith([...base(), typed('next question'), say('Sure.')], { ALFRED_CODE_LAYER_GATE_WAIT_MS: '3000' });
-  assert.strictEqual(old.status, 0);
-  assert.ok(old.ms < 1500, `took ${old.ms}ms`);
-  // Positive control: with a table call in the tail it still waits the budget for its own row.
-  const waited = runWith(base(), { ALFRED_CODE_LAYER_GATE_WAIT_MS: '1600' });
-  assert.strictEqual(waited.status, 0);
-  assert.ok(waited.ms >= 1500, `took ${waited.ms}ms - the table case must still wait`);
-});
-
-test('own row on disk and no paste anywhere still denies, without waiting', () => {
-  const r = runWith([...base(), ...own('Here is the roster.')], { ALFRED_CODE_LAYER_GATE_WAIT_MS: '5000' });
-  assert.strictEqual(r.status, 2);
-  assert.ok(r.ms < 2500, `took ${r.ms}ms`);
-});
-
-test('a paste split into a text row and a tool_use row sharing one message.id passes', () => {
-  assert.strictEqual(runWith([...base(), ...own(footer)]).status, 0);
+test('a paste in the ask own message passes', () => {
+  assert.strictEqual(runPost([...base(), ...own(footer)]).stdout, '');
 });
 
 test('a CRLF paste passes (Windows)', () => {
   const crlf = footer.replace(/\n/g, '\r\n');
   const rows = [typed('/alfred-code:init'), table('rules'), result('t1', ' 1  x\r\ntotal: 20 rules\r\n'), ...own(crlf)];
-  assert.strictEqual(runWith(rows).status, 0);
+  assert.strictEqual(runPost(rows).stdout, '');
 });
 
 test('a table re-run does not reset the valve', () => {
   const rows = [typed('/alfred-code:init'), table('rules'), ...denied(1, 'rules'), table('rules'), ...denied(2, 'rules'), table('rules'), ...denied(3, 'rules'), table('rules'), result('t1', 'total: 20 rules')];
-  assert.strictEqual(run(rows).status, 0);
+  assert.strictEqual(runPost(rows).stdout, '');
 });
 
 test('an answered ask starts a new count', () => {
   const answered = [call('ok1', 'AskUserQuestion', ask), result('ok1', 'User has answered: Recommended')];
   const rows = [table('rules'), ...denied(1, 'rules'), ...denied(2, 'rules'), ...denied(3, 'rules'), ...answered, table('rules'), result('t1', 'total: 20 rules')];
-  assert.strictEqual(run(rows).status, 2);
+  assert.ok(voided(runPost(rows)));
 });
 
 test('the denial tells the model not to re-run the table', () => {
-  const r = run([table('rules'), result('t1', 'total: 20 rules')]);
-  assert.strictEqual(r.status, 2);
-  assert.match(r.stderr, /do not re-run/i);
+  const r = runPost([table('rules'), result('t1', 'total: 20 rules')]);
+  assert.ok(voided(r));
+  assert.match(r.out.reason, /do not re-run/i);
 });
 
 // 2026-10-06: 'No tables with hooks, skills, agents, rules are shown' - a walk that never RAN a layer's table
@@ -300,10 +390,11 @@ test('configure step 1: the closing ask is denied until the inventory ran, then 
   assert.strictEqual(never.status, 2);
   assert.match(never.stderr, /install inventory never ran/);
   assert.match(never.stderr, /update-preflight\.js" --inventory "\$TMP\/installed\.json"/);
-  const ran = run([...start, inventory, result('i1', invOut)], step1Ask);
-  assert.strictEqual(ran.status, 2);
-  assert.match(ran.stderr, /install inventory ran but its output is not in your message/);
-  assert.strictEqual(run([...start, inventory, result('i1', invOut), say('```\n' + invOut + '\n```\n2.3.0 -> 2.4.0')], step1Ask).status, 0);
+  assert.strictEqual(run([...start, inventory, result('i1', invOut)], step1Ask).status, 0, 'PreToolUse judges no paste');
+  const ran = runPost([...start, inventory, result('i1', invOut)], ANS, {}, step1Ask);
+  assert.ok(voided(ran), ran.stdout);
+  assert.match(ran.out.reason, /install inventory ran but its output is not in your message/);
+  assert.strictEqual(runPost([...start, inventory, result('i1', invOut), say('```\n' + invOut + '\n```\n2.3.0 -> 2.4.0')], ANS, {}, step1Ask).stdout, '');
 });
 
 test('configure step 1: the never-ran denial has its own valve of three, and another ask is not step 1', () => {
@@ -320,32 +411,32 @@ const b = (n, of = 13, name = 'x') => say(`[step ${n}/${of} - ${name}] something
 const areas = layerAsk('Which areas to adjust?');
 
 test('banners: a gap in a guided run is denied, naming the missing steps', () => {
-  const r = run([typed('/alfred-code:configure'), b(1), b(2), b(5), b(9)], areas);
-  assert.strictEqual(r.status, 2);
-  assert.match(r.stderr, /step banner missing - step 3, 4, 6, 7, 8 of 13 printed none/);
-  assert.match(r.stderr, /\[step 7\/12 - plugins\] skipped - area not selected/);
-  assert.strictEqual(run([typed('/alfred-code:validate'), b(1, 12), b(2, 12), say('[step 3/12 - rules] nothing to reconcile'), b(4, 12)], areas).status, 0);
+  const r = runPost([typed('/alfred-code:configure'), b(1), b(2), b(5), b(9)], ANS, {}, areas);
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /step banner missing - step 3, 4, 6, 7, 8 of 13 printed none/);
+  assert.match(r.out.reason, /\[step 7\/12 - plugins\] skipped - area not selected/);
+  assert.strictEqual(runPost([typed('/alfred-code:validate'), b(1, 12), b(2, 12), say('[step 3/12 - rules] nothing to reconcile'), b(4, 12)], ANS, {}, areas).stdout, '');
 });
 
 test('banners: no banner yet, another command, or a typed prompt mid-walk is not judged', () => {
-  assert.strictEqual(run([typed('/alfred-code:configure'), readBack, result('p1', '')], areas).status, 0, 'no banner printed: nothing to judge');
-  assert.strictEqual(run([typed('/alfred-code:update'), b(1), b(4)], areas).status, 0, 'update has no banner skeleton');
-  assert.strictEqual(run([typed('/alfred-code:configure'), b(1), b(2), typed('wait, keep the hooks'), b(7), b(8)], areas).status, 0, 'the span since the typed prompt starts at its first banner');
+  assert.strictEqual(runPost([typed('/alfred-code:configure'), readBack, result('p1', '')], ANS, {}, areas).stdout, '', 'no banner printed: nothing to judge');
+  assert.strictEqual(runPost([typed('/alfred-code:update'), b(1), b(4)], ANS, {}, areas).stdout, '', 'update has no banner skeleton');
+  assert.strictEqual(runPost([typed('/alfred-code:configure'), b(1), b(2), typed('wait, keep the hooks'), b(7), b(8)], ANS, {}, areas).stdout, '', 'the span since the typed prompt starts at its first banner');
 });
 
 test('banners: the gap denial has its own valve of three', () => {
   const gd = (n) => [call(`g${n}`, 'AskUserQuestion', areas), result(`g${n}`, 'alfred-code layer-table gate: step banner missing - step 3 of 13 printed none', true)];
   const rows = [typed('/alfred-code:configure'), b(1), b(2), b(4), ...gd(1), ...gd(2)];
-  assert.strictEqual(run(rows, areas).status, 2);
-  assert.strictEqual(run([...rows, ...gd(3)], areas).status, 0);
+  assert.ok(voided(runPost(rows, ANS, {}, areas)));
+  assert.strictEqual(runPost([...rows, ...gd(3)], ANS, {}, areas).stdout, '');
 });
 
-test('banners: the ask\'s own message is waited for, so a gap it opens is seen and a banner it adds counts', () => {
+test('banners: the ask\'s own message is on disk, so a gap it opens is seen and a banner it adds counts', () => {
   const rows = [typed('/alfred-code:configure'), b(1), b(2)];
-  assert.strictEqual(runWith([...rows, ...own('[step 3/13 - rules] adjust the installed rules · next: agents')]).status, 0);
-  const gap = runWith([...rows, ...own('[step 6/13 - hooks] adjust the installed hooks · next: plugins')]);
-  assert.strictEqual(gap.status, 2);
-  assert.match(gap.stderr, /step 3, 4, 5 of 13 printed none/);
+  assert.strictEqual(runPost([...rows, ...own('[step 3/13 - rules] adjust the installed rules · next: agents')]).stdout, '');
+  const gap = runPost([...rows, ...own('[step 6/13 - hooks] adjust the installed hooks · next: plugins')]);
+  assert.ok(voided(gap), gap.stdout);
+  assert.match(gap.out.reason, /step 3, 4, 5 of 13 printed none/);
 });
 
 // ------------------------------------------------------------------ 2026-10-21: a skipped layer question
@@ -568,4 +659,58 @@ test('H2: an errored ask result is no answer', () => {
   const nr = (n) => [call(`n${n + 1}`, 'AskUserQuestion', layerAsk('Agents: install?')), result(`n${n + 1}`, 'alfred-code layer-table gate: the agents table never ran - x', true)];
   // the never-ran valve is not reset by an errored ask between its denials
   assert.strictEqual(run([typed('/alfred-code:configure'), recompute, result('r1', ''), ...nr(1), ...deniedLayerAsk, ...nr(2), ...nr(3)], layerAsk('Agents: install?')).status, 0);
+});
+
+// F24 (the 2026-10-28 workspace run): the workspace plan prints its project table with a `total: <n> projects` line, and
+// update's ask after it needs that line in the message, like any decision table.
+const wsPlan = () => call('w1', 'Bash', { command: 'node "$TMP/repo/scripts/workspace.js" plan --root . > "$TMP/plan.txt"; grep -qE \'^workspace-plan: ([2-9]|[0-9]{2,}) \' "$TMP/plan.txt" && cat "$TMP/plan.txt"' });
+const planOut = 'workspace-plan: 3 projects\nproject | scope\n. | project\napi | local\nweb | local\ntotal: 3 projects';
+
+test('F24: the workspace plan table needs its total line pasted before update asks', () => {
+  const start = [typed('/alfred-code:update'), say('Reading the workspace.')];
+  assert.strictEqual(runPost([...start, wsPlan(), result('w1', 'workspace-plan: 1 projects\nproject: .')]).stdout, '', 'no table printed: nothing to prove');
+  const r = runPost([...start, wsPlan(), result('w1', planOut)]);
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /workspace plan table ran/);
+  assert.strictEqual(runPost([...start, wsPlan(), result('w1', planOut), say('```\n' + planOut + '\n```')]).stdout, '');
+});
+
+// The user's note (2026-10-28): Claude Code shows the reason under 'hook returned blocking error', which reads as a
+// break, so a printed void opens with a plain line for the user, then the table, and the line for the model comes last.
+test('F27: a printed void opens with a plain line for the user, then the table, then the line for the model', () => {
+  const r = runPost([...UNPASTED(), thought()]);
+  const lines = r.out.reason.split('\n');
+  assert.strictEqual(lines[0], "Alfred: the model's message left out the agents table, so it is printed below - your answer was not used, and the same question comes back next.");
+  assert.strictEqual(printedOf(r.out.reason), ' 1  x\ntotal: 43 agents - if fewer');
+  assert.match(lines[lines.length - 1], /^alfred-code layer-table gate: the agents table ran but its output is not in your message/);
+});
+
+// F27 live (the root update): update's plan call cats update-workspace.md after the plan, and the void printed all
+// 8,132 chars of it. A void prints the table alone - from its header through its total line.
+test('F27: a void prints the plan table alone, never the preflight lines or the reference doc after it', () => {
+  const out = `version: 3.2.1 -> 3.2.1\nrelease notes: none owed\n${planOut}\n# /alfred-code:update - the workspace: the children's asks\n\nRead by step 2's call.`;
+  const r = runPost([typed('/alfred-code:update'), wsPlan(), result('w1', out)]);
+  assert.ok(voided(r), r.stdout);
+  assert.strictEqual(printedOf(r.out.reason), 'project | scope\n. | project\napi | local\nweb | local\ntotal: 3 projects');
+});
+
+// Review (2026-10-28, Important): a table call the next-step gate denied printed no table, yet the walk back took it as
+// the latest table, voided the pasted agents ask and printed the denial as 'the table'.
+test('a denied or errored table call is no table: the pasted ask before it passes', () => {
+  const denied = call('t2', 'Bash', { command: 'node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table skills --recs r.json' });
+  const rows = [typed('/alfred-code:init'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer'), denied,
+    result('t2', 'alfred-code layer-table gate: the agents ask never happened - the agents table ran, but its ask never came', true),
+    say('```\n 1  x\ntotal: 43 agents - if fewer\n```')];
+  assert.strictEqual(runPost(rows).stdout, '', 'the agents table is pasted; the denied skills call is not the latest table');
+  const errored = [typed('/alfred-code:init'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer'), denied, result('t2', 'node: crashed', true), thought()];
+  const r = runPost(errored);
+  assert.ok(voided(r), 'the agents table is still unpasted');
+  assert.match(r.out.reason, /the agents table ran/);
+  assert.strictEqual(printedOf(r.out.reason), ' 1  x\ntotal: 43 agents - if fewer', r.out.reason);
+});
+
+test('F27: a layer table void prints through its total line, and a table with no header rule keeps its first line', () => {
+  const r = runPost([typed('/alfred-code:init'), say('[step 5/12 - agents] adjust'), table('agents'), result('t1', '[step 5/12 - agents] adjust\n # | agent\n 1 | x\ntotal: 43 agents - if fewer\nunknown: agent foo'), thought()]);
+  assert.ok(voided(r), r.stdout);
+  assert.strictEqual(printedOf(r.out.reason), '[step 5/12 - agents] adjust\n # | agent\n 1 | x\ntotal: 43 agents - if fewer', r.out.reason);
 });

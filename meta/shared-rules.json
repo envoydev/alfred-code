@@ -1193,19 +1193,19 @@
       ]
     },
     "testing-coverage-bar": {
-      "_note": "The user-owned coverage % bar - each testing hub disclaims the number and points at the capture-test-coverage capture; verbatim in all three hubs because any may install alone.",
+      "_note": "The user-owned coverage % bar - each testing hub disclaims the number and points at capture-quality's coverage part; verbatim in all three hubs because any may install alone.",
       "owner": {
         "file": "stack/skills/dotnet-testing/SKILL.md",
-        "marker": "The % bar is the USER's, owned and recorded by the `capture-test-coverage` capture"
+        "marker": "The % bar is the USER's, owned and recorded by `capture-quality`'s coverage part"
       },
       "sites": [
         {
           "file": "stack/skills/angular-testing/SKILL.md",
-          "marker": "The % bar is the USER's, owned and recorded by the `capture-test-coverage` capture"
+          "marker": "The % bar is the USER's, owned and recorded by `capture-quality`'s coverage part"
         },
         {
           "file": "stack/skills/ts-js-testing/SKILL.md",
-          "marker": "The % bar is the USER's, owned and recorded by the `capture-test-coverage` capture"
+          "marker": "The % bar is the USER's, owned and recorded by `capture-quality`'s coverage part"
         }
       ]
     },
@@ -1272,7 +1272,7 @@
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/capture-test-coverage/references/doc-shape.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md",
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         },
         {
@@ -1660,7 +1660,7 @@
           "marker": "The main session is the only orchestrator for the whole vertical"
         },
         {
-          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage-quality/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
         },
         {
@@ -1697,7 +1697,7 @@
           "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), queueing the rest as seats return"
         },
         {
-          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage-quality/references/domain-trio-protocol.md",
           "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), queueing the rest as seats return"
         },
         {
@@ -1713,7 +1713,7 @@
           "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), each on its frontmatter model"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), routes a red build/test"
         },
         {
@@ -1725,7 +1725,7 @@
           "marker": "dispatch up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` seats in one message (default 5), the next as each hands back"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "in a single message where the modules are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
         },
         {
@@ -1733,11 +1733,11 @@
           "marker": "batched into a single message where the areas are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "in a single message where the areas are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
         },
         {
-          "file": "stack/skills/capture-test-coverage/SKILL.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "Fan out test-coverage-analyzer per surface, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
         },
         {
@@ -1778,7 +1778,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "fresh-session resume point"
         },
         {
@@ -1833,7 +1833,7 @@
           "marker": "ask ONE question before ANALYZE"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "ask ONE question before ANALYZE"
         },
         {
@@ -1865,7 +1865,7 @@
           "marker": "ask ONE question before a first capture's fan-out"
         },
         {
-          "file": "stack/skills/capture-test-coverage/SKILL.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "ask ONE question before the fan-out"
         },
         {
@@ -1877,7 +1877,7 @@
           "marker": "ask ONE question before the evidence pass"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "ask ONE question before GATHER"
         },
         {
@@ -1932,7 +1932,7 @@
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
@@ -2003,44 +2003,44 @@
       "_note": "The implementers' loop findings-plan carve-out (any loop brief without a contract_version) (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+        "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage-quality`"
         }
       ]
     },
@@ -2139,24 +2139,24 @@
       ]
     },
     "assessment-coverage-carve-out": {
-      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-test-coverage's COVERAGE.md, never ARCHITECTURE-ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-quality's coverage part and its COVERAGE-QUALITY.md, never ARCHITECTURE-ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved out of capture-architecture when the findings judgment split out of the map capture; capture-quality's architecture-quality part since 2026-10-29.",
       "owner": {
-        "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
+        "file": "stack/skills/capture-quality/references/architecture-quality-doc-shape.md",
         "marker": "Test-suite weaknesses are OUT OF SCOPE"
       },
       "sites": [
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "Coverage never enters the weakness list"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "the assessment keeps only structural testability blockers, never coverage gaps"
         }
       ]
     },
     "capabilities-refresh-user-run": {
-      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-awareness' usage policy.",
+      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-awareness' usage policy.",
       "owner": {
         "file": "setup-plugin/references/update-close.md",
         "marker": "Never invoke it from this run - the skill is manual-only"
@@ -2229,7 +2229,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "the commit decision is the ask below, never a prose 'your call' bullet"
         },
         {
@@ -2263,7 +2263,7 @@
           "marker": "is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
         }
       ]
@@ -2276,7 +2276,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "next: fresh-session | continue"
         },
         {
@@ -2293,7 +2293,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-test-coverage/references/doc-shape.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md",
           "marker": "never a per-claim edit stream"
         }
       ]
@@ -2323,7 +2323,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "APPROVED small-tier"
         },
         {
@@ -2417,7 +2417,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-test-coverage/SKILL.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "a `Leftovers:` line - what the instrumented runs started"
         },
         {
@@ -2425,7 +2425,7 @@
           "marker": "Leftovers - what the pipeline's gate and audit runs started"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "tear-down-vs-keep through the same AskUserQuestion call"
         },
         {
@@ -2748,7 +2748,7 @@
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         },
         {
-          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage-quality/references/domain-trio-protocol.md",
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         },
         {
@@ -3031,7 +3031,7 @@
           "marker": "notes purged: <names|none>"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "notes purged: <names|none>"
         },
         {
@@ -3056,7 +3056,7 @@
           "marker": "The purge is counted, not claimed"
         },
         {
-          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage-quality/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
         },
         {
@@ -3085,7 +3085,7 @@
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage-quality/references/domain-trio-protocol.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
@@ -3165,44 +3165,44 @@
       ]
     },
     "assessment-strength-check": {
-      "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shape.md; restated at the capture's JUDGE step. Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shape.md; restated at the capture's JUDGE step. Moved out of capture-architecture when the findings judgment split out of the map capture; capture-quality's architecture-quality part since 2026-10-29.",
       "owner": {
-        "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
+        "file": "stack/skills/capture-quality/references/architecture-quality-doc-shape.md",
         "marker": "erode a listed strength"
       },
       "sites": [
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "erode a listed strength"
         }
       ]
     },
     "finding-count-is-output": {
-      "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shape.md's count rule; restated in the capture's REPORT step (Don't game it). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shape.md's count rule; restated in the capture's REPORT step (Don't game it). Moved out of capture-architecture when the findings judgment split out of the map capture; capture-quality's architecture-quality part since 2026-10-29.",
       "owner": {
-        "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
+        "file": "stack/skills/capture-quality/references/architecture-quality-doc-shape.md",
         "marker": "an output, never a target"
       },
       "sites": [
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "an output, never a target"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "an output, never a target"
         }
       ]
     },
     "findings-gate-four-questions": {
-      "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the pros/cons capture's doc-shape.md; the coverage capture carries an adapted binding for weak-point candidates. Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the pros/cons capture's doc-shape.md; the coverage capture carries an adapted binding for weak-point candidates. Moved out of capture-architecture when the findings judgment split out of the map capture; capture-quality's architecture-quality part since 2026-10-29.",
       "owner": {
-        "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
+        "file": "stack/skills/capture-quality/references/architecture-quality-doc-shape.md",
         "marker": "pass all four questions or it is not a finding"
       },
       "sites": [
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "all four questions answered explicitly"
         },
         {
@@ -3210,11 +3210,11 @@
           "marker": "all four are answered explicitly"
         },
         {
-          "file": "stack/skills/capture-test-coverage/references/weak-points.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality-weak-points.md",
           "marker": "all four questions answered explicitly"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "all four questions answered explicitly"
         }
       ]
@@ -3638,7 +3638,7 @@
           "marker": "match it from YOUR skill list by what each skill says it covers"
         },
         {
-          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage-quality/references/domain-trio-protocol.md",
           "marker": "match it from YOUR skill list by what each skill says it covers"
         },
         {
@@ -5374,11 +5374,11 @@
           "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "a skill-level pin lasts only for the turn it activates in"
         }
       ]
@@ -5399,7 +5399,7 @@
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
@@ -5677,7 +5677,7 @@
       ]
     },
     "resume-recovery-figures": {
-      "_note": "What a fresh-session offer quotes: the two numbers the stop-contract hook injects at each stop (this session's carry per message, a fresh one's cold floor), or 'unmeasured' - never a static range. The 21.5-59.4% recovery range both flows once quoted called two ratios absolute numbers and competed with the hook's own figures (stack audit 2026-10-20 SKF2-09); its history is in task-solve/references/evidence.md.",
+      "_note": "What a fresh-session offer quotes: the numbers the stop-contract hook injects at each stop (this session's carry per message, a fresh one's cold floor and, since the cache-aware verdict of 2026-10-28, the messages a fresh session pays back in), or 'unmeasured' - never a static range. The 21.5-59.4% recovery range both flows once quoted called two ratios absolute numbers and competed with the hook's own figures (stack audit 2026-10-20 SKF2-09); its history is in task-solve/references/evidence.md.",
       "owner": {
         "file": "stack/skills/task-solve-cross/SKILL.md",
         "marker": "(this session's carry per message, a fresh one's cold floor), or say they are unmeasured"
@@ -5709,7 +5709,7 @@
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -5717,7 +5717,7 @@
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -6577,11 +6577,11 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "You are the expensive seat: never read the codebase wholesale yourself"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "You are the expensive seat: never read the codebase wholesale yourself"
         }
       ]
@@ -6594,11 +6594,11 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "settle it with the cheapest deterministic probe in-session first"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "settle it with the cheapest deterministic probe in-session first"
         }
       ]
@@ -6606,12 +6606,12 @@
     "capture-model-report-line": {
       "_note": "The capture report states the model the judgment ran on, and a run the user raised for this capture ends in the /model command to drop back. Owned by the architecture-quality capture; restated in the code-quality capture and the architecture capture's report-fields reference.",
       "owner": {
-        "file": "stack/skills/capture-architecture-quality/SKILL.md",
+        "file": "stack/skills/capture-quality/references/architecture-quality.md",
         "marker": "the judgment above ran on it"
       },
       "sites": [
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "the judgment above ran on it"
         },
         {
@@ -6632,7 +6632,7 @@
           "marker": "an in-context list only, never written to a file"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "an in-context list only, never written to a file"
         }
       ]
@@ -6649,7 +6649,7 @@
           "marker": "green across the round"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "green across the round"
         }
       ]
@@ -6666,7 +6666,7 @@
           "marker": "equals the previous round's and none is now resolvable"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "equals the previous round's and none is now resolvable"
         }
       ]
@@ -6683,7 +6683,7 @@
           "marker": "is the routing authority"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "is the routing authority"
         }
       ]
@@ -6717,7 +6717,7 @@
           "marker": "so the fan-out stays flat"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "so the fan-out stays flat"
         }
       ]
@@ -6885,7 +6885,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6893,7 +6893,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6905,7 +6905,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/capture-test-coverage/SKILL.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6937,11 +6937,11 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage-quality/references/domain-trio-protocol.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -7079,7 +7079,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -7095,7 +7095,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -7107,7 +7107,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -7115,11 +7115,15 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/capture-test-coverage/SKILL.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
           "file": "stack/skills/capture-usage-report/SKILL.md",
+          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+        },
+        {
+          "file": "stack/skills/capture-quality/SKILL.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         }
       ]
@@ -7154,6 +7158,10 @@
         {
           "file": "stack/skills/task-solve-cross/references/full-spec.md",
           "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+        },
+        {
+          "file": "stack/skills/capture-quality/SKILL.md",
+          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
         }
       ]
     },
@@ -7165,7 +7173,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-test-coverage/references/anti-gaming-sweep.md",
+          "file": "stack/skills/loop-test-coverage-quality/references/anti-gaming-sweep.md",
           "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
         }
       ]
@@ -7294,12 +7302,12 @@
       "_note": "The typed no-stops waiver (a hand-written AUTO stamp) lives ONLY in the two solve flows, in the same words - the user's ruling of 2026-10-20 (stack audit S1): one request had four behaviours across the flows, and a hand-written AUTO makes every person-directed hook read the session as unattended for 8h. Every other flow answers the same words with `--mode-auto-run-on` (no-stops-points-to-auto-mode). task-solve-cross carries it in references/execution-modes.md, read before its first stop, because its SKILL.md sits at its 18,000-char cap.",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
-        "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
+        "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer."
       },
       "sites": [
         {
           "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
+          "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer."
         }
       ]
     },
@@ -7327,7 +7335,7 @@
           "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
@@ -7364,7 +7372,7 @@
           "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "(under auto-run the hook's `AUTO` stamp already stands - leave it)"
         },
         {
@@ -7409,7 +7417,7 @@
           "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
         },
         {
@@ -7446,7 +7454,7 @@
           "marker": "first line `APPROVED <plan id> - \"<the user's words, verbatim>\"`"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "first line `APPROVED <plan id> - \"<the user's words, verbatim>\"`"
         }
       ]
@@ -7483,7 +7491,7 @@
           "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
         }
       ]
@@ -7634,7 +7642,7 @@
           "marker": "**Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back."
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "**Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line."
         }
       ]
@@ -7677,7 +7685,7 @@
           "marker": "**Hard cap: 3 improve rounds"
         },
         {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
           "marker": "**Hard cap: 3 improve rounds"
         }
       ]
@@ -7702,61 +7710,61 @@
     "quality-capture-run-gate-and-receipt": {
       "_note": "The two quality captures' run-gate sentence and the receipt rows they share verbatim (stack audit 2026-10-20 SKC2-06); each keeps its own Findings gate wording and extra rows.",
       "owner": {
-        "file": "stack/skills/capture-architecture-quality/SKILL.md",
-        "marker": "So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run."
+        "file": "stack/skills/capture-quality/references/architecture-quality.md",
+        "marker": "So unless a mode word follows the topic (a calling flow started this run) or capture-quality's chain ask already answered it, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run."
       },
       "sites": [
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
-          "marker": "So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run."
+          "file": "stack/skills/capture-quality/references/code-quality.md",
+          "marker": "So unless a mode word follows the topic (a calling flow started this run) or capture-quality's chain ask already answered it, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run."
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "Then the receipt lines - one per field, UNCONDITIONAL:"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "Then the receipt lines - one per field, UNCONDITIONAL:"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "| `References:` | which of this skill's `references/` files this run actually Read |"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "| `References:` | which of this skill's `references/` files this run actually Read |"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "| `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "| `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "| `Write:` | created / refreshed, and the post-write line count against the ~300 target |"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "| `Write:` | created / refreshed, and the post-write line count against the ~300 target |"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
           "marker": "| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-quality/references/code-quality.md",
           "marker": "| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |"
         },
         {
-          "file": "stack/skills/capture-architecture-quality/SKILL.md",
-          "marker": "reads `/clear, then <command>`, in the option label when it is an ask"
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
+          "marker": "is offered to run here first, and `Start it in a fresh session: /clear, then <command>` after it, in the option labels when it is an ask"
         },
         {
-          "file": "stack/skills/capture-code-quality/SKILL.md",
-          "marker": "reads `/clear, then <command>`, in the option label when it is an ask"
+          "file": "stack/skills/capture-quality/references/code-quality.md",
+          "marker": "is offered to run here first, and `Start it in a fresh session: /clear, then <command>` after it, in the option labels when it is an ask"
         }
       ]
     },
@@ -8530,6 +8538,47 @@
         {
           "file": "stack/skills/review-code/references/passes.md",
           "marker": "A same-file `seam` finding is MATERIAL"
+        }
+      ]
+    },
+    "fresh-option-mark": {
+      "_note": "When a fresh-session option takes the '(Recommended)' mark: only where a hook's fresh-session text says a fresh session pays back with the cache warm (the cache-aware verdict, spec 2026-10-28 section 5), the in-session option first otherwise - verbatim in every skill whose ask or close offers one, because any of them may be installed alone.",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/capture-quality/references/code-quality.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/capture-quality/references/architecture-quality.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/capture-architecture/references/report-fields.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
         }
       ]
     }

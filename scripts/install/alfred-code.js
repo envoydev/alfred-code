@@ -111,7 +111,7 @@ const NAV_CONTEXT = 'navigation-context.yml';
 // What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
 // shell-guards.js and file-guards.js are the dispatchers the copy route wires for the picked shell and file guards (no catalog row).
-const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'forge-lexicon.json', 'shell-guards.js', 'file-guards.js', 'agent-cap.js'];
+const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'forge-lexicon.json', 'shell-guards.js', 'file-guards.js', 'agent-cap.js', 'session-status.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
 const DOCS_ROOT_RULE = 'alfred-docs-root';
@@ -435,7 +435,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // The always-on rules and skills are locked: the read-back adopts them whatever the
             // disk says, so a drop of one would come straight back on the next update. (A skill's own
             // per-project lever is `skillOverrides`, which leaves the copy in place.)
-            const locked = new Set([...(always.rules || []).map((n) => `rule ${n}`), ...(always.skills || []).map((n) => `skill ${n}`)]);
+            const locked = selection.lockedLines(always);
             for (const l of args.drop.filter((d) => locked.has(d)))
                 log(`installed-only: --drop ${l} not applied - locked, every install carries it`);
             const drops = args.drop.filter((d) => !locked.has(d));
@@ -686,6 +686,9 @@ function runLayers(ctx)
         // .gitignore of the stack's is gone before history/ moves into the data root's state/.
         try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
+        // After migrateLayout, so the coverage doc already sits in quality/ when its watch learns it is not owned.
+        try { docs.ensureQualityNotOwned({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
+        catch (err) { ctx.note(`quality/watch.json under ${docsPath} could not be updated (${err.message}) - add COVERAGE-QUALITY.md to its notOwned list by hand`); }
     }
     // The language-server check writes into the data root, never the docs root, so a docs root still waiting on update's ask
     // skips nothing of it (final review M8): every run checks.
@@ -812,7 +815,7 @@ function ignoreStep(ctx, docsPath)
     const { projectRoot, log, note } = ctx;
     const root = ctx.dataInfo.root;
     let mode = null;
-    try { mode = copy.resolveDocsVersioning(projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot, docsPath }); }
+    try { mode = copy.resolveDocsVersioning(projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot, docsPath, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }); }
     catch (err) { note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`); }
     let data = null;
     try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, log }); }
@@ -1967,7 +1970,7 @@ function installHooksAndRules(ctx)
         docsVersioning: {
             value: ctx.args.docsVersioning || ctx.docsVersioningCarry || '',
             why: ctx.args.docsVersioning ? '--docs-versioning' : ctx.docsVersioningCarry ? 'the old root was kept out of git' : '',
-            seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot }),
+            seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }),
         },
         docsPath: ctx.docsPath,
         // The data root this run lays the data under: written when it differs from the file's value - a
@@ -2260,6 +2263,8 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     }
     // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
+    // F26: the docs root the generated rules name - read before removeManagedFiles takes the docs-root rule it reads.
+    const docsPath = copy.stampedDocsRoot(projectRoot) || `${keptRoot}/docs`;
     // An earlier release's D2 copies stay as the user's registrations (spec D8): only their record goes.
     const copied = Object.keys((ledger.workspaceMcp || {}).local || {}).sort();
     if (copied.length) log(`  ${workspace.keptCopiesLine(copied)}`);
@@ -2271,6 +2276,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note,
         variablesFile: variables.fileOf(projectRoot, { env: {}, dataRoot: keptRoot }) });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
+    uninstallLayer.removeGeneratedRules({ claudeDir, projectRoot, sourceDir: path.join(__dirname, '..', '..'), docsPath, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     // A child leaves its parent, and D5's account key goes with the last project on the account that records it. This
     // project's own file sits under the root the stamp records - the settings pass above already took

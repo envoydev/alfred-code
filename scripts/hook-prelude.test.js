@@ -535,21 +535,24 @@ test('the layer-table gate runs the prelude gates and leaves a block row where t
             row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tb', content: 'a | b\ntotal: 3 skills' }] } }),
             row({ type: 'assistant', message: { id: 'm2', role: 'assistant', content: [{ type: 'text', text: 'pasted below' }, { type: 'tool_use', id: 'ask', name: 'AskUserQuestion', input: {} }] } }),
         ].join('\n') + '\n');
-        const ask = { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'ask', session_id: 'lg', transcript_path: tp, cwd: root };
+        // F4 (2026-10-28): the paste check runs at PostToolUse and voids the answer (exit 0, a block decision on stdout).
+        const ask = { hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'ask', session_id: 'lg', transcript_path: tp, cwd: root,
+            tool_input: {}, tool_response: { questions: [], answers: { q: 'A' }, annotations: {} } };
         // Launched as the plugin launches it: CLAUDE_PLUGIN_ROOT set, which is what GATE 4's neverSetUp reads.
-        const env = { PATH: process.env.PATH, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'cfg'), CLAUDE_PROJECT_DIR: root, CLAUDE_PLUGIN_ROOT: path.join(__dirname, '..'), ALFRED_CODE_LAYER_GATE_WAIT_MS: '0' };
+        const env = { PATH: process.env.PATH, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'cfg'), CLAUDE_PROJECT_DIR: root, CLAUDE_PLUGIN_ROOT: path.join(__dirname, '..') };
         const run = (extra = {}, input = ask) => spawnSync(process.execPath, [hook], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, ...extra } });
+        const voids = (r) => r.status === 0 && /"decision":"block"/.test(r.stdout);
         const ledger = path.join(root, '.alfred', 'statistics', 'hook-blocks', 'lg.jsonl');
-        assert.strictEqual(run().status, 2, 'a never-set-up repo keeps the gate - it serves setup');
+        assert.ok(voids(run()), 'a never-set-up repo keeps the gate - it serves setup');
         assert.ok(!fs.existsSync(path.join(root, '.alfred')), 'and is written nothing (R54)');
         fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.1.5\n');
-        assert.strictEqual(run().status, 2);
+        assert.ok(voids(run()));
         const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
         assert.deepStrictEqual([rows.length, rows[0].hook, rows[0].mode], [1, 'guard-layer-table.js', undefined], 'one block row, counted as a block');
-        assert.strictEqual(run({ ALFRED_CODE_HOOKS_OFF: 'guard-layer-table' }).status, 0, 'the csv names it');
-        assert.strictEqual(run({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }).status, 0, 'minimal keeps only the protective guards');
-        assert.strictEqual(run({}, { ...ask, cursor_version: '2.1.0', hook_event_name: 'preToolUse' }).status, 0, 'a Cursor payload stands it down');
+        assert.deepStrictEqual([run({ ALFRED_CODE_HOOKS_OFF: 'guard-layer-table' }).stdout], [''], 'the csv names it');
+        assert.deepStrictEqual([run({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }).stdout], [''], 'minimal keeps only the protective guards');
+        assert.deepStrictEqual([run({}, { ...ask, cursor_version: '2.1.0', hook_event_name: 'postToolUse' }).stdout], [''], 'a Cursor payload stands it down');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -987,7 +990,7 @@ test('REVIEW_PROOF / reviewProof: the result line a review opens, by kind', () =
     }
     for (const text of ['**Outcome**: SATISFIED on round 2', 'Outcome: PLATEAU', '**Outcome** - CAPPED on round 4']) assert.deepStrictEqual(kinds(text), ['outcome'], text);
     for (const text of ['No findings so far', 'findings: none', 'the Findings: field', 'Outcomes: x', '']) assert.deepStrictEqual(kinds(text), [], `no result line: ${text}`);
-    assert.strictEqual(reviewProof('alfred-code:loop-test-coverage'), 'outcome');
+    assert.strictEqual(reviewProof('alfred-code:loop-test-coverage-quality'), 'outcome');
     assert.strictEqual(reviewProof('loop-architecture-quality'), 'outcome');
     for (const name of ['review-code', 'review-security', 'task-verify-code', 'task-verify-plan']) assert.strictEqual(reviewProof(name), 'findings', name);
 });
@@ -1135,4 +1138,72 @@ test('sweepScorerFolders: an 8-day-old session folder goes, a fresh one stays, o
     const later = path.join(dir, 'old2', 'x', 'ef56ab12.draft.md'); scorerWrite(later, 'd'); age(later);
     assert.strictEqual(sweepScorerFolders(dir, { now: Date.now() }), 0, "the day's stamp holds a second call");
     assert.ok(fs.existsSync(later));
+});
+
+// capture-quality holds three captures (2026-10-29): the topic word after its name picks the part a hook reads, and an
+// older copy's name keeps its part for the update's skew window.
+test('qualityPart reads the topic word', () => {
+    const { QUALITY_TOPICS, qualityPart } = require(PRELUDE);
+    for (const [part, words] of Object.entries(QUALITY_TOPICS))
+        for (const word of words)
+        {
+            assert.strictEqual(qualityPart('capture-quality', word), part, word);
+            assert.strictEqual(qualityPart('capture-quality', word.toUpperCase()), part, `${word} case-folded`);
+        }
+    assert.strictEqual(qualityPart('capture-quality', 'coverage src/api'), 'test-coverage-quality');
+    assert.strictEqual(qualityPart('capture-quality', '--mode-auto-run-on code'), 'code-quality');
+    for (const args of ['', '--mode-auto-run-on', 'coverage/', 'coverages', 'src/api', undefined])
+        assert.strictEqual(qualityPart('capture-quality', args), 'chain', String(args));
+    assert.strictEqual(qualityPart('alfred-code:capture-quality', 'code'), 'code-quality');
+});
+
+test('qualityPart: whitespace around args', () => {
+    const { qualityPart } = require(PRELUDE);
+    assert.strictEqual(qualityPart('capture-quality', '  coverage'), 'test-coverage-quality');
+    assert.strictEqual(qualityPart('capture-quality', '\tcoverage\n'), 'test-coverage-quality');
+});
+
+// the old spelling's half lives in install-renames.test.js, the test home allowed to spell it
+test('the coverage loop is a review skill of its own kind', () => {
+    const { reviewKind, REVIEW_SKILL } = require(PRELUDE);
+    assert.strictEqual(reviewKind('loop-test-coverage-quality'), 'loop-test-coverage-quality');
+    assert.ok(REVIEW_SKILL.test('loop-test-coverage-quality'));
+    assert.ok(REVIEW_SKILL.test('alfred-code:loop-test-coverage-quality'));
+});
+
+// Session status file (2026-10-29, plan task 1): one auto-run decision for guard-answer's prompt and the status file.
+test('autoRunFor matches autoRunNow\'s cases (T10)', () =>
+{
+    const { autoRunFor, modeFlags } = require(PRELUDE);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'autorunfor-'));
+    try
+    {
+        const env = { CLAUDE_PROJECT_DIR: root };
+        const file = path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL');
+        const stamp = (text, ageMs = 0) =>
+        {
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, text);
+            const at = (Date.now() - ageMs) / 1000;
+            fs.utimesSync(file, at, at);
+        };
+        const s1 = { session_id: 's1' };
+        stamp('AUTO - "x"\nsession: s1\n');
+        assert.strictEqual(autoRunFor(s1, env, { autoRun: 'off' }), false, 'the run\'s -off wins over a live stamp');
+        fs.rmSync(file);
+        assert.strictEqual(autoRunFor(s1, env, modeFlags('/task-solve --mode-auto-run-on fix x')), true);
+        assert.strictEqual(autoRunFor(s1, env, modeFlags('/mode-auto-run --mode-auto-run-on')), true, 'a run flag is there, nothing refused');
+        assert.strictEqual(autoRunFor({ session_id: 's1', agent_id: 'a1' }, env, modeFlags('/task-solve --mode-auto-run-on x')), false, 'a seat never starts auto-run');
+        stamp('AUTO - "x"\nsession: s1\n');
+        assert.strictEqual(autoRunFor(s1, env, null), true);
+        assert.strictEqual(autoRunFor({ session_id: 's2' }, env, null), false);
+        stamp('AUTO - "x"\n');
+        assert.strictEqual(autoRunFor(s1, env, null), false, 'no session line - stricter than autoStampLive');
+        stamp('APPROVED - "x"\nsession: s1\n');
+        assert.strictEqual(autoRunFor(s1, env, null), false);
+        stamp('AUTO - "x"\nsession: s1\n', 8 * 24 * 60 * 60 * 1000);
+        assert.strictEqual(autoRunFor(s1, env, null), false, 'an 8-day-old stamp');
+        assert.strictEqual(autoRunFor(null, env, null), false, 'no payload, no throw');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

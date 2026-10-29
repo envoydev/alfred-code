@@ -572,10 +572,12 @@ test('the aligned lookups (run book, AGENTS.md check, both spec checks) read a c
         agentsMd: [bodySnippet('stack/skills/habits-adjust-agents-md/SKILL.md', /```bash\n(STACK=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$STACK"', ''],
         solve: ['SPEC=.claude/skills/task-solve/scripts/spec-check.js\n' + bodySnippet('stack/skills/task-solve/references/full-spec.md', /\n(\[ -f "\$SPEC" \] \|\| SPEC=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SPEC"', '/stack/skills/task-solve/scripts/spec-check.js'],
         cross: ['SPEC=.claude/skills/task-solve-cross/scripts/spec-check.js\n' + bodySnippet('stack/skills/task-solve-cross/references/full-spec.md', /\n(\[ -f "\$SPEC" \] \|\| SPEC=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SPEC"', '/stack/skills/task-solve-cross/scripts/spec-check.js'],
+        // capture-quality's chain resolves its state script the same way (2026-10-29)
+        quality: [bodySnippet('stack/skills/capture-quality/SKILL.md', /\n( *QS=\.claude\/skills\/capture-quality\/scripts\/quality-state\.js\n *\[ -f "\$QS" \] \|\| QS=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$QS"', '/stack/skills/capture-quality/scripts/quality-state.js'],
     };
     const plantAll = (cfg, marketplace, version, opts) => {
         const dir = plantBare(cfg, marketplace, 'alfred-code', version, opts);
-        for (const f of ['scripts/agents-md-check.js', 'stack/skills/task-solve/scripts/spec-check.js', 'stack/skills/task-solve-cross/scripts/spec-check.js'])
+        for (const f of ['scripts/agents-md-check.js', 'stack/skills/task-solve/scripts/spec-check.js', 'stack/skills/task-solve-cross/scripts/spec-check.js', 'stack/skills/capture-quality/scripts/quality-state.js'])
         {
             fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
             fs.writeFileSync(path.join(dir, f), '');
@@ -601,7 +603,7 @@ test('the aligned lookups (run book, AGENTS.md check, both spec checks) read a c
         finally { fs.rmSync(home, { recursive: true, force: true }); }
     }
     const entry = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'shared-rules.json'), 'utf8')).rules['plugin-cache-newest-entry'];
-    assert.strictEqual(entry.sites.length, 6, 'six skill sites beside the source protocol');
+    assert.strictEqual(entry.sites.length, 7, 'seven skill sites beside the source protocol (capture-quality\'s chain the seventh)');
 });
 
 test('the three body snippets read a core cached under any key, and never an orphaned one', () => {

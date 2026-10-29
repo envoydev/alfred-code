@@ -513,7 +513,7 @@ function versioningMismatch() {
   // The docs ROOT, since tracked() now answers for every domain under it rather than one folder.
   const where = docsRel();
   if (declared.mode === 'git' && !tracked()) {
-    return `Versioning mismatch: ${declared.key} declares 'git', but ${where} is not tracked by git - the setting wins, so doc sections are written in place and nothing versions them until the docs are committed.`;
+    return `Versioning mismatch: ${declared.key} declares 'git', but ${where} is not tracked by git - the setting wins, so doc sections are written in place and nothing versions them until the docs are committed. Switch it to local in /alfred-code:configure's Environment area when these docs are never meant to be committed.`;
   }
   if (declared.mode === 'local' && tracked()) {
     return `Versioning mismatch: ${declared.key} declares 'local', but ${where} is tracked by git - the setting wins, so this branch's sections stay in the overlay under ${shown(BRANCHES)}/ until a promote folds them into the committed text.`;

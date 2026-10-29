@@ -51,7 +51,7 @@ Which instruction file should the stack work with? Claude Code reads either; the
 ```ask
 This project's instruction file is <have>. Keep working with it, or rename it to <other>?
 - 'Keep <have> (Recommended)' - nothing is renamed; the stack works with <have>
-- 'Rename to <other>' - git mv at the root, in .claude/ and in each part (web/<have>), so history follows; a file already named <other> is never overwritten
+- 'Rename to <other>' - git mv at the root, in .claude/ and in each part that holds one, so history follows; a file already named <other> is never overwritten
 ```
 
 `files=both` - `<now>` is the line's first word as a file name, `<other>` the other one:

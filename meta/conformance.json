@@ -22,7 +22,7 @@
       { "tool": "Task", "field": "subagent_type", "text_match": "implementer$" }
     ] },
     "review_load": { "succeeded": true, "tool": "Skill", "field": "skill",
-      "text_match": "^(?:[^:]*:)?(?:review-code|review-security|code-review|security-review|capture-code-quality|capture-architecture-quality|loop-code-quality|loop-architecture-quality)$" },
+      "text_match": "^(?:[^:]*:)?(?:review-code|review-security|code-review|security-review|capture-quality|capture-code-quality|capture-architecture-quality|loop-code-quality|loop-architecture-quality)$" },
     "app_start": { "any": [
       { "tool": "Bash", "field": "command", "text_match": "\\b(?:dotnet (?:run|watch)|npm (?:run )?(?:start|dev|serve)|ng serve|ionic serve|docker(?:-compose| compose) up|npx (?:vite|next dev))\\b" },
       { "tool": "PowerShell", "field": "command", "text_match": "\\b(?:dotnet (?:run|watch)|npm (?:run )?(?:start|dev|serve)|ng serve|ionic serve|docker(?:-compose| compose) up|npx (?:vite|next dev))\\b" }
@@ -72,6 +72,7 @@
     {
       "id": "P2", "area": "preferences",
       "claim": "A review run is handed the code docs at its load: the hook's review refusal is on record before the review's first successful Skill call.",
+      "note": "review_load matches the skill field alone, so a capture-quality load whose only part is the coverage one counts as a review load - a known over-count; the old capture names stay in the matcher because the claim grades past transcripts.",
       "source": { "file": "scripts/preferences-session.test.js", "marker": "first review skill waits for the code docs, in parts" },
       "window": { "opens": "session" },
       "steps": [ { "id": "handed-at-load", "type": "x_state", "source": "ledger", "match": { "kind": "^review$" }, "before": { "ref": "review_load" } } ]

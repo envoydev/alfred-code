@@ -294,7 +294,7 @@ function workspaceDocsLines(input, root, docs) {
   try { dirs = layout.ancestorPrefsDirs(root); } catch { return []; }
   const reserved = docs.RESERVED_DOMAIN_NAMES || new Set();
   const out = [];
-  for (const { dir } of dirs) {
+  for (const { dir, role } of dirs) {
     const docsRoot = path.dirname(dir);
     let areas = [];
     try {
@@ -304,7 +304,7 @@ function workspaceDocsLines(input, root, docs) {
         .filter((n) => n === 'architecture' || fs.existsSync(path.join(docsRoot, n, 'watch.json')))
         .sort();
     } catch { /* no docs root there */ }
-    if (areas.length) out.push(`Workspace root docs (read-only): ${docsRoot} - ${areas.join(', ')}`);
+    if (areas.length) out.push(`Workspace ${role || 'root'} docs (read-only): ${docsRoot} - ${areas.join(', ')}`);
   }
   return out;
 }

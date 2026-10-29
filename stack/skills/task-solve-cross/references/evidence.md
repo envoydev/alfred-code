@@ -29,4 +29,4 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 
 ## Progress ledger
 
-- **on a large run, recommend resuming the next phase in a fresh session** - kept inline (the rule quotes the numbers to the user): measured, the orchestrator restarts at 21.5-59.4% of its carried context with nothing lost, never under 21%.
+- **offer resuming the next phase in a fresh session; the hook prices it with the cache warm** - kept inline (the rule quotes the numbers to the user): measured, the orchestrator restarts at 21.5-59.4% of its carried context with nothing lost, never under 21%.

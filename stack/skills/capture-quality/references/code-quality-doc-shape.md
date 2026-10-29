@@ -14,7 +14,7 @@
 ## Why the engine leaves this doc alone
 
 `<docs-path>/quality/` is a recomputed domain for the architecture assessment, and this doc is `notOwned` there:
-`capture-architecture-quality` writes the folder's watch file and lists `CODE-ASSESSMENT.md` in it, so
+the architecture-quality part writes the folder's watch file and lists `CODE-ASSESSMENT.md` in it, so
 `.claude/hooks/docs.js` never sections, watches, versions or writes this doc. Findings are a function of the rules
 plus the code, recomputable on demand for whatever branch you are on; versioning them would be storing a cache
 and calling it a record. No `<!-- id: -->` / `<!-- covers: -->` lines, no section stamp, no `docs.js set` or
@@ -139,7 +139,7 @@ This doc is read at intake by every quality-loop round, so its weight is paid ag
 
 ## Write mechanics
 
-**No diff check, no stamp-triggered skip - the run-start gate in SKILL.md is the only ask.** The doc is recomputed from the rules, the
+**No diff check, no stamp-triggered skip - the run-start gate in `code-quality.md` is the only ask.** The doc is recomputed from the rules, the
 code and the decision log every run, so an overwrite destroys nothing a re-run would not reproduce.
 REPLACE the file wholesale - READ it first if it exists, so the Write is legal (an `rm` first is denied
 by the auto-mode classifier).

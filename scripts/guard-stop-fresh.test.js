@@ -719,7 +719,9 @@ test('guard-stop-contract: a bug cycle\'s stop past design owes a Repro line - a
   assert.match(note('repro-grep', [marker, toolCall('g', 'Bash', { command: 'grep -n "^#" plan.md' }), grepped, toolCall('pr2', 'Read', { file_path: '/p/.alfred/docs/plans/a.md' }), assistantRow('a', fields)]), /`## Repro`/,
     'a heading listing of the plan counts too');
   const handOff = [{ question: 'Where?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~90k here, ~40k fresh' }, { label: 'Continue here', description: 'x' }] }];
-  assert.doesNotMatch(note('repro-handoff', [marker, ...specRun(6, 'standard', 'yes - x'), design, assistantRow('a', fields)], handOff), /Repro/, 'the opening hand-off is no stop');
+  // a 40k first message and a 90k carry, where a fresh session pays back (check 15 keeps the hand-off)
+  const floor = assistantRow('f0', 'first', { cache_creation_input_tokens: 40000 });
+  assert.doesNotMatch(note('repro-handoff', [marker, floor, ...specRun(6, 'standard', 'yes - x'), design, assistantRow('a', fields, { cache_read_input_tokens: 90000 })], handOff), /Repro/, 'the opening hand-off is no stop');
   assert.doesNotMatch(note('repro-cross', [typed('<command-name>/task-solve-cross</command-name>'), ...specRun(7, 'standard', 'yes - x'), design, assistantRow('a', fields)]), /Repro/,
     'the cross flow carries no Repro field');
   assert.doesNotMatch(note('repro-old', [marker, ...specRun(8, 'standard', 'yes - x'), marker, design, assistantRow('a', fields)]), /Repro/, 'a bug line from an earlier cycle');
@@ -743,7 +745,8 @@ test('guard-stop-contract: a solve-task stop that owes a receipt is told which o
   assert.equal(note('rc-first-ok', [marker, assistantRow('a', `Size: standard - two modules. ${fields}`)], goOn), '');
   assert.doesNotMatch(note('rc-later', [marker, ...answered('u1'), assistantRow('a', fields)], goOn), /Size/, 'a later stop owes no Size');
   const handOff = [{ question: 'A cycle already closed here. Where?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~90k here, ~40k fresh' }, { label: 'Continue here', description: 'x' }] }];
-  assert.doesNotMatch(note('rc-handoff', [marker, assistantRow('a', fields, { cache_read_input_tokens: 90000 })], handOff), /Size/, 'the opening hand-off is no stop');
+  // a 40k first message under the 90k carry, where a fresh session pays back (check 15 keeps the hand-off)
+  assert.doesNotMatch(note('rc-handoff', [marker, assistantRow('f0', 'first', { cache_creation_input_tokens: 40000 }), assistantRow('a', fields, { cache_read_input_tokens: 90000 })], handOff), /Size/, 'the opening hand-off is no stop');
   // e499fc94: the step-3 approval with no `mechanics: read`
   const approve = [{ question: 'The plan is gated. Build it in this session: one chat fits.', options: [
     { label: 'Approve - build in this session (Recommended)', description: 'x' }, { label: 'Approve - dispatch the agent seats', description: 'y' },
@@ -786,7 +789,7 @@ test('guard-stop-contract: a new cycle after a finished one is sent back once wi
   const env = logEnv();
   const r = askIn(transcript('nc-new', [...base, next, hot]), q, env);
   assert.equal(r.status, 2, 'the new cycle\'s first ask is sent back');
-  assert.match(r.stderr, /Resume in a fresh session \(Recommended\)' quoting ~362k per message here and ~40k for a fresh start/);
+  assert.match(r.stderr, /add a fresh-session option to this first ask of a new cycle - This session carries ~362k tokens per message/);
   assert.equal(askIn(transcript('nc-new', [...base, next, hot]), [{ ...q[0], question: `${q[0].question} Now?` }], env).status, 0, 'once per Completed stamp');
   assert.equal(askIn(transcript('nc-close', [...base, hot]), q, logEnv()).status, 0, 'the finished cycle\'s own close ask, before any new prompt, is left alone');
   const withFresh = [{ ...q[0], options: [{ label: 'Resume in a fresh session (Recommended)', description: '~362k here, ~40k fresh' }, { label: 'Build here', description: 'x' }] }];
@@ -828,6 +831,9 @@ test('guard-stop-contract: the fresh-session note carries the two absolute numbe
   assert.match(note, /90k/, "this session's own cold floor - the number a resume restarts at");
   assert.match(note, /400k/, 'and the trigger it crossed');
   assert.doesNotMatch(note, /80-105k/, 'the generic range is gone - the skill step needs THIS session\'s numbers');
+  assert.match(note, /This session carries ~500k tokens per message; with the cache warm \(5m TTL\) a turn re-reads it at 0\.1x the input price\. A fresh session restarts at ~90k, written new at 1\.25x, and pays back in about 3 messages\./,
+    'the paying text, priced with the cache warm');
+  assert.doesNotMatch(note, /re-sends all of it/, 'no re-send claim');
 });
 
 test('guard-stop-contract: a long or idle run offers the fresh session before the context trigger', () => {
@@ -852,6 +858,178 @@ test('guard-stop-contract: a long or idle run offers the fresh session before th
     { ...assistantRow('fb', 'ok', { cache_read_input_tokens: 120000 }), timestamp: ts(6) },
   ]);
   assert.equal(ctxOf(askIn(floorBound, oneQ)), '', 'six hours whose carry is 83% cold floor is not worth a resume');
+});
+
+// The cache-aware verdict (spec 2026-10-28, sections 1-3): claude-opus-5-5 reads at 0.05x, the 1h split writes at 2x and
+// the payback window is 30, so over a 79k floor a fresh session pays back past a 211,600 carry - and never at ctx 0.
+test('guard-stop-contract: the new-cycle deny, the post-answer note and the Stop offer go only where a fresh session pays back', () => {
+  const F = 79000;
+  const H1 = { cache_creation_input_tokens: F, cache_creation: { ephemeral_1h_input_tokens: F, ephemeral_5m_input_tokens: 0 } };
+  const row = (id, text, usage, timestamp) => ({ type: 'assistant', ...(timestamp ? { timestamp } : {}),
+    message: { id, model: 'claude-opus-5-5', content: [{ type: 'text', text }], ...(usage ? { usage } : {}) } });
+
+  // Check 10: a new cycle's first ask is sent back for a fresh option only where one pays.
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
+  const cycle = (name, ctx) => transcript(name, [{ type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
+    row('f', 'first', ctx ? H1 : null), completed, { type: 'user', message: { role: 'user', content: 'now the manager view' } },
+    row('h', 'Result: design done. Progress: 1 of 6 steps. Leftovers: none.', ctx ? { cache_read_input_tokens: ctx } : null)]);
+  const q = [{ question: 'Result: design done. Progress: 1 of 6 steps. Leftovers: none. Build it?', options: [{ label: 'Build (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  assert.equal(askIn(cycle('pay-nc-100', 100000), q).status, 0, 'check 10: 100k does not pay back - no deny');
+  assert.equal(askIn(cycle('pay-nc-0', 0), q).status, 0, 'check 10: no reading - no deny');
+  const denied = askIn(cycle('pay-nc-250', 250000), q);
+  assert.equal(denied.status, 2, 'check 10: 250k pays back - sent back');
+  assert.match(denied.stderr, /add a fresh-session option to this first ask of a new cycle - This session carries ~250k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x the input price\. A fresh session restarts at ~79k, written new at 2x, and pays back in about 23 messages\./);
+  assert.match(denied.stderr, /`Size:`/, 'the Size sentence stays');
+
+  // The post-answer note on the clock route: open 3h, priced by the same verdict.
+  const clock = (name, ctx) => transcript(name, [row(`${name}-f`, 'the first turn', H1, ts(0)), row(name, 'ok', { cache_read_input_tokens: ctx }, ts(3))]);
+  assert.equal(ctxOf(askIn(clock('pay-clock-100', 100000), oneQ)), '', '3h at 100k: no note');
+  assert.match(ctxOf(askIn(clock('pay-clock-250', 250000), oneQ)), /has been open 3\.0h[^]*This session carries ~250k tokens per message; with the cache warm \(1h TTL\)/, '3h at 250k: the note, priced');
+
+  // The finished-turn Stop offer past the 1M tier's trigger.
+  const stop = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript('pay-stop', [row('s-f', 'the first turn', H1),
+    row('s', 'Applied the change; tests pass.', { cache_read_input_tokens: 401000 })]) }, { env: logEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000' }) });
+  assert.equal(stop.status, 2, '401k past the 400k trigger pays back: the offer');
+  assert.match(stop.stderr, /This session carries ~401k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x the input price\. A fresh session restarts at ~79k, written new at 2x, and pays back in about 12 messages\./);
+  assert.doesNotMatch(stop.stderr, /re-sends all of it|NOT a tenth/);
+});
+
+// Check 15 (spec 2026-10-28 section 4): a fresh-session HAND-OFF where a fresh session does not pay back is dropped from the
+// ask in place, and a question the drop would leave with one option is refused once, naming that option. Fixtures:
+// claude-opus-5-5, a 1h split, F 79k - at 100k a fresh session pays back only after ~449 messages, at 250k in ~23.
+const C15_F = 79000;
+const c15Rows = (ctx) => [{ type: 'assistant', message: { id: 'f', model: 'claude-opus-5-5', content: [{ type: 'text', text: 'first' }],
+  usage: { cache_creation_input_tokens: C15_F, cache_creation: { ephemeral_1h_input_tokens: C15_F, ephemeral_5m_input_tokens: 0 } } } },
+  ...(ctx != null ? [{ type: 'assistant', message: { id: 'n', model: 'claude-opus-5-5', content: [{ type: 'text', text: 'ok' }], usage: ctx ? { cache_read_input_tokens: ctx } : { input_tokens: 0 } } }] : [])];
+function c15(name, ctx, questions, opts = {}) {
+  const root = fs.mkdtempSync(path.join(TMP, `c15-${name}-`));
+  const log = fs.mkdtempSync(path.join(TMP, `c15log-${name}-`));
+  const sid = `c15-${name}`;
+  const tp = transcript(sid, opts.rows || c15Rows(ctx));
+  if (opts.setup) opts.setup(root, sid);
+  const env = { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: log, CLAUDE_PROJECT_DIR: root, ...(opts.env || {}) };
+  const send = () => runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: sid, cwd: root,
+    transcript_path: tp, tool_input: { questions }, ...(opts.payload || {}) }, { env });
+  const r = send();
+  const upd = (() => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } })();
+  const rows = () => { try { return fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  return { r, upd, rows, log, send };
+}
+const labelsOf = (upd) => upd.questions[0].options.map((o) => o.label);
+// The hand-off listed last behind a marked first option, so no other check of the ask has a reason to touch it.
+const opts3last = (fresh) => [{ question: 'The cycle is done. What next?', options: [{ label: 'Start it here (Recommended)', description: 'x' }, { label: 'Leave it for later', description: 'y' }, { label: fresh, description: 'z' }] }];
+const opts3 = (fresh) => [{ question: 'The cycle is done. What next?', options: [{ label: fresh, description: 'x' }, { label: 'Start it here', description: 'y' }, { label: 'Leave it for later', description: 'z' }] }];
+
+test('check 15: a three-option ask at 100k goes out without its hand-off', () => {
+  const { r, upd, rows, log } = c15('three', 100000, opts3('Start it in a fresh session (Recommended)'));
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepStrictEqual(labelsOf(upd), ['Start it here (Recommended)', 'Leave it for later'], 'dropped in place, the mark moved to the first option left');
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /would pay back only after about 449 messages, past the 30-message window/, 'the model is told why');
+  assert.deepStrictEqual(fs.readdirSync(log).filter((f) => /^guard-stop-askvoice-.*\.denied$/.test(f)), [], 'no deny marker spent');
+  assert.equal(rows().filter((x) => x.kind === 'fresh-verdict' && x.detail.route === 'fresh-ask').length, 1, 'one fresh-ask verdict row');
+});
+
+test('check 15: a two-option fresh-or-here ask at 100k is refused once, naming the option left', () => {
+  const loop = c15('loop', 100000, [{ question: 'Round 2 is done. Go on?', options: [{ label: 'Continue here (Recommended)', description: 'x' },
+    { label: 'Continue in a fresh session from the loops folder', description: 'y' }] }]);
+  assert.equal(loop.r.status, 2, 'refused');
+  assert.match(loop.r.stderr, /This session carries ~100k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x\. A fresh session restarts at ~79k, written new at 2x, and would pay back only after about 449 messages, past the 30-message window\./);
+  assert.match(loop.r.stderr, /take that option - 'Continue here \(Recommended\)' - and drop the question/);
+  assert.doesNotMatch(loop.r.stderr, /Re-send the ask/, 'nothing is left to re-send');
+  assert.equal(loop.send().status, 0, 'the same ask re-sent passes');
+  const diag = c15('diag', 100000, [{ question: 'Findings written. Next?', options: [{ label: 'Stop here (Recommended)', description: 'x' },
+    { label: 'Resume in a fresh session', description: 'y' }] }]);
+  assert.equal(diag.r.status, 2);
+  assert.match(diag.r.stderr, /take that option - 'Stop here \(Recommended\)' - and drop the question/);
+});
+
+// the final review (2026-10-29): a label that only mentions a session is the user's own work, a question of hand-offs
+// alone is left as written, and a question left with one option leaves the re-send
+test('check 15: an option that only mentions a session is never dropped or refused', () => {
+  for (const [id, opts] of [['expiry', ['Build the new session expiry check (Recommended)', 'Leave it for later']],
+    ['bug', ['Continue fixing the fresh session bug (Recommended)', 'Write the tests first', 'Stop here']]]) {
+    const { r, upd } = c15(id, 100000, [{ question: 'What next?', options: opts.map((label) => ({ label, description: 'x' })) }]);
+    assert.equal(r.status, 0, `${id}: ${r.stderr}`);
+    assert.equal(upd, null, `${id}: untouched`);
+  }
+});
+
+test('check 15: a question whose every option is a hand-off is left as written', () => {
+  const { r, upd, rows, log } = c15('allfresh', 100000, [{ question: 'Where next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'x' },
+    { label: 'Start the loop in a new session', description: 'y' }] }]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(upd, null, 'nothing dropped');
+  assert.deepStrictEqual(fs.readdirSync(log).filter((f) => /\.denied$/.test(f)), [], 'no deny marker spent');
+  assert.equal(rows().filter((x) => x.kind === 'fresh-verdict' && x.detail.route === 'fresh-ask').length, 0, 'no fresh-ask row');
+});
+
+test('check 15: the re-send carries only the questions still worth asking', () => {
+  const { r } = c15('two-q', 100000, [{ question: 'Round 2 is done. Go on?', options: [{ label: 'Continue here (Recommended)', description: 'x' },
+    { label: 'Resume in a fresh session', description: 'y' }] }, { question: 'Which file first?', options: [{ label: 'a.js (Recommended)', description: 'x' }, { label: 'b.js', description: 'y' }] }]);
+  assert.equal(r.status, 2, 'refused');
+  assert.match(r.stderr, /take that option - 'Continue here \(Recommended\)' - and drop the question/);
+  const sent = JSON.parse(r.stderr.split('changed:\n')[1]);
+  assert.deepStrictEqual(sent.map((q) => q.question), ['Which file first?'], 'the lone question is not re-sent');
+});
+
+test('check 15: at 250k the ask goes out as written', () => {
+  const { r, upd } = c15('pays', 250000, [{ question: 'The cycle is done. What next?', options: [{ label: 'Start it here (Recommended)', description: 'x' },
+    { label: 'Leave it for later', description: 'y' }, { label: 'Start it in a fresh session', description: '~250k per message here, ~79k fresh' }] }]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(upd, null, 'no change, the hand-off still unmarked');
+});
+
+test('check 15: setting and audit options are not hand-offs', () => {
+  for (const label of ['Offer a fresh session (Recommended)', 'Hand off to a fresh session']) {
+    const qs = [{ question: 'Which default?', options: [{ label, description: 'x' }, { label: 'Keep it as it is', description: 'y' }] }];
+    if (!/Recommended/.test(label)) qs[0].options.reverse()[0].label += ' (Recommended)';
+    for (const ctx of [100000, 250000]) {
+      const { r, upd } = c15(`setting-${ctx}-${label.length}`, ctx, qs);
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(upd, null, `${label} at ${ctx}: untouched, no numbers line`);
+    }
+  }
+});
+
+test('isFreshHandoff: every template label matches', () => {
+  for (const label of ['Resume in a fresh session', 'Resume the next phase in a fresh session', 'Start it in a fresh session', 'Start AUTO in a fresh session',
+    'Continue in a fresh session from the loops folder', 'Continue the build in a fresh session', 'Build it in a fresh session: /task-solve docs/work/findings/2026-10-28.v2.md',
+    'Start the loop in a new session', 'Continue in a new chat', 'Continue in fresh session', 'Start it in a fresh session: /clear, then /loop-code-quality',
+    'Resume from docs/superpowers/sdd/2026-10-24-no-mcp-stack/plan.md in a fresh session']) {
+    const { r, upd } = c15(`label-${label.length}`, 100000, opts3last(label));
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(upd && !labelsOf(upd).includes(label), `${label} is a hand-off - dropped`);
+  }
+  for (const label of ['Offer a fresh session', 'Hand off to a fresh session', 'Move to a new session', 'Build the new session expiry check',
+    'Continue fixing the fresh session bug', 'Continue here - no new session needed', 'Continue here, not in a new session']) {
+    const { r, upd } = c15(`nolabel-${label.length}`, 100000, opts3last(label));
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!upd || labelsOf(upd).includes(label), `${label} is no hand-off - kept`);
+  }
+});
+
+test('check 15: it leaves the ask alone', () => {
+  const q = opts3('Start it in a fresh session (Recommended)');
+  const kept = (c, why, sent = q) => {
+    assert.equal(c.r.status, 0, `${why}: ${c.r.stderr}`);
+    assert.ok(!c.upd || JSON.stringify(c.upd.questions[0].options.map((o) => o.label)) === JSON.stringify(sent[0].options.map((o) => o.label)), `${why}: options unchanged`);
+  };
+  kept(c15('off', 100000, q, { env: { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:fresh-ask' } }), 'the part switched off');
+  kept(c15('auto', 100000, q, { setup: (root, sid) => {
+    const dir = path.join(root, '.alfred', 'state', 'approvals');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'APPROVAL'), `AUTO - "/loop-code-quality --mode-auto-run-on"\nsession: ${sid}\nskill: loop-code-quality\n`);
+  } }), 'a live auto-run stamp of this session');
+  kept(c15('unattended', 100000, q, { env: { ALFRED_CODE_UNATTENDED: '1' } }), 'nobody at the terminal');
+  kept(c15('seat', 100000, q, { payload: { agent_id: 'seat-1' } }), 'a seat');
+  kept(c15('ctx0', 0, q), 'ctx 0');
+  kept(c15('norow', 0, q, { rows: [{ type: 'user', message: { role: 'user', content: 'go' } }] }), 'no assistant row');
+  const multi = [{ ...q[0], multiSelect: true, options: q[0].options.map((o) => ({ ...o, label: o.label.replace(' (Recommended)', '') })) }];
+  kept(c15('multi', 100000, multi), 'multi-select', multi);
+  kept(c15('asked', 100000, q, { rows: [{ type: 'user', message: { role: 'user', content: 'should I start a fresh session?' } }, ...c15Rows(100000)] }), 'the user asked about a fresh session');
+  for (const [id, said] of [['conv', 'move this to a new conversation'], ['ctx', 'clear the context and go on'], ['over', 'start over from the plan file']])
+    kept(c15(`asked-${id}`, 100000, q, { rows: [{ type: 'user', message: { role: 'user', content: said } }, ...c15Rows(100000)] }), `the user asked: '${said}'`);
 });
 
 test('guard-stop-contract: the prose written before an ask is checked for house voice', () => {

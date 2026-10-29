@@ -59,6 +59,12 @@ const realGit = (projectRoot) => ({
         try { rt.execCommand('git', ['check-ignore', '-q', '--', `${rel}/`], { cwd: projectRoot, stdio: 'ignore' }); return true; }
         catch { return false; }
     },
+    // F3: a folder no repository holds has nothing that could commit its docs.
+    inRepo()
+    {
+        try { return String(rt.execCommand('git', ['rev-parse', '--is-inside-work-tree'], { cwd: projectRoot, stdio: ['ignore', 'pipe', 'ignore'] })).trim() === 'true'; }
+        catch { return false; }
+    },
 });
 
 // A domain whose watch.json says `"recomputed": true` (quality/: rewritten whole by its capture) casts no versioning
@@ -73,9 +79,25 @@ function recomputedDomain(dir)
 // domain exists (so there is something to have committed) or git ignores the docs root outright.
 // Everything else, a fresh project included, is `git`. The git doc every install seeds (2026-10-21) is the stack's
 // text, so a preferences domain holding nothing else casts no vote, and neither does a recomputed domain.
-function docsVersioningSeed({ projectRoot, docsPath, git })
+function docsVersioningSeed(o)
+{
+    return docsVersioningAdvice(o).value;
+}
+
+// The answer and the reason the walk shows beside it (F3, F15): no repository, then a local-scope child (its data root
+// stays out of git), then the kept-out rule below; `git` otherwise. A fake git with no inRepo skips the first test.
+function docsVersioningAdvice({ projectRoot, docsPath, git, scope, child })
 {
     const g = git || realGit(projectRoot);
+    if (typeof g.inRepo === 'function' && !g.inRepo()) return { value: 'local', reason: 'no git repository, so nothing can commit the docs' };
+    if (child && scope === 'local') return { value: 'local', reason: 'a local-scope child keeps its data root out of git' };
+    return keptOutOfGitHere({ projectRoot, docsPath, g })
+        ? { value: 'local', reason: 'the docs are kept out of git here' }
+        : { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' };
+}
+
+function keptOutOfGitHere({ projectRoot, docsPath, g })
+{
     const root = String(projectRoot).replace(/\\/g, '/').replace(/\/+$/, '');
     const parts = String(docsPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
     const base = [root, ...parts].join('/');
@@ -87,8 +109,7 @@ function docsVersioningSeed({ projectRoot, docsPath, git })
     };
     const names = domains(base).filter((name) => !seedOnly(name) && !recomputedDomain(`${base}/${name}`));
     const committed = names.some((name) => g.tracked(`${base}/${name}`));
-    const keptOut = !committed && (names.length > 0 || g.ignored(parts.join('/')));
-    return keptOut ? 'local' : 'git';
+    return !committed && (names.length > 0 || g.ignored(parts.join('/')));
 }
 
 // ABSENT-ONLY: never overwrites a file at the new path, never touches a missing old one. A plain
@@ -235,7 +256,7 @@ function revertRecomputed({ projectRoot, docsPath, engineText, log = () => {} })
         log(`  !! docs migration (quality): ${file} could not be removed (${err.code || err.message}) - delete it by hand, this engine reads it as an ordinary domain`);
         return false;
     }
-    log('  docs migration (quality): quality/watch.json removed - this engine has no recomputed domains; /capture-architecture-quality writes it again when they return');
+    log('  docs migration (quality): quality/watch.json removed - this engine has no recomputed domains; /capture-quality architecture-quality writes it again when they return');
     return true;
 }
 
@@ -251,8 +272,37 @@ function assessmentWatchLine({ projectRoot, docsPath, log = () => {} })
         if (fs.existsSync(path.join(quality, 'watch.json'))) return false;
     }
     catch { return false; }
-    log('  !! quality/ARCHITECTURE-ASSESSMENT.md predates its watch - run /capture-architecture-quality to put it under the session-close docs check');
+    log('  !! quality/ARCHITECTURE-ASSESSMENT.md predates its watch - run /capture-quality architecture-quality to put it under the session-close docs check');
     return true;
+}
+
+// The coverage doc moved into quality/ (2026-10-29), a recomputed domain whose watch lists what the assessment does not
+// own; without the entry the engine would section COVERAGE-QUALITY.md as one of its documents. Only an existing watch
+// is touched - the capture writes it, never the installer (D6) - and it keeps its indent, line ending and final newline.
+const QUALITY_NOT_OWNED = 'COVERAGE-QUALITY.md';
+function ensureQualityNotOwned({ projectRoot, docsPath, log = () => {} })
+{
+    const file = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''), 'quality', 'watch.json');
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); }
+    catch { return 'absent'; }
+    let data;
+    try { data = parseJson(text); }
+    catch { data = null; }
+    const listed = data && typeof data === 'object' && !Array.isArray(data) ? data.notOwned ?? [] : null;
+    if (!Array.isArray(listed) || !listed.every((g) => typeof g === 'string'))
+    {
+        log(`  !! docs migration (quality): ${file} could not be read - ${QUALITY_NOT_OWNED} is not added to its notOwned list; fix the file, then re-run /alfred-code:update`);
+        return 'unreadable';
+    }
+    if (require('../../stack/hooks/docs.js').matches(listed, QUALITY_NOT_OWNED)) return 'present';
+    data.notOwned = [...listed, QUALITY_NOT_OWNED];
+    const indentLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l));
+    const eol = text.includes('\r\n') ? '\r\n' : '\n';
+    const body = JSON.stringify(data, null, indentLine ? indentLine.match(/^[ \t]+/)[0] : '').split('\n').join(eol);
+    fs.writeFileSync(file, `${text.startsWith('\uFEFF') ? '\uFEFF' : ''}${body}${/\r?\n$/.test(text) ? eol : ''}`);
+    log(`  docs migration (quality): ${QUALITY_NOT_OWNED} added to quality/watch.json's notOwned list`);
+    return 'added';
 }
 
 // A section ref is spelled `KEY#id`, `KEY.md#id` or with its folder in front; a key inside a longer one is no ref
@@ -1086,7 +1136,7 @@ function repointSuperpowers({ projectRoot, docsPath, base, rules = [], instructi
 // while empty - a doc version is never deleted (the session-start line asks the user to re-apply and prune it). A second
 // run moves nothing and says `layout: current`. Returns { moved, kept, removed }, project-relative.
 const LAYOUT = require('../../stack/hooks/layout.js');
-function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
+function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves = LAYOUT.LAYOUT_MOVES })
 {
     const docsBase = path.resolve(projectRoot, String(docsPath || ''));
     const dataBase = path.resolve(projectRoot, String(dataPath || '.alfred'));
@@ -1104,7 +1154,8 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
     const group = (from, to) => { let g = groups.find((x) => x.from === from && x.to === to); if (!g) groups.push(g = { from, to, pairs: [] }); return g; };
     const sources = [];
     const notFolders = [];
-    for (const m of LAYOUT.LAYOUT_MOVES)
+    const notMapped = [];
+    for (const m of moves)
     {
         if (m.removeIfEmpty) continue;
         const from = path.join(docsBase, ...m.from.split('/'));
@@ -1138,7 +1189,15 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
         g.data = m.base === 'data';
         // the usage audit's raw transcript copies move only where git keeps them out (migrateUsageReport's rule)
         g.raw = m.from === 'usage-report';
-        for (const file of filesUnder(from)) g.pairs.push([file, path.join(to, path.relative(from, file))]);
+        for (const file of filesUnder(from))
+        {
+            const inner = path.relative(from, file);
+            if (!m.rename) { g.pairs.push([file, path.join(to, inner)]); continue; }
+            // a renaming row (the coverage doc, 2026-10-29) maps each file's first segment; one it does not map stays
+            const [first, ...rest] = inner.split(path.sep);
+            if (Object.hasOwn(m.rename, first)) g.pairs.push([file, path.join(to, m.rename[first], ...rest)]);
+            else notMapped.push(file);
+        }
     }
 
     const done = [];
@@ -1155,6 +1214,11 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
     {
         out.kept.push(rel(from));
         lines.push(`  layout: kept ${rel(from)} - a file where a folder moving to ${rel(to)} belongs`);
+    }
+    for (const file of notMapped)
+    {
+        out.kept.push(rel(file));
+        lines.push(`  layout: kept ${rel(file)} - no new home for it`);
     }
     try
     {
@@ -1659,7 +1723,8 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
+    docsVersioningAdvice,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, ensureQualityNotOwned, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,
 };

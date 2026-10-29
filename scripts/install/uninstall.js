@@ -175,7 +175,41 @@ function removeScopedMcp({ mcpAt = {}, readAt, cli, log = () => {}, note = () =>
     }
 }
 
-module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp };
+// F26 (the 2026-10-28 workspace run): a rule a capture generated is no ledger row - the user may have edited it - so it
+// outlived the uninstall and kept loading the docs it names. One that equals what its generator writes now goes; an
+// edited one, one the generator would no longer write, and one no generator here can rebuild stay, each named.
+function removeGeneratedRules({ claudeDir, projectRoot, sourceDir, docsPath, log })
+{
+    const { GENERATED_FILES } = require('./selection.js');
+    const norm = (text) => String(text).replace(/\r\n/g, '\n').replace(/\n+$/, '\n');
+    const generators = {
+        'alfred-architecture': () =>
+        {
+            const shapes = fs.readFileSync(path.join(sourceDir, 'stack', 'skills', 'capture-architecture', 'references', 'doc-shapes.md'), 'utf8');
+            const at = shapes.indexOf('## .claude/rules/alfred-architecture.md');
+            const m = at < 0 ? null : /```markdown\n([\s\S]*?)```/.exec(shapes.slice(at));
+            return m ? m[1] : null;
+        },
+        'alfred-awareness': () => require(path.join(sourceDir, 'stack', 'skills', 'capture-awareness', 'scripts', 'capabilities-inventory.js'))
+            .composeAwarenessRule({ projectRoot, docs: docsPath }).text,
+    };
+    const rulesDir = path.join(claudeDir, 'rules');
+    for (const name of [...GENERATED_FILES].sort())
+    {
+        const file = path.join(rulesDir, `${name}.md`);
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        if (!generators[name]) { log(`  kept: .claude/rules/${name}.md - no generator to compare it with`); continue; }
+        const expected = generators[name]();
+        if (expected === null || expected === undefined) log(`  kept: .claude/rules/${name}.md - its generator writes nothing here now`);
+        else if (norm(text) === norm(expected)) { fs.rmSync(file, { force: true }); log(`  rule removed: ${name} (generated)`); }
+        else log(`  kept: .claude/rules/${name}.md - edited since it was generated`);
+    }
+    // Emptied folders go, as removeManagedFiles leaves them (R10) - else an empty rules/ keeps .claude/ on disk.
+    try { if (!fs.readdirSync(rulesDir).length) fs.rmdirSync(rulesDir); } catch { /* none, or the user's files are there */ }
+}
+
+module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp, removeGeneratedRules };
 
 // `node uninstall.js seed <project root>` - seedPlan over the stamp's ledger, nothing written: one
 // `instructions-seed: <path> unedited|edited` line per seed, or `instructions-seed: none` (no stamp, no ledger, no seed).

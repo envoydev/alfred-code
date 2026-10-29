@@ -785,7 +785,7 @@ test('roleOf: child of .., root of 2 children, a root with no child, standalone,
     assert.deepStrictEqual(ws.roleOf(at('fresh'), { env: ON }), { kind: 'standalone', asked: false });
     assert.strictEqual(ws.roleText(ws.roleOf(at('ws'), { env: ON })), 'root of 2 children');
     assert.strictEqual(ws.roleText(ws.roleOf(at('ws/api'), { env: ON })), 'child of ..');
-    assert.strictEqual(ws.roleText(ws.roleOf(at('fresh'), { env: ON })), 'standalone (not asked)');
+    assert.strictEqual(ws.roleText(ws.roleOf(at('fresh'), { env: ON })), 'standalone (no role recorded)');
     assert.strictEqual(ws.roleText(ws.roleOf(at('alone'), { env: ON })), 'standalone');
 });
 

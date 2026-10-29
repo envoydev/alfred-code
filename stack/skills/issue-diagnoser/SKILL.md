@@ -80,7 +80,7 @@ resume on a long run - the recommendation marked per that stop's own rule, free 
 available via the built-in Other. Where the harness has no such tool, list the same options in
 plain text and END THE TURN. The selected answer is the go; silence is not, and a stop that
 only narrates is not a stop. Once the run has crossed the install's fresh-session trigger for its
-context window (400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other) or spans hours, the fresh-session resume IS one of the next ask's options - a CONSTRUCTION check before
+context window (400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other), the fresh-session resume IS one of the next ask's options - a CONSTRUCTION check before
 emitting each stop, not a memory: resume needs only the findings file plus the note.
 
 **Every ask marks exactly one option `(Recommended)`, listed first** - the move this stop's rule
@@ -185,12 +185,10 @@ cycle in the same chat, even when an earlier cycle already loaded it.
      occurrence arrives one tier higher. Name the hypothesis each line is there to decide.
    Stamp `Outcome:` with the branch taken. **A proven cause is a CLOSING point, not a midpoint:**
    the findings file is durable and self-contained by construction, so whatever the fork picked,
-   the next phase - writing the report, building the tasks, reading the new logs - starts in a
+   the next phase - writing the report, building the tasks, reading the new logs - can start in a
    FRESH session resumed from that path, and this stop offers it as an option in its own words
-   ('resume from `<findings path>` in a fresh session'). Recommend it once the chat has run for
-   hours or past that same trigger - no `Stop` gate catches a session that never closes.
-   *Stop* - after 4a or 4c, one ask; past the trigger or after hours of chat the fresh-session option takes
-   the mark and goes first:
+   ('resume from `<findings path>` in a fresh session'). Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.
+   *Stop* - after 4a or 4c, one ask:
 
    ```ask
    <The report is written | The log points are in> - <findings path>. Next: <read the report | re-run until the next occurrence lands>.
@@ -201,8 +199,9 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    *Stop* - after 4b the close names the build as the user's own command:
 
    ```ask
-   The fix is planned in <findings path>. Build it from that file in a fresh session.
-   - 'Build it: /task-solve <findings path> in a fresh session (Recommended)' - the file is the whole input
+   The fix is planned in <findings path>. Build it from that file with your own /task-solve command.
+   - 'Build it here: /task-solve <findings path> (Recommended)' - type the command in this chat; the file is the whole input
+   - 'Build it in a fresh session: /task-solve <findings path>' - `/clear` first, then the command; the file is the whole input
    - 'Stop here' - the findings file keeps the cause and the tasks
    ```
 

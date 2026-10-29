@@ -244,7 +244,7 @@ test('migration: an absent docs root is nothing to do, never a crash', () =>
 // D6 (every project-derived doc is watched, 2026-10-27): an assessment written before quality/ had a watch stays outside
 // the engine until its capture runs again, so every run names it - and writes nothing for it: only the capture knows
 // the entries.
-const D6_LINE = '!! quality/ARCHITECTURE-ASSESSMENT.md predates its watch - run /capture-architecture-quality to put it under the session-close docs check';
+const D6_LINE = '!! quality/ARCHITECTURE-ASSESSMENT.md predates its watch - run /capture-quality architecture-quality to put it under the session-close docs check';
 const d6Lines = (logs) => logs.filter((l) => l.includes('predates its watch')).map((l) => l.trim());
 
 test('D6: an assessment with no quality/watch.json is named once per run, and nothing is written under quality/', () =>
@@ -309,6 +309,55 @@ test('the way back: a watch.json without the key, an unparseable one, no engine 
     }
     for (const root of [project(), path.join(TMP, 'no-docs-root-2')])
         assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: OLD_ENGINE }), false);
+});
+
+// 2026-10-29 (capture-quality): the coverage doc moves into quality/, a recomputed domain, so its watch.json must
+// list COVERAGE-QUALITY.md as not owned - else the engine sections it as an architecture-assessment document.
+const notOwnedOf = (root) => docs.ensureQualityNotOwned({ projectRoot: root, docsPath: '.claude/docs', log: () => {} });
+const watchText = (root) => fs.readFileSync(path.join(qualityOf(root), 'watch.json'), 'utf8');
+
+test('quality notOwned: COVERAGE-QUALITY.md is added once, every other key and the file\'s shape kept', () =>
+{
+    const compact = project({ files: { '.claude/docs/quality/watch.json': '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"],"x":1}\n' } });
+    assert.strictEqual(notOwnedOf(compact), 'added');
+    assert.strictEqual(watchText(compact), '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**","COVERAGE-QUALITY.md"],"x":1}\n');
+    const after = watchText(compact);
+    assert.strictEqual(notOwnedOf(compact), 'present', 'a second call');
+    assert.strictEqual(watchText(compact), after, 'bytes unchanged on the second call');
+
+    const indented = project({ files: { '.claude/docs/quality/watch.json': RECOMPUTED } });
+    assert.strictEqual(notOwnedOf(indented), 'added');
+    assert.strictEqual(watchText(indented), '{\n  "recomputed": true,\n  "notOwned": [\n    "CODE-ASSESSMENT.md",\n    "references/**",\n    "COVERAGE-QUALITY.md"\n  ],\n  "watch": []\n}\n');
+});
+
+test('quality notOwned: a glob that already covers it is present, a missing key is created', () =>
+{
+    const glob = project({ files: { '.claude/docs/quality/watch.json': '{"recomputed":true,"notOwned":["**.md"]}\n' } });
+    const before = watchText(glob);
+    assert.strictEqual(notOwnedOf(glob), 'present', 'the docs engine\'s own matches');
+    assert.strictEqual(watchText(glob), before);
+
+    const keyless = project({ files: { '.claude/docs/quality/watch.json': '{"recomputed":true}\n' } });
+    assert.strictEqual(notOwnedOf(keyless), 'added');
+    assert.deepStrictEqual(JSON.parse(watchText(keyless)), { recomputed: true, notOwned: ['COVERAGE-QUALITY.md'] });
+});
+
+test('quality notOwned: no watch.json creates nothing, an unreadable one is left byte-identical and named once', () =>
+{
+    for (const root of [project({ files: { '.claude/docs/quality/CODE-ASSESSMENT.md': '# c\n' } }), project(), path.join(TMP, 'no-docs-root-3')])
+    {
+        assert.strictEqual(notOwnedOf(root), 'absent', root);
+        assert.ok(!fs.existsSync(path.join(qualityOf(root), 'watch.json')), root);
+    }
+    for (const text of ['garbage', '[]'])
+    {
+        const root = project({ files: { '.claude/docs/quality/watch.json': text } });
+        const logs = [];
+        assert.strictEqual(docs.ensureQualityNotOwned({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m) }), 'unreadable', text);
+        assert.strictEqual(watchText(root), text, text);
+        assert.strictEqual(logs.length, 1, text);
+        assert.ok(logs[0].includes(path.join(qualityOf(root), 'watch.json')), logs[0]);
+    }
 });
 
 test('D6: nothing named and nothing thrown with the watch present, with no quality/ and with no docs root', () =>
@@ -1116,4 +1165,33 @@ test('tickets/ is a stack docs folder (item 5)', () => { assert.ok(docs.STACK_DO
 
 test('explanations/ and the old tutorial/ are stack docs folders (item 6)', () => {
   for (const n of ['explanations', 'tutorial']) assert.ok(docs.STACK_DOCS.has(n), n);
+});
+
+// F3 / F15 (the 2026-10-28 workspace run): the walk recommended the docs-versioning answer from its own reading - `git`
+// for a folder with no repository, and for a local-scope child whose data root git never sees. A script states it.
+test('docsVersioningAdvice: no repository, a local-scope child, kept-out docs, a project-scope child, a fresh repo', () =>
+{
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'no-git-'));
+    try
+    {
+        const none = docs.docsVersioningAdvice({ projectRoot: bare, docsPath: '.alfred/docs' });
+        assert.strictEqual(none.value, 'local');
+        assert.match(none.reason, /no git repository/);
+    }
+    finally { fs.rmSync(bare, { recursive: true, force: true }); }
+    const repo = project();
+    const child = docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'local', child: true });
+    assert.deepStrictEqual(child, { value: 'local', reason: 'a local-scope child keeps its data root out of git' });
+    assert.strictEqual(docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'project', child: true }).value, 'git');
+    const kept = project({ ignore: '.claude/docs/\n' });
+    fs.mkdirSync(path.join(kept, '.claude', 'docs'), { recursive: true });
+    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: kept, docsPath: '.claude/docs' }), { value: 'local', reason: 'the docs are kept out of git here' });
+    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: project(), docsPath: '.claude/docs' }), { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' });
+});
+
+test('docsVersioningAdvice: a fake git with only tracked / ignored keeps today\'s answers', () =>
+{
+    const fake = { tracked: () => false, ignored: () => true };
+    assert.strictEqual(docs.docsVersioningAdvice({ projectRoot: project(), docsPath: '.claude/docs', git: fake }).value, 'local');
+    assert.strictEqual(docs.docsVersioningAdvice({ projectRoot: project(), docsPath: '.claude/docs', git: { tracked: () => false, ignored: () => false } }).value, 'git');
 });

@@ -113,13 +113,13 @@ test('I25: no shipped skill says the docs root is machine-local by default', () 
 test('I25: the four captures say where the docs land by the docs engine\'s own status line', () =>
 {
     for (const rel of ['stack/skills/capture-awareness/SKILL.md', 'stack/skills/capture-architecture/references/report-fields.md',
-        'stack/skills/capture-project-code-style/SKILL.md', 'stack/skills/capture-test-coverage/SKILL.md'])
+        'stack/skills/capture-project-code-style/SKILL.md', 'stack/skills/capture-quality/references/test-coverage-quality.md'])
         assert.match(flat(read(rel)), /docs\.js status/, `${rel}: names the observable`);
     const landed = read('stack/skills/capture-project-code-style/SKILL.md').match(/^Landed:.*$/m);
     assert.ok(landed, 'the Landed field is still there');
     assert.match(landed[0], /mode: git/);
     assert.match(landed[0], /mode: overlay/);
-    assert.match(flat(read('stack/skills/capture-test-coverage/SKILL.md')), /`mode: git`[^.]*raw/, 'test-coverage says the raw files are committed under git mode');
+    assert.match(flat(read('stack/skills/capture-quality/references/test-coverage-quality.md')), /`mode: git`[^.]*raw/, 'test-coverage says the raw files are committed under git mode');
 });
 
 // ---- I26: the APPROVAL stamp's protected-path sentence is gone ----------------------------------------------------
@@ -128,7 +128,7 @@ test('I25: the four captures say where the docs land by the docs engine\'s own s
 // a protected-path write and the clause would send the model hunting for a prompt that never comes.
 const STAMP_SITES = [
     'stack/skills/loop-architecture-quality/SKILL.md', 'stack/skills/loop-code-quality/SKILL.md',
-    'stack/skills/loop-code-quality/references/delegated-mode.md', 'stack/skills/loop-test-coverage/SKILL.md',
+    'stack/skills/loop-code-quality/references/delegated-mode.md', 'stack/skills/loop-test-coverage-quality/SKILL.md',
     'stack/skills/task-build-from-scratch/SKILL.md', 'stack/skills/task-implement/SKILL.md',
     'stack/skills/task-solve/references/step-mechanics.md', 'stack/skills/task-solve-cross/references/execution-modes.md',
     'stack/skills/task-version-upgrade/SKILL.md',
@@ -199,7 +199,7 @@ test('I28: the three deliberate skills drop their question-shaped triggers', () 
 {
     const cases = {
         'capture-architecture': /what the structure or module boundaries are/,
-        'capture-test-coverage': /how covered the project is/,
+        'capture-quality': /how covered the project is/,
         'task-design': /where does this belong/,
     };
     for (const [name, question] of Object.entries(cases))

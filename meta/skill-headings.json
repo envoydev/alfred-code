@@ -77,16 +77,8 @@
     "capture-architecture": [
       "99345f218153b5e2"
     ],
-    "capture-architecture-quality": [
-      "5b0bdb8e596033d9",
-      "88f2963ebb709368"
-    ],
     "capture-awareness": [
       "55a022248b7cf256"
-    ],
-    "capture-code-quality": [
-      "e61b0aaa81effc31",
-      "e699336f3c7949a6"
     ],
     "capture-preferences": [
       "7dfb81e0ad2f3481",
@@ -96,8 +88,9 @@
     "capture-project-code-style": [
       "20263fd5d208939d"
     ],
-    "capture-test-coverage": [
-      "923967524cb028d8"
+    "capture-quality": [
+      "9d158eea7d6bce49",
+      "c1902dd2f7620125"
     ],
     "capture-usage-report": [
       "718a22ea134376ad"
@@ -570,8 +563,8 @@
     "loop-code-quality": [
       "addb765dc470c359"
     ],
-    "loop-test-coverage": [
-      "49c91247abbbbc5f"
+    "loop-test-coverage-quality": [
+      "ff4247622b36933d"
     ],
     "markdown-style": [
       "24d9d3007b646a71",

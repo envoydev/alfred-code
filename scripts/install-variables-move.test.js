@@ -21,7 +21,9 @@ const SEL = 'skill markdown-style\n';
 const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]);
 const CATALOG = require('../meta/environment.json').env.map((r) => r.key);
 const SETTINGS_KEYS = ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_HOOKS_OFF'];
-const SEEDED = CATALOG.filter((k) => !SETTINGS_KEYS.includes(k) && k !== 'ALFRED_CODE_WORKSPACE');
+// A `seed: false` row (WORKSPACE, FRESH_SESSION_PAYBACK) is never written into a project, so it never moves either.
+const UNSEEDED = require('../meta/environment.json').env.filter((r) => r.seed === false).map((r) => r.key);
+const SEEDED = CATALOG.filter((k) => !SETTINGS_KEYS.includes(k) && !UNSEEDED.includes(k));
 const MOVED_LINE = /variables: (\d+) keys moved to \.alfred\/\.variables - a teammate on 2\.12\.0 or older reads none of them until they update; a downgrade needs them put back in \.claude\/settings\.json by hand/;
 
 const exportOf = releaseExport;

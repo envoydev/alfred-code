@@ -1,15 +1,10 @@
----
-name: capture-code-quality
-description: "Use when asked to assess, audit or judge the code quality or which project quality rules the code breaks. Deliberate only. Not for architecture or fixes."
----
-
 # Code Quality Capture - Judge the Code Against Its Rules (Deliberate)
 
 You are the judgment seat for this run: you gather the project's quality rules, have the code judged against them module by module, and reason out a gated, tiered assessment - written fresh every time you run. Deliberate only, never mid-build: a person or the quality loop starts it, and it changes no code.
 
 - `<docs-path>/quality/CODE-ASSESSMENT.md` - the reasoned, tiered findings. The only file you write.
 
-**`quality/` is a recomputed domain for the architecture assessment; this doc is `notOwned` there, recomputed whole every run (`references/doc-shape.md` says why).** Read `references/doc-shape.md` before JUDGE - the rule sources, the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions.
+**`quality/` is a recomputed domain for the architecture assessment; this doc is `notOwned` there, recomputed whole every run (`references/code-quality-doc-shape.md` says why).** Read `references/code-quality-doc-shape.md` before JUDGE - the rule sources, the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions.
 
 **Reads decisions, never writes them - hard rule.** The decision log (`<docs-path>/decisions/`, or wherever the project keeps ADRs) and the choices the project AGENTS.md records are what gate question 4 reads; a candidate worth deciding rather than fixing is named as a Proposed decision in the doc and the report, for a person to accept by writing it themselves.
 
@@ -21,13 +16,13 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 
 - A tiered, gated assessment against the user's code preferences, the recorded code style, the numbered prompts under the loops folder and the convention rules; every finding is tied to its file:line and rule and recomputed fresh each run into `quality/CODE-ASSESSMENT.md`.
 - Deliberate only, never mid-build; fixes nothing and never writes the decision log.
-- Not for fixing the findings (/loop-code-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-project-code-style), a security audit (the security-auditor seat; review-security covers one diff) or one diff (task-verify-code or review-code).
+- Not for fixing the findings (/loop-code-quality), the architecture (the architecture-quality part), test coverage (the test-coverage-quality part), recording the code style (/capture-project-code-style), a security audit (the security-auditor seat; review-security covers one diff) or one diff (task-verify-code or review-code).
 
 **Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
 
 ## Execution modes
 
-**Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces CODE-ASSESSMENT.md, and a conversational 'is this code any good?' can match this skill. So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
+**Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces CODE-ASSESSMENT.md, and a conversational 'is this code any good?' can match this skill. So unless a mode word follows the topic (a calling flow started this run) or capture-quality's chain ask already answered it, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
 
 ```ask
 Judge the code against its rules and replace CODE-ASSESSMENT.md?
@@ -35,7 +30,7 @@ Judge the code against its rules and replace CODE-ASSESSMENT.md?
 - 'Answer from the existing CODE-ASSESSMENT.md only' - nothing dispatched, nothing written; with no CODE-ASSESSMENT.md yet the run stops here
 ```
 
-DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - judge the modules via code-quality-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
+DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - judge the modules via code-quality-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (a mode word after the topic) or the chain ask already picked the run's mode, which is inherited, never re-asked.
 
 ```ask
 Judge <the modules> through the code-quality-analyzer seats or in this session?
@@ -49,7 +44,7 @@ Judge <the modules> through the code-quality-analyzer seats or in this session?
 ## The run
 
 ### 1. ORIENT - the rules, the modules, the prior read
-Collect the rule sources, in precedence order (`references/doc-shape.md` says why that order):
+Collect the rule sources, in precedence order (`references/code-quality-doc-shape.md` says why that order):
 
 **The user's preferences first.** Where `<docs-path>/preferences/` holds `PERSONAL-CODE-PREFERENCES.md`, its entries are the top rule source: the preferences hook hands them to each code-quality-analyzer at its start (the seat reads the doc itself when none came), so a brief never pastes them - INLINE, read the doc whole yourself - and run `node .claude/skills/capture-preferences/scripts/preferences.js check --all --area code` once - each `violation:` line is a located candidate whose rule is `PERSONAL-CODE-PREFERENCES.md#c<n>`. An `ARCHITECTURE-PREFERENCES.md` entry is the architecture-quality capture's to record: one a seat meets is a `handoff:` line here, so one breach lives in one doc.
 
@@ -72,12 +67,12 @@ Then the modules, inside the target - the scope the invocation names (the qualit
 Dispatch code-quality-analyzer per module, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - in a single message where the modules are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5). Each brief carries the module's paths, the rule list (the loops prompt paths, the RELEVANT `PROJECT-CODE-PREFERENCES.md` sections named by id (`PROJECT-CODE-PREFERENCES.md#<id>`), never pasted - the preferences hook pastes the doc at the seat's start as far as its room allows and names the rest - the convention rules attaching to the module's file families), `depth:` for a module too large for one seat, and `note: none`. You are the expensive seat: never read the codebase wholesale yourself - the navigation tools and ranged `Read` are for spot-verification of one finding only. A digest spilled to a persisted `tool-results/*.txt` file is grepped for the line you need, never read whole. After the dispatch, end the turn: each hand-back arrives on its own, and a notification poll only re-sends the context.
 
 ### 3. JUDGE - in-session
-Treat every `F` line as a candidate, never a finding, until it clears `references/doc-shape.md`'s findings gate: all four questions answered explicitly, the precedence rule applied, a re-measurement of an already-recorded entry folded into it - never opened as new, never re-tiered upward for gaining a number - and every gate-passing survivor recorded: the reasoning pass never stops early because the list already looks long. Re-measure every COUNTABLE claim a seat returns (a class count, a scan total) before it enters an entry. Group the instances of one rule in one module into one entry. Give each survivor its severity (the breached rule's own scale) and its tier - the routing key the loop fixes by. Cross-check every Must-fix remediation against the other rules handed this run before it lands: a fix for one rule that would breach another names the tension in its entry and is shaped to satisfy both, or the precedence in `references/doc-shape.md` decides, or the finding is tiered structural - a remediation that trades one finding for another makes the quality loop oscillate between rounds. A `handoff:` line is not a finding here: architecture restructuring belongs to the architecture-quality capture and a coverage gap to the coverage capture - count them in the report, never in the doc.
+Treat every `F` line as a candidate, never a finding, until it clears `references/code-quality-doc-shape.md`'s findings gate: all four questions answered explicitly, the precedence rule applied, a re-measurement of an already-recorded entry folded into it - never opened as new, never re-tiered upward for gaining a number - and every gate-passing survivor recorded: the reasoning pass never stops early because the list already looks long. Re-measure every COUNTABLE claim a seat returns (a class count, a scan total) before it enters an entry. Group the instances of one rule in one module into one entry. Give each survivor its severity (the breached rule's own scale) and its tier - the routing key the loop fixes by. Cross-check every Must-fix remediation against the other rules handed this run before it lands: a fix for one rule that would breach another names the tension in its entry and is shaped to satisfy both, or the precedence in `references/code-quality-doc-shape.md` decides, or the finding is tiered structural - a remediation that trades one finding for another makes the quality loop oscillate between rounds. A `handoff:` line is not a finding here: architecture restructuring belongs to the architecture-quality capture and a coverage gap to the coverage capture - count them in the report, never in the doc.
 
 ### 4. RE-GATHER on the gaps
 Where a finding is unclear or a module came back PARTIAL (a required file or rule source left unread - a module sampled by risk is CHARACTERIZED, its sample named), dispatch code-quality-analyzer again on exactly that module and rule. Where two seats contradict each other on a CHECKABLE fact, settle it with the cheapest deterministic probe in-session first (`grep -c`, a navigation lookup, the stack's own command) and re-dispatch only for a judgment conflict no command settles. **Hard cap: 3 gather rounds.** Still unsettled after 3: write what is established, mark what is uncertain and what would settle it - never guess to fill an entry.
 
-### 5. WRITE - <docs-path>/quality/CODE-ASSESSMENT.md, per references/doc-shape.md
+### 5. WRITE - <docs-path>/quality/CODE-ASSESSMENT.md, per references/code-quality-doc-shape.md
 No diff check - once the run gate is answered, REPLACE the file wholesale every run: READ it first if it exists so the Write is legal, then Write the fresh judgment over it, composed whole in-session and landed in one Write of the whole file - no Edit, no `sed`, no patch of the old text, the spill pass included. A calling flow's brief that names what shipped or what remains is context for the report, never the scope: a 'reconcile' run still judges every module. Write ONLY `<docs-path>/quality/CODE-ASSESSMENT.md` - never source, never the loops prompts, never the decision log. After the write, `wc -l` it against the ~300-line target and run the spill pass now if it is over.
 
 ### 6. REPORT
@@ -93,7 +88,7 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 | `Run gate:` | the answer verbatim, or `invoked by the quality loop` |
 | `Model:` | the model the judgment ran on, and the exact `/model` command for the USER to paste when the run raised it - `<model> - the judgment above ran on it`, or `raised for this run - run /model <prior model> to drop back` (only when a message in this session shows the user switched for this run) |
 
-No re-paste of the doc body - point to the file. A next command named for the user (the quality loop, a re-run) reads `/clear, then <command>`, in the option label when it is an ask: this run's reads leave the chat far past a fresh session's floor.
+No re-paste of the doc body - point to the file. A next command named for the user (the quality loop, a re-run) is offered to run here first, and `Start it in a fresh session: /clear, then <command>` after it, in the option labels when it is an ask. Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.
 
 ## Don't game it
 An honest finding beats a flattering omission, and a rule the project chose not to follow is a Deliberate tradeoff, not a defect. The finding count is an output, never a target, in either direction: inflating a style opinion into a finding to look thorough, and dropping a real one to keep the list tidy, are the same dishonesty - zero gate-passing findings is a complete result said plainly, and forty real ones are all recorded.

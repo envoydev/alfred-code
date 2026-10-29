@@ -7,8 +7,12 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const H = require('../stack/hooks/history.js');
 
+// Every folder a case makes is removed after the file: none was, and 1,410 were found in os.tmpdir() on 2026-10-28.
+const made = [];
+const tmpDir = (prefix) => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix)); made.push(dir); return dir; };
+test.after(() => { for (const dir of made) fs.rmSync(dir, { recursive: true, force: true }); });
 function project() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-'));
+  const root = tmpDir('hist-');
   const git = (...a) => execFileSync('git', a, { cwd: root, stdio: 'ignore' });
   git('init', '-q', '-b', 'feature/x'); git('config', 'user.email', 't@t'); git('config', 'user.name', 't');
   fs.writeFileSync(path.join(root, 'seed.txt'), 'seed'); git('add', '.'); git('commit', '-qm', 'seed');
@@ -16,7 +20,7 @@ function project() {
 }
 const row = (o) => JSON.stringify(o) + '\n';
 // the transcript lives OUTSIDE the project, as a real one does - inside it, it would count as a dirty file
-const transcriptFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hist-tr-')), 't.jsonl');
+const transcriptFile = () => path.join(tmpDir('hist-tr-'), 't.jsonl');
 const ruling = (q, a, ts = '2026-09-20T10:00:00.000Z') => row({ type: 'user', timestamp: ts, toolUseResult: { questions: [], answers: { [q]: a } }, message: { content: [{ type: 'tool_result', content: 'x' }] } });
 const planWrite = (p) => row({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: p } }] } });
 
@@ -120,7 +124,7 @@ test('the start block skips an empty entry and leaves out a plan no longer on di
 });
 
 test('garbage in, nothing out: no transcript, no git, a corrupt entry file', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-bad-'));
+  const root = tmpDir('hist-bad-');
   assert.doesNotThrow(() => H.upsert(root, { session_id: 's4', transcript_path: path.join(root, 'absent.jsonl'), cwd: root }));
   fs.mkdirSync(H.historyDir(root), { recursive: true });
   fs.writeFileSync(path.join(H.historyDir(root), 's5.json'), '{nope');
@@ -129,7 +133,7 @@ test('garbage in, nothing out: no transcript, no git, a corrupt entry file', () 
 });
 
 test('prune keeps the newest N and drops entries past the age limit', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-prune-'));
+  const dir = tmpDir('hist-prune-');
   for (let i = 0; i < 5; i++) { const p = path.join(dir, `s${i}.json`); fs.writeFileSync(p, '{}'); const t = new Date(Date.now() - i * 86400000); fs.utimesSync(p, t, t); }
   H.prune(dir, 3, 365);
   assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort(), ['s0.json', 's1.json', 's2.json']);
@@ -162,6 +166,79 @@ test('the start block keeps each session\'s newest ruling before any older one, 
   // under the cap nothing moves; garbage rulings never throw
   assert.match(H.renderStartBlock([entry(5, [r('Order?', 'Migration first')])], 600), /- .*: 0 commit\(s\), 1 file\(s\) left uncommitted\n  ruled: Order\? -> Migration first\nMore:/);
   assert.ok(H.renderStartBlock([entry(5, [null, { question: null, answer: 7 }])], 600).length > 0);
+});
+
+// The plan's state in the start block (the user's run order, 2026-10-28): read from the plan at render time - its
+// habits-plan-writing cards and its Resume: line - so the next session knows the next task without opening the plan.
+const card = (n, status) => `### Task ${n} - slice ${n}\n\n- status: ${status}\n- files: src/a${n}.ts (modify)\n`;
+const planText = ({ cards = [], resume = null, completed = false, eol = '\n' } = {}) => ['# Feature - plan', '', 'Asked: "x"',
+  resume === null ? null : `Resume: ${resume}`, '', '## Tasks', '', ...cards.map((st, i) => card(i + 1, st)), completed ? 'Completed: 2026-10-28' : null]
+  .filter((l) => l !== null).join('\n').split('\n').join(eol);
+function planBlock(text, opts = {}) {
+  const { root } = project();
+  fs.mkdirSync(path.join(root, 'docs', 'plans'), { recursive: true });
+  if (text !== null) fs.writeFileSync(path.join(root, 'docs', 'plans', 'x.md'), text);
+  const e = { session: 's1', branch: 'feature/x', updatedAt: new Date().toISOString(), offset: 9, commits: [], dirty: { count: 0, files: [] }, rulings: [], plan: 'docs/plans/x.md' };
+  return H.renderStartBlock([e], opts.cap || 600, opts.noRoot ? null : root);
+}
+const planLine = (block) => (block.split('\n').find((l) => l.startsWith('- ')) || '');
+test('the start block shows a plan\'s cards done and its Resume: line', () => {
+  const block = planBlock(planText({ cards: ['DONE (`npm test` - 12 pass)', 'DONE (`npm test` - 14 pass)', 'IN_PROGRESS', 'TODO', 'TODO'], resume: 'next task 3 - tests written, code next' }));
+  assert.match(planLine(block), /, plan docs\/plans\/x\.md \(2\/5 done; Resume: next task 3 - tests written, code next\)$/, block);
+});
+test('a plan with its Completed: line reads (completed)', () => {
+  const block = planBlock(planText({ cards: ['DONE (ok)', 'DONE (ok)'], resume: 'done', completed: true }));
+  assert.match(planLine(block), /, plan docs\/plans\/x\.md \(completed\)$/, block);
+});
+test('a plan with neither cards nor a Resume: line, an unreadable one and one over 1 MB keep the path alone', () => {
+  assert.match(planLine(planBlock('# Another format\n\n1. do a\n2. do b\n')), /, plan docs\/plans\/x\.md$/);
+  const big = planText({ cards: ['DONE (ok)'], resume: 'next task 2' });
+  assert.match(planLine(planBlock(big + ' '.repeat(1024 * 1024 + 1 - Buffer.byteLength(big)))), /, plan docs\/plans\/x\.md$/, 'one byte over 1 MB');
+  assert.match(planLine(planBlock(big + ' '.repeat(1024 * 1024 - Buffer.byteLength(big)))), /\(1\/1 done; Resume: next task 2\)$/, 'at 1 MB it is read');
+  assert.match(planLine(planBlock(planText({ cards: ['TODO'], resume: 'next task 1' }), { noRoot: true })), /, plan docs\/plans\/x\.md$/, 'no root: shown as recorded, never read');
+  assert.strictEqual(planLine(planBlock(null)).includes('x.md'), false, 'a plan removed since the session is left out');
+});
+// A side agent's note (2026-10-28): a superpowers plan has '### Task N:' headings and checkbox steps, no status lines -
+// counted as cards, a finished one read '(0/N done)'.
+test('task headings with no status lines are not counted: a superpowers plan keeps the path alone', () => {
+  const sp = ['# X Implementation Plan', '', '### Task 1: Hook', '', '- [x] **Step 1: Write the failing test**', '- [x] **Step 2: Run it**', '',
+    '### Task 2: Docs', '', '- [x] **Step 1: Edit**', ''].join('\n');
+  assert.match(planLine(planBlock(sp)), /, plan docs\/plans\/x\.md$/, 'no count from cards that carry no status');
+  assert.match(planLine(planBlock(`${sp}\nResume: next task 3\n`)), /, plan docs\/plans\/x\.md \(Resume: next task 3\)$/, 'its Resume: line alone still shows');
+});
+test('the Resume: text is scrubbed, folded and cut at 80 characters', () => {
+  assert.match(planBlock(planText({ cards: ['TODO'], resume: 'paste ghp_abcdefghijklmnopqrstuvwxyz0123 into   the\tconfig' })), /\(0\/1 done; Resume: paste \[redacted\] into the config\)$/m);
+  const at80 = `Resume: ${'a'.repeat(72)}`;
+  assert.ok(planLine(planBlock(planText({ cards: ['TODO'], resume: 'a'.repeat(72) }))).endsWith(`(0/1 done; ${at80})`), 'exactly 80 is kept whole');
+  const cut = planLine(planBlock(planText({ cards: ['TODO'], resume: 'b'.repeat(73) })));
+  assert.ok(cut.endsWith(`(0/1 done; Resume: ${'b'.repeat(69)}...)`), cut);
+  assert.match(planBlock(planText({ resume: 'next task 1' })), /\(Resume: next task 1\)$/m, 'a Resume: line with no cards');
+  assert.match(planBlock(planText({ cards: ['DONE (ok)', 'TODO'] })), /\(1\/2 done\)$/m, 'cards with no Resume: line');
+});
+test('a CRLF plan parses like an LF one', () => {
+  const block = planBlock(planText({ cards: ['DONE (ok)', 'TODO'], resume: 'next task 2 - C:\\src\\app.ts open', eol: '\r\n' }));
+  assert.match(planLine(block), /\(1\/2 done; Resume: next task 2 - C:\\src\\app\.ts open\)$/, JSON.stringify(block));
+});
+test('over the cap the older plan states go before their lines, and the newest session keeps its plan state longest', () => {
+  const { root } = project();
+  fs.mkdirSync(path.join(root, 'docs', 'plans'), { recursive: true });
+  const at = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const entries = [0, 1, 2].map((i) => {
+    fs.writeFileSync(path.join(root, 'docs', 'plans', `p${i}.md`), planText({ cards: ['DONE (ok)', 'TODO', 'TODO'], resume: `session ${i} ${'r'.repeat(70)}` }));
+    return { session: `s${i}`, branch: 'feature/x', updatedAt: at(i * 10), offset: 9, commits: [], dirty: { count: 0, files: [] }, rulings: [{ ts: '', question: `Q${i}?`, answer: `A${i}` }], plan: `docs/plans/p${i}.md` };
+  });
+  for (const cap of [300, 600, 1650]) {
+    const block = H.renderStartBlock(entries, cap, root);
+    assert.ok(block.length <= cap, `cap ${cap}: ${block.length}`);
+    assert.match(block, /More: node \.claude\/hooks\/history\.js rulings$/, `cap ${cap}: the footer stays whole`);
+  }
+  const mid = H.renderStartBlock(entries, 600, root);
+  assert.match(mid, /plan docs\/plans\/p0\.md \(1\/3 done; Resume: session 0 r+\.\.\.\)/, mid);
+  assert.doesNotMatch(mid, /ruled:/, 'rulings leave first');
+  assert.doesNotMatch(mid, /p2\.md \(/, 'the oldest plan state leaves before the newest');
+  const tight = H.renderStartBlock(entries, 300, root);
+  assert.match(tight, /plan docs\/plans\/p0\.md( \(1\/3 done\))?$/m, `the newest line stays, its Resume: text going before its count: ${tight}`);
+  assert.match(H.renderStartBlock(entries, 1650, root), /p2\.md \(1\/3 done; Resume: /, 'under the cap every state is shown');
 });
 
 test('2.8.0: historyDir is <data root>/state/history, and a session an older hook recorded keeps its legacy record', () => {

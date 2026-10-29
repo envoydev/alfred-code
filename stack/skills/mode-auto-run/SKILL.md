@@ -44,7 +44,7 @@ Say the route in one line before the work, then take it:
      `/task-solve-cross <request>`, and the close.
 2. **Another user-typed flow's job** - a version upgrade (`/task-version-upgrade`), a build from scratch
    (`/task-build-from-scratch`), a diagnosis (`/issue-diagnoser`), a quality loop (`/loop-code-quality`,
-   `/loop-architecture-quality`, `/loop-test-coverage`), a capture (`/capture-awareness`, `/capture-preferences`,
+   `/loop-architecture-quality`, `/loop-test-coverage-quality`), a capture (`/capture-awareness`, `/capture-preferences`,
    `/capture-project-code-style`, `/capture-usage-report`), a change across several parts (`/task-solve-cross`). Not
    run here: one `Left for you:` line, `/<that flow> <request>`, and the close.
 3. **Anything else** - a question, a doc under the docs root: do it directly. A file it writes stays uncommitted and

@@ -150,7 +150,7 @@ auto-run on and runs the request in one go. Each prompt shows the modes that are
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 92 | house conventions and workflows |
+| **Skills** | 90 | house conventions and workflows |
 | **Agents** | 45 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
 | **Hooks** | 18 | the guards, plus the docs, preferences and history hooks |
@@ -167,6 +167,15 @@ The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it
 | `~/.claude/` | the plugin cache, the status line |
 
 `/alfred-code:uninstall` removes only what the install recorded. Every file, process and token, in detail: [`docs/install-footprint.md`](docs/install-footprint.md).
+
+## Workspaces
+
+A folder of several projects can share one install's skills, rules, hooks and seats.
+
+- Run `/alfred-code:init` at the workspace root first, then in each project below; init asks each one to join.
+- In a project below, install with `--scope local` (or `user`): `--scope project` writes the core into the child's committed `.claude/settings.json`.
+- Unattended, init runs only its second (bootstrap) phase: install in an interactive session and restart first, then run `ALFRED_CODE_UNATTENDED=1 claude -p "/alfred-code:init" --permission-mode auto` - print mode without a permission mode refuses every Bash call.
+- Before a project joins, its first session can ask 'allow external imports?' for the root's awareness rule. 'No' is safe: after the join that rule is excluded there.
 
 ## FAQ
 

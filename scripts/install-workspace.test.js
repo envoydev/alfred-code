@@ -399,6 +399,62 @@ test('a 2.12.0 child registered with the switch off keeps every value through th
     assert.ok(!/a stack seed, so the workspace's value reaches this project/.test(r.outs[3]), r.outs[3]);
 });
 
+// F10 (the 2026-10-28 workspace run): a child joined BEFORE its install, given the value its workspace already hands it,
+// wrote an own copy - frozen against a later change at the root. It writes nothing now; a different answer is its own.
+const AC = 'ALFRED_CODE_AUTO_COMPACT';
+const childRun = (flagArgs, before = () => {}) => scenario([
+    { at: '.', after: (work) => { before(work); join(work, 'api'); } },
+    { at: 'api', args: flagArgs, after: (work) => ({ vars: varsOf(work, 'api'), env: envOf(work, 'api'), root: varsOf(work, '.') }) },
+]);
+const NOT_JOINED = /ignored - this project is not a joined child/;
+
+test('F10: a linked child given the inherited value writes nothing', POSIX_ONLY, () =>
+{
+    const r = childRun(['--auto-compact', 'off']);
+    const got = r.steps[1];
+    assert.strictEqual(got.root[AC], '0', 'the root holds the seed');
+    assert.ok(!Object.hasOwn(got.vars, AC), `no own copy in .variables: ${JSON.stringify(got.vars)}\n${r.outs[1]}`);
+    assert.ok(!Object.hasOwn(got.env, AC), 'none in settings.json');
+    assert.match(r.outs[1], /ALFRED_CODE_AUTO_COMPACT '0' comes from the workspace - nothing written \(the --auto-compact answer equals it\)/);
+    assert.doesNotMatch(r.outs[1], NOT_JOINED);
+});
+
+test('F10: a linked child given another value writes it as its own', POSIX_ONLY, () =>
+{
+    const r = childRun(['--auto-compact', 'on']);
+    assert.strictEqual(r.steps[1].vars[AC], '1', r.outs[1]);
+    assert.doesNotMatch(r.outs[1], /comes from the workspace - nothing written/);
+    assert.doesNotMatch(r.outs[1], NOT_JOINED);
+});
+
+test('F10: the catalog default decides when no member sets the key', POSIX_ONLY, () =>
+{
+    const r = childRun(['--auto-compact', 'off'], (work) => variablesLib.write(path.join(at(work, '.'), '.alfred', '.variables'), { [AC]: null }));
+    const got = r.steps[1];
+    assert.ok(!Object.hasOwn(got.root, AC), 'the root holds no value');
+    assert.ok(!Object.hasOwn(got.vars, AC), `the default '0' is what the child reads already: ${JSON.stringify(got.vars)}\n${r.outs[1]}`);
+    assert.match(r.outs[1], /ALFRED_CODE_AUTO_COMPACT '0' comes from the workspace - nothing written/);
+});
+
+test('F10: an unlinked child with a parent line writes its answer', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.' },
+        { at: 'api', args: ['--auto-compact', 'off'], before: (work) => edit(work, 'api', (m) => wsLib.setParent(m, '..')), after: (work) => ({ vars: varsOf(work, 'api') }) },
+    ]);
+    assert.strictEqual(r.steps[1].vars[AC], '0', r.outs[1]);
+    assert.doesNotMatch(r.outs[1], /comes from the workspace - nothing written/);
+});
+
+test('F10: a linked child given --memory default writes nothing', POSIX_ONLY, () =>
+{
+    const r = childRun(['--memory', 'default']);
+    const got = r.steps[1];
+    assert.ok(!Object.hasOwn(got.vars, 'ALFRED_CODE_MEMORY'), `${JSON.stringify(got.vars)}\n${r.outs[1]}`);
+    assert.match(r.outs[1], /ALFRED_CODE_MEMORY 'default' comes from the workspace - nothing written \(the --memory answer equals it\)/);
+    assert.doesNotMatch(r.outs[1], NOT_JOINED);
+});
+
 // D4 step 5 for Claude Code's own settings: a child whose AUTO_COMPACT and MEMORY come from the root writes the rows a
 // project holding them itself would - else its hooks run compact / custom memory while Claude Code does neither.
 test('a child reading AUTO_COMPACT=1 and MEMORY=custom from its root gets the autoCompactWindow rows and autoMemoryEnabled false', POSIX_ONLY, () =>

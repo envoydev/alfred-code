@@ -122,14 +122,18 @@ test('the core carries every stack hook inline, its own two first in each event'
         for (const c of commands(stack, event))
             assert.ok(commands(core.hooks, event).includes(c), `the core must carry ${event} ${c}`);
     const own = (event) => commands(core.hooks, event).filter((c) => c.includes('/setup-plugin/hooks/'));
-    assert.deepStrictEqual(own('PreToolUse').length + own('SessionStart').length, 3, 'the core keeps its own two hooks, the layer gate on two matchers');
+    assert.deepStrictEqual(own('PreToolUse').length + own('SessionStart').length + own('PostToolUse').length, 4,
+        'the core keeps its own two hooks, the layer gate on three wirings');
+    // F4 (2026-10-28): the paste check voids at PostToolUse, where the ask's own message is on disk.
+    const post = core.hooks.PostToolUse.find((g) => g.matcher === 'AskUserQuestion');
+    assert.match(post.hooks[0].command, /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer gate leads PostToolUse AskUserQuestion');
     assert.match(core.hooks.PreToolUse[0].hooks[0].command, /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer-table guard leads PreToolUse');
     // 2026-10-21: the walk's next step is judged too - on Bash, spawned only for a `node` call.
     const bash = core.hooks.PreToolUse.find((g) => g.matcher === 'Bash');
     assert.deepStrictEqual([bash.hooks[0].if, /guard-layer-table\.js/.test(bash.hooks[0].command)], ['Bash(node *)', true], 'the layer gate rides Bash behind its if filter');
     assert.match(core.hooks.SessionStart[0].hooks[0].command, /setup-plugin\/hooks\/library-stamp\.js/, 'the library-stamp line leads SessionStart');
     const total = (block) => Object.values(block).flat().reduce((n, g) => n + g.hooks.length, 0);
-    assert.strictEqual(total(core.hooks), total(stack) + 3, 'nothing doubled, nothing lost');
+    assert.strictEqual(total(core.hooks), total(stack) + 4, 'nothing doubled, nothing lost');
 });
 
 test('mergeHooks keeps one group per matcher, the first block\'s hooks first', () => {

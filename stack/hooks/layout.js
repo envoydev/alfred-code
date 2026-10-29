@@ -93,6 +93,7 @@ function approvalStamps(root, env = process.env)
 }
 
 // The move map, `from` relative to the docs root; `to` relative to `base` - the data root or the docs root.
+const COVERAGE_RENAME = Object.freeze({ 'COVERAGE.md': 'COVERAGE-QUALITY.md', raw: 'coverage-raw' });
 const LAYOUT_MOVES = Object.freeze([
     { from: 'flow', base: 'data', split: 'flow' },
     { from: 'history', base: 'data', to: 'state/history' },
@@ -105,7 +106,11 @@ const LAYOUT_MOVES = Object.freeze([
     { from: 'diagnoses', base: 'docs', to: 'work/diagnoses' },
     { from: 'cross-project-tasks', base: 'docs', to: 'work/cross-project-tasks' },
     { from: 'related-context', base: 'docs', to: 'work/cross-project-tasks' },
-    { from: 'test-coverage', base: 'docs', to: 'quality/test-coverage' },
+    // The coverage doc's home since capture-quality (2026-10-29): a 2.8+ install moves from quality/test-coverage/, an
+    // older one straight from test-coverage/ - the 2.8 row first, so its doc wins where both homes exist. `rename` maps
+    // the first segment under `from` to its name under `to`; an entry it does not name stays, named in the log.
+    { from: 'quality/test-coverage', base: 'docs', to: 'quality', rename: COVERAGE_RENAME },
+    { from: 'test-coverage', base: 'docs', to: 'quality', rename: COVERAGE_RENAME },
     { from: 'loops', base: 'docs', to: 'quality/loops' },
     { from: 'tutorial', base: 'docs', to: 'explanations' },   // the explainer's folder (item 6, 2026-10-25)
     { from: '.branches', removeIfEmpty: true },
@@ -401,7 +406,7 @@ const VARIABLE_KEYS = Object.freeze([
     'ALFRED_CODE_HISTORY', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K',
     'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_AUTO_COMPACT',
     'ALFRED_CODE_MAXIMUM_RUN_AGENTS', 'ALFRED_CODE_MEMORY', 'ALFRED_CODE_FRESH_SESSION_AFTER_HOURS',
-    'ALFRED_CODE_FORGE_WATCH', 'ALFRED_CODE_WORKSPACE',
+    'ALFRED_CODE_FRESH_SESSION_PAYBACK', 'ALFRED_CODE_FORGE_WATCH', 'ALFRED_CODE_WORKSPACE',
 ]);
 const VARIABLE_SET = new Set(VARIABLE_KEYS);
 // Never taken from a member: the docs mode is this project's own layout (release 1's ENV_NEVER), and the chain cannot
@@ -750,12 +755,15 @@ function ancestorPrefsDirs(projectRoot, { env = process.env } = {})
     };
     take(chain.ignores);
     const out = [];
-    for (const m of chain.members)
+    // F25: each entry names its member's role - the chain's last member is the workspace root, its first the parent.
+    const top = chain.members.length - 1;
+    chain.members.forEach((m, i) =>
     {
-        if (dropped) break;
-        out.push({ dir: path.join(docsRootOf(m.root, { env, dataRoot: m.dataRoot }), 'preferences'), skip: new Set(skip) });
+        if (dropped) return;
+        const role = i === top ? 'root' : i === 0 ? 'parent' : 'ancestor';
+        out.push({ dir: path.join(docsRootOf(m.root, { env, dataRoot: m.dataRoot }), 'preferences'), skip: new Set(skip), role });
         take(m.ignores);
-    }
+    });
     return out;
 }
 // The workspace root (D3's 'root'): the chain's last linked member, null with no parent. The switch is the caller's.

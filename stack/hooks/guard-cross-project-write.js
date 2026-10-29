@@ -215,6 +215,22 @@ function inside(target, dir) {
 // repo would sit inside it too. On macOS os.tmpdir() is under /var/folders, so a project
 // worked on from a temp dir is exactly that case (it is how this hook's own tests run).
 const effectiveAllow = allowRoots.filter((d) => !inside(ROOT, d));
+// F14 (the 2026-10-28 workspace run): a project kept under the harness's scratch root drops that whole root by the rule
+// above, and with it this session's own scratchpad. Only <scratch root>/<one segment>/<session id> comes back - never
+// another session's folder, and never a folder that holds the project itself.
+const SESSION_ID = typeof payload.session_id === 'string' && /^[\w-]+$/.test(payload.session_id) ? payload.session_id : null;
+const droppedScratch = UID == null ? [] : [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`].map(realish)
+  .filter((s) => !effectiveAllow.some((d) => fold(d) === fold(s)));
+function sessionScratchAllowed(target) {
+  if (!SESSION_ID) return false;
+  const t = realish(target);
+  return droppedScratch.some((s) => {
+    if (!inside(t, s)) return false;
+    const [segment, sid] = path.relative(s, t).split(path.sep);
+    if (!segment || sid === undefined || fold(sid) !== fold(SESSION_ID)) return false;
+    return !inside(ROOT, path.join(s, segment, sid));
+  });
+}
 // The user's own allowance for THIS session. A block ends in an ask, and the 'allow' answer has
 // to be honourable or the ask offers a route this guard then denies - the failure the git rule
 // recorded: an ask recommended a sibling-repo commit, the user took it, the guard denied it at the
@@ -362,7 +378,7 @@ function allowed(target) {
   if (inside(t, ROOT)) return true;
   if (memberMemory(t)) return false;
   if (ownMemory(t)) return true;
-  if (effectiveAllow.some((d) => inside(t, d))) return true;
+  if (effectiveAllow.some((d) => inside(t, d)) || sessionScratchAllowed(t)) return true;
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
   if (sameRepoWorktree(t)) return true;

@@ -190,18 +190,85 @@ function lastForBranch(root, branch, n, excludeSession) {
 
 // A plan no longer on disk is left out: the block named a path an update had moved a minute before (audit 2026-10-10
 // C23, session 0cdb0c1d), and a stale path reads as a file claim. With no root the plan is shown as recorded.
+const planFile = (plan, root) => (String(plan).startsWith('~/') ? path.join(require('os').homedir(), String(plan).slice(2)) : path.resolve(root, String(plan)));
 function planOnDisk(plan, root) {
   if (!root) return true;
+  try { return fs.existsSync(planFile(plan, root)); } catch { return true; }
+}
+// Where the plan stands NOW, read when the block renders (the user's run order, 2026-10-28: the plan moves on after the
+// session ends): its habits-plan-writing cards done of all and its Resume: line, rewritten after every task tick, or
+// completed once its Completed: line is there. The forms the block shows, fullest first - the trim takes the Resume: text
+// before the count. Another plan format, no root, no regular file, an unreadable one or one over 1 MB shows none: the path alone.
+const PLAN_READ_MAX = 1024 * 1024;
+const RESUME_CAP = 80;
+// The plan's lines and whether its Completed: line is there; null with no root, no regular file, one over 1 MB or a read
+// error - the one read planStates and openPlan share.
+function planRead(plan, root) {
+  if (!root) return null;
   try {
-    const abs = String(plan).startsWith('~/') ? path.join(require('os').homedir(), String(plan).slice(2)) : path.resolve(root, String(plan));
-    return fs.existsSync(abs);
-  } catch { return true; }
+    const file = planFile(plan, root);
+    const st = fs.statSync(file);
+    if (!st.isFile() || st.size > PLAN_READ_MAX) return null;   // a fifo would hold the start until its timeout
+    const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+    return { lines, completed: lines.some((l) => /^Completed:\s*\S/.test(l)) };
+  } catch { return null; }
+}
+function planStates(plan, root) {
+  if (!root) return [];
+  try {
+    const read = planRead(plan, root);
+    if (!read) return [];
+    const { lines } = read;
+    if (read.completed) return ['(completed)'];
+    // a card counts only beside a status line: a superpowers plan's '### Task N:' headings carry none, and a finished one
+    // read '(0/N done)'
+    const statuses = lines.filter((l) => /^\s*-\s*status:\s*\S/.test(l));
+    const cards = statuses.length ? lines.filter((l) => /^###\s+Task\b/.test(l)).length : 0;
+    const done = Math.min(cards, statuses.filter((l) => /^\s*-\s*status:\s*DONE\b/.test(l)).length);
+    const line = lines.find((l) => /^Resume:/.test(l));
+    // plan text the model wrote: scrubbed and folded like every recorded string, then cut
+    let resume = line ? scrub(line) : '';
+    if (resume.length > RESUME_CAP) resume = `${resume.slice(0, RESUME_CAP - 3)}...`;
+    const count = cards ? `${done}/${cards} done` : '';
+    return [[count, resume].filter(Boolean).join('; '), count].filter(Boolean).map((t) => `(${t})`).filter((t, i, all) => all.indexOf(t) === i);
+  } catch { return []; }
+}
+// The plan a resume picks up (the session status file, 2026-10-29): the newest record of the branch naming a plan inside
+// the project that is on disk and not completed - the asking session's own included (A3) - with its Resume: text, the
+// label dropped, scrubbed and cut. The plan chosen ends the search: no Resume: text there is null, never an older plan's.
+function openPlan(root, branch, count) {
+  try {
+    for (const e of lastForBranch(root, branch, count)) {
+      if (!e.plan) continue;
+      const rel = String(e.plan).replace(/\\/g, '/');
+      if (rel.startsWith('~/') || path.posix.isAbsolute(rel) || /^[A-Za-z]:\//.test(rel)) continue;
+      const norm = path.posix.normalize(rel);
+      if (norm === '..' || norm.startsWith('../')) continue;
+      if (!fs.existsSync(path.resolve(root, rel))) continue;
+      const read = planRead(rel, root);
+      if (!read) return null;
+      if (read.completed) continue;
+      const line = read.lines.find((l) => /^Resume:/.test(l));
+      let resume = line ? scrub(line.replace(/^Resume:\s*/, '')) : '';
+      if (!resume) return null;
+      if (resume.length > RESUME_CAP) resume = `${resume.slice(0, RESUME_CAP - 3)}...`;
+      return { plan: rel, resume };
+    }
+    return null;
+  } catch { return null; }
+}
+// A session's record as upsert writes it, its id sanitised the same way; null when absent or not a JSON object.
+function entryFor(root, sessionId) {
+  try {
+    const e = JSON.parse(fs.readFileSync(recordFile(root, String(sessionId || '').replace(/[^\w.-]/g, '_')), 'utf8'));
+    return e && typeof e === 'object' && !Array.isArray(e) ? e : null;
+  } catch { return null; }
 }
 // Over the cap, rulings go last and fairly (audit 2026-10-11 SD16, session e90a1845: trimming from the end cut every
 // ruling of the older session - AGENTS.md rows kept as they are, a credential deferral - while the newest session's three
 // stayed, and the same rows were reviewed again and answered the same). A question is shown once, at its newest answer;
-// the ruling lines leave in round-robin order across sessions (each session's oldest shown ruling first), and only then
-// the older sessions' own lines.
+// the ruling lines leave in round-robin order across sessions (each session's oldest shown ruling first), then the older
+// sessions' plan states (oldest first), then their own lines, and the newest session's plan state last.
 const questionKey = (q) => String(q || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 70);
 function renderStartBlock(entries, cap = 600, root = null) {
   if (!entries.length) return '';
@@ -220,17 +287,28 @@ function renderStartBlock(entries, cap = 600, root = null) {
   entries.forEach((e, i) => {
     const when = String(e.updatedAt || '').slice(0, 16).replace('T', ' ');
     const bits = [`${(e.commits || []).length} commit(s)`, `${(e.dirty && e.dirty.count) || 0} file(s) left uncommitted`];
+    const states = e.plan && planOnDisk(e.plan, root) ? planStates(e.plan, root) : [];
     if (e.plan && planOnDisk(e.plan, root)) bits.push(`plan ${e.plan}`);
-    items.push({ text: `- ${when}: ${bits.join(', ')}`, entry: i });
+    items.push({ text: `- ${when}: ${bits.join(', ')}`, states, level: 0, entry: i });
     for (const r of per[i].slice().reverse()) items.push({ text: `  ruled: ${String(r.question).slice(0, 70)} -> ${String(r.answer).slice(0, 60)}`, rank: rank.get(r), entry: i });
   });
   items.push({ text: 'More: node .claude/hooks/history.js rulings' });
-  const render = () => items.map((x) => x.text).join('\n');
+  const stateOf = (x) => (x.states && x.states[x.level]) || '';
+  const render = () => items.map((x) => (stateOf(x) ? `${x.text} ${stateOf(x)}` : x.text)).join('\n');
   let text = render();
   while (text.length > cap) {
     let drop = -1;
     items.forEach((x, k) => { if (x.rank !== undefined && (drop < 0 || x.rank > items[drop].rank)) drop = k; });
+    if (drop < 0) {
+      let older = null;
+      for (const x of items) if (x.entry > 0 && stateOf(x) && (!older || x.entry > older.entry)) older = x;
+      if (older) { older.level = older.states.length; text = render(); continue; }
+    }
     if (drop < 0) for (let k = items.length - 2; k > 1 && drop < 0; k--) if (items[k].entry !== undefined && items[k].entry > 0) drop = k;
+    if (drop < 0) {
+      const newest = items.find((x) => x.entry === 0 && stateOf(x));
+      if (newest) { newest.level += 1; text = render(); continue; }
+    }
     if (drop < 0) break;
     items.splice(drop, 1);
     text = render();
@@ -266,4 +344,4 @@ function historyCount(value) {
   return Math.min(Number(v), HISTORY_MAX);
 }
 
-module.exports = { historyDir, upsert, lastForBranch, renderStartBlock, prune, scrub, historyCount, historyCap };
+module.exports = { historyDir, upsert, lastForBranch, renderStartBlock, prune, scrub, historyCount, historyCap, planRead, openPlan, entryFor };

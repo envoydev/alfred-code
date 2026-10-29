@@ -141,17 +141,19 @@ test('resume block (the 2026-10-17 usage audit): a pointer at a block above is h
   assert.strictEqual(over([typed('go'), ...work(2)], 'Fixed the paste handler; the command above now trims input. Nothing pending.').status, 0, 'a code pointer is no resume pointer');
   // the ask half: task-solve's compaction ask promised 'the paste-ready block above' with no block on screen
   const askRun = (rows, label, description) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `ask${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-    transcript_path: transcript(rows), tool_input: { questions: [{ question: 'Context compacted during task 3. Fresh: ~40k, here: ~45k.', header: 'Resume',
+    transcript_path: transcript(rows), tool_input: { questions: [{ question: 'Context compacted during task 3. Fresh: ~40k, here: ~90k.', header: 'Resume',
       options: [{ label, description }, { label: 'Continue the build here', description: 'on the compacted summary' }] }] } }), encoding: 'utf8', env: logEnv() });
   const upd = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
-  const at45k = (id, text) => ({ type: 'assistant', message: { id, content: [{ type: 'text', text }], usage: { cache_read_input_tokens: 45000 } } });
-  const plain = [typed('continue'), at45k('p1', 'Build goes on.')];
+  // a 40k first message and a 90k carry: a fresh session pays back here (check 15 keeps the hand-off), so the rewording is what is judged
+  const floor = { type: 'assistant', message: { id: 'f0', content: [{ type: 'text', text: 'first' }], usage: { cache_creation_input_tokens: 40000 } } };
+  const at90k = (id, text) => ({ type: 'assistant', message: { id, content: [{ type: 'text', text }], usage: { cache_read_input_tokens: 90000 } } });
+  const plain = [floor, typed('continue'), at90k('p1', 'Build goes on.')];
   const fixedAsk = askRun(plain, 'Resume in a fresh session (Recommended)', 'the paste-ready block above; this chat stops here');
   assert.strictEqual(fixedAsk.status, 0, fixedAsk.stderr);
   assert.strictEqual(upd(fixedAsk).questions[0].options[0].description, 'the resume block, printed after this answer; this chat stops here', 'reworded in place');
   assert.strictEqual(upd(fixedAsk).questions[0].options[1].description, 'on the compacted summary', 'the other option untouched');
   assert.match(JSON.parse(fixedAsk.stdout).hookSpecificOutput.additionalContext, /ends with the resume block in its own fenced block/);
-  const shown = [typed('continue'), at45k('p2', 'Resume block:\n\n```text\n/task-solve plans/x.md\n```')];
+  const shown = [floor, typed('continue'), at90k('p2', 'Resume block:\n\n```text\n/task-solve plans/x.md\n```')];
   assert.strictEqual(upd(askRun(shown, 'Resume in a fresh session (Recommended)', 'the paste-ready block above; this chat stops here')), null, 'a block on screen is above');
   assert.strictEqual(upd(askRun(plain, 'Resume in a fresh session (Recommended)', 'the resume block ends this turn; this chat stops here')), null, 'the template wording passes untouched');
   const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'task-solve', 'SKILL.md'), 'utf8');

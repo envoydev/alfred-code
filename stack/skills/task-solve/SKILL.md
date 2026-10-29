@@ -30,8 +30,8 @@ run-time load.
 `list <feature>/<contract_version>` prints them), and read the plan file's stamps and `Resume:` line. A cycle mid-flight resumes at its cursor - never restart a step whose stamp says it
 already passed. A resume paste that lands in a chat still holding the earlier cycle's conversation (no
 `/clear` between) is answered with one line - `/clear first, then paste it again` - and nothing else.
-A NEW cycle starting after a finished one in this same session recommends the fresh-session hand-off
-in its first ask. A cycle mid-build looks like:
+A NEW cycle starting after a finished one in this same session offers the fresh-session hand-off
+in its first ask, after the in-session option. A cycle mid-build looks like:
 
 ```
 plan <docs-path>/work/plans/csv.md:
@@ -70,14 +70,14 @@ There is no non-decision stop: 'what happens next' is itself the decision. The o
 concrete; free text comes through the built-in Other. Where the harness has no such tool, list the same options in plain
 text and END THE TURN.
 
-**The fresh-session resume.** A stop is the cheap point to run the next step in a fresh session
-(`/clear`): resume needs only the plan file, with zero re-work. Once the cycle has crossed the install's
+**The fresh-session resume.** A fresh session (`/clear`) resumes from the plan file alone, with
+zero re-work. Once the cycle has crossed the install's
 fresh-session trigger (400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other), spans hours, or resumes after a 2h+ idle gap, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes. Below all three (a new cycle's first ask and the compaction stop aside), no ask
 carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess.
 The stop-contract hook injects the two measured numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
-A CONSTRUCTION check, not a memory: before any stop's ask, 'has this cycle crossed the trigger?' - if yes
-and the option is missing, rebuild it. And HONOR the answer: when the user picks it, the turn ENDS with this
+Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.
+Check the trigger before each ask, never from memory. And HONOR the answer: when the user picks it, the turn ENDS with this
 block, after the answer - no new work in this chat. The fence holds the command alone: the plan's `Resume:`
 line holds the step.
 
@@ -92,7 +92,7 @@ Next: <its first move> -> <the steps left>.
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
 recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL`
 with first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived under it, and take each stop's recommended option; the
-pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
+pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
 
 ## Size first
 
@@ -190,8 +190,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 
    ```ask
    Context compacted during task <N>; the plan file holds every tick. Fresh: <the cold floor>, here: <carry>.
-   - 'Resume in a fresh session (Recommended)' - the resume block ends this turn; this chat stops here
-   - 'Continue the build here' - on the compacted summary
+   - 'Continue the build here (Recommended)' - on the compacted summary
+   - 'Resume in a fresh session' - the resume block ends this turn; this chat stops here
    ```
 
    *Stop* at the build's end - and this stop chooses the reviewer for step 5. Its first sentence is
@@ -232,9 +232,9 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 
    ```ask
    Next: <the deferred item or follow-up>. It opens a NEW cycle in a NEW plan file.
-   - 'Start it in a fresh session (Recommended)' - the resume block ends this turn; this context stays behind
+   - 'Start it here (Recommended)' - a new cycle in this chat, from step 1
    - 'Leave it for later' - named in Leftovers
-   - 'Start it here' - a new cycle in this chat, from step 1
+   - 'Start it in a fresh session' - the resume block ends this turn; this context stays behind
    ```
 
    An unpushed commit is its own question too (several branches: the merge order):

@@ -1,6 +1,6 @@
 {
   "name": "alfred-code",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "private": true,
   "description": "Alfred Code - the house coding-agent stack for Claude Code: skills, agents, rules, hooks and MCP servers, installed per project from one source. This package is the repo tooling: lint, tests, marketplace build.",
   "license": "MIT",
@@ -27,7 +27,7 @@
   "scripts": {
     "lint": "node scripts/lint-skills.js",
     "graph": "node scripts/stack-graph.js --write",
-    "test": "node --test",
+    "test": "node scripts/run-tests.js",
     "gate": "node scripts/gate.js",
     "corpus": "node scripts/corpus-replay.js",
     "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --write-marketplace",

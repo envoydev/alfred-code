@@ -24,7 +24,9 @@ const SESSION_KEYS = ['CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PL
 // (stack/hooks/layout.js) - the checkout's own ledger with them.
 const strayRoots = () => [...['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs')),
     ...['state', 'statistics'].map((d) => path.join(os.tmpdir(), '.alfred', d)),
-    path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks'), path.join(process.cwd(), '.alfred', 'statistics', 'hook-blocks')];
+    path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks'), path.join(process.cwd(), '.alfred', 'statistics', 'hook-blocks'),
+    // the session status file (2026-10-29): a hook whose cwd is os.tmpdir() would publish under it
+    path.join(os.tmpdir(), '.claude', 'session-inspector')];
 
 // Every file under the stray roots written at or after `since` (ms), as paths.
 function strayWrites(since, roots = strayRoots())

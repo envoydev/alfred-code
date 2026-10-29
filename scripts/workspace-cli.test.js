@@ -128,9 +128,9 @@ const asksOf = (text) => text.split('\n').filter((l) => l.startsWith('ask: ')).m
 test('AC2: role --when init prints the role and one ask line per option, Recommended first; Child changes the parent by its one child line', () =>
 {
     const at = tree({ ws: { stamp: true, file: 'child web\n' }, 'ws/web': { stamp: true, git: true, file: 'parent ..\n' }, 'ws/api': { git: true }, 'ws/web/sub': {} });
-    assert.strictEqual(cli('role', '--root', at('ws/api'), '--when', 'init').out, 'role: standalone (not asked)\nask: Child of .. (Recommended)\tchild\nask: Standalone\tstandalone\nask: Root\troot\n');
+    assert.strictEqual(cli('role', '--root', at('ws/api'), '--when', 'init').out, 'role: standalone (no role recorded)\nask: Child of .. (Recommended)\tchild\nask: Standalone\tstandalone\nask: Root\troot\n');
     assert.strictEqual(cli('role', '--root', at('ws/web/sub'), '--when', 'init').out,
-        'role: standalone (not asked)\nwhy: .. is the same git repository - this folder is part of it, not a project of its own\nask: Standalone (Recommended)\tstandalone\nask: Root\troot\n');
+        'role: standalone (no role recorded)\nwhy: .. is the same git repository - this folder is part of it, not a project of its own\nask: Standalone (Recommended)\tstandalone\nask: Root\troot\n');
     const before = filesOf(at('ws'), ['api']);
     const r = cli('role', '--root', at('ws/api'), '--answer', 'child');
     assert.strictEqual(r.code, 0, r.out);
@@ -195,7 +195,7 @@ test('AC5: configure\'s moves write D1\'s lines; root to standalone with a child
     assert.strictEqual(wsFile(at('ws')), before, 'the refusal wrote nothing');
 });
 
-test('AC6: status prints child of .., root of 2 children, standalone, standalone (not asked) and workspace off', () =>
+test('AC6: status prints child of .., root of 2 children, standalone, standalone (no role recorded) and workspace off', () =>
 {
     const at = tree({
         ws: { stamp: true, file: 'child api\nchild web\n' },
@@ -208,7 +208,7 @@ test('AC6: status prints child of .., root of 2 children, standalone, standalone
     assert.strictEqual(first('ws/api'), 'role: child of ..');
     assert.strictEqual(first('ws'), 'role: root of 2 children');
     assert.strictEqual(first('solo'), 'role: standalone');
-    assert.strictEqual(first('fresh'), 'role: standalone (not asked)');
+    assert.strictEqual(first('fresh'), 'role: standalone (no role recorded)');
     assert.strictEqual(first('ws/api', { ...ENV, ALFRED_CODE_WORKSPACE: '0' }), 'role: workspace off');
 });
 
@@ -284,7 +284,7 @@ test('status names the parent, the own, ignored and inherited lines, and the las
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'state', 'workspace-check.json'), JSON.stringify({ at: '2026-10-26T10:00:00Z', state: 'clean', misses: [] }));
     assert.match(cli('status', '--root', at('ws/api')).out, /^from-root: unknown - pass --installed <plan json>\ndocs: -\nmemory: -\ncheck: clean 2026-10-26T10:00:00Z\n$/m);
     const alone = tree({ alone: { git: true } });
-    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (not asked)\nworkspace: parent none\nown: -\nignored: -\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
+    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (no role recorded)\nworkspace: parent none\nown: -\nignored: -\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
 });
 
 test('status names the ancestor docs roots and the memory index it reads, or ignored', () =>
@@ -565,4 +565,31 @@ test('plan at a root carries a child\'s role-ask row from its preflight, never a
     assert.strictEqual(r.code, 0, r.out);
     assert.match(r.out, /^project: api\/tool\t.*\n  workspace: role-ask between \.\.$/m, r.out);
     assert.doesNotMatch(r.out, /workspace: join /);
+});
+
+// F24 (the 2026-10-28 workspace run): update-workspace.md asked for the project rows as one table, and the model built it
+// by hand; the plan now prints it, with a `total:` line the paste gate proves - only when a second project or a rescan
+// row is there, the case update-workspace.md is read in.
+test('renderPlanTable: a header, one row per project, then the total', () =>
+{
+    const { renderPlanTable } = require('./workspace.js');
+    const lines = renderPlanTable([
+        { rel: '.', scope: 'project', version: '3.2.1->3.3.0', add: '-', drop: '-', asks: [] },
+        { rel: 'api', scope: 'local', version: '3.2.1->3.3.0', add: 'skill x', drop: '-', asks: ['docs-move: offer', 'workspace: role-ask between ..'] },
+    ]);
+    assert.strictEqual(lines.length, 4, lines.join('\n'));
+    assert.match(lines[0], /^project +\| scope +\| version +\| adds +\| drops +\| asks$/);
+    assert.match(lines[1], /\| -$/, 'no asks shows -');
+    assert.match(lines[2], /docs-move: offer; workspace: role-ask between \.\.$/);
+    assert.strictEqual(lines[3], 'total: 2 projects');
+});
+
+test('plan prints the table for a root with a child, and none for a standalone project', () =>
+{
+    const { src } = fakeSource();
+    const alone = tree({ alone: { stamp: true, git: true } });
+    assert.doesNotMatch(cli('plan', '--root', alone('alone'), '--source', src).out, /^total:/m);
+    const at = tree({ ws: { stamp: true, file: 'child api/tool\n' }, 'ws/api': { stamp: true, git: true }, 'ws/api/tool': { stamp: true, git: true, file: 'parent ../..\n' } });
+    const r = cli('plan', '--root', at('ws'), '--source', src);
+    assert.match(r.out, /^project +\| scope +\| version +\| adds +\| drops +\| asks\n\. +\| project .*\napi\/tool +\| .*\ntotal: 2 projects$/m, r.out);
 });

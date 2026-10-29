@@ -117,7 +117,7 @@ test('skills S-10 / S-11 / S-14 / S-19 / S-25: the flow and convention lines say
     assert.doesNotMatch(eslint, /ESLint v9\+\)/, 'S-11: the floor defineConfig needs');
     assert.match(eslint, /ESLint 9\.22\+/);
     assert.match(flat('stack/skills/task-verify-code/references/commit-gate-receipt.md'), /written only after the commit checkpoint's security half ran \(alfred-security\.md\)/, 'S-14');
-    const coverage = flat('stack/skills/loop-test-coverage/SKILL.md');
+    const coverage = flat('stack/skills/loop-test-coverage-quality/SKILL.md');
     const acts = coverage.slice(coverage.indexOf('Each substantial item runs'));
     assert.match(acts, /^Each substantial item runs five acts in order:/, 'S-19');
     assert.match(flat('stack/skills/capture-usage-report/SKILL.md'), /\(init, update, configure, validate, status, uninstall; `setup` before 2026-10-17\)/, 'S-25');

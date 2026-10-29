@@ -16,7 +16,7 @@ own picks and ignores, and its own scope.
 - `gone: <rel>` - a listed child folder that no longer holds an install; the cascade removes its line.
 - `rescan: <rel>` - with `--rescan`, an installed project below with no parent line.
 
-Show the project rows in your message as one table - project, scope, version, adds, drops, its asks - before any ask.
+Paste the plan's table in your message verbatim, its `total:` line included, before any ask.
 
 ## The children too, or only this project - ONE ask
 

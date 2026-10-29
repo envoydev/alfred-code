@@ -177,11 +177,13 @@ for (const route of Object.keys(HOOK_ROUTES)) {
     assert.equal(offered(route, session('claude-haiku-4-5', carry(180001)), env), true, '180,001 is past it');
   });
 
-  test(`${route}: the offer needs carry minus the FIRST message's floor to be at least 40% of the carry`, () => {
-    // 1M model, carry 410,000: 40% is 164,000, so the floor may be at most 246,000.
-    assert.equal(offered(route, session('claude-opus-5', carry(410000), { floor: 246000 })), true, '410,000 - 246,000 = 164,000 = 40% - worth a resume');
-    assert.equal(offered(route, session('claude-opus-5', carry(410000), { floor: 246001 })), false, '163,999 recoverable is under 40% - no offer');
-    assert.equal(offered(route, session('claude-opus-5', carry(410000), { floor: 20000 })), true, 'a small floor recovers nearly all of it');
+  test(`${route}: the offer needs a fresh session to pay back with the cache warm`, () => {
+    // claude-opus-5 is no rates row (read 0.1x) and the fixture has no cache split (5m, written 1.25x); carry 410,000,
+    // payback 30. G = F + 13,000: G 296,385 costs 340,842,750 < 30 x 113,615 x 100 = 340,845,000; G 296,386 costs
+    // 340,843,900 > 340,842,000.
+    assert.equal(offered(route, session('claude-opus-5', carry(410000), { floor: 283385 })), true, 'floor 283,385 pays back inside 30 messages');
+    assert.equal(offered(route, session('claude-opus-5', carry(410000), { floor: 283386 })), false, 'floor 283,386 does not');
+    assert.equal(offered(route, session('claude-opus-5', carry(410000), { floor: 20000 })), true, 'a small floor pays back at once');
   });
   test(`${route}: a zero-usage <synthetic> row last is not the context - the last REAL call is`, () => {
     // An interrupt or API error writes a `<synthetic>` assistant row with zeroed usage; read as the

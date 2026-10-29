@@ -936,3 +936,11 @@ test('renamed hooks: a hook line is re-spelled once, and the read-back reads the
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// F5 (the 2026-10-28 workspace run): one home for the always-on lock the installer and stack-select both read.
+test('lockedLines: the always rules and skills, nothing else', () =>
+{
+    assert.deepStrictEqual(sel.lockedLines({ rules: ['a'], skills: ['b'], agents: ['c'] }), new Set(['rule a', 'skill b']));
+    assert.strictEqual(sel.lockedLines(undefined).size, 0);
+    assert.strictEqual(sel.lockedLines({ rules: 'a' }).size, 0);
+});

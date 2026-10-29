@@ -30,8 +30,8 @@ engine keeps from it what a record needs:
 
 What the watch buys: a session that changes a file a Strength or Must-fix entry is located in is asked at its
 close whether the entry still holds, so a fixed weakness reads resolved instead of open until the next capture.
-The domain's `notOwned` entry keeps the engine off `CODE-ASSESSMENT.md`, which `capture-code-quality` recomputes
-whole, and off `references/**`, both captures' spill detail. On a project that commits its docs, plain git tracks
+The domain's `notOwned` entry keeps the engine off `CODE-ASSESSMENT.md`, which the code-quality part recomputes
+whole, off `COVERAGE-QUALITY.md`, which the coverage part reconciles, and off `references/**`, both assessments' spill detail. On a project that commits its docs, plain git tracks
 the file like any other; on a local-only docs root it is local too, and a rewrite at a session's close is seen from
 every branch at once - which is why the resolved line names its branch.
 
@@ -131,7 +131,7 @@ No bucket has a size limit. **Worth knowing retirement rule** - what stops the l
 ## The shape
 
 - **Strengths** - every genuine strength the analysis found, titled, each with the reasoning (what it buys - testability, isolation, evolvability, clear ownership) tied to located code (the module / boundary / pattern it comes from). However many that is - a small codebase supports few; say so rather than invent.
-- **Must fix** - every weakness that passed the gate, titled, ranked by blast radius, each with the reasoning (what it costs - coupling, fragility, blast radius, a captive dependency, a perf or consistency hazard) tied to located code, then two required fields. W-IDs are rank labels, not stable identities: a re-rank RENUMBERS so W1 is always the current top item; a cross-run reference cites the title, not the number, and a user reorder ask that is ambiguous about renumbering gets asked. Test-suite weaknesses are OUT OF SCOPE - coverage numbers, missing or weak tests, absent test infrastructure belong to the `capture-test-coverage` capture and its COVERAGE.md, never here (the two docs would drift over the same fact). The architecture-side line stays in: a *structural* testability blocker (a missing seam, static coupling, a dependency that cannot be substituted) is an architecture weakness; the tests it blocks are the coverage capture's.
+- **Must fix** - every weakness that passed the gate, titled, ranked by blast radius, each with the reasoning (what it costs - coupling, fragility, blast radius, a captive dependency, a perf or consistency hazard) tied to located code, then two required fields. W-IDs are rank labels, not stable identities: a re-rank RENUMBERS so W1 is always the current top item; a cross-run reference cites the title, not the number, and a user reorder ask that is ambiguous about renumbering gets asked. Test-suite weaknesses are OUT OF SCOPE - coverage numbers, missing or weak tests, absent test infrastructure belong to the test-coverage-quality part and its COVERAGE-QUALITY.md, never here (the two docs would drift over the same fact). The architecture-side line stays in: a *structural* testability blocker (a missing seam, static coupling, a dependency that cannot be substituted) is an architecture weakness; the tests it blocks are the coverage capture's.
   - **Remediation** - concretely how to resolve it: the boundary to introduce, the dependency to invert, the pattern to adopt, the seam to guard with a fitness test. Every remediation is **strength-checked** against the Strengths list before it lands: if applying it would erode a listed strength, the entry names that tension and shapes the fix to preserve the strength - and where the two genuinely trade off, the entry says so explicitly, which forces the weakness to the structural tier (a user decision, never an auto-fix).
   - **Tier** - **small** (a localized edit an implementer can land), **substantial** (a designer-led multi-task change - decompose, build, verify), or **structural** (a risky cross-cutting rework - flag it, do not let a loop auto-apply it).
 
@@ -195,7 +195,7 @@ time - and a rule with no threshold never fires.
 
 ## Write mechanics
 
-**No diff check, no stamp-triggered skip - the run-start gate in SKILL.md is the only ask.** Every other capture
+**No diff check, no stamp-triggered skip - the run-start gate in `architecture-quality.md` is the only ask.** Every other capture
 in this stack asks before overwriting an existing doc, because that doc accretes content a person might still
 want. This one asks only whether to run at all: it is recomputed from the map, the code and the decision log every time it runs, so there is nothing an overwrite
 could destroy that a re-run would not reproduce anyway. REPLACE the file wholesale - Write over whatever was
@@ -205,7 +205,8 @@ Never Edit or `sed` it into shape: the old text is no draft to patch, whatever a
 Open the doc with a freshness line for the human reader - `As of: <branch>@<short-sha>, <YYYY-MM-DD>` (`+dirty`
 appended when the working tree holds uncommitted changes). It never skips a run, unlike the `Captured:` stamp on a
 durable domain doc: only the INLINE verify-and-rewrite path and the quality loop's reuse ask read it, both offered
-through an ask, and both only when its sha is HEAD on a clean tree.
+through an ask, and both only when the stamp is current at HEAD - for the verify-and-rewrite path, when the state
+script reports `architecture-quality: current`.
 
 Create `<docs-path>/quality/` only when absent. Write ONLY `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md`, its
 spill files and `quality/watch.json` through the merge below - never source, never the map, never the decision log.
@@ -215,7 +216,7 @@ After the write, `wc -l` it against the ~300-line target above and run the spill
 `"strength: <id>"`, its covers as the globs, its ref as the section - to the engine's merge:
 
 ```bash
-node .claude/hooks/docs.js watch-merge quality --seed '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"]}' --kinds 'weakness: ' 'strength: ' <<'EOF'
+node .claude/hooks/docs.js watch-merge quality --seed '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","COVERAGE-QUALITY.md","references/**"]}' --kinds 'weakness: ' 'strength: ' <<'EOF'
 [
   { "kind": "weakness: invoicing-reads-orders-entities", "globs": ["src/Invoicing/InvoiceBuilder.cs", "src/Orders/Order.cs"], "sections": ["ARCHITECTURE-ASSESSMENT#invoicing-reads-orders-entities"] }
 ]

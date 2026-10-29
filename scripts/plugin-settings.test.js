@@ -268,3 +268,14 @@ test('readDoc / readJson: a BOM\'d file reads like one without, and a BOM plus g
     assert.strictEqual(readJson(put('cat-bad.json', '\uFEFF{"plugins": ')), null);
     assert.strictEqual(readJson(path.join(dir, 'absent.json')), null);
 });
+
+// F16 (the 2026-10-28 workspace run): every row already matched, yet the summary read like an offer ('0 to add ... 3
+// already match') and the walk asked about nothing. The summary says there is nothing to offer.
+test('all rows match: nothing to offer', () =>
+{
+    const rows = ['a', 'b', 'c'].map((key) => ({ key, status: 'match', want: 1, have: 1 }));
+    const out = report(['x'], { x: [{ file: 'settings.json', exists: true, rows }] }, {});
+    assert.strictEqual(out.text.split('\n').pop(), 'plugin-settings: nothing to offer - 3 already match');
+    const one = report(['x'], { x: [{ file: 'settings.json', exists: true, rows: [...rows, { key: 'd', status: 'missing', want: 1 }] }] }, {});
+    assert.match(one.text.split('\n').pop(), /^plugin-settings: 1 to add, 0 already set differently/);
+});
