@@ -1,6 +1,6 @@
 ---
 name: capture-quality
-description: "Use when asked to assess the architecture or code quality, or to measure test coverage - deliberate only. Not for fixes or raising coverage (the quality loops)."
+description: "Use when asked about test coverage, or to assess how good the code or architecture is - deliberate only. Not for fixes or writing tests (the quality loops)."
 ---
 
 # Quality - the architecture, the code and the test coverage, judged
