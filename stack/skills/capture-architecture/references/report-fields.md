@@ -39,8 +39,11 @@ pick the true one:
 When the user asks for a follow-up prompt or the run hands work to a later session, shape it as a RESUME BLOCK -
 the exact invocation to paste, the docs to read first, one line on what the next run does - the same paste-ready
 format the loop skills end on. Any next command the close names for the user (the findings capture, the quality
-loop, a re-run) reads `/clear, then <command>` - in the option label when it is an ask: this run's reads leave the
-chat far past a fresh session's floor, and a command typed into it re-sends all of it.
+loop, a re-run) is offered to run here first, and `Start it in a fresh session: /clear, then <command>` after it - in
+the option labels when it is an ask. Mark the fresh option only when a hook's fresh-session text in this session says
+a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the
+stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the
+option it names.
 
 ## What the docs are for
 

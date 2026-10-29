@@ -9,7 +9,7 @@ This is the build step of the single-session vertical: `task-design` produced th
 
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
-The plan FILE is the whole input - not the chat that produced it. Run this in a fresh session (or `/clear` between tasks) and the context stays at plan size instead of dragging the design run forward with every call - in a long build that carried conversation, not the tools, is the dominant token cost; the per-task ticks below make any task boundary a safe resume point.
+The plan FILE is the whole input - not the chat that produced it. In a long build carried conversation, not the tools, is the dominant token cost, so a fresh session (or `/clear` between tasks) keeps the context at plan size - offer one where a hook's fresh-session text says it pays back with the cache warm; the per-task ticks below make any task boundary a safe resume point.
 
 ## When to use
 

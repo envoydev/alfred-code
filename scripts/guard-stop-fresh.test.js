@@ -936,11 +936,41 @@ test('check 15: a two-option fresh-or-here ask at 100k is refused once, naming t
   assert.equal(loop.r.status, 2, 'refused');
   assert.match(loop.r.stderr, /This session carries ~100k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x\. A fresh session restarts at ~79k, written new at 2x, and would pay back only after about 449 messages, past the 30-message window\./);
   assert.match(loop.r.stderr, /take that option - 'Continue here \(Recommended\)' - and drop the question/);
+  assert.doesNotMatch(loop.r.stderr, /Re-send the ask/, 'nothing is left to re-send');
   assert.equal(loop.send().status, 0, 'the same ask re-sent passes');
   const diag = c15('diag', 100000, [{ question: 'Findings written. Next?', options: [{ label: 'Stop here (Recommended)', description: 'x' },
     { label: 'Resume in a fresh session', description: 'y' }] }]);
   assert.equal(diag.r.status, 2);
   assert.match(diag.r.stderr, /take that option - 'Stop here \(Recommended\)' - and drop the question/);
+});
+
+// the final review (2026-10-29): a label that only mentions a session is the user's own work, a question of hand-offs
+// alone is left as written, and a question left with one option leaves the re-send
+test('check 15: an option that only mentions a session is never dropped or refused', () => {
+  for (const [id, opts] of [['expiry', ['Build the new session expiry check (Recommended)', 'Leave it for later']],
+    ['bug', ['Continue fixing the fresh session bug (Recommended)', 'Write the tests first', 'Stop here']]]) {
+    const { r, upd } = c15(id, 100000, [{ question: 'What next?', options: opts.map((label) => ({ label, description: 'x' })) }]);
+    assert.equal(r.status, 0, `${id}: ${r.stderr}`);
+    assert.equal(upd, null, `${id}: untouched`);
+  }
+});
+
+test('check 15: a question whose every option is a hand-off is left as written', () => {
+  const { r, upd, rows, log } = c15('allfresh', 100000, [{ question: 'Where next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'x' },
+    { label: 'Start the loop in a new session', description: 'y' }] }]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(upd, null, 'nothing dropped');
+  assert.deepStrictEqual(fs.readdirSync(log).filter((f) => /\.denied$/.test(f)), [], 'no deny marker spent');
+  assert.equal(rows().filter((x) => x.kind === 'fresh-verdict' && x.detail.route === 'fresh-ask').length, 0, 'no fresh-ask row');
+});
+
+test('check 15: the re-send carries only the questions still worth asking', () => {
+  const { r } = c15('two-q', 100000, [{ question: 'Round 2 is done. Go on?', options: [{ label: 'Continue here (Recommended)', description: 'x' },
+    { label: 'Resume in a fresh session', description: 'y' }] }, { question: 'Which file first?', options: [{ label: 'a.js (Recommended)', description: 'x' }, { label: 'b.js', description: 'y' }] }]);
+  assert.equal(r.status, 2, 'refused');
+  assert.match(r.stderr, /take that option - 'Continue here \(Recommended\)' - and drop the question/);
+  const sent = JSON.parse(r.stderr.split('changed:\n')[1]);
+  assert.deepStrictEqual(sent.map((q) => q.question), ['Which file first?'], 'the lone question is not re-sent');
 });
 
 test('check 15: at 250k the ask goes out as written', () => {
@@ -965,12 +995,14 @@ test('check 15: setting and audit options are not hand-offs', () => {
 test('isFreshHandoff: every template label matches', () => {
   for (const label of ['Resume in a fresh session', 'Resume the next phase in a fresh session', 'Start it in a fresh session', 'Start AUTO in a fresh session',
     'Continue in a fresh session from the loops folder', 'Continue the build in a fresh session', 'Build it in a fresh session: /task-solve docs/work/findings/2026-10-28.v2.md',
-    'Start the loop in a new session', 'Continue in a new chat']) {
+    'Start the loop in a new session', 'Continue in a new chat', 'Continue in fresh session', 'Start it in a fresh session: /clear, then /loop-code-quality',
+    'Resume from docs/superpowers/sdd/2026-10-24-no-mcp-stack/plan.md in a fresh session']) {
     const { r, upd } = c15(`label-${label.length}`, 100000, opts3last(label));
     assert.equal(r.status, 0, r.stderr);
     assert.ok(upd && !labelsOf(upd).includes(label), `${label} is a hand-off - dropped`);
   }
-  for (const label of ['Offer a fresh session', 'Hand off to a fresh session', 'Move to a new session']) {
+  for (const label of ['Offer a fresh session', 'Hand off to a fresh session', 'Move to a new session', 'Build the new session expiry check',
+    'Continue fixing the fresh session bug', 'Continue here - no new session needed', 'Continue here, not in a new session']) {
     const { r, upd } = c15(`nolabel-${label.length}`, 100000, opts3last(label));
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!upd || labelsOf(upd).includes(label), `${label} is no hand-off - kept`);

@@ -7752,11 +7752,11 @@
         },
         {
           "file": "stack/skills/capture-architecture-quality/SKILL.md",
-          "marker": "reads `/clear, then <command>`, in the option label when it is an ask"
+          "marker": "is offered to run here first, and `Start it in a fresh session: /clear, then <command>` after it, in the option labels when it is an ask"
         },
         {
           "file": "stack/skills/capture-code-quality/SKILL.md",
-          "marker": "reads `/clear, then <command>`, in the option label when it is an ask"
+          "marker": "is offered to run here first, and `Start it in a fresh session: /clear, then <command>` after it, in the option labels when it is an ask"
         }
       ]
     },
@@ -8530,6 +8530,47 @@
         {
           "file": "stack/skills/review-code/references/passes.md",
           "marker": "A same-file `seam` finding is MATERIAL"
+        }
+      ]
+    },
+    "fresh-option-mark": {
+      "_note": "When a fresh-session option takes the '(Recommended)' mark: only where a hook's fresh-session text says a fresh session pays back with the cache warm (the cache-aware verdict, spec 2026-10-28 section 5), the in-session option first otherwise - verbatim in every skill whose ask or close offers one, because any of them may be installed alone.",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        },
+        {
+          "file": "stack/skills/capture-architecture/references/report-fields.md",
+          "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
         }
       ]
     }

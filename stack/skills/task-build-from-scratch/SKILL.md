@@ -82,7 +82,7 @@ Slices:    <n> built, <n> verified green - <the milestone reached>
 Baseline:  build <green|red>, tests <n passed / n failed>, quoted from the command that produced it
 Leftovers: APPROVAL stamp <deleted|still present>; <anything this run started and left up - a container, seeded data, a background process - or `none started`>
 Commit:    <the commit `git log -1 --stat` read back | held - the diff is uncommitted | no git - the scaffold is not a repository>
-Next run:  <each capture whose output does not exist yet, in order: /capture-architecture (no architecture docs under <docs-path>/architecture/), /capture-project-code-style (no <docs-path>/preferences/PROJECT-CODE-PREFERENCES.md), /capture-preferences (no PERSONAL-CODE- or ARCHITECTURE-PREFERENCES.md in <docs-path>/preferences/), /capture-awareness LAST (no .claude/rules/alfred-awareness.md - the inventory, the run book and the sibling repos every session loads) - each in a FRESH session; `none` when all four exist>
+Next run:  <each capture whose output does not exist yet, in order: /capture-architecture (no architecture docs under <docs-path>/architecture/), /capture-project-code-style (no <docs-path>/preferences/PROJECT-CODE-PREFERENCES.md), /capture-preferences (no PERSONAL-CODE- or ARCHITECTURE-PREFERENCES.md in <docs-path>/preferences/), /capture-awareness LAST (no .claude/rules/alfred-awareness.md - the inventory, the run book and the sibling repos every session loads) - each here, or in a fresh session where a hook's fresh-session text says one pays back; `none` when all four exist>
 ```
 
 Then the commit decision, ONE AskUserQuestion after the close prints, when the scaffold is a git repository (no git: the `Commit:` field says so and nothing is asked):
@@ -93,7 +93,7 @@ The first milestone is green and the scaffold is uncommitted. Commit it on this 
 - 'Hold - review the diff first' - nothing is committed; the diff stays as it is
 ```
 
-Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the four paths, never list them by default. Those named go TO THE USER as their next commands, never invoked from here - all but the architecture one are slash-only and a Skill call on them is refused, and each wants a fresh session anyway. They give the new repo its map, style doc, run book and generated awareness rules, and from there the standing flow machinery owns the project.
+Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the four paths, never list them by default. Those named go TO THE USER as their next commands, never invoked from here - all but the architecture one are slash-only and a Skill call on them is refused. They give the new repo its map, style doc, run book and generated awareness rules, and from there the standing flow machinery owns the project.
 
 ## Per-stack scaffolding
 

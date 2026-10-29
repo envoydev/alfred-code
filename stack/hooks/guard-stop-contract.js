@@ -2781,7 +2781,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // a fresh session, a new one or /clear - the user asked, so the answer may recommend it.
     let handoff = null;
     if (!partOff('guard-stop-contract', 'fresh-ask') && !FRESH_OFF && !autoRun && !unattended(payload) && !payload.agent_id
-      && questions.some((q) => q && !q.multiSelect && Array.isArray(q.options) && q.options.some(isFreshHandoff))) {
+      && questions.some((q) => q && !q.multiSelect && Array.isArray(q.options) && q.options.some(isFreshHandoff) && !q.options.every(isFreshHandoff))) {
       const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
       const ctxNow = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
       if (ctxNow > 0 && !/\b(?:fresh|new) (?:session|chat)\b|\/clear\b/i.test(newestTypedPrompt())) {
@@ -2804,7 +2804,8 @@ if (payload.tool_name === 'AskUserQuestion') {
         return [{ ...kept[0], label: `${String(kept[0].label || '').replace(MARK, '')} (Recommended)` }, ...kept.slice(1)];
       };
       const dropFresh = dropBy(isFreshOpt);
-      const dropHandoffs = dropBy(isFreshHandoff);
+      // a question of hand-offs alone is left as written: dropping them all leaves nothing to take (the final review, 2026-10-29)
+      const dropHandoffs = (opts) => (opts.every(isFreshHandoff) ? opts : dropBy(isFreshHandoff)(opts));
       const fixed = questions.map((q) => (q && typeof q === 'object' ? {
         ...q,
         ...(q.question !== undefined ? { question: fix(q.question) } : {}),
@@ -2812,9 +2813,12 @@ if (payload.tool_name === 'AskUserQuestion') {
         ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : dropHandoff && !q.multiSelect ? dropHandoffs(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: (isFreshOpt(o) ? fixAbove(fix(o.description || '')) : fix(o.description || '')) + (numbers && isFreshHandoff(o) ? numberLine : '') } : o)) } : {}),
       } : q));
       // check 15's drop leaves a question with one option only where it removed one; that question is refused, naming it
-      const leftAlone = dropHandoff ? fixed.find((q, i) => q && Array.isArray(q.options) && q.options.length < 2
-        && Array.isArray((questions[i] || {}).options) && questions[i].options.length > q.options.length) : null;
+      const lone = (q, i) => q && Array.isArray(q.options) && q.options.length < 2
+        && Array.isArray((questions[i] || {}).options) && questions[i].options.length > q.options.length;
+      const leftAlone = dropHandoff ? fixed.find(lone) : null;
       const tooFew = (compactFresh && fixed.some((q) => q && Array.isArray(q.options) && q.options.length < 2)) || !!leftAlone;
+      // the deny names a lone question's option to take, so the re-send carries only the questions still worth asking
+      const resend = fixed.filter((q, i) => !lone(q, i));
       const notPay = dropHandoff ? fresh.notPayText(handoff.ctx, handoff.v) : '';
       if (dropHandoff) ledgerRow(fresh.verdictRow('fresh-ask', handoff.ctx, handoff.v));
       const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
@@ -2880,7 +2884,7 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (newCycle ? ` A finished cycle closed in this chat, so add a fresh-session option to this first ask of a new cycle - ${fresh.payText(newCycle.ctx, fresh.freshVerdict(newCycle.ctx))} Also state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
           + (dropHandoff ? ` ${notPay}${leftAlone ? ` A question left with one option is no question: take that option${leftAlone.options[0] ? ` - '${String(leftAlone.options[0].label || '')}' -` : ''} and drop the question.` : ''}` : '')
-          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : '', dropHandoff ? 'the fresh-session hand-off dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
+          + (mechanical && resend.length ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : '', dropHandoff ? 'the fresh-session hand-off dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(resend, null, 1)}\n` : '\n'));
         process.exit(2);
       }
       else if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
@@ -3182,11 +3186,15 @@ function newestTypedPrompt() {
   } catch { return ''; }
 }
 // A fresh-session HAND-OFF option (spec 2026-10-28 section 4): its label opens on the move - Resume, Start, Continue or
-// Build - and names a fresh or new session or chat further on. A setting ('Offer a fresh session', the init walk) and an
-// audit's own hand-off ('Hand off to a fresh session', capture-usage-report) are none. A declaration, so the ask branch
-// above can call it (a module-scope const read there is in its dead zone, and that branch's try fails open).
+// Build - and moves the work 'in a fresh session' (or a new one, or a chat) further on, with no 'no', 'not', 'never' or
+// 'without' word before it. A label that only mentions a session ('Build the new session expiry check', 'Continue fixing
+// the fresh session bug') is the user's own work (the final review, 2026-10-29), and a setting ('Offer a fresh session',
+// the init walk) or an audit's own hand-off ('Hand off to a fresh session', capture-usage-report) is none. A declaration,
+// so the ask branch above can call it (a module-scope const read there is in its dead zone, and that branch's try fails open).
 function isFreshHandoff(o) {
-  return !!o && typeof o === 'object' && /^\s*(?:resume|start|continue|build)\b[^\n]*\b(?:fresh|new) (?:session|chat)\b/i.test(String(o.label || ''));
+  const label = o && typeof o === 'object' ? String(o.label || '') : '';
+  const m = /\bin (?:a )?(?:fresh|new) (?:session|chat)\b/i.exec(label);
+  return !!m && /^\s*(?:resume|start|continue|build)\b/i.test(label) && !/(?:^|\s)(?:no|not|never|without)\s/i.test(label.slice(0, m.index));
 }
 function flowLine(line, at, state) {
   const FLOW_MARK_RE = /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(?:-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(?:-cross)?"/;

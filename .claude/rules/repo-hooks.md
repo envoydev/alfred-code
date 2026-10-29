@@ -981,11 +981,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     reaches the verdict writes one `mode: probe`, `kind: fresh-verdict` row per session, route and value of `pays`
     (route, ctx, floor, ttl, ttlFrom, version, readRate, readShare, breakEven, payback, resumeRead, and the old 40% answer
     as `share40`) - the rows the design's reopen list reads. CHECK 15 (the ask branch): a single-select question carrying
-    a fresh-session HAND-OFF (`isFreshHandoff`: a label opening on Resume, Start, Continue or Build that names a fresh or
-    new session or chat - a setting such as 'Offer a fresh session' and capture-usage-report's 'Hand off to a fresh
+    a fresh-session HAND-OFF (`isFreshHandoff`: a label opening on Resume, Start, Continue or Build that moves the work
+    'in a fresh session' - or a new one, or a chat - with no 'no', 'not', 'never' or 'without' before it; 'Build the new
+    session expiry check', a setting such as 'Offer a fresh session' and capture-usage-report's 'Hand off to a fresh
     session' are none) where the verdict does not pay has it dropped in place, the mark moved to the first option left,
-    the not-pay text as the note and one `fresh-ask` verdict row; a question the drop would leave with one option is
-    refused once, naming the option to take. It stands down for `guard-stop-contract:fresh-ask` in
+    the not-pay text as the note and one `fresh-ask` verdict row; a question of hand-offs alone is left as written, and
+    one the drop would leave with one option is refused once, naming the option to take, and left out of the re-send.
+    It stands down for `guard-stop-contract:fresh-ask` in
     `ALFRED_CODE_HOOKS_OFF`, `FRESH_OFF`, a live auto-run stamp of this session, nobody at the terminal, a seat, no
     measured carry, a multi-select question and a newest typed prompt naming a fresh or new session or `/clear`. The
     numbers check reads hand-offs only. The skills list the in-session option first and mark the fresh one only where a

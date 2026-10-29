@@ -102,12 +102,27 @@ test('C42: worktree briefs ask for plain commands, the loops clear their stamp b
     assert.match(read('stack/skills/loop-architecture-quality/references/loop-mechanics.md'), /- 'Reuse it as the work list \(Recommended\)'/);
 });
 
-// C22 (8396b5df, a8804432, 29e4002f) + C32: a next command typed into a 250k chat; polls while seats ran.
-test('C22 + C32: capture closes name /clear before the next command; dispatching captures end the turn', () =>
+// C22 (8396b5df, a8804432, 29e4002f) + C32: a next command typed into a 250k chat; polls while seats ran. Since the
+// cache-aware verdict (2026-10-28, the final review's I2) the command is offered here first and `/clear, then` rides the
+// fresh option, marked only where a hook says a fresh session pays back.
+test('C22 + C32: capture closes offer the next command here, then after /clear; dispatching captures end the turn', () =>
 {
-    assert.match(flat(read('stack/skills/capture-architecture/references/report-fields.md')), /reads `\/clear, then <command>` - in the option label when it is an ask/);
-    for (const skill of ['capture-architecture-quality', 'capture-code-quality'])
-        assert.match(flat(read(`stack/skills/${skill}/SKILL.md`)), /reads `\/clear, then <command>`/, skill);
+    const SHARED = "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.";
+    for (const rel of ['stack/skills/capture-architecture/references/report-fields.md', 'stack/skills/capture-architecture-quality/SKILL.md', 'stack/skills/capture-code-quality/SKILL.md']) {
+        const t = flat(read(rel));
+        assert.match(t, /is offered to run here first, and `Start it in a fresh session: \/clear, then <command>` after it/, rel);
+        assert.ok(t.includes(SHARED), `${rel}: the shared line`);
+        assert.doesNotMatch(t, /re-sends all of it|far past a fresh session's floor|reads `\/clear, then <command>`/, rel);
+    }
+    const scratch = flat(read('stack/skills/task-build-from-scratch/SKILL.md'));
+    assert.doesNotMatch(scratch, /each in a FRESH session|wants a fresh session anyway/);
+    assert.match(scratch, /each here, or in a fresh session where a hook's fresh-session text says one pays back/);
+    const impl = flat(read('stack/skills/task-implement/SKILL.md'));
+    assert.doesNotMatch(impl, /Run this in a fresh session/);
+    assert.match(impl, /offer one where a hook's fresh-session text says it pays back with the cache warm/);
+    const reg = require('../meta/shared-rules.json').rules['fresh-option-mark'];
+    assert.ok(reg && reg.owner.file === 'stack/skills/task-solve/SKILL.md', 'the shared line is registered, task-solve its owner');
+    assert.equal(reg.sites.length, 8, 'every other copy is a site');
     for (const skill of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality'])
         assert.match(flat(read(`stack/skills/${skill}/SKILL.md`)), /After the dispatch, end the turn: each hand-back arrives on its own/, skill);
 });
