@@ -2778,13 +2778,14 @@ if (payload.tool_name === 'AskUserQuestion') {
     // drop with the verdict in place of COMPACT_INSTEAD, and it only removes. Judged on a single-select question's hand-off
     // options (isFreshHandoff); never with its part off (`guard-stop-contract:fresh-ask`), under FRESH_OFF or auto-run,
     // for nobody at the terminal, in a seat, at ctx 0 or an unmeasured floor, or when the user's newest typed prompt names
-    // a fresh session, a new one or /clear - the user asked, so the answer may recommend it.
+    // a fresh or new session, chat or conversation, /clear, clearing the context or starting over - the user asked, so the
+    // answer may recommend it.
     let handoff = null;
     if (!partOff('guard-stop-contract', 'fresh-ask') && !FRESH_OFF && !autoRun && !unattended(payload) && !payload.agent_id
       && questions.some((q) => q && !q.multiSelect && Array.isArray(q.options) && q.options.some(isFreshHandoff) && !q.options.every(isFreshHandoff))) {
       const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
       const ctxNow = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
-      if (ctxNow > 0 && !/\b(?:fresh|new) (?:session|chat)\b|\/clear\b/i.test(newestTypedPrompt())) {
+      if (ctxNow > 0 && !/\b(?:fresh|new) (?:session|chat|conversation)\b|\/clear\b|\bclear (?:the |this )?(?:context|chat|conversation)\b|\bstart over\b/i.test(newestTypedPrompt())) {
         const v = fresh.freshVerdict(ctxNow);
         if (!v.unmeasured && !v.pays) handoff = { ctx: ctxNow, v };
       }

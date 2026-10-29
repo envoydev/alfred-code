@@ -343,7 +343,7 @@ test('guard-fresh-session-start: an offer skipped in print mode leaves one unatt
     assert.strictEqual(call(hot, at('sdk-cli', 450000)), 0);
     // the size route's verdict probe row (mode: probe, which the block rate skips) is written before the unattended check
     const all = ledger(hot);
-    assert.ok(all.some((r) => r.kind === 'fresh-verdict' && r.detail && r.detail.route === 'size' && r.detail.pays === true), JSON.stringify(all));
+    assert.ok(all.some((r) => r.kind === 'fresh-verdict' && r.detail && r.detail.route === 'size' && r.detail.pays === true && r.detail.unattended === true), JSON.stringify(all));
     const rows = all.filter((r) => r.kind !== 'fresh-verdict');
     assert.strictEqual(rows.length, 1, JSON.stringify(rows));
     assert.strictEqual(rows[0].mode, 'unattended');

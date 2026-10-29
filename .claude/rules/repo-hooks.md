@@ -979,8 +979,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     it'. The compact and idle holds pass a changing call at a carry of 0 without spending the hold, so the first call
     with a reading is judged, and a hold whose verdict does not pay releases (`not-worth-resuming`). Each route that
     reaches the verdict writes one `mode: probe`, `kind: fresh-verdict` row per session, route and value of `pays`
-    (route, ctx, floor, ttl, ttlFrom, version, readRate, readShare, breakEven, payback, resumeRead, and the old 40% answer
-    as `share40`) - the rows the design's reopen list reads. CHECK 15 (the ask branch): a single-select question carrying
+    (route, ctx, floor, ttl, ttlFrom, version, readRate, readShare, breakEven, payback, resumeRead, the old 40% answer
+    as `share40`, and `unattended` when nobody was at the terminal) - the rows the design's reopen list reads. CHECK 15 (the ask branch): a single-select question carrying
     a fresh-session HAND-OFF (`isFreshHandoff`: a label opening on Resume, Start, Continue or Build that moves the work
     'in a fresh session' - or a new one, or a chat - with no 'no', 'not', 'never' or 'without' before it; 'Build the new
     session expiry check', a setting such as 'Offer a fresh session' and capture-usage-report's 'Hand off to a fresh
@@ -989,7 +989,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     one the drop would leave with one option is refused once, naming the option to take, and left out of the re-send.
     It stands down for `guard-stop-contract:fresh-ask` in
     `ALFRED_CODE_HOOKS_OFF`, `FRESH_OFF`, a live auto-run stamp of this session, nobody at the terminal, a seat, no
-    measured carry, a multi-select question and a newest typed prompt naming a fresh or new session or `/clear`. The
+    measured carry or floor, a multi-select question and a newest typed prompt naming a fresh or new session, chat or
+    conversation, `/clear`, clearing the context or starting over. The
     numbers check reads hand-offs only. The skills list the in-session option first and mark the fresh one only where a
     hook's text says it pays. The measurements are `docs/fresh-session-cache-evidence.md`.
     THE SCORER BACKSTOP (mode-output-scorer, spec 2026-10-24 5.9): while `scorerState` is usable (a loadable skill copy,

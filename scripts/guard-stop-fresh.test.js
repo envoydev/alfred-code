@@ -1028,6 +1028,8 @@ test('check 15: it leaves the ask alone', () => {
   const multi = [{ ...q[0], multiSelect: true, options: q[0].options.map((o) => ({ ...o, label: o.label.replace(' (Recommended)', '') })) }];
   kept(c15('multi', 100000, multi), 'multi-select', multi);
   kept(c15('asked', 100000, q, { rows: [{ type: 'user', message: { role: 'user', content: 'should I start a fresh session?' } }, ...c15Rows(100000)] }), 'the user asked about a fresh session');
+  for (const [id, said] of [['conv', 'move this to a new conversation'], ['ctx', 'clear the context and go on'], ['over', 'start over from the plan file']])
+    kept(c15(`asked-${id}`, 100000, q, { rows: [{ type: 'user', message: { role: 'user', content: said } }, ...c15Rows(100000)] }), `the user asked: '${said}'`);
 });
 
 test('guard-stop-contract: the prose written before an ask is checked for house voice', () => {

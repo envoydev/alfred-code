@@ -76,6 +76,10 @@ test('freshVerdict: no reading, no floor', () => noPayback(() => {
   const v = eng.freshVerdict(400000);
   assert.equal(v.pays, false);
   assert.equal(v.unmeasured, true);
+  // a first reply whose usage is all zeros (an error row) is no floor: the read goes on to the next reply
+  session([reply('r0', { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }), firstRow(), reply('r2', { cache_read_input_tokens: 250000 })]);
+  assert.equal(eng.coldFloor(), 79000, 'the zero reply is skipped');
+  assert.equal(eng.freshVerdict(250000).pays, true);
 }));
 
 test('freshVerdict: a window that compacts first changes nothing (A9)', () => noPayback(() => {
@@ -169,6 +173,9 @@ test('texts: the paying and not-paying sentences', () => noPayback(() => {
   assert.equal(eng.notPayText(90000, eng.freshVerdict(90000)),
     'This session carries ~90k tokens per message, no more than a fresh session\'s ~79k floor plus the ~13k it re-reads, '
     + 'so a fresh session saves nothing.');
+  assert.match(eng.notPayText(211600, eng.freshVerdict(211600)), /would pay back only after about 30 messages, no sooner than the 30-message window ends\.$/, 'at equality it is not past the window');
+  withEnv({ ALFRED_CODE_FRESH_SESSION_PAYBACK: '0' }, () => assert.equal(eng.notPayText(250000, eng.freshVerdict(250000)),
+    'This session carries ~250k tokens per message; fresh-session offers are off here (ALFRED_CODE_FRESH_SESSION_PAYBACK is 0).'));
 }));
 
 test('verdictProbe: once per session per route per pays', () => noPayback(() => {
@@ -184,7 +191,9 @@ test('verdictProbe: once per session per route per pays', () => noPayback(() => 
     assert.match(first.reason, /stop route - pays$/);
     assert.match(no.reason, /does not pay$/);
     assert.deepEqual(Object.keys(first.detail).sort(),
-      ['breakEven', 'ctx', 'floor', 'payback', 'pays', 'readRate', 'readShare', 'resumeRead', 'route', 'share40', 'ttl', 'ttlFrom', 'version']);
+      ['breakEven', 'ctx', 'floor', 'payback', 'pays', 'readRate', 'readShare', 'resumeRead', 'route', 'share40', 'ttl', 'ttlFrom', 'unattended', 'version']);
+    assert.equal(first.detail.unattended, false, 'somebody at the terminal');
+    withEnv({ ALFRED_CODE_UNATTENDED: '1' }, () => assert.equal(eng.verdictProbe('size', 250000, eng.freshVerdict(250000)).detail.unattended, true, 'nobody at it'));
     assert.equal(first.detail.share40, true, '(250k - 79k) >= 40% of 250k');
     assert.equal(no.detail.share40, false, '(100k - 79k) is 21% of 100k - the old rule said no too');
   });

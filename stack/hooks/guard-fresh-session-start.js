@@ -323,10 +323,10 @@ function compactHold() {
   if (idle) {
     process.stderr.write(
       (hold.via === 'ask'
-        ? `Held once: this session's last ask waited ${Number(hold.gapH) || 'over the set'}h for its answer, its prompt cache went cold, and the\n`
-          + `fresh-session choice has not been put to the user yet. ${pay}\n`
-        : `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn, its prompt cache went cold, and the\n`
-          + `fresh-session choice offered at the prompt has not been put to the user yet. ${pay}\n`)
+        ? `Held once: this session's last ask waited ${Number(hold.gapH) || 'over the set'}h for its answer and its prompt cache went cold; the turns since have re-written it, so the choice\n`
+          + `is priced as from now, and it has not been put to the user yet. ${pay}\n`
+        : `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn and its prompt cache went cold; the turns since have re-written it, so the choice\n`
+          + `is priced as from now, and the one offered at the prompt has not been put to the user yet. ${pay}\n`)
       + `Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
       + `'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready resume\n`
       + `block and the plan or state file it resumes from), or continue here. If the remaining work is a single short\n`

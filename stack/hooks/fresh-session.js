@@ -371,7 +371,9 @@ function replyUsage(line) {
   let o;
   try { o = JSON.parse(line); } catch { return null; }   // a partial or shapeless row - keep looking
   if (!o || o.type !== 'assistant' || o.isSidechain || !o.message || o.message.model === '<synthetic>') return null;
-  return o.message.usage && typeof o.message.usage === 'object' ? o.message.usage : null;
+  const u = o.message.usage && typeof o.message.usage === 'object' ? o.message.usage : null;
+  // a reply that reports no tokens (an error row) is no floor - one read as 0 left the session unmeasured for good
+  return u && (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) > 0 ? u : null;
 }
 function setFloor(u) { _firstUsage = u; _floor = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0); }
 function readFloor() {
@@ -506,13 +508,14 @@ function payText(ctx, v) {
 }
 function notPayText(ctx, v) {
   if (!v || v.pays || v.unmeasured || !(ctx > 0)) return '';
+  if (v.payback === 0) return `This session carries ${kTokens(ctx)} tokens per message; fresh-session offers are off here (ALFRED_CODE_FRESH_SESSION_PAYBACK is 0).`;
   if (v.breakEven === null) {
     return `This session carries ${kTokens(ctx)} tokens per message, no more than a fresh session's ${kTokens(v.floor)} floor plus the ${kTokens(v.resumeRead)} it re-reads, `
       + 'so a fresh session saves nothing.';
   }
   return `This session carries ${kTokens(ctx)} tokens per message; with the cache warm (${v.ttl} TTL) a turn re-reads it at ${rateX(v.readRate)}. `
     + `A fresh session restarts at ${kTokens(v.floor)}, written new at ${rateX(v.writeRate)}, and would pay back only after about ${v.breakEven} messages, `
-    + `past the ${v.payback}-message window.`;
+    + (v.breakEven > v.payback ? `past the ${v.payback}-message window.` : `no sooner than the ${v.payback}-message window ends.`);
 }
 // The verdict's probe row for the hook-blocks ledger (`mode: probe`, which the block rate skips): what each route decided,
 // beside the retired 40% rule's answer (`share40`; an unread floor or carry answered yes), so a suppressed offer counts.
@@ -524,6 +527,8 @@ function verdictRow(route, ctx, v) {
       route, ctx, floor, ttl: v.ttl, ttlFrom: v.ttlFrom, version: v.version, readRate: v.readRate, readShare: v.readShare,
       breakEven: v.breakEven, payback: v.payback, resumeRead: v.resumeRead, pays: v.pays,
       share40: !(ctx > 0) || !(floor > 0) ? true : (ctx - floor) >= ctx * 0.4,
+      // nobody at the terminal: such a row was never put to a person, so the reopen counts can leave it out
+      unattended: typeof prelude.unattended === 'function' ? !!prelude.unattended(payload) : false,
     },
   };
 }

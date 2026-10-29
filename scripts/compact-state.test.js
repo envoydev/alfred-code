@@ -520,7 +520,7 @@ test('compact-state: the idle gap leaves a hold the first change meets, released
     assert.strictEqual(s.p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'ok, go ahead and fix it', transcript_path: s.tp }, env).stdout, '', 'the work prompt is not injected again');
     const held = s.edit();
     assert.strictEqual(held.status, 2, 'fdce35ae: the work prompt\'s first change is held');
-    assert.match(held.stderr, /sat idle 19(?:\.0)?h/);
+    assert.match(held.stderr.replace(/\s+/g, ' '), /sat idle 19(?:\.0)?h before this turn and its prompt cache went cold; the turns since have re-written it, so the choice is priced as from now/);
     assert.match(held.stderr, /~290k tokens per message/);
     assert.match(held.stderr, /A fresh session restarts at ~78k, written new at 1\.25x/);
     assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 2, 'a writing shell call is a change');
@@ -569,7 +569,7 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
     assert.strictEqual(s.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0, 'a reading shell call passes - the hold stands');
     const held = s.via(SHELL, 'Bash', { command: 'git push origin develop' });
     assert.strictEqual(held.status, 2, 'the first change after the answer is held');
-    assert.match(held.stderr, /last ask waited 4\.8h for its answer/);
+    assert.match(held.stderr.replace(/\s+/g, ' '), /last ask waited 4\.8h for its answer and its prompt cache went cold; the turns since have re-written it, so the choice is priced as from now/);
     assert.match(held.stderr, /~290k tokens per message/);
     assert.match(held.stderr, /A fresh session restarts at ~78k, written new at 1\.25x/);
     const ledger = fs.readFileSync(path.join(s.p.root, '.alfred', 'statistics', 'hook-blocks', `${s.p.sid}.jsonl`), 'utf8');
