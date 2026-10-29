@@ -1203,6 +1203,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     from the prompt's own flag (auto-run's `-on` only when `autoRunRefusal` says nothing), else the stored state, never read
     back after the start hook's write, since the two run in parallel; a compaction's start re-emits both context lines and
     no `systemMessage`. A seat's prompt carries none: the session that receives its report grades what it acts on.
+    After its stdout write it hands `modesText`'s own `autoRun` and `scorer` to `session-status.js onPrompt`, under
+    `standDown('history-session')`, which rewrites the status file only when one of the two changed (spec section 4).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is exactly "1". It runs `async: true` on both routes (`settings.js asyncFor`, the one async hook since the stop contract's shell-result halves went in the deep hooks review 2026-10-16 - a log never
     blocks or decides, so no call waits on its spawn; code.claude.com/docs/en/hooks, 'Run hooks in the background').
@@ -1375,6 +1377,24 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     2026-10-11 SD16, e90a1845: the older session's rulings were cut whole and re-asked), and the newest session's plan
     state last, its Resume: text before its count - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
     old on seed `1` to `3` (`history-switch-is-a-count`).
+    THE STATUS FILE (session-inspector, the user's contract of 2026-10-29; the sections cited are its spec's):
+    `session-status.js`, a module with
+    no stdin carried beside the hooks (`HOOK_MODULES`, lint's ENGINES), keeps `<cwd>/.claude/session-inspector/status/<session
+    id>.json`, schema 1 - `schema`, `session`, `fullContext`, `updatedAt`, `model`, `window`, `resumeAt`, `autoRun`,
+    `scorer`, `handoffPrompt`, a public contract that only ever gains fields. The base is the live `cwd` (A1), written only
+    when it is the project's own (inside its root, or a linked worktree of its checkout - A8), the id matches
+    `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
+    The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
+    `autoStampLive`, the stamp must name the session), `scorerState` and the newest open plan's `Resume:` text from
+    `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). Written at SessionStart (always), at Stop
+    when a field but `updatedAt` changed (an unchanged file over 24 hours old gets its mtime moved) and at
+    guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). The
+    gates are this hook's (`historyOff`, Cursor), so `HOOKS_OFF=history-session` stops it at all three events. The
+    SessionStart prunes every status file past 7 days (`now - mtime > 7 days`, the session's own kept) under the `cwd` and
+    each base in `<data root>/state/sessions/status-folders.json` (at most 32), and puts an anchored
+    `/<rel>/.claude/session-inspector/status/` line under `# alfred-code: session-inspector status files` into the common
+    dir's `info/exclude` - one `gitSafe` spawn per common dir, none past 8s of the process (section 6). Each write leaves a
+    `status-write` probe row (`ok`, `slow` past 200ms, `failed`), an exclude that failed or came late a `status-exclude` one.
   - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
     stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
     `<data root>/forge-lexicon.json`) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,

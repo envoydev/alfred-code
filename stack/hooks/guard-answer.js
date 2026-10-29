@@ -407,6 +407,8 @@ function noteIgnored(root, sid, ignored) {
 // auto-run for this prompt: the family run's -off, its -on when nothing refuses it, else the stamp live for this session.
 function autoRunNow(flags) {
   try {
+    if (typeof scorer.autoRunFor === 'function') return scorer.autoRunFor(payload, process.env, flags);
+    // a prelude older than autoRunFor (the copy route mid-update): its body, from the calls that prelude has
     if (flags && flags.autoRun === 'off') return false;
     if (flags && flags.autoRun === 'on' && !scorer.autoRunRefusal(payload, process.env, flags)) return true;
     const stamp = scorer.approvalStamp(payload, process.env);
@@ -468,7 +470,7 @@ function modesText(prompt) {
     }
     if (auto) lines.push(AUTO_LINE);
     const on = [auto ? 'auto-run' : '', s && s.usable && s.on ? `output-scorer (level ${s.level})` : ''].filter(Boolean);
-    return { context: lines.map((l) => ` ${l}`).join('') + cap, message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '' };
+    return { context: lines.map((l) => ` ${l}`).join('') + cap, message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '', autoRun: auto, scorer: s };
   } catch { return none; }
 }
 
@@ -515,6 +517,8 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
     ...(modes.message ? { systemMessage: modes.message } : {}),
     hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge + modes.context },
   }));
+  // The session status file (session-status.js): this prompt's autoRun and scorer, under history-session's own gates.
+  try { if (scorer && !scorer.standDown('history-session')) require('./session-status.js').onPrompt(payload, modes); } catch { /* the status file never costs the prompt */ }
   process.exit(0);
 }
 

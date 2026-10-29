@@ -472,6 +472,21 @@ test('ON line: lists exactly the modes on, on the prompt that turns one on or of
     clearStamp();
     assert.doesNotMatch(prompt('e6', 'next'), /auto-run: on/);
 });
+test('ON line: a prelude older than autoRunFor (a copy-route skew) still lists auto-run and carries its line', () => {
+    const real = path.dirname(HOOK);
+    const dir = fs.mkdtempSync(path.join(TMP, 'old-prelude-'));
+    fs.copyFileSync(HOOK, path.join(dir, 'guard-answer.js'));
+    for (const name of ['layout.js', 'agent-cap.js', 'session-status.js'])
+        fs.writeFileSync(path.join(dir, name), `module.exports = require(${JSON.stringify(path.join(real, name))});\n`);
+    fs.writeFileSync(path.join(dir, 'hook-prelude.js'), `const { autoRunFor, ...rest } = require(${JSON.stringify(path.join(real, 'hook-prelude.js'))});\nmodule.exports = rest;\n`);
+    clearStamp();
+    autoStamp('e7');
+    const r = spawnSync(process.execPath, [path.join(dir, 'guard-answer.js')], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'next', session_id: 'e7' }), encoding: 'utf8', env: { ...process.env, ...SCORER_CFG } });
+    const out = JSON.parse(r.stdout);
+    assert.strictEqual(out.systemMessage, 'Modes ON: auto-run');
+    assert.ok(out.hookSpecificOutput.additionalContext.endsWith(` ${AUTO_LINE}`));
+    clearStamp();
+});
 test('ON line: a refused -on (another session running, empty /mode-auto-run) does not list auto-run (AC8)', () => {
     clearStamp();
     assert.strictEqual(msgOf('f1', '/mode-auto-run'), undefined, 'an empty /mode-auto-run');
@@ -523,4 +538,64 @@ test('compaction: both context lines come back, no systemMessage', () => {
     assert.strictEqual(out.systemMessage, undefined);
     assert.match(out.hookSpecificOutput.additionalContext, /scorer: on \(level 80, rounds 3, env, auto-run\)/);
     assert.ok(out.hookSpecificOutput.additionalContext.endsWith(` ${AUTO_LINE}`));
+});
+
+// The session status file (2026-10-29, plan task 5): the prompt's own autoRun and scorer, written when one changes.
+const statusPath = (sid) => path.join(ROOT, '.claude', 'session-inspector', 'status', `${sid}.json`);
+const statusRead = (sid) => JSON.parse(fs.readFileSync(statusPath(sid), 'utf8'));
+const typed = (sid, text, env = {}) => run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORER_CFG, ...env });
+test('T4 autoRun at the prompt', () => {
+    clearStamp();
+    typed('st1', '/task-solve --mode-auto-run-on fix x');
+    assert.strictEqual(statusRead('st1').autoRun, true, 'written at the prompt that turns it on');
+    typed('st1', '/task-solve --mode-auto-run-off x');
+    assert.strictEqual(statusRead('st1').autoRun, false);
+    fs.mkdirSync(path.dirname(APPROVAL), { recursive: true });
+    fs.writeFileSync(APPROVAL, 'AUTO - "x"\n');
+    typed('st2', 'plain');
+    assert.strictEqual(statusRead('st2').autoRun, false, 'a stamp with no session line');
+    autoStamp('someone-else');
+    typed('st3', 'plain');
+    assert.strictEqual(statusRead('st3').autoRun, false, 'another session\'s stamp');
+    clearStamp();
+    const bytes = fs.readFileSync(statusPath('st3'), 'utf8');
+    const at = (Date.now() - 3600000) / 1000;
+    fs.utimesSync(statusPath('st3'), at, at);
+    const mtime = fs.statSync(statusPath('st3')).mtimeMs;
+    typed('st3', 'plain again');
+    assert.strictEqual(fs.readFileSync(statusPath('st3'), 'utf8'), bytes, 'a second plain prompt leaves the bytes');
+    assert.strictEqual(fs.statSync(statusPath('st3')).mtimeMs, mtime, 'and the mtime');
+    fs.writeFileSync(statusPath('st3'), 'garbage');
+    typed('st3', 'plain');
+    assert.strictEqual(statusRead('st3').schema, 1, 'a garbage file is replaced by a full write');
+    const kept = { ...statusRead('st3'), handoffPrompt: 'X' };
+    fs.writeFileSync(statusPath('st3'), JSON.stringify(kept));
+    typed('st3', '/task-solve --mode-auto-run-on x');
+    assert.deepStrictEqual([statusRead('st3').autoRun, statusRead('st3').handoffPrompt], [true, 'X'], 'the file\'s handoffPrompt rides an auto-run flip');
+    typed('st3', '/task-solve --mode-auto-run-off x');
+    clearStamp();
+    const plan = path.join(ROOT, '.alfred', 'docs', 'work', 'plans', 'st4.md');
+    fs.mkdirSync(path.dirname(plan), { recursive: true });
+    fs.writeFileSync(plan, '# P\n\nResume: task 2 - the router\n');
+    const record = path.join(ROOT, '.alfred', 'state', 'history', 'st4.json');
+    fs.mkdirSync(path.dirname(record), { recursive: true });
+    fs.writeFileSync(record, JSON.stringify({ session: 'st4', branch: 'feat/x', offset: 1, rulings: [], plan: '.alfred/docs/work/plans/st4.md' }));
+    typed('st4', 'plain');
+    assert.strictEqual(statusRead('st4').handoffPrompt, 'Read .alfred/docs/work/plans/st4.md, check that branch feat/x is checked out, and continue from its Resume: line (task 2 - the router).');
+    const quiet = typed('st5', 'plain', { ALFRED_CODE_HOOKS_OFF: 'history-session' });
+    assert.ok(!fs.existsSync(statusPath('st5')), 'history-session off: no file');
+    assert.strictEqual(quiet.stdout, typed('st6', 'plain', { ALFRED_CODE_HOOKS_OFF: 'history-session' }).stdout, 'the prompt\'s stdout unchanged');
+    assert.strictEqual(JSON.parse(quiet.stdout).hookSpecificOutput.additionalContext, JSON.parse(typed('st7', 'plain').stdout).hookSpecificOutput.additionalContext, 'the same context with the file on');
+});
+test('T5 scorer at the prompt', () => {
+    clearOverride();
+    typed('sc1', '/task-solve --mode-output-scorer-on x');
+    assert.deepStrictEqual(statusRead('sc1').scorer, { on: true, level: 80, rounds: 3 });
+    typed('sc1', '/task-solve --mode-output-scorer-off x');
+    assert.strictEqual(statusRead('sc1').scorer.on, false, 'rewritten');
+    writeOverride('mode-output-scorer', 'off');
+    try {
+        typed('sc1', 'plain');
+        assert.strictEqual(statusRead('sc1').scorer, null, 'no usable scorer');
+    } finally { clearOverride(); }
 });

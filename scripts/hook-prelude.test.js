@@ -1170,3 +1170,40 @@ test('the coverage loop is a review skill of its own kind', () => {
     assert.ok(REVIEW_SKILL.test('loop-test-coverage-quality'));
     assert.ok(REVIEW_SKILL.test('alfred-code:loop-test-coverage-quality'));
 });
+
+// Session status file (2026-10-29, plan task 1): one auto-run decision for guard-answer's prompt and the status file.
+test('autoRunFor matches autoRunNow\'s cases (T10)', () =>
+{
+    const { autoRunFor, modeFlags } = require(PRELUDE);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'autorunfor-'));
+    try
+    {
+        const env = { CLAUDE_PROJECT_DIR: root };
+        const file = path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL');
+        const stamp = (text, ageMs = 0) =>
+        {
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, text);
+            const at = (Date.now() - ageMs) / 1000;
+            fs.utimesSync(file, at, at);
+        };
+        const s1 = { session_id: 's1' };
+        stamp('AUTO - "x"\nsession: s1\n');
+        assert.strictEqual(autoRunFor(s1, env, { autoRun: 'off' }), false, 'the run\'s -off wins over a live stamp');
+        fs.rmSync(file);
+        assert.strictEqual(autoRunFor(s1, env, modeFlags('/task-solve --mode-auto-run-on fix x')), true);
+        assert.strictEqual(autoRunFor(s1, env, modeFlags('/mode-auto-run --mode-auto-run-on')), true, 'a run flag is there, nothing refused');
+        assert.strictEqual(autoRunFor({ session_id: 's1', agent_id: 'a1' }, env, modeFlags('/task-solve --mode-auto-run-on x')), false, 'a seat never starts auto-run');
+        stamp('AUTO - "x"\nsession: s1\n');
+        assert.strictEqual(autoRunFor(s1, env, null), true);
+        assert.strictEqual(autoRunFor({ session_id: 's2' }, env, null), false);
+        stamp('AUTO - "x"\n');
+        assert.strictEqual(autoRunFor(s1, env, null), false, 'no session line - stricter than autoStampLive');
+        stamp('APPROVED - "x"\nsession: s1\n');
+        assert.strictEqual(autoRunFor(s1, env, null), false);
+        stamp('AUTO - "x"\nsession: s1\n', 8 * 24 * 60 * 60 * 1000);
+        assert.strictEqual(autoRunFor(s1, env, null), false, 'an 8-day-old stamp');
+        assert.strictEqual(autoRunFor(null, env, null), false, 'no payload, no throw');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

@@ -1880,3 +1880,16 @@ test('unreachedPlugins: a registered marketplace serving a relative-path entry r
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });
+
+// The session status file (2026-10-29, plan task 6): history-session.js and guard-answer.js require session-status.js
+// from beside them, so the copy route carries it with the other hook modules.
+test('T12 the copy route carries session-status.js', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.3.0', scope: 'project', enabled: true }]);
+    const got = seedRun('install', 'skill markdown-style\nhook history-session\n', {
+        plugins: listing, env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' },
+        inspect: (repo) => { try { return fs.readFileSync(path.join(repo, '.claude', 'hooks', 'session-status.js')); } catch { return null; } },
+    }).result;
+    assert.ok(got, '.claude/hooks/session-status.js copied');
+    assert.ok(got.equals(fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'session-status.js'))), 'byte-equal to the shipped module');
+});

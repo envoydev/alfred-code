@@ -553,3 +553,14 @@ otherwise update names each one it left, and you set `capture-quality` yourself.
 The coverage doc moves with it: `quality/test-coverage/COVERAGE.md` (and a `test-coverage/` folder an older install kept)
 becomes `quality/COVERAGE-QUALITY.md`, its `raw/` results `quality/coverage-raw/`, one `layout:` line each; a file of your
 own in that folder stays where it is, named.
+
+## after 3.2.1 - session-inspector status files
+
+Each session now keeps `.claude/session-inspector/status/<session id>.json` under its working directory - what the stack
+does at a full context (a fresh session, a compaction or nothing), the model and its window, the trigger, auto-run, the
+scorer and a prompt that resumes the open plan - for the session-inspector mod to read. A file past 7 days is pruned at
+the next session start. The folder is kept out of git by an anchored line under `# alfred-code: session-inspector status
+files` in the repository's `info/exclude`, never a `.gitignore`. `ALFRED_CODE_HOOKS_OFF=history-session` stops it
+together with history. To remove it by hand, delete the `.claude/session-inspector/` folders, the
+`# alfred-code: session-inspector status files` lines (and the line under each) in `info/exclude`, and
+`<data root>/state/sessions/status-folders.json`.

@@ -903,7 +903,7 @@
       "file": "guard-answer.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
-      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the save line - the preferences docs or Claude Code's own memory)"
+      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the save line - the preferences docs or Claude Code's own memory); rewrites the session-inspector status file when auto-run or the scorer changed"
     },
     {
       "file": "guard-answer.js",
@@ -1023,13 +1023,13 @@
       "file": "history-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "what the last sessions on this branch did and ruled, injected at start (ALFRED_CODE_HISTORY sessions, seeded 3, at most 10; 150 chars plus 150 each) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off"
+      "note": "what the last sessions on this branch did and ruled, injected at start (ALFRED_CODE_HISTORY sessions, seeded 3, at most 10; 150 chars plus 150 each) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off; writes this session's session-inspector status file (.claude/session-inspector/status/<id>.json under its cwd, schema 1), prunes those past 7 days, keeps the folder out of git through info/exclude"
     },
     {
       "file": "history-session.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <data root>/state/history/"
+      "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <data root>/state/history/; rewrites the status file when a value changed"
     },
     {
       "file": "forge-session.js",
