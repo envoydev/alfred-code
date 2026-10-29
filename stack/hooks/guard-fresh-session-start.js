@@ -634,7 +634,8 @@ function sessionWrites() {
 // after that spend. `capture-awareness` is here because the stack's own next-steps card
 // tells the user to run it after every update (its 2026-10-16 parts keep their old names here for an old copy). The guided plugin commands are here because
 // they are multi-phase walks too, and the slash route is what finally reaches them.
-const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|project-code-style|preferences|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|mode-auto-run|issue-diagnoser|review-code|review-security)|security-review|alfred-code:(init|update|configure|validate))$/;
+// older copy: the three quality capture names and the coverage loop's first name stay beside capture-quality
+const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage(-quality)?)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|project-code-style|preferences|quality|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|mode-auto-run|issue-diagnoser|review-code|review-security)|security-review|alfred-code:(init|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them - and only this
 // stack's own namespace is stripped, so another plugin's `other:task-solve` is not this stack's run (audit 2026-10-08)

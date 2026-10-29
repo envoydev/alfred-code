@@ -43,23 +43,13 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-architecture-quality",
-      "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ARCHITECTURE-ASSESSMENT.md fresh every run (never versioned - quality/ is a recomputed domain: its watch.json, written through docs.js watch-merge, asks a session's close about each located entry, never a branch version); reads the decision log, never writes it; model-invocable behind a run gate, and the quality loop invokes it"
+      "name": "capture-quality",
+      "note": "deliberate quality captures in one skill, three parts read as references - architecture-quality (architecture-analyzer per module, a gated, tiered strengths/weaknesses assessment written to docs/quality/ARCHITECTURE-ASSESSMENT.md fresh every run; quality/ is a recomputed domain whose watch.json, written through docs.js watch-merge, asks a session's close about each located entry), code-quality (code-quality-analyzer per module against the loops/ numbered prompts, the convention rules and the code preferences, docs/quality/CODE-ASSESSMENT.md, every finding tied to file:line and its rule) and test-coverage-quality (the instrumented run ONCE per surface in the main session, docs/quality/COVERAGE-QUALITY.md + coverage-raw/, 90% line after exclusions default); a topic word runs one part, the typed command with none runs the chain behind one ask that scripts/quality-state.js feeds; reads the decision log, never writes it; model-invocable behind each part's run gate, and the three quality loops invoke it as `<topic> <DELEGATED|INLINE> <target>`"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-code-quality",
-      "note": "deliberate code-quality capture - dispatches code-quality-analyzer per module against the loops/ numbered prompts, the convention rules and PROJECT-CODE-PREFERENCES.md (no loops/ -> says so, judges the other two), gates and tiers the findings in the main session, writes docs/quality/CODE-ASSESSMENT.md fresh every run (never versioned - CODE-ASSESSMENT.md is notOwned in the recomputed quality/ domain), every finding tied to file:line and its rule; reads the decision log, never writes it"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "capture-test-coverage",
-      "note": "deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/quality/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; model-invocable behind a run gate, and the coverage loop invokes it"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "loop-test-coverage",
-      "note": "deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only"
+      "name": "loop-test-coverage-quality",
+      "note": "deliberate coverage analyze-triage-fix loop - runs capture-quality's coverage part, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -219,7 +209,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "ts-js-testing",
-      "note": "plain TS/JS testing hub: runner routing (Vitest default), role-keyed strategy, seam stubs over module mocks, exclusion catalog - practices only, the % bar is user-set via capture-test-coverage"
+      "note": "plain TS/JS testing hub: runner routing (Vitest default), role-keyed strategy, seam stubs over module mocks, exclusion catalog - practices only, the % bar is user-set via capture-quality's coverage part"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -244,7 +234,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "angular-testing",
-      "note": "Angular testing hub: TestBed/harness patterns, runner routing, exclusion catalog - practices only, the % bar is user-set via capture-test-coverage"
+      "note": "Angular testing hub: TestBed/harness patterns, runner routing, exclusion catalog - practices only, the % bar is user-set via capture-quality's coverage part"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -485,11 +475,11 @@
     },
     {
       "file": "test-coverage-analyzer.md",
-      "note": "analysis phase (sonnet/medium): read-only per-surface coverage characterizer - the capture-test-coverage skill fans it out over the raw results; never runs the suite"
+      "note": "analysis phase (sonnet/medium): read-only per-surface coverage characterizer - capture-quality's coverage part fans it out over the raw results; never runs the suite"
     },
     {
       "file": "code-quality-analyzer.md",
-      "note": "analysis phase (sonnet/medium): read-only per-module code-quality judge - the capture-code-quality skill fans it out per module and gates, tiers and writes docs/quality/CODE-ASSESSMENT.md from its findings (each tied to file:line and a rule)"
+      "note": "analysis phase (sonnet/medium): read-only per-module code-quality judge - capture-quality's code-quality part fans it out per module and gates, tiers and writes docs/quality/CODE-ASSESSMENT.md from its findings (each tied to file:line and a rule)"
     },
     {
       "file": "code-style-analyzer.md",
@@ -1182,7 +1172,11 @@
       "capture-related-projects",
       "habits-skill-writing",
       "task-auto",
-      "habits-output-scorer"
+      "habits-output-scorer",
+      "capture-architecture-quality",
+      "capture-code-quality",
+      "capture-test-coverage",
+      "loop-test-coverage"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1269,15 +1263,15 @@
       "project-ci-failure-signatures": "issue-signatures-ci",
       "project-runtime-failure-signatures": "issue-signatures-runtime",
       "project-architecture-analyzer": "capture-architecture",
-      "project-architecture-quality-analyzer": "capture-architecture-quality",
+      "project-architecture-quality-analyzer": "capture-quality",
       "project-code-style-analyzer": "capture-project-code-style",
-      "project-test-coverage-analyzer": "capture-test-coverage",
+      "project-test-coverage-analyzer": "capture-quality",
       "project-related-context": "capture-awareness",
       "project-agent-capabilities": "capture-awareness",
       "project-stack-usage-analyzer": "capture-usage-report",
       "project-quality-loop": "loop-code-quality",
       "project-architecture-quality-loop": "loop-architecture-quality",
-      "project-test-coverage-loop": "loop-test-coverage",
+      "project-test-coverage-loop": "loop-test-coverage-quality",
       "project-commit-checkpoint": "habits-commit-checkpoint",
       "alfred-capture-claude-md": "habits-adjust-agents-md",
       "alfred-habits-adjust-claude-md": "habits-adjust-agents-md",
@@ -1289,14 +1283,14 @@
       "alfred-capture-agent-capabilities": "capture-awareness",
       "capture-agent-capabilities": "capture-awareness",
       "alfred-capture-architecture": "capture-architecture",
-      "alfred-capture-architecture-quality": "capture-architecture-quality",
-      "alfred-capture-code-quality": "capture-code-quality",
+      "alfred-capture-architecture-quality": "capture-quality",
+      "alfred-capture-code-quality": "capture-quality",
       "alfred-capture-code-style": "capture-project-code-style",
       "capture-code-style": "capture-project-code-style",
       "alfred-capture-project-capabilities": "capture-awareness",
       "capture-project-capabilities": "capture-awareness",
       "alfred-capture-related-projects": "capture-awareness",
-      "alfred-capture-test-coverage": "capture-test-coverage",
+      "alfred-capture-test-coverage": "capture-quality",
       "alfred-capture-usage-report": "capture-usage-report",
       "alfred-habits-adjust-agents-md": "habits-adjust-agents-md",
       "alfred-habits-clarify": "habits-clarify",
@@ -1316,7 +1310,7 @@
       "alfred-loop-architecture-quality": "loop-architecture-quality",
       "alfred-loop-quality": "loop-code-quality",
       "loop-quality": "loop-code-quality",
-      "alfred-loop-test-coverage": "loop-test-coverage",
+      "alfred-loop-test-coverage": "loop-test-coverage-quality",
       "alfred-task-build-from-scratch": "task-build-from-scratch",
       "alfred-task-design": "task-design",
       "alfred-task-implement": "task-implement",
@@ -1327,7 +1321,11 @@
       "alfred-task-version-upgrade": "task-version-upgrade",
       "capture-agent-awareness": "capture-awareness",
       "capture-project-awareness": "capture-awareness",
-      "capture-related-projects": "capture-awareness"
+      "capture-related-projects": "capture-awareness",
+      "capture-architecture-quality": "capture-quality",
+      "capture-code-quality": "capture-quality",
+      "capture-test-coverage": "capture-quality",
+      "loop-test-coverage": "loop-test-coverage-quality"
     },
     "agents": {
       "ci-failure-diagnoser": "issue-diagnoser-ci",
@@ -1366,5 +1364,15 @@
     "hooks": {
       "guard-answer-length": "guard-answer"
     }
+  },
+  "renamedTopics": {
+    "capture-architecture-quality": "architecture-quality",
+    "alfred-capture-architecture-quality": "architecture-quality",
+    "project-architecture-quality-analyzer": "architecture-quality",
+    "capture-code-quality": "code-quality",
+    "alfred-capture-code-quality": "code-quality",
+    "capture-test-coverage": "test-coverage-quality",
+    "alfred-capture-test-coverage": "test-coverage-quality",
+    "project-test-coverage-analyzer": "test-coverage-quality"
   }
 }

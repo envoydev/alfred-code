@@ -93,6 +93,8 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
+    // capture-quality's part names and topic words (its router's topic table) - a part of one skill, not a skill.
+    'architecture-quality', 'code-quality', 'test-coverage-quality', 'test-coverage',
     // the tools preferences' known MCP server types (meta/tool-adapters.json) - a doc's rank names them, not skills.
     'memory-service', 'windows-mcp', 'macos-mcp',
     // the AGENTS.md check's row kind for an older seed's rules list (scripts/agents-md-check.js) - a row kind, not a skill.
@@ -1233,7 +1235,9 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // AGENTS.md create-mode write ask (audit 2026-10-14 SKC14) and task-build-from-scratch's commit ask (SKF-11) followed.
 const ASK_FLOW_TEMPLATES = {
     'task-solve': 10, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
-    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
+    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
+    // capture-quality's chain (2026-10-29): one template per part state, the mode question and the description match's part pick.
+    'capture-quality': 7,
     // stack audit 2026-10-20 row 13: task-solve's per-judgment ask, issue-diagnoser's 4a / 4c close, task-version-upgrade's
     // stamp-refused and hard-stop asks.
     'task-version-upgrade': 5,
@@ -2642,6 +2646,15 @@ function main()
     for (const finding of lintLegacyNames(repoTextFiles())) flag(finding);
     // 65. No text names a home the 2.8.0 layout moved (stack/hooks/layout.js LAYOUT_MOVES).
     for (const finding of lintOldLocations(repoTextFiles())) flag(finding);
+    // 70. No tracked text names a retired quality name.
+    for (const finding of lintRetiredQuality(repoTextFiles())) flag(finding);
+    // 70b. The quality topics have one code home.
+    {
+        const { renamed } = require('./install/manifest.js').loadManifest(ROOT);
+        const routerText = fs.readFileSync(path.join(SKILLS_DIR, 'capture-quality', 'SKILL.md'), 'utf8');
+        const { QUALITY_TOPICS } = require('../stack/hooks/hook-prelude.js');
+        for (const finding of lintQualityTopics({ routerText, topics: QUALITY_TOPICS, renamedTopics: renamed.topics, renamedSkills: renamed.skills })) flag(finding);
+    }
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2957,8 +2970,8 @@ function lintLegacyNames(files)
         });
     return out;
 }
-// 65. 2.8.0 moved the hooks' state and ledgers into the data root and the flow docs under work/ and quality/
-// (stack/hooks/layout.js LAYOUT_MOVES, which update applies); a text naming an old home sends the model to a folder the
+// 65. 2.8.0 moved the hooks' state and ledgers into the data root and the flow docs under work/ and quality/, and
+// capture-quality the coverage doc to quality/COVERAGE-QUALITY.md (stack/hooks/layout.js LAYOUT_MOVES, which update applies); a text naming an old home sends the model to a folder the
 // update emptied. A hook's skew-window read - the fallback of a layout.js read, or a line that says legacy, pre-2.8.0
 // or before 2.8.0 - passes in code; markdown gets no such pass. The move map, the migration, the tests, the history,
 // the evidence, a dated report and the retired-text fixtures name the old homes on purpose.
@@ -2967,7 +2980,9 @@ const OLD_LOCATIONS = (() =>
 {
     const moves = require(path.join(ROOT, 'stack', 'hooks', 'layout.js')).LAYOUT_MOVES.filter((m) => !m.removeIfEmpty);
     const home = (m) => (m.base === 'data' ? '<data root>' : '<docs-path>');
-    const to = new Map(moves.map((m) => [m.from, m.split ? `${home(m)}/state/approvals or ${home(m)}/state/sessions` : `${home(m)}/${m.to}`]));
+    // a `rename` row lists what it renames, the folder taking a trailing slash (capture-quality, 2026-10-29)
+    const renames = (m) => (m.rename ? ` (${Object.entries(m.rename).map(([a, b]) => (/\./.test(a) ? `${a} -> ${b}` : `${a}/ -> ${b}/`)).join(', ')})` : '');
+    const to = new Map(moves.map((m) => [m.from, m.split ? `${home(m)}/state/approvals or ${home(m)}/state/sessions` : `${home(m)}/${m.to}${renames(m)}`]));
     const names = moves.map((m) => m.from.replace(/[.]/g, '\\.')).join('|');
     const root = String.raw`<docs(?:-path|-root| root)?>|&lt;docs(?:-path|-root| root)?&gt;|\.alfred/docs|\$\{docs\w*\}`;
     return {
@@ -2988,9 +3003,118 @@ function lintOldLocations(files)
             for (const m of line.matchAll(OLD_LOCATIONS.re))
             {
                 const where = m[1].endsWith('/') ? `${m[1]}${m[2]}` : `${m[1]}${m[2]}'`;
-                out.push(`${file}:${i + 1} names the pre-2.8.0 location ${where} - use ${OLD_LOCATIONS.to.get(m[2])} (stack/hooks/layout.js LAYOUT_MOVES)`);
+                out.push(`${file}:${i + 1} names the moved location ${where} - use ${OLD_LOCATIONS.to.get(m[2])} (stack/hooks/layout.js LAYOUT_MOVES)`);
             }
         });
+    }
+    return out;
+}
+// 70. capture-quality holds the three quality captures, the coverage loop is loop-test-coverage-quality and the coverage
+// doc is quality/COVERAGE-QUALITY.md (2026-10-29); a text naming an old one sends the model to a skill the update
+// pruned or a doc it moved. What names them on purpose is exempt by file or key, never by judgment: the manifest's
+// renamed / renamedTopics / retired blocks, conformance's review_load matcher (matched against old transcripts), the
+// move map, an installer or hook line that says why it keeps the old name, the tests, fixtures, history and dated docs.
+// The skill tokens are every renamed.skills key merged into capture-quality or the coverage loop - the map is their one
+// home, so a later rename into either joins the check unasked; the doc paths are no skill name and stay literal.
+const RETIRED_QUALITY_PATHS = [
+    [/(?<![\w-])COVERAGE\.md/g, '`COVERAGE-QUALITY.md`'],
+    [/test-coverage\/COVERAGE/g, '`quality/COVERAGE-QUALITY.md`'],
+    [/`[^`\n]*(?<![\w-])test-coverage\/[^`\n]*`/g, '`quality/COVERAGE-QUALITY.md` and `quality/coverage-raw/`'],
+];
+function retiredQualityTokens({ renamedSkills, renamedTopics })
+{
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const skills = Object.entries(renamedSkills || {})
+        .filter(([, to]) => to === 'capture-quality' || to === 'loop-test-coverage-quality')
+        .map(([old, to]) => [new RegExp(`(?<![\\w-])${esc(old)}(?![\\w-])`, 'g'),
+            `\`${to}${to === 'capture-quality' && (renamedTopics || {})[old] ? ` ${renamedTopics[old]}` : ''}\``]);
+    return [...skills, ...RETIRED_QUALITY_PATHS];
+}
+const RETIRED_QUALITY_EXEMPT = /^stack\/hooks\/layout\.js$|^setup-plugin\/references\/update-history\.md$|\.test\.js$|^scripts\/fixtures\/|^docs\/.*-evidence\.md$|^docs\/[^/]*-\d{4}-\d{2}-\d{2}\.md$|^docs\/superpowers\/|^scripts\/lint-skills\.js$/;
+const RETIRED_QUALITY_WORDS = /older copy|renamed|retired|\blayout\b|legacy/i;
+const RETIRED_QUALITY_JSON = {
+    'meta/stack-manifest.json': (at) => ['renamed', 'renamedTopics', 'retired'].includes(at[0]),
+    'meta/conformance.json': (at) => at[0] === 'matchers' && at[1] === 'review_load' && at[2] === 'text_match',
+};
+// Every string of a JSON text, key or value, with its key path and line - a garbage text yields null.
+function jsonStrings(text)
+{
+    try { JSON.parse(text); } catch { return null; }
+    const out = [];
+    const stack = [];
+    let line = 1;
+    for (let i = 0; i < text.length; i++)
+    {
+        const c = text[i];
+        if (c === '\n') line++;
+        else if (c === '{' || c === '[') stack.push({ arr: c === '[', key: null, index: 0 });
+        else if (c === '}' || c === ']') stack.pop();
+        else if (c === ',' && stack.length) { const top = stack[stack.length - 1]; if (top.arr) top.index++; else top.key = null; }
+        else if (c === '"')
+        {
+            let j = i + 1;
+            while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+            const value = JSON.parse(text.slice(i, j + 1));
+            const top = stack[stack.length - 1];
+            let k = j + 1;
+            while (/\s/.test(text[k] || '')) k++;
+            const isKey = Boolean(top && !top.arr && text[k] === ':');
+            const at = stack.slice(0, -1).map((f) => (f.arr ? f.index : f.key));
+            if (top) at.push(isKey ? value : (top.arr ? top.index : top.key));
+            if (isKey) top.key = value;
+            out.push({ value, at, line });
+            i = j;
+        }
+    }
+    return out;
+}
+function lintRetiredQuality(files, map)
+{
+    if (!map) { const { renamed } = require('./install/manifest.js').loadManifest(ROOT); map = { renamedSkills: renamed.skills, renamedTopics: renamed.topics }; }
+    const tokens = retiredQualityTokens(map);
+    const out = [];
+    const hits = (file, line, text) =>
+    {
+        for (const [re, use] of tokens)
+            for (const token of new Set(text.match(re) || []))
+                out.push(`${file}:${line} names the retired ${token} - use ${use} (check 70)`);
+    };
+    for (const { file, text } of files)
+    {
+        if (RETIRED_QUALITY_EXEMPT.test(file)) continue;
+        const exempt = RETIRED_QUALITY_JSON[file];
+        const strings = exempt ? jsonStrings(text) : null;
+        if (strings)
+        {
+            for (const s of strings) if (!exempt(s.at)) hits(file, s.line, s.value);
+            continue;
+        }
+        const code = /^scripts\/install\/[^/]+\.js$|^stack\/hooks\/[^/]+\.js$/.test(file);
+        text.split('\n').forEach((line, i) => { if (!(code && RETIRED_QUALITY_WORDS.test(line))) hits(file, i + 1, line); });
+    }
+    return out;
+}
+// 70b. capture-quality's topic words have one code home, hook-prelude.js QUALITY_TOPICS: the router's topic table
+// (`| <part> | <backticked words> | ...`) is the model's copy and lists each part's words in the same order, and every
+// renamedTopics row is a renamed.skills key merged into capture-quality whose topic is a part.
+function lintQualityTopics({ routerText, topics, renamedTopics, renamedSkills })
+{
+    const out = [];
+    const rows = new Map();
+    for (const line of String(routerText || '').split('\n'))
+    {
+        const cells = line.split('|').map((c) => c.trim());
+        if (cells.length > 3 && Object.hasOwn(topics, cells[1])) rows.set(cells[1], [...cells[2].matchAll(/`([^`]+)`/g)].map((m) => m[1]));
+    }
+    for (const [part, words] of Object.entries(topics))
+    {
+        if (!rows.has(part)) out.push(`capture-quality's topic table has no row for ${part} - add \`| ${part} | ${words.map((w) => `\`${w}\``).join(', ')} | ...\` (check 70b)`);
+        else if (rows.get(part).join(',') !== words.join(',')) out.push(`capture-quality's topic table lists ${part} as ${rows.get(part).join(', ') || 'nothing'} - hook-prelude.js QUALITY_TOPICS has ${words.join(', ')} (check 70b)`);
+    }
+    for (const [old, topic] of Object.entries(renamedTopics || {}))
+    {
+        if (!Object.hasOwn(topics, topic)) out.push(`renamedTopics ${old}: ${topic} is no capture-quality part - use one of ${Object.keys(topics).join(', ')} (check 70b)`);
+        if ((renamedSkills || {})[old] !== 'capture-quality') out.push(`renamedTopics ${old}: renamed.skills must map it to capture-quality (check 70b)`);
     }
     return out;
 }
@@ -3287,6 +3411,8 @@ module.exports = {
     stackTextFiles,
     lintLegacyNames,
     lintOldLocations,
+    lintRetiredQuality,
+    lintQualityTopics,
     repoTextFiles,
     lintCoreDependencies,
     lintNoPluginBin,

@@ -220,16 +220,16 @@ who asks about a name the log did not print.
 | `/project-ci-failure-signatures` | `/issue-signatures-ci` |
 | `/project-runtime-failure-signatures` | `/issue-signatures-runtime` |
 | `/project-architecture-analyzer` | `/capture-architecture` |
-| `/project-architecture-quality-analyzer` | `/capture-architecture-quality` |
+| `/project-architecture-quality-analyzer` | `/capture-quality` |
 | `/project-code-style-analyzer` | `/capture-project-code-style` |
-| `/project-test-coverage-analyzer` | `/capture-test-coverage` |
+| `/project-test-coverage-analyzer` | `/capture-quality` |
 | `/project-related-context` | `/capture-awareness` |
 | `/project-agent-capabilities` | `/capture-awareness` |
 | `/project-stack-usage-analyzer` | `/capture-usage-report` |
 | `/project-first-look` | `/capture-first-look` |
 | `/project-quality-loop` | `/loop-code-quality` |
 | `/project-architecture-quality-loop` | `/loop-architecture-quality` |
-| `/project-test-coverage-loop` | `/loop-test-coverage` |
+| `/project-test-coverage-loop` | `/loop-test-coverage-quality` |
 | `/project-commit-checkpoint` | `/habits-commit-checkpoint` |
 | `/alfred-capture-claude-md` | `/habits-adjust-agents-md` |
 | `/alfred-habits-adjust-claude-md` | `/habits-adjust-agents-md` |
@@ -242,14 +242,14 @@ who asks about a name the log did not print.
 | `/capture-project-capabilities` | `/capture-awareness` |
 | `/alfred-capture-agent-capabilities` | `/capture-awareness` |
 | `/alfred-capture-architecture` | `/capture-architecture` |
-| `/alfred-capture-architecture-quality` | `/capture-architecture-quality` |
-| `/alfred-capture-code-quality` | `/capture-code-quality` |
+| `/alfred-capture-architecture-quality` | `/capture-quality` |
+| `/alfred-capture-code-quality` | `/capture-quality` |
 | `/alfred-capture-code-style` | `/capture-project-code-style` |
 | `/capture-code-style` | `/capture-project-code-style` |
 | `/alfred-capture-first-look` | `/capture-first-look` |
 | `/alfred-capture-project-capabilities` | `/capture-awareness` |
 | `/alfred-capture-related-projects` | `/capture-awareness` |
-| `/alfred-capture-test-coverage` | `/capture-test-coverage` |
+| `/alfred-capture-test-coverage` | `/capture-quality` |
 | `/alfred-capture-usage-report` | `/capture-usage-report` |
 | `/alfred-habits-adjust-agents-md` | `/habits-adjust-agents-md` |
 | `/alfred-habits-clarify` | `/habits-clarify` |
@@ -267,7 +267,7 @@ who asks about a name the log did not print.
 | `/alfred-issue-signatures-runtime` | `/issue-signatures-runtime` |
 | `/alfred-loop-architecture-quality` | `/loop-architecture-quality` |
 | `/alfred-loop-quality` | `/loop-code-quality` |
-| `/alfred-loop-test-coverage` | `/loop-test-coverage` |
+| `/alfred-loop-test-coverage` | `/loop-test-coverage-quality` |
 | `/alfred-task-build-from-scratch` | `/task-build-from-scratch` |
 | `/alfred-task-design` | `/task-design` |
 | `/alfred-task-implement` | `/task-implement` |
@@ -529,3 +529,27 @@ card only when you asked for it or the request cannot be met safely without it.
 it is installed for your whole account, a held project runs the new hooks and agents beside its older skill and rule
 copies, and may say its copies are older than the stack, until `/alfred-code:update` runs there. The close now lists a
 held child whose folder no longer holds an install as `gone-kept`, apart from the held count.
+
+## after 3.2.1 - the three quality captures become capture-quality
+
+The architecture assessment, the code assessment and the coverage capture are now the three parts of ONE skill,
+`capture-quality`, and the coverage loop takes the `-quality` ending. Update carries every pick, `skillOverrides` value
+and selection line across and prunes the old copies, one `renamed:` line each - report them.
+
+| Before | Now |
+|---|---|
+| `/capture-architecture-quality` | `/capture-quality` |
+| `/capture-code-quality` | `/capture-quality` |
+| `/capture-test-coverage` | `/capture-quality` |
+| `/loop-test-coverage` | `/loop-test-coverage-quality` |
+
+A part runs by its topic word: `/capture-quality architecture-quality`, `/capture-quality code-quality` and
+`/capture-quality test-coverage-quality` (`architecture`, `code` and `coverage` work too). `/capture-quality` alone runs
+all three behind one question per part. A `skillOverrides` value is carried only when every part's old names agree;
+otherwise update names each one it left, and you set `capture-quality` yourself. Update never writes your account's
+`~/.claude/settings.json`: an override there under an old name stops matching anything, so re-key it to
+`capture-quality` or `loop-test-coverage-quality` by hand.
+
+The coverage doc moves with it: `quality/test-coverage/COVERAGE.md` (and a `test-coverage/` folder an older install kept)
+becomes `quality/COVERAGE-QUALITY.md`, its `raw/` results `quality/coverage-raw/`, one `layout:` line each; a file of your
+own in that folder stays where it is, named.

@@ -55,7 +55,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 71, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), and the two mode skills task-auto and habits-output-scorer became (2026-10-27)');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 75, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), the two mode skills task-auto and habits-output-scorer became (2026-10-27), and the three quality captures capture-quality merged plus the coverage loop, now loop-test-coverage-quality (2026-10-29)');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -970,7 +970,7 @@ test('seed install --selection and update --add: a line naming an old item insta
 
 // No surface may name an old identifier: a cite resolves to nothing, a preload loads nothing, and a
 // dispatch of an old seat finds no agent. The old names are allowed only where they are the record
-// of the rename - the manifest's retired lists and renamed map, this migration test, the history
+// of the rename - the manifest's retired lists, renamed map and renamedTopics, this migration test, the history
 // docs, the byte-for-byte shipped texts the rule-rename prune is tested on (scripts/fixtures/retired-rules.js),
 // and the update's upgrade table (setup-plugin/references/update-history.md since audit 2026-10-20 C15), each row of which must be the map's own pair. The names come
 // from the map, so this scan cannot drift from it; the manifest itself is the positive control.
@@ -991,17 +991,18 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
         // the user's hand-kept diagram of the scorer's plan, drawn before the stack-modes rename: a record of its time
         if (rel === 'docs/habits-scorer-flow.html') return;
         // recorded transcripts are what a session wrote at the time, and the conformance readers match the name they hold
-        // (the stack-modes spec of 2026-10-27, AC10) - only that one old name, nowhere else
+        // (the stack-modes spec of 2026-10-27, AC10) - only that one old name, nowhere else; the review_load matcher in
+        // meta/conformance.json also keeps the capture names merged into capture-quality, which old transcripts hold (2026-10-29)
         const recorded = /^scripts\/fixtures\/conformance\//.test(rel) || rel === 'scripts/conformance.test.js' || rel === 'meta/conformance.json';
         const buf = fs.readFileSync(full);
         if (buf.includes(0)) return;
         let text = buf.toString('utf8');
-        if (rel === 'meta/stack-manifest.json') { const m = JSON.parse(text); delete m.retired; delete m.renamed; text = JSON.stringify(m, null, 2); }
+        if (rel === 'meta/stack-manifest.json') { const m = JSON.parse(text); delete m.retired; delete m.renamed; delete m.renamedTopics; text = JSON.stringify(m, null, 2); }
         text.split('\n').forEach((line, i) =>
         {
             const found = line.match(old);
             if (!found) return;
-            if (recorded && found.every((n) => n === 'habits-output-scorer')) return;
+            if (recorded && found.every((n) => n === 'habits-output-scorer' || (rel === 'meta/conformance.json' && pairs[n] === 'capture-quality'))) return;
             const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)` \|$/.exec(line);
             if (rel === 'setup-plugin/references/update-history.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
             hits.push(`${rel}:${i + 1}: ${found.join(', ')}`);
@@ -1056,6 +1057,183 @@ test('settings writer: at local scope an old skillOverrides key in settings.json
         writeSettings({ ...opts, log: (m) => again.push(m) });
         assert.strictEqual(fs.readFileSync(localFile, 'utf8'), before, 'a re-run writes nothing');
         assert.doesNotMatch(again.join('\n'), /still names skillOverrides/, 'a re-run says nothing');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// 2026-10-29 (capture-quality, spec 5.2): three captures merged into one skill, so first-wins would let one part's 'off'
+// switch off all three. A merged name takes a value only when every part has a spelling present and all agree.
+const QUALITY_TOPICS_OF = {
+    'capture-architecture-quality': 'architecture-quality', 'alfred-capture-architecture-quality': 'architecture-quality', 'project-architecture-quality-analyzer': 'architecture-quality',
+    'capture-code-quality': 'code-quality', 'alfred-capture-code-quality': 'code-quality',
+    'capture-test-coverage': 'test-coverage-quality', 'alfred-capture-test-coverage': 'test-coverage-quality', 'project-test-coverage-analyzer': 'test-coverage-quality',
+};
+const MERGED = {
+    skills: { ...Object.fromEntries(Object.keys(QUALITY_TOPICS_OF).map((k) => [k, 'capture-quality'])), 'loop-test-coverage': 'loop-test-coverage-quality' },
+    agents: {}, rules: {}, mcps: {}, hooks: {}, topics: QUALITY_TOPICS_OF,
+};
+const CURRENT_THREE = { 'capture-architecture-quality': 'off', 'capture-code-quality': 'off', 'capture-test-coverage': 'off' };
+
+function overridesAfter(overrides)
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-merged-'));
+    try
+    {
+        const file = path.join(dir, 'settings.json');
+        fs.writeFileSync(file, JSON.stringify({ skillOverrides: overrides }));
+        const logs = [];
+        writeSettings({ file, renamed: MERGED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        return { overrides: JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, logs: logs.join('\n') };
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+test('the renamed map carries renamedTopics as renamed.topics, each key a renamed skill', () =>
+{
+    const { topics, skills } = loadManifest(ROOT).renamed;
+    assert.ok(topics && typeof topics === 'object' && !Array.isArray(topics), 'renamed.topics is an object');
+    for (const old of Object.keys(topics)) assert.ok(Object.hasOwn(skills, old), `${old} is a renamed skill`);
+});
+
+test('skillOverrides merge: one part off alone is not carried', () =>
+{
+    const r = overridesAfter({ 'capture-test-coverage': 'off', 'my-own-skill': 'off' });
+    assert.deepStrictEqual(r.overrides, { 'my-own-skill': 'off' }, 'no capture-quality key, the old key gone');
+    assert.match(r.logs, /skillOverrides capture-test-coverage \('off'\) not carried - capture-quality holds three captures; set capture-quality yourself to switch them all/);
+});
+
+test('skillOverrides merge: all three off are carried', () =>
+{
+    assert.deepStrictEqual(overridesAfter({ ...CURRENT_THREE }).overrides, { 'capture-quality': 'off' });
+});
+
+test('skillOverrides merge: a mixed spelling counts per part', () =>
+{
+    const r = overridesAfter({ 'alfred-capture-code-quality': 'off', 'capture-architecture-quality': 'off', 'capture-test-coverage': 'off' });
+    assert.deepStrictEqual(r.overrides, { 'capture-quality': 'off' });
+});
+
+test('skillOverrides merge: one off and one on are not carried', () =>
+{
+    const r = overridesAfter({ ...CURRENT_THREE, 'capture-code-quality': 'on' });
+    assert.deepStrictEqual(r.overrides, {});
+    for (const old of Object.keys(CURRENT_THREE)) assert.match(r.logs, new RegExp(`skillOverrides ${old} \\('(off|on)'\\) not carried`), old);
+});
+
+test('skillOverrides merge: a non-off value follows the same rule', () =>
+{
+    const r = overridesAfter({ 'capture-code-quality': 'user-invocable-only' });
+    assert.deepStrictEqual(r.overrides, {});
+    assert.match(r.logs, /skillOverrides capture-code-quality \('user-invocable-only'\) not carried/);
+});
+
+test('skillOverrides merge: the new key already set stays, the old key goes', () =>
+{
+    assert.deepStrictEqual(overridesAfter({ 'capture-quality': 'on', 'capture-test-coverage': 'off' }).overrides, { 'capture-quality': 'on' });
+});
+
+test('skillOverrides merge: a one-to-one rename is carried as today', () =>
+{
+    const r = overridesAfter({ 'loop-test-coverage': 'off' });
+    assert.deepStrictEqual(r.overrides, { 'loop-test-coverage-quality': 'off' });
+    assert.match(r.logs, /skillOverrides loop-test-coverage re-keyed loop-test-coverage-quality/);
+});
+
+test('skillOverrides merge: the local inherited path takes the same test', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-merged-local-'));
+    try
+    {
+        const sharedFile = path.join(dir, 'settings.json');
+        const localFile = path.join(dir, 'settings.local.json');
+        const run = (shared) =>
+        {
+            fs.writeFileSync(sharedFile, JSON.stringify({ skillOverrides: shared }));
+            fs.writeFileSync(localFile, JSON.stringify({ env: {} }));
+            const before = fs.readFileSync(sharedFile, 'utf8');
+            const logs = [];
+            writeSettings({ file: localFile, renamed: MERGED, inheritedOverrides: shared, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+            assert.strictEqual(fs.readFileSync(sharedFile, 'utf8'), before, 'settings.json is never written at local scope');
+            return { local: JSON.parse(fs.readFileSync(localFile, 'utf8')), logs: logs.join('\n') };
+        };
+        const alone = run({ 'capture-test-coverage': 'off' });
+        assert.strictEqual(alone.local.skillOverrides, undefined, 'nothing set in settings.local.json');
+        assert.match(alone.logs, /capture-test-coverage.* - a project-scope update applies the rule there/);
+        const all = run({ ...CURRENT_THREE });
+        assert.deepStrictEqual(all.local.skillOverrides, { 'capture-quality': 'off' });
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Spec A4: beside an older skill copy the hooks read an old capture name by its words, never from a list - this file is
+// the test home allowed to spell the names.
+test('qualityPart reads every old capture spelling by its words, and agrees with the manifest\'s renamedTopics', () =>
+{
+    const { qualityPart } = require('../stack/hooks/hook-prelude.js');
+    for (const [old, part] of Object.entries(QUALITY_TOPICS_OF))
+    {
+        assert.strictEqual(qualityPart(old, 'anything'), part, old);
+        assert.strictEqual(qualityPart(`alfred-code:${old}`, ''), part, `${old} namespaced`);
+    }
+    for (const [old, part] of Object.entries(RENAMED.topics)) assert.strictEqual(qualityPart(old, ''), part, `${old} (renamedTopics)`);
+    for (const other of ['capture-architecture', 'capture-project-code-style', 'capture-awareness', 'loop-code-quality', 'loop-architecture-quality', 'code-quality-analyzer', 'test-coverage-analyzer', 'task-solve'])
+        assert.strictEqual(qualityPart(other, 'code'), '', other);
+});
+
+// The coverage loop's first name, on an older copy, is the same review: one kind, one result-line proof (spec 4).
+test('the coverage loop\'s old name shares its new name\'s review kind and proof', () =>
+{
+    const { reviewKind, reviewProof, REVIEW_SKILL } = require('../stack/hooks/hook-prelude.js');
+    const olds = Object.keys(RENAMED.skills).filter((k) => RENAMED.skills[k] === 'loop-test-coverage-quality' && !/^(alfred|project)-/.test(k));
+    assert.ok(olds.length >= 1, 'the map renames the loop');
+    for (const old of olds)
+    {
+        assert.strictEqual(reviewKind(old), 'loop-test-coverage-quality', old);
+        assert.ok(REVIEW_SKILL.test(old) && REVIEW_SKILL.test(`alfred-code:${old}`), old);
+        assert.strictEqual(reviewProof(`alfred-code:${old}`), 'outcome', old);
+    }
+});
+
+// Spec 5.3: a merged old name standing as a command takes its part's topic word, so `/capture-test-coverage src` still
+// runs the coverage part; a path or a plain mention takes the bare new name.
+function respelledSeed(text)
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-topic-'));
+    try
+    {
+        write(dir, '.claude/AGENTS.md', text);
+        const logs = [];
+        selection.respellRenamed({ projectRoot: dir, renamed: MERGED, owned: () => true, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        return fs.readFileSync(path.join(dir, '.claude', 'AGENTS.md'), 'utf8');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+test('respell: the command form takes the topic', () =>
+{
+    const before = ['/capture-test-coverage at a line start', 'Run /capture-test-coverage src next.', 'Or `/capture-test-coverage`.', 'Or "/capture-code-quality".', 'Or (/capture-architecture-quality).', ''].join('\n');
+    assert.strictEqual(respelledSeed(before), [
+        '/capture-quality test-coverage-quality at a line start', 'Run /capture-quality test-coverage-quality src next.',
+        'Or `/capture-quality test-coverage-quality`.', 'Or "/capture-quality code-quality".', 'Or (/capture-quality architecture-quality).', '',
+    ].join('\n'));
+});
+
+test('respell: a path and a plain mention take the bare name', () =>
+{
+    const before = ['See .claude/skills/capture-test-coverage/ for it.', 'Or `.claude/skills/capture-test-coverage`.', 'Load the capture-code-quality skill.', '/capture-test-coverage/x is a path.', 'Run /loop-test-coverage after it.', ''].join('\n');
+    assert.strictEqual(respelledSeed(before), [
+        'See .claude/skills/capture-quality/ for it.', 'Or `.claude/skills/capture-quality`.', 'Load the capture-quality skill.', '/capture-quality/x is a path.', 'Run /loop-test-coverage-quality after it.', '',
+    ].join('\n'));
+});
+
+test('respell: a fenced line in the project\'s own file is planned with the topic form', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-topic-own-'));
+    try
+    {
+        write(dir, '.claude/AGENTS.md', ['# Notes', '```bash', '/capture-test-coverage src', '```', ''].join('\n'));
+        const plan = selection.respellOwnPlan({ projectRoot: dir, renamed: MERGED });
+        assert.deepStrictEqual(plan.map((r) => [r.line, r.after, r.names]), [[3, '/capture-quality test-coverage-quality src', [['capture-test-coverage', 'capture-quality test-coverage-quality']]]]);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

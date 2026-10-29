@@ -47,7 +47,7 @@ test('C35: PARTIAL is files left unread, a risk sample is CHARACTERIZED, INLINE 
     assert.match(seat, /\*\*CHARACTERIZED\*\* - every handed rule source judged over the files you read\. A module sampled by risk at the depth run is CHARACTERIZED/);
     assert.match(seat, /\*\*PARTIAL\*\* - a file the dispatch required, or a handed rule source, stayed unread/);
     assert.match(seat, /`coverage: <files read> of <files in the module> - <whole \| sampled by risk: what the sample took>`/);
-    const capture = flat(read('stack/skills/capture-code-quality/SKILL.md'));
+    const capture = flat(read('stack/skills/capture-quality/references/code-quality.md'));
     assert.match(capture, /came back PARTIAL \(a required file or rule source left unread - a module sampled by risk is CHARACTERIZED, its sample named\)/);
     assert.match(capture, /A run handed INLINE dispatches no seat/);
     const loop = flat(read('stack/skills/loop-code-quality/SKILL.md'));
@@ -90,13 +90,13 @@ test('C40: the usage report removes its temp dir alone, in the last call, and st
 // checkpoint's seat, an invented reuse ask; notification polls while seats ran.
 test('C42: worktree briefs ask for plain commands, the loops clear their stamp before the commit ask, reuse is an ask', () =>
 {
-    for (const skill of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage', 'task-build-from-scratch', 'task-solve-cross'])
+    for (const skill of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality', 'task-build-from-scratch', 'task-solve-cross'])
     {
         const trio = flat(read(`stack/skills/${skill}/references/domain-trio-protocol.md`));
         assert.match(trio, /run each Bash call as ONE plain command from the worktree root/, skill);
         assert.match(trio, /After a dispatch, end the turn: each hand-back arrives on its own/, skill);
     }
-    for (const skill of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'])
+    for (const skill of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality'])
         assert.match(flat(read(`stack/skills/${skill}/SKILL.md`)), /delete the round's APPROVED stamp first .* - then the commit decision is the ask below/, skill);
     assert.match(flat(read('stack/skills/loop-architecture-quality/SKILL.md')), /through the reuse ask in `references\/loop-mechanics\.md`/);
     assert.match(read('stack/skills/loop-architecture-quality/references/loop-mechanics.md'), /- 'Reuse it as the work list \(Recommended\)'/);
@@ -108,7 +108,7 @@ test('C42: worktree briefs ask for plain commands, the loops clear their stamp b
 test('C22 + C32: capture closes offer the next command here, then after /clear; dispatching captures end the turn', () =>
 {
     const SHARED = "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.";
-    for (const rel of ['stack/skills/capture-architecture/references/report-fields.md', 'stack/skills/capture-architecture-quality/SKILL.md', 'stack/skills/capture-code-quality/SKILL.md']) {
+    for (const rel of ['stack/skills/capture-architecture/references/report-fields.md', 'stack/skills/capture-quality/references/architecture-quality.md', 'stack/skills/capture-quality/references/code-quality.md']) {
         const t = flat(read(rel));
         assert.match(t, /is offered to run here first, and `Start it in a fresh session: \/clear, then <command>` after it/, rel);
         assert.ok(t.includes(SHARED), `${rel}: the shared line`);
@@ -123,8 +123,8 @@ test('C22 + C32: capture closes offer the next command here, then after /clear; 
     const reg = require('../meta/shared-rules.json').rules['fresh-option-mark'];
     assert.ok(reg && reg.owner.file === 'stack/skills/task-solve/SKILL.md', 'the shared line is registered, task-solve its owner');
     assert.equal(reg.sites.length, 8, 'every other copy is a site');
-    for (const skill of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality'])
-        assert.match(flat(read(`stack/skills/${skill}/SKILL.md`)), /After the dispatch, end the turn: each hand-back arrives on its own/, skill);
+    for (const rel of ['capture-architecture/SKILL.md', 'capture-quality/references/architecture-quality.md', 'capture-quality/references/code-quality.md'])
+        assert.match(flat(read(`stack/skills/${rel}`)), /After the dispatch, end the turn: each hand-back arrives on its own/, rel);
 });
 
 // C43 (add5a91e, ce3fd60a, a09fc7d6): an 'always' role skipped silently, a seat dispatched after the first write, an
@@ -134,8 +134,8 @@ test('C43: one vocabulary cell per role, no probe after the first write, one san
     assert.match(flat(read('stack/skills/capture-architecture/references/vocabulary-roles.md')), /An `always` role is never n\/a/);
     assert.match(flat(read('stack/skills/capture-architecture/references/report-fields.md')), /one cell per row of the roles table/);
     assert.match(flat(read('stack/skills/capture-architecture/SKILL.md')), /no seat dispatch and no source read either/);
-    const caq = flat(read('stack/skills/capture-architecture-quality/SKILL.md'));
-    assert.match(caq, /when the assessment's `As of:` sha is HEAD on a clean tree, VERIFY \+ REWRITE/);
+    const caq = flat(read('stack/skills/capture-quality/references/architecture-quality.md'));
+    assert.match(caq, /when the state script \(capture-quality's chain block\) reports `architecture-quality: current`, VERIFY \+ REWRITE/);
     assert.match(caq, /a run whose HEAD moved - the loop's reconcile after shipped fixes included - runs in full/);
 });
 

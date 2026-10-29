@@ -150,7 +150,7 @@ auto-run on and runs the request in one go. Each prompt shows the modes that are
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 92 | house conventions and workflows |
+| **Skills** | 90 | house conventions and workflows |
 | **Agents** | 45 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
 | **Hooks** | 18 | the guards, plus the docs, preferences and history hooks |

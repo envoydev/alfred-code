@@ -393,13 +393,15 @@ test('the inline task skills load their method skill through the Skill tool at t
 });
 
 test('skills S5: the judging captures and their loops run on the session model and ask for no switch to Opus (A/B 2026-10-09)', () => {
-    const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
-    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-code-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
+    // capture-quality's parts are references beside its router (2026-10-29)
+    const body = (n) => squash(read(`stack/skills/${n.includes('/') ? n : `${n}/SKILL.md`}`));
+    const PARTS = ['capture-quality/references/architecture-quality.md', 'capture-quality/references/code-quality.md'];
+    for (const n of ['capture-architecture', ...PARTS, 'loop-architecture-quality', 'loop-code-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
         const text = body(n);
         assert.doesNotMatch(text, /Opus with `\/model`|not on Opus|switch to `\/model` Opus|on Opus \(checked|in-session, on Opus/, `${n} still asks for Opus`);
         assert.match(text, /no `model` pin/i, `${n} keeps the no-pin reason`);
     }
-    for (const n of ['capture-architecture-quality', 'capture-code-quality'])
+    for (const n of PARTS)
         assert.match(body(n), /`<model> - the judgment above ran on it`, or `raised for this run - run \/model <prior model> to drop back`/, `${n}: the Model: row`);
     const fields = squash(read('stack/skills/capture-architecture/references/report-fields.md'));
     assert.match(fields, /Two shapes, pick the true one: - `<model> - the judgment above ran on it`/);
@@ -414,13 +416,16 @@ test('audit 2026-10-14 SKC15: the stories live in the evidence appendices, the b
         'habits-execution-strategy': [/\$5\.68/, /61\.6M/],
         'habits-clarify': [/returns across tabs/],
         'markdown-style': [/1\.6M cache-read/],
-        'capture-architecture-quality': [/W2 and W3 built, W1 remains/],
+        // capture-quality's architecture part: its run file and appendix carry the part's name (2026-10-29)
+        'capture-quality/architecture-quality': [/W2 and W3 built, W1 remains/],
     };
     for (const [name, stories] of Object.entries(cases)) {
-        const body = squash(read(`stack/skills/${name}/SKILL.md`));
-        const ev = squash(read(`stack/skills/${name}/references/evidence.md`));
+        const [skill, part] = name.split('/');
+        const appendix = part ? `${part}-evidence.md` : 'evidence.md';
+        const body = squash(read(`stack/skills/${skill}/${part ? `references/${part}.md` : 'SKILL.md'}`));
+        const ev = squash(read(`stack/skills/${skill}/references/${appendix}`));
         assert.match(ev, /audit appendix, not a run-time load|never to run the skill/, `${name}: the appendix says what it is`);
-        assert.match(body, /`references\/evidence\.md`/, `${name}: the body points at it`);
+        assert.ok(body.includes(`\`references/${appendix}\``), `${name}: the body points at it`);
         for (const s of stories) {
             assert.doesNotMatch(body, s, `${name}: ${s} left the body`);
             assert.match(ev, s, `${name}: ${s} kept in the appendix`);

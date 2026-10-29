@@ -58,7 +58,7 @@ const DESIGN_DOCS = ['architecture/ARCHITECTURE.md', 'architecture/references/',
 const OUTPUTS = {
   'designer-plan': {
     rubric: 'rubric-designer-plan.md', runs: 'rounds', automatic: true,
-    skills: ['task-design', 'habits-plan-writing', 'task-solve', 'task-solve-cross', 'task-build-from-scratch', 'loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'],
+    skills: ['task-design', 'habits-plan-writing', 'task-solve', 'task-solve-cross', 'task-build-from-scratch', 'loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality'],
     seats: ['<stack>-solution-designer'], docs: DESIGN_DOCS,
   },
   'root-cause': {

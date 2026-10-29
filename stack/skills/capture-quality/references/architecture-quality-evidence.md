@@ -1,4 +1,4 @@
-# capture-architecture-quality - evidence appendix
+# architecture-quality - evidence appendix
 
 The measured anecdotes behind this skill's rules, kept out of the run-time body so every session stops paying
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill. Most of

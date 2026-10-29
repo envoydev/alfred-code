@@ -296,19 +296,18 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
 // has no one to dispatch (how code-style-analyzer went unseeded).
 test('every always-seeded capture skill seeds the seat it fans out', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    // capture-quality fans out one seat per part (2026-10-29)
     const PAIRS = {
-        'capture-architecture': 'architecture-analyzer',
-        'capture-architecture-quality': 'architecture-analyzer',
-        'capture-code-quality': 'code-quality-analyzer',
-        'capture-project-code-style': 'code-style-analyzer',
-        'capture-test-coverage': 'test-coverage-analyzer',
+        'capture-architecture': ['architecture-analyzer'],
+        'capture-quality': ['architecture-analyzer', 'code-quality-analyzer', 'test-coverage-analyzer'],
+        'capture-project-code-style': ['code-style-analyzer'],
     };
-    for (const [skill, seat] of Object.entries(PAIRS))
+    for (const [skill, seats] of Object.entries(PAIRS))
     {
         for (const bucket of ['always', 'general'])
         {
             if (!((recs[bucket] || {}).skills || []).includes(skill)) continue;
-            assert.ok(((recs[bucket] || {}).agents || []).includes(seat), `${bucket} seeds ${skill} without ${seat}`);
+            for (const seat of seats) assert.ok(((recs[bucket] || {}).agents || []).includes(seat), `${bucket} seeds ${skill} without ${seat}`);
         }
     }
 });
@@ -1669,4 +1668,15 @@ test('the 3.0.0 history entry opens with the update-together contract and the wa
     assert.match(first, /2\.12\.0 or older reads none of them/);
     assert.match(entry, /settings\.json by hand/, 'the way back');
     for (const key of ['ALFRED_CODE_SCORER_LEVEL', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_MAXIMUM_RUN_AGENTS']) assert.ok(entry.includes(key), `${key} named`);
+});
+
+test('the capture-quality history entry tells an account-file override to be re-keyed by hand (spec 5.4)', () =>
+{
+    const history = refBody('update-history');
+    const at = history.indexOf('\n## after 3.2.1 - the three quality captures become capture-quality');
+    assert.ok(at >= 0, 'the capture-quality section');
+    const next = history.indexOf('\n## ', at + 4);
+    const entry = history.slice(at, next < 0 ? undefined : next).replace(/\s+/g, ' ');
+    assert.match(entry, /`~\/\.claude\/settings\.json`/, 'the account file named');
+    assert.match(entry, /by hand/, 'the re-key is the user\'s');
 });

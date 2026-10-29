@@ -813,7 +813,7 @@ test('--respell: the project\'s own instruction file gets a per-line plan, and -
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-respell-'));
     try {
         const renamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed;
-        const [from, to] = Object.entries(renamed.skills).find(([, n]) => n === 'capture-code-quality');
+        const [from, to] = Object.entries(renamed.skills).find(([, n]) => n === 'capture-usage-report');   // a one-to-one rename: a merged one takes a topic form
         const own = [`# Notes`, `Run /${from} after a big change.`, `Keep scripts/${from}.sh as it is.`, `Untouched line.`, ''].join('\r\n');
         fs.mkdirSync(path.join(dir, '.claude'));
         fs.writeFileSync(path.join(dir, '.claude', 'AGENTS.md'), own);
@@ -833,6 +833,25 @@ test('--respell: the project\'s own instruction file gets a per-line plan, and -
         assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'a second run has nothing to do');
         fs.rmSync(path.join(dir, '.claude', 'AGENTS.md'));
         assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'no instruction file is nothing to do');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// 2026-10-29 (spec 5.3): the plan the user approves is the edit written, so a merged name's command form shows its topic
+// word - read from the snapshot's top-level renamedTopics, which the raw `renamed` block does not carry. Invented names:
+// the real old ones live in install-renames.test.js.
+test('--respell shows the topic form of a merged name', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-respell-topic-'));
+    try {
+        const snap = path.join(dir, 'snap');
+        fs.mkdirSync(path.join(snap, 'meta'), { recursive: true });
+        fs.writeFileSync(path.join(snap, 'meta', 'stack-manifest.json'), JSON.stringify({
+            renamed: { skills: { 'capture-alpha-part': 'capture-merged' } }, renamedTopics: { 'capture-alpha-part': 'alpha-part' },
+        }));
+        fs.mkdirSync(path.join(dir, 'root', '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'root', '.claude', 'AGENTS.md'), 'Run /capture-alpha-part src first.\n');
+        const dry = run(['--respell', '--snapshot', snap, '--root', path.join(dir, 'root')]).out;
+        assert.match(dry, /^respell: \.claude\/AGENTS\.md:1 {2}capture-alpha-part -> capture-merged alpha-part$/m, dry);
+        assert.match(dry, /^\+ Run \/capture-merged alpha-part src first\.$/m, dry);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

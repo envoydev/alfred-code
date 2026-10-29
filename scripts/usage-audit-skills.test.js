@@ -316,7 +316,7 @@ test('C08 C09 9a4ef375#3 c6142301#2 c6142301#6 e6a68237#6 0d070bcc#6 (skill half
 });
 
 // ---- the cache-aware fresh-session verdict (spec 2026-10-28 section 5): the in-session option leads every fresh-session ask
-const FRESH_FLOWS = ['task-solve', 'issue-diagnoser', 'task-solve-cross', 'loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage'];
+const FRESH_FLOWS = ['task-solve', 'issue-diagnoser', 'task-solve-cross', 'loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage-quality'];
 const SHARED_FRESH = "mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names";
 const HANDOFF_LABEL = /^(?:Resume|Start|Continue|Build)\b.*\b(?:fresh|new) (?:session|chat)\b/;
 test('fresh-session cache 2026-10-28: each flow skill carries the shared line, and its fresh-session asks lead with this chat', () => {
@@ -329,7 +329,7 @@ test('fresh-session cache 2026-10-28: each flow skill carries the shared line, a
         for (const a of asks(raw(n))) for (const l of a.options)
             if (/fresh session|new session/i.test(l)) assert.match(l, HANDOFF_LABEL, `${n}: '${l}' opens on Resume, Start, Continue or Build`);
     }
-    for (const n of ['loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage']) {
+    for (const n of ['loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage-quality']) {
         const round = asks(raw(n)).find((a) => /^Round <N>: LOOP/.test(a.question));
         assert.deepStrictEqual(round.options, ['Continue here (Recommended)', 'Resume in a fresh session'], `${n}: the round ask`);
         assert.match(skill(n), /when the hook refuses the ask because a fresh session does not pay back, start the next round here/, `${n}: the refused round`);

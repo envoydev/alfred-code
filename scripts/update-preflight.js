@@ -73,7 +73,8 @@
 //
 // `--respell [--apply] [--root <install root>]` is update step 6's route for the old stack names the installer only
 // NAMED in the project's own AGENTS.md / CLAUDE.md (its `!! <file> is yours and names <n> old stack name(s)` line).
-// Run from the snapshot, it reads that snapshot's `renamed` map and prints the edit as a plan, one block per line:
+// Run from the snapshot (or the one `--snapshot` names), it reads that snapshot's `renamed` map and its `renamedTopics`,
+// and prints the edit as a plan, one block per line:
 //
 //   respell: <file>:<line>  <old> -> <new>[, <old> -> <new>]
 //   - <the line as it reads>
@@ -509,8 +510,11 @@ function docsMoveLine({ root, claudeDir, stampFile })
 function runRespellMode()
 {
     const root = path.resolve(arg('--root', '.'));
-    const snapshot = path.join(__dirname, '..');
-    const renamed = (readJson(path.join(snapshot, 'meta', 'stack-manifest.json')) || {}).renamed || {};
+    const snapshot = path.resolve(arg('--snapshot', path.join(__dirname, '..')));
+    // loadManifest's shape: the top-level renamedTopics rides as renamed.topics (spec 5.3), so a merged name's command
+    // form shows its topic word in the plan the user approves
+    const manifest = readJson(path.join(snapshot, 'meta', 'stack-manifest.json')) || {};
+    const renamed = { ...(manifest.renamed || {}), topics: { ...(manifest.renamedTopics || {}) } };
     const selection = require('./install/selection.js');
     const plan = selection.respellOwnPlan({ projectRoot: root, renamed });
     if (!plan.length) { console.log('respell: none'); return; }
@@ -552,7 +556,7 @@ function main()
     const offerOnly = process.argv.includes('--offers');
     if (!snapshot && !offerOnly && !process.argv.includes('--asks'))
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --asks [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>]\n       update-preflight.js --inventory <installed.json>');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --asks [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>] [--snapshot <dir>]\n       update-preflight.js --inventory <installed.json>');
         process.exit(1);
     }
     const root = arg('--root', '.');

@@ -117,8 +117,20 @@ const SHELL_GREP = /^(?:grep|egrep|fgrep|rg|select-string|sls)$/i;
 // handed them, its first reads bringing the rest (the user's ruling of 2026-10-22, 'Hold its first review skill'); the
 // architecture analyzer is handed the architecture doc only inside an architecture quality run, never the map capture's.
 const RUN_NAME = /^(?:(?:alfred-)?(?:capture|loop|task|issue|mode)-[\w-]+|review-code|review-security|code-review|security-review)$/;
-const REVIEW_RUN = /^(?:review-code|review-security|code-review|security-review|capture-code-quality|capture-architecture-quality|loop-code-quality|loop-architecture-quality)$/;
-const ARCH_RUN = /^(?:capture-architecture-quality|loop-architecture-quality)$/;
+const REVIEW_RUN = /^(?:review-code|review-security|code-review|security-review|loop-code-quality|loop-architecture-quality)$/;
+const ARCH_RUN = /^loop-architecture-quality$/;
+// capture-quality's run is its part (hook-prelude.js qualityPart, recorded beside the run; an older copy's capture name
+// is read from its words there): the code and architecture parts and the chain review the code, the architecture part
+// and the chain read the architecture doc (2026-10-29).
+function runKinds(run, part) {
+  const name = String(run || '');
+  const p = prelude();
+  const kind = String(part || '') || (p && typeof p.qualityPart === 'function' ? p.qualityPart(name, '') : '');
+  return {
+    review: REVIEW_RUN.test(name) || /^(?:architecture-quality|code-quality|chain)$/.test(kind),
+    arch: ARCH_RUN.test(name) || /^(?:architecture-quality|chain)$/.test(kind),
+  };
+}
 // A design run in the chat ends in a plan and may never edit a scoped file, so no edit hold hands it the code docs: its
 // load is handed them beside the skill's own text and never denied (item 4 gap D, 2026-10-25). A seat has its start's.
 const DESIGN_RUN = /^(?:task-design|issue-diagnoser|task-build-from-scratch)$/;
@@ -753,6 +765,10 @@ const runOf = (name) => { const n = String(name || '').trim().replace(/^\//, '')
 const RUN_TAIL = 8 * 1024 * 1024;
 function recordRun(marks, run, input) {
   marks.run = run;
+  const p = prelude();
+  const args = input.hook_event_name === 'UserPromptExpansion' ? input.command_args : (input.tool_input || {}).args;
+  const part = p && typeof p.qualityPart === 'function' ? p.qualityPart(run, args) : '';
+  if (part) marks.part = part; else delete marks.part;
   // the call's id: a hook that refused the call (the built-in review's deny, the fresh-session hold) ends the run at its
   // first held read, where the record was made before anyone knew the call would run (review 2026-10-23)
   if (input.tool_use_id) marks.runId = String(input.tool_use_id); else delete marks.runId;
@@ -957,7 +973,7 @@ function seatHold(ctx, input, files, marks, seat, grep) {
   const needs = codeNeeds(docs, marks, [], true);
   if (!needs.length) return false;
   if (!input.agent_id && !runLive(marks)) {
-    delete marks.run; delete marks.runAt; delete marks.runFile; delete marks.runId;
+    delete marks.run; delete marks.part; delete marks.runAt; delete marks.runFile; delete marks.runId;
     saveMarks(files, marks);
     return false;
   }
@@ -1017,7 +1033,7 @@ function main() {
   if (input.hook_event_name === 'SubagentStart') {
     const tools = NO_ORDER_SEAT.test(String(input.agent_type || '')) ? '' : toolsText(ctx, seatOf(ctx, input.agent_type));
     const main = loadMarks(recordFiles(ctx, input.session_id, 'main'));
-    const seat = seatDocs(ctx, input.agent_type, ARCH_RUN.test(String(main.run || '')) && runLive(main));
+    const seat = seatDocs(ctx, input.agent_type, runKinds(main.run, main.part).arch && runLive(main));
     const docs = seat ? seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {}) : '';
     const text = [docs, tools, hostText()].filter(Boolean).join('\n\n');
     if (text) emit('SubagentStart', { additionalContext: text });
@@ -1031,7 +1047,7 @@ function main() {
     recordRun(was, run, input);
     saveMarks(files, was);
     if (DESIGN_RUN.test(run)) { designPush(ctx, files, was, 'UserPromptExpansion'); return; }
-    if (!REVIEW_RUN.test(run)) return;
+    if (!runKinds(run, was.part).review) return;
     const text = seatPush(ctx, files, { defs: CODE_DOCS, kind: 'code' });
     if (text) emit('UserPromptExpansion', { additionalContext: text });
     return;
@@ -1044,7 +1060,7 @@ function main() {
   const mark = (keys) => { const fresh = keys.filter((k) => !marks[k]); if (!fresh.length) return; for (const k of fresh) marks[k] = true; saveMarks(files, marks); };
   // Who reads against the docs: a seat by its type, the main session while a review run is on.
   const reader = () => (input.agent_id ? seatDocs(ctx, input.agent_type, !!marks.arch)
-    : REVIEW_RUN.test(String(marks.run || '')) ? { defs: CODE_DOCS, kind: 'code' } : null);
+    : runKinds(marks.run, marks.part).review ? { defs: CODE_DOCS, kind: 'code' } : null);
 
   if (name === 'Skill') {
     const run = input.agent_id ? '' : runOf(t.skill);
@@ -1052,7 +1068,7 @@ function main() {
     recordRun(marks, run, input);
     saveMarks(files, marks);
     if (DESIGN_RUN.test(run)) { designPush(ctx, files, marks, 'PreToolUse'); return; }
-    if (!REVIEW_RUN.test(run)) return;
+    if (!runKinds(run, marks.part).review) return;
     const needs = codeNeeds(CODE_DOCS.map((d) => readDoc(ctx, d)).filter(Boolean), marks, [], true);
     if (!needs.length) return;
     const c = codeReason(ctx, needs, [], INLINE_CAP, true, 'review');

@@ -180,7 +180,7 @@ test('auto-mode start: a task, capture, loop, issue or mode command, only --mode
     assert.ok(none('/loop-code-quality --mode-auto-run-on', { agent_id: 'seat-1' }), 'a seat never starts one');
     assert.ok(none('/loop-code-quality --mode-auto-run-on', { session_id: '' }), 'no session, nothing to name');
     const p = project();
-    assert.match(context(expand(p, 'sy', '/alfred-code:loop-test-coverage --mode-output-scorer-on --mode-auto-run-on', t)), /auto-run is ON/, 'a scoped name, any order in the run');
+    assert.match(context(expand(p, 'sy', '/alfred-code:loop-test-coverage-quality --mode-output-scorer-on --mode-auto-run-on', t)), /auto-run is ON/, 'a scoped name, any order in the run');
     const cap = project();
     assert.match(context(expand(cap, 'sc', '/capture-architecture --mode-auto-run-on', t)), /auto-run is ON for this \/capture-architecture run/);
     assert.match(fs.readFileSync(cap.gate, 'utf8'), /^AUTO - "\/capture-architecture --mode-auto-run-on"\nsession: sc\nskill: capture-architecture\n/);
@@ -202,7 +202,7 @@ test('auto-mode start: a task, capture, loop, issue or mode command, only --mode
     const cmdRow = (name, args) => typed(`<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`);
     assert.match(context(skillCall('task-implement', '--mode-auto-run-on', transcript([cmdRow('task-solve', '--mode-auto-run-on\n\nfix it')])).r), /auto-run is ON/, 'a typed slash run');
     assert.match(context(skillCall('issue-signatures-runtime', '--mode-auto-run-on', transcript([cmdRow('issue-diagnoser', '--mode-auto-run-on the 500')])).r), /auto-run is ON/, 'a typed issue run');
-    assert.match(context(skillCall('capture-code-quality', '--mode-auto-run-on', transcript([cmdRow('capture-code-quality', '--mode-auto-run-on')])).r), /auto-run is ON for this \/capture-code-quality run/, 'a typed capture run');
+    assert.match(context(skillCall('capture-quality', '--mode-auto-run-on', transcript([cmdRow('capture-quality', '--mode-auto-run-on')])).r), /auto-run is ON for this \/capture-quality run/, 'a typed capture run');
     const { pr: v, r: own } = skillCall('task-migrate-v2', '--mode-auto-run-on', transcript([typed('/task-migrate-v2 --mode-auto-run-on')]), 'sv');
     assert.match(context(own), /auto-run is ON for this \/task-migrate-v2 run/);
     assert.ok(fs.existsSync(v.gate), 'a project\'s own task skill, a digit in its name');
@@ -383,7 +383,7 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
     ]);
     // a 200k model takes its own tier's trigger
     assert.match(bannerOf(typedRun(p, 'c2', '/capture-architecture', transcript([], 'claude-haiku-4-5')))[1], /past ~180k tokens of its 200k context window \(claude-haiku-4-5\)/);
-    assert.strictEqual(bannerOf(typedRun(p, 'c3', '/loop-test-coverage', t, { ALFRED_CODE_AUTO_COMPACT: '1' }))[1],
+    assert.strictEqual(bannerOf(typedRun(p, 'c3', '/loop-test-coverage-quality', t, { ALFRED_CODE_AUTO_COMPACT: '1' }))[1],
         "**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5) instead of offering a fresh session.");
     assert.strictEqual(bannerOf(typedRun(p, 'c4', '/issue-diagnoser the login 500', t, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }))[1],
         "**Context:** the fresh-session offers are off - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5).");
@@ -1210,9 +1210,9 @@ test('mode runs: a flagless typed /task-solve B under the live stamp gets the fu
     const lt = transcript([typed('/loop-code-quality --mode-auto-run-on src/')]);
     expand(loop, 'ln', '/loop-code-quality --mode-auto-run-on src/', lt);
     const before = fs.readFileSync(marker(loop, 'ln'), 'utf8');
-    const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'capture-code-quality', args: '--mode-auto-run-on' },
+    const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'capture-quality', args: '--mode-auto-run-on' },
         session_id: 'ln', cwd: loop.root, transcript_path: lt }, { CLAUDE_PROJECT_DIR: loop.root });
-    assert.match(context(r), /auto-run is ON for this \/capture-code-quality run/);
+    assert.match(context(r), /auto-run is ON for this \/capture-quality run/);
     assert.strictEqual(fs.readFileSync(marker(loop, 'ln'), 'utf8'), before, 'the loop\'s marker stands');
     assert.match(context(r), /delete \.alfred\/state\/sessions\/AUTO-RUN-ln if its `skill:` line names this run/, 'and the capture\'s close leaves it, since it names the loop');
 });

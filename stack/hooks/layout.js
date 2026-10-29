@@ -93,6 +93,7 @@ function approvalStamps(root, env = process.env)
 }
 
 // The move map, `from` relative to the docs root; `to` relative to `base` - the data root or the docs root.
+const COVERAGE_RENAME = Object.freeze({ 'COVERAGE.md': 'COVERAGE-QUALITY.md', raw: 'coverage-raw' });
 const LAYOUT_MOVES = Object.freeze([
     { from: 'flow', base: 'data', split: 'flow' },
     { from: 'history', base: 'data', to: 'state/history' },
@@ -105,7 +106,11 @@ const LAYOUT_MOVES = Object.freeze([
     { from: 'diagnoses', base: 'docs', to: 'work/diagnoses' },
     { from: 'cross-project-tasks', base: 'docs', to: 'work/cross-project-tasks' },
     { from: 'related-context', base: 'docs', to: 'work/cross-project-tasks' },
-    { from: 'test-coverage', base: 'docs', to: 'quality/test-coverage' },
+    // The coverage doc's home since capture-quality (2026-10-29): a 2.8+ install moves from quality/test-coverage/, an
+    // older one straight from test-coverage/ - the 2.8 row first, so its doc wins where both homes exist. `rename` maps
+    // the first segment under `from` to its name under `to`; an entry it does not name stays, named in the log.
+    { from: 'quality/test-coverage', base: 'docs', to: 'quality', rename: COVERAGE_RENAME },
+    { from: 'test-coverage', base: 'docs', to: 'quality', rename: COVERAGE_RENAME },
     { from: 'loops', base: 'docs', to: 'quality/loops' },
     { from: 'tutorial', base: 'docs', to: 'explanations' },   // the explainer's folder (item 6, 2026-10-25)
     { from: '.branches', removeIfEmpty: true },

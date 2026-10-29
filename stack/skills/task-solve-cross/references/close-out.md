@@ -8,7 +8,7 @@ One line at most, the user decides, never auto-run: a landed change that touched
 architecture-critical surface (a schema/EF migration, a new module, a moved boundary, a new or revised
 seam - anything the contract protocol versioned this run - or a new external dependency) gets
 `/capture-architecture` named in the close report; substantial new code + tests with an absent
-or pre-change-stamped coverage doc gets `/capture-test-coverage` the same way. Contradictions
+or pre-change-stamped coverage doc gets `/capture-quality test-coverage-quality` the same way. Contradictions
 count too: a decision this run made that contradicts an existing architecture or assessment entry
 routes the same one line (update mode). The drift line lands in the user-facing close, never only an
 internal note.

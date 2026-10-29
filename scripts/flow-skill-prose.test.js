@@ -27,6 +27,8 @@ const asks = (text) => [...String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?
 });
 const shared = () => JSON.parse(read('meta/shared-rules.json')).rules;
 const copiesOf = (entry) => [entry.owner, ...(entry.sites || [])].map((c) => c.file);
+// capture-quality's parts are references beside its router (2026-10-29)
+const part = (name) => read(`stack/skills/capture-quality/references/${name}.md`);
 
 // ---- M77: the CI signatures skill counts the gatherer triggers its reference lists ------------------------------
 test('M77: signatures-ci names four dispatch triggers, the count its fan-out reference lists', () => {
@@ -82,7 +84,7 @@ test('M81: the awareness capture names the 1.x rule it supersedes, and the curre
 
 // ---- M82: a manual-only capture is the user's to type ---------------------------------------------------------
 test('M82: code-quality hands the manual-only style capture to the user by its slash', () => {
-    const text = flat(skill('capture-code-quality'));
+    const text = flat(part('code-quality'));
     assert.doesNotMatch(text, /record the code style with `capture-project-code-style`/);
     assert.match(text, /`\/capture-project-code-style`/);
     assert.match(text, /all the user's to run: `\/capture-preferences`/);
@@ -90,7 +92,7 @@ test('M82: code-quality hands the manual-only style capture to the user by its s
 
 // ---- M83: coverlet's MSBuild form writes json unless told otherwise -------------------------------------------
 test('M83: the coverage capture names the cobertura format flag on the MSBuild form', () => {
-    assert.match(skill('capture-test-coverage'), /\/p:CollectCoverage=true \/p:CoverletOutputFormat=cobertura/);
+    assert.match(part('test-coverage-quality'), /\/p:CollectCoverage=true \/p:CoverletOutputFormat=cobertura/);
 });
 
 // ---- M84: the transcript folder follows the config dir and the real slug rule ----------------------------------
@@ -104,10 +106,10 @@ test('M84: stack-usage finds the transcript folder under the config dir, by list
 });
 
 // ---- M86: the coverage loop keeps a declined set like its two siblings ----------------------------------------
-test('M86: loop-test-coverage keeps an in-run declined set, pinned with the other loops', () => {
-    const text = flat(skill('loop-test-coverage'));
+test('M86: loop-test-coverage-quality keeps an in-run declined set, pinned with the other loops', () => {
+    const text = flat(skill('loop-test-coverage-quality'));
     assert.match(text, /\*\*decline or defer adds the gap to this run's declined set\*\* - an in-context list only, never written to a file/);
-    assert.ok(copiesOf(shared()['loop-declined-set']).includes('stack/skills/loop-test-coverage/SKILL.md'), 'registered as a site');
+    assert.ok(copiesOf(shared()['loop-declined-set']).includes('stack/skills/loop-test-coverage-quality/SKILL.md'), 'registered as a site');
 });
 
 // ---- M87: no trigger text in a body, no When-to-use repeating the description ---------------------------------
@@ -134,12 +136,14 @@ test('M88: no project-internal jargon in the implement and checkpoint bodies', (
 });
 
 test('M89: the coverage capture, the coverage loop and the checkpoint keep their anecdotes in an evidence appendix', () => {
+    // The coverage capture is capture-quality's test-coverage-quality part: its run files and appendix carry the part's name.
     const cases = {
-        'capture-test-coverage': {
-            run: ['SKILL.md', 'references/doc-shape.md'],
+        'capture-quality': {
+            run: ['references/test-coverage-quality.md', 'references/test-coverage-quality-doc-shape.md'],
+            evidence: 'test-coverage-quality-evidence.md', pointer: 'references/test-coverage-quality.md',
             stories: [/half its cost idling/, /Docker-handling/, /41GB/, /951 lines/, /24 serial edits/],
         },
-        'loop-test-coverage': {
+        'loop-test-coverage-quality': {
             run: ['SKILL.md'],
             stories: [/1 in 20/, /79\.3M/, /0 purges/, /16 -> 23/, /15-16k/, /convention-copying/, /dominates session cost/],
         },
@@ -148,17 +152,17 @@ test('M89: the coverage capture, the coverage loop and the checkpoint keep their
             stories: [/6\.4M/, /471k/, /~150/],
         },
     };
-    for (const [name, { run, stories }] of Object.entries(cases)) {
+    for (const [name, { run, stories, evidence: appendix = 'evidence.md', pointer = 'SKILL.md' }] of Object.entries(cases)) {
         for (const f of run) {
             const text = flat(body(read(`stack/skills/${name}/${f}`)));
             assert.doesNotMatch(text, /\(measured|\bmeasured[:,]|rounds measured|6\.4M tokens|471k|41GB|79\.3M/, `${name}/${f}: an anecdote is left in a run-time file`);
         }
-        const evidence = `stack/skills/${name}/references/evidence.md`;
+        const evidence = `stack/skills/${name}/references/${appendix}`;
         assert.ok(exists(evidence), `${name}: has its evidence appendix`);
         const e = read(evidence);
         assert.match(e, /An audit appendix, not a run-time load/, `${name}: the appendix says it is never a run-time load`);
         for (const s of stories) assert.match(flat(e), s, `${name}: ${s} kept in the appendix`);
-        assert.match(flat(skill(name)), /`references\/evidence\.md` - an audit appendix, not a run-time load/, `${name}: SKILL.md points at it`);
+        assert.ok(flat(read(`stack/skills/${name}/${pointer}`)).includes(`\`references/${appendix}\` - an audit appendix, not a run-time load`), `${name}: ${pointer} points at it`);
     }
 });
 
@@ -196,7 +200,7 @@ test('M92: build-from-scratch Next run names the awareness capture, last', () =>
 
 // ---- M93: the over-build tags are this capture's own ---------------------------------------------------------
 test('M93: architecture-quality names the five over-build tags as its own', () => {
-    const text = flat(skill('capture-architecture-quality'));
+    const text = flat(part('architecture-quality'));
     assert.doesNotMatch(text, /the verifier's five tags/);
     assert.match(text, /the five over-build tags \(delete \/ stdlib \/ native \/ yagni \/ shrink\)/);
 });

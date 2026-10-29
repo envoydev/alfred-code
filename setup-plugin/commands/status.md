@@ -317,7 +317,7 @@ the seat handoff notes still on the bus (`node .claude/hooks/handoff.js left` - 
 | awareness/AGENTS-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/PROJECT-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/RELATED-PROJECTS-AWARENESS.md | no | - | - |
-| quality/test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
+| quality/COVERAGE-QUALITY.md | yes | (bar 85%) | 2026-07-25 |
 | quality/loops/ | yes | 3 prompt files | 2026-07-24 |
 | handoff notes (state/handoff) | yes | 4 notes | - |
 

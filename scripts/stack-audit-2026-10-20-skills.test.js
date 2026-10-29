@@ -43,7 +43,7 @@ test('S1: only the two solve flows hand-write an AUTO stamp, and they say it the
     assert.doesNotMatch(cross, /'run without plan review', 'no stops'/, 'no stops is the full waiver, not a plan-review-only one');
     assert.match(cross, /or the autonomy waiver in `references\/execution-modes\.md` - and the run then continues with `plan_review: waived`/);
     assert.match(flat(read('stack/skills/task-solve-cross/references/execution-modes.md')), /under the autonomy waiver in `SKILL\.md`/);
-    for (const d of ['task-implement', 'task-build-from-scratch', 'task-version-upgrade', 'loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage', 'issue-diagnoser'])
+    for (const d of ['task-implement', 'task-build-from-scratch', 'task-version-upgrade', 'loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality', 'issue-diagnoser'])
     {
         const t = flat(read(`stack/skills/${d}/SKILL.md`));
         assert.ok(t.includes(NOSTOPS), `${d} points a typed no-stops wish at --mode-auto-run-on`);
@@ -196,8 +196,8 @@ test('row 13: the named prose stops are ask templates, each marking one option f
         'task-version-upgrade/SKILL.md': /Stage <N> hit a hard stop:/,
         'issue-diagnoser/SKILL.md': /<The report is written \| The log points are in> - <findings path>/,
         'capture-project-code-style/SKILL.md': /First style capture across <the languages>/,
-        'capture-architecture-quality/SKILL.md': /- 'Verify and rewrite at this HEAD \(Recommended\)'/,
-        'capture-code-quality/SKILL.md': /Judge <the modules> through the code-quality-analyzer seats or in this session\?/,
+        'capture-quality/references/architecture-quality.md': /- 'Verify and rewrite at this HEAD \(Recommended\)'/,
+        'capture-quality/references/code-quality.md': /Judge <the modules> through the code-quality-analyzer seats or in this session\?/,
         'dotnet-windows-service/SKILL.md': /- 'Hand the script over \(Recommended\)'/,
         'dotnet-code-quality/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
         'dotnet-project-setup/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
@@ -210,7 +210,7 @@ test('row 13: the named prose stops are ask templates, each marking one option f
         assert.ok(blocks.some((b) => re.test(b)), `${rel}: the stop is a template`);
         assert.deepStrictEqual(lintAskTemplates([{ file: rel, text }]), [], rel);
     }
-    assert.doesNotMatch(flat(read('stack/skills/capture-architecture-quality/SKILL.md')), /The run gate offers it as its first option/);
+    assert.doesNotMatch(flat(read('stack/skills/capture-quality/references/architecture-quality.md')), /The run gate offers it as its first option/);
 });
 
 // S9: 'step by step' lifts the answer budget (the rules track adds the word); nothing in habits-explain-topic says a bare
@@ -235,7 +235,7 @@ test('row 15: the small wording fixes hold', () =>
     assert.doesNotMatch(read('stack/skills/markdown-style/SKILL.md'), /several would go through one AskUserQuestion/);
     assert.match(read('stack/skills/habits-adjust-agents-md/SKILL.md'), /\(`<stack>\/stack\/AGENTS\.template\.md`, `<stack>` resolved in step 1\)/);
     assert.doesNotMatch(read('stack/skills/dev-log-convert/SKILL.md'), /APV49/);
-    const cov = flat(read('stack/skills/loop-test-coverage/SKILL.md'));
+    const cov = flat(read('stack/skills/loop-test-coverage-quality/SKILL.md'));
     assert.doesNotMatch(cov, /Read its `SKILL\.md` from the installed skills directory|its SKILL\.md from the installed skills directory/);
     assert.match(cov, /say the coverage capture cannot run here and stop - a hand-rolled measurement is not comparable across rounds/);
     assert.doesNotMatch(flat(read('stack/skills/capture-architecture/references/doc-shapes.md')), /navigation baseline's \(the docs-root/);
@@ -254,5 +254,5 @@ test('row 14: zoneless, capacitor, desktop gate, Azure DevOps Mermaid and Vitest
     assert.match(desk, /Windows-MCP enables every tool by default, so it is registered with PowerShell, Registry, Process and FileSystem excluded unless the user wants them/);
     const dac = flat(read('stack/skills/docs-as-code/SKILL.md'));
     assert.match(dac, /the Azure DevOps wiki renders it with limited syntax \(`graph`, not `flowchart`; no HTML tags\)/);
-    assert.match(flat(read('stack/skills/capture-test-coverage/SKILL.md')), /which needs `@vitest\/coverage-v8` installed - a missing one is an unmeasured surface, never an install by this capture/);
+    assert.match(flat(read('stack/skills/capture-quality/references/test-coverage-quality.md')), /which needs `@vitest\/coverage-v8` installed - a missing one is an unmeasured surface, never an install by this capture/);
 });

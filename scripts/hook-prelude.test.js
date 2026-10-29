@@ -990,7 +990,7 @@ test('REVIEW_PROOF / reviewProof: the result line a review opens, by kind', () =
     }
     for (const text of ['**Outcome**: SATISFIED on round 2', 'Outcome: PLATEAU', '**Outcome** - CAPPED on round 4']) assert.deepStrictEqual(kinds(text), ['outcome'], text);
     for (const text of ['No findings so far', 'findings: none', 'the Findings: field', 'Outcomes: x', '']) assert.deepStrictEqual(kinds(text), [], `no result line: ${text}`);
-    assert.strictEqual(reviewProof('alfred-code:loop-test-coverage'), 'outcome');
+    assert.strictEqual(reviewProof('alfred-code:loop-test-coverage-quality'), 'outcome');
     assert.strictEqual(reviewProof('loop-architecture-quality'), 'outcome');
     for (const name of ['review-code', 'review-security', 'task-verify-code', 'task-verify-plan']) assert.strictEqual(reviewProof(name), 'findings', name);
 });
@@ -1138,4 +1138,35 @@ test('sweepScorerFolders: an 8-day-old session folder goes, a fresh one stays, o
     const later = path.join(dir, 'old2', 'x', 'ef56ab12.draft.md'); scorerWrite(later, 'd'); age(later);
     assert.strictEqual(sweepScorerFolders(dir, { now: Date.now() }), 0, "the day's stamp holds a second call");
     assert.ok(fs.existsSync(later));
+});
+
+// capture-quality holds three captures (2026-10-29): the topic word after its name picks the part a hook reads, and an
+// older copy's name keeps its part for the update's skew window.
+test('qualityPart reads the topic word', () => {
+    const { QUALITY_TOPICS, qualityPart } = require(PRELUDE);
+    for (const [part, words] of Object.entries(QUALITY_TOPICS))
+        for (const word of words)
+        {
+            assert.strictEqual(qualityPart('capture-quality', word), part, word);
+            assert.strictEqual(qualityPart('capture-quality', word.toUpperCase()), part, `${word} case-folded`);
+        }
+    assert.strictEqual(qualityPart('capture-quality', 'coverage src/api'), 'test-coverage-quality');
+    assert.strictEqual(qualityPart('capture-quality', '--mode-auto-run-on code'), 'code-quality');
+    for (const args of ['', '--mode-auto-run-on', 'coverage/', 'coverages', 'src/api', undefined])
+        assert.strictEqual(qualityPart('capture-quality', args), 'chain', String(args));
+    assert.strictEqual(qualityPart('alfred-code:capture-quality', 'code'), 'code-quality');
+});
+
+test('qualityPart: whitespace around args', () => {
+    const { qualityPart } = require(PRELUDE);
+    assert.strictEqual(qualityPart('capture-quality', '  coverage'), 'test-coverage-quality');
+    assert.strictEqual(qualityPart('capture-quality', '\tcoverage\n'), 'test-coverage-quality');
+});
+
+// the old spelling's half lives in install-renames.test.js, the test home allowed to spell it
+test('the coverage loop is a review skill of its own kind', () => {
+    const { reviewKind, REVIEW_SKILL } = require(PRELUDE);
+    assert.strictEqual(reviewKind('loop-test-coverage-quality'), 'loop-test-coverage-quality');
+    assert.ok(REVIEW_SKILL.test('loop-test-coverage-quality'));
+    assert.ok(REVIEW_SKILL.test('alfred-code:loop-test-coverage-quality'));
 });

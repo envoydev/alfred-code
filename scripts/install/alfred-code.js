@@ -686,6 +686,9 @@ function runLayers(ctx)
         // .gitignore of the stack's is gone before history/ moves into the data root's state/.
         try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
+        // After migrateLayout, so the coverage doc already sits in quality/ when its watch learns it is not owned.
+        try { docs.ensureQualityNotOwned({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
+        catch (err) { ctx.note(`quality/watch.json under ${docsPath} could not be updated (${err.message}) - add COVERAGE-QUALITY.md to its notOwned list by hand`); }
     }
     // The language-server check writes into the data root, never the docs root, so a docs root still waiting on update's ask
     // skips nothing of it (final review M8): every run checks.

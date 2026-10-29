@@ -583,7 +583,17 @@ function respellPatterns(renamed)
     const re = new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g');
     // The project's own file: a name inside a path (`scripts/<name>.sh`) or a backticked word is no hit.
     const nameRe = new RegExp(`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_.-]/)(${olds.map(escape).join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g');
-    return { pairs, re, nameRe };
+    // A MERGE's old name (spec 5.3, 2026-10-29: the three quality captures in capture-quality) standing as a command - a
+    // `/` right before it, that `/` at a line start or after whitespace, a backtick, a quote or `(`, and no `/` after the
+    // name - takes its part's topic word, so `/<old capture> src` still runs that part; a path or a plain mention
+    // takes the bare new name. `swap` is the replace callback both re-spellings use.
+    const topicOf = { ...((renamed && renamed.topics) || {}) };
+    const swap = (old, _name, at, text) =>
+    {
+        if (!Object.hasOwn(topicOf, old) || text[at - 1] !== '/' || text[at + old.length] === '/') return pairs[old];
+        return at < 2 || /[\s`'"(]/.test(text[at - 2]) ? `${pairs[old]} ${topicOf[old]}` : pairs[old];
+    };
+    return { pairs, re, nameRe, topicOf, swap };
 }
 
 // audit 2026-10-11, session b3f8193f: the installer only NAMES an old stack name in the project's own instruction file
@@ -605,7 +615,7 @@ function respellOwnPlan({ projectRoot, renamed, files = null })
         lines.forEach((before, i) =>
         {
             const names = [];
-            const after = before.replace(p.nameRe, (old) => { names.push([old, p.pairs[old]]); return p.pairs[old]; });
+            const after = before.replace(p.nameRe, (old, name, at, text) => { const to = p.swap(old, name, at, text); names.push([old, to]); return to; });
             if (after !== before) plan.push({ file: rel, line: i + 1, before, after, names });
         });
     }
@@ -634,7 +644,7 @@ function respellRenamed({ projectRoot, renamed, docsPath = '', owned = () => fal
 {
     const patterns = respellPatterns(renamed);
     if (!patterns) return 0;
-    const { pairs, re, nameRe } = patterns;
+    const { re, nameRe, swap } = patterns;
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
     const instructions = instructionFiles(projectRoot);
     let total = 0;
@@ -650,7 +660,7 @@ function respellRenamed({ projectRoot, renamed, docsPath = '', owned = () => fal
             continue;
         }
         let n = 0;
-        const out = text.replace(re, (old) => { n += 1; return pairs[old]; });
+        const out = text.replace(re, (...hit) => { n += 1; return swap(...hit); });
         if (!n) continue;
         try { fs.writeFileSync(file, out); }
         catch (err) { note(`${name} names ${n} old skill or seat name(s) and could not be re-spelled (${err.message})`); continue; }

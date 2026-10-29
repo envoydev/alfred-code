@@ -61,7 +61,7 @@ const OLD = {
     'docs-log.jsonl': 'statistics/docs-log.jsonl',
     'plans/a.md': 'docs/work/plans/a.md', 'specs/s.md': 'docs/work/specs/s.md', 'diagnoses/d.md': 'docs/work/diagnoses/d.md',
     'cross-project-tasks/other.md': 'docs/work/cross-project-tasks/other.md', 'related-context/paper.md': 'docs/work/cross-project-tasks/paper.md',
-    'test-coverage/TEST-COVERAGE.md': 'docs/quality/test-coverage/TEST-COVERAGE.md', 'loops/run.md': 'docs/quality/loops/run.md',
+    'test-coverage/COVERAGE.md': 'docs/quality/COVERAGE-QUALITY.md', 'test-coverage/raw/dotnet/x.xml': 'docs/quality/coverage-raw/dotnet/x.xml', 'loops/run.md': 'docs/quality/loops/run.md',
 };
 function oldLayout(root)
 {
@@ -256,4 +256,73 @@ test('tutorial/ moves to explanations/ (item 6); a file where a folder move expe
     assert.deepStrictEqual(f.kept, ['.alfred/docs/tutorial']);
     assert.ok(f.logs.some((m) => m.includes('layout: kept .alfred/docs/tutorial - a file where a folder moving to .alfred/docs/explanations belongs')), f.logs.join('\n'));
     assert.ok(!f.logs.some((m) => m.includes('layout: current')), 'a kept file is no current layout');
+});
+
+// 2026-10-29: the coverage doc moves up into quality/ under a new name - a row's `rename` maps the first segment of each
+// file under its folder (COVERAGE.md -> COVERAGE-QUALITY.md, raw/ -> coverage-raw/), and a file it does not map stays.
+const RENAME = { 'COVERAGE.md': 'COVERAGE-QUALITY.md', raw: 'coverage-raw' };
+const QMOVES = [{ from: 'quality/test-coverage', base: 'docs', to: 'quality', rename: RENAME }, { from: 'test-coverage', base: 'docs', to: 'quality', rename: RENAME }];
+
+test('a rename row moves only the mapped entries', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/quality/test-coverage/COVERAGE.md', 'doc\n');
+    put(root, '.alfred/docs/quality/test-coverage/raw/dotnet/cobertura.xml', '<x/>\n');
+    put(root, '.alfred/docs/quality/test-coverage/NOTES.md', 'mine\n');
+    const r = migrate(root, { moves: QMOVES });
+    assert.strictEqual(text(root, '.alfred/docs/quality/COVERAGE-QUALITY.md'), 'doc\n');
+    assert.strictEqual(text(root, '.alfred/docs/quality/coverage-raw/dotnet/cobertura.xml'), '<x/>\n');
+    assert.strictEqual(text(root, '.alfred/docs/quality/test-coverage/NOTES.md'), 'mine\n', 'the unmapped file stays');
+    assert.ok(!has(root, '.alfred/docs/quality/test-coverage/raw'), 'the emptied raw/ goes');
+    assert.ok(r.logs.includes('  layout: kept .alfred/docs/quality/test-coverage/NOTES.md - no new home for it'), r.logs.join('\n'));
+    assert.ok(r.kept.includes('.alfred/docs/quality/test-coverage/NOTES.md'));
+});
+
+test('a rename row: a tracked file moves with git mv', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/quality/test-coverage/COVERAGE.md', 'doc\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-qm', 'doc');
+    migrate(root, { moves: QMOVES });
+    assert.match(git(root, 'status', '--porcelain'), /^R {2}\.alfred\/docs\/quality\/test-coverage\/COVERAGE\.md -> \.alfred\/docs\/quality\/COVERAGE-QUALITY\.md$/m);
+});
+
+test('a rename row: both homes present - the 2.8 doc moves, the pre-2.8 one is kept and named, nothing overwritten', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/quality/test-coverage/COVERAGE.md', 'the 2.8 doc\n');
+    put(root, '.alfred/docs/test-coverage/COVERAGE.md', 'the pre-2.8 doc\n');
+    const r = migrate(root, { moves: QMOVES });
+    assert.strictEqual(text(root, '.alfred/docs/quality/COVERAGE-QUALITY.md'), 'the 2.8 doc\n', 'the first row wins');
+    assert.strictEqual(text(root, '.alfred/docs/test-coverage/COVERAGE.md'), 'the pre-2.8 doc\n', 'kept where it is');
+    assert.ok(r.logs.includes('  layout: kept .alfred/docs/test-coverage/COVERAGE.md - .alfred/docs/quality/COVERAGE-QUALITY.md already holds it'), r.logs.join('\n'));
+});
+
+test('a rename row: a second run is current', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/test-coverage/COVERAGE.md', 'doc\n');
+    put(root, '.alfred/docs/test-coverage/raw/a.xml', '<a/>\n');
+    migrate(root, { moves: QMOVES });
+    assert.strictEqual(text(root, '.alfred/docs/quality/coverage-raw/a.xml'), '<a/>\n');
+    assert.ok(!has(root, '.alfred/docs/test-coverage'), 'the emptied pre-2.8 folder goes');
+    const before = tree(root);
+    const again = migrate(root, { moves: QMOVES });
+    assert.deepStrictEqual(again.logs, ['  layout: current']);
+    assert.deepStrictEqual(tree(root), before);
+});
+
+test('a rename row: a failing move puts every file back', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/quality/test-coverage/COVERAGE.md', 'doc\n');
+    put(root, '.alfred/docs/quality/test-coverage/raw/a.xml', '<a/>\n');
+    const before = tree(root);
+    const real = fs.renameSync;
+    let calls = 0;
+    fs.renameSync = (...args) => { calls += 1; if (calls === 2) throw new Error('EACCES: the second file'); return real(...args); };
+    try { assert.throws(() => migrate(root, { moves: QMOVES }), /EACCES: the second file/); }
+    finally { fs.renameSync = real; }
+    assert.deepStrictEqual(tree(root), before);
 });

@@ -868,7 +868,7 @@ function answeredAt(label) {
 // PreToolUse and carries no target, no result and no refusal, so a review past the transcript scan is a review to run again.
 // The reviews a VERIFIED line names, and of those the ones no run in this session meets, both sides read by kind -
 // `verify-code` is met by `task-verify-code`, never by another skill.
-const REVIEW_NAMED_RE = /(?<![\w-])[\w-]*?(?:verify-(?:code|plan)|quality-loop|coverage-loop|loop-(?:quality|code-quality|architecture-quality|test-coverage)|review-(?:code|security))(?![\w-])/gi;
+const REVIEW_NAMED_RE = /(?<![\w-])[\w-]*?(?:verify-(?:code|plan)|quality-loop|coverage-loop|loop-(?:quality|code-quality|architecture-quality|test-coverage(?:-quality)?)|review-(?:code|security))(?![\w-])/gi;   // older copy: the coverage loop's first name
 // a name with no kind is none: a prelude without the review words gives every name null, and null matched null (review 2026-10-23)
 const reviewsNamed = (line) => [...new Set([...String(line).matchAll(REVIEW_NAMED_RE)].map((m) => reviewKind(m[0])).filter(Boolean))];
 function reviewsNotRun(line) {

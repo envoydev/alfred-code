@@ -25,6 +25,7 @@
 // because the user is looking at the question as it is asked.
 const fs = require('node:fs');
 const path = require('node:path');
+const { isDeepStrictEqual } = require('node:util');
 const { parseJson } = require('./json-file.js');
 const { stackSeat } = require('../derive-state.js');
 const { BRAND } = require('./brand.js');
@@ -676,14 +677,52 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
 
 // A skill a release RENAMED keeps the user's `skillOverrides` value under its new name - a value
 // already set under the new name wins, and the old key goes either way.
+// A MERGE (spec 5.2, 2026-10-29): several old skills became the parts of one, so first-wins would let one part's 'off'
+// switch off all of them. The value crosses only when every part has a spelling present in `o` and every present
+// spelling holds the same value; `olds` are the present spellings, removed either way.
+const mergedNames = (renamed) => new Set(Object.keys((renamed && renamed.topics) || {}).map((old) => ((renamed && renamed.skills) || {})[old]).filter(Boolean));
+function mergedOverride(o, newName, renamed)
+{
+    const skills = (renamed && renamed.skills) || {};
+    const topics = (renamed && renamed.topics) || {};
+    const olds = Object.keys(skills).filter((old) => skills[old] === newName && Object.hasOwn(o, old));
+    const parts = new Set(Object.keys(skills).filter((old) => skills[old] === newName && Object.hasOwn(topics, old)).map((old) => topics[old]));
+    const present = new Set(olds.map((old) => topics[old]));
+    const same = olds.every((old) => isDeepStrictEqual(o[old], o[olds[0]]));
+    const carry = olds.length > 0 && same && [...parts].every((part) => present.has(part));
+    return carry ? { carry, value: o[olds[0]], olds } : { carry, olds };
+}
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const partsWord = (newName, renamed) =>
+{
+    const n = new Set(Object.entries((renamed && renamed.topics) || {}).filter(([old]) => ((renamed && renamed.skills) || {})[old] === newName).map(([, part]) => part)).size;
+    return NUMBER_WORDS[n] || String(n);
+};
+const quoted = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
+
 function rekeyOverrides(data, renamed, log, label)
 {
     const o = data && data.skillOverrides;
     if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
     let changed = false;
+    const merged = mergedNames(renamed);
+    for (const to of merged)
+    {
+        const m = mergedOverride(o, to, renamed);
+        if (!m.olds.length) continue;
+        const kept = Object.hasOwn(o, to);
+        if (!kept && m.carry) o[to] = m.value;
+        for (const from of m.olds)
+        {
+            if (kept || m.carry) log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
+            else log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) not carried - ${to} holds ${partsWord(to, renamed)} captures; set ${to} yourself to switch them all`);
+            delete o[from];
+        }
+        changed = true;
+    }
     for (const [from, to] of Object.entries((renamed && renamed.skills) || {}))
     {
-        if (!Object.hasOwn(o, from)) continue;
+        if (merged.has(to) || !Object.hasOwn(o, from)) continue;
         if (!Object.hasOwn(o, to)) o[to] = o[from];
         delete o[from];
         changed = true;
@@ -1239,16 +1278,30 @@ function writeSettings(opts)
     // C3 (R133 b): at local scope settings.json is never written, so an old key there cannot be re-keyed;
     // its value is set under the new name in THIS file - the deny half's shape - and the entry is named.
     if (inheritedOverrides && typeof inheritedOverrides === 'object' && !Array.isArray(inheritedOverrides))
+    {
+        // A merged name (spec 5.2) takes the same both-hold test over the old keys settings.json holds, all at once.
+        const merged = mergedNames(renamed);
+        const said = new Set();
         for (const [from, to] of Object.entries((renamed && renamed.skills) || {}))
         {
-            if (!Object.hasOwn(inheritedOverrides, from) || Object.hasOwn(inheritedOverrides, to)) continue;
+            if (!Object.hasOwn(inheritedOverrides, from) || Object.hasOwn(inheritedOverrides, to) || said.has(to)) continue;
             const mine = (data.skillOverrides && typeof data.skillOverrides === 'object' && !Array.isArray(data.skillOverrides)) ? data.skillOverrides : null;
             if (mine && Object.hasOwn(mine, to)) continue;
             if (data.skillOverrides !== undefined && !mine) break;
-            (data.skillOverrides ??= {})[to] = inheritedOverrides[from];
+            const m = merged.has(to) ? mergedOverride(inheritedOverrides, to, renamed) : { carry: true, value: inheritedOverrides[from], olds: [from] };
+            if (merged.has(to)) said.add(to);
+            if (!m.carry)
+            {
+                for (const old of m.olds)
+                    log(`  ${label}: settings.json still names skillOverrides ${old} (${quoted(inheritedOverrides[old])}) - not carried, ${to} holds ${partsWord(to, renamed)} captures; nothing set in ${label} - a project-scope update applies the rule there`);
+                continue;
+            }
+            (data.skillOverrides ??= {})[to] = m.value;
             changed = true;
-            log(`  ${label}: settings.json still names skillOverrides ${from} - set as ${to} in ${label}; a local-scope run never writes settings.json, a project-scope update re-keys it`);
+            for (const old of m.olds)
+                log(`  ${label}: settings.json still names skillOverrides ${old} - set as ${to} in ${label}; a local-scope run never writes settings.json, a project-scope update re-keys it`);
         }
+    }
     const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localAllowed || localMem;
     // An env this run emptied sets nothing, and a file left with nothing at all goes: 2.10.0 made settings.local.json
     // for the memory database path alone (the memory-db-retired migration).
@@ -1739,4 +1792,4 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { compactWindowSeeds, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, unreadableSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };
+module.exports = { mergedOverride, compactWindowSeeds, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, unreadableSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

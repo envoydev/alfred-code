@@ -1369,7 +1369,7 @@ test('check 65 flags <docs-path>/flow/APPROVAL in a skill and passes state/appro
     const of = (file, text) => lintOldLocations([{ file, text }]);
     const hit = of('stack/skills/x/SKILL.md', 'intro\nwrite `<docs-path>/flow/APPROVAL` first\n');
     assert.strictEqual(hit.length, 1, 'one line, one finding');
-    assert.match(hit[0], /^stack\/skills\/x\/SKILL\.md:2 names the pre-2\.8\.0 location <docs-path>\/flow - use <data root>\/state\/approvals or <data root>\/state\/sessions \(stack\/hooks\/layout\.js LAYOUT_MOVES\)$/);
+    assert.match(hit[0], /^stack\/skills\/x\/SKILL\.md:2 names the moved location <docs-path>\/flow - use <data root>\/state\/approvals or <data root>\/state\/sessions \(stack\/hooks\/layout\.js LAYOUT_MOVES\)$/);
     assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'write `<data root>/state/approvals/APPROVAL` first\n'), [], 'the new home passes');
     assert.match(of('stack/rules/r.md', 'the plan at `<docs-path>/plans/x.md`\n')[0], /<docs-path>\/plans - use <docs-path>\/work\/plans /);
     assert.match(of('setup-plugin/references/r.md', 'see .alfred/docs/hook-blocks/s.jsonl\n')[0], /\.alfred\/docs\/hook-blocks - use <data root>\/statistics\/hook-blocks /);
@@ -1380,6 +1380,12 @@ test('check 65 flags <docs-path>/flow/APPROVAL in a skill and passes state/appro
     assert.strictEqual(of('stack/hooks/h.js', "const d = path.resolve(R, '.alfred/docs', 'flow', 'APPROVAL');\n").length, 1, 'the default root spelled out too');
     assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'the <docs-path>/work/plans/ folder and <docs-path>/quality/loops/\n'), [], 'a new home that ends in an old name passes');
     assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'a <docs-path>/plansmith/ folder\n'), [], 'a longer name is not the old folder');
+
+    // capture-quality (2026-10-29): both coverage homes move to quality/, a rename row naming what it renames.
+    const renamed = 'use <docs-path>/quality (COVERAGE.md -> COVERAGE-QUALITY.md, raw/ -> coverage-raw/) (stack/hooks/layout.js LAYOUT_MOVES)';
+    assert.strictEqual(of('stack/skills/x/SKILL.md', 'reads <docs-path>/quality/test-coverage/raw/dotnet\n')[0], `stack/skills/x/SKILL.md:1 names the moved location <docs-path>/quality/test-coverage - ${renamed}`);
+    assert.strictEqual(of('stack/agents/a.md', 'the <docs-path>/test-coverage/ folder\n')[0], `stack/agents/a.md:1 names the moved location <docs-path>/test-coverage - ${renamed}`);
+    assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'writes <docs-path>/quality/COVERAGE-QUALITY.md and <docs-path>/quality/coverage-raw/\n'), [], 'the new home passes');
 });
 
 test('check 65 passes layout.js, the migration code, the tests, the history and a hook\'s skew-window read', () => {
@@ -1406,6 +1412,97 @@ test('check 65: a sentence may end on an old home; an extension is another name'
     const of = (text) => lintOldLocations([{ file: 'stack/rules/r.md', text }]);
     assert.strictEqual(of('the receipts live in <docs-path>/flow.\n').length, 1, 'a full stop is punctuation');
     assert.deepStrictEqual(of('a <docs-path>/plans.md file\n'), [], 'plans.md is not the plans/ folder');
+});
+
+// 2026-10-29: capture-quality holds the three quality captures and the coverage loop is loop-test-coverage-quality; a
+// text naming an old name sends the model to a skill the update pruned, or to the coverage doc's old home. The skill
+// tokens come from the rename map, so these tests feed a map of invented names (the real old names live only there).
+const RETIRED_MAP = {
+    renamedSkills: { 'old-cov-capture': 'capture-quality', 'old-code-capture': 'capture-quality', 'old-cov-loop': 'loop-test-coverage-quality', 'old-other': 'task-solve' },
+    renamedTopics: { 'old-cov-capture': 'test-coverage-quality' },
+};
+test('check 70 flags each retired token', () => {
+    const { lintRetiredQuality } = require('./lint-skills.js');
+    const of = (text) => lintRetiredQuality([{ file: 'stack/skills/x/SKILL.md', text }], RETIRED_MAP);
+    const hit = of('intro\nrun /old-cov-capture now\n');
+    assert.strictEqual(hit.length, 1);
+    assert.match(hit[0], /^stack\/skills\/x\/SKILL\.md:2 names the retired old-cov-capture - use `capture-quality test-coverage-quality` \(check 70\)$/);
+    assert.match(of('the old-code-capture skill\n')[0], /use `capture-quality` \(check 70\)$/, 'a merged name with no topic row');
+    assert.match(of('run /old-cov-loop\n')[0], /use `loop-test-coverage-quality` \(check 70\)$/);
+    assert.deepStrictEqual(of('run /old-other\n'), [], 'a rename into another skill is not check 70\'s');
+    assert.deepStrictEqual(of('run /loop-test-coverage-quality and /capture-quality\n'), [], 'the new names pass');
+    assert.strictEqual(of('writes COVERAGE.md\n').length, 1);
+    assert.deepStrictEqual(of('writes COVERAGE-QUALITY.md\n'), [], 'the new doc name passes');
+    assert.strictEqual(of('reads quality/test-coverage/COVERAGE\n').length, 1);
+    assert.match(of('the quality docs (`loops/`, `test-coverage/`)\n')[0], /use `quality\/COVERAGE-QUALITY\.md` and `quality\/coverage-raw\/` \(check 70\)$/, 'the old folder, backticked');
+    assert.strictEqual(of('raw output in `<docs-path>/quality/test-coverage/raw/`\n').length, 1);
+    assert.deepStrictEqual(of('the test-coverage-quality part, and test-coverage/ unquoted\n'), [], 'a bare folder word is not a path cite');
+});
+
+test('check 70 reads its skill tokens from the shipped rename map by default', () => {
+    const { lintRetiredQuality } = require('./lint-skills.js');
+    const { loadManifest } = require('./install/manifest.js');
+    const { renamed } = loadManifest(path.join(__dirname, '..'));
+    const merged = Object.keys(renamed.skills).filter((k) => ['capture-quality', 'loop-test-coverage-quality'].includes(renamed.skills[k]));
+    assert.ok(merged.length >= 4, `the map merges the quality names: ${merged}`);
+    for (const name of merged)
+    {
+        const hit = lintRetiredQuality([{ file: 'stack/rules/r.md', text: `run /${name}\n` }]);
+        assert.strictEqual(hit.length, 1, name);
+        const use = renamed.skills[name] === 'capture-quality' ? `capture-quality${renamed.topics[name] ? ` ${renamed.topics[name]}` : ''}` : 'loop-test-coverage-quality';
+        assert.ok(hit[0].endsWith(`use \`${use}\` (check 70)`), hit[0]);
+    }
+});
+
+test('check 70 keeps the exemptions', () => {
+    const { lintRetiredQuality } = require('./lint-skills.js');
+    const of = (file, text) => lintRetiredQuality([{ file, text }], RETIRED_MAP);
+    const manifest = JSON.stringify({ renamed: { skills: { 'old-cov-capture': 'capture-quality' } }, renamedTopics: { 'old-code-capture': 'code-quality' }, retired: { skills: ['old-cov-loop'] }, skills: [{ name: 'capture-quality' }] }, null, 2);
+    assert.deepStrictEqual(of('meta/stack-manifest.json', manifest), [], 'the renamed, renamedTopics and retired blocks are exempt');
+    const flagged = JSON.stringify({ renamed: {}, skills: [{ name: 'old-cov-capture' }] }, null, 2);
+    const hit = of('meta/stack-manifest.json', flagged);
+    assert.strictEqual(hit.length, 1, 'a hit under skills is flagged');
+    assert.match(hit[0], /^meta\/stack-manifest\.json:5 /, 'with its line');
+    assert.deepStrictEqual(of('meta/conformance.json', JSON.stringify({ matchers: { review_load: { text_match: 'old-code-capture|capture-quality' } } })), [], 'the review_load matcher is exempt, where the file keeps it');
+    assert.strictEqual(of('meta/conformance.json', JSON.stringify({ review_load: { text_match: 'old-code-capture' } })).length, 1, 'a review_load outside matchers is not');
+    assert.deepStrictEqual(lintRetiredQuality([{ file: 'meta/conformance.json', text: fs.readFileSync(path.join(__dirname, '..', 'meta', 'conformance.json'), 'utf8') }]), [], 'the shipped file passes');
+    assert.strictEqual(of('meta/conformance.json', JSON.stringify({ claims: [{ text: 'old-code-capture' }] })).length, 1, 'the rest of conformance.json is not');
+    const old = 'the old-cov-capture skill writes quality/test-coverage/COVERAGE.md\n';
+    for (const file of ['stack/hooks/layout.js', 'setup-plugin/references/update-history.md', 'scripts/x.test.js', 'scripts/fixtures/a.md', 'docs/x-evidence.md', 'docs/report-2026-10-01.md', 'docs/superpowers/a.md', 'scripts/lint-skills.js'])
+        assert.deepStrictEqual(of(file, old), [], `${file} is exempt`);
+    for (const word of ['older copy', 'renamed', 'retired', 'layout', 'legacy'])
+    {
+        assert.deepStrictEqual(of('scripts/install/docs.js', `const OLD = 'old-code-capture'; // ${word}\n`), [], `an installer line saying ${word}`);
+        assert.deepStrictEqual(of('stack/hooks/x.js', `const OLD = /old-code-capture/; // ${word}\n`), [], `a hook line saying ${word}`);
+    }
+    assert.strictEqual(of('stack/hooks/x.js', "const OLD = 'old-code-capture';\n").length, 1, 'a hook line saying none of them');
+    assert.strictEqual(of('stack/skills/x/SKILL.md', 'the older copy of old-code-capture\n').length, 1, 'markdown gets no word pass');
+});
+
+test('check 70b holds the router and renamedTopics to QUALITY_TOPICS', () => {
+    const { lintQualityTopics } = require('./lint-skills.js');
+    const { QUALITY_TOPICS: topics } = require('../stack/hooks/hook-prelude.js');
+    const router = (coverage) => ['| Part | Topic words | Writes | Seats |', '|---|---|---|---|',
+        '| architecture-quality | `architecture-quality`, `architecture` | a | b |',
+        '| code-quality | `code-quality`, `code` | a | b |',
+        ...(coverage === null ? [] : [`| test-coverage-quality | ${coverage} | a | b |`])].join('\n') + '\n';
+    const renamedTopics = { 'old-code-capture': 'code-quality', 'old-cov-capture': 'test-coverage-quality' };
+    const renamedSkills = { 'old-code-capture': 'capture-quality', 'old-cov-capture': 'capture-quality', 'old-cov-loop': 'loop-test-coverage-quality' };
+    const ok = { routerText: router('`test-coverage-quality`, `test-coverage`, `coverage`'), topics, renamedTopics, renamedSkills };
+    assert.deepStrictEqual(lintQualityTopics(ok), [], 'the matching inputs');
+    const missing = lintQualityTopics({ ...ok, routerText: router('`test-coverage-quality`, `test-coverage`') });
+    assert.strictEqual(missing.length, 1, 'a word missing from the router');
+    assert.match(missing[0], /test-coverage-quality/);
+    assert.strictEqual(lintQualityTopics({ ...ok, routerText: router(null) }).length, 1, 'a part with no row');
+    assert.strictEqual(lintQualityTopics({ ...ok, renamedTopics: { ...renamedTopics, 'old-cov-capture': 'test-coverage' } }).length, 1, 'a topic that is no part');
+    assert.strictEqual(lintQualityTopics({ ...ok, renamedTopics: { ...renamedTopics, 'capture-x-quality': 'code-quality' } }).length, 1, 'a key that is no renamed.skills key');
+    assert.strictEqual(lintQualityTopics({ ...ok, renamedSkills: { ...renamedSkills, 'old-code-capture': 'task-solve' } }).length, 1, 'a key renamed to another skill');
+});
+
+test('check 70 is no substring match', () => {
+    const { lintRetiredQuality } = require('./lint-skills.js');
+    const of = (text) => lintRetiredQuality([{ file: 'stack/rules/r.md', text }], RETIRED_MAP);
+    assert.deepStrictEqual(of('preold-cov-captures and my-old-code-capture-notes, old-cov-loop-quality\n'), []);
 });
 
 // Item 7 (2026-10-25): each claim of meta/conformance.json cites the line that states its behaviour; check 68 sends a

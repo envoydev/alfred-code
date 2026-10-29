@@ -54,18 +54,21 @@ test('C9: the engine refuses `set` on a missing doc on an overlay branch, and ta
 
 // The three model-invocable captures that dispatch seats and replace their doc: a description match on a
 // conversational question ('what are the risks here?') used to start the whole run with no approval. Each now
-// asks first unless its loop invoked it, and its doc-shape no longer claims 'no write gate'.
+// asks first unless its loop invoked it, and its doc-shape no longer claims 'no write gate'. Since 2026-10-29 each is
+// a part of capture-quality - a reference beside the router, which carries the frontmatter.
+const QUALITY = 'stack/skills/capture-quality';
+const part = (name) => `${QUALITY}/references/${name}.md`;
 const RUN_GATES = {
-    'capture-architecture-quality': { shape: 'references/doc-shape.md', doc: 'ARCHITECTURE-ASSESSMENT.md', before: '### 1. ORIENT' },
-    'capture-code-quality': { shape: 'references/doc-shape.md', doc: 'CODE-ASSESSMENT.md', before: '### 1. ORIENT' },
-    'capture-test-coverage': { shape: 'references/doc-shape.md', doc: 'COVERAGE.md', before: '### 3. MEASURE' },
+    'architecture-quality': { doc: 'ARCHITECTURE-ASSESSMENT.md', before: '### 1. ORIENT' },
+    'code-quality': { doc: 'CODE-ASSESSMENT.md', before: '### 1. ORIENT' },
+    'test-coverage-quality': { doc: 'COVERAGE-QUALITY.md', before: '### 3. MEASURE' },
 };
 test('audit 2026-10-08: the three model-invocable captures gate an unrequested run behind one ask', () => {
     const { lintAskTemplates } = require('./lint-skills.js');
-    for (const [name, { shape, doc, before }] of Object.entries(RUN_GATES))
+    assert.ok(!/^disable-model-invocation:/m.test(read(`${QUALITY}/SKILL.md`).split('---')[1]), 'capture-quality stays model-invocable - the loops call it');
+    for (const [name, { doc, before }] of Object.entries(RUN_GATES))
     {
-        const text = read(`stack/skills/${name}/SKILL.md`);
-        assert.ok(!/^disable-model-invocation:/m.test(text.split('---')[1]), `${name} stays model-invocable - its loop calls it`);
+        const text = read(part(name));
         const flat = squash(text);
         const gate = flat.indexOf('Run gate');
         assert.ok(gate > -1 && gate < flat.indexOf(before), `${name}: the run gate sits before ${before}`);
@@ -73,36 +76,36 @@ test('audit 2026-10-08: the three model-invocable captures gate an unrequested r
         const block = text.match(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/m);
         assert.ok(block && block[1].includes(doc), `${name}: the gate is an ask template naming ${doc}`);
         assert.deepStrictEqual(lintAskTemplates([{ file: name, text }]), [], `${name}: lint 61 holds`);
-        assert.ok(!squash(read(`stack/skills/${name}/${shape}`)).includes('No write gate, no diff check'), `${name}: the reference no longer says 'no write gate'`);
+        assert.ok(!squash(read(part(`${name}-doc-shape`))).includes('No write gate, no diff check'), `${name}: the reference no longer says 'no write gate'`);
     }
-    for (const name of ['capture-architecture-quality', 'capture-code-quality'])
-        assert.ok(squash(read(`stack/skills/${name}/SKILL.md`)).includes('`Run gate:`'), `${name}: the receipt records the gate`);
-    assert.ok(read('stack/skills/capture-test-coverage/SKILL.md').includes('Run gate:    <'), 'the coverage close records the gate');
+    for (const name of ['architecture-quality', 'code-quality'])
+        assert.ok(squash(read(part(name))).includes('`Run gate:`'), `${name}: the receipt records the gate`);
+    assert.ok(read(part('test-coverage-quality')).includes('Run gate:    <'), 'the coverage close records the gate');
 });
 
 // Stack audit 2026-10-20 row 10: a FIRST coverage capture ran the instrumented suites (Docker / Testcontainers) before
 // any ask. It now asks 'Measure now' before MEASURE, joined with the bar and mode asks in one call.
 test('stack audit 2026-10-20: a first coverage capture asks before it measures', () => {
     const { lintAskTemplates } = require('./lint-skills.js');
-    const text = read('stack/skills/capture-test-coverage/SKILL.md');
+    const text = read(part('test-coverage-quality'));
     const flat = squash(text);
     const gate = flat.indexOf('Run gate on a FIRST capture no calling flow started.');
     assert.ok(gate > -1 && gate < flat.indexOf('### 3. MEASURE'), 'the first-capture gate sits before MEASURE');
     assert.match(flat, /in the SAME AskUserQuestion call as the first capture's other asks \(the % bar, the analysis mode\)/);
     const asks = [...text.matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) => m[1]);
-    const first = asks.find((a) => /No COVERAGE\.md yet\. Measure every surface now\?/.test(a));
+    const first = asks.find((a) => /No COVERAGE-QUALITY\.md yet\. Measure every surface now\?/.test(a));
     assert.ok(first, 'the first-capture gate is a template');
     assert.match(first, /^\s*- 'Measure now \(Recommended\)'/m);
     assert.match(first, /- 'Not now' - nothing runs, nothing is written/);
-    assert.deepStrictEqual(lintAskTemplates([{ file: 'capture-test-coverage', text }]), []);
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'test-coverage-quality', text }]), []);
     assert.ok(text.includes('Run gate:    <the answer verbatim | invoked by the coverage loop>'), 'a first capture records its answer too');
 });
 
 test('audit 2026-10-08: each capture close is a literal template with its post-write check named', () => {
-    const cov = read('stack/skills/capture-test-coverage/SKILL.md');
+    const cov = read(part('test-coverage-quality'));
     for (const field of ['Doc:', 'Raw:', 'Verdicts:', 'Weak points:', 'Unmeasured:', 'Leftovers:'])
         assert.match(cov, new RegExp(`^${field} +\\S`, 'm'), `coverage close carries ${field}`);
-    assert.ok(squash(cov).includes('`wc -l` COVERAGE.md after the write; a missing `## Resume` section is fixed before the report'), 'coverage measures its write');
+    assert.ok(squash(cov).includes('`wc -l` COVERAGE-QUALITY.md after the write; a missing `## Resume` section is fixed before the report'), 'coverage measures its write');
     const aware = read('stack/skills/capture-awareness/SKILL.md');
     for (const field of ['Agents:', 'Inventory:', 'Project:', 'Asked:', 'Unknown:', 'Credentials:', 'Value check:', 'Watch:', 'Related:', 'Landed:', 'Rule:'])
         assert.match(aware, new RegExp(`^${field} +<`, 'm'), `awareness close carries ${field}`);
@@ -112,7 +115,7 @@ test('audit 2026-10-08: each capture close is a literal template with its post-w
     const style = read('stack/skills/capture-project-code-style/SKILL.md');
     assert.match(style, /^Verify: +</m, 'code-style close carries Verify:');
     assert.ok(squash(style).includes('`node .claude/hooks/docs.js lint preferences`'), 'code-style lints its domain');
-    const aq = read('stack/skills/capture-architecture-quality/SKILL.md');
+    const aq = read(part('architecture-quality'));
     assert.ok(aq.includes('| `Ceilings:` |'), 'the Known-ceilings flag has a receipt field');
     assert.ok(read('stack/skills/capture-awareness/references/project.md').includes('node .claude/hooks/docs.js watch <one file DISCOVER cited>') && /^Watch: +</m.test(aware), 'the run book checks its watch globs');
 });
@@ -144,14 +147,14 @@ test('audit 2026-10-08: the inventory marks every capture a loop invokes as mode
     const inv = read('stack/skills/capture-awareness/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inv);
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-    for (const loop of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'])
+    for (const loop of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality'])
     {
         const body = read(`stack/skills/${loop}/SKILL.md`);
-        for (const cap of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'capture-test-coverage'])
+        for (const cap of ['capture-architecture', 'capture-quality'])
             if (body.includes(`\`${cap}\``) && !/^disable-model-invocation:/m.test(read(`stack/skills/${cap}/SKILL.md`).split('---')[1]))
                 assert.ok(names.includes(cap), `${loop} names ${cap}, so the generated rule lists it as orchestration`);
     }
-    assert.ok(names.includes('capture-test-coverage'), 'the coverage loop\'s capture is in the set');
+    assert.ok(names.includes('capture-quality'), 'the quality loops\' capture is in the set');
 });
 
 test('audit 2026-10-08: capture-architecture keeps its anecdotes in the evidence appendix', () => {
@@ -173,8 +176,8 @@ test('audit 2026-10-14 SKC01: no capture loads markdown-style for its docs-root 
         'stack/skills/capture-project-code-style/references/doc-shape.md',
         'stack/skills/capture-architecture/SKILL.md',
         'stack/skills/capture-architecture/references/doc-shapes.md',
-        'stack/skills/capture-test-coverage/SKILL.md',
-        'stack/skills/capture-test-coverage/references/doc-shape.md',
+        part('test-coverage-quality'),
+        part('test-coverage-quality-doc-shape'),
     ];
     for (const rel of files)
         assert.doesNotMatch(read(rel), /markdown-style/, `${rel}: names markdown-style for a docs-root doc`);

@@ -104,8 +104,9 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   until-green loop is the runaway the cap is for; every other seat had too few runs, so none. Lint check 15d fails a
   seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`capture-architecture` writes `architecture/ARCHITECTURE.md` and
-  `alfred-architecture.md`; the findings go to `capture-architecture-quality`
-  (`quality/ARCHITECTURE-ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the awareness to `capture-awareness` (the user's ruling of 2026-10-16 merged the three captures that wrote
+  `alfred-architecture.md`; the findings go to `capture-quality`'s architecture-quality part
+  (`quality/ARCHITECTURE-ASSESSMENT.md`), the code's to its code-quality part (`quality/CODE-ASSESSMENT.md`), the coverage to its
+  test-coverage-quality part (`quality/COVERAGE-QUALITY.md`, 2026-10-29: one skill, a topic word per part, a chain of all three behind one ask), and the awareness to `capture-awareness` (the user's ruling of 2026-10-16 merged the three captures that wrote
   the inventory rule, the run book and the sibling doc: `awareness/AGENTS-AWARENESS.md`, `awareness/PROJECT-AWARENESS.md`
   and `awareness/RELATED-PROJECTS-AWARENESS.md`, plus ONE rule `alfred-awareness.md` whose `@` imports load all three at
   every session start - an older install's docs and rules are moved by `docs.migrateAwareness`; the run book says how to build, start, reach, log into and hand-check the app, which the

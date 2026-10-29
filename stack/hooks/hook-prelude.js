@@ -1046,14 +1046,44 @@ function reviewKind(s)
     if (/(?:^|-)loop(?:-|$)/.test(b))
     {
         if (/(?:^|-)architecture-quality(?:-|$)/.test(b)) return 'loop-architecture-quality';
-        if (/(?:^|-)test-coverage(?:-|$)/.test(b)) return 'loop-test-coverage';
+        if (/(?:^|-)test-coverage(?:-|$)/.test(b)) return 'loop-test-coverage-quality';
         if (/(?:^|-)quality(?:-|$)/.test(b)) return 'loop-code-quality';
     }
     return b;
 }
+// capture-quality's three parts and the topic words that pick each (2026-10-29): the one code home of the words - the
+// router's topic table is the model's copy, held to this by lint check 70b.
+const QUALITY_TOPICS = Object.freeze({
+    'architecture-quality': Object.freeze(['architecture-quality', 'architecture']),
+    'code-quality': Object.freeze(['code-quality', 'code']),
+    'test-coverage-quality': Object.freeze(['test-coverage-quality', 'test-coverage', 'coverage']),
+});
+// An older copy's name runs its part for the update's skew window (spec A4), read from the words every rename kept - a
+// capture's `capture-` word or the 2.0.0 `project-<part>-analyzer` shape, then the part's own words - never from a list
+// of old names, which only the manifest's renamed map holds (its renamedTopics).
+const OLD_CAPTURE = /^capture-|^project-[\w-]+-analyzer$/;
+const OLD_PART = [
+    ['architecture-quality', /(?:^|-)architecture-quality(?:-|$)/],
+    ['test-coverage-quality', /(?:^|-)test-coverage(?:-|$)/],
+    ['code-quality', /(?:^|-)code-quality(?:-|$)/],
+];
+// The part a capture-quality call runs: its first word past the mode flags, case-folded, looked up in QUALITY_TOPICS; a
+// word holding a path character, or none, is the chain. '' for any other skill.
+function qualityPart(skill, args)
+{
+    const b = bareSkill(skill);
+    if (b !== 'capture-quality')
+    {
+        const hit = OLD_CAPTURE.test(b) && OLD_PART.find(([, re]) => re.test(b));
+        return hit ? hit[0] : '';
+    }
+    const word = (String(args || '').trim().split(/\s+/).filter((w) => !Object.hasOwn(MODE_FLAGS, w))[0] || '').toLowerCase();
+    if (!word || /[/\\.]/.test(word)) return 'chain';
+    return Object.keys(QUALITY_TOPICS).find((part) => QUALITY_TOPICS[part].includes(word)) || 'chain';
+}
 // A review the checkpoint names: the house verify skills and loops, review-code and review-security, or a verifier /
 // reviewer seat - never Claude Code's built-in reviews (2026-10-22, the user's ruling 'use ours').
-const REVIEW_SKILL = /(?:^|:)(?:(?:project-|task-)?verify-(?:code|plan)|quality-loop|(?:alfred-)?loop-(?:quality|code-quality|architecture-quality|test-coverage)|review-(?:code|security))$/i;
+const REVIEW_SKILL = /(?:^|:)(?:(?:project-|task-)?verify-(?:code|plan)|quality-loop|(?:alfred-)?loop-(?:quality|code-quality|architecture-quality|test-coverage(?:-quality)?)|review-(?:code|security))$/i;
 const REVIEW_SEAT = /verifier|reviewer/i;
 // A call that reviews the CODE: a review skill other than the plan review, which reads none, or a review seat.
 function codeReviewCall(tool, name)
@@ -1220,4 +1250,4 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };

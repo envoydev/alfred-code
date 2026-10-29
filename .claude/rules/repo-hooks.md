@@ -715,7 +715,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     large change to one). Each line closes the NEWEST open review when it is that review's kind and nothing otherwise, so
     a review left unfinished stays open under a later one; a refused call takes none. The typed command is held the same
     way, and the snapshot its expansion took (no call id) counts beside a typed review that counted, started within two
-    minutes of it. review-security's Report carries the line since this ruling, and loop-test-coverage names its
+    minutes of it. review-security's Report carries the line since this ruling, and loop-test-coverage-quality names its
     `**Outcome**` field. The model can write the line without the review: the rule catches an abandoned or interrupted
     review, not a forged one.
     THE TOOL-USAGE LEDGER IS NO EVIDENCE ('Fix ALL left gaps'): its row is written at PreToolUse and keeps no target, no

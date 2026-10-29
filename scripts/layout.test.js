@@ -115,13 +115,21 @@ test('approvalPath puts a plan\'s stamp in its own folder; approvalStamps lists 
 test('LAYOUT_MOVES is the spec\'s move map, frozen', () =>
 {
     const froms = layout.LAYOUT_MOVES.map((m) => m.from).sort();
-    assert.deepStrictEqual(froms, ['.branches', 'cross-project-tasks', 'diagnoses', 'docs-log.jsonl', 'flow', 'history', 'hook-blocks', 'loops', 'plans', 'related-context', 'specs', 'test-coverage', 'tools-usage', 'tutorial', 'usage-report']);
+    assert.deepStrictEqual(froms, ['.branches', 'cross-project-tasks', 'diagnoses', 'docs-log.jsonl', 'flow', 'history', 'hook-blocks', 'loops', 'plans', 'quality/test-coverage', 'related-context', 'specs', 'test-coverage', 'tools-usage', 'tutorial', 'usage-report']);
     assert.ok(Object.isFrozen(layout.LAYOUT_MOVES));
     const by = Object.fromEntries(layout.LAYOUT_MOVES.map((m) => [m.from, m]));
     assert.strictEqual(by.flow.split, 'flow');
     assert.deepStrictEqual([by.history.base, by.history.to], ['data', 'state/history']);
     assert.deepStrictEqual([by['related-context'].base, by['related-context'].to], ['docs', 'work/cross-project-tasks']);
-    assert.deepStrictEqual([by['test-coverage'].base, by['test-coverage'].to], ['docs', 'quality/test-coverage']);
+    // capture-quality (2026-10-29): both coverage homes go to quality/, the 2.8 row first so its doc wins, one frozen rename map
+    const rename = { 'COVERAGE.md': 'COVERAGE-QUALITY.md', raw: 'coverage-raw' };
+    for (const from of ['quality/test-coverage', 'test-coverage'])
+    {
+        assert.deepStrictEqual([by[from].base, by[from].to, by[from].rename], ['docs', 'quality', rename], from);
+        assert.ok(Object.isFrozen(by[from].rename), `${from}: its rename map is frozen`);
+    }
+    const order = layout.LAYOUT_MOVES.map((m) => m.from);
+    assert.strictEqual(order.indexOf('quality/test-coverage') + 1, order.indexOf('test-coverage'), 'the 2.8 row sits right before the older one');
     assert.strictEqual(by['.branches'].removeIfEmpty, true);
 });
 

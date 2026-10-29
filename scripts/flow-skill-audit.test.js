@@ -18,7 +18,7 @@ const copiesOf = (entry) => [entry.owner, ...(entry.sites || [])].map((c) => c.f
 const registryFindings = (...names) => lintSharedRules({ rules: Object.fromEntries(names.map((n) => [n, shared()[n]])) }, read);
 
 const TRIO_OWNER = 'stack/skills/task-solve-cross/references/domain-trio-protocol.md';
-const TRIO_COPIES = [TRIO_OWNER, ...['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage', 'task-build-from-scratch']
+const TRIO_COPIES = [TRIO_OWNER, ...['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality', 'task-build-from-scratch']
     .map((s) => `stack/skills/${s}/references/domain-trio-protocol.md`)];
 
 // ---- BLOCKER 1 (C1, D4): the vendored trio fan-out obeys the agent cap ------------------------------------------
@@ -38,7 +38,7 @@ test('D4: the fan-out cap is one registered rule across its five phrasings', () 
     assert.ok(entry, 'fan-out-cap is registered');
     assert.strictEqual(entry.owner.file, 'stack/skills/task-solve-cross/references/execution-modes.md');
     const files = copiesOf(entry);
-    for (const f of [...TRIO_COPIES, 'stack/skills/task-solve/references/step-mechanics.md', 'stack/skills/task-implement/SKILL.md', 'stack/skills/loop-test-coverage/SKILL.md'])
+    for (const f of [...TRIO_COPIES, 'stack/skills/task-solve/references/step-mechanics.md', 'stack/skills/task-implement/SKILL.md', 'stack/skills/loop-test-coverage-quality/SKILL.md'])
         assert.ok(files.includes(f), `${f} is a pinned copy`);
     assert.deepStrictEqual(registryFindings('fan-out-cap'), []);
 });
@@ -53,7 +53,7 @@ test('trio protocol: two failed fix rounds end in ONE marked ask, never a bare e
 });
 
 // ---- the three improvement loops ------------------------------------------------------------------------------
-const LOOPS = ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'];
+const LOOPS = ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality'];
 const BLOCKED_RETRY = "is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it";
 // The ask templates a skill carries (lint check 61's shape): the question line, then each option's label in order.
 const asksIn = (text) => [...String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) =>
@@ -131,10 +131,10 @@ test('loops: a red routes to a resolver seat only in DELEGATED mode', () => {
     assert.deepStrictEqual(registryFindings('loop-green-across-round'), []);
 });
 
-// MINOR loop-architecture-quality:9, loop-test-coverage:9: no see-also into a sibling loop.
+// MINOR loop-architecture-quality:9, loop-test-coverage-quality:9: no see-also into a sibling loop.
 test('loops: the opening paragraph carries no see-also into a sibling loop', () => {
     assert.doesNotMatch(flat(skill('loop-architecture-quality')), /the code-focused counterpart is `loop-code-quality`/);
-    assert.doesNotMatch(flat(skill('loop-test-coverage')), /exactly like `loop-architecture-quality` for architecture/);
+    assert.doesNotMatch(flat(skill('loop-test-coverage-quality')), /exactly like `loop-architecture-quality` for architecture/);
 });
 
 // MINOR loop-code-quality:23: each staged-mode companion is named with the step that reads it.
@@ -146,12 +146,12 @@ test('loop-code-quality: each staged companion is named with the step that reads
     assert.doesNotMatch(text, /each Read at the step of `staged-mode\.md` that names it/);
 });
 
-// MINOR loop-test-coverage:28 (D3): no per-stack runner list in the generic loop; :66: the resume block is a template.
-test('loop-test-coverage: the runner default is the house testing skill\'s, and the resume block is a fenced template', () => {
-    const text = skill('loop-test-coverage');
+// MINOR loop-test-coverage-quality:28 (D3): no per-stack runner list in the generic loop; :66: the resume block is a template.
+test('loop-test-coverage-quality: the runner default is the house testing skill\'s, and the resume block is a fenced template', () => {
+    const text = skill('loop-test-coverage-quality');
     assert.doesNotMatch(flat(text), /plain JS\/TS: Vitest; \.NET: xUnit/);
     assert.match(flat(text), /propose the runner the stack's house testing skill records as its default \(absent one, the framework's own documented default, cited\)/);
-    const block = (text.match(/```text\n\s*(RESUME - loop-test-coverage[\s\S]*?)```/) || [])[1] || '';
+    const block = (text.match(/```text\n\s*(RESUME - loop-test-coverage-quality[\s\S]*?)```/) || [])[1] || '';
     assert.ok(block, 'a fenced RESUME BLOCK');
     for (const field of ['Invocation:', 'rounds consumed', 'Read first:', '## Resume', 'Remaining weak points, tier order']) assert.ok(block.includes(field), `the block carries ${field}`);
 });
@@ -402,7 +402,7 @@ test('task-verify-code: the in-process probe is stated for any stack, the .NET h
 
 // ---- audit 2026-10-14 (skills-flows): the no-decision rows ----------------------------------------------------------
 const FLOW_SKILLS = ['issue-diagnoser', 'issue-signatures-ci', 'issue-signatures-runtime', 'loop-architecture-quality', 'loop-code-quality',
-    'loop-test-coverage', 'task-build-from-scratch', 'task-design', 'task-implement', 'task-solve', 'task-solve-cross', 'task-verify-code',
+    'loop-test-coverage-quality', 'task-build-from-scratch', 'task-design', 'task-implement', 'task-solve', 'task-solve-cross', 'task-verify-code',
     'task-verify-plan', 'task-version-upgrade'];
 const flowFiles = () => FLOW_SKILLS.flatMap((n) => {
     const dir = path.join(ROOT, 'stack/skills', n);
@@ -483,15 +483,15 @@ test('SKF-14: the loops record the plan audit by its Passes: line', () => {
 
 // SKF-16: the coverage loop forbade weakened and assertion-free tests with no sweep and no report field behind the rule.
 test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its baseline and reports the verdict', () => {
-    const t = flat(skill('loop-test-coverage'));
+    const t = flat(skill('loop-test-coverage-quality'));
     assert.match(t, /round 1 also records the sweep baseline: HEAD, or on a dirty tree the sha `git stash create` prints/);
     assert.match(t, /Read `references\/anti-gaming-sweep\.md` and run its four commands against the sweep baseline/);
     assert.match(t, /`Anti-gaming: <clean \| what was reverted>`/);
-    assert.match(skill('loop-test-coverage'), /^ {2}Sweep baseline: <sha recorded at round 1>/m, 'the RESUME BLOCK carries the baseline');
+    assert.match(skill('loop-test-coverage-quality'), /^ {2}Sweep baseline: <sha recorded at round 1>/m, 'the RESUME BLOCK carries the baseline');
     const entry = shared()['anti-gaming-sweep-commands'];
-    assert.deepStrictEqual(copiesOf(entry), ['stack/skills/loop-code-quality/references/anti-gaming-sweep.md', 'stack/skills/loop-test-coverage/references/anti-gaming-sweep.md']);
+    assert.deepStrictEqual(copiesOf(entry), ['stack/skills/loop-code-quality/references/anti-gaming-sweep.md', 'stack/skills/loop-test-coverage-quality/references/anti-gaming-sweep.md']);
     assert.deepStrictEqual(registryFindings('anti-gaming-sweep-commands'), []);
-    assert.match(flat(read('stack/skills/loop-test-coverage/references/anti-gaming-sweep.md')), /Any hit is a BLOCKER/);
+    assert.match(flat(read('stack/skills/loop-test-coverage-quality/references/anti-gaming-sweep.md')), /Any hit is a BLOCKER/);
 });
 
 // SKF-04 (the user's ruling, option A): the upgrade carried a legacy `--auto` that 'skips the gate' beside auto-mode, which
@@ -517,7 +517,7 @@ test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the use
 const MODE_FLAG_NAMES = ['--mode-auto-run-on', '--mode-auto-run-off', '--mode-output-scorer-on', '--mode-output-scorer-off'];
 test('every flow paragraph names the four mode flags and no old flag (AC10)', () => {
     const files = copiesOf(shared()['auto-mode-contract']);
-    assert.strictEqual(files.length, 18, 'the owner and its 17 sites');
+    assert.strictEqual(files.length, 19, 'the owner and its 18 sites (capture-quality\'s router joined its three parts, 2026-10-29)');
     for (const file of files) {
         const t = read(file);
         for (const flag of MODE_FLAG_NAMES) assert.ok(t.includes(flag), `${file} names ${flag}`);

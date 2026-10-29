@@ -46,7 +46,7 @@ const agentsDocPath = (projectRoot, docs) => path.resolve(projectRoot, String(do
 const docLabel = (projectRoot, file) => { const rel = relTo(projectRoot, file); return rel.startsWith('..') ? slash(file) : rel; };
 // The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture, code-quality
 // and coverage loops can invoke them - they belong with the slash-only set in the rule, marked as the exception.
-const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'capture-test-coverage']);
+const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-architecture', 'capture-quality']);
 // The record registers the browser server once per engine (`playwright-chrome`, ...), the upstream docs once as
 // `playwright`: every name maps to the one routing row.
 const PLAYWRIGHT_SERVER = /^playwright(?:-(?:chrome|msedge|firefox|webkit))?$/;
