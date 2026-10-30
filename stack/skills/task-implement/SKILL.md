@@ -129,7 +129,13 @@ The seam rung: any capability the project wraps - such as the clock, the file sy
   - 'Stop the build' - the plan records where
   ```
 
+## Don't game it
+
+The acceptance criterion is satisfied by behavior, never by weakening the test that checks it. A green gate means the commands ran and their output says green - quoted, not assumed. Never suppress a warning, stub a path, or narrow a test to advance to the next task; a task that cannot go green honestly goes back to design as a named delta.
+
 ## Finish - the in-session verifier
+
+**Known ceilings.** File every deliberate simplification this build made as a `where | limit | revisit when` row - never a code comment - before the close: Read `references/known-ceilings.md` and file the rows by its procedure; the close report says how many rows it filed, or `none`.
 
 All tasks green: run the full suite once - the workspace's affected set (`nx affected -t test lint build` in an Nx workspace), else every touched project plus the projects that depend on it, never a hand-picked list - quoting the command in the report and in any verifier brief. A red called pre-existing, or a fix closed on a pass the unpatched code was never seen to fail ('uncapped', 'no longer reproduces'), needs that check run on the base (a stash or a worktree) and quoted - else the report says `unproven`. Then review the assembled diff against the plan - the reviewer through ONE ask unless a calling flow already chose it, pointed at the plan file so it reviews against the plan, not in isolation, and apply its findings; then the done-gate on the whole feature.
 
@@ -140,8 +146,6 @@ All tasks green (<the suite command>). Who reviews the diff?
 ```
 
 Report against the plan, one line per task - `task | status (DONE / deferred / revised) | evidence (the green command and what it proved)` - then the suite + the review result, the `## Decisions` ledger by its entry count (never re-pasted), and anything deferred or revised with its reason. The vertical is complete: design (`task-design`) -> audit (`task-verify-plan`) -> build (this) -> review (`task-verify-code` / `<stack>-verifier`) - one session, every step inspectable.
-
-**Known ceilings.** File every deliberate simplification this build made as a `where | limit | revisit when` row - never a code comment - before the close: Read `references/known-ceilings.md` and file the rows by its procedure; the close report says how many rows it filed, or `none`.
 
 ## Example
 
@@ -158,7 +162,3 @@ task 2 streamed endpoint | DONE | tests green (edge maps to transfer shape)
 task 3 integration test  | DONE | full suite green incl. empty-set shape
 suite + verify-code: green, 1 finding fixed; nothing deferred
 ```
-
-## Don't game it
-
-The acceptance criterion is satisfied by behavior, never by weakening the test that checks it. A green gate means the commands ran and their output says green - quoted, not assumed. Never suppress a warning, stub a path, or narrow a test to advance to the next task; a task that cannot go green honestly goes back to design as a named delta.

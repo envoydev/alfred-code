@@ -41,7 +41,7 @@ Deferred: <structural items declined or undecided | none>
 
 The invocation names the rounds already consumed so the 3-round cap survives the resume, and names no
 `RUN-STATE.md` - that file is the staged run's, and an invocation naming it resumes staged. On a RESUMED
-session no mode ask fires: the `Mode:` line is what the body's Rules have the small-tier stamp quote.
+session no mode ask fires: the `Mode:` line is what the body's Execution modes have the small-tier stamp quote.
 The declined set does NOT carry across the resume - it lives in context only, so the new session starts
 with a clean one.
 

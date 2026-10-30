@@ -490,7 +490,8 @@ test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its basel
     assert.match(t, /`Anti-gaming: <clean \| what was reverted>`/);
     assert.match(skill('loop-test-coverage-quality'), /^ {2}Sweep baseline: <sha recorded at round 1>/m, 'the RESUME BLOCK carries the baseline');
     const entry = shared()['anti-gaming-sweep-commands'];
-    assert.deepStrictEqual(copiesOf(entry), ['stack/skills/loop-code-quality/references/anti-gaming-sweep.md', 'stack/skills/loop-test-coverage-quality/references/anti-gaming-sweep.md']);
+    // the architecture loop vendors it too since the 2026-10-30 audit (SKF-05 ruling)
+    assert.deepStrictEqual(copiesOf(entry), ['stack/skills/loop-code-quality/references/anti-gaming-sweep.md', 'stack/skills/loop-architecture-quality/references/anti-gaming-sweep.md', 'stack/skills/loop-test-coverage-quality/references/anti-gaming-sweep.md']);
     assert.deepStrictEqual(registryFindings('anti-gaming-sweep-commands'), []);
     assert.match(flat(read('stack/skills/loop-test-coverage-quality/references/anti-gaming-sweep.md')), /Any hit is a BLOCKER/);
 });
