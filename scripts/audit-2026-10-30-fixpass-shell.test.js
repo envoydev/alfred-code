@@ -111,3 +111,45 @@ test('FB 2: every runner spelling is carried - a variable script, a node option 
   assert.strictEqual(fire(dir, runner('"npm test"')).v, 0, 'one legitimate call runs');
 });
 
+// A copy of `events` that counts each element read: the expander's work on the assignments, a count of work, never time.
+function counted(events) {
+  const box = { n: 0 };
+  const proxy = new Proxy(events, { get(t, k, r) { if (typeof k === 'string' && /^\d+$/.test(k)) box.n++; return Reflect.get(t, k, r); } });
+  return { proxy, box };
+}
+test('FB 3: the variable expander reads each assignment once per command - linear work, not a scan per lookup', () => {
+  const shape = (n) => `${'a=$b;b=$a; '.repeat(n)}rm -rf ${'$a '.repeat(n)}`;
+  const work = (n) => {
+    const cmd = shape(n);
+    const P = shell.parseShell(cmd);
+    const { proxy, box } = counted(P.assignEvents);
+    P.assignEvents = proxy;
+    const vars = shell.shellVars(P, { cwd: TMP, home: '/home/x' });
+    const at = cmd.indexOf('rm -rf');
+    for (let i = 0; i < n; i++) vars.expand('$a', at + 7 + i * 3);
+    return { reads: box.n, events: proxy.length };
+  };
+  const small = work(500);
+  const big = work(2000);
+  assert.ok(small.reads <= 4 * small.events, `500 pairs: ${small.reads} reads of ${small.events} assignments - at most 4 per assignment`);
+  assert.ok(big.reads <= 4 * big.events, `2,000 pairs: ${big.reads} reads of ${big.events} assignments`);
+  assert.ok(big.reads / small.reads < 6, `4x the command, ${(big.reads / small.reads).toFixed(1)}x the work`);
+  // what is resolved is unchanged: the newest literal before the word, a cycle unresolved, a prefix assignment no binding
+  const cmd = 'A=/x; A=/y; B=$A/z; C=$D; D=$C; E=/e rm -rf $A $B $C $E';
+  const vars = shell.shellVars(shell.parseShell(cmd), { cwd: TMP, home: '/home/x' });
+  const at = cmd.indexOf('rm -rf');
+  assert.deepStrictEqual(['$A', '$B', '$C', '$E', '~/q'].map((w) => vars.expand(w, at)), ['/y', '/y/z', '$C', '$E', '/home/x/q']);
+  assert.strictEqual(vars.expand('$A', cmd.indexOf('A=/y')), '/x', 'a word before the second assignment reads the first');
+});
+
+test('FB 3: an 8,000-pair assignment chain over 8,000 rm operands is judged in seconds, not tens', () => {
+  const dir = project('fb3-');
+  const cmd = `${'a=$b;b=$a; '.repeat(8000)}rm -rf ${'$a '.repeat(8000)}`;
+  const c0 = process.hrtime.bigint();
+  const r = fire(dir, cmd);
+  const ms = Number(process.hrtime.bigint() - c0) / 1e6;
+  assert.notStrictEqual(r.v, null);
+  // 10.2s on the branch tip before the fix; the bound is a sanity bound only - the work count above is the verdict
+  assert.ok(ms < 5000, `judged in ${Math.round(ms)}ms`);
+});
+

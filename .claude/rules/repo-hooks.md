@@ -185,7 +185,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   command handing it more, or naming the runner past the carried-script depth or the scan budget, blocks.
   TWO SHARED CONTRACTS (audit 2026-10-30 a0, read by the rm, cross-project, read and secret guards): `shellVars`, the one
   `$NAME` / `${NAME}` / `$HOME` / `$PWD` / `~` expander - statement assignments followed within the command, a followed
-  `cd` moving `$PWD`, prefix assignments and loop or read variables left unknown - and `PRINT_VERBS` / `printedFiles`,
+  `cd` moving `$PWD`, prefix assignments and loop or read variables left unknown, each lookup a binary search of the
+  command's assignments indexed by name (final review FB: a scan per lookup cost 10s on a 112KB `a=$b;b=$a` chain over
+  8,000 operands, 0.8s now) - and `PRINT_VERBS` / `printedFiles`,
   the one table of whole-file print verbs (`cat`, `shuf`, `vis`, `join`, `gzip -c` ...). `gitText` is the ONE reader of a command for every guard that judges a git call (commit, push, force-push, the rm guard's git half):
   aliases expanded, every carried script joined, one scan budget, one parse, and `callDir(call)` for where each call runs. It is also the one home of git ALIAS
   expansion (`expandGitAliases`, T20, R2-m1): every spelling of the call (`/usr/bin/git`, `\git`, `-P`, `--git-dir .git`,

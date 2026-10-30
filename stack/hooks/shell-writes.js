@@ -2207,10 +2207,35 @@ function shellVars(P, opts = {}) {
     return f;
   };
   const pwdAt = (at) => anchorOf(regionOf(at))(at);
+  // The statement assignments by name, each list in text order, built on the first lookup: a lookup is a binary search
+  // for the newest one before the word, never a scan of every assignment - one scan per lookup and level made a 112KB
+  // chain of `a=$b;b=$a` over 8,000 rm operands cost 10s (final review 2026-10-30, FB; 0.6s before the expander).
+  let byName = null;
+  const setBefore = (name, at) => {
+    if (!byName) {
+      byName = new Map();
+      for (let i = 0, n = events.length; i < n; i++) {
+        const e = events[i];
+        if (e.kind !== 'set' || e.prefix) continue;
+        const list = byName.get(e.name);
+        if (list) list.push(e); else byName.set(e.name, [e]);
+      }
+      for (const list of byName.values()) for (let i = 1; i < list.length; i++) if (list[i].at < list[i - 1].at) { list.sort((x, y) => x.at - y.at); break; }
+    }
+    const list = byName.get(name);
+    if (!list) return null;
+    let lo = 0;
+    let hi = list.length - 1;
+    let hit = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid].at < at) { hit = list[mid]; lo = mid + 1; } else hi = mid - 1;
+    }
+    return hit;
+  };
   const valueWith = (name, at, depth, pwd) => {
     if (depth > VAR_DEPTH || bound.has(name)) return null;
-    let ev = null;
-    for (const e of events) if (e.kind === 'set' && e.name === name && e.at < at && !e.prefix) ev = e;
+    const ev = setBefore(name, at);
     if (ev) {
       const raw = String(ev.raw !== undefined ? ev.raw : ev.value);
       if (/^'[^']*'$/.test(raw)) return raw.slice(1, -1);
