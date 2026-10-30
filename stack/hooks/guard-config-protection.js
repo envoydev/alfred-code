@@ -787,7 +787,19 @@ const hit = shell && shell.isShellTool(payload.tool_name) ? judgeShell() : judge
 if (!hit) process.exit(0);
 
 // Both sides as REAL paths: the same file spelled through a symlinked root read as outside and passed (audit 2026-10-08).
-const real = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+// A file not created yet resolves through its deepest existing folder, the rest re-attached: left as spelled, a short 8.3
+// parent (RUNNER~1) or a symlinked one read as outside a root that resolved long, and a new shadowing config passed (3.6.0 CI).
+const real = (p) => {
+  const abs = path.resolve(p);
+  const rest = [];
+  for (let dir = abs; ;) {
+    try { return path.join(fs.realpathSync.native(dir), ...rest); } catch { /* keep climbing */ }
+    const up = path.dirname(dir);
+    if (up === dir) return abs;
+    rest.unshift(path.basename(dir));
+    dir = up;
+  }
+};
 const rel = path.relative(real(ROOT), real(hit.abs)).split(path.sep).join('/');
 if (rel.startsWith('..') || path.isAbsolute(rel)) process.exit(0); // outside the project - the cross-project guard owns it
 

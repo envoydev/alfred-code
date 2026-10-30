@@ -5712,6 +5712,22 @@ test('audit 2026-10-30 HK-18: a runtime write, git restoring or removing verbs, 
   passed(edit('package.json', '"name": "x"', '"name": "x",\n  "eslintConfig": { "rules": {} }'), 'eslintConfig in package.json ranks below .eslintrc.json');
 });
 
+test('guard-config-protection: a NEW shadowing config under a differently spelled root is still inside the project (the 3.6.0 windows-2025 job)', { skip: process.platform === 'win32' && 'symlinks need privileges' }, () => {
+  // An 8.3 short name (RUNNER~1) spells the root one way, its native real path another; a file that does not exist yet
+  // cannot be resolved, so its spelling stayed short while the root's went long and the file read as outside the project.
+  const { root, at } = cfgProject('cfg-new-');
+  at('.eslintrc.json', '{ "rules": {} }\n');
+  const link = `${root}-link`;
+  fs.symlinkSync(root, link);
+  try {
+    const payload = (file) => ({ tool_name: 'Write', cwd: link, tool_input: { file_path: file, content: 'export default [];\n' } });
+    const run1 = (file) => withProject(link, {}, () => spawnSync(process.execPath, [path.join(HOOKS, 'guard-config-protection.js')],
+      { input: JSON.stringify(payload(file)), encoding: 'utf8' }));
+    assert.equal(run1(path.join(link, 'eslint.config.js')).status, 2, 'a new flat config through the link shadows .eslintrc.json');
+    assert.equal(run1(path.join(link, 'notes.json')).status, 0, 'a new file that shadows nothing passes');
+  } finally { fs.unlinkSync(link); }
+});
+
 test('audit 2026-10-30 HK-17: a runtime spawning git commit, update-ref on a branch and rebase --exec commit are commits', () => {
   const dir = cleanRepo();
   for (const f of ['n1.txt', 'n2.txt', 'n3.txt']) fs.writeFileSync(path.join(dir, f), forty());
