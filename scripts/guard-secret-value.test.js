@@ -1403,7 +1403,8 @@ test("guard-secret-value: a block ends in an ask, and the user's allow is honour
       assert.equal(bash(`echo 'TOKEN=${'ghp_' + 'A'.repeat(24)}' >> ${path.join(f.dir, '.env')}`), 2, `${JSON.stringify(body)}: the literal check stands`);
       const other = run({ tool_name: 'Read', tool_input: { file_path: f.secret }, session_id: 'suite' });
       assert.equal(other.status, 2);
-      assert.match(other.stderr, /stale \(older than 8h, from before this session, or naming another\)/);
+      // T1's leftover (audit 2026-10-30): the denial names the receipt's own reason, never a list of three
+      assert.match(other.stderr, body === '*\n' ? /does not count \(it has no session: line naming this session\)/ : /does not count \(its session: line names another session\)/);
     }
     fs.writeFileSync(receipt, 'session: other\nsession: suite\n*\n');
     assert.equal(bash(`cat ${f.dotenv}`), 0, 'a receipt may name several sessions');
@@ -1412,7 +1413,7 @@ test("guard-secret-value: a block ends in an ask, and the user's allow is honour
     const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(receipt, old, old);
     const aged = run({ tool_name: 'Read', tool_input: { file_path: f.secret }, session_id: 'suite' });
     assert.equal(aged.status, 2, 'a 9h-old receipt is absent');
-    assert.match(aged.stderr, /stale/, 'and the denial says so');
+    assert.match(aged.stderr, /does not count \(it is stale - older than 8h\)/, 'and the denial says so');
     assert.match(cli('--redacted', f.secret).stdout, /stale/, 'the redacted view says so too');
   } finally {
     fs.rmSync(receipt, { force: true });

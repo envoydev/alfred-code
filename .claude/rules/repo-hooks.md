@@ -1108,7 +1108,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `seal: sha256 <hex>` then the report as delivered, only into this session's scorer folder (both sides realpathed, so
     macOS's `/var` is `/private/var` and a symlinked parent leads nowhere), only a `.score.md` that does not exist yet
     (`wx` - a second delivery never rewrites it), one `scorer-seal` probe row either way; the hand-back is never delayed
-    or denied, and `scorecard.js grade` fails a card whose seal is missing or broken with exit 3 (AC18, AC22).
+    or denied, and `scorecard.js grade` fails a card whose seal is missing or broken with exit 3 (AC18, AC22). The seal
+    is written before a sibling hook's verdict on the same hand-back, so a deny of it would seal an undelivered report:
+    docs-session, the one sibling that denies a hand-back, asks only a seat whose own writes changed a watched file, and
+    the scorer seat holds no write tool (audit 2026-10-30 HK-28, ruled not reproduced; the replay is in
+    `docs-session.test.js`).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
     running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;

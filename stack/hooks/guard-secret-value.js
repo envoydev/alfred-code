@@ -829,8 +829,8 @@ function resolveFile(token) {
 // stays the redacted view: a model improvising a presence check is still the measured incident.
 // Where the call names its session, the receipt is that session's only through a `session: <id>` line naming
 // it: time alone let a second session open on the same project honour the first one's answer, and a `*` lifted
-// the literal check there too (audit 2026-10-08). A reader with no session id keeps the time rule.
-const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
+// the literal check there too (audit 2026-10-08). A reader with no session id keeps the time rule. The 8h limit is the
+// prelude's RECEIPT_MAX_MS, read through securityReceipt.
 // The native realpath first, as secret-chain.js and layout.js take it (a Windows 8.3 short name in one spelling and the
 // long name in the other matched no store); `realStrict` throws where the path does not exist.
 const realStrict = (p) => { try { return fs.realpathSync.native(p); } catch { return fs.realpathSync(p); } };
@@ -880,7 +880,8 @@ const askLine = (r) =>
   "AskUserQuestion: 'Presence only (Recommended)', 'Show or use the value this session - it enters the transcript permanently', 'Drop it'. " +
   `On the second answer write ${r.write || r.path}: ${r.session ? `\`session: ${r.session}\`` : '`session: <id>` (`$CLAUDE_CODE_SESSION_ID`)'}, ` +
   'then the file, the variable NAME or `*`, one per line, and retry (this session, under 8h)' +
-  (r.stale ? ' - the receipt there now is stale (older than 8h, from before this session, or naming another), so rewrite it only on a fresh answer' : '') + '.';
+  // the receipt reader's own reason (hook-prelude.js readReceiptFile / receiptAnswered), never a list of the possible ones
+  (r.stale ? ` - the receipt there now does not count (${r.why || 'it is stale'}), so rewrite it only on a fresh answer` : '') + '.';
 // A note the rewritten call prints as its first line, so the model reads what happened and the route
 // to the value in the same tool result - nothing is fed back through a denial.
 const noteLine = (what, r) => `# credential guard: ${what} A value never enters the chat. ${askLine(r)}`;
