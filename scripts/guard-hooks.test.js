@@ -2341,6 +2341,9 @@ test('guard-cross-project-write: a script is judged at any size - read under the
   assert.strictEqual(huge.status, 2, 'past the scan budget the script is unread, and asked');
   assert.match(huge.stderr, /huge\.sh/, 'the ask names the script it could not read');
   assert.match(huge.stderr, /CROSS-WRITE-ALLOW/, 'through the same receipt as any outside write');
+  const dropAt = huge.stderr.indexOf("'Drop it (Recommended)'");
+  assert.ok(dropAt >= 0 && huge.stderr.indexOf("'Allow ") > dropAt, 'the safe option is the Recommended one, listed first (audit 2026-10-30 fix #6)');
+  assert.doesNotMatch(huge.stderr, /for this session \(Recommended\)/, 'letting an unread script run is never the recommended option');
   const flow = path.join(XP_ROOT, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'CROSS-WRITE-ALLOW'), `${path.join(dir, 'huge.sh')}\n`);

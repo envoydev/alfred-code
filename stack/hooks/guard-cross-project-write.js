@@ -573,10 +573,10 @@ for (const u of unread) {
     `Blocked: this guard could not read ${shown} (${u.why}), so it cannot say where it writes -\n` +
     `and a script it cannot read is never let through, since the same text a little shorter is judged.\n` +
     `Do not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
-    `  'Allow ${shown} for this session (Recommended)' - when it is this project's own and writes only here:\n` +
+    `  'Drop it (Recommended)' - run a smaller piece the guard can read instead.\n` +
+    `  'Allow ${shown} for this session' - only when it is this project's own and writes only here:\n` +
     `  write ${receiptRel} with exactly these lines and retry the SAME command:\n` +
     writeLines([u.path || 'unread']) +
-    `  'Drop it' - run a smaller piece the guard can read instead.\n` +
     `The receipt counts only after the user's own answer to this denial, never one auto-run gave - this session, under 8h.\n` +
     shutText(receiptRel),
   );

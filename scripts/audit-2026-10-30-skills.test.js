@@ -440,3 +440,13 @@ test('hooks low row: the checkpoint names opening a change request that pushes a
     assert.match(publishing, /`glab mr create`/);
     assert.match(publishing, /would push/);
 });
+
+// Audit 2026-10-30 HK-20, its skill site (T2's leftover): no server receives the store since 2.10.1, so the run book's
+// template teaches no key name typed into a browser form - the session-start line dropped the same sentence.
+test('HK-20 skill site: the run-book template types no key name into a browser', () =>
+{
+    const reach = section(read('stack/skills/capture-awareness/references/project.md'), 'Reach and log in');
+    assert.ok(reach, 'the Reach and log in section');
+    assert.doesNotMatch(reach, /browser_type|browser_fill_form|--secrets|<secret>/, 'the browser KEY route');
+    assert.match(flat(reach), /Credentials live in: .* - checked for presence, never printed/, 'the credentials line stays');
+});

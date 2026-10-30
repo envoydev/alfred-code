@@ -162,3 +162,12 @@ test('AG-05 / RU-16: the inventory page and the manifest follow the forge-neutra
     const globs = JSON.parse(/^paths:\s*(\[.*\])\s*$/m.exec(read('stack/rules/angular-repair-agents.md'))[1]);
     assert.ok(html.includes(`["angular-repair-agents", "${globs.join(',')}"`), 'the rules table lists the router globs');
 });
+
+// Audit 2026-10-30 HK-21, its inventory site (T2's leftover): both dispatchers carry onFailure "block" on PreToolUse
+// (settings.js BLOCK_ON_FAILURE), so the browser inventory says it of file-guards.js as well as shell-guards.js.
+test('HK-21 inventory site: the HTML names onFailure block on both dispatchers', () =>
+{
+    const html = read('docs/alfred-code.html');
+    const files = squash(html).split('<code>file-guards.js</code>')[1] || '';
+    assert.match(files.split('): ')[0], /onFailure: "block"/, 'the file dispatcher\'s parenthesis names it');
+});

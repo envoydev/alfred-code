@@ -329,7 +329,13 @@ test('mode texts: the Stop hold stderr and the auto-input note name the run mark
     assert.match(held.stderr, /If the run is finished,\s+print its close and delete \S*AUTO-RUN-x1 - that ends this run; auto-run stays on for the session until\s+--mode-auto-run-off\./);
     assert.doesNotMatch(held.stderr, /APPROVAL/, 'the hold never names the stamp');
     assert.strictEqual(context(sub(p, 'x1', '/task-solve B', t)), '', 'a typed family command gets no auto-input note');
-    assert.match(context(expand(p, 'x1', '/task-solve B', t)), /^auto-run is ON for this \/task-solve run/, 'it gets the contract');
+    const contract = context(expand(p, 'x1', '/task-solve B', t));
+    assert.match(contract, /^auto-run is ON for this \/task-solve run/, 'it gets the contract');
+    assert.match(contract, /a guard's security ask \(a credential shown, work discarded, a write outside the project, a desktop launch\) is never auto-run's to allow: take its safe option and list the act for the user in the close/,
+        'the four security asks stay the user\'s (audit 2026-10-30 fix #6)');
+    const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-auto-run', 'SKILL.md'), 'utf8');
+    assert.match(skill.replace(/\s+/g, ' '), /A guard's security ask - a credential shown, work discarded, a write outside the project, a desktop launch - is never auto-run's to allow/,
+        'the skill says it too');
     fs.rmSync(marker(p, 'x1'));
     assert.doesNotMatch(context(sub(p, 'x1', 'another remark', t)), /auto-run stays ON/, 'no run open, no note');
 });
