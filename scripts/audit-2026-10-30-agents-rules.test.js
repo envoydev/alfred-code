@@ -86,3 +86,25 @@ test('AG-13: code-style-analyzer bounds its return by lines and tokens', () =>
 {
     assert.match(agent('code-style-analyzer'), /120 lines and ~1\.5k tokens at most in total/);
 });
+
+// RU-07 (ruled): the house voice stays at project tier - the answer budget is a rule - and the rule's own note says why,
+// in a comment the injection strips (lint 33's count is unchanged by it).
+test('RU-07: alfred-interaction.md records why the house voice ships at project tier, at no always-on cost', () =>
+{
+    const text = read('stack/rules/alfred-interaction.md');
+    const note = (text.match(/<!-- Tier note \(audit 2026-10-30 RU-07[\s\S]*?-->/) || [])[0] || '';
+    assert.ok(note, 'the tier note is there');
+    assert.match(squash(note), /the answer budget is a rule/);
+    assert.match(squash(note), /`preferences\/PERSONAL-PREFERENCES\.md` through `\/capture-preferences`/);
+    const { injectedRuleText } = require('./always-on-surface.js');
+    assert.doesNotMatch(injectedRuleText(text), /Tier note/, 'stripped before injection');
+});
+
+// RU-18 (ruled): no shipped body spells `docs/<name>` any more, and the alias could read a project's own committed docs/
+// folder as the data root.
+test('RU-18: alfred-docs-root.md drops the legacy docs/<name> alias', () =>
+{
+    const text = read('stack/rules/alfred-docs-root.md');
+    assert.doesNotMatch(text, /legacy `docs\/<name>`/);
+    assert.match(text, /`<docs-path>\/<name>` means this root\./);
+});

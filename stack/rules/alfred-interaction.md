@@ -50,3 +50,11 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 - Code fails - the FIRST action is the `habits-root-cause` Skill call, before the next fix lands.
 - Several FIRST actions due at once (two habit pointers, or one beside a convention rule's attach) load in the same call - one message of Skill calls, before the act any of them guards.
 - Inherited code: its conventions win over these house rules unless broken or unsafe; an entry of the user's preferences docs wins over both.
+
+<!-- Tier note (audit 2026-10-30 RU-07, the user's ruling): the communication style, the answer budget, the dash and
+     quote rule and the no-name line ship at project tier into every install on purpose - the house voice is the
+     stack's standard, and the answer budget is a rule (the user's ruling: no hook blocks an answer's length or its
+     dashes, guard-answer only reminds), so it cannot live in a personal doc a session may not load. A person or team
+     that wants another voice states it in `preferences/PERSONAL-PREFERENCES.md` through `/capture-preferences`, which
+     ranks above the house conventions (alfred-preferences.md). Comments are stripped before injection, so this note
+     costs no always-on chars. -->
