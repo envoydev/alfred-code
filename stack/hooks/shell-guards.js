@@ -719,6 +719,9 @@ function slowProbe(timings, totalMs)
 // (`cat .env` raw: the masker knows only the store's values) and the read guard - judge each line here, as the command
 // it is. Their block, deny or rewrite of the line blocks the whole call: a rewrite cannot be spliced into the runner's
 // quoted argument, and a line that needs one would print what the runner does not mask.
+// At most RUNNER_LINES_MAX lines are judged (each is two guard runs); a command handing the runner more, or one naming it
+// where the reader stopped (past the carried-script depth or the scan budget), blocks - judged conservatively past a cap,
+// never let through (final review 2026-10-30, FB: four `-- "true"` calls then `-- "cat .env"` passed).
 const OWN_READERS = ['guard-secret-value', 'guard-read-whole-file'];
 const RUNNER_LINES_MAX = 4;
 function runnerResults(stdin, guards)
@@ -739,7 +742,18 @@ function runnerResults(stdin, guards)
     let prelude = null;
     try { prelude = require('./hook-prelude.js'); }
     catch { prelude = null; }
-    for (const line of lines.slice(0, RUNNER_LINES_MAX))
+    const guarded = OWN_READERS.filter((name) => guards.includes(name));
+    if (guarded.length && (lines.length > RUNNER_LINES_MAX || lines.unread))
+    {
+        const why = lines.unread ? 'names the --with-sensitive runner where the reader stopped (a shell nested more than three deep, or past the scan budget)'
+            : `hands the --with-sensitive runner ${lines.length} command lines, more than ${RUNNER_LINES_MAX} judged in one call`;
+        const text = `Blocked: this command ${why}, so a line would run unjudged - the runner masks only the stored values' exact text, never makes a line safe.\n`
+            + `Run at most ${RUNNER_LINES_MAX} runner calls per command, each at the top level or inside one shell; nothing ran.`;
+        ledgerRow(payload, prelude, { reason: firstLine(text).slice(0, 200), agent: payload.agent_id || null, tool_use_id: payload.tool_use_id || null,
+            detail: { branch: 'sensitive-runner-cap', lines: lines.length, unread: Boolean(lines.unread) } });
+        return [{ guard: `${guarded[0]}.js`, code: 2, stdout: '', stderr: `${text}\n` }];
+    }
+    for (const line of lines)
     {
         const inner = Buffer.from(JSON.stringify({ ...payload, cwd: line.cwd || payload.cwd, tool_input: { ...payload.tool_input, command: line.text } }));
         for (const g of OWN_READERS.filter((name) => guards.includes(name)))

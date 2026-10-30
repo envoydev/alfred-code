@@ -1954,19 +1954,29 @@ function writtenScripts(P, raw, heredocs, anchor, run) {
 // the runner's own rule. The runner masks only the store's exact values in what the line prints; it never made the line
 // safe. Returns { text, at, end, mapped } for the call `c`, or null.
 const RUNNER_FILE = 'guard-secret-value.js';
-const NODE_VALUE_OPTS = new Set(['-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--input-type', '--title', '--conditions', '-C']);
 const runnerQuote = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`);
+// A word whose quoted text IS what the carried shell runs, so a position in it maps back to the command: a single-quoted
+// word, or a double-quoted one holding none of bash's double-quote escapes. Bash undoes `\"`, `\$`, `\\`, a backslashed
+// backtick and a backslashed newline before the word is handed on, so such a word's line is its DEQUOTED text, mapped
+// nowhere (final review 2026-10-30, FB: `-- "bash -c \"rm -rf ~\""`, `-- "cat \".env\""` and `bash -c "rm -rf
+// \"\$HOME\""` were judged as the raw text, every escape kept, and passed).
+const DQ_ESCAPE = /\\[$`"\\\n]/;
+const verbatimWord = (t, P) => Boolean(t) && (t.raw[0] === "'" || (t.raw[0] === '"' && !DQ_ESCAPE.test(t.raw)))
+  && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
+// The script word is the one right before `--with-sensitive`, whatever its spelling: node's own options may take a
+// separate value (`--disable-warning X`, `--report-dir X`, `--openssl-config X` - no table of them stays complete), and
+// the script may be a variable or a substitution (`node "$G"`, `node "$(ls ... | tail -1)"`) - each passed unjudged
+// behind a basename test (final review 2026-10-30, FB). Another script given `--with-sensitive` is judged too: a line
+// judged that never ran through a shell costs a block, a runner missed ran its line unread.
 function runnerLine(c, P) {
   if (c.name !== 'node' && c.name !== 'nodejs') return null;
   const argv = c.argv;
-  let k = 0;
-  for (; k < argv.length && argv[k].startsWith('-'); k++) {
-    if (/^-(?:e|p|-eval|-print)$/.test(argv[k])) return null; // an inline script is the runtime reader's, never this runner
-    if (NODE_VALUE_OPTS.has(argv[k])) k++;
+  let k = -1;
+  for (let j = 0; j + 1 < argv.length; j++) {
+    if (/^-(?:e|p|pe|-eval|-print)$|^--(?:eval|print)=/.test(argv[j])) return null; // an inline script is the runtime reader's
+    if (argv[j + 1] === '--with-sensitive' && !/^-./.test(argv[j])) { k = j; break; }
   }
-  if (k >= argv.length || argv[k + 1] !== '--with-sensitive') return null;
-  const file = String(argv[k]).replace(/\\/g, '/');
-  if ((FOLDS_CASE ? file.toLowerCase() : file).split('/').pop() !== RUNNER_FILE) return null;
+  if (k < 0) return null;
   let from = k + 2;
   if (argv[from] === '--') from++;
   const words = argv.slice(from);
@@ -1975,17 +1985,20 @@ function runnerLine(c, P) {
   // a quoted one reaches the runner as text and is quoted again for its shell
   if (words.length > 1) return { text: c.args.slice(from).map((t, i) => (/^[^'"\\]*$/.test(t.raw) ? t.raw : runnerQuote(words[i]))).join(' '), mapped: false };
   const t = c.args[from];
-  const single = t && (t.raw[0] === "'" || t.raw[0] === '"') && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
-  return single ? { text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true } : { text: words[0], mapped: false };
+  return verbatimWord(t, P) ? { text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true } : { text: words[0], mapped: false };
 }
 // sensitiveRuns(raw, opts) - the command lines a command hands the sensitive runner, through every carried script (3 deep):
-// [{ text, cwd }]. The shell dispatcher judges each one again with the guards that keep a reader of their own.
+// [{ text, cwd }]. The shell dispatcher judges each one again with the guards that keep a reader of their own. The array's
+// `unread` is true when a text naming the runner was left unwalked - past the depth or the scan budget - so the caller
+// judges conservatively (final review 2026-10-30, FB: nothing stops judging silently at a count).
 function sensitiveRuns(raw, opts = {}) {
   const run = opts.run || newRun(opts);
   const out = [];
+  out.unread = false;
   const walk = (text, cwd, depth) => {
     // a line read from no file names the runner in its own text; one reading script files is walked whole
-    if (depth > 3 || run.budget.over() || (!opts.files && !/with-sensitive/.test(text))) return;
+    if (!opts.files && !/with-sensitive/.test(text)) return;
+    if (depth > 3 || run.budget.over()) { if (/with-sensitive/.test(text)) out.unread = true; return; }
     for (const sc of carriedScripts(text, { cwd: cwd || undefined, files: opts.files, run })) {
       if (sc.runner) out.push({ text: sc.text, cwd: sc.cwd || cwd || null });
       walk(sc.text, sc.cwd || cwd, depth + 1);
@@ -2059,8 +2072,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
         if (cform >= 0) {
           if (cform >= args.length) continue;
           const t = args[cform];
-          const single = (t.raw[0] === "'" || t.raw[0] === '"') && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
-          if (single) push({ text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true, cwd: anchor(at) });
+          if (verbatimWord(t, P)) push({ text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true, cwd: anchor(at) });
           else push({ text: argv[cform], at, end: el.to, mapped: false, cwd: anchor(at) });
           continue;
         }
@@ -2195,10 +2207,35 @@ function shellVars(P, opts = {}) {
     return f;
   };
   const pwdAt = (at) => anchorOf(regionOf(at))(at);
+  // The statement assignments by name, each list in text order, built on the first lookup: a lookup is a binary search
+  // for the newest one before the word, never a scan of every assignment - one scan per lookup and level made a 112KB
+  // chain of `a=$b;b=$a` over 8,000 rm operands cost 10s (final review 2026-10-30, FB; 0.6s before the expander).
+  let byName = null;
+  const setBefore = (name, at) => {
+    if (!byName) {
+      byName = new Map();
+      for (let i = 0, n = events.length; i < n; i++) {
+        const e = events[i];
+        if (e.kind !== 'set' || e.prefix) continue;
+        const list = byName.get(e.name);
+        if (list) list.push(e); else byName.set(e.name, [e]);
+      }
+      for (const list of byName.values()) for (let i = 1; i < list.length; i++) if (list[i].at < list[i - 1].at) { list.sort((x, y) => x.at - y.at); break; }
+    }
+    const list = byName.get(name);
+    if (!list) return null;
+    let lo = 0;
+    let hi = list.length - 1;
+    let hit = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid].at < at) { hit = list[mid]; lo = mid + 1; } else hi = mid - 1;
+    }
+    return hit;
+  };
   const valueWith = (name, at, depth, pwd) => {
     if (depth > VAR_DEPTH || bound.has(name)) return null;
-    let ev = null;
-    for (const e of events) if (e.kind === 'set' && e.name === name && e.at < at && !e.prefix) ev = e;
+    const ev = setBefore(name, at);
     if (ev) {
       const raw = String(ev.raw !== undefined ? ev.raw : ev.value);
       if (/^'[^']*'$/.test(raw)) return raw.slice(1, -1);
@@ -2257,10 +2294,13 @@ function shellVars(P, opts = {}) {
 // 700-line source past the read guard (`shuf big.ts`). Per verb: `values` - the one-letter flags that take a value (its
 // operand is no file), `long` the long ones, `needs` - flags without which it prints nothing (a compressor writes a
 // file unless told `-c`), `none` - flags with which it reads no file (`shuf -e` echoes its words), `bounded` - flags that
-// cap what it prints, `digits` - `-1` / `-2` are flags (join's fields), never operands. printedFiles(verb, argv) names
+// cap what it prints, `digits` - `-1` / `-2` are flags (join's fields), never operands, `levels` - a digit is a flag in
+// any cluster (a compressor's `-9c`). printedFiles(verb, argv) names
 // the files a call prints and whether it is bounded; null when the verb prints none. Both guards read this table.
 const LONG_VALUES = /^--(?:tabs|width|lines|key|output|separator|suffix|field-separator|head-count|input-range|random-source|read-bytes|bytes|skip-bytes|format|address-radix)$/;
-const COMPRESSOR = { values: 'S', needs: ['-c', '--stdout', '--to-stdout'] };
+// `levels`: a digit is a flag (a compression level), alone or in a cluster - `-9`, `-9c`, `-19` (final review 2026-10-30,
+// FB: `gzip -9c <file>` read `-9c` as the file, and the secret guard kept a local workaround)
+const COMPRESSOR = { values: 'S', needs: ['-c', '--stdout', '--to-stdout'], levels: true };
 const PRINT_VERBS = Object.freeze(Object.fromEntries(Object.entries({
   cat: { values: '' }, tac: { values: 's' }, nl: { values: 'bdfhilnsvw' }, rev: { values: '' }, fmt: { values: 'wgpdlt' },
   expand: { values: 't' }, unexpand: { values: 't' }, fold: { values: 'w' }, pr: { values: 'hlowWsSNe' },
@@ -2284,7 +2324,7 @@ function printedFiles(verb, argv) {
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     if (w === '--') { ops.push(...words.slice(i + 1)); break; }
-    if (w === '-' || !w.startsWith('-') || (/^-\d/.test(w) && !spec.digits)) { ops.push(w); continue; }
+    if (w === '-' || !w.startsWith('-') || (/^-\d/.test(w) && !spec.digits && !spec.levels)) { ops.push(w); continue; }
     if (w.startsWith('--')) {
       const eq = w.indexOf('=');
       const n = eq < 0 ? w : w.slice(0, eq);

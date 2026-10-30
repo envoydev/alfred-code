@@ -177,9 +177,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   --with-sensitive -- "<command line>"` is carried like `sh -c` too (audit 2026-10-30 HK-01: its line ran through a shell
   no guard read - `rm -rf ~`, a force push, `cat .env` all passed): every guard on `scanShell` / `gitText` judges it, and
   the dispatcher judges the line again with the secret and read guards, whose block, deny or rewrite blocks the call.
+  A double-quoted carried word holding one of bash's double-quote escapes (`\"`, `\$`, `\\`, a backslashed backtick or
+  newline) is read DEQUOTED, as bash hands it on - the runner's line and a `bash -c "..."` string alike (final review
+  2026-10-30 FB: `-- "bash -c \"rm -rf ~\""` and `bash -c "rm -rf \"\$HOME\""` were judged with every escape kept).
+  The runner's script is the word right before `--with-sensitive`, never matched by name (`node "$G"`, `node
+  --disable-warning X <guard>` passed a basename test), and the dispatcher judges at most `RUNNER_LINES_MAX` (4) lines: a
+  command handing it more, or naming the runner past the carried-script depth or the scan budget, blocks.
   TWO SHARED CONTRACTS (audit 2026-10-30 a0, read by the rm, cross-project, read and secret guards): `shellVars`, the one
   `$NAME` / `${NAME}` / `$HOME` / `$PWD` / `~` expander - statement assignments followed within the command, a followed
-  `cd` moving `$PWD`, prefix assignments and loop or read variables left unknown - and `PRINT_VERBS` / `printedFiles`,
+  `cd` moving `$PWD`, prefix assignments and loop or read variables left unknown, each lookup a binary search of the
+  command's assignments indexed by name (final review FB: a scan per lookup cost 10s on a 112KB `a=$b;b=$a` chain over
+  8,000 operands, 0.8s now) - and `PRINT_VERBS` / `printedFiles`,
   the one table of whole-file print verbs (`cat`, `shuf`, `vis`, `join`, `gzip -c` ...). `gitText` is the ONE reader of a command for every guard that judges a git call (commit, push, force-push, the rm guard's git half):
   aliases expanded, every carried script joined, one scan budget, one parse, and `callDir(call)` for where each call runs. It is also the one home of git ALIAS
   expansion (`expandGitAliases`, T20, R2-m1): every spelling of the call (`/usr/bin/git`, `\git`, `-P`, `--git-dir .git`,
@@ -362,7 +370,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     is denied (2.1.7): the CLI then removes the
     declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row.
     Audit 2026-10-30 HK-08..HK-11: a recursive rm of `.git`'s contents (objects, refs, a `.git/*` glob) blocks while git's
-    transient state (`rebase-merge`, `*.lock`, `MERGE_HEAD`) stays removable; each target resolves against the directory a
+    transient state (`rebase-merge`, `*.lock`, `MERGE_HEAD`) stays removable, and so do git's regenerable leftovers
+    `refs/original`, one `worktrees/<name>` and `lfs/tmp` (final review FB, the lead's ruling; `modules/<path>` and `hooks`
+    still block, the submodule denial naming `git submodule deinit -f` then `git rm`); each target resolves against the directory a
     leading `cd` moved the shell to and through `shellVars` (`$H` after `H=$HOME`, `$(echo ~)`, `%USERPROFILE%`); and a
     runtime's recursive delete (`shutil.rmtree`, `fs.rmSync` recursive, `File::Path` rmtree, `rimraf`,
     `[IO.Directory]::Delete` with `true`) of the home, project or cwd blocks - of a build folder it passes. A 'discard it' answer
@@ -479,7 +489,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (either byte order) is judged by its decoded content, and a file printed under another verb's name is a dump too
     (`dd if=`, `iconv`, curl `file://`, vim's print, a copy onto `/dev/stdout`, sqlite3's `readfile()`, php's
     `file_get_contents` / `getenv`, and every verb of shell-writes.js's one print table - `shuf`, `vis`, `join`, a
-    compressor's `-c`, whose view goes through the same compressor so a decompressor after it reads text; audit 2026-10-30
+    compressor's `-c` (a level cluster such as `-9c` read as flags by the table's `levels`, final review FB), whose view goes through the same compressor so a decompressor after it reads text; audit 2026-10-30
     HK-06), a bare name after a `cd` resolved against the `cd` target. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
     Read tool and a credential literal stay blocked - but a FETCH of a short-lived link passes the literal check (the
@@ -560,7 +570,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked) - env's and
     printenv's printing options too (`-0`, `-u NAME`, `--unset=NAME`, `NAME=v` with no command; `envDumpOf`, audit
-    2026-10-30 HK-05), the view keeping `-0`'s NUL separator, and `${!v}` prints the variable v names (one bound to a
+    2026-10-30 HK-05), a declaration builtin with only options (`declare -x`, `-px`, `+x`, `typeset -x`, bare `declare` /
+    `typeset` / `readonly`; final review FB - a name or an assignment declares, `-f` / `-F` list functions), the view keeping `-0`'s NUL separator, and `${!v}` prints the variable v names (one bound to a
     literal name is judged as that name, any other is the masked listing). A `ps` with BSD `e` or `-E`, a read of
     `/proc/<pid>/environ` and `launchctl getenv <credential name>` have no masked form and block. A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A heredoc

@@ -452,7 +452,9 @@ test('audit 2026-10-30 HK-01: the --with-sensitive runner is a carrier - its lin
   assert.deepStrictEqual(texts(`env A=1 nodejs ${g} --with-sensitive -- y`), ['y'], 'past a wrapper');
   assert.deepStrictEqual(texts(`node ${g} --presence .env KEY`), [], 'the presence view carries nothing');
   assert.deepStrictEqual(texts(`node ${g} --with-sensitive --`), [], 'an empty runner carries nothing');
-  assert.deepStrictEqual(texts(`node other.js --with-sensitive -- "rm -rf ~"`), [], 'another script is not the runner');
+  // final review FB: the script word before the flag is never matched by name - `node "$G"` and `--disable-warning X <G>`
+  // passed a basename test - so another script given the flag is judged too (a false block, never a line run unread)
+  assert.deepStrictEqual(texts(`node other.js --with-sensitive -- "rm -rf ~"`), ['rm -rf ~'], 'any script given the flag is judged as the runner');
   assert.deepStrictEqual(texts(`echo node ${g} --with-sensitive -- "rm -rf ~"`), [], 'a printed runner runs nothing');
   // the shared readers see the line
   assert.match(shell.gitText(`node ${g} --with-sensitive -- "git push --force origin main"`, TMP).command, /git push --force origin main/);
