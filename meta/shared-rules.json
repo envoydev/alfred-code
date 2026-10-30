@@ -2709,6 +2709,55 @@
         }
       ]
     },
+    "implementer-external-api-docs-check": {
+      "_note": "An external API shape an implementer writes against (a package signature, a vendor contract, an engine behaviour, an image or action tag) is resolved against its current docs through the documentation tools before the write, never from recall - unreachable, said unverified. Owned by the always-on quality-gates rule's outside-world line; restated as one byte-identical clause in all ten implementers because the write step is where a recalled shape enters the code (audit 2026-10-30 AG-07: six unmanaged copies had drifted and four implementers carried none). Tier 4 candidate: its A/B decides whether the copies stay.",
+      "owner": {
+        "file": "stack/rules/alfred-quality-gates.md",
+        "marker": "is checked against the documentation tools the session-start tool order ranks"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        }
+      ]
+    },
     "implementer-tree-coexistence": {
       "_note": "Parallel implementer seats share one working tree: no tree-wide git state operations (stash/checkout/restore beyond own files/branch switch/reset) - measured: a seat's stash wiped siblings' in-flight edits. Byte-identical bullet head across all 10 implementers; the stale-base tell tail is per-stack (NuGet-audit codes on .NET, compile/npm-ci tells on TS).",
       "owner": {
