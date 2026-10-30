@@ -1648,6 +1648,35 @@
         }
       ]
     },
+    "review-target-read": {
+      "_note": "The two own reviewers read their target the same way: the `## Target` section (the change set, a branch, a change request, paths, and where the code is read) is byte-identical in review-code and review-security, and their Dispatch paragraph counts the target with the same sentence. It drifted unregistered until the 2026-10-30 audit (SKF-04); the markers pin both ends of the Target section and the count, and scripts/own-reviewers.test.js fails a Target section that differs between the two.",
+      "owner": {
+        "file": "stack/skills/review-code/SKILL.md",
+        "marker": "the secret guard masks only a `git diff` whose path it can read"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "the secret guard masks only a `git diff` whose path it can read"
+        },
+        {
+          "file": "stack/skills/review-code/SKILL.md",
+          "marker": "Code is read where the target lives"
+        },
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "Code is read where the target lives"
+        },
+        {
+          "file": "stack/skills/review-code/SKILL.md",
+          "marker": "Run inline. First count the target from its own diff: changed lines (the change set `git diff HEAD --shortstat` plus each untracked file's lines, a path the same under `-- <path>`, a branch `git diff --shortstat <base>...<branch>`, a change request `git diff --shortstat <base>...<head>` over its fetched head, the forge tool's own counts - `gh pr view <n> --json additions,deletions` - only when no ref exists) and touched stacks (the convention rules the changed files attach"
+        },
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "Run inline. First count the target from its own diff: changed lines (the change set `git diff HEAD --shortstat` plus each untracked file's lines, a path the same under `-- <path>`, a branch `git diff --shortstat <base>...<branch>`, a change request `git diff --shortstat <base>...<head>` over its fetched head, the forge tool's own counts - `gh pr view <n> --json additions,deletions` - only when no ref exists) and touched stacks (the convention rules the changed files attach"
+        }
+      ]
+    },
     "review-passes-vendored": {
       "_note": "review-code's eight review passes and refute pass, vendored VERBATIM (whole file) into task-verify-code, which runs passes 1, 2, 3, 5 and 6 from its own copy - a pointer into another skill's folder breaks wherever that folder is absent (a Cursor twin, a trimmed install) and named a Claude-only path (2026-10-30 audit SKF-01). An edit to the owner is a copy of the whole file over the site; scripts/own-reviewers.test.js fails the pair when they differ.",
       "owner": {

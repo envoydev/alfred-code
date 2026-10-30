@@ -147,9 +147,9 @@ const NON_SKILL_TOKENS = new Set([
     // Claude Code SKILL.md frontmatter field (manual-only skills), backticked in
     // prose in task-solve-cross + the base template - a field name, not a skill.
     'disable-model-invocation',
-    // the two GENERATED per-project rules task-solve-cross's in-session scoping step reads
-    // (written by the capture skills, never in the installer manifest) - rule file names, not skills.
-    'alfred-architecture',
+    // the GENERATED per-project rule task-solve-cross's in-session scoping step reads (written by
+    // capture-awareness, never in the installer manifest) - a rule file name, not a skill. Its retired
+    // sibling `alfred-architecture` left with 3.5.0 (2026-10-30 audit SKF-03).
     'alfred-awareness',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
