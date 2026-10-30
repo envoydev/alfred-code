@@ -1,6 +1,7 @@
 ---
 name: habits-test-first
 description: "Use before writing production code for a feature, bug fix or behavior change - before the first source edit. Not for config or docs edits, which skip tests."
+user-invocable: false
 ---
 
 # Test first - red for the right reason, then green, then clean

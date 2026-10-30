@@ -286,3 +286,15 @@ test('SKC-04/05: the capture routers name each part\'s load-time references', ()
     assert.match(step5, /Put a `## Resume` section right under the stamp/);
     assert.match(step5, /never a per-claim edit stream/);
 });
+
+test('SKC-24: the four rule-forced or preloaded habits leave the / menu and keep their description', () =>
+{
+    const html = read('docs/alfred-code.html');
+    for (const name of ['habits-code-comments', 'habits-done-gate', 'habits-root-cause', 'habits-test-first'])
+    {
+        const front = /^---\n([\s\S]*?)\n---/.exec(skill(name))[1];
+        assert.match(front, /^user-invocable: false$/m, `${name}: user-invocable false`);
+        assert.doesNotMatch(front, /^disable-model-invocation:/m, `${name}: its description stays in context`);
+        assert.match(html, new RegExp(`\\["${name}",[^\\n]*"model-only"\\]`), `${name}: the inventory row says model-only`);
+    }
+});

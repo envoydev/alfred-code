@@ -1,6 +1,7 @@
 ---
 name: habits-done-gate
 description: "Use before saying your own change is done, fixed, passing, working, ready or 'should work now'. Not for someone else's change, which a code review owns."
+user-invocable: false
 ---
 
 # Done gate - the run after the last edit is the evidence

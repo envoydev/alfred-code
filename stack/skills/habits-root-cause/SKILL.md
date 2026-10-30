@@ -1,6 +1,7 @@
 ---
 name: habits-root-cause
 description: "Use when a failure's cause is unproven, before any fix - red test, build or auth error, stack trace, flaky run. Not for a known error code, which catalogs hold."
+user-invocable: false
 ---
 
 # Root cause - one hypothesis, one change, then the fix
