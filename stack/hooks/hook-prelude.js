@@ -164,28 +164,106 @@ function partOff(hook, part, env)
     });
 }
 
-// Every command string in the settings file, whatever the event and matcher nesting.
-function wiredCommands(settingsFile)
+// Every hook entry in a settings file - its event, its matcher ('' when it has none) and its command - whatever
+// the nesting. A file that does not parse holds none.
+function wiredEntries(settingsFile)
 {
     let parsed;
     try { parsed = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
     catch { return []; }
     const hooks = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.hooks : null;
-    if (!hooks || typeof hooks !== 'object') return [];
+    if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
     const out = [];
-    for (const blocks of Object.values(hooks))
+    for (const [event, blocks] of Object.entries(hooks))
     {
         if (!Array.isArray(blocks)) continue;
         for (const block of blocks)
         {
-            const list = block && Array.isArray(block.hooks) ? block.hooks : [];
-            for (const entry of list) if (entry && typeof entry.command === 'string') out.push(entry.command);
+            if (!block || typeof block !== 'object') continue;
+            const matcher = typeof block.matcher === 'string' ? block.matcher : '';
+            const list = Array.isArray(block.hooks) ? block.hooks : [];
+            for (const entry of list) if (entry && typeof entry.command === 'string') out.push({ event, matcher, command: entry.command });
         }
     }
     return out;
 }
 
-function yieldToCopiedTwin(hook, env)
+// HOW CLAUDE CODE READS A MATCHER (code.claude.com/docs/en/hooks, the matcher table, read 2026-10-30): `*`, '' or none
+// fires on everything; one made only of letters, digits, `_`, `-`, spaces, `,` and `|` is a list of exact names split
+// on `|` or `,`; anything else is a JavaScript regex, unanchored (`RegExp.prototype.test`).
+const MATCH_ALL = (matcher) => matcher === '' || matcher === '*';
+const NAME_LIST_RE = /^[A-Za-z0-9_\- ,|]+$/;
+const namesOf = (matcher) => matcher.split(/[|,]/).map((n) => n.trim()).filter(Boolean);
+function matcherFires(matcher, name)
+{
+    if (MATCH_ALL(matcher)) return true;
+    if (NAME_LIST_RE.test(matcher)) return namesOf(matcher).includes(name);
+    try { return new RegExp(matcher).test(name); }
+    catch { return false; }
+}
+// Do these matchers (one event's twin entries) fire on every call the plugin row fires on? A name list is covered
+// name by name; a regex row only by the same regex or a match-all - no other is known to fire on all it does.
+function covers(matchers, row)
+{
+    if (matchers.some(MATCH_ALL)) return true;
+    if (MATCH_ALL(row)) return false;
+    if (NAME_LIST_RE.test(row)) return namesOf(row).every((name) => matchers.some((m) => matcherFires(m, name)));
+    return matchers.includes(row);
+}
+
+// The rows the core's own entry wires each hook FILE on (its basename, no `.js`): read once per process from the
+// marketplace declaration at the plugin root this prelude ships in - the plugin cache is the whole repo.
+let coreRowsCache = null;
+function coreRows()
+{
+    if (coreRowsCache) return coreRowsCache;
+    const rows = new Map();
+    try
+    {
+        const market = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
+        const core = (Array.isArray(market && market.plugins) ? market.plugins : []).find((p) => p && p.name === CORE_PLUGIN);
+        const hooks = core && core.hooks && typeof core.hooks === 'object' ? core.hooks : {};
+        for (const [event, blocks] of Object.entries(hooks))
+            for (const block of Array.isArray(blocks) ? blocks : [])
+                for (const h of block && Array.isArray(block.hooks) ? block.hooks : [])
+                {
+                    const file = /([\w.-]+)\.js(?=["'\s]|$)/.exec(String((h && h.command) || ''));
+                    if (!file) continue;
+                    const name = file[1].toLowerCase();
+                    if (!rows.has(name)) rows.set(name, []);
+                    rows.get(name).push({ event, matcher: typeof block.matcher === 'string' ? block.matcher : '' });
+                }
+    }
+    catch { /* no declaration: no row, so nothing yields */ }
+    coreRowsCache = rows;
+    return rows;
+}
+
+// The plugin rows THIS run of the hook stands for. A caller that knows its call says so (`{ event, tool }` - the file
+// dispatcher, per call). A guard the plugin's dispatcher runs in its own process stands for that dispatcher's row on the
+// tools the dispatcher runs it for. Any other run is one of the hook's own rows in the core entry, so all of them.
+function pluginRowsOf(wanted, call)
+{
+    if (call && typeof call.event === 'string' && call.event) return [{ event: call.event, matcher: typeof call.tool === 'string' ? call.tool : '' }];
+    const main = require.main;
+    const host = main && typeof main.filename === 'string' ? baseName(path.basename(main.filename)) : '';
+    if (host && host !== wanted && path.dirname(main.filename) === __dirname && (host === 'shell-guards' || host === 'file-guards'))
+    {
+        const ex = main.exports || {};
+        if (host === 'shell-guards') return typeof ex.MATCHER === 'string' ? [{ event: 'PreToolUse', matcher: ex.MATCHER }] : [];
+        const tools = ex.TOOLS instanceof Map ? ex.TOOLS.get(wanted) : null;
+        return Array.isArray(tools) && tools.length ? [{ event: 'PreToolUse', matcher: tools.join('|') }] : [];
+    }
+    return coreRows().get(wanted) || [];
+}
+
+// GATE 2 (HK-02, audit 2026-10-30). The plugin copy yields only to a REAL twin: the copied file on disk at
+// `<project>/.claude/hooks/<hook>.js`, and entries naming it - in settings.json or settings.local.json (a local-scope
+// install, M4, R54) - that cover EVERY plugin row this run stands for: the same event, a matcher firing on each tool
+// the row fires on. A string naming the twin anywhere - any event, matcher `Nothing`, no file - stood every plugin
+// guard down, the dispatchers' protective ones included (replayed: `rm -rf ~`, `git push --force origin main` and a
+// Read of `.env` all passed). Anything unread - no rows, no file, an unparseable settings file - is no twin.
+function yieldToCopiedTwin(hook, env, call)
 {
     const source = env || process.env;
     if (!source || !source.CLAUDE_PLUGIN_ROOT) return false;   // this IS the copied hook
@@ -193,15 +271,19 @@ function yieldToCopiedTwin(hook, env)
     if (!root) return false;
     const wanted = baseName(hook);
     if (!wanted) return false;
+    const hooksDir = path.join(root, '.claude', 'hooks');
+    if (path.resolve(__dirname) === path.resolve(hooksDir)) return false;   // the copy itself, under an inherited plugin root
     const target = (COPIED_PREFIX + wanted + '.js').toLowerCase();
-    // A local-scope install wires its copies in settings.local.json (M4, R54) - both files count.
-    const commands = ['settings.json', 'settings.local.json'].flatMap((name) => wiredCommands(path.join(root, '.claude', name)));
-    for (const command of commands)
+    const twins = ['settings.json', 'settings.local.json'].flatMap((name) => wiredEntries(path.join(root, '.claude', name))).filter(({ command }) =>
     {
         const clean = command.replace(/"/g, '').trim().toLowerCase();
-        if (clean === target || clean.startsWith(target + ' ')) return true;
-    }
-    return false;
+        return clean === target || clean.startsWith(target + ' ');
+    });
+    if (!twins.length) return false;
+    try { if (!fs.statSync(path.join(hooksDir, `${wanted}.js`)).isFile()) return false; }
+    catch { return false; }
+    const rows = pluginRowsOf(wanted, call);
+    return rows.length > 0 && rows.every((row) => covers(twins.filter((t) => t.event === row.event).map((t) => t.matcher), row.matcher));
 }
 
 const CORE_PLUGIN = 'alfred-code';
@@ -991,12 +1073,12 @@ function cursorStandDown(input, file, argv)
 // The one call every hook makes: true means do nothing at all, exit 0, print nothing. `setUp: false` skips
 // GATE 4 alone - for a hook that keeps one check live in a repo never set up and reads neverSetUp() itself
 // (the dispatch guard's implementer gate, M9).
-function standDown(hook, env, argv, { setUp = true } = {})
+function standDown(hook, env, argv, { setUp = true, call } = {})
 {
     try
     {
         if (isCliInvocation(argv)) return false;
-        return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env)
+        return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env, call)
             || (setUp && neverSetUp(env) && !PROTECTIVE.has(baseName(hook)));
     }
     catch { return false; }

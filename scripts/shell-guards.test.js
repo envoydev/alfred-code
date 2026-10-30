@@ -407,7 +407,10 @@ test('hook_profile minimal keeps the protective three inside the dispatcher', ()
 
 test('the plugin dispatcher steps aside for a wired copy of itself; the copy judges', () => {
   const dir = project();
-  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/shell-guards.js"', timeout: 80 }] }] } }));
+  // HK-02: a twin is its file on disk, wired on the plugin row's event and every tool of its matcher
+  fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
+  fs.copyFileSync(DISPATCH, path.join(dir, '.claude', 'hooks', 'shell-guards.js'));
+  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell|Monitor', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/shell-guards.js"', timeout: 80 }] }] } }));
   const plugin = run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT } });
   assert.deepStrictEqual(plugin, { status: 0, stdout: '', stderr: '' });
   assert.strictEqual(run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } }).status, 2);
@@ -415,7 +418,9 @@ test('the plugin dispatcher steps aside for a wired copy of itself; the copy jud
 
 test('an old per-guard copy still wired: the plugin dispatcher skips exactly that guard', () => {
   const dir = project();
-  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"', timeout: 10 }] }] } }));
+  fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
+  fs.copyFileSync(path.join(HOOKS, 'guard-catastrophic-rm.js'), path.join(dir, '.claude', 'hooks', 'guard-catastrophic-rm.js'));
+  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell|Monitor', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"', timeout: 10 }] }] } }));
   const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT };
   assert.strictEqual(run(DISPATCH, bashPayload('rm -rf .', dir), { cwd: dir, env }).status, 0, 'the copied twin judges rm, not the plugin');
   assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env }).status, 2, 'every other guard still runs here');

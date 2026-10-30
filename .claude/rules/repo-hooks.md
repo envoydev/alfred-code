@@ -24,7 +24,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `ALFRED_CODE_HOOKS_OFF`. The six gates live in `hook-prelude.js`, never inlined: the csv opt-out;
   the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret,
   force-push and desktop exec guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
-  the plugin copy standing down beside a still-wired copied twin; a repo never set up (no install
+  the plugin copy standing down beside a still-wired copied twin - only a REAL one (`yieldToCopiedTwin`, audit 2026-10-30
+  HK-02: an entry naming the twin under matcher `Nothing`, no file on disk, stood both dispatchers down): the copied file
+  on disk and entries covering every plugin row the run stands for (the event, a matcher firing on each of the row's
+  tools; the core entry's rows from the plugin root's `marketplace.json`, a guard run in-process by the plugin's
+  dispatcher that dispatcher's row, the file dispatcher per call); a repo never set up (no install
   record in it, any folder between it and its git top level (a monorepo package with its own install), the top itself -
   never a repo kept at the home directory, for the installer's `gitRoot` as much as the hooks, seam m3 - or - for a git
   worktree - its main checkout, so a worktree of an
