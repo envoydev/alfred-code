@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-// capabilities-inventory.js - the scripted half of /capture-awareness in ONE node pass: the precheck, the full
+// awareness-state.js - the scripted half of /capture-awareness in ONE node pass: the precheck, the full
 // inventory with a printed COUNT per layer (skills, seats, rules, MCP, plugins), the LIVE `claude mcp list`, the
 // MCP routing rows, and with --write <docs-path>/awareness/AGENTS-AWARENESS.md composed from the agents reference's
 // copy target, the compare, the write on differs, the post-write verify and the report lines; with --rule the
 // generated .claude/rules/alfred-awareness.md, one @ import per awareness doc, and the removal of the rules it
-// supersedes. Node built-ins only - no install, no network, and no per-skill fork (the shell loop it replaces
-// measured 4m13s on Git Bash).
+// supersedes; with --state the chain ask's one line per part. Node built-ins only - no install, no network, and no
+// per-skill fork (the shell loop it replaces measured 4m13s on Git Bash).
 //
 // Usage, from the project root:
-//   node .claude/skills/capture-awareness/scripts/capabilities-inventory.js --write [--refresh]
-//   node .../capabilities-inventory.js --rule                           the awareness rule, after the three docs
-//   node .../capabilities-inventory.js                                  the inventory alone, nothing written
-//   node .../capabilities-inventory.js --body <composed-doc-file|->      the compare verdict for a hand-composed body
-//   node .../capabilities-inventory.js --verify <doc-file>              exits 1 on failure
+//   node .claude/skills/capture-awareness/scripts/awareness-state.js --write [--refresh]
+//   node .../awareness-state.js --rule                           the awareness rule, after the parts ran
+//   node .../awareness-state.js --state                          one line per part, for the chain ask; always exits 0
+//   node .../awareness-state.js                                  the inventory alone, nothing written
+//   node .../awareness-state.js --body <composed-doc-file|->      the compare verdict for a hand-composed body
+//   node .../awareness-state.js --verify <doc-file>              exits 1 on failure
 //   --refresh         write over an empty precheck (the user asked, or the plugin state moved)
 //   --project <dir>   the project root (default: the current directory)
 //
@@ -30,23 +31,35 @@ const SKILL_DIR = path.resolve(__dirname, '..');
 const AGENTS_REF = 'references/agents.md';
 const AWARENESS_DIR = 'awareness';
 const AGENTS_DOC = 'AGENTS-AWARENESS.md';
-const PROJECT_DOC = 'PROJECT-AWARENESS.md';
+const INFO_DOC = 'PROJECT-INFO-AWARENESS.md';
+const RESOURCES_DOC = 'RESOURCES-AWARENESS.md';
 const RELATED_DOC = 'RELATED-PROJECTS-AWARENESS.md';
+const USER_DOC = 'USER-AWARENESS.md';
+const MAP_DOC = 'ARCHITECTURE-AWARENESS.md';
+// The run book's two names: RUN-AND-DEBUG-AWARENESS.md since the 2026-10-29 split, PROJECT-AWARENESS.md before an update
+// renames it - the first that exists, else the first (layout.js runBookKey answers the same; a test holds them equal).
+const RUN_BOOK_NAMES = ['RUN-AND-DEBUG-AWARENESS.md', 'PROJECT-AWARENESS.md'];
+const runBookOf = (docsDir) => RUN_BOOK_NAMES.find((n) => statOf(path.join(docsDir, AWARENESS_DIR, n))) || RUN_BOOK_NAMES[0];
+// The project part's byte budgets (spec 1.4): warned past, never trimmed.
+const BUDGETS = { [INFO_DOC]: 2000, [RESOURCES_DOC]: 1500, [USER_DOC]: 4000 };
 const RULE_REL = '.claude/rules/alfred-awareness.md';
-// The rules the three docs replace (the user's ruling of 2026-10-16: one rule of @ imports), each removed by --rule
-// once its doc exists and is imported; the 1.x project-capabilities rule went the same way before them.
+// The rules the awareness rule replaces (the user's ruling of 2026-10-16: one rule of @ imports), each removed by --rule
+// once what it pointed at is imported - the run book under either name - or, for the architecture marker, once the
+// map's line is written (2026-10-29); the 1.x project-capabilities rule went the same way before them.
+const MAP_LINE_COVERS = 'map line';
 const SUPERSEDED_RULES = [
-    ['alfred-agent-awareness.md', AGENTS_DOC],
-    ['alfred-project-awareness.md', PROJECT_DOC],
-    ['alfred-related-context.md', RELATED_DOC],
-    ['baseline-project-capabilities.md', AGENTS_DOC],
+    ['alfred-agent-awareness.md', [AGENTS_DOC]],
+    ['alfred-project-awareness.md', RUN_BOOK_NAMES],
+    ['alfred-related-context.md', [RELATED_DOC]],
+    ['alfred-architecture.md', [MAP_LINE_COVERS]],
+    ['baseline-project-capabilities.md', [AGENTS_DOC]],
 ];
 // Where AGENTS-AWARENESS.md lives, from the docs root as the settings name it (relative or absolute).
 const agentsDocPath = (projectRoot, docs) => path.resolve(projectRoot, String(docs), AWARENESS_DIR, AGENTS_DOC);
 const docLabel = (projectRoot, file) => { const rel = relTo(projectRoot, file); return rel.startsWith('..') ? slash(file) : rel; };
 // The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture, code-quality
 // and coverage loops can invoke them - they belong with the slash-only set in the rule, marked as the exception.
-const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-architecture', 'capture-quality']);
+const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-awareness', 'capture-quality']);
 // The record registers the browser server once per engine (`playwright-chrome`, ...), the upstream docs once as
 // `playwright`: every name maps to the one routing row.
 const PLAYWRIGHT_SERVER = /^playwright(?:-(?:chrome|msedge|firefox|webkit))?$/;
@@ -1007,7 +1020,13 @@ function ensureNotOwned(dir, say = () => {})
     const owned = Array.isArray(j.notOwned) ? j.notOwned : [];
     if (owned.includes(AGENTS_DOC)) return false;
     j.notOwned = [...owned, AGENTS_DOC];
-    try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, `${JSON.stringify(j, null, 2)}\n`); }
+    // The file keeps its BOM, line ending, indent and final newline - an update merges the map's entries into it and
+    // keeps them, so this write must not undo that (two spaces where it shows no indent).
+    const text = raw || '';
+    const eol = text.includes('\r\n') ? '\r\n' : '\n';
+    const indent = (/^[ \t]+(?=\S)/.exec(text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l)) || '') || ['  '])[0];
+    const body = `${text.startsWith('\uFEFF') ? '\uFEFF' : ''}${JSON.stringify(j, null, indent).split('\n').join(eol)}${raw === null || /\r?\n$/.test(text) ? eol : ''}`;
+    try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, body); }
     catch (err) { say('WATCH', `${slash(file)} could not be written (${err.code || err.message})`); return false; }
     say('WATCH', `${raw === null ? 'created' : 'updated'} the awareness domain's watch.json - notOwned: ${AGENTS_DOC}`);
     return true;
@@ -1131,12 +1150,14 @@ function awarenessImport(docs, file)
     return `@${abs ? '' : '../../'}${r}/${AWARENESS_DIR}/${file}`.replace(/ /g, '\\ ');
 }
 
-// Which docs the rule imports: each that exists, the related one only once it holds an entry - a standalone repo's
-// 'none' answer is a doc with no section, and importing it would cost every session for nothing.
+// Which docs the rule imports, in this order: each that exists, the run book under the name runBookOf picks, the
+// related one only once it holds an entry - a standalone repo's 'none' answer is a doc with no section, and importing
+// it would cost every session for nothing - and the user's own file whenever it exists, its header alone included.
 function awarenessDocs(projectRoot, docs)
 {
-    const dir = path.resolve(projectRoot, String(docs), AWARENESS_DIR);
-    return [AGENTS_DOC, PROJECT_DOC, RELATED_DOC].filter((name) =>
+    const root = path.resolve(projectRoot, String(docs));
+    const dir = path.join(root, AWARENESS_DIR);
+    return [AGENTS_DOC, INFO_DOC, runBookOf(root), RESOURCES_DOC, RELATED_DOC, USER_DOC].filter((name) =>
     {
         const text = readText(path.join(dir, name));
         if (text === null || text.trim() === '') return false;
@@ -1144,19 +1165,27 @@ function awarenessDocs(projectRoot, docs)
     });
 }
 
-// The rule from SKILL.md's copy target: the docs root stamped in, one import line per doc. No doc, no rule.
+// The map is never imported - it is read by section, and an import loads it whole at every start (spec 1.7): the rule
+// carries one pointer line to it whenever it exists.
+const mapLineOf = (projectRoot, docs) => (statOf(path.resolve(projectRoot, String(docs), AWARENESS_DIR, MAP_DOC))
+    ? `Architecture map: \`<docs-path>/${AWARENESS_DIR}/${MAP_DOC}\` - read it by section before a structural change.` : null);
+
+// The rule from SKILL.md's copy target: the docs root stamped in, one import line per doc, the map's line after them.
+// Neither an import nor the map, no rule. An empty slot leaves no blank lines behind it.
 function composeAwarenessRule({ projectRoot, docs, skillText } = {})
 {
     const root = docs === undefined ? docsRoot(projectRoot).value : docs;
     const template = copyTarget(skillText === undefined ? readText(path.join(SKILL_DIR, 'SKILL.md')) : skillText);
-    if (template === null) return { text: null, imports: [], error: "no COPY TARGET block in the skill's SKILL.md" };
+    if (template === null) return { text: null, imports: [], mapLine: false, error: "no COPY TARGET block in the skill's SKILL.md" };
     const imports = awarenessDocs(projectRoot, root);
-    if (!imports.length) return { text: null, imports, error: null };
-    let text = template.replace(/^<the script's import lines[^\n]*>$/m, () => imports.map((n) => awarenessImport(root, n)).join('\n'));
-    text = text.split('<docs-path>').join(String(root).replace(/\\/g, '/').replace(/\/+$/, ''));
+    const mapLine = mapLineOf(projectRoot, root);
+    if (!imports.length && !mapLine) return { text: null, imports, mapLine: false, error: null };
+    let text = template.replace(/^<the script's import lines[^\n]*>$/m, () => imports.map((n) => awarenessImport(root, n)).join('\n'))
+        .replace(/^<the script's map line[^\n]*>$/m, () => mapLine || '');
+    text = text.split('<docs-path>').join(String(root).replace(/\\/g, '/').replace(/\/+$/, '')).replace(/\n{3,}/g, '\n\n');
     const left = /^<the script's[^\n]*/m.exec(text);
-    if (left) return { text: null, imports, error: `the copy target holds a slot this script does not fill: ${left[0].slice(0, 80)}` };
-    return { text: normalize(`${text}\n`), imports, error: null };
+    if (left) return { text: null, imports, mapLine: !!mapLine, error: `the copy target holds a slot this script does not fill: ${left[0].slice(0, 80)}` };
+    return { text: normalize(`${text}\n`), imports, mapLine: !!mapLine, error: null };
 }
 
 // --rule: compose, compare, write on differs, put the notOwned entry back, remove the superseded rules whose doc is
@@ -1167,21 +1196,24 @@ function composeAwarenessRule({ projectRoot, docs, skillText } = {})
 // removal was unconditional before this, and stays so. The run-book pointer carries nothing a doc holds, and its shape
 // is fixed in every release (one `Run book:` line, the 2026-10-15 one an `@` import beside it), so its body is held to
 // that shape too: a line past it is the user's, and deleting the rule would lose it. The inventory rule's body moves into
-// AGENTS-AWARENESS.md, and the sibling rule was composed from the entries its doc keeps.
+// AGENTS-AWARENESS.md, and the sibling rule was composed from the entries its doc keeps. The architecture marker's body
+// was one fixed line in every release, so it is held to that line the same way.
+const ARCH_MARKER_LINE = 'The architecture docs are captured for this project - read them before a structural change.';
 const RUN_BOOK_LINE = /^(?:Run book: `[^`]+` - (?:read it before you build, start, log into or hand-check the app\.|the project's workflow, imported below at every session start; follow it before you build, start, log into or hand-check the app, and if its text is not below, Read it first\.)|@\S+)$/;
 function capturesOwn(name, text)
 {
     if (name === 'baseline-project-capabilities.md') return true;
     const stamped = /<!--\s*policy-rev:/.test(text) || /^description: [^\n]*generated by \/[a-z-]+/m.test(text);
-    if (!stamped || name !== 'alfred-project-awareness.md') return stamped;
+    if (!stamped || !['alfred-project-awareness.md', 'alfred-architecture.md'].includes(name)) return stamped;
     const body = text.replace(/\r\n/g, '\n').replace(/^---\n[\s\S]*?\n---\n/, '');
-    return body.split('\n').map((l) => l.trim()).filter(Boolean).every((l) => RUN_BOOK_LINE.test(l));
+    const own = name === 'alfred-architecture.md' ? (l) => l === ARCH_MARKER_LINE : (l) => RUN_BOOK_LINE.test(l);
+    return body.split('\n').map((l) => l.trim()).filter(Boolean).every(own);
 }
 
 function writeAwarenessRule(projectRoot, { say: sayArg, print = true, docs: docsArg } = {})
 {
     const out = [];
-    const say = sayArg || ((label, value) => out.push(`${(`${label}:`).padEnd(11)}${value}`));
+    const say = sayArg || ((label, value) => out.push(`${(`${label}: `).padEnd(11)}${value}`));
     const docs = docsArg === undefined ? docsRoot(projectRoot).value : docsArg;
     const rulePath = path.join(projectRoot, RULE_REL);
     const done = (rule, code, extra = {}) =>
@@ -1199,7 +1231,7 @@ function writeAwarenessRule(projectRoot, { say: sayArg, print = true, docs: docs
     // The folder is a docs domain whenever an awareness doc sits in it, an imported one or not: a sibling doc moved in
     // by an update with no entry yet is still the engine's to section.
     const dir = path.resolve(projectRoot, String(docs), AWARENESS_DIR);
-    const anyDoc = [AGENTS_DOC, PROJECT_DOC, RELATED_DOC].some((n) => statOf(path.join(dir, n)));
+    const anyDoc = [AGENTS_DOC, INFO_DOC, ...RUN_BOOK_NAMES, RESOURCES_DOC, RELATED_DOC, USER_DOC, MAP_DOC].some((n) => statOf(path.join(dir, n)));
     if (anyDoc) ensureNotOwned(dir, say);
     if (composed.text === null)
     {
@@ -1207,7 +1239,14 @@ function writeAwarenessRule(projectRoot, { say: sayArg, print = true, docs: docs
             : `not written - no awareness doc under ${slash(String(docs))}/${AWARENESS_DIR}/ yet; the rules it would supersede are left in place`);
         return done(anyDoc ? 'not written - nothing to import yet' : 'not written - no awareness doc yet', 0, { imports: [] });
     }
-    say('IMPORTS', composed.imports.join(', '));
+    say('IMPORTS', composed.imports.join(', ') || 'none - the map\'s line alone');
+    // The budgets are the script's to count, never the model's (spec 1.4): a size line per import, a warning past a cap.
+    for (const name of composed.imports)
+    {
+        const bytes = Buffer.byteLength(readText(path.join(dir, name)) || '');
+        say('size', `${name} ${bytes} bytes`);
+        if (BUDGETS[name] && bytes > BUDGETS[name]) say('over budget', `${name} ${bytes} of ${BUDGETS[name]} bytes`);
+    }
     const live = readText(rulePath);
     let verdict;
     if (live !== null && normalize(live) === composed.text) verdict = `unchanged, not rewritten - ${RULE_REL}, ${Buffer.byteLength(live)} bytes`;
@@ -1215,15 +1254,16 @@ function writeAwarenessRule(projectRoot, { say: sayArg, print = true, docs: docs
     {
         try { fs.mkdirSync(path.dirname(rulePath), { recursive: true }); fs.writeFileSync(rulePath, composed.text); }
         catch (err) { say('RULE', `FAIL - ${RULE_REL} could not be written (${err.code || err.message})`); return done('not written - the write failed', 1); }
-        verdict = `${live === null ? 'created' : 'refreshed'} - ${RULE_REL}, ${Buffer.byteLength(composed.text)} bytes, imports ${composed.imports.length}`;
+        verdict = `${live === null ? 'created' : 'refreshed'} - ${RULE_REL}, ${Buffer.byteLength(composed.text)} bytes, imports ${composed.imports.length}${composed.mapLine ? ', the map\'s line' : ''}`;
     }
     say('RULE', verdict);
     const removed = [];
-    for (const [name, doc] of SUPERSEDED_RULES)
+    for (const [name, covers] of SUPERSEDED_RULES)
     {
         const file = path.join(projectRoot, '.claude', 'rules', name);
         // the related rule goes once the doc records the user's answer, an empty 'none' doc included
-        const covered = composed.imports.includes(doc) || (doc === RELATED_DOC && readText(path.resolve(projectRoot, String(docs), AWARENESS_DIR, RELATED_DOC)) !== null);
+        const covered = covers.some((doc) => composed.imports.includes(doc) || (doc === MAP_LINE_COVERS && composed.mapLine)
+            || (doc === RELATED_DOC && readText(path.join(dir, RELATED_DOC)) !== null));
         if (!covered || !statOf(file)) continue;
         if (!capturesOwn(name, readText(file) || ''))
         {
@@ -1233,8 +1273,90 @@ function writeAwarenessRule(projectRoot, { say: sayArg, print = true, docs: docs
         try { fs.rmSync(file); removed.push(name); }
         catch (err) { say('REMOVED', `.claude/rules/${name} is still there - ${err.code || err.message}; name it in the report`); }
     }
-    if (removed.length) say('REMOVED', `removed ${removed.map((n) => `.claude/rules/${n}`).join(', ')} - alfred-awareness.md imports their content`);
+    if (removed.length) say('REMOVED', `removed ${removed.map((n) => `.claude/rules/${n}`).join(', ')} - alfred-awareness.md imports their content${removed.includes('alfred-architecture.md') ? ' or points at the map' : ''}`);
     return done(`${verdict}${removed.length ? `; superseded removed: ${removed.join(', ')}` : ''}`, 0, { imports: composed.imports, removed });
+}
+
+// ---------------------------------------------------------------- --state: one line per part, for the chain ask
+
+// The map's home as the docs engine reads it (docs.js mapDomain): architecture/ while only it holds the map or its block,
+// else awareness/ - so a provisional ORIENTATION.md alone leaves the map absent at the old home.
+const MAP_HOMES = { awareness: ['ARCHITECTURE-AWARENESS.md', 'ARCHITECTURE-ORIENTATION-AWARENESS.md'], architecture: ['ARCHITECTURE.md', 'ORIENTATION.md'] };
+function mapHome(docsDir)
+{
+    const holds = (d) => MAP_HOMES[d].some((n) => statOf(path.join(docsDir, d, n)));
+    return holds('architecture') && !holds('awareness') ? 'architecture' : 'awareness';
+}
+// The router table's rows and each part's docs (its Writes column, the generated rules and the user's own file aside).
+function stateParts(docsDir)
+{
+    const home = mapHome(docsDir);
+    return [
+        ['project', [INFO_DOC, runBookOf(docsDir), RESOURCES_DOC].map((n) => `${AWARENESS_DIR}/${n}`)],
+        ['related-projects', [`${AWARENESS_DIR}/${RELATED_DOC}`]],
+        ['project-code-style', ['preferences/PROJECT-CODE-PREFERENCES.md']],
+        ['architecture', [`${home}/${MAP_HOMES[home][0]}`], home],
+    ];
+}
+// The top stamp's branch and sha, markup around it allowed (capture-quality's quality-state.js reads it the same way).
+function capturedStamp(text)
+{
+    const m = /^[ \t>*_`]*Captured:[ \t*_`]*([^\s@`*,]+)@([0-9a-f]{4,40})/m.exec(String(text).replace(/\r\n/g, '\n'));
+    return m ? `${m[1]}@${m[2].slice(0, 7)}` : null;
+}
+// The engine's drift signal, one `docs.js stale` run: each row's file key counted. null when the engine is absent or
+// failed - the lines then read by presence alone.
+function staleKeys(projectRoot)
+{
+    const engine = path.join(projectRoot, '.claude', 'hooks', 'docs.js');
+    if (!statOf(engine)) return { counts: null, why: 'no docs engine' };
+    const r = spawnSync(process.execPath, [engine, 'stale'], { cwd: projectRoot, env: { ...process.env, CLAUDE_PROJECT_DIR: projectRoot }, encoding: 'utf8', timeout: 30000 });
+    if (r.error || r.status !== 0) return { counts: null, why: 'docs engine failed' };
+    const counts = new Map();
+    for (const m of String(r.stdout).matchAll(/^([^#\s]+)#\S+ - \d+ covered file/gm)) counts.set(m[1], (counts.get(m[1]) || 0) + 1);
+    return { counts, why: null };
+}
+const RANK = { current: 0, stale: 1, unstamped: 2, absent: 3 };
+function partLine(docsDir, docs, home, counts, why)
+{
+    const name = (rel) => path.posix.basename(rel);
+    const key = (rel) => name(rel).replace(/\.md$/, '');
+    // the map's references/ and history/ sections are the architecture part's too, by their file key
+    const refKeys = home ? ['references', 'history'].flatMap((d) => readDir(path.join(docsDir, home, d)).filter((e) => e.isFile() && e.name.endsWith('.md')).map((e) => e.name.slice(0, -3))) : [];
+    const each = docs.map((rel, i) =>
+    {
+        const st = statOf(path.join(docsDir, rel));
+        if (!st) return { rel, kind: 'absent' };
+        const stamp = st.isFile() ? capturedStamp(readText(path.join(docsDir, rel)) || '') : null;
+        // no engine at all (the docs hook deselected): presence alone; a failed one loses only the stale signal
+        if (!stamp) return { rel, kind: why === 'no docs engine' ? 'current' : 'unstamped' };
+        const n = counts ? [key(rel), ...(i === 0 ? refKeys : [])].reduce((sum, k) => sum + (counts.get(k) || 0), 0) : 0;
+        return { rel, kind: n ? 'stale' : 'current', stamp, n };
+    });
+    const worst = each.reduce((a, b) => (RANK[b.kind] > RANK[a.kind] ? b : a));
+    const tail = why ? ` (${why})` : '';
+    if (worst.kind === 'absent') return why === 'no docs engine' ? `absent${tail}` : `absent (no ${name(worst.rel)})${tail}`;
+    if (worst.kind === 'unstamped') return `unstamped (${name(worst.rel)})${tail}`;
+    if (worst.kind === 'stale')
+    {
+        const stale = each.filter((d) => d.kind === 'stale');
+        const n = stale.reduce((sum, d) => sum + d.n, 0);
+        return `stale ${stale[0].stamp} (${n} sections stale${docs.length > 1 ? ` in ${stale.map((d) => name(d.rel)).join(', ')}` : ''})`;
+    }
+    return `current${each[0].stamp ? ` ${each[0].stamp}` : ''}${tail}`;
+}
+// --state reads, never writes, and always exits 0: the chain ask is put whatever this prints.
+function printState(projectRoot)
+{
+    try
+    {
+        const docsDir = path.resolve(projectRoot, String(docsRoot(projectRoot).value));
+        const { counts, why } = staleKeys(projectRoot);
+        for (const [part, docs, home] of stateParts(docsDir)) console.log(`${part}: ${partLine(docsDir, docs, home, counts, why)}`);
+        console.log('agents: run');
+    }
+    catch (err) { console.log(`awareness-state: failed (${err.message})`); }
+    return 0;
 }
 
 // ---------------------------------------------------------------- entry
@@ -1253,6 +1375,7 @@ function main()
     const bodyArg = argOf('--body');
     if (process.argv.includes('--body') && !bodyArg) { console.log('--body needs a file path (or `-` for stdin)'); return 2; }
     if (bodyArg) return compare(projectRoot, bodyArg);
+    if (process.argv.includes('--state')) return printState(projectRoot);
     if (process.argv.includes('--rule')) return writeAwarenessRule(projectRoot).code;
     if (process.argv.includes('--write')) return writeRule(projectRoot, process.argv.includes('--refresh'));
     return report(projectRoot);
@@ -1275,4 +1398,4 @@ if (require.main === module)
     process.exitCode = main();
 }
 
-module.exports = { composeAwarenessRule, writeAwarenessRule, awarenessImport, ensureNotOwned, docsRoot, dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor, parsePluginList, projectKey, crossCheckPlugins, settingsPluginState, pluginEntries };
+module.exports = { RUN_BOOK_NAMES, runBookOf, composeAwarenessRule, writeAwarenessRule, awarenessImport, ensureNotOwned, docsRoot, dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor, parsePluginList, projectKey, crossCheckPlugins, settingsPluginState, pluginEntries };

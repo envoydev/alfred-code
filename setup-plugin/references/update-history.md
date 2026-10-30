@@ -136,7 +136,7 @@ project picked that plugin.
 Update moves the code style into the preferences docs, with no ask: `code-style/CODE-STYLE.md` becomes
 `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md`, `CODE-PREFERENCES.md` becomes `PERSONAL-CODE-PREFERENCES.md`,
 their section ids and `watch.json` entries are re-spelled, and `code-style/` goes once empty. The code-style capture is
-`/capture-project-code-style` now (the table below). The generated `project-code-style.md` goes when it holds the capture's text; one the user
+`/capture-awareness project-code-style` now (the table below). The generated `project-code-style.md` goes when it holds the capture's text; one the user
 wrote is kept and named. A doc already at the new path wins: the old one stays where it is, named, for the user to merge.
 Report every `docs migration (preferences)`, `renamed:` and `!!` line.
 
@@ -219,9 +219,9 @@ who asks about a name the log did not print.
 | `/project-diagnose-failure` | `/issue-diagnoser` |
 | `/project-ci-failure-signatures` | `/issue-signatures-ci` |
 | `/project-runtime-failure-signatures` | `/issue-signatures-runtime` |
-| `/project-architecture-analyzer` | `/capture-architecture` |
+| `/project-architecture-analyzer` | `/capture-awareness` |
 | `/project-architecture-quality-analyzer` | `/capture-quality` |
-| `/project-code-style-analyzer` | `/capture-project-code-style` |
+| `/project-code-style-analyzer` | `/capture-awareness` |
 | `/project-test-coverage-analyzer` | `/capture-quality` |
 | `/project-related-context` | `/capture-awareness` |
 | `/project-agent-capabilities` | `/capture-awareness` |
@@ -241,11 +241,11 @@ who asks about a name the log did not print.
 | `/capture-agent-capabilities` | `/capture-awareness` |
 | `/capture-project-capabilities` | `/capture-awareness` |
 | `/alfred-capture-agent-capabilities` | `/capture-awareness` |
-| `/alfred-capture-architecture` | `/capture-architecture` |
+| `/alfred-capture-architecture` | `/capture-awareness` |
 | `/alfred-capture-architecture-quality` | `/capture-quality` |
 | `/alfred-capture-code-quality` | `/capture-quality` |
-| `/alfred-capture-code-style` | `/capture-project-code-style` |
-| `/capture-code-style` | `/capture-project-code-style` |
+| `/alfred-capture-code-style` | `/capture-awareness` |
+| `/capture-code-style` | `/capture-awareness` |
 | `/alfred-capture-first-look` | `/capture-first-look` |
 | `/alfred-capture-project-capabilities` | `/capture-awareness` |
 | `/alfred-capture-related-projects` | `/capture-awareness` |
@@ -580,3 +580,52 @@ nor the status file's `resumeAt`, offers no fresh session after it, and says 'co
 compaction after a 50-minute gap waits for its transcript to say which kind it was (about 30 seconds), and the first
 reads after the update check each point an older release recorded in the last 30 days against its transcript: an idle
 one is dropped, a true one kept, and one whose transcript is gone dropped too. Nothing to do by hand.
+
+## after 3.4.1 - one awareness capture
+
+The code-style capture and the architecture capture are now parts of `capture-awareness`, beside its project,
+related-projects and agents parts. Update carries every pick, `skillOverrides` value and selection line across and
+prunes the old copies, one `renamed:` line each - report them.
+
+| Before | Now |
+|---|---|
+| `/capture-project-code-style` | `/capture-awareness` |
+| `/capture-architecture` | `/capture-awareness` |
+
+A part runs by its topic word: `/capture-awareness project-code-style` (or `code-style`) and `/capture-awareness
+architecture` (a target path may follow); `project`, `related-projects` (or `related`) and `agents` pick the other
+three. `/capture-awareness` alone runs the chain of all five parts behind one ask. The skill is model-invocable now:
+a request in words loads the part it names. Update never writes your account's `~/.claude/settings.json`: an override there
+under an old name stops matching anything, and `capture-awareness` has no per-part switch - setting it `off` switches
+all five parts off, so drop the old key rather than re-key it unless that is what you want.
+
+The architecture docs move into the awareness domain, one `layout:` line for the move:
+
+| Before (under `<docs-path>/`) | Now |
+|---|---|
+| `architecture/ARCHITECTURE.md` | `awareness/ARCHITECTURE-AWARENESS.md` |
+| `architecture/ORIENTATION.md` | `awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md` |
+| `architecture/BRANCH-DELTA.md`, `references/`, `history/` | the same names under `awareness/` |
+| `architecture/watch.json` | merged into `awareness/watch.json`, each entry's kind prefixed `architecture: ` |
+| `awareness/PROJECT-AWARENESS.md` (the run book) | `awareness/RUN-AND-DEBUG-AWARENESS.md` |
+
+The run book split: it keeps how to build, start, reach, log into and hand-check the app, and two new docs take the
+rest - `PROJECT-INFO-AWARENESS.md` (what the project is, its stack, where it runs) and `RESOURCES-AWARENESS.md` (the
+issue tracker, the wiki, the error monitor, the git host and CI). Only `/capture-awareness project` writes them, so the
+update names it as a next step; it also creates `USER-AWARENESS.md` once, a free-form file of your own that no run
+rewrites. `alfred-awareness.md` imports each doc and points at the map in one line; the 3.3.0 marker rule
+`alfred-architecture.md` goes, unless you edited it (then it stays, named). Every section ref the stack wrote follows
+the new keys (`ARCHITECTURE#modules` becomes `ARCHITECTURE-AWARENESS#modules`, `PROJECT-AWARENESS#build`
+`RUN-AND-DEBUG-AWARENESS#build`) - the docs, their `watch.json`, the generated rules and the branch versions under
+`.branches/`. A file of your own (AGENTS.md, CLAUDE.md, a plan, `USER-AWARENESS.md`) is never rewritten: each line is
+named with `!!`, and `node "$TMP/repo/scripts/update-preflight.js" --respell --root .` shows the change, `--apply`
+writes it. A sibling's `first_read:` line in `RELATED-PROJECTS-AWARENESS.md` is a path in that repo and stays as it is.
+
+A move that clashes (a file at both homes) keeps both and names each; a move that stops part way says which step,
+and the next update finishes it. To finish one by hand: move each file left in `architecture/` to its new name above,
+add its `watch.json` entries to `awareness/watch.json` with the `architecture: ` prefix, respell its refs, then remove
+`architecture/`. To go back to an older release: move the files back to their old names under `architecture/`, move the
+`architecture: ` entries out of `awareness/watch.json` into `architecture/watch.json`, rename
+`RUN-AND-DEBUG-AWARENESS.md` back to `PROJECT-AWARENESS.md`, respell the keys back, and run that release's
+architecture capture to write its marker rule again - which restores the orientation doc at session start and the
+known-ceilings register.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // docs-session.js - makes the project's docs (every domain under the docs root) the starting point of a session
 // and keeps them honest at its end.
-//   SessionStart  -> folds merged branches' doc versions into mainline, then pushes ORIENTATION.md, this branch's
+//   SessionStart  -> folds merged branches' doc versions into mainline, then pushes the map's orientation block, this branch's
 //                    overrides and conflicts, and how to read by section; snapshots the tree for the end check
 //   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one at
 //                    dispatch; a seat's own compaction runs SessionStart inside it, with its agent_id), and the
@@ -319,8 +319,8 @@ function orientation(root, docs) {
   // 10,000-character context cap, which swaps it for a path and a preview - the where / show lines at its end were
   // lost (audit 2026-10-08).
   const BLOCK_CAP = 4096;
-  if (block.length > BLOCK_CAP) block = `${block.slice(0, BLOCK_CAP)}\n... (ORIENTATION.md continues past its 4KB cap - \`${READ} lint\` names the overrun; read the rest by section)`;
-  // ORIENTATION.md stays architecture's own file, read exactly as before - a domain gets no per-domain twin.
+  if (block.length > BLOCK_CAP) block = `${block.slice(0, BLOCK_CAP)}\n... (${path.basename(docs.BLOCK_FILE)} continues past its 4KB cap - \`${READ} lint\` names the overrun; read the rest by section)`;
+  // The orientation block stays the map's own file (BLOCK_FILE, at the map's home), read as before - a domain gets no per-domain twin.
   // The one line below is the part that used to name architecture/ as if it were the only docs folder; a
   // project whose docs are preferences/ and awareness/ (no architecture/ at all) is named correctly here.
   let doms = [];
@@ -740,7 +740,7 @@ function sectionRefs(docs, hits, limit, exclude = () => false) {
   // 3 asks it always found (4.2ms median) - a ~10x cut, growing with corpus size since each stopped call
   // was its own full walk.
   // notOwnedOf, not unowned: the cheap pre-check must read the SAME list the warning itself matches on
-  // (protectedRef -> notOwnedOf), which is what a domain DECLARED plus architecture's implicit ORIENTATION.md.
+  // (protectedRef -> notOwnedOf), which is what a domain DECLARED plus the defaults (NOT_OWNED_DEFAULTS: the map's orientation block).
   // Reading the declared list alone made this say 'no domain can warn' where the effective list still can,
   // and the loop then stops before a warning the expensive path would have produced - one idea spelled twice,
   // with the optimisation holding the shorter spelling. Guarded like resolveHit above: an older docs.js copy
@@ -1204,24 +1204,33 @@ function stampedPlanWrite(input, root) {
   return true;
 }
 
-// capture-architecture's step 5 writes only once verification is FINISHED, and prose did not hold it: the run announced
+// The architecture capture writes only once verification is FINISHED, and prose did not hold it: the run announced
 // 'Verification is done', made its first Edit, then dispatched a sixth analyzer and kept editing while it ran (audit
 // 2026-10-20 C43, add5a91e: 114 reference Edits interleaved with probes, the context compacted mid-write). So a write
-// under `<docs-path>/architecture/` by the main session - a file tool, a shell write, a `docs.js set` of an architecture
-// ref - is denied while a capture analyzer seat this session dispatched has not handed back. Once per dispatch: the same
+// to the map (`<docs-path>/awareness/`'s map files, or the legacy `architecture/` home) by the main session - a file
+// tool, a shell write, a `docs.js set` of a map ref - is denied while a capture analyzer seat this session dispatched has not handed back. Once per dispatch: the same
 // write sent again while that seat is still out passes as a logged `seat-bypass`. A seat's own call, an unreadable
 // transcript and the gate part's off switch (`docs-session:gate`) release it. Placed before the domain gate, since a first capture writes
 // architecture/ before any domain exists.
 const ANALYZER_SEAT = /^(?:alfred-code:)?(?:architecture|code-quality|code-style|related-project|test-coverage)-analyzer$/;
 const SEAT_WINDOW = 8 * 1024 * 1024;
 const SEAT_HELD_CAP = 200;
+// the map's files under awareness/, and a `docs.js set` ref naming one - never a bare `awareness/`, which would hold the
+// run book's own sets
+const MAP_FILE = /^(?:ARCHITECTURE-AWARENESS\.md|ARCHITECTURE-ORIENTATION-AWARENESS\.md|BRANCH-DELTA\.md|references\/|history\/)/;
+const MAP_REF = /^(?:awareness\/)?(?:ARCHITECTURE-AWARENESS#|ARCHITECTURE-ORIENTATION-AWARENESS#|references\/|history\/)/;
 function architectureWrites(input, root, docs) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const real = (p) => { try { return fs.realpathSync.native(p); } catch { return null; } };
-  const arch = path.resolve(root, docsRootEnv(), 'architecture');
+  const arch = path.resolve(root, docsRootEnv(), 'architecture'); // the legacy home, held until its move
+  const aware = path.resolve(root, docsRootEnv(), 'awareness');
   const archs = [...new Set([arch, real(arch) || arch])];
-  const inside = (abs) => archs.some((a) => { const rel = path.relative(a, abs); return !rel.startsWith('..') && !path.isAbsolute(rel); });
+  const awares = [...new Set([aware, real(aware) || aware])];
+  const within = (dirs, abs) => dirs.map((a) => path.relative(a, abs)).find((rel) => !rel.startsWith('..') && !path.isAbsolute(rel));
+  // under awareness/ only the map's own files are held: the run book and the other parts write while a seat is out
+  const inside = (abs) => within(archs, abs) !== undefined
+    || MAP_FILE.test((within(awares, abs) || '').split(path.sep).join('/'));
   // a new file has no real path yet: its folder's (macOS /tmp is /private/tmp) decides
   const under = (abs) => inside(abs) || inside(real(abs) || path.join(real(path.dirname(abs)) || path.dirname(abs), path.basename(abs)));
   const out = [];
@@ -1233,7 +1242,7 @@ function architectureWrites(input, root, docs) {
     for (const m of t.command.matchAll(/docs\.js["']?[ \t]+set[ \t]+['"]?([\w#.\/-]+)/g)) {
       let file = null;
       try { file = docs && typeof docs.findFile === 'function' ? docs.findFile(m[1].split('#')[0]) : null; } catch { /* an unresolved ref */ }
-      if (/^architecture\//.test(m[1]) || (file && under(file))) out.push(m[1]);
+      if (/^architecture\//.test(m[1]) || MAP_REF.test(m[1]) || (file && under(file))) out.push(m[1]);
     }
   }
   return out;
@@ -1333,7 +1342,7 @@ function seatHold(input, root, docs) {
   const named = out.map(([, s]) => (s.desc ? `${s.type} ('${s.desc}')` : s.type));
   const reason = [
     `Held: ${target} is an architecture doc, and ${out.length} analyzer seat(s) this session dispatched have not handed back: ${named.join(', ')}.`,
-    'The architecture write comes after verification is FINISHED (capture-architecture step 5). Wait for the hand-back - its',
+    'The architecture write comes after verification is FINISHED (/capture-awareness architecture). Wait for the hand-back - its',
     'notification wakes this session, so no polling - fold its digest in, then write. This hold is made once per dispatch.',
   ].join('\n');
   log(root, input, { event: 'seat-hold', target, seats: out.map(([, s]) => s.type) });

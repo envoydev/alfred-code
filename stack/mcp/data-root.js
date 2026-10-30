@@ -149,6 +149,8 @@ const DOCS_STATE_IGNORE = [
     '/awareness/AGENTS-AWARENESS.md',
     "# the user's own preferences - how they want the assistant to work, and their code taste",
     '/preferences/PERSONAL-PREFERENCES.md', '/preferences/PERSONAL-CODE-PREFERENCES.md',
+    "# the user's own awareness notes",
+    '/awareness/USER-AWARENESS.md',
 ];
 const relOf = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
 function docsInsideRoot({ root, docsPath })
@@ -346,10 +348,11 @@ function adoptCredentials({ projectDir, root = DATA_ROOT_DEFAULT, docsPath = `${
     }
     catch (err) { return { state: 'failed', ...at, why: err.code || err.message }; }
     // The run book names the file by a path ending in its name, backticked or bare: each spelling becomes the store's.
-    // It sits in awareness/ once an install moved it there (2026-10-16, docs.js DOCS_MIGRATIONS), at its 2026-10-15 or
-    // its first home before.
+    // It sits in awareness/ once an install moved it there (2026-10-16, docs.js DOCS_MIGRATIONS) - as RUN-AND-DEBUG-AWARENESS.md
+    // since the 2026-10-29 split, PROJECT-AWARENESS.md before - at its 2026-10-15 or its first home before that.
     let repointed = 0;
-    for (const book of [path.resolve(projectDir, String(docsPath), 'awareness', 'PROJECT-AWARENESS.md'),
+    for (const book of [path.resolve(projectDir, String(docsPath), 'awareness', 'RUN-AND-DEBUG-AWARENESS.md'),
+        path.resolve(projectDir, String(docsPath), 'awareness', 'PROJECT-AWARENESS.md'),
         path.resolve(projectDir, String(docsPath), 'project-awareness', 'PROJECT-AWARENESS.md'), path.join(folder, 'PROJECT-CAPABILITIES.md')])
     {
         try
@@ -382,9 +385,10 @@ function renameSecrets({ projectDir, roots, check = gitIgnores })
     });
 }
 // The run book names the store by its path: once `<root>/.secrets` is the store and no `<root>/.sensitive-data` is left,
-// each `<root>/.sensitive-data` in the three run book homes under the docs root (adoptCredentials' list) becomes
+// each `<root>/.sensitive-data` in the run book homes under the docs root (adoptCredentials' list) becomes
 // `<root>/.secrets` - only the root's own path, never one inside a longer path. Returns how many it re-pointed.
-const RUN_BOOKS = ['awareness/PROJECT-AWARENESS.md', 'project-awareness/PROJECT-AWARENESS.md', 'project-capabilities/PROJECT-CAPABILITIES.md'];
+const RUN_BOOKS = ['awareness/RUN-AND-DEBUG-AWARENESS.md', 'awareness/PROJECT-AWARENESS.md', 'project-awareness/PROJECT-AWARENESS.md',
+    'project-capabilities/PROJECT-CAPABILITIES.md'];
 function repointRunBooks({ projectDir, docsPath, root = DATA_ROOT_DEFAULT })
 {
     const base = path.join(projectDir, ...relOf(root).split('/'));

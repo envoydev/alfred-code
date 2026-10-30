@@ -23,7 +23,7 @@ extend - ARCHITECTURE.md has a section per concern ('Layers', 'Data'); the state
 ### Task 1 - ARCHITECTURE.md gains an 'Order states' section
 
 - status: TODO
-- target: .alfred/docs/architecture/ARCHITECTURE.md (modify) - a new `## Order states` section after 'Data'
+- target: .alfred/docs/awareness/ARCHITECTURE-AWARENESS.md (modify) - a new `## Order states` section after 'Data'
 - change: a reader finds the two states the code writes (`placed` on placeOrder, `cancelled` on cancelOrder), the refusal of a cancel for a `shipped` order, and that nothing in this service sets `shipped`
 - evidence: src/orders/orderService.js:6 (`status: 'placed'`), src/orders/orderService.js:15 (`setStatus(id, 'cancelled')`), src/orders/orderService.js:14 (the `shipped` refusal); the grep above found no writer of `shipped` in src/
 - verification: read the section back against the three lines cited, and confirm the page's other sections are unchanged with `git diff --stat`

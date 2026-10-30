@@ -103,8 +103,7 @@ Skills you start by name. Every install has these.
 | `/task-solve-cross` | A feature across backend and frontend |
 | `/issue-diagnoser` | Find the cause of a failure |
 | `/task-version-upgrade` | A breaking upgrade, like .NET 10 |
-| `/capture-architecture` | Write or refresh the architecture docs |
-| `/capture-awareness` | What is installed, the run book, sibling repos |
+| `/capture-awareness` | The architecture docs, code style, run book, what is installed, sibling repos |
 | `/loop-code-quality` | Find and fix code-quality issues in rounds |
 | `/mode-auto-run` | Any request, start to finish, while you are away |
 
@@ -150,7 +149,7 @@ auto-run on and runs the request in one go. Each prompt shows the modes that are
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 90 | house conventions and workflows |
+| **Skills** | 88 | house conventions and workflows |
 | **Agents** | 45 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
 | **Hooks** | 18 | the guards, plus the docs, preferences and history hooks |

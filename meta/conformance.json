@@ -84,17 +84,17 @@
       "window": { "opens": { "session": true, "when": { "context": "(?:^|/)\\.claude/rules/alfred-awareness\\.md$" } } },
       "steps": [
         { "id": "inventory", "type": "regex", "target": "context", "pattern": "(?:^|/)awareness/AGENTS-AWARENESS\\.md$", "flags": "m" },
-        { "id": "run-book", "type": "regex", "target": "context", "pattern": "(?:^|/)awareness/PROJECT-AWARENESS\\.md$", "flags": "m" }
+        { "id": "run-book", "type": "regex", "target": "context", "pattern": "(?:^|/)awareness/(?:RUN-AND-DEBUG|PROJECT)-AWARENESS\\.md$", "flags": "m" }
       ]
     },
     {
       "id": "A2", "area": "awareness",
       "claim": "A verifier whose context lacks the run book reads it before it first starts the app.",
       "source": { "file": "stack/agents/aspnet-verifier.md", "marker": "follow it before you start, log into or hand-check the app" },
-      "window": { "opens": { "seat": "verifier$", "event": { "ref": "app_start" }, "first": true, "lookback": "session", "unless": { "context": "(?:^|/)awareness/PROJECT-AWARENESS\\.md$" } } },
+      "window": { "opens": { "seat": "verifier$", "event": { "ref": "app_start" }, "first": true, "lookback": "session", "unless": { "context": "(?:^|/)awareness/(?:RUN-AND-DEBUG|PROJECT)-AWARENESS\\.md$" } } },
       "steps": [ { "id": "run-book-read", "type": "tool_used", "min": 1, "any": [
-        { "tool": "Read", "field": "file_path", "text_match": "(?:^|[\\\\/])awareness[\\\\/]PROJECT-AWARENESS\\.md$" },
-        { "tool": "Bash", "field": "command", "text_match": "awareness[\\\\/]PROJECT-AWARENESS\\.md" }
+        { "tool": "Read", "field": "file_path", "text_match": "(?:^|[\\\\/])awareness[\\\\/](?:RUN-AND-DEBUG|PROJECT)-AWARENESS\\.md$" },
+        { "tool": "Bash", "field": "command", "text_match": "awareness[\\\\/](?:RUN-AND-DEBUG|PROJECT)-AWARENESS\\.md" }
       ] } ]
     },
     {

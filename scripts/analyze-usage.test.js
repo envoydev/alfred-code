@@ -2317,17 +2317,19 @@ test('a plugin-scoped session: its alfred-code scoped names join the bare invent
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// Task 22: the code-style capture was renamed, and a rule it generated before that names its old
-// spelling. Both count as a rule attach; the old spelling comes from the manifest's `renamed` map.
-test('style rule attaches: a rule generated under the capture\'s old name still counts', () => {
-  const renamed = require('../meta/stack-manifest.json').renamed.skills;
-  const old = Object.keys(renamed).find((k) => renamed[k] === 'capture-project-code-style');
-  assert.ok(old, 'the map names the capture\'s old spelling');
+// Task 22, then the capture-awareness merge (2026-10-29): a rule the code-style capture generated names the skill it ran
+// under then - every renamedTopics name of the project-code-style part - and an update's respell names capture-awareness.
+// All of them count as a rule attach; a name of another part never does.
+test('style rule attaches: a rule under any of the code-style capture\'s names counts, another part\'s does not', () => {
+  const topics = require('../meta/stack-manifest.json').renamedTopics;
+  const olds = Object.keys(topics).filter((k) => topics[k] === 'project-code-style');
+  assert.ok(olds.includes('capture-project-code-style') && olds.length >= 3, 'the map names the capture\'s old spellings'); // legacy
   const dir = tmp();
-  const said = (ts, name) => ({ type: 'user', timestamp: ts, message: { content: `# Project code style (generated - the ${name} skill owns this rule)` } });
-  const file = fixture(dir, [said('2026-07-15T07:00:00.000Z', old), said('2026-07-15T07:00:01.000Z', 'capture-project-code-style'),
-    { type: 'assistant', timestamp: '2026-07-15T07:00:02.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 1, 1), content: [{ type: 'text', text: 'ok' }] } }]);
-  try { assert.strictEqual(run([file]).main.styleRuleAttaches, 2); }
+  const said = (i, name) => ({ type: 'user', timestamp: `2026-07-15T07:00:${String(i).padStart(2, '0')}.000Z`, message: { content: `# Project code style (generated - the ${name} skill owns this rule)` } });
+  const other = Object.keys(topics).find((k) => topics[k] === 'architecture');
+  const file = fixture(dir, [...olds.map((n, i) => said(i, n)), said(40, 'capture-awareness'), said(41, other),
+    { type: 'assistant', timestamp: '2026-07-15T07:00:50.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 1, 1), content: [{ type: 'text', text: 'ok' }] } }]);
+  try { assert.strictEqual(run([file]).main.styleRuleAttaches, olds.length + 1); }
   finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

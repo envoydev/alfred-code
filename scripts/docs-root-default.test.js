@@ -193,3 +193,22 @@ test('local versioning never hides a root that git already tracks docs in', () =
     assert.ok(!fs.existsSync(path.join(root, 'docs', '.gitignore')));
     assert.ok(logs.some((m) => /git tracks docs under docs/.test(m)), logs.join(' | '));
 });
+
+// final review I2: the git text 3.4.1 wrote (frozen here - the 2026-10-29 split added the USER-AWARENESS.md lines) is
+// still the stack's own: an update replaces it, so the user's own notes are ignored, never kept out of the rewrite as
+// the project's file.
+test('the 3.4.1 git text is replaced as the stack\'s own', () =>
+{
+    const root = repo();
+    fs.mkdirSync(path.join(root, '.alfred', 'docs'), { recursive: true });
+    const v341 = '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n'
+        + '# the hooks\' state before 2.8.0, which a session started before the update still writes\n'
+        + '/flow/\n/hook-blocks/\n/history/*.json\n/tools-usage/\n/docs-log.jsonl\n/usage-report/**/*.jsonl\n'
+        + '# the run book\'s credentials file before 2026-10-13, which an older capture still writes\n/project-capabilities/credentials.local.env\n'
+        + '# the awareness capture\'s inventory names this machine\'s plugins\n/awareness/AGENTS-AWARENESS.md\n'
+        + '# the user\'s own preferences - how they want the assistant to work, and their code taste\n'
+        + '/preferences/PERSONAL-PREFERENCES.md\n/preferences/PERSONAL-CODE-PREFERENCES.md\n';
+    fs.writeFileSync(ignoreOf(root), v341);
+    assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' }), 'replaced');
+    assert.match(fs.readFileSync(ignoreOf(root), 'utf8'), /^\/awareness\/USER-AWARENESS\.md$/m);
+});

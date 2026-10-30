@@ -336,7 +336,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               remove: ['.claude/hooks/inject-code-style.js'],
               unwire_settings_hook: 'inject-code-style.js::PostToolUse',
               why: 'style delivery moved to a generated rule',
-              then: 're-run /capture-project-code-style' },
+              then: 're-run /capture-awareness project-code-style' },
             { id: 'env-one',
               detect: { settings_env_key: 'ALFRED_CODE_OLD_KEY' },
               rename_settings_env: { from: 'ALFRED_CODE_OLD_KEY', to: 'ALFRED_CODE_NEW_KEY' },
@@ -362,7 +362,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
     const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.match(out, /^migration: fired-one\tfile_exists$/m, 'the id line is unchanged - existing branches still read');
     assert.match(out, /^ {2}why: style delivery moved to a generated rule$/m, 'the reason the report labels it with');
-    assert.match(out, /^ {2}then: re-run \/capture-project-code-style$/m, 'the follow-up the report prints');
+    assert.match(out, /^ {2}then: re-run \/capture-awareness project-code-style$/m, 'the follow-up the report prints');
     assert.match(out, /^ {2}remove: \.claude\/hooks\/inject-code-style\.js$/m, 'what the prune list takes');
     assert.match(out, /^ {2}unwire: inject-code-style\.js::PostToolUse$/m, 'the exact settings.json entry to drop');
     assert.match(out, /^ {2}env-rename: ALFRED_CODE_OLD_KEY -> ALFRED_CODE_NEW_KEY$/m, 'the env edit, on the entry that carries one');
@@ -852,6 +852,57 @@ test('--respell shows the topic form of a merged name', () => {
         const dry = run(['--respell', '--snapshot', snap, '--root', path.join(dir, 'root')]).out;
         assert.match(dry, /^respell: \.claude\/AGENTS\.md:1 {2}capture-alpha-part -> capture-merged alpha-part$/m, dry);
         assert.match(dry, /^\+ Run \/capture-merged alpha-part src first\.$/m, dry);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// spec 2026-10-29 2.1 step 4 (D5): a section ref in a file the stack does not own - a plan, the user's notes - is named by
+// the update and planned here, never rewritten unasked; the key rows ride the same plan and apply as the name rows.
+test('--respell plans a section-key row', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-respell-keys-'));
+    try {
+        const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
+        put('.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md', '# Architecture\n\n## Modules\n<!-- id: modules -->\n');
+        put('.alfred/docs/awareness/watch.json', '{}\n');
+        const plan = '# Plan\n\nSee ARCHITECTURE#modules and docs/ARCHITECTURE.md#deploy.\n';
+        put('.alfred/docs/work/plans/p.md', plan);
+        const dry = run(['--respell', '--root', dir]).out;
+        assert.match(dry, /^respell: \.alfred\/docs\/work\/plans\/p\.md:3 {2}ARCHITECTURE -> ARCHITECTURE-AWARENESS$/m, dry);
+        assert.match(dry, /^\+ See ARCHITECTURE-AWARENESS#modules and docs\/ARCHITECTURE\.md#deploy\.$/m, 'a path-qualified ref to another file is no hit');
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred/docs/work/plans/p.md'), 'utf8'), plan, 'a dry run writes nothing');
+        const applied = run(['--respell', '--apply', '--root', dir]).out;
+        assert.match(applied, /^respelled: \.alfred\/docs\/work\/plans\/p\.md - 1 line\(s\)$/m, applied);
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred/docs/work/plans/p.md'), 'utf8'), plan.replace('See ARCHITECTURE#', 'See ARCHITECTURE-AWARENESS#'));
+        assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'a second run has nothing to do');
+        // the map back at its old home: the key is not complete, so no row
+        put('.alfred/docs/architecture/ARCHITECTURE.md', '# old\n');
+        put('.alfred/docs/work/plans/q.md', 'ARCHITECTURE#modules\n');
+        assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// final review C1: a ref whose spelled file exists beside the citing file or at the project root names THAT file - a
+// team's own root ARCHITECTURE.md / ORIENTATION.md - so a fresh install with a captured map plans nothing for it; the
+// 'Re-spell them (Recommended)' ask had offered to break those links on every update, and auto-run applied it.
+test('--respell leaves a ref to a project\'s own ARCHITECTURE.md or ORIENTATION.md', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-respell-own-'));
+    try {
+        const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
+        put('.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md', '# Architecture\n\n## Modules\n<!-- id: modules -->\n');
+        put('.alfred/docs/awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md', '# Orientation\n\n## Start\n<!-- id: start -->\n');
+        put('.alfred/docs/awareness/watch.json', '{}\n');
+        put('ARCHITECTURE.md', '# Team architecture\n\n## Overview\n');
+        put('ORIENTATION.md', '# Team orientation\n\n## Start\n');
+        const agents = '# Agents\n\n- see ARCHITECTURE.md#overview\n- [x](ORIENTATION.md#start)\n';
+        put('AGENTS.md', agents);
+        assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'the root files are the team\'s own');
+        put('docs/notes.md', 'the map: ARCHITECTURE.md#overview\n');
+        assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'the project root\'s file is found from a nested citer too');
+        // with no such file, the bare docs key is still the stack's old map and is planned
+        fs.rmSync(path.join(dir, 'ARCHITECTURE.md'));
+        put('AGENTS.md', '# Agents\n\n- read ARCHITECTURE#modules\n- [x](ORIENTATION.md#start)\n');
+        const dry = run(['--respell', '--root', dir]).out;
+        assert.match(dry, /^respell: AGENTS\.md:3 {2}ARCHITECTURE -> ARCHITECTURE-AWARENESS$/m, dry);
+        assert.doesNotMatch(dry, /AGENTS\.md:4/, 'ORIENTATION.md still exists at the root');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -2,8 +2,8 @@
 
 The measured anecdotes behind this skill's rules, kept out of the run-time body so every session stops paying
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill. Most of
-these predate the split from `capture-architecture`, back when this judgment ran as that skill's
-AGGREGATE step 3 and wrote `<docs-path>/architecture/ASSESSMENT.md` - the anecdotes are unchanged, only the
+these predate the split from the architecture capture (now `capture-awareness`'s architecture part), back when this judgment ran as that skill's
+AGGREGATE step 3 and wrote `architecture/ASSESSMENT.md` under the docs root - the anecdotes are unchanged, only the
 doc's path and the skill that owns them moved.
 
 ## Intro

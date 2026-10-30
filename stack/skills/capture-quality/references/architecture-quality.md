@@ -59,7 +59,7 @@ ARCHITECTURE-ASSESSMENT.md is as of this HEAD on a clean tree. Verify and rewrit
 ## The run
 
 ### 1. ORIENT
-Read `<docs-path>/architecture/ARCHITECTURE.md` - the map `capture-architecture` writes, the structural facts every weakness and strength traces to. No map at all: say so and stop, pointing at that capture - there is nothing to judge yet. A map whose own `Captured:` stamp is far behind HEAD is still read (a stale map is a claim to verify, not a blocker) - note the gap in the report rather than blocking on it.
+Read `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` - the map `capture-awareness`'s architecture part writes, the structural facts every weakness and strength traces to. No map at all: say so and stop, pointing at that capture - there is nothing to judge yet. A map whose own `Captured:` stamp is far behind HEAD is still read (a stale map is a claim to verify, not a blocker) - note the gap in the report rather than blocking on it.
 
 Read `<docs-path>/preferences/ARCHITECTURE-PREFERENCES.md` when present: its `A<n>` entries are the top rule source (`references/architecture-quality-doc-shape.md`), and `node .claude/skills/capture-preferences/scripts/preferences.js check --all --area architecture` locates the breaches of the ones with a `Check:`.
 
@@ -73,7 +73,7 @@ Treat a smell or a pattern as a hypothesis, never a finding, until it clears `re
 
 **The over-build lens, repo-wide.** Hunt what the code carries past its need: an interface with a single implementation, a speculative layer no second caller crosses, dead flexibility (options nobody sets, a generic one type fills), a hand-rolled piece the stdlib or framework ships, a dependency one call site uses. Each candidate takes the findings gate like any other - its 'what breaks' is the next developer's time, or a dependency's upgrade and advisory cost - plus one of the five over-build tags (delete / stdlib / native / yagni / shrink) and its measured cut: the lines and dependencies it removes, counted, never estimated. Survivors land in Must fix; the Summary ranks them biggest cut first and closes with `net: -N lines, -M dependencies possible`.
 
-**Known ceilings.** The map's Known ceilings section (`ARCHITECTURE.md#known-ceilings`), when present, lists the shortcuts builds took on purpose, one `where | limit | revisit when` row each. A row whose 'revisit when' has come true in the code (a second instance now runs, the list now pages) is a Must-fix candidate through the gate like any other; a row with no 'revisit when' is flagged in the REPORT for a person to supply one - a ceiling nobody can revisit is a permanent shortcut by default.
+**Known ceilings.** The map's Known ceilings section (`ARCHITECTURE-AWARENESS.md#known-ceilings`), when present, lists the shortcuts builds took on purpose, one `where | limit | revisit when` row each. A row whose 'revisit when' has come true in the code (a second instance now runs, the list now pages) is a Must-fix candidate through the gate like any other; a row with no 'revisit when' is flagged in the REPORT for a person to supply one - a ceiling nobody can revisit is a permanent shortcut by default.
 
 Strength-check every Must-fix remediation against the Strengths list before it lands: a fix that would erode a listed strength names the tension in its entry and is shaped to preserve it, or the tradeoff is declared and the weakness tiered structural.
 

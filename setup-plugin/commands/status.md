@@ -144,7 +144,7 @@ for a carried seat).
 | alfred-architecture | always-on | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rules (`alfred-architecture.md`, `alfred-awareness.md`), `stack` otherwise,
+capture-written rule (`alfred-awareness.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
@@ -307,15 +307,15 @@ the seat handoff notes still on the bus (`node .claude/hooks/handoff.js left` - 
 
 | artifact | present | captured | file updated |
 |---|---|---|---|
-| architecture/ARCHITECTURE.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
-| architecture/watch.json | yes | - | 2026-07-24 |
+| awareness/ARCHITECTURE-AWARENESS.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
+| awareness/watch.json | yes | - | 2026-07-24 |
 | quality/ARCHITECTURE-ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed domain) | 2026-07-24 |
 | quality/CODE-ASSESSMENT.md | no | - | - |
 | preferences/PROJECT-CODE-PREFERENCES.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | preferences/GIT-PREFERENCES.md | yes | - | 2026-07-25 |
 | preferences/TOOLS-PREFERENCES.md | yes | - | 2026-07-25 |
 | awareness/AGENTS-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
-| awareness/PROJECT-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| awareness/RUN-AND-DEBUG-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/RELATED-PROJECTS-AWARENESS.md | no | - | - |
 | quality/COVERAGE-QUALITY.md | yes | (bar 85%) | 2026-07-25 |
 | quality/loops/ | yes | 3 prompt files | 2026-07-24 |
@@ -345,7 +345,7 @@ then what navigation each actor gets and whether a language server covers the pr
 ## 5. Close
 
 One line, no summary prose: point unfinished captures at their skills (`architecture not
-captured - /capture-architecture`), a health failure or a `drift` / `behind` library row
+captured - /capture-awareness architecture`), a health failure or a `drift` / `behind` library row
 at the sibling command that fixes it, and changes at the sibling commands. Nothing else - this
 command's output IS the tables.
 

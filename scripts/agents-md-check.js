@@ -247,8 +247,8 @@ function patternSpans(line, spans)
 const PARENT_DIR = /\bparent\s+(?:directory|folder|dir)\b|\b(?:one|a)\s+(?:level|folder|directory)\s+(?:up|above)\b/i;
 // A line naming a generated rule points at it, as the outline asks - its words are no copied authoring text (audit
 // 2026-10-11 SD04, session 6288ad94: a correct pointer reworded to silence the row). The generated rules by name
-// (scripts/install/selection.js GENERATED_FILES: architecture, the one awareness rule of 2026-10-16, the 2.8.0
-// preferences rule, and the awareness names before the merge) plus the `alfred-project-*` / `project-*` spellings
+// (scripts/install/selection.js GENERATED_FILES: the architecture marker an install not yet past the 2026-10-29 merge
+// still holds, the one awareness rule of 2026-10-16, the 2.8.0 preferences rule, and the awareness names before the merge) plus the `alfred-project-*` / `project-*` spellings
 // before them - every other `alfred-*` stem is the shipped baseline's, never generated. agents-md-check.test.js holds
 // this list to the rules the capture skills write.
 // alfred-preferences.md ships since 2026-10-21 (it was the preferences capture's), and project-code-style.md is an older install's.

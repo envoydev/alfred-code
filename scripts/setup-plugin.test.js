@@ -162,10 +162,12 @@ test('init bootstrap phase: the order - read, plan, one machine ask, memory and 
     assert.match(flat(init), /`# adds <n> claude-hud keys: <names>`/);
     assert.match(flat(init), /settings\.json\.bak\.<time>/);
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
-    // The three captures, in the brief's order, are the SCRIPT's table - the body cites the script.
+    // The captures, in the brief's order, are the SCRIPT's table - the body cites the script. Since the capture-awareness
+    // merge (2026-10-29) they are that skill's five parts, the seat parts first and the inventory last.
     const { CAPTURES } = require('./init-plan.js');
-    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-architecture', 'capture-project-code-style', 'capture-awareness']);
-    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['architecture-analyzer', 'code-style-analyzer', null]);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), Array(5).fill('capture-awareness'));
+    assert.deepStrictEqual(CAPTURES.map((c) => c.topic), ['architecture', 'project-code-style', 'project', 'related-projects', 'agents']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['architecture-analyzer', 'code-style-analyzer', null, null, null]);
     assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
     assert.ok(!/allowed-tools/.test(cmdBody('init').split('---')[1]), 'no command carries allowed-tools');
 });
@@ -296,11 +298,11 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
 // has no one to dispatch (how code-style-analyzer went unseeded).
 test('every always-seeded capture skill seeds the seat it fans out', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    // capture-quality fans out one seat per part (2026-10-29)
+    // capture-quality and capture-awareness fan out one seat per seat part (2026-10-29); the related part's seat is an
+    // opt-in that is never seeded, so it pairs with nothing here
     const PAIRS = {
-        'capture-architecture': ['architecture-analyzer'],
+        'capture-awareness': ['architecture-analyzer', 'code-style-analyzer'],
         'capture-quality': ['architecture-analyzer', 'code-quality-analyzer', 'test-coverage-analyzer'],
-        'capture-project-code-style': ['code-style-analyzer'],
     };
     for (const [skill, seats] of Object.entries(PAIRS))
     {

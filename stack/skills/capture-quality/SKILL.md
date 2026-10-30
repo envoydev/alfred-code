@@ -22,7 +22,7 @@ one part, and the typed command with no topic word runs all three behind one ask
   for all the quality captures. A description match runs the one part the request names.
 - The chain asks first - one call, one question per part plus the mode - and no part asks its run gate again.
 - Not for fixing the findings or raising coverage (the quality loops: `/loop-architecture-quality`,
-  `/loop-code-quality`, `/loop-test-coverage-quality`), building the architecture map (capture-architecture), recording
+  `/loop-code-quality`, `/loop-test-coverage-quality`), building the architecture map (the awareness capture's architecture part), recording
   the code style, a security audit (the security-auditor seat) or one diff (task-verify-code, review-code). Each part's
   own `## When to use` names the rest of its boundary.
 - A part's run gate is there because a conversational question - 'what are the risks here?', 'is this code any

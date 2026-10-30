@@ -74,19 +74,15 @@
       "bd921c6dfaa9ccce",
       "f8a1b5cd1b3120eb"
     ],
-    "capture-architecture": [
-      "99345f218153b5e2"
-    ],
     "capture-awareness": [
-      "55a022248b7cf256"
+      "1d1179178b4d64a8",
+      "55a022248b7cf256",
+      "5bfc3f10f77f7456"
     ],
     "capture-preferences": [
       "7dfb81e0ad2f3481",
       "9975e5d09845df4b",
       "f242517bd5432ddd"
-    ],
-    "capture-project-code-style": [
-      "20263fd5d208939d"
     ],
     "capture-quality": [
       "9d158eea7d6bce49",

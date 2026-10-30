@@ -163,7 +163,7 @@ each family. For every case, produce one ledger row.
 ### Family A - Architecture analysis (Requirement 2)
 
 Per project, dispatch `architecture-analyzer` on the clean baseline. Measure: does it produce a lean
-`docs/architecture/ARCHITECTURE.md` core plus `docs/architecture/references/` deep-dive files; which tools it used (serena
+`docs/awareness/ARCHITECTURE-AWARENESS.md` core plus `docs/awareness/references/` deep-dive files; which tools it used (serena
 symbol nav vs whole-file Reads; context7); whether it applied `markdown-style`; tokens + duration.
 ASSESSED: rate the doc's usefulness to a downstream designer (would a solution-designer orient from it
 without re-deriving the project?).

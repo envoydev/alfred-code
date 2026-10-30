@@ -1,25 +1,42 @@
 # Related projects awareness - the sibling repos and the seams that bind them
 
-Read at step 3. `RELATED-PROJECTS-AWARENESS.md` makes the siblings exist for every session: per sibling its
-location, its relation, the seam between the two repos and the docs to read first over there. The rule imports it
-whole, so each entry stays lean - orientation, not an audit. This capture is the doc's sole author.
+Read when the related-projects part runs. `RELATED-PROJECTS-AWARENESS.md` makes the siblings exist for every
+session: per sibling its location, its relation, the seam between the two repos and the docs to read first over
+there. The rule imports it whole, so each entry stays lean - orientation, not an audit. This part is the doc's sole
+author.
 
 ## Contents
 
+- **The modes** - siblings passed, a doc kept, or the ask for them
 - **Args-driven, never a scan** - the user names the siblings
 - **Execution modes** - one seat per sibling, or in-session
 - **The run** - validate, characterize, merge
 - **The doc's shape** - the preamble, one section per sibling, per-entry provenance
-- **Write mechanics** - first capture whole, a re-run as an upsert
+- **Write mechanics** - first capture whole, a re-run as an upsert, the part's report line
 - **Handing work to a sibling** - the task card, never a write over there
+
+## The modes
+
+The mode comes from the arguments and disk:
+
+- **Siblings passed** - map them (The run, below; its mode ask first when dispatch is available).
+- **None passed, and `<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md` exists** - keep it: one report line, no ask.
+- **None passed, and no doc** - ask for them as typed text, never options scraped from a filesystem scan (a
+  plain-text ask where the harness lacks the tool); the mode question joins this call when dispatch is available:
+
+  ```ask
+  Does this project depend on sibling repos the capture should map? Type local paths or git URLs via Other, each with an optional relation hint (`../backend provides-to`).
+  - 'None - a standalone repo (Recommended)' - the doc records the answer with no entry, so later runs ask nothing; a run with sibling paths adds them
+  - 'I will list them' - I ask for the paths or URLs next, in plain text; the run maps the locations you type
+  ```
 
 ## Args-driven, never a scan
 
 The user names the related projects - local paths or git URLs, optionally with a relation hint each
 (`../backend`, `git@github.com:org/shared-contracts.git provides-to`). In-repo sub-projects are siblings too:
 `./server`, `./client` in a monorepo are valid locations, and their entries carry the dependency direction a
-cross-domain build orders by. Never guess at siblings from the filesystem: with no arguments and no doc, the step-3
-ask in SKILL.md takes the locations as typed text. A location outside the docs root for any file this step writes
+cross-domain build orders by. Never guess at siblings from the filesystem: with no arguments and no doc, the
+siblings ask above takes the locations as typed text. A location outside the docs root for any file this step writes
 takes the user's explicit approval first, per the docs-root baseline.
 
 ## Execution modes
@@ -27,8 +44,9 @@ takes the user's explicit approval first, per the docs-root baseline.
 DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available (and the seat
 exists), ask ONE question before the fan-out, via AskUserQuestion - characterize the siblings via the read-only
 seats that characterize one sibling repo each (recommend it: the seats absorb the reads), or in-session? - then
-pick once, hold for the run. When the siblings ask of SKILL.md step 3 is open too, both questions go in the same
-AskUserQuestion call.
+pick once, hold for the run. When the siblings ask above is open too, both questions go in the same AskUserQuestion
+call. When the router's chain ran this part, or a mode word came after the topic (a calling flow), the mode is
+already answered: no ask.
 
 ```ask
 Characterize <the siblings> through the related-project-analyzer seats, one per sibling, or in this session?
@@ -55,8 +73,8 @@ Characterize <the siblings> through the related-project-analyzer seats, one per 
    what changed since). The seats write no files; their final messages - one YAML entry + evidence + uncertainty
    each - are the merge input. A seat returning UNVERIFIED fields is a valid result: the doc records what could not
    be read.
-3. **MERGE** - write the doc to the shape below. Check before reporting: `node .claude/hooks/docs.js lint awareness`
-   (fix every PROBLEM row) and `test -e <sibling>/<first_read>` for every `first_read` path - a first_read never
+3. **MERGE** - write the doc to the shape below. Check before reporting: `node .claude/hooks/docs.js lint awareness
+   --no-map` (fix every PROBLEM row; the map's rows are the architecture part's) and `test -e <sibling>/<first_read>` for every `first_read` path - a first_read never
    lists a doc that was not verified to exist.
 
 The answer 'None - a standalone repo' writes the doc with its preamble and no entry, so a later run keeps it and
@@ -87,7 +105,7 @@ cross-repo findings go to Claude Code's own memory, naming the sibling, never he
 ```yaml
 location:   ../acme-billing-api
 relation:   provides-to
-first_read: [.alfred/docs/architecture/ARCHITECTURE.md]
+first_read: [.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md]
 seam:       the OrderCreated contract in src/Contracts - this repo publishes, billing consumes
 read_at:    main@9f8e7d6
 captured:   develop@a1b2c3d, 2026-07-24
@@ -148,6 +166,12 @@ Every entry is grounded in the located evidence or carries its UNVERIFIED marker
 over, a hint never overrides contradicting evidence silently (the contradiction is reported). Unreachable siblings
 stay as UNVERIFIED entries, not silently dropped: the reader deserves to know a seam exists even when it could not
 be read.
+
+The part's report line:
+
+```text
+Related:     <created | refreshed | kept | none recorded> - <n> entries, rewritten <names>, kept <names>; first_read <n> of <n> verified; skipped <locations, or none>
+```
 
 ## Handing work to a sibling
 

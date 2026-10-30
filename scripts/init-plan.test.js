@@ -25,7 +25,7 @@ function project({ settings } = {})
     return root;
 }
 const INV = (over = {}) => ({
-    skills: ['capture-architecture', 'capture-project-code-style', 'capture-awareness'],
+    skills: ['capture-awareness'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
     left_out: [],
@@ -201,35 +201,51 @@ test('a plan path is project-relative inside, absolute outside, and forward-slas
 test('captures: the fixed order; run, done and skip each say why; the library copy wins over the plugin\'s', () =>
 {
     const root = project({ settings: { env: { ALFRED_CODE_DOCS_PATH: 'notes/ai' } } });
-    fs.mkdirSync(path.join(root, 'notes', 'ai', 'architecture'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'notes', 'ai', 'architecture', 'ARCHITECTURE.md'), '# map\n');
+    fs.mkdirSync(path.join(root, 'notes', 'ai', 'awareness'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'notes', 'ai', 'awareness', 'ARCHITECTURE-AWARENESS.md'), '# map\n');
     const inv = INV({ left_out: ['agent code-style-analyzer'] });
     const captures = () => render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE, pluginRoot: path.join(__dirname, '..') }))
         .filter((l) => l.startsWith('capture:'));
     const lines = captures();
-    assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), ['capture: capture-architecture', 'capture: capture-project-code-style', 'capture: capture-awareness']);
-    assert.strictEqual(lines[0], 'capture: capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
-    assert.strictEqual(lines[1], 'capture: capture-project-code-style - skip: its seat code-style-analyzer is switched off');
+    assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), ['architecture', 'project-code-style', 'project', 'related-projects', 'agents'].map((t) => `capture: capture-awareness ${t}`));
+    assert.strictEqual(lines[0], 'capture: capture-awareness architecture - done: notes/ai/awareness/ARCHITECTURE-AWARENESS.md exists');
+    assert.strictEqual(lines[1], 'capture: capture-awareness project-code-style - skip: its seat code-style-analyzer is switched off');
     // A path outside the project is printed with forward slashes on every OS: init reads it through Bash, where a
     // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
     const libPath = (skill) => path.join(__dirname, '..', 'stack', 'skills', skill, 'SKILL.md').split(path.sep).join('/');
-    // The awareness capture has no seat: it reads the repo and asks in the main session.
-    assert.strictEqual(lines[2], `capture: capture-awareness - run: read ${libPath('capture-awareness')}`);
+    // The parts with no seat run whenever the skill is installed: each decides from disk whether it has work.
+    assert.strictEqual(lines[2], `capture: capture-awareness project - run: read ${libPath('capture-awareness')}`);
     // A library copy wins over the plugin's; an awareness doc on disk is no 'done' - each part decides from disk.
     fs.mkdirSync(path.join(root, '.claude', 'skills', 'capture-awareness'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude', 'skills', 'capture-awareness', 'SKILL.md'), '---\nname: x\n---\n');
-    fs.mkdirSync(path.join(root, 'notes', 'ai', 'awareness'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'notes', 'ai', 'awareness', 'PROJECT-AWARENESS.md'), '# run book\n');
-    assert.strictEqual(captures()[2], 'capture: capture-awareness - run: read .claude/skills/capture-awareness/SKILL.md');
+    fs.writeFileSync(path.join(root, 'notes', 'ai', 'awareness', 'RUN-AND-DEBUG-AWARENESS.md'), '# run book\n');
+    assert.strictEqual(captures()[2], 'capture: capture-awareness project - run: read .claude/skills/capture-awareness/SKILL.md');
 
-    const bare = render(plan({ inv: INV({ skills: ['capture-awareness'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
+    const none = render(plan({ inv: INV({ skills: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(bare[0], 'capture: capture-architecture - skip: the skill is not installed');
-    assert.strictEqual(bare[1], 'capture: capture-project-code-style - skip: the skill is not installed');
-    assert.strictEqual(bare[2], 'capture: capture-awareness - run: read .claude/skills/capture-awareness/SKILL.md', 'no seat to need');
-    const noSeat = render(plan({ inv: INV({ agents: [] }), root: project(), platform: 'linux', env: E(), probe: NONE }))
+    assert.deepStrictEqual(none.map((l) => l.split(' - ')[1]), Array(5).fill('skip: the skill is not installed'));
+});
+
+// M11's unit form: init prints one row per awareness part, a seated part only where its seat is installed, agents last.
+test('captures: one row per awareness part', () =>
+{
+    const root = project();
+    const lines = render(plan({ inv: INV({ agents: ['architecture-analyzer'] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(noSeat[1], 'capture: capture-project-code-style - skip: its seat code-style-analyzer is not installed');
+    const read = 'run: read .claude/skills/capture-awareness/SKILL.md';
+    fs.mkdirSync(path.join(root, '.claude', 'skills', 'capture-awareness'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'skills', 'capture-awareness', 'SKILL.md'), '---\nname: x\n---\n');
+    const again = render(plan({ inv: INV({ agents: ['architecture-analyzer'] }), root, platform: 'linux', env: E(), probe: NONE }))
+        .filter((l) => l.startsWith('capture:'));
+    assert.strictEqual(lines.length, 5);
+    assert.deepStrictEqual(again, [
+        `capture: capture-awareness architecture - ${read}`,
+        'capture: capture-awareness project-code-style - skip: its seat code-style-analyzer is not installed',
+        `capture: capture-awareness project - ${read}`,
+        `capture: capture-awareness related-projects - ${read}`,
+        `capture: capture-awareness agents - ${read}`,
+    ], 'related-projects runs INLINE without its opt-in seat');
+    assert.match(render(plan({ inv: INV({ agents: ['architecture-analyzer'] }), root, platform: 'linux', env: E(), probe: NONE })).find((l) => l.startsWith('init-plan:')), /4 captures to run$/);
 });
 
 // End to end through the CLI, on a stubbed PATH: the real probes, the real pins file.
@@ -249,7 +265,7 @@ test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missin
     const lines = r.stdout.trim().split('\n');
     assert.ok(!lines.some((l) => /^machine: (uv|python)/.test(l)), `a uv on PATH is no item: ${r.stdout}`);
     assert.ok(lines.includes('machine: csharp-ls - missing: dotnet tool install --global csharp-ls'), r.stdout);
-    assert.match(lines[lines.length - 1], /^init-plan: 1 to install, 0 blocked, 3 captures to run$/);
+    assert.match(lines[lines.length - 1], /^init-plan: 1 to install, 0 blocked, 5 captures to run$/);
 
     const missing = spawnSync(process.execPath, [SCRIPT, '--installed', path.join(root, 'nope.json'), '--root', root], { env, encoding: 'utf8' });
     assert.strictEqual(missing.status, 2);
@@ -267,15 +283,15 @@ test('captures: at local scope the docs root is the personal file\'s, at project
 {
     const root = project({ settings: { env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } } });
     fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
-    fs.mkdirSync(path.join(root, 'docs', 'mine', 'architecture'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'docs', 'mine', 'architecture', 'ARCHITECTURE.md'), '# map\n');
+    fs.mkdirSync(path.join(root, 'docs', 'mine', 'awareness'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'docs', 'mine', 'awareness', 'ARCHITECTURE-AWARENESS.md'), '# map\n');
     const line = () => render(plan({ inv: INV(), root, platform: 'linux', env: E(), probe: NONE }))
-        .find((l) => l.startsWith('capture: capture-architecture'));
+        .find((l) => l.startsWith('capture: capture-awareness architecture'));
     const stamp = (scope) => fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `source: x\nscope: ${scope}\n`);
     stamp('local');
-    assert.strictEqual(line(), 'capture: capture-architecture - done: docs/mine/architecture/ARCHITECTURE.md exists');
+    assert.strictEqual(line(), 'capture: capture-awareness architecture - done: docs/mine/awareness/ARCHITECTURE-AWARENESS.md exists');
     stamp('project');
-    assert.match(line(), /^capture: capture-architecture - run: /, 'project scope never reads the personal file');
+    assert.match(line(), /^capture: capture-awareness architecture - run: /, 'project scope never reads the personal file');
 });
 
 // The home that prints the post-install capture order to a reader must follow the order this script runs
@@ -283,10 +299,10 @@ test('captures: at local scope the docs root is the personal file\'s, at project
 test('capture order: setup-plugin/references/post-install.md names the captures in CAPTURES order', () =>
 {
     const { CAPTURES } = require('./init-plan.js');
-    const names = CAPTURES.map((c) => c.skill);
+    const names = CAPTURES.map((c) => `${c.skill} ${c.topic}`);
     const text = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'post-install.md'), 'utf8');
     const firstSeen = [];
-    for (const m of text.matchAll(/\/(capture-[a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
+    for (const m of text.matchAll(/\/(capture-[a-z-]+ [a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
     assert.deepStrictEqual(firstSeen, names);
 });
 
@@ -317,7 +333,7 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
         { what: 'typescript-language-server', state: 'missing', detail: 'npm install -g typescript-language-server typescript@6' },
         { what: 'csharp-ls', state: 'blocked', detail: 'needs .NET' },
         { what: 'claude-hud status line + compact layout', state: 'refresh', detail: 'node hud ...' },
-    ], captures: [{ skill: 'capture-architecture', state: 'run', detail: 'read y' }, { skill: 'capture-awareness', state: 'run', detail: 'read x' }] };
+    ], captures: [{ skill: 'capture-awareness', topic: 'architecture', state: 'run', detail: 'read y' }, { skill: 'capture-awareness', topic: 'agents', state: 'run', detail: 'read x' }] };
     assert.deepStrictEqual(DESTRUCTIVE_MACHINE, ['refresh']);
     assert.deepStrictEqual(unattended(p), [
         'unattended: machine installs -> install csharp-ls, typescript-language-server',
@@ -330,7 +346,7 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
 
 test('unattended: nothing to install - no line for an ask that never fires', () =>
 {
-    const lines = unattended({ machine: [{ what: 'csharp-ls', state: 'present', detail: '' }], captures: [{ skill: 'capture-architecture', state: 'done', detail: 'x exists' }] });
+    const lines = unattended({ machine: [{ what: 'csharp-ls', state: 'present', detail: '' }], captures: [{ skill: 'capture-awareness', topic: 'architecture', state: 'done', detail: 'x exists' }] });
     assert.deepStrictEqual(lines, ['unattended: Memory for this project? -> Native, Claude\'s default place (Recommended)', 'unattended: Navigation in files? -> Agent decides, the stack\'s order (Recommended)', 'unattended: AGENTS.md -> fill it in (Recommended)'], 'the step-4 asks always fire');
 });
 

@@ -397,7 +397,7 @@ adds marked with their reasons, the final drop list (incl. accepted orphans) nam
 blocker with its fix, each warning listed. Never run past a blocker
 (fix now, or reopen the owning layer and drop the affected items). Warnings are listed and
 passed. **Convention-conflict warnings:** when the project carries stated
-conventions (a root or `.claude/` AGENTS.md or CLAUDE.md, `<docs-path>/architecture/` docs), check THIS RUN'S
+conventions (a root or `.claude/` AGENTS.md or CLAUDE.md, the architecture docs in `<docs-path>/awareness/`), check THIS RUN'S
 typed adds (never locked rows or kept installed items) against them - a conflicting add gets one
 warning line quoting the rule verbatim plus a keep-or-drop consent. No citable conflict, no
 warning; no project docs, skip silently; a conflict warning never blocks the run. Also ask here:
@@ -499,8 +499,7 @@ it for every project'), since account-wide and project-local are different conse
 `--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
 (3) the follow-through line - telling the USER to re-run `/capture-awareness` (when
 installed, and ONLY when this run added or removed a skill, agent or plugin - the
-inventory that rule lists; a run that changed only env or settings names none) so the generated inventory reflects the new install (the skill is manual-only,
-`disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
+inventory that rule lists; a run that changed only env or settings names none) so the generated inventory reflects the new install (the line is addressed to the
 user, never acted on), and any environment writes from step 8. On a step-9 'set the default for
 this project' answer, merge `permissions.defaultMode: <value>` into the scope file step 9 named
 here too - never the account file, touching ONLY that key inside `permissions`; 'keep it as it is'

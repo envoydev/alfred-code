@@ -136,11 +136,14 @@ The run rewrote `alfred-code.stamp` - the next update or configure diffs from he
 installed) as the USER's next step when step 2's `changed-here:` line shows `skills=` or `agents=` above 0 - gated on
 THAT number alone (the installer re-copies every file every run, so any other gate is always true; the generated
 inventory stamps each skill's first sentence, which drifts with content-only updates). Never invoke it from this
-run - the skill is manual-only (`disable-model-invocation`), so a Skill call is DENIED by
-`guard-fresh-session-start.js`; the report line is the mechanism.
+run - the line is the user's to run, and no guard stops a Skill call of it; the report line is the
+mechanism. Name `/capture-awareness project` as well when the log
+holds `the run book is RUN-AND-DEBUG-AWARENESS.md` - the project info and resources docs are new, and only that part
+writes them.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the follow-ups that are the
-USER's to run - the restart, `/capture-awareness` (when the gate above fires), a manual-only capture whose output is
+USER's to run - the restart, `/capture-awareness` (when the gate above fires), `/capture-awareness project` (the run
+book line), a manual-only capture whose output is
 stale, a server's data to delete (the `mcp data:` line) - as `Suggested next steps`, the recommended one first and each with the one reason it matters. **When step 3's `--log` call printed `restart: yes`, the RESTART is row one** - every other follow-up runs against the session still holding the OLD hooks and plugins. A follow-up that is
 itself a deliberate run - any capture, a loop - carries a fresh-session note beside it: 'run it in a fresh session;
 started here it re-sends this walk's history on every one of its turns'. Under a restart row the note reads 'run it

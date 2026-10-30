@@ -202,7 +202,8 @@ test('task-implement: Known ceilings keeps its rule in the body and its docs.js 
     assert.match(b, /File every deliberate simplification this build made as a `where \| limit \| revisit when` row - never a code comment - before the close: Read `references\/known-ceilings\.md`/);
     assert.doesNotMatch(b, /docs\.js show architecture/, 'the procedure left the body');
     const ref = flat(read('stack/skills/task-implement/references/known-ceilings.md'));
-    assert.match(ref, /docs\.js set architecture\/ARCHITECTURE\.md#known-ceilings --expect <that hash>/);
+    assert.match(ref, /docs\.js set awareness\/ARCHITECTURE-AWARENESS\.md#known-ceilings --expect <that hash>/);
+    assert.match(ref, /`architecture\/ARCHITECTURE\.md#known-ceilings`, the legacy home, in an install not yet updated/);
     assert.ok(copiesOf(shared()['known-ceilings-filing']).includes('stack/skills/task-implement/references/known-ceilings.md'));
     assert.deepStrictEqual(registryFindings('known-ceilings-filing'), []);
 });

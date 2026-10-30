@@ -348,6 +348,34 @@ test('--orientation --out writes the file, refreshes a provisional one, and neve
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+// The capture-awareness merge (spec 2026-10-29 2.2): the block's home is awareness/, and a map at EITHER home - the old
+// architecture/ one an update has not moved yet included - means the capture ran, so nothing is written.
+test('--orientation refuses when either home\'s map exists', () =>
+{
+    const root = tree(DOTNET);
+    const docs = path.join(root, '.claude/docs');
+    const out = path.join(docs, 'awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md');
+    try
+    {
+        assert.match(orient('').stderr, /\[--out <docs>\/awareness\/ARCHITECTURE-ORIENTATION-AWARENESS\.md\]/);
+        for (const map of ['architecture/ARCHITECTURE.md', 'awareness/ARCHITECTURE-AWARENESS.md'])
+        {
+            fs.mkdirSync(path.dirname(path.join(docs, map)), { recursive: true });
+            fs.writeFileSync(path.join(docs, map), '# Architecture\n');
+            for (const o of [out, path.join(docs, 'architecture/ORIENTATION.md')])
+            {
+                const refused = orient(root, '--out', o);
+                assert.strictEqual(refused.status, 1, `${map} with --out ${path.relative(docs, o)}`);
+                assert.match(refused.stderr, /the architecture capture already ran here; nothing written/);
+                assert.ok(!fs.existsSync(o), 'nothing written beside a capture');
+            }
+            fs.rmSync(path.join(docs, map));
+        }
+        assert.strictEqual(orient(root, '--out', out).status, 0, 'no map at either home: the block is written');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 // Audit 2026-10-10 (session f10cb06a): inside git the scan walked ignored tool caches - mutation-test sandboxes, a CLI
 // build cache, a browser profile - into the map as packages and an MV2 extension, and read no Nx target, so an Nx
 // workspace whose CI ran 14 steps printed 'none declared' for build, test, run and entry points.

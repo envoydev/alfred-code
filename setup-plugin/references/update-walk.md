@@ -274,7 +274,7 @@ Then:
 ## Do not
 
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
-  skills/agents/rules/hooks and the generated rules (`alfred-architecture.md`, `alfred-awareness.md`, the awareness docs)
+  skills/agents/rules/hooks and the generated rule (`alfred-awareness.md`) and the awareness docs
   appear in neither; if a candidate is in neither list, it stays.
 - Never install an addition the step-2 ask did not take, and never remove an MCP or plugin the
   diff did not retire - dropping by choice, and adopting anything the release did not add, is

@@ -2238,7 +2238,7 @@ test('audit 2026-10-20 C43: an architecture write is held once while an analyzer
     const rows = seatRows(tp);
     const doc = `${r.root}/.claude/docs/architecture/references/patterns.md`;
     const edit = (session = s, extra = {}) => r.hook({ ...pre('Edit', { file_path: doc, old_string: 'a', new_string: 'b' }, session), transcript_path: tp, ...extra });
-    rows({ type: 'user', message: { role: 'user', content: '/capture-architecture' } });
+    rows({ type: 'user', message: { role: 'user', content: '/capture-awareness architecture' } });
     assert.ok(!denied(edit()), 'no seat dispatched: the write passes');
     rows(dispatchRow('t1', 'alfred-code:architecture-analyzer', 'Verify remaining patterns'), launchedRow('t1', 'a111'));
     const held = edit();
@@ -2318,6 +2318,55 @@ test('audit 2026-10-20 C43: the shell route and a docs.js set of an architecture
     assert.ok(!denied(bash('cat .claude/docs/architecture/ARCHITECTURE.md', sid())), 'a read is no write');
     assert.ok(!denied(bash('node .claude/hooks/docs.js set code-style/CODE-STYLE#naming < /tmp/x.md', sid())), 'another domain\'s set');
   } finally { r.rm(); }
+});
+
+// The capture-awareness merge (spec 2026-10-29 2.2): the map moved under awareness/, and the hold covers its files there
+// as well as the legacy architecture/ home - never the run book's, which writes beside it.
+test('the analyzer hold covers both homes', () => {
+  const p = require('node:path');
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    const s = sid();
+    const tp = p.join(r.root, `${s}.jsonl`);
+    seatRows(tp)(dispatchRow('m1', 'architecture-analyzer'), launchedRow('m1', 'd111'));
+    const write = (rel) => r.hook({ ...pre('Write', { file_path: `${r.root}/.claude/docs/${rel}`, content: '# x\n' }, sid()), transcript_path: tp });
+    const bash = (command) => r.hook({ ...pre('Bash', { command }, sid()), transcript_path: tp, cwd: r.root });
+    assert.ok(!r.exists('.claude/docs/awareness/ARCHITECTURE-AWARENESS.md'), 'a first capture: no map file yet');
+    for (const rel of ['awareness/references/x.md', 'awareness/ARCHITECTURE-AWARENESS.md', 'architecture/ARCHITECTURE.md']) {
+      const out = write(rel);
+      assert.ok(denied(out), rel);
+      assert.match(out.stdout, /\/capture-awareness architecture/, `${rel}: the denial names the part`);
+    }
+    assert.ok(!denied(write('awareness/RUN-AND-DEBUG-AWARENESS.md')), 'the run book writes while a seat is out');
+    assert.ok(denied(bash('mkdir -p .claude/docs/awareness && cat > .claude/docs/awareness/ARCHITECTURE-AWARENESS.md <<\'EOF\'\n# A\nEOF')), 'a shell write to the map');
+    for (const ref of ['ARCHITECTURE-AWARENESS#modules', 'awareness/ARCHITECTURE-ORIENTATION-AWARENESS#x', 'awareness/references/x#y']) {
+      assert.ok(denied(bash(`node .claude/hooks/docs.js set ${ref} < /tmp/x.md`)), `a docs.js set of ${ref}`);
+    }
+    assert.ok(!denied(bash('node .claude/hooks/docs.js set RUN-AND-DEBUG-AWARENESS#build < /tmp/x.md')), 'the run book\'s set');
+    assert.ok(!denied(bash('node .claude/hooks/docs.js set awareness/RUN-AND-DEBUG-AWARENESS#build < /tmp/x.md')), 'the run book\'s qualified set');
+  } finally { r.rm(); }
+});
+
+test('the ORIENTATION push follows mapDomain', () => {
+  const block = (r, rel, text) => r.write(`.claude/docs/${rel}`, text);
+  const pushed = (r) => ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }));
+  const fresh = repo();
+  try {
+    block(fresh, 'awareness/watch.json', '{}');
+    block(fresh, 'awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md', 'New home block.\n');
+    assert.match(pushed(fresh), /New home block/);
+  } finally { fresh.rm(); }
+  const old = repo({ docs: { 'ORIENTATION.md': 'Old home block.\n' } });
+  try {
+    assert.match(pushed(old), /Old home block/);
+    block(old, 'awareness/watch.json', '{}');
+    block(old, 'awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md', 'New home block.\n');
+    const both = pushed(old);
+    assert.match(both, /New home block/, 'both homes: the new one is pushed');
+    assert.doesNotMatch(both, /Old home block/);
+    block(old, 'awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md', 'n'.repeat(5000));
+    assert.match(pushed(old), /ARCHITECTURE-ORIENTATION-AWARENESS\.md continues past its 4KB cap/, 'the cap line names the file it cut');
+  } finally { old.rm(); }
 });
 
 // Audit 2026-10-20 (hooks minor list): the conflict, deleted-branch and on-mainline lists at SessionStart had no cap; each

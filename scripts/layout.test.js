@@ -115,7 +115,7 @@ test('approvalPath puts a plan\'s stamp in its own folder; approvalStamps lists 
 test('LAYOUT_MOVES is the spec\'s move map, frozen', () =>
 {
     const froms = layout.LAYOUT_MOVES.map((m) => m.from).sort();
-    assert.deepStrictEqual(froms, ['.branches', 'cross-project-tasks', 'diagnoses', 'docs-log.jsonl', 'flow', 'history', 'hook-blocks', 'loops', 'plans', 'quality/test-coverage', 'related-context', 'specs', 'test-coverage', 'tools-usage', 'tutorial', 'usage-report']);
+    assert.deepStrictEqual(froms, ['.branches', 'architecture', 'cross-project-tasks', 'diagnoses', 'docs-log.jsonl', 'flow', 'history', 'hook-blocks', 'loops', 'plans', 'quality/test-coverage', 'related-context', 'specs', 'test-coverage', 'tools-usage', 'tutorial', 'usage-report']);
     assert.ok(Object.isFrozen(layout.LAYOUT_MOVES));
     const by = Object.fromEntries(layout.LAYOUT_MOVES.map((m) => [m.from, m]));
     assert.strictEqual(by.flow.split, 'flow');
@@ -131,6 +131,8 @@ test('LAYOUT_MOVES is the spec\'s move map, frozen', () =>
     const order = layout.LAYOUT_MOVES.map((m) => m.from);
     assert.strictEqual(order.indexOf('quality/test-coverage') + 1, order.indexOf('test-coverage'), 'the 2.8 row sits right before the older one');
     assert.strictEqual(by['.branches'].removeIfEmpty, true);
+    // the capture-awareness merge (2026-10-29): the map's row is lint 65's alone - docs.migrateArchitecture moves the folder
+    assert.deepStrictEqual([by.architecture.base, by.architecture.to, by.architecture.rename, by.architecture.lintOnly], ['docs', 'awareness', layout.ARCH_RENAME, true]);
 });
 
 test('the module loads with nothing beside it', () =>
@@ -145,4 +147,34 @@ test('the module loads with nothing beside it', () =>
 test('LAYOUT_MOVES moves the old tutorial folder to explanations (item 6)', () =>
 {
     assert.ok(layout.LAYOUT_MOVES.some((m) => m.from === 'tutorial' && m.base === 'docs' && m.to === 'explanations'));
+});
+
+// The run book's key (spec 2026-10-29 section 3): the new name wins, the old one is read only while it is alone.
+test('runBookKey in its five states', () =>
+{
+    const states = [
+        [['RUN-AND-DEBUG-AWARENESS'], 'RUN-AND-DEBUG-AWARENESS'],
+        [['PROJECT-AWARENESS'], 'PROJECT-AWARENESS'],
+        [['RUN-AND-DEBUG-AWARENESS', 'PROJECT-AWARENESS'], 'RUN-AND-DEBUG-AWARENESS'],
+        [[], 'RUN-AND-DEBUG-AWARENESS'],
+        [['PROJECT-INFO-AWARENESS'], 'RUN-AND-DEBUG-AWARENESS'],
+    ];
+    for (const [files, want] of states)
+    {
+        const dir = tmp();
+        for (const f of files) put(path.join(dir, 'awareness', `${f}.md`));
+        assert.strictEqual(layout.runBookKey(dir), want, `with ${files.join(' + ') || 'neither'}`);
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+    const docsPath = require.resolve(path.join(path.dirname(LAYOUT), 'docs.js'));
+    assert.ok(!require.cache[docsPath], 'layout.js answers without loading the docs engine');
+});
+
+test('ARCH_RENAME is the map move, frozen', () =>
+{
+    assert.deepStrictEqual({ ...layout.ARCH_RENAME }, {
+        'ARCHITECTURE.md': 'ARCHITECTURE-AWARENESS.md', 'ORIENTATION.md': 'ARCHITECTURE-ORIENTATION-AWARENESS.md',
+        'BRANCH-DELTA.md': 'BRANCH-DELTA.md', references: 'references', history: 'history',
+    });
+    assert.ok(Object.isFrozen(layout.ARCH_RENAME));
 });

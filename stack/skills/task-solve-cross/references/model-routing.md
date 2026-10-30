@@ -1,6 +1,6 @@
 # Model Routing
 
-The Team Lead does not pick arbitrary model names. It classifies the task; this policy maps task class and risk to the seat and effort. In this stack every seat already carries a static model/effort pin in its frontmatter; the table below is the floor and the rationale behind those pins, several of which sit a shade above their floor (reconciled in the note after the table). This policy is the guide for when the orchestrator escalates, by choosing a heavier seat (the in-session scoping pass -> the deliberate capture-architecture capture, a domain verifier -> integration-reviewer) or by classifying the work into a higher mode.
+The Team Lead does not pick arbitrary model names. It classifies the task; this policy maps task class and risk to the seat and effort. In this stack every seat already carries a static model/effort pin in its frontmatter; the table below is the floor and the rationale behind those pins, several of which sit a shade above their floor (reconciled in the note after the table). This policy is the guide for when the orchestrator escalates, by choosing a heavier seat (the in-session scoping pass -> the deliberate `/capture-awareness architecture` capture, a domain verifier -> integration-reviewer) or by classifying the work into a higher mode.
 
 Team Lead output stays compact:
 

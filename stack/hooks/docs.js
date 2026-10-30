@@ -17,14 +17,15 @@
 //   status                          mode, branch, overrides, conflicts, orphans, outgrown count, deleted unmerged branches,
 //                                   and any disagreement between the declared mode and the repo
 //   stale                           sections whose covered code changed since they were written, and a provisional
-//                                   ORIENTATION.md (the first-look scan's), which is stale by definition
+//                                   orientation block (the first-look scan's), which is stale by definition
 //   promote <branch> | --merged     fold a branch's overrides into mainline, section by section, three ways
 //   prune [branch]                  drop one branch's overlay, or overlays of branches gone for 30 days
 //   lint [domain]                   metadata and budget problems (exit 1 when any); a domain limits the rows to it
+//   lint <domain> --map | --no-map  awareness/ split by part: the map's files, ORIENTATION and 'architecture: ' entries, or the rest
 //   seed-ids                        give every section a stable id (idempotent); one `ids added: <file> (+n)` line
 //                                   per file rewritten, then the total
 //   watch <path...> [--dir <dir...>]  which watch.json entries these changed paths (and new folders) hit
-//   watch-merge <domain> [--seed '<JSON object>'] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json
+//   watch-merge <domain> [--seed '<JSON object>'] [--own <key>...] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json
 //                                   replace only the scoped entries of <domain>/watch.json with stdin's array, atomically;
 //                                   one `watch-merge <domain>: kept <k>, replaced <r> with <n>` line
 //   adr new '<title>' | adr index   allocate the next decision record under decisions/ and rewrite the DECISIONS.md
@@ -58,8 +59,22 @@ catch { /* the process env as it stands */ }
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const DOCS_ROOT = path.resolve(ROOT, docsRootEnv());
-const DOCS = path.join(DOCS_ROOT, 'architecture');
-const BLOCK_FILE = path.join(DOCS, 'ORIENTATION.md');
+// The architecture map's home (the capture-awareness merge, 2026-10-29): awareness/ARCHITECTURE-AWARENESS.md and its
+// ARCHITECTURE-ORIENTATION-AWARENESS.md, or - in an install /alfred-code:update has not moved yet, a first-look one
+// included - architecture/ARCHITECTURE.md and ORIENTATION.md, the legacy home. Both spellings stay readable for the skew window: the core
+// updates itself before the update moves a project's docs.
+const MAP_DOMAINS = ['awareness', 'architecture'];
+const MAP_KEYS = ['ARCHITECTURE', 'ARCHITECTURE-AWARENESS'];
+const BLOCK_KEYS = ['ORIENTATION', 'ARCHITECTURE-ORIENTATION-AWARENESS'];
+const mapNames = (domain) => (domain === 'architecture'
+  ? { map: 'ARCHITECTURE.md', block: 'ORIENTATION.md' } // the legacy home
+  : { map: 'ARCHITECTURE-AWARENESS.md', block: 'ARCHITECTURE-ORIENTATION-AWARENESS.md' });
+function mapDomain(docsRoot = DOCS_ROOT) {
+  const holds = (d) => { const n = mapNames(d); return fs.existsSync(path.join(docsRoot, d, n.map)) || fs.existsSync(path.join(docsRoot, d, n.block)); };
+  return holds('architecture') && !holds('awareness') ? 'architecture' : 'awareness';
+}
+const DOCS = path.join(DOCS_ROOT, mapDomain());
+const BLOCK_FILE = path.join(DOCS, mapNames(mapDomain()).block);
 const BRANCHES = path.join(DOCS_ROOT, '.branches');
 // A domain is a top-level folder under the docs root holding a watch.json. Convention, not a registry:
 // adding one needs no engine change. A dotted folder is never a domain - .branches is state, not docs.
@@ -104,13 +119,13 @@ const resetDomains = () => { DOMAINS_CACHE = undefined; WATCH_CACHE = undefined;
 const MAINLINE = ['develop', 'main', 'master', 'trunk'];
 const MAX_SECTION_CHARS = 6000;
 // The architecture map's register of deliberate shortcuts, and the stamp line every doc the architecture capture writes
-// opens with (capture-architecture references/doc-shapes.md) - both read by lint below.
+// opens with (capture-awareness references/architecture-doc-shapes.md) - both read by lint below.
 const KNOWN_CEILINGS = 'known-ceilings';
 const CAPTURE_STAMP = /^[\s>*_`]*Captured:\s*\S+@[0-9a-f]{4,}/m;
 // A domain whose sections cover no files by design: the user's preferences (/capture-preferences) do not drift with
 // the code, so no section owes a `covers` line and none is ever outgrown.
 const COVERLESS_DOMAINS = new Set(['preferences']);
-// One capture's write pass: a file written within this span of the map itself (ARCHITECTURE.md, which every capture
+// One capture's write pass: a file written within this span of the map itself (its map file, which every capture
 // rewrites) was written by the same run.
 const WRITE_PASS_MS = 2 * 3600 * 1000;
 const SHOW_CHARS = 14000;
@@ -119,11 +134,11 @@ const ID = /<!--\s*id:\s*([\w.-]+)\s*-->/i;
 const STAMP = /<!--\s*captured:\s*([0-9a-f]{7,40})(?:\s+with:\s*([^>]*?))?\s*-->/i;
 const COVERS = /<!--\s*covers:\s*([^>]*?)\s*-->/i;
 const HISTORY = /<!--\s*orient:\s*history\s*-->/i;
-// The first-look scan (scan-evidence.js --orientation) writes ORIENTATION.md with this marker before any capture
+// The first-look scan (scan-evidence.js --orientation) writes the orientation block with this marker before any capture
 // exists. It describes the tree from manifests only, so every reader treats it as stale by definition: status and
 // stale say so, and the session hook pushes it with that warning, until the architecture capture replaces the file.
 const PROVISIONAL = /provisional - replaced by the architecture capture/i;
-// The lines docs-session.js wraps around the block on every push. A copy pasted INTO ORIENTATION.md reached every
+// The lines docs-session.js wraps around the block on every push. A copy pasted INTO the block file reached every
 // session twice (deep hooks review 2026-10-16), so the hook drops such a line and lint names it.
 const HOOK_FOOTER = /^\s*(?:How this project is documented - read this before|The docs live under `|`[^`]*\bwhere <path>` names the sections covering a file|For a specific symbol the CODE wins)/;
 const COMMENT = /^\s*<!--.*-->\s*$/;
@@ -338,7 +353,7 @@ function namingSections(files, limit = 3, keep = () => true) {
 // the sections it points at, the paths it names, and any count it states about a file it names.
 function verifyBlock() {
   const problems = [];
-  if (!fs.existsSync(BLOCK_FILE)) return ['no ORIENTATION.md: sessions start with no map'];
+  if (!fs.existsSync(BLOCK_FILE)) return [`no ${path.basename(BLOCK_FILE)}: sessions start with no map`];
   const block = fs.readFileSync(BLOCK_FILE, 'utf8');
   const ids = new Set(allSections().map((s) => s.id));
   for (const ref of [...new Set(block.match(/[\w.-]+#[\w-]+/g) || [])]) {
@@ -547,7 +562,7 @@ const overlayDir = () => {
 };
 
 // One domain's own files - root, references/, history/ - the shape every domain is read from. A file
-// the domain's own watch.json (or, for architecture, the ORIENTATION.md default folded in below) lists
+// the domain's own watch.json (or the map's orientation block, a default folded in below) lists
 // under notOwned never counts as one of them: never sectioned, never overlaid, never a lint target.
 function domainFiles(d) {
   const out = [];
@@ -578,9 +593,16 @@ function docFiles() {
 // every one passes a file that came from docFiles/domainFiles, from findFile, or composed under
 // domainDir, so it is already inside a domain. Kept rather than deleted because the alternative for a
 // file from somewhere else is relKey measuring from undefined - a wrong path instead of a legacy one.
-const fileDomain = (file) => domains().find((d) => !path.relative(domainDir(d), file).startsWith('..')) || 'architecture';
+const fileDomain = (file) => domains().find((d) => !path.relative(domainDir(d), file).startsWith('..')) || mapDomain();
 const fileDomainDir = (file) => domainDir(fileDomain(file));
 const relKey = (file) => path.relative(fileDomainDir(file), file).replace(/\.md$/, '').split(path.sep).join('/');
+// The map's own files, at either home: the map, its ORIENTATION, the legacy BRANCH-DELTA and its references/ and history/.
+// The run book, the related doc and the inventory share awareness/ and are never map files.
+const isMapFile = (file) => {
+  if (!MAP_DOMAINS.includes(fileDomain(file))) return false;
+  const k = relKey(file);
+  return MAP_KEYS.includes(k) || BLOCK_KEYS.includes(k) || k === 'BRANCH-DELTA' || /^(references|history)\//.test(k);
+};
 const key = (file) => path.basename(file, '.md');
 // A file's key, qualified by its own domain - what a 'Known:' hint prints, so two domains holding the
 // same basename read as two distinguishable names rather than one repeated twice.
@@ -612,7 +634,7 @@ const stripMd = (s) => String(s).replace(/\.md$/, '');
 // spelling. Ambiguity is an error naming every candidate; a slash that resolves to no domain at all is an
 // error too - a silent pick, or a silent null, would write a section into the wrong domain (or into one
 // that was never named).
-// A filesystem path to a doc (`.alfred/docs/architecture/references/patterns.md`, absolute or project-relative) is the
+// A filesystem path to a doc (`.alfred/docs/awareness/references/patterns.md`, absolute or project-relative) is the
 // same ref with the docs root in front: the root is stripped first, so the domain segment it leaves resolves as usual
 // (audit 2026-10-20 C27, ce3fd60a / add5a91e: 5 of 6 seats' first call was refused, the hint repeating the wrong form).
 function stripDocsRoot(ref) {
@@ -1102,12 +1124,13 @@ function allSections() {
 // `--prune` moves them to history/known-ceilings-closed.md (history, never read at orientation) and rewrites the section
 // without them. A row whose where path (one holding a '/') is gone is only named STALE, never moved: a rename or a move
 // in a refactor leaves the shortcut in the code, so the row is re-anchored or marked by whoever knows.
-const CEILINGS_REF = `architecture/ARCHITECTURE.md#${KNOWN_CEILINGS}`;
+// At the map's home (mapDomain): awareness/ARCHITECTURE-AWARENESS.md, or architecture/ARCHITECTURE.md, the legacy home, before the move.
+const CEILINGS_REF = `${mapDomain()}/${mapNames(mapDomain()).map}#${KNOWN_CEILINGS}`;
 const CEILINGS_HISTORY = 'known-ceilings-closed.md';
 const CLOSED_CELL_RE = /^\s*\**(?:lifted|closed|resolved|done)\b/i;
 const tableCells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
 function ceilingRows() {
-  const file = path.join(DOCS, 'ARCHITECTURE.md');
+  const file = path.join(DOCS, mapNames(mapDomain()).map);
   const s = allSections().find((x) => x.file === file && x.id === `${key(file)}#${KNOWN_CEILINGS}`);
   if (!s) return null;
   const lines = norm(s.text).split('\n');
@@ -1146,9 +1169,9 @@ function ceilings(pruneRows) {
   if (!fs.existsSync(hist)) {
     const cols = tableCells(r.header).length + 1;
     fs.mkdirSync(path.dirname(hist), { recursive: true });
-    fs.writeFileSync(hist, `# Known ceilings - closed rows\n\nRows \`docs.js ceilings --prune\` moved out of ARCHITECTURE.md#${KNOWN_CEILINGS}, oldest first.\n\n## Closed rows\n<!-- id: closed-rows -->\n\n${r.header.trim().replace(/\s*\|?\s*$/, '')} | pruned |\n|${' --- |'.repeat(cols)}\n`);
+    fs.writeFileSync(hist, `# Known ceilings - closed rows\n\nRows \`docs.js ceilings --prune\` moved out of ${mapNames(mapDomain()).map}#${KNOWN_CEILINGS}, oldest first.\n\n## Closed rows\n<!-- id: closed-rows -->\n\n${r.header.trim().replace(/\s*\|?\s*$/, '')} | pruned |\n|${' --- |'.repeat(cols)}\n`);
   }
-  const histRef = `architecture/history/${CEILINGS_HISTORY}#closed-rows`;
+  const histRef = `${mapDomain()}/history/${CEILINGS_HISTORY}#closed-rows`;
   const cur = askRef(histRef);
   const curText = cur && allSections().find((x) => x.file === hist && x.id === `${key(hist)}#closed-rows`);
   if (!curText) return { error: `${shown(hist)} has no closed-rows section - the section was pruned but its rows are not filed: ${rowsOut.join(' ')}` };
@@ -1371,29 +1394,30 @@ function promoteLocked(name, dir) {
     // IS the old relKey - provable, not a guess. Anything else is reported, never guessed.
     let stranded = !mainline || !domains().includes(domain)
       || (fs.existsSync(mainline) && !domainFiles(domain).includes(mainline));
-    if (stranded && domains().includes('architecture')) {
-      const legacy = `${path.join(domainDir('architecture'), ...rel)}.md`;
-      if (domainFiles('architecture').includes(legacy)) {
-        // The rescue moves the FILES onto the domain-qualified shape, not just the `mainline` pointer: a
-        // marker later written under the legacy rel would sit where writeInPlace never looks (it always
-        // builds a marker path from overlayParts, domain-qualified), so a migrated overlay's own
-        // conflict could never be resolved the documented way. Moving the override, its .base twin and
-        // any .conflict twin already on disk onto 'architecture/' first means every line below - base
-        // read, marker path, post-fold cleanup - runs over one spelling, the same as an overlay this
-        // version wrote itself.
-        const migrate = (root) => {
-          const from = path.join(root, ...rel, `${id}.md`);
-          const to = path.join(root, 'architecture', ...rel, `${id}.md`);
-          if (fs.existsSync(from)) { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.renameSync(from, to); }
-          return to;
-        };
-        over = migrate(dir);
-        migrate(path.join(dir, '.base'));
-        migrate(path.join(dir, '.conflict'));
-        rel = ['architecture', ...rel];
-        mainline = legacy;
-        stranded = false;
-      }
+    // the map's home that holds the file - its own home first: architecture/ until the awareness move, awareness/ after it
+    const legacyOf = (d) => `${path.join(domainDir(d), ...rel)}.md`;
+    const home = stranded && [mapDomain(), ...MAP_DOMAINS].find((d) => domains().includes(d) && domainFiles(d).includes(legacyOf(d)));
+    if (home) {
+      const legacy = legacyOf(home);
+      // The rescue moves the FILES onto the domain-qualified shape, not just the `mainline` pointer: a
+      // marker later written under the legacy rel would sit where writeInPlace never looks (it always
+      // builds a marker path from overlayParts, domain-qualified), so a migrated overlay's own
+      // conflict could never be resolved the documented way. Moving the override, its .base twin and
+      // any .conflict twin already on disk onto `<home>/` first means every line below - base
+      // read, marker path, post-fold cleanup - runs over one spelling, the same as an overlay this
+      // version wrote itself.
+      const migrate = (root) => {
+        const from = path.join(root, ...rel, `${id}.md`);
+        const to = path.join(root, home, ...rel, `${id}.md`);
+        if (fs.existsSync(from)) { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.renameSync(from, to); }
+        return to;
+      };
+      over = migrate(dir);
+      migrate(path.join(dir, '.base'));
+      migrate(path.join(dir, '.conflict'));
+      rel = [home, ...rel];
+      mainline = legacy;
+      stranded = false;
     }
     const label = stranded ? [...rel, id].join('/') : `${path.basename(mainline, '.md')}#${id}`;
     const marker = path.join(dir, '.conflict', ...rel, `${id}.md`);
@@ -1578,7 +1602,7 @@ function status() {
     deletedUnmerged: stuck.deleted,
     liveOnMainline: stuck.onMainline,
     shallow: gitRepo && isShallow(),
-    legacyDelta: fs.existsSync(path.join(DOCS, 'BRANCH-DELTA.md')),
+    legacyDelta: MAP_DOMAINS.some((d) => fs.existsSync(path.join(DOCS_ROOT, d, 'BRANCH-DELTA.md'))),
     stranded,
     clash,
   };
@@ -1605,17 +1629,20 @@ function integrity() {
 
 // A domain (a top-level folder under the docs root) limits every row to that domain: a capture told to fix its PROBLEM
 // lines before its report could never meet that while another domain's row printed on every run. No domain keeps the
-// whole-root answer.
-function lint(domain) {
+// whole-root answer. `part` splits the domain the map shares with the run book for the same reason: 'map' keeps the map's
+// files (isMapFile), the ORIENTATION rows and the watch rows of 'architecture: ' entries, 'no-map' every other row; a
+// watch row naming no entry (a file that is not JSON, a top-level key) prints under both.
+function lint(domain, { part = null } = {}) {
   const problems = [];
   const notes = [];
   if (domain && !domains().includes(domain)) return { problems: [`no domain '${domain}' under the docs root (domains: ${domains().join(', ') || 'none'})`], notes };
   const inScope = (d) => !domain || d === domain;
+  const side = (isMap) => !part || (part === 'map') === isMap;
   const mtime = (p) => { try { return fs.statSync(p).mtimeMs; } catch { return NaN; } };
-  const mapAt = mtime(path.join(DOCS, 'ARCHITECTURE.md'));
+  const mapAt = mtime(path.join(DOCS, mapNames(mapDomain()).map));
   const sameWritePass = (f) => Math.abs(mtime(f) - mapAt) <= WRITE_PASS_MS;
   for (const f of docFiles()) {
-    if (!inScope(fileDomain(f))) continue;
+    if (!inScope(fileDomain(f)) || !side(isMapFile(f))) continue;
     const raw = fs.readFileSync(f, 'utf8');
     if (/^(<{7}|>{7})( |$)/m.test(raw)) problems.push(`merge conflict markers in ${relKey(f)} - resolve them before any reader trusts this file`);
     const hist = isHistory(f);
@@ -1629,7 +1656,7 @@ function lint(domain) {
         // The map's Known ceilings is a register the build closes append rows to and the capture carries row for row
         // (doc-shapes.md): no run may split it, so the cap would be a PROBLEM row nothing can close (audit 2026-10-20
         // C27, add5a91e / ce3fd60a: 7,858 then 10,171 chars, red on every capture). Its size stays visible as a note.
-        if (s.declaredId === KNOWN_CEILINGS && fileDomain(f) === 'architecture' && relKey(f) === 'ARCHITECTURE') notes.push(`${key(f)}#${KNOWN_CEILINGS} is ${s.ownChars} chars (a row register: carried row for row, exempt from the ${MAX_SECTION_CHARS} cap; 'docs.js ceilings --prune' moves its closed rows to history)`);
+        if (s.declaredId === KNOWN_CEILINGS && isMapFile(f) && MAP_KEYS.includes(relKey(f))) notes.push(`${key(f)}#${KNOWN_CEILINGS} is ${s.ownChars} chars (a row register: carried row for row, exempt from the ${MAX_SECTION_CHARS} cap; 'docs.js ceilings --prune' moves its closed rows to history)`);
         else problems.push(`oversized section (${s.ownChars} chars, cap ${MAX_SECTION_CHARS}): ${key(f)}#${s.declaredId || slug(s.heading)} - split it`);
       }
     }
@@ -1638,23 +1665,31 @@ function lint(domain) {
     // not touch, a human-authored one or another domain's keeps the note, since the capture may not rewrite it (audit
     // 2026-10-20 C27, 29e4002f: five rewritten reference files closed on the note alone).
     if (!hist && secs.length && !COVERLESS_DOMAINS.has(fileDomain(f)) && !secs.some((s) => s.covers.length)) {
-      if (fileDomain(f) === 'architecture' && CAPTURE_STAMP.test(raw.slice(0, 600)) && sameWritePass(f)) problems.push(`no section declares covers: ${relKey(f)} - the capture's shape gives every section a <!-- covers: --> line`);
+      if (isMapFile(f) && CAPTURE_STAMP.test(raw.slice(0, 600)) && sameWritePass(f)) problems.push(`no section declares covers: ${relKey(f)} - the capture's shape gives every section a <!-- covers: --> line`);
       else notes.push(`no section declares covers: ${relKey(f)}`);
     }
   }
-  // ORIENTATION.md is architecture's own file (BLOCK_FILE), so another domain's scope never reads it.
-  if (inScope('architecture')) {
+  // The ORIENTATION block is the map's own file (BLOCK_FILE, at the map's home), so another domain's scope never reads it.
+  if (inScope(mapDomain()) && side(true)) {
+    const name = path.basename(BLOCK_FILE);
     if (fs.existsSync(BLOCK_FILE)) {
       const bytes = fs.statSync(BLOCK_FILE).size;
-      if (bytes > BLOCK_BYTES) problems.push(`ORIENTATION.md is ${bytes} bytes, cap ${BLOCK_BYTES} - every session pays for it`);
-      for (const p of verifyBlock()) problems.push(`ORIENTATION.md ${p}`);
+      if (bytes > BLOCK_BYTES) problems.push(`${name} is ${bytes} bytes, cap ${BLOCK_BYTES} - every session pays for it`);
+      for (const p of verifyBlock()) problems.push(`${name} ${p}`);
       const footer = fs.readFileSync(BLOCK_FILE, 'utf8').split('\n').filter((l) => HOOK_FOOTER.test(l)).length;
-      if (footer) notes.push(`ORIENTATION.md repeats ${footer} line(s) of the session hook's own footer - delete them, the hook adds them`);
-      if (orientationState() === 'provisional') notes.push('ORIENTATION.md is provisional - a first-look scan the architecture capture replaces');
-    } else notes.push('no ORIENTATION.md: sessions start with no map');
+      if (footer) notes.push(`${name} repeats ${footer} line(s) of the session hook's own footer - delete them, the hook adds them`);
+      if (orientationState() === 'provisional') notes.push(`${name} is provisional - a first-look scan the architecture capture replaces`);
+    } else notes.push(`no ${name}: sessions start with no map`);
   }
   const w = loadWatch();
-  problems.push(...(domain ? watchOf(domain).problems : w.problems));
+  // a bad entry is named by its index (watch[i]); its own kind says whose it is
+  const rawEntries = (() => {
+    try { const j = JSON.parse(fs.readFileSync(path.join(domainDir(domain), 'watch.json'), 'utf8')); return Array.isArray(j && j.watch) ? j.watch : []; }
+    catch { return []; }
+  })();
+  const archKind = (k) => typeof k === 'string' && k.startsWith('architecture: ');
+  const entryRow = (p) => { const m = /watch\[(\d+)\]/.exec(p); return !m || !part || side(archKind((rawEntries[Number(m[1])] || {}).kind)); };
+  problems.push(...(domain ? watchOf(domain).problems.filter(entryRow) : w.problems));
   // Resolved through ALL THREE attempts the session hook makes (docs-session.js resolveHit), in its order,
   // because lint is the arbiter three shipped skills tell an agent to obey: a PROBLEM line here gets a
   // watch entry edited or deleted, so an entry the hook resolves and lint calls missing instructs the repair
@@ -1670,7 +1705,7 @@ function lint(domain) {
   //     which is ordinary, since every domain owns a references/ folder. The entry's own domain is what
   //     disambiguates it, exactly as it does at the hook.
   for (const e of [...w.watch, ...w.newModule.map((nm) => ({ kind: 'newModule', sections: nm.sections, domain: nm.domain }))]) {
-    if (!inScope(e.domain)) continue;
+    if (!inScope(e.domain) || (part && e.kind !== 'newModule' && !side(archKind(e.kind)))) continue;
     for (const id of e.sections) {
       if (protectedRef(e.domain, id) || askRef(id) || askRef(`${e.domain}/${id}`)) continue;
       problems.push(`${e.domain}/watch.json '${e.kind}' names a section that does not exist: ${id}`);
@@ -1687,7 +1722,7 @@ function lint(domain) {
       if (orphan && inScope(orphan.domain)) notes.push(`this branch overrides a section of ${orphan.target}, which ${orphan.domain}/watch.json now declares notOwned - it will never fold; recover it by hand from ${shown(over)}`);
     }
     // Scoped, the overlay view is read from that domain's files only - the view status() builds over all of them.
-    const view = domain ? domainFiles(domain).flatMap((f) => sections(f).filter((s) => s.overrideOf)) : null;
+    const view = domain ? domainFiles(domain).filter((f) => side(isMapFile(f))).flatMap((f) => sections(f).filter((s) => s.overrideOf)) : null;
     const st = view ? { conflicts: view.filter((s) => s.conflict).map((s) => s.id), orphans: view.filter((s) => s.orphan).map((s) => s.id) } : status();
     for (const id of st.conflicts) problems.push(`this branch's version of ${id} conflicts with mainline's newer text - docs.js show ${id} --conflict`);
     for (const id of st.orphans) problems.push(`this branch overrides ${id}, which mainline removed`);
@@ -1804,12 +1839,14 @@ const refRecomputed = (ref) => { try { return recomputed(parseRef(ref).domain); 
 // The ONE writer of model-written watch entries (D2): a part of a capture replaces only the entries in its SCOPE - the
 // union of `kinds` (a kind prefix), `kind` (an exact kind) and `doc` (every section ref in that doc) - so a second
 // writer's entries and a hand-added one keep their place. Every stdin entry must fall in the scope by its own kind.
-// `seed` adds each top-level key the file lacks and never changes one it holds. Returns { error } and writes nothing,
-// or { kept, replaced, added, file }.
-function watchMerge(domain, input, { kinds = [], kind = [], doc = [], seed = null } = {}) {
+// `seed` adds each top-level key the file lacks and never changes one it holds - but a key `own` names, which the
+// caller owns (the architecture part's sourceRoots and newModule in the domain it shares), is replaced by the seed's.
+// Returns { error } and writes nothing, or { kept, replaced, added, file }.
+function watchMerge(domain, input, { kinds = [], kind = [], doc = [], seed = null, own = [] } = {}) {
   if (!/^[A-Za-z0-9][\w-]*$/.test(String(domain || '')) || RESERVED_DOMAIN_NAMES.has(domain)) return { error: `not a domain name: ${JSON.stringify(domain)}` };
   if (!kinds.length && !kind.length && !doc.length) return { error: 'name the scope: --kinds <prefix>..., --kind <exact>... or --doc <DOC>' };
   const UNSAFE = new Set(['__proto__', 'constructor', 'prototype']);
+  if (own.some((k) => k === 'watch' || UNSAFE.has(k))) return { error: '--own may not name watch: the entries come on stdin' };
   let seeded = null;
   if (seed !== null) {
     try { seeded = JSON.parse(seed); } catch (e) { return { error: `--seed is not valid JSON: ${e.message}` }; }
@@ -1838,6 +1875,7 @@ function watchMerge(domain, input, { kinds = [], kind = [], doc = [], seed = nul
   const out = Object.create(null);
   for (const [k, v] of Object.entries(seeded || {})) if (!Object.prototype.hasOwnProperty.call(j, k)) out[k] = v;
   for (const [k, v] of Object.entries(j)) out[k] = v;
+  for (const k of own) if (seeded && Object.prototype.hasOwnProperty.call(seeded, k)) out[k] = seeded[k];
   const list = Array.isArray(j.watch) ? j.watch : [];
   const merged = [];
   let replaced = 0;
@@ -1872,16 +1910,18 @@ function watchMerge(domain, input, { kinds = [], kind = [], doc = [], seed = nul
 // The declared notOwned list, exactly as that domain's own watch.json states it - no default folded
 // in, so a caller that wants the whole effective list (domainFiles, set) goes through notOwnedOf below.
 const unowned = (domain) => watchOf(domain).notOwned;
-// ORIENTATION.md is architecture's own generated, byte-capped file (see BLOCK_FILE/BLOCK_BYTES in
+// The orientation block is the map's own generated, byte-capped file (see BLOCK_FILE/BLOCK_BYTES in
 // lint) - unowned by the write path whatever that domain's watch.json says, so no existing watch.json
 // needs a notOwned entry added for it. Folded into the SAME glob-matching mechanism a domain's own
 // declared list extends, rather than a second hardcoded filename check beside it.
 // Narrower than the pre-domain skip this replaces: that one excluded any file literally named
-// ORIENTATION.md, in every domain and in references/ or history/ too. A bare glob only matches at a
+// ORIENTATION.md (the legacy name), in every domain and in references/ or history/ too. A bare glob only matches at a
 // domain's own root (see the glob semantics above findFile), so this now shields architecture's real
-// BLOCK_FILE alone - which is the only ORIENTATION.md worth protecting, since BLOCK_FILE is hardcoded to
-// DOCS = <docs-root>/architecture.
-const notOwnedOf = (domain) => (domain === 'architecture' ? [...new Set(['ORIENTATION.md', ...unowned(domain)])] : unowned(domain));
+// BLOCK_FILE alone. Since the awareness move (2026-10-29) the block sits in awareness/ under its own name, beside two
+// files the stack writes once and never sections - the agents inventory and the user's own USER-AWARENESS.md; the
+// architecture default stays for an install not yet moved.
+const NOT_OWNED_DEFAULTS = { architecture: ['ORIENTATION.md'] /* the legacy home */, awareness: ['AGENTS-AWARENESS.md', 'ARCHITECTURE-ORIENTATION-AWARENESS.md', 'USER-AWARENESS.md'] };
+const notOwnedOf = (domain) => (NOT_OWNED_DEFAULTS[domain] ? [...new Set([...NOT_OWNED_DEFAULTS[domain], ...unowned(domain)])] : unowned(domain));
 // A bare ref (no <domain>/ prefix) to a notOwned file resolves no domain at all: parseRef's own domain
 // search runs over domainFiles, which has already excluded the file, so 'no such doc file' is what a bare
 // spelling gets today even though the domain-qualified spelling of the SAME file gets the true refusal.
@@ -2153,6 +2193,9 @@ function adrNew(title) {
 
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, HOOK_FOOTER, BRANCHES, RESERVED_DOMAIN_NAMES, domains, domainDir, resetDomains,
+  MAP_DOMAINS, MAP_KEYS, BLOCK_KEYS, mapDomain, mapNames, isMapFile, fileDomain,
+  // the run book's one rule lives in layout.js, which installer-side readers load without this engine's side effects
+  runBookKey: (docsDir) => require('./layout.js').runBookKey(docsDir),
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
   parse, sections, allSections, where, namingSections, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
@@ -2202,7 +2245,7 @@ const commands = {
   files: () => console.log(docFiles().map((f) => `${key(f)}  ${shown(f)} (${fs.statSync(f).size} chars, ${sections(f).length} sections${isHistory(f) ? ', history' : ''})`).join('\n')),
   stale: () => {
     const rows = stale();
-    if (orientationState() === 'provisional') console.log('architecture/ORIENTATION.md - provisional: stale by definition until the architecture capture replaces it');
+    if (orientationState() === 'provisional') console.log(`${path.relative(DOCS_ROOT, BLOCK_FILE).split(path.sep).join('/')} - provisional: stale by definition until the architecture capture replaces it`);
     console.log(rows.length ? rows.map((r) => `${r.s.id} - ${r.files.length} covered file(s) changed since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')}`).join('\n') : 'no section has been outgrown');
   },
   hash: () => {
@@ -2272,7 +2315,10 @@ const commands = {
     ].join('\n'));
   },
   lint: () => {
-    const { problems, notes } = lint(args[0]);
+    const part = args.includes('--map') ? 'map' : args.includes('--no-map') ? 'no-map' : null;
+    const domain = args.find((a) => !a.startsWith('--'));
+    if (part && !domain) { console.log(`lint: --${part} splits one domain - usage: docs.js lint <domain> [--map | --no-map]`); process.exit(1); }
+    const { problems, notes } = lint(domain, { part });
     for (const p of problems) console.log(`PROBLEM ${p}`);
     for (const n of notes) console.log(`note    ${n}`);
     console.log(`${problems.length} problems, ${notes.length} notes`);
@@ -2301,11 +2347,11 @@ const commands = {
   },
   'watch-merge': () => {
     const [domain, ...rest] = args;
-    const opts = { kinds: [], kind: [], doc: [], seed: null };
+    const opts = { kinds: [], kind: [], doc: [], seed: null, own: [] };
     let flag = null;
     for (const a of rest) {
-      if (['--kinds', '--kind', '--doc', '--seed'].includes(a)) { flag = a.slice(2); continue; }
-      if (!flag || a.startsWith('--')) { console.log(`watch-merge: unexpected ${JSON.stringify(a)} - usage: docs.js watch-merge <domain> [--seed '<JSON object>'] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json`); process.exit(1); }
+      if (['--kinds', '--kind', '--doc', '--seed', '--own'].includes(a)) { flag = a.slice(2); continue; }
+      if (!flag || a.startsWith('--')) { console.log(`watch-merge: unexpected ${JSON.stringify(a)} - usage: docs.js watch-merge <domain> [--seed '<JSON object>'] [--own <key>...] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json`); process.exit(1); }
       if (flag === 'seed') { opts.seed = a; flag = null; } else opts[flag].push(a);
     }
     if (flag === 'seed') { console.log('watch-merge: --seed needs a JSON object'); process.exit(1); }
@@ -2334,6 +2380,6 @@ const commands = {
 };
 if (commands[cmd]) commands[cmd]();
 else {
-  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain] | ceilings [--prune] | seed-ids | watch <path...> [--dir <dir...>] | watch-merge <domain> [--seed \'<JSON object>\'] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json | adr new \'<title>\' | adr index');
+  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain [--map | --no-map]] | ceilings [--prune] | seed-ids | watch <path...> [--dir <dir...>] | watch-merge <domain> [--seed \'<JSON object>\'] [--own <key>...] [--kinds <prefix>...] [--kind <exact>...] [--doc <DOC>] < entries.json | adr new \'<title>\' | adr index');
   process.exit(cmd ? 1 : 0);
 }

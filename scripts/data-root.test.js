@@ -315,3 +315,33 @@ test('repointRunBooks: both run-book line shapes under the given docs root, neve
     assert.match(text, /notes\/\.sensitive-data-howto\.md/, 'a path under another folder is not the store');
     assert.strictEqual(dr.repointRunBooks({ projectDir: dir, docsPath: 'team-docs', root: '.alfred' }), 0, 'a second run changes nothing');
 });
+
+// The project split (spec 2026-10-29 section 3, Review Focus 5): the run book is RUN-AND-DEBUG-AWARENESS.md now, its old
+// name still read for an install not yet updated; the user's own awareness file never reaches git.
+test('the credentials re-point reaches the renamed run book', () =>
+{
+    const dir = fresh('secrets-repoint-renamed');
+    const book = path.join(dir, 'team-docs', 'awareness', 'RUN-AND-DEBUG-AWARENESS.md');
+    const old = path.join(dir, 'team-docs', 'awareness', 'PROJECT-AWARENESS.md');
+    put(book, 'Credentials live in: `.alfred/.sensitive-data`, key `API_KEY`\n');
+    put(old, 'Credentials live in: `.alfred/.sensitive-data`, key `API_KEY`\n');
+    put(path.join(dir, '.alfred', '.secrets'), 'K=v\n');
+    assert.strictEqual(dr.repointRunBooks({ projectDir: dir, docsPath: 'team-docs', root: '.alfred' }), 2);
+    assert.match(fs.readFileSync(book, 'utf8'), /`\.alfred\/\.secrets`/, 'the renamed run book');
+    assert.match(fs.readFileSync(old, 'utf8'), /`\.alfred\/\.secrets`/, 'the old name is still re-pointed');
+    assert.ok(dr.DOCS_STATE_IGNORE.includes('/awareness/USER-AWARENESS.md'), 'the user\'s own notes stay out of git');
+});
+
+test('old credentials: the renamed run book is re-pointed too', () =>
+{
+    const p = fresh('adopt-renamed');
+    oldCapture(p);
+    const runBook = path.join(p, '.alfred', 'docs', 'awareness', 'RUN-AND-DEBUG-AWARENESS.md');
+    fs.mkdirSync(path.dirname(runBook), { recursive: true });
+    fs.renameSync(path.join(CAP(p), 'PROJECT-CAPABILITIES.md'), runBook);
+    const r = dr.adoptCredentials({ projectDir: p, check: IGNORED });
+    assert.deepStrictEqual([r.state, r.repointed], ['moved', 2]);
+    const text = fs.readFileSync(runBook, 'utf8');
+    assert.match(text, /Credentials live in: `\.alfred\/\.secrets`, key `ADMIN_PASSWORD`/);
+    assert.doesNotMatch(text, /credentials\.local\.env/);
+});

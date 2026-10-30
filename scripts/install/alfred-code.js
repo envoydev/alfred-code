@@ -686,6 +686,14 @@ function runLayers(ctx)
         // .gitignore of the stack's is gone before history/ moves into the data root's state/.
         try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
+        // After migrateLayout, whose general rows it reuses; a throw past its first step leaves a marker the next update
+        // reads to finish the move (docs.migrateArchitecture, D9).
+        try { docs.migrateArchitecture({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, rules: selection.generatedRules(ctx.projectRoot), log: ctx.log }); }
+        catch (err)
+        {
+            if (err.step === 1) ctx.note(`the architecture docs could not be moved under ${docsPath}/awareness (${err.message}) - every file is back where it was; re-run /alfred-code:update`);
+            else ctx.note(`the architecture docs moved under ${docsPath}/awareness, but step ${err.step || '?'} (${(err.cause && err.cause.message) || err.message}) did not finish - re-run /alfred-code:update to finish it`);
+        }
         // After migrateLayout, so the coverage doc already sits in quality/ when its watch learns it is not owned.
         try { docs.ensureQualityNotOwned({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
         catch (err) { ctx.note(`quality/watch.json under ${docsPath} could not be updated (${err.message}) - add COVERAGE-QUALITY.md to its notOwned list by hand`); }

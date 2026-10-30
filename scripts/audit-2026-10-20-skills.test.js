@@ -23,11 +23,11 @@ test('C34: a data-store start reads its resolved target first, and the run book 
     assert.match(book, /- Data target: <per environment - the file or variable that picks the database a local start reaches, and the count-only check that names it/);
     assert.match(book, /More than one environment config .* the Data target line names the file that picks it/);
     assert.match(book, /Before a local start, run the Data target check/);
-    const skill = flat(read('stack/skills/capture-awareness/SKILL.md'));
-    assert.match(skill, /Any other text is a NOTE - a fact the user typed for the run book/);
-    assert.match(skill, /\*\*NOTE\*\* - the doc exists and the arguments carry a typed fact .* no gate and no DISCOVER/);
-    assert.ok(skill.indexOf('**NOTE**') < skill.indexOf('**CURRENT**'), 'a note is routed before the CURRENT shortcut can swallow it');
-    assert.match(skill, /Project: <created \| refreshed \| appended \| current \| kept>/);
+    // The router routes typed text to the project part; the part's modes and field template are its reference's (2026-10-29).
+    assert.match(flat(read('stack/skills/capture-awareness/SKILL.md')), /any other text: a NOTE for the project part - never the chain/);
+    assert.match(book, /\*\*NOTE\*\* - the doc exists and the arguments carry a typed fact .* no gate and no DISCOVER/);
+    assert.ok(book.indexOf('**NOTE**') < book.indexOf('**CURRENT**'), 'a note is routed before the CURRENT shortcut can swallow it');
+    assert.match(book, /Project: <created \| refreshed \| appended \| current \| kept>/);
 });
 
 // C33 (1b432dd2, a09fc7d6, 0685cd0b, b4033453, b5f384d2, d340e944): one clause each in the always-on interaction rule.
@@ -108,7 +108,7 @@ test('C42: worktree briefs ask for plain commands, the loops clear their stamp b
 test('C22 + C32: capture closes offer the next command here, then after /clear; dispatching captures end the turn', () =>
 {
     const SHARED = "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.";
-    for (const rel of ['stack/skills/capture-architecture/references/report-fields.md', 'stack/skills/capture-quality/references/architecture-quality.md', 'stack/skills/capture-quality/references/code-quality.md']) {
+    for (const rel of ['stack/skills/capture-awareness/references/architecture-report-fields.md', 'stack/skills/capture-quality/references/architecture-quality.md', 'stack/skills/capture-quality/references/code-quality.md']) {
         const t = flat(read(rel));
         assert.match(t, /is offered to run here first, and `Start it in a fresh session: \/clear, then <command>` after it/, rel);
         assert.ok(t.includes(SHARED), `${rel}: the shared line`);
@@ -123,7 +123,7 @@ test('C22 + C32: capture closes offer the next command here, then after /clear; 
     const reg = require('../meta/shared-rules.json').rules['fresh-option-mark'];
     assert.ok(reg && reg.owner.file === 'stack/skills/task-solve/SKILL.md', 'the shared line is registered, task-solve its owner');
     assert.equal(reg.sites.length, 8, 'every other copy is a site');
-    for (const rel of ['capture-architecture/SKILL.md', 'capture-quality/references/architecture-quality.md', 'capture-quality/references/code-quality.md'])
+    for (const rel of ['capture-awareness/references/architecture.md', 'capture-quality/references/architecture-quality.md', 'capture-quality/references/code-quality.md'])
         assert.match(flat(read(`stack/skills/${rel}`)), /After the dispatch, end the turn: each hand-back arrives on its own/, rel);
 });
 
@@ -131,9 +131,9 @@ test('C22 + C32: capture closes offer the next command here, then after /clear; 
 // invented lighter path on an assessment recomputed at the same sha.
 test('C43: one vocabulary cell per role, no probe after the first write, one sanctioned INLINE lighter path', () =>
 {
-    assert.match(flat(read('stack/skills/capture-architecture/references/vocabulary-roles.md')), /An `always` role is never n\/a/);
-    assert.match(flat(read('stack/skills/capture-architecture/references/report-fields.md')), /one cell per row of the roles table/);
-    assert.match(flat(read('stack/skills/capture-architecture/SKILL.md')), /no seat dispatch and no source read either/);
+    assert.match(flat(read('stack/skills/capture-awareness/references/architecture-vocabulary-roles.md')), /An `always` role is never n\/a/);
+    assert.match(flat(read('stack/skills/capture-awareness/references/architecture-report-fields.md')), /one cell per row of the roles table/);
+    assert.match(flat(read('stack/skills/capture-awareness/references/architecture.md')), /no seat dispatch and no source read either/);
     const caq = flat(read('stack/skills/capture-quality/references/architecture-quality.md'));
     assert.match(caq, /when the state script \(capture-quality's chain block\) reports `architecture-quality: current`, VERIFY \+ REWRITE/);
     assert.match(caq, /a run whose HEAD moved - the loop's reconcile after shipped fixes included - runs in full/);

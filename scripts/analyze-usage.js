@@ -562,11 +562,11 @@ function readJsonl(file, onObj) {
 // rule's heading (current mechanism - see the skill's code-style-rule template) and the
 // retired inject-code-style hook's injected preamble (legacy sessions).
 
-// A rule or preamble written before the capture was renamed carries its old name, read from the
-// manifest's `renamed` map rather than spelled here.
-const STYLE_SKILL = 'capture-project-code-style';
-const STYLE_SKILL_NAMES = [STYLE_SKILL, ...Object.entries(loadManifest(path.join(__dirname, '..')).renamed.skills)
-  .filter(([, now]) => now === STYLE_SKILL).map(([old]) => old)];
+// A rule or preamble names the skill the capture ran under then: every name the manifest's `renamedTopics` maps to the
+// project-code-style part (capture-awareness took the capture in as that part, 2026-10-29), read rather than spelled
+// here - and capture-awareness itself, which an update's respell writes over an old name.
+const STYLE_SKILL_NAMES = [...new Set([...Object.entries(loadManifest(path.join(__dirname, '..')).renamed.topics)
+  .filter(([, part]) => part === 'project-code-style').map(([old]) => old)]), 'capture-awareness'];
 const STYLE_RULE_MARKERS = STYLE_SKILL_NAMES.map((n) => `the ${n} skill owns this rule`);
 const STYLE_INJECT_MARKERS = STYLE_SKILL_NAMES.map((n) => `maintained by the ${n}`);
 // The default root, then the one it replaced (2.0.0): a session recorded before the move wrote there.

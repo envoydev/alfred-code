@@ -3631,7 +3631,7 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
     write('loop-code-quality', 'disable-model-invocation: true\n');
-    write('capture-architecture', '');   // deliberately model-invocable so the loop can call it
+    write('capture-awareness', '');   // deliberately model-invocable so the loop can call it
     write('csharp', '');
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmi' },
@@ -3643,7 +3643,7 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
     assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
     // No threshold involved: this payload carries no transcript at all, so a context-based block
     // could not have fired. The flag is the whole verdict.
-    assert.equal(skillCall('capture-architecture').status, 0, 'the unflagged capture stays callable');
+    assert.equal(skillCall('capture-awareness').status, 0, 'the unflagged capture stays callable');
     assert.equal(skillCall('csharp').status, 0, 'an ordinary skill is untouched');
     assert.equal(skillCall('not-installed-here').status, 0, 'a skill this project does not carry is not this guard\'s business');
 
@@ -3801,7 +3801,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
 
     // A finished run, a human turn, then a second typed one: the whole measured shape.
     const second = transcript('chain-second', [
-      cmd('capture-architecture'), ...worked('a1', 'captured', FLOOR),
+      cmd('capture-awareness'), ...worked('a1', 'captured', FLOOR),
       userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ]);
     const env = winEnv();
@@ -3820,7 +3820,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // UserPromptExpansion fires as the command expands, so the typed prompt's own row may not be on disk
     // yet: the command being judged IS the human turn after the prior run's answer (2.1.5 M14).
     assert.match(slash(transcript('chain-not-on-disk', [
-      cmd('capture-architecture'), ...worked('a1', 'captured', FLOOR), assistantRow('a2', 'ok', COLD),
+      cmd('capture-awareness'), ...worked('a1', 'captured', FLOOR), assistantRow('a2', 'ok', COLD),
     ])), /ALREADY run one/, 'a transcript ending on the prior run\'s answer still chains');
 
     // Audit 2026-10-20 C13, 24841a36: the model gate's one-line refusal, after a single probe call, is no finished run -
@@ -3834,7 +3834,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
       userRow('go on'), assistantRow('r3', 'ok', COLD), cmd('alfred-code:update'),
     ]), winEnv(), 'alfred-code:update'), /ALREADY run one/, 'two calls are a run');
     assert.match(slash(transcript('chain-across-turn', [
-      cmd('capture-architecture'), callRow('r0', FLOOR), toolResult(), assistantRow('r1', 'which folder?', FLOOR),
+      cmd('capture-awareness'), callRow('r0', FLOOR), toolResult(), assistantRow('r1', 'which folder?', FLOOR),
       userRow('src/'), callRow('r2', COLD), toolResult(), assistantRow('r3', 'captured', COLD), userRow('next'), cmd('loop-code-quality'),
     ])), /ALREADY run one/, 'a run that asked in prose and went on counts its calls across the human turn');
 
@@ -3869,7 +3869,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // The marker as TEXT is not a run: a tool result that printed a transcript or a test file, or the
     // model's own tool input writing one. Measured 2026-09-15: 28 of 73 markers in the corpus sat in
     // tool results, and a replayed session was offered a fresh session for a run nobody typed.
-    const markup = '<command-name>/capture-architecture</command-name>';
+    const markup = '<command-name>/capture-awareness</command-name>';
     assert.equal(slash(transcript('chain-in-tool-result', [
       assistantRow('a0', 'reading', FLOOR),
       { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: `const x = '${markup}';` }] } },
@@ -3887,16 +3887,16 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
 
     // An ordinary skill after a deliberate run is not a run, and the off switch covers both triggers.
     const plain = transcript('chain-plain', [
-      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('dev-log-convert'),
+      cmd('capture-awareness'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('dev-log-convert'),
     ]);
     assert.equal(slash(plain, winEnv(), 'dev-log-convert'), '', 'a non-orchestration skill is untouched');
     // A chain whose whole carry IS the install's own floor has nothing for a resume to recover.
     assert.equal(slash(transcript('chain-allfloor', [
-      cmd('capture-architecture'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
+      cmd('capture-awareness'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
       toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a second run carrying only the cold floor is not worth a fresh session');
     assert.equal(slash(transcript('chain-off', [
-      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('loop-code-quality'),
+      cmd('capture-awareness'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('loop-code-quality'),
     ]), winEnv(ALL_FOUR_OFF)), '',
         'all four triggers off is the whole off switch - the chained one included');
 });

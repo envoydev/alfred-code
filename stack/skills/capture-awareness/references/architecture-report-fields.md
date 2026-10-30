@@ -7,7 +7,7 @@ prose (tables are exempt), so the receipts fit inside it rather than being trimm
 
 ## The confirmation block
 
-- **Files written** - created vs refreshed, sections touched; the awareness rule created/refreshed.
+- **Files written** - created vs refreshed, sections touched.
 - **Gather rounds** - rounds used and whether the picture settled within the 3-round cap.
 - **Structure headline** - one line: project type + architecture style.
 - **Unverified** - anything unverified and what would settle it.
@@ -17,10 +17,10 @@ prose (tables are exempt), so the receipts fit inside it rather than being trimm
 | Field | Content | The step it proves |
 |---|---|---|
 | `Vocabulary:` | one cell per row of the roles table - `<role>: <skill loaded> \| ABSENT \| n/a - <its When that does not hold>`; an `always` role is never n/a | the vocabulary load |
-| `References:` | which of this skill's `references/` files this run actually Read (`hazards.md`, `doc-shapes.md`, `vocabulary-roles.md`, `report-fields.md`) | the contract reads |
+| `References:` | which of this part's references this run actually Read (`architecture-hazards.md`, `architecture-doc-shapes.md`, `architecture-vocabulary-roles.md`, `architecture-report-fields.md`) | the contract reads |
 | `Write gate:` | the answer to the pre-write AskUserQuestion, verbatim - or the reason the run skipped the ask (`first capture - no doc to replace`, `zero drift - nothing written`) | the ask before the first byte |
-| `Write passes:` | what step 5's precondition allows, counting every file written under the architecture folder (each Edit pass of a reference file too): `ARCHITECTURE.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened - plus the `docs.js status` line quoted right after the first write, the proof no code-claim probe ran later | the verification-first precondition |
-| `Rule:` | the awareness rule's measured byte count from `wc -c` | the 300-byte budget check |
+| `Write passes:` | what step 5's precondition allows, counting every map file written under the awareness folder (each Edit pass of a reference file too): `ARCHITECTURE-AWARENESS.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened - plus the `docs.js status` line quoted right after the first write, the proof no code-claim probe ran later | the verification-first precondition |
+| `Rule:` | the router close's `--rule` verdict: the map line it wrote into the awareness rule, or why none | the map's pointer in the awareness rule |
 | `Model:` | see below | which model the judgment ran on |
 
 ## The `Model:` line

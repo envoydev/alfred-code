@@ -43,7 +43,7 @@ numbered order below: a fixed order means every filled file keeps the same
 fact in the same place, and the two highest-traffic facts (stack, commands) sit at the top. Keep
 each section lean, then delete this comment block. Comments are stripped from injection, so this
 outline costs nothing even while it sits here. Where the architecture capture ran, the docs hook
-already pushes its ORIENTATION.md (the project shape, the module map, the contracts a newcomer
+already pushes its ARCHITECTURE-ORIENTATION-AWARENESS.md (the project shape, the module map, the contracts a newcomer
 breaks first) into every session: items 1 and 6 then keep only what it lacks - the domain-terms
 map, a dependency rule's why - plus a pointer to its sections, never a second copy.
 

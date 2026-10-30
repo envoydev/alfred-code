@@ -546,8 +546,11 @@ test('generated rules: every rule a capture skill writes is a generated name, an
         try { text = fs.readFileSync(path.join(repo, 'stack', 'skills', d, 'SKILL.md'), 'utf8'); } catch { continue; }
         for (const m of text.matchAll(/\.claude\/rules\/([a-z0-9-]+)\.md/g)) if (!shipped.includes(m[1])) written.add(m[1]);
     }
-    assert.deepStrictEqual([...written].sort(), ['alfred-architecture', 'alfred-awareness']);
+    assert.deepStrictEqual([...written].sort(), ['alfred-awareness']);
     for (const stem of written) assert.ok(generated(stem), `${stem} is written by a capture`);
+    // the architecture marker the capture-awareness merge retired (2026-10-29) stays generated: an install not yet
+    // updated still holds it, and an AGENTS.md line naming it is a pointer, never template text
+    assert.ok(generated('alfred-architecture'), 'the retired marker an older install keeps');
     for (const stem of shipped) assert.ok(!generated(stem), `${stem} ships with the stack`);
 });
 

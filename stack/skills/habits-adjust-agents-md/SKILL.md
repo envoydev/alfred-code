@@ -73,7 +73,7 @@ Every fact a section states comes from a file that states it, in this order:
 1. **The first-look scan** - `node "<stack>/scripts/scan-evidence.js" --orientation --root .` prints the
    stack, the modules, the build / test / run commands and the entry points, read from the manifests.
    It is the map; do not re-derive it by reading source.
-2. **The architecture docs** when `capture-architecture` has run (`<docs-path>/architecture/`):
+2. **The architecture docs** when `capture-awareness`'s architecture part has run (`<docs-path>/awareness/ARCHITECTURE-AWARENESS.md`):
    the docs hook already pushes its orientation into every session, so sections 1 and 6 point at it
    and keep only what it lacks.
 3. **Setup** - the SDK pins (`global.json`, `.nvmrc`, `engines`, `<TargetFramework>`), the compose

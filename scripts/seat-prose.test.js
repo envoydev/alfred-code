@@ -341,7 +341,7 @@ test('agents F13: the diagnoser and analyzer copies are pinned', () =>
 
 test('agents F14 + F16: the run-book line leads with its condition, and the gatherer skips it when it never runs the app', () =>
 {
-    const line = 'When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app';
+    const line = 'When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app';
     for (const s of [...seats.filter((x) => x.endsWith('-verifier')), 'issue-diagnoser-runtime', 'evidence-gatherer', 'integration-reviewer'])
     {
         const text = squash(body(s));

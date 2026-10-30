@@ -1388,6 +1388,13 @@ test('check 65 flags <docs-path>/flow/APPROVAL in a skill and passes state/appro
     assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'writes <docs-path>/quality/COVERAGE-QUALITY.md and <docs-path>/quality/coverage-raw/\n'), [], 'the new home passes');
 });
 
+test('lint 65 flags the old map home with its renames', () => {
+    const { lintOldLocations } = require('./lint-skills.js');
+    const hit = lintOldLocations([{ file: 'stack/skills/x/SKILL.md', text: 'read `<docs-path>/architecture/ARCHITECTURE.md` first\n' }]);
+    assert.deepStrictEqual(hit, ['stack/skills/x/SKILL.md:1 names the moved location <docs-path>/architecture - use <docs-path>/awareness (ARCHITECTURE.md -> ARCHITECTURE-AWARENESS.md, ORIENTATION.md -> ARCHITECTURE-ORIENTATION-AWARENESS.md, BRANCH-DELTA.md -> BRANCH-DELTA.md, references/ -> references/, history/ -> history/) (stack/hooks/layout.js LAYOUT_MOVES)']);
+    assert.deepStrictEqual(lintOldLocations([{ file: 'stack/skills/x/SKILL.md', text: 'read `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` and <docs-path>/architecture-quality/\n' }]), [], 'the new home and a longer name pass');
+});
+
 test('check 65 passes layout.js, the migration code, the tests, the history and a hook\'s skew-window read', () => {
     const { lintOldLocations } = require('./lint-skills.js');
     const of = (file, text) => lintOldLocations([{ file, text }]);
@@ -1420,6 +1427,7 @@ test('check 65: a sentence may end on an old home; an extension is another name'
 const RETIRED_MAP = {
     renamedSkills: { 'old-cov-capture': 'capture-quality', 'old-code-capture': 'capture-quality', 'old-cov-loop': 'loop-test-coverage-quality', 'old-other': 'task-solve' },
     renamedTopics: { 'old-cov-capture': 'test-coverage-quality' },
+    umbrellaParts: { 'capture-quality': ['architecture-quality', 'code-quality', 'test-coverage-quality'] },
 };
 test('check 70 flags each retired token', () => {
     const { lintRetiredQuality } = require('./lint-skills.js');
@@ -1479,8 +1487,78 @@ test('check 70 keeps the exemptions', () => {
     assert.strictEqual(of('stack/skills/x/SKILL.md', 'the older copy of old-code-capture\n').length, 1, 'markdown gets no word pass');
 });
 
+// The awareness merge (2026-10-29) renamed FILES, which no skill token reaches: the map's two root files, the run book and
+// the retired marker rule, each flagged once with its new name; 'legacy' on the line, the movers and the two-name readers
+// exempt (spec 2.3).
+test('check 70\'s file tokens', () => {
+    const { lintRetiredQuality } = require('./lint-skills.js');
+    const of = (file, text) => lintRetiredQuality([{ file, text }], RETIRED_MAP);
+    for (const [file, text, use] of [
+        ['stack/skills/x/SKILL.md', 'read ARCHITECTURE.md first\n', '`awareness/ARCHITECTURE-AWARENESS.md`'],
+        ['stack/skills/x/SKILL.md', 'then ORIENTATION.md\n', '`awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md`'],
+        ['stack/rules/r.md', 'the run book is PROJECT-AWARENESS.md\n', '`awareness/RUN-AND-DEBUG-AWARENESS.md`'],
+        ['stack/agents/x.md', '- At start, read `<docs-path>/architecture/ORIENTATION` first\n', '`awareness/ARCHITECTURE-ORIENTATION-AWARENESS`'],
+        ['setup-plugin/references/r.md', 'the marker rule alfred-architecture.md\n', '`alfred-awareness.md`'],
+    ])
+    {
+        const hit = of(file, text);
+        assert.strictEqual(hit.length, 1, `${text}: ${hit.join(' | ')}`);
+        assert.ok(hit[0].endsWith(`use ${use} (check 70)`), hit[0]);
+    }
+    assert.strictEqual(of('stack/skills/x/SKILL.md', 'see architecture/ARCHITECTURE.md#modules\n').length, 1, 'a path is flagged once, by its folder token');
+    assert.deepStrictEqual(of('stack/agents/x.md', '- `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` - ARCHITECTURE.md, the legacy home\n'), [], 'markdown saying legacy');
+    assert.deepStrictEqual(of('scripts/x.js', "const OLD = 'ORIENTATION.md'; // legacy\n"), [], 'code outside scripts/install/ and stack/hooks/ saying legacy');
+    assert.deepStrictEqual(of('meta/shared-rules.json', `${JSON.stringify({ rules: [{ marker: 'ARCHITECTURE.md, the legacy home' }] }, null, 2)}\n`), [], 'a JSON value saying legacy');
+    assert.strictEqual(of('stack/agents/x.md', '- read ARCHITECTURE.md first\n').length, 1, 'the same seat line without the word');
+    for (const file of ['stack/mcp/data-root.js', 'stack/skills/mode-output-scorer/scripts/scorecard.js', 'stack/skills/capture-awareness/scripts/awareness-state.js', 'scripts/scan-evidence.js', 'meta/conformance.json', 'meta/skill-comply/x/fixtures/a.md', 'scripts/install/docs.js'])
+        assert.deepStrictEqual(of(file, file.endsWith('.json') ? JSON.stringify({ a: 'PROJECT-AWARENESS.md, ORIENTATION.md' }) : 'PROJECT-AWARENESS.md and ORIENTATION.md\n'), [], `${file} is exempt`);
+    assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'ARCHITECTURE-AWARENESS.md, ARCHITECTURE-ORIENTATION-AWARENESS.md, ARCHITECTURE-PREFERENCES.md, ARCHITECTURE-ASSESSMENT.md, RUN-AND-DEBUG-AWARENESS.md, alfred-awareness.md\n'), [], 'the new and the -suffixed names never');
+    assert.strictEqual(of('stack/skills/x/SKILL.md', 'the legacy old-code-capture\n').length, 1, 'the word exempts the file tokens alone');
+});
+
+// Invented names again: `old-arch` is a prefix of `old-arch-quality`, the boundary the real pair has.
+test('check 70 reads umbrellaParts', () => {
+    const { lintRetiredQuality } = require('./lint-skills.js');
+    const map = {
+        renamedSkills: { 'old-arch': 'capture-awareness', 'old-plain-awareness': 'capture-awareness', 'old-arch-quality': 'capture-quality' },
+        renamedTopics: { 'old-arch': 'architecture', 'old-arch-quality': 'architecture-quality' },
+        umbrellaParts: { 'capture-quality': ['architecture-quality', 'code-quality', 'test-coverage-quality'], 'capture-awareness': ['project-code-style', 'architecture', 'project', 'agents', 'related-projects'] },
+    };
+    const of = (text) => lintRetiredQuality([{ file: 'stack/skills/x/SKILL.md', text }], map);
+    const part = of('run /old-arch src\n');
+    assert.strictEqual(part.length, 1);
+    assert.ok(part[0].endsWith('use `capture-awareness architecture` (check 70)'), part[0]);
+    const longer = of('run /old-arch-quality src\n');
+    assert.strictEqual(longer.length, 1, 'never the shorter token too');
+    assert.ok(longer[0].endsWith('use `capture-quality architecture-quality` (check 70)'), longer[0]);
+    assert.ok(of('the old-plain-awareness skill\n')[0].endsWith('use `capture-awareness` (check 70)'), 'an older plain name');
+});
+
+test('check 70b over two umbrellas', () => {
+    const { lintUmbrellaTopics } = require('./lint-skills.js');
+    const { QUALITY_TOPICS: topics } = require('../stack/hooks/hook-prelude.js');
+    const table = (rows) => ['| Part | Topic words | Writes |', '|---|---|---|', ...rows.map(([part, words]) => `| ${part} | ${words.map((w) => `\`${w}\``).join(', ')} | a |`)].join('\n') + '\n';
+    const qualityParts = Object.keys(topics);
+    const awarenessParts = ['project-code-style', 'architecture', 'project', 'agents', 'related-projects'];
+    const quality = { name: 'capture-quality', routerText: table(Object.entries(topics)), parts: qualityParts, topics };
+    const awareness = { name: 'capture-awareness', routerText: table(awarenessParts.map((p) => [p, [p]])), parts: awarenessParts };
+    const renamedTopics = { 'old-code-capture': 'code-quality', 'old-arch-capture': 'architecture' };
+    const renamedSkills = { 'old-code-capture': 'capture-quality', 'old-arch-capture': 'capture-awareness' };
+    const ok = { umbrellas: [quality, awareness], renamedTopics, renamedSkills };
+    assert.deepStrictEqual(lintUmbrellaTopics(ok), [], 'the matching inputs');
+    const noAgents = lintUmbrellaTopics({ ...ok, umbrellas: [quality, { ...awareness, routerText: table(awarenessParts.filter((p) => p !== 'agents').map((p) => [p, [p]])) }] });
+    assert.strictEqual(noAgents.length, 1, 'a part with no row');
+    assert.match(noAgents[0], /capture-awareness's topic table has no row for agents .*\(check 70b\)$/);
+    const otherUmbrella = lintUmbrellaTopics({ ...ok, renamedTopics: { ...renamedTopics, 'old-arch-capture': 'architecture-quality' } });
+    assert.strictEqual(otherUmbrella.length, 1, 'a part of the OTHER umbrella');
+    assert.match(otherUmbrella[0], /renamedTopics old-arch-capture: architecture-quality is no capture-awareness part/);
+    assert.strictEqual(lintUmbrellaTopics({ ...ok, renamedSkills: { ...renamedSkills, 'old-arch-capture': 'task-solve' } }).length, 1, 'a target that is no umbrella');
+    for (const f of lintUmbrellaTopics({ ...ok, renamedSkills: { ...renamedSkills, 'old-arch-capture': 'task-solve' } })) assert.ok(f.endsWith('(check 70b)'), f);
+});
+
 test('check 70b holds the router and renamedTopics to QUALITY_TOPICS', () => {
-    const { lintQualityTopics } = require('./lint-skills.js');
+    const { lintUmbrellaTopics } = require('./lint-skills.js');
+    const lintQualityTopics = ({ routerText, topics, renamedTopics, renamedSkills }) => lintUmbrellaTopics({ umbrellas: [{ name: 'capture-quality', routerText, parts: Object.keys(topics), topics }], renamedTopics, renamedSkills });
     const { QUALITY_TOPICS: topics } = require('../stack/hooks/hook-prelude.js');
     const router = (coverage) => ['| Part | Topic words | Writes | Seats |', '|---|---|---|---|',
         '| architecture-quality | `architecture-quality`, `architecture` | a | b |',

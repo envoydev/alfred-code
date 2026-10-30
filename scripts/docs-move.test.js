@@ -238,7 +238,8 @@ const look = (repoDir) => ({
     local: (envOf(repoDir, 'settings.local.json') || {}).ALFRED_CODE_DOCS_PATH,
     rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(repoDir, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1],
     ledger: /ALFRED_CODE_DOCS_PATH/.test(fs.readFileSync(path.join(repoDir, '.claude', 'alfred-code.stamp'), 'utf8')),
-    moved: ['architecture/ARCHITECTURE.md', 'ORIENTATION.md', 'mydomain/NOTES.md'].filter((rel) => fs.existsSync(path.join(repoDir, '.alfred', 'docs', ...rel.split('/')))),
+    // the map arrives at the awareness home: the same update's architecture move (docs.migrateArchitecture) carries it on
+    moved: ['awareness/ARCHITECTURE-AWARENESS.md', 'ORIENTATION.md', 'mydomain/NOTES.md'].filter((rel) => fs.existsSync(path.join(repoDir, '.alfred', 'docs', ...rel.split('/')))),
     gate: fs.existsSync(path.join(repoDir, '.alfred', 'state', 'approvals', 'COMMIT-GATE')),
     left: fs.existsSync(path.join(repoDir, 'docs-ext')) ? fs.readdirSync(path.join(repoDir, 'docs-ext')).sort() : null,
 });
@@ -264,7 +265,7 @@ test('installer: update moves the stack\'s docs from a leftover root and removes
     assert.match(outs[1], /settings\.json env: ALFRED_CODE_DOCS_PATH 'docs-ext' removed/, outs[1]);
     assert.deepStrictEqual(steps[1], {
         key: undefined, local: undefined, rule: '.alfred/docs', ledger: false,
-        moved: ['architecture/ARCHITECTURE.md', 'ORIENTATION.md', 'mydomain/NOTES.md'], gate: true, left: ['README.md', 'guides'],
+        moved: ['awareness/ARCHITECTURE-AWARENESS.md', 'ORIENTATION.md', 'mydomain/NOTES.md'], gate: true, left: ['README.md', 'guides'],
     });
     assert.doesNotMatch(outs[2], /docs root:|ALFRED_CODE_DOCS_PATH/, 'a second update finds nothing to do');
     assert.deepStrictEqual(steps[2], steps[1]);
@@ -357,7 +358,7 @@ test('installer: a key equal to <data root>/docs is removed with nothing moved',
     });
     assert.match(outs[1], /settings\.json env: ALFRED_CODE_DOCS_PATH '\.alfred\/docs' removed/, outs[1]);
     assert.doesNotMatch(outs[1], /docs root: moved/);
-    assert.deepStrictEqual([result.key, result.rule, result.ledger, result.moved], [undefined, '.alfred/docs', false, ['architecture/ARCHITECTURE.md']]);
+    assert.deepStrictEqual([result.key, result.rule, result.ledger, result.moved], [undefined, '.alfred/docs', false, ['awareness/ARCHITECTURE-AWARENESS.md']]);
 });
 
 test('installer: a root in settings.local.json at project scope moves too, and both files lose the key', POSIX_ONLY, () =>
@@ -410,10 +411,10 @@ test('installer: tracked docs move as staged renames, and an ignored old root st
     const tracked = seedRun(['install', 'update'], SELECTION, {
         args: [['--scope', 'project'], updateArgs()],
         each: (r, i) => { if (i === 0) { olderInstall(r); git(r, 'add', '-f', 'docs-ext/architecture/ARCHITECTURE.md'); git(r, '-c', 'user.email=x@example.invalid', '-c', 'user.name=x', 'commit', '-qm', 'docs'); } return null; },
-        inspect: (r) => git(r, 'status', '--porcelain', '--', 'docs-ext', '.alfred/docs/architecture'),
+        inspect: (r) => git(r, 'status', '--porcelain', '--', 'docs-ext', '.alfred/docs/awareness'),
     });
     assert.match(tracked.outs[1], /docs root: moved docs-ext -> \.alfred\/docs \(5 file\(s\), 1 through git mv - staged as renames, commit them\)/, tracked.outs[1]);
-    assert.match(tracked.result, /^R {2}docs-ext\/architecture\/ARCHITECTURE\.md -> \.alfred\/docs\/architecture\/ARCHITECTURE\.md$/m);
+    assert.match(tracked.result, /^R {2}docs-ext\/architecture\/ARCHITECTURE\.md -> \.alfred\/docs\/awareness\/ARCHITECTURE-AWARENESS\.md$/m);
 
     const ignored = seedRun(['install', 'update'], SELECTION, {
         args: [['--scope', 'project'], updateArgs()],
@@ -440,7 +441,7 @@ test('installer: --data-path carries the docs to the new root\'s docs/ and write
         args: [['--scope', 'project'], updateArgs('--data-path', '.data', '--data-move', 'move')],
         each: (r, i) => { if (i === 0) put(r, '.alfred/docs/architecture/ARCHITECTURE.md', '# arch\n'); return null; },
         inspect: (r) => ({ key: envOf(r, 'settings.json').ALFRED_CODE_DOCS_PATH, data: envOf(r, 'settings.json').ALFRED_CODE_DATA_PATH, rule: look(r).rule,
-            moved: fs.existsSync(path.join(r, '.data', 'docs', 'architecture', 'ARCHITECTURE.md')), old: fs.existsSync(path.join(r, '.alfred', 'docs')) }),
+            moved: fs.existsSync(path.join(r, '.data', 'docs', 'awareness', 'ARCHITECTURE-AWARENESS.md')), old: fs.existsSync(path.join(r, '.alfred', 'docs')) }),
     });
     assert.match(outs[1], /docs root: moved \.alfred\/docs -> \.data\/docs/, outs[1]);
     assert.deepStrictEqual(result, { key: undefined, data: '.data', rule: '.data/docs', moved: true, old: false });
@@ -465,7 +466,7 @@ test('installer: hook state a stale session writes under the old default after t
             // its 2.8.0 home, never the docs root's retired flow/ (audit 2026-10-20b, the hooks track)
             return { key: envOf(r, 'settings.json').ALFRED_CODE_DOCS_PATH, old: fs.existsSync(at('.claude/docs')), row: fs.readFileSync(at('.alfred/state/sessions/turn-check-stale'), 'utf8'),
                 retired: fs.existsSync(at('.alfred/docs/flow')),
-                log: fs.readFileSync(at('.alfred/statistics/docs-log.jsonl'), 'utf8'), moved: fs.existsSync(at('.alfred/docs/architecture/ARCHITECTURE.md')) };
+                log: fs.readFileSync(at('.alfred/statistics/docs-log.jsonl'), 'utf8'), moved: fs.existsSync(at('.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md')) };
         },
     });
     assert.match(outs[1], /docs root: moved \.claude\/docs -> \.alfred\/docs/, outs[1]);

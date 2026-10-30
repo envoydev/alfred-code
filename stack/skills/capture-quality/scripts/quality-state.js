@@ -26,7 +26,7 @@ const DATA_ROOT_DEFAULT = '.alfred';
 const readText = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
 const settingsEnv = (file) => { try { return (JSON.parse(readText(file) || 'null') || {}).env || {}; } catch { return {}; } };
 
-// The data root as capture-awareness' capabilities-inventory.js reads it: the environment, then the project's settings
+// The data root as capture-awareness' awareness-state.js reads it: the environment, then the project's settings
 // files, then the account's; a value that is not a plain relative folder is the default.
 function dataRoot(projectRoot, env = process.env)
 {
@@ -45,7 +45,7 @@ function dataRoot(projectRoot, env = process.env)
 }
 
 // The docs root: a leftover ALFRED_CODE_DOCS_PATH first (the 2.x line), settings.local.json over settings.json, else
-// <data root>/docs - capabilities-inventory.js docsRoot.
+// <data root>/docs - awareness-state.js docsRoot.
 function docsRoot(projectRoot, env = process.env)
 {
     if (env.ALFRED_CODE_DOCS_PATH) return env.ALFRED_CODE_DOCS_PATH;

@@ -23,9 +23,9 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
   `csharp-ls` when `csharp-lsp` is kept, `typescript-language-server` (with the TypeScript 6 it reads) when
   `typescript-lsp` is kept, then claude-hud's status line and compact
   layout (the account's, or this project's `settings.local.json` for a claude-hud installed for this project alone). The command is the exact one to run.
-- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the three
-  captures in their fixed order, each only when the install lists its skill AND its seat
-  (`capture-awareness` has none, and runs whenever it is installed - each of its parts decides from disk).
+- `capture: capture-awareness <topic> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - one row per
+  awareness part in its fixed order, each only when the install lists the skill AND the part's seat (`project`,
+  `related-projects` and `agents` have none, and run whenever the skill is installed - each decides from disk).
 - `instructions-both: ask` - a joined child with a CLAUDE.md above it, while the account loads only one of the two
   files there; step 4 asks it. `instructions-both: not asked - ...` is said in one line and asks nothing.
 
@@ -95,18 +95,18 @@ with `--decline` - report its `instructions-both:` line verbatim.
 
 ## 5. Captures - each SKILL.md followed inline
 
-For every `capture: ... - run: read <path>` line, in plan order: read that `SKILL.md` (through Bash)
-and follow it inline, start to finish - never a Skill call: the reads stay in this run, and the manual-only ones
-are denied by `guard-fresh-session-start.js`. It is this step's instructions for that capture:
+For every `capture: ... - run: read <path>` line, in plan order: read that `SKILL.md` (through Bash), with that
+topic as its argument, and follow it inline, start to finish - never a Skill call: the reads stay in this run, and a
+capture's Skill call meets the fresh-session gate of `guard-fresh-session-start.js`. It is this step's instructions for that capture:
 its relative `references/` and `scripts/` paths resolve from the SKILL.md's own directory, and a
 plugin-root placeholder in it arrives unexpanded - read it as the plugin root the plan's path
 carries. Its seat is installed (the plan checked), so a dispatch it names is made as written. A
 `done` or `skip` line is one narration line each - a done capture is re-run later by the user, never
 here.
 
-`capture-awareness` runs LAST, so its inventory reflects everything the captures above added. It asks
-its own questions on the way - the run book's gaps, and the sibling repos (typed via Other, or 'None' for a
-standalone repo) - and its script decides what needs rewriting.
+The `agents` part runs LAST, so its inventory reflects everything the parts above added. The parts ask their own
+questions on the way - the run book's gaps, and the sibling repos (typed via Other, or 'None' for a standalone
+repo) - and the router's script decides what needs rewriting.
 
 ## 6. AGENTS.md - the user's call
 

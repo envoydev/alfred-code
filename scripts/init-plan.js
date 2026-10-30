@@ -17,11 +17,11 @@
 //     has a stale shape. Its command ends in `# adds <n> claude-hud keys: <names>`, a shell comment.
 //     The command is the exact one to run; init puts every missing one through ONE ask.
 //
-//   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
-//     The three captures in their fixed order, each only when the install lists its skill AND its seat
-//     (capture-awareness has none). init READS the SKILL.md and follows it inline: these skills are
-//     manual-only, so a Skill call is denied. An existing output is done - re-capturing is the user's
-//     call, later. The library copy in .claude/skills wins over the plugin's.
+//   capture: <skill> <topic> - run: read <SKILL.md> | done: <output> exists | skip: <why>
+//     The awareness parts in their fixed order, each only when the install lists the skill AND the part's seat
+//     (three parts have none). init READS the SKILL.md and follows it inline with the topic as its argument,
+//     never a Skill call. An existing output is done - re-capturing is the user's call, later. The library copy in
+//     .claude/skills wins over the plugin's.
 //
 //   unattended: <question> -> <choice>
 //     Only with ALFRED_CODE_UNATTENDED=1: the answer to each ask init itself owns, after the plan -
@@ -40,13 +40,16 @@ const { planHud, resolveConfigDir } = require(path.join(REPO, 'scripts', 'hud-st
 
 const HUD_ITEM = 'claude-hud status line + compact layout';
 
+// One row per capture-awareness part (the merge of 2026-10-29), read as the router with the part's topic. A part with
+// no seat always runs when the skill is installed - each decides from disk whether it has work; related-projects
+// dispatches its opt-in seat only where it is installed. The agents part runs LAST, so the inventory reflects every
+// part above.
 const CAPTURES = [
-    { skill: 'capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
-    { skill: 'capture-project-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/preferences/PROJECT-CODE-PREFERENCES.md` },
-    // The inventory, the run book and the sibling repos in one run (the user's ruling of 2026-10-16), no seat of its own -
-    // its related-projects part dispatches the opt-in seat only where it is installed. LAST, so the inventory reflects
-    // every capture above; each part decides from disk whether it has work, so it always runs when installed.
-    { skill: 'capture-awareness', seat: null, output: null },
+    { skill: 'capture-awareness', topic: 'architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/awareness/ARCHITECTURE-AWARENESS.md` },
+    { skill: 'capture-awareness', topic: 'project-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/preferences/PROJECT-CODE-PREFERENCES.md` },
+    { skill: 'capture-awareness', topic: 'project', seat: null, output: null },
+    { skill: 'capture-awareness', topic: 'related-projects', seat: null, output: null },
+    { skill: 'capture-awareness', topic: 'agents', seat: null, output: null },
 ];
 
 const probes = {
@@ -92,17 +95,17 @@ function plan({ inv, root, platform = process.platform, env = process.env, probe
     const off = new Set(inv.left_out || []);
     const docs = resolveDocsRoot(root).replace(/[\\/]+$/, '');
     const rel = (p) => shownPath(root, p);
-    const captures = CAPTURES.map(({ skill, seat, output }) =>
+    const captures = CAPTURES.map(({ skill, topic, seat, output }) =>
     {
-        if (!skills.has(skill) || off.has(`skill ${skill}`)) return { skill, state: 'skip', detail: 'the skill is not installed' };
-        if (seat && off.has(`agent ${seat}`)) return { skill, state: 'skip', detail: `its seat ${seat} is switched off` };
-        if (seat && !agents.has(seat)) return { skill, state: 'skip', detail: `its seat ${seat} is not installed` };
+        if (!skills.has(skill) || off.has(`skill ${skill}`)) return { skill, topic, state: 'skip', detail: 'the skill is not installed' };
+        if (seat && off.has(`agent ${seat}`)) return { skill, topic, state: 'skip', detail: `its seat ${seat} is switched off` };
+        if (seat && !agents.has(seat)) return { skill, topic, state: 'skip', detail: `its seat ${seat} is not installed` };
         const out = output && output(docs);
-        if (out && fs.existsSync(path.join(root, out))) return { skill, state: 'done', detail: `${out} exists` };
+        if (out && fs.existsSync(path.join(root, out))) return { skill, topic, state: 'done', detail: `${out} exists` };
         const file = [path.join(root, '.claude', 'skills', skill, 'SKILL.md'),
             ...(pluginRoot ? [path.join(pluginRoot, 'stack', 'skills', skill, 'SKILL.md')] : []),
             path.join(REPO, 'stack', 'skills', skill, 'SKILL.md')].find((f) => fs.existsSync(f));
-        return file ? { skill, state: 'run', detail: `read ${rel(file)}` } : { skill, state: 'skip', detail: 'its SKILL.md is in neither the project nor the plugin' };
+        return file ? { skill, topic, state: 'run', detail: `read ${rel(file)}` } : { skill, topic, state: 'skip', detail: 'its SKILL.md is in neither the project nor the plugin' };
     });
     // D5 (workspace layering): a joined child with a CLAUDE.md on its path, asked once per account.
     const ws = require('./install/workspace.js');
@@ -113,7 +116,7 @@ function plan({ inv, root, platform = process.platform, env = process.env, probe
 function render({ machine, captures, instructionsBoth })
 {
     const lines = machine.map(({ what, state, detail }) => (state === 'present' ? `machine: ${what} - present` : `machine: ${what} - ${state}: ${detail}`));
-    for (const { skill, state, detail } of captures) lines.push(`capture: ${skill} - ${state}: ${detail}`);
+    for (const { skill, topic, state, detail } of captures) lines.push(`capture: ${skill} ${topic} - ${state}: ${detail}`);
     const both = require('./install/workspace.js').instructionsBothLine(instructionsBoth);
     if (both) lines.push(both);
     const count = (s) => machine.filter((m) => m.state.startsWith(s)).length;

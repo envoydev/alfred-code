@@ -95,6 +95,8 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 const NON_SKILL_TOKENS = new Set([
     // capture-quality's part names and topic words (its router's topic table) - a part of one skill, not a skill.
     'architecture-quality', 'code-quality', 'test-coverage-quality', 'test-coverage',
+    // capture-awareness's hyphenated part names and topic words (2026-10-29), the same way.
+    'related-projects', 'project-code-style', 'code-style',
     // the tools preferences' known MCP server types (meta/tool-adapters.json) - a doc's rank names them, not skills.
     'memory-service', 'windows-mcp', 'macos-mcp',
     // the AGENTS.md check's row kind for an older seed's rules list (scripts/agents-md-check.js) - a row kind, not a skill.
@@ -652,7 +654,7 @@ function lintSuggestionEdges(label, text)
 // A backticked cite of an OPTIONAL skill inside a load directive must carry an
 // availability guard, or the model calls Skill(<name>) in a project that never
 // installed it and gets 'Unknown skill: <name>' (measured 2026-09-04 in a
-// consuming project: capture-architecture told the session to load
+// consuming project: the architecture capture told the session to load
 // `dotnet-architecture-tests`, which meta/evidence.json installs only when
 // NetArchTest/ArchUnitNET is in the manifests). A cite that merely POINTS at a
 // skill ('boundary enforcement lives in `x`') is not a directive and is not
@@ -703,7 +705,7 @@ const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never 
 // A blanket guard covers every cite in its file, and it must be DELIBERATE: an explicit
 // '**Availability**' callout carrying a guard phrase. The earlier form also accepted any
 // line pairing a guard phrase with a common word ('every', 'rows', 'below'), which silenced
-// 13 of 263 files by accident - capture-architecture/SKILL.md among them, the very
+// 13 of 263 files by accident - the architecture capture's SKILL.md among them, the very
 // file whose unguarded cite produced the measured 'Unknown skill' error. Proven by mutation:
 // a fresh unguarded load directive added to a blanketed file was not flagged.
 const AVAILABILITY_BLANKET = /\*\*Availability\b/;
@@ -1238,6 +1240,8 @@ const ASK_FLOW_TEMPLATES = {
     'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
     // capture-quality's chain (2026-10-29): one template per part state, the mode question and the description match's part pick.
     'capture-quality': 7,
+    // capture-awareness's router (2026-10-30): the chain's run ask and mode ask and the description match's part pick.
+    'capture-awareness': 3,
     // stack audit 2026-10-20 row 13: task-solve's per-judgment ask, issue-diagnoser's 4a / 4c close, task-version-upgrade's
     // stamp-refused and hard-stop asks.
     'task-version-upgrade': 5,
@@ -2648,12 +2652,18 @@ function main()
     for (const finding of lintOldLocations(repoTextFiles())) flag(finding);
     // 70. No tracked text names a retired quality name.
     for (const finding of lintRetiredQuality(repoTextFiles())) flag(finding);
-    // 70b. The quality topics have one code home.
+    // 70b. Each umbrella's parts have one home.
     {
         const { renamed } = require('./install/manifest.js').loadManifest(ROOT);
-        const routerText = fs.readFileSync(path.join(SKILLS_DIR, 'capture-quality', 'SKILL.md'), 'utf8');
         const { QUALITY_TOPICS } = require('../stack/hooks/hook-prelude.js');
-        for (const finding of lintQualityTopics({ routerText, topics: QUALITY_TOPICS, renamedTopics: renamed.topics, renamedSkills: renamed.skills })) flag(finding);
+        const umbrellas = Object.entries(renamed.parts).map(([name, parts]) =>
+        {
+            let routerText = '';
+            try { routerText = fs.readFileSync(path.join(SKILLS_DIR, name, 'SKILL.md'), 'utf8'); }
+            catch { flag(`umbrellaParts ${name}: no stack/skills/${name}/SKILL.md (check 70b)`); }
+            return { name, routerText, parts, ...(name === 'capture-quality' ? { topics: QUALITY_TOPICS } : {}) };
+        });
+        for (const finding of lintUmbrellaTopics({ umbrellas, renamedTopics: renamed.topics, renamedSkills: renamed.skills })) flag(finding);
     }
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
@@ -3014,22 +3024,39 @@ function lintOldLocations(files)
 // pruned or a doc it moved. What names them on purpose is exempt by file or key, never by judgment: the manifest's
 // renamed / renamedTopics / retired blocks, conformance's review_load matcher (matched against old transcripts), the
 // move map, an installer or hook line that says why it keeps the old name, the tests, fixtures, history and dated docs.
-// The skill tokens are every renamed.skills key merged into capture-quality or the coverage loop - the map is their one
-// home, so a later rename into either joins the check unasked; the doc paths are no skill name and stay literal.
+// The skill tokens are every renamed.skills key merged into an umbrella (`umbrellaParts`) or the coverage loop - the map
+// is their one home, so a later rename into either joins the check unasked; the doc paths are no skill name and stay
+// literal.
 const RETIRED_QUALITY_PATHS = [
     [/(?<![\w-])COVERAGE\.md/g, '`COVERAGE-QUALITY.md`'],
     [/test-coverage\/COVERAGE/g, '`quality/COVERAGE-QUALITY.md`'],
     [/`[^`\n]*(?<![\w-])test-coverage\/[^`\n]*`/g, '`quality/COVERAGE-QUALITY.md` and `quality/coverage-raw/`'],
 ];
-function retiredQualityTokens({ renamedSkills, renamedTopics })
+function retiredQualityTokens({ renamedSkills, renamedTopics, umbrellaParts })
 {
     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const umbrellas = new Set(Object.keys(umbrellaParts || {}));
     const skills = Object.entries(renamedSkills || {})
-        .filter(([, to]) => to === 'capture-quality' || to === 'loop-test-coverage-quality')
+        .filter(([, to]) => umbrellas.has(to) || to === 'loop-test-coverage-quality')
         .map(([old, to]) => [new RegExp(`(?<![\\w-])${esc(old)}(?![\\w-])`, 'g'),
-            `\`${to}${to === 'capture-quality' && (renamedTopics || {})[old] ? ` ${renamedTopics[old]}` : ''}\``]);
-    return [...skills, ...RETIRED_QUALITY_PATHS];
+            `\`${to}${umbrellas.has(to) && (renamedTopics || {})[old] ? ` ${renamedTopics[old]}` : ''}\``]);
+    return [...skills, ...RETIRED_QUALITY_PATHS, ...RETIRED_AWARENESS_FILES];
 }
+// The awareness merge (2026-10-29) renamed FILES, which neither the skill tokens nor lint 65's docs-root paths reach: the
+// map's two root files, the run book and the retired marker rule, each 'use' text its new name. A bare name right after
+// `architecture/` is the folder token's, so a path is flagged once. These tokens alone are exempt by lint 65's files, the
+// skew window's two-name readers and the scored transcripts, and by the word 'legacy' on the line or JSON value in any
+// file (spec 2.3) - the seat lines name the old home on purpose.
+const RETIRED_AWARENESS_FILES = [
+    [/(?<![\w-])(?<!architecture\/)ARCHITECTURE\.md/g, '`awareness/ARCHITECTURE-AWARENESS.md`'],
+    [/(?<![\w-])(?<!architecture\/)ORIENTATION\.md/g, '`awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md`'],
+    [/(?<![\w-])PROJECT-AWARENESS\.md/g, '`awareness/RUN-AND-DEBUG-AWARENESS.md`'],
+    [/(?<![\w-])architecture\/ARCHITECTURE(?![\w-])/g, '`awareness/ARCHITECTURE-AWARENESS`'],
+    [/(?<![\w-])architecture\/ORIENTATION(?![\w-])/g, '`awareness/ARCHITECTURE-ORIENTATION-AWARENESS`'],
+    [/(?<![\w-])alfred-architecture\.md/g, '`alfred-awareness.md`'],
+].map(([re, use]) => [re, use, 'file']);
+const RETIRED_FILE_EXEMPT = new RegExp([OLD_LOCATION_EXEMPT.source, '^stack/mcp/data-root\\.js$', '^stack/skills/mode-output-scorer/scripts/scorecard\\.js$', '^stack/skills/mode-output-scorer/references/outputs\\.md$',
+    '^stack/skills/capture-awareness/scripts/awareness-state\\.js$', '^scripts/scan-evidence\\.js$', '^meta/conformance\\.json$', '^meta/skill-comply/[^/]+/fixtures/'].join('|'));
 const RETIRED_QUALITY_EXEMPT = /^stack\/hooks\/layout\.js$|^setup-plugin\/references\/update-history\.md$|\.test\.js$|^scripts\/fixtures\/|^docs\/.*-evidence\.md$|^docs\/[^/]*-\d{4}-\d{2}-\d{2}\.md$|^docs\/superpowers\/|^scripts\/lint-skills\.js$/;
 const RETIRED_QUALITY_WORDS = /older copy|renamed|retired|\blayout\b|legacy/i;
 const RETIRED_QUALITY_JSON = {
@@ -3070,14 +3097,17 @@ function jsonStrings(text)
 }
 function lintRetiredQuality(files, map)
 {
-    if (!map) { const { renamed } = require('./install/manifest.js').loadManifest(ROOT); map = { renamedSkills: renamed.skills, renamedTopics: renamed.topics }; }
+    if (!map) { const { renamed } = require('./install/manifest.js').loadManifest(ROOT); map = { renamedSkills: renamed.skills, renamedTopics: renamed.topics, umbrellaParts: renamed.parts }; }
     const tokens = retiredQualityTokens(map);
     const out = [];
     const hits = (file, line, text) =>
     {
-        for (const [re, use] of tokens)
+        for (const [re, use, kind] of tokens)
+        {
+            if (kind === 'file' && (RETIRED_FILE_EXEMPT.test(file) || /legacy/i.test(text))) continue;
             for (const token of new Set(text.match(re) || []))
                 out.push(`${file}:${line} names the retired ${token} - use ${use} (check 70)`);
+        }
     };
     for (const { file, text } of files)
     {
@@ -3094,27 +3124,36 @@ function lintRetiredQuality(files, map)
     }
     return out;
 }
-// 70b. capture-quality's topic words have one code home, hook-prelude.js QUALITY_TOPICS: the router's topic table
-// (`| <part> | <backticked words> | ...`) is the model's copy and lists each part's words in the same order, and every
-// renamedTopics row is a renamed.skills key merged into capture-quality whose topic is a part.
-function lintQualityTopics({ routerText, topics, renamedTopics, renamedSkills })
+// 70b. Each umbrella's parts have one home, the manifest's `umbrellaParts`: its router table (`| <part> | <backticked
+// words> | ...`, in the umbrella's SKILL.md) has a row per part; capture-quality's words have their code home too,
+// hook-prelude.js QUALITY_TOPICS, which the table lists in the same order; and every renamedTopics row is a renamed.skills
+// key merged into an umbrella whose topic is a part of THAT umbrella.
+function lintUmbrellaTopics({ umbrellas, renamedTopics, renamedSkills })
 {
     const out = [];
-    const rows = new Map();
-    for (const line of String(routerText || '').split('\n'))
+    const byName = new Map((umbrellas || []).map((u) => [u.name, u]));
+    for (const { name, routerText, parts, topics } of umbrellas || [])
     {
-        const cells = line.split('|').map((c) => c.trim());
-        if (cells.length > 3 && Object.hasOwn(topics, cells[1])) rows.set(cells[1], [...cells[2].matchAll(/`([^`]+)`/g)].map((m) => m[1]));
-    }
-    for (const [part, words] of Object.entries(topics))
-    {
-        if (!rows.has(part)) out.push(`capture-quality's topic table has no row for ${part} - add \`| ${part} | ${words.map((w) => `\`${w}\``).join(', ')} | ...\` (check 70b)`);
-        else if (rows.get(part).join(',') !== words.join(',')) out.push(`capture-quality's topic table lists ${part} as ${rows.get(part).join(', ') || 'nothing'} - hook-prelude.js QUALITY_TOPICS has ${words.join(', ')} (check 70b)`);
+        const rows = new Map();
+        for (const line of String(routerText || '').split('\n'))
+        {
+            const cells = line.split('|').map((c) => c.trim());
+            if (cells.length > 3 && parts.includes(cells[1])) rows.set(cells[1], [...cells[2].matchAll(/`([^`]+)`/g)].map((m) => m[1]));
+        }
+        if (topics && Object.keys(topics).join(',') !== parts.join(',')) out.push(`umbrellaParts ${name} lists ${parts.join(', ')} - hook-prelude.js QUALITY_TOPICS has ${Object.keys(topics).join(', ')} (check 70b)`);
+        for (const part of parts)
+        {
+            const words = topics && topics[part];
+            if (!rows.has(part)) out.push(`${name}'s topic table has no row for ${part} - add \`| ${part} | ${(words || [part]).map((w) => `\`${w}\``).join(', ')} | ...\` (check 70b)`);
+            else if (words && rows.get(part).join(',') !== words.join(',')) out.push(`${name}'s topic table lists ${part} as ${rows.get(part).join(', ') || 'nothing'} - hook-prelude.js QUALITY_TOPICS has ${words.join(', ')} (check 70b)`);
+        }
     }
     for (const [old, topic] of Object.entries(renamedTopics || {}))
     {
-        if (!Object.hasOwn(topics, topic)) out.push(`renamedTopics ${old}: ${topic} is no capture-quality part - use one of ${Object.keys(topics).join(', ')} (check 70b)`);
-        if ((renamedSkills || {})[old] !== 'capture-quality') out.push(`renamedTopics ${old}: renamed.skills must map it to capture-quality (check 70b)`);
+        const target = (renamedSkills || {})[old];
+        const umbrella = byName.get(target);
+        if (!umbrella) out.push(`renamedTopics ${old}: renamed.skills must map it to an umbrella - one of ${[...byName.keys()].join(', ')} (check 70b)`);
+        else if (!umbrella.parts.includes(topic)) out.push(`renamedTopics ${old}: ${topic} is no ${target} part - use one of ${umbrella.parts.join(', ')} (check 70b)`);
     }
     return out;
 }
@@ -3412,7 +3451,7 @@ module.exports = {
     lintLegacyNames,
     lintOldLocations,
     lintRetiredQuality,
-    lintQualityTopics,
+    lintUmbrellaTopics,
     repoTextFiles,
     lintCoreDependencies,
     lintNoPluginBin,

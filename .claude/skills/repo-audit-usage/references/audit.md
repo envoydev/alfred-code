@@ -113,7 +113,7 @@ already has one is skipped on re-invocation.
 - **Effectiveness verdict - did it work?** One line beside the token verdict: what landed (the artifact, the commits and whether each had a check before it), how many user corrections it took and whether the hook's streak threshold would have met them, how many green claims had no check in their turn, how many stops went unheld. A session can be cheap and ineffective - that is a finding against the flow, never a PASS.
 - **Generated docs - useful, and actually used?** For every task that needed orientation
   (a fix, an investigation, a design), check whether the session READ what the stack generates for
-  exactly that - `<docs-path>/architecture/ARCHITECTURE.md` and its `references/`,
+  exactly that - `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` and its `references/`,
   `quality/ARCHITECTURE-ASSESSMENT.md`, `preferences/PROJECT-CODE-PREFERENCES.md`, the test-coverage capture - or re-derived
   the same knowledge by grepping the tree. Both directions are findings with different homes: never
   read while present is a delivery defect (the rule, skill or agent brief that should have routed

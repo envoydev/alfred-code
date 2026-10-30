@@ -69,16 +69,16 @@ test('rows 6, 7, 15: the handoff line has one home, the no-op pointer and the do
 });
 
 // Row 14: where the docs live is the docs-root baseline's; the navigation rule names no docs location.
-// 2026-10-21: the template's rules table went (the user's ruling), so capture-architecture is the one pointer left.
-test('row 14: capture-architecture points at the docs-root baseline for the docs location; the template keeps no rules table', () =>
+// 2026-10-21: the template's rules table went (the user's ruling); the architecture capture's pointer left with its
+// marker rule in the capture-awareness merge (2026-10-29), so neither home names the navigation baseline.
+test('row 14: the navigation rule names no docs location; the template keeps no rules table, the architecture part no stale pointer', () =>
 {
     const nav = injected('alfred-navigation');
     assert.ok(!/__DOCS_ROOT__|ALFRED_CODE_DOCS_PATH/.test(nav), 'the navigation rule names no docs root');
     assert.match(injected('alfred-docs-root'), /This install's root: `__DOCS_ROOT__`/);
     const template = read('stack/AGENTS.template.md');
     assert.ok(!/^\| `\.claude\/rules\//m.test(template), 'no rules row in the template');
-    const skill = flat(read('stack/skills/capture-architecture/SKILL.md'));
-    assert.ok(skill.includes("where the docs live and how to read them by section are the docs-root baseline's"));
+    const skill = flat(read('stack/skills/capture-awareness/references/architecture.md'));
     assert.ok(!/navigation baseline's/.test(template + skill), 'no stale pointer left in either');
 });
 
