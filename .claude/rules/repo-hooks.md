@@ -177,6 +177,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   --with-sensitive -- "<command line>"` is carried like `sh -c` too (audit 2026-10-30 HK-01: its line ran through a shell
   no guard read - `rm -rf ~`, a force push, `cat .env` all passed): every guard on `scanShell` / `gitText` judges it, and
   the dispatcher judges the line again with the secret and read guards, whose block, deny or rewrite blocks the call.
+  A double-quoted carried word holding one of bash's double-quote escapes (`\"`, `\$`, `\\`, a backslashed backtick or
+  newline) is read DEQUOTED, as bash hands it on - the runner's line and a `bash -c "..."` string alike (final review
+  2026-10-30 FB: `-- "bash -c \"rm -rf ~\""` and `bash -c "rm -rf \"\$HOME\""` were judged with every escape kept).
   TWO SHARED CONTRACTS (audit 2026-10-30 a0, read by the rm, cross-project, read and secret guards): `shellVars`, the one
   `$NAME` / `${NAME}` / `$HOME` / `$PWD` / `~` expander - statement assignments followed within the command, a followed
   `cd` moving `$PWD`, prefix assignments and loop or read variables left unknown - and `PRINT_VERBS` / `printedFiles`,

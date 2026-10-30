@@ -1956,6 +1956,14 @@ function writtenScripts(P, raw, heredocs, anchor, run) {
 const RUNNER_FILE = 'guard-secret-value.js';
 const NODE_VALUE_OPTS = new Set(['-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--input-type', '--title', '--conditions', '-C']);
 const runnerQuote = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`);
+// A word whose quoted text IS what the carried shell runs, so a position in it maps back to the command: a single-quoted
+// word, or a double-quoted one holding none of bash's double-quote escapes. Bash undoes `\"`, `\$`, `\\`, a backslashed
+// backtick and a backslashed newline before the word is handed on, so such a word's line is its DEQUOTED text, mapped
+// nowhere (final review 2026-10-30, FB: `-- "bash -c \"rm -rf ~\""`, `-- "cat \".env\""` and `bash -c "rm -rf
+// \"\$HOME\""` were judged as the raw text, every escape kept, and passed).
+const DQ_ESCAPE = /\\[$`"\\\n]/;
+const verbatimWord = (t, P) => Boolean(t) && (t.raw[0] === "'" || (t.raw[0] === '"' && !DQ_ESCAPE.test(t.raw)))
+  && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
 function runnerLine(c, P) {
   if (c.name !== 'node' && c.name !== 'nodejs') return null;
   const argv = c.argv;
@@ -1975,8 +1983,7 @@ function runnerLine(c, P) {
   // a quoted one reaches the runner as text and is quoted again for its shell
   if (words.length > 1) return { text: c.args.slice(from).map((t, i) => (/^[^'"\\]*$/.test(t.raw) ? t.raw : runnerQuote(words[i]))).join(' '), mapped: false };
   const t = c.args[from];
-  const single = t && (t.raw[0] === "'" || t.raw[0] === '"') && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
-  return single ? { text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true } : { text: words[0], mapped: false };
+  return verbatimWord(t, P) ? { text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true } : { text: words[0], mapped: false };
 }
 // sensitiveRuns(raw, opts) - the command lines a command hands the sensitive runner, through every carried script (3 deep):
 // [{ text, cwd }]. The shell dispatcher judges each one again with the guards that keep a reader of their own.
@@ -2059,8 +2066,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
         if (cform >= 0) {
           if (cform >= args.length) continue;
           const t = args[cform];
-          const single = (t.raw[0] === "'" || t.raw[0] === '"') && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
-          if (single) push({ text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true, cwd: anchor(at) });
+          if (verbatimWord(t, P)) push({ text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true, cwd: anchor(at) });
           else push({ text: argv[cform], at, end: el.to, mapped: false, cwd: anchor(at) });
           continue;
         }
