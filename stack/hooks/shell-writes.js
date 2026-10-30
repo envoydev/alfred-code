@@ -1968,7 +1968,7 @@ const verbatimWord = (t, P) => Boolean(t) && (t.raw[0] === "'" || (t.raw[0] === 
 // the script may be a variable or a substitution (`node "$G"`, `node "$(ls ... | tail -1)"`) - each passed unjudged
 // behind a basename test (final review 2026-10-30, FB). Another script given `--with-sensitive` is judged too: a line
 // judged that never ran through a shell costs a block, a runner missed ran its line unread.
-function runnerLine(c, P) {
+function runnerLine(c, P, bound = () => null) {
   if (c.name !== 'node' && c.name !== 'nodejs') return null;
   const argv = c.argv;
   let k = -1;
@@ -1985,6 +1985,8 @@ function runnerLine(c, P) {
   // a quoted one reaches the runner as text and is quoted again for its shell
   if (words.length > 1) return { text: c.args.slice(from).map((t, i) => (/^[^'"\\]*$/.test(t.raw) ? t.raw : runnerQuote(words[i]))).join(' '), mapped: false };
   const t = c.args[from];
+  const named = bound(t);
+  if (named !== null) return { text: named, mapped: false, bound: true };
   return verbatimWord(t, P) ? { text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true } : { text: words[0], mapped: false };
 }
 // sensitiveRuns(raw, opts) - the command lines a command hands the sensitive runner, through every carried script (3 deep):
@@ -2015,6 +2017,24 @@ function carriedOf(P, raw, heredocs, opts, run) {
   let writtenMap = null; // read only when a script file is looked for: most commands run none
   const written = { get: (abs) => { if (!writtenMap) writtenMap = files ? writtenScripts(P, raw, heredocs, anchor, run) : new Map(); return writtenMap.get(abs); } };
   const unread = (at, why, p) => run.unread.push({ at, why, path: p || null });
+  // A shell-run string that is one `$NAME` / `${NAME}` the same command bound to a LITERAL before the use is carried as
+  // that literal - the newest assignment, `shellVars` `literalOf` (final review 2026-10-30, FC: `C='rm -rf ~'; bash -c
+  // "$C"` passed the rm guard, and so did `sh -c`, `eval` and the runner's line). The word is bare or double-quoted, so the
+  // calling shell expands it; a bare one is read whole, which errs toward judging. A name bound to a substitution, or
+  // never bound, stays out of model. Such a text is marked `bound`: it maps to no span of the command.
+  let vars = null;
+  const NAME_WORD = /^\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))$/;
+  const boundText = (word, at) => {
+    const m = NAME_WORD.exec(String(word));
+    if (!m) return null;
+    if (!vars) vars = shellVars(P, {});
+    return vars.literalOf(m[1] || m[2], at);
+  };
+  const boundTok = (t) => {
+    if (!t || t.raw[0] === "'") return null;
+    const inner = t.raw[0] === '"' ? (t.raw.length > 1 && t.raw.endsWith('"') ? t.raw.slice(1, -1) : null) : t.raw;
+    return inner === null ? null : boundText(inner, t.s);
+  };
   // A script file named by `word` (its token `tok`, for a glob) at `at`: { text, cwd } | null, noting an unread one.
   const fromFile = (word, at, direct, tok) => {
     if (!files || !word) return null;
@@ -2072,7 +2092,9 @@ function carriedOf(P, raw, heredocs, opts, run) {
         if (cform >= 0) {
           if (cform >= args.length) continue;
           const t = args[cform];
-          if (verbatimWord(t, P)) push({ text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true, cwd: anchor(at) });
+          const named = boundTok(t);
+          if (named !== null) push({ text: named, at, end: el.to, mapped: false, cwd: anchor(at), bound: true });
+          else if (verbatimWord(t, P)) push({ text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true, cwd: anchor(at) });
           else push({ text: argv[cform], at, end: el.to, mapped: false, cwd: anchor(at) });
           continue;
         }
@@ -2106,7 +2128,10 @@ function carriedOf(P, raw, heredocs, opts, run) {
         continue;
       }
       if (name === 'eval') {
-        push({ text: wordsFrom(raw, tok.e).join(' '), at, end: el.to, mapped: false, sourced: true, cwd: anchor(at) });
+        // eval parses its words again, so a `$NAME` word runs its value whatever the quoting
+        let bound = false;
+        const words = wordsFrom(raw, tok.e).map((w) => { const v = boundText(w, at); if (v === null) return w; bound = true; return v; });
+        push({ text: words.join(' '), at, end: el.to, mapped: false, sourced: true, cwd: anchor(at), ...(bound ? { bound } : {}) });
         continue;
       }
       if (name === 'source' || name === '.') {
@@ -2123,7 +2148,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
         continue;
       }
       // the sensitive runner: its command line runs through a shell (audit 2026-10-30 HK-01)
-      const sr = runnerLine(c, P);
+      const sr = runnerLine(c, P, boundTok);
       if (sr) {
         push({ ...sr, at: sr.mapped ? sr.at : at, end: sr.mapped ? sr.end : el.to, cwd: anchor(at), runner: true });
         continue;
@@ -2281,9 +2306,22 @@ function shellVars(P, opts = {}) {
     s = s.replace(/%HOMEDRIVE%%HOMEPATH%|%(USERPROFILE|HOMEPATH)%/gi, () => valueWith('USERPROFILE', at, depth, pwd) || '%USERPROFILE%');
     return s;
   }
+  // The newest statement assignment of `name` before `at` when it is a LITERAL - a single-quoted value as written, any
+  // other with no `$` or backtick left once dequoted - else null: a substitution, an expansion, a loop or `read` name, a
+  // prefix assignment and an unset name stay unknowable (final review 2026-10-30, FC: the runtime `-e` rule, on this index).
+  const literalOf = (name, at) => {
+    if (bound.has(name)) return null;
+    const ev = setBefore(name, at);
+    if (!ev) return null;
+    const raw = String(ev.raw !== undefined ? ev.raw : ev.value);
+    if (/^'[^']*'$/.test(raw)) return raw.slice(1, -1);
+    const v = String(ev.value);
+    return /[$`]/.test(v) ? null : v;
+  };
   return {
     expand: (word, at) => expandWith(word, at, 0, pwdAt),
     valueOf: (name, at) => valueWith(name, at, 0, pwdAt),
+    literalOf,
     pwdAt,
   };
 }

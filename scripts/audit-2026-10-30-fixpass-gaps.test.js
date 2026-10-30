@@ -1,0 +1,87 @@
+'use strict';
+// Fix pass FC of the 2026-10-30 audit branch: four guard gaps the earlier fix passes left, one block per gap, each with
+// its legitimate twins:
+// 1. a shell-run string from a variable - `C='rm -rf ~'; bash -c "$C"` (and `sh -c`, `eval`, the runner's line) passed
+//    the rm guard: the carried text was the word `$C`, never the literal the command bound it to;
+// Nothing here runs a dangerous command: each is stdin text to a hook, in mkdtemp folders removed after.
+const test = require('node:test');
+require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+delete process.env.CLAUDE_CODE_ENTRYPOINT;
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+const DISPATCH = path.join(HOOKS, 'shell-guards.js');
+const GUARD = path.join(HOOKS, 'guard-secret-value.js');
+const shell = require(path.join(HOOKS, 'shell-writes.js'));
+const TMP = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'fixpass-gaps-')));
+test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+const HOME = path.join(TMP, 'home');
+fs.mkdirSync(HOME, { recursive: true });
+process.env.CLAUDE_CONFIG_DIR = path.join(HOME, '.claude');
+fs.mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
+for (const k of Object.keys(process.env))
+  if (/^ALFRED_CODE_/.test(k) || k === 'CLAUDE_PLUGIN_ROOT' || k === 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE') delete process.env[k];
+
+const git = (dir, ...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+// A set-up project under the sandbox home: a git repo with the install stamp and a credential file.
+function project(prefix) {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(HOME, prefix)));
+  git(dir, 'init', '-q', '-b', 'feature');
+  git(dir, '-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'seed');
+  fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${'x0'.repeat(20)}\n`);
+  fs.writeFileSync(path.join(dir, 'README.md'), '# readme\n');
+  return dir;
+}
+// A dispatcher's verdict on one call: 2 (exit 2), 'deny', 'rewrite' or 0.
+function fire(dir, tool, toolInput, extra = {}) {
+  const dispatcher = shell.isShellTool(tool) ? DISPATCH : path.join(HOOKS, 'file-guards.js');
+  const r = spawnSync(process.execPath, [dispatcher], {
+    input: JSON.stringify({ session_id: 'fc', hook_event_name: 'PreToolUse', tool_name: tool, tool_input: toolInput, cwd: dir, ...extra.payload }),
+    encoding: 'utf8', cwd: dir, env: { ...process.env, HOME, USERPROFILE: HOME, CLAUDE_PROJECT_DIR: dir, ...extra.env },
+  });
+  let v = r.status === 2 ? 2 : 0;
+  try {
+    const o = JSON.parse(r.stdout).hookSpecificOutput || {};
+    if (v === 0 && o.permissionDecision === 'deny') v = 'deny';
+    else if (v === 0 && o.updatedInput) v = 'rewrite';
+  } catch { /* no JSON */ }
+  return { v, out: `${r.stderr}${r.stdout}`, stdout: r.stdout };
+}
+const bash = (dir, command, extra) => fire(dir, 'Bash', { command }, extra);
+const runner = (line) => `node "${GUARD}" --with-sensitive -- ${line}`;
+
+test('FC 1: a shell-run string that is a name bound to a literal is carried as that literal', () => {
+  const texts = (c) => shell.carriedScripts(c).map((s) => s.text);
+  // the shared reader: the newest literal assignment before the use, the runtime -e rule
+  assert.deepStrictEqual(texts('C=\'rm -rf ~\'; bash -c "$C"'), ['rm -rf ~']);
+  assert.deepStrictEqual(texts('C=\'rm -rf ~\'; sh -c "${C}"'), ['rm -rf ~']);
+  assert.deepStrictEqual(texts('C=\'rm -rf ~\'; eval "$C"'), ['rm -rf ~']);
+  assert.deepStrictEqual(texts(`C='rm -rf ~'; ${runner('"$C"')}`), ['rm -rf ~']);
+  assert.deepStrictEqual(texts('C=ls; C=\'rm -rf ~\'; bash -c "$C"'), ['rm -rf ~'], 'the newest literal wins');
+  assert.deepStrictEqual(texts('C=\'rm -rf ~\'; C=ls; bash -c "$C"'), ['ls'], 'the newest literal wins the other way');
+  assert.deepStrictEqual(texts('C="ls -la"; bash -c "$C"'), ['ls -la'], 'a double-quoted literal');
+  // out of model, as before: a substitution, an unset name, a prefix assignment, a single-quoted word, a loop name
+  assert.deepStrictEqual(texts('C=$(cat cmd.txt); bash -c "$C"'), ['$C']);
+  assert.deepStrictEqual(texts('C=ls; C=$(date); bash -c "$C"'), ['$C'], 'the newest binding is a substitution');
+  assert.deepStrictEqual(texts('bash -c "$NEVER_SET"'), ['$NEVER_SET']);
+  assert.deepStrictEqual(texts('C=\'rm -rf ~\' bash -c "$C"'), ['$C'], 'a prefix assignment is the command\'s environment');
+  assert.deepStrictEqual(texts('C=\'rm -rf ~\'; bash -c \'$C\''), ['$C'], 'single-quoted: the inner shell reads its own C');
+  assert.deepStrictEqual(texts('for C in a b; do bash -c "$C"; done'), ['$C']);
+  const dir = project('fc1-');
+  for (const c of ['C=\'rm -rf ~\'; bash -c "$C"', 'C=\'rm -rf ~\'; sh -c "$C"', 'C=\'rm -rf ~\'; eval "$C"', 'C=\'rm -rf ~\'; bash -c "${C}"',
+    `C='rm -rf ~'; ${runner('"$C"')}`, `C='cat .env'; ${runner('"$C"')}`]) {
+    const r = bash(dir, c);
+    assert.strictEqual(r.v, 2, `${c}\n${r.out}`);
+  }
+  // the twins keep today's verdict
+  for (const c of ['C=\'ls -la\'; bash -c "$C"', 'C=\'rm -rf ~\'; C=ls; bash -c "$C"', 'C=$(date); bash -c "$C"', 'bash -c "$NEVER_SET"']) {
+    const r = bash(dir, c);
+    assert.strictEqual(r.v, 0, `${c}\n${r.out}`);
+  }
+});

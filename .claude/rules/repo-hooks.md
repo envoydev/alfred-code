@@ -180,6 +180,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   A double-quoted carried word holding one of bash's double-quote escapes (`\"`, `\$`, `\\`, a backslashed backtick or
   newline) is read DEQUOTED, as bash hands it on - the runner's line and a `bash -c "..."` string alike (final review
   2026-10-30 FB: `-- "bash -c \"rm -rf ~\""` and `bash -c "rm -rf \"\$HOME\""` were judged with every escape kept).
+  A shell-run string that is one `$NAME` / `${NAME}` (bare or double-quoted; any quoting under `eval`) is carried as the newest literal the same command bound it to (`shellVars` `literalOf`; final review 2026-10-30 FC: `C='rm -rf ~'; bash -c "$C"`, `sh -c`, `eval` and the runner's `-- "$C"` passed) - a substitution, a prefix assignment or an unset name stays out of model.
   The runner's script is the word right before `--with-sensitive`, never matched by name (`node "$G"`, `node
   --disable-warning X <guard>` passed a basename test), and the dispatcher judges at most `RUNNER_LINES_MAX` (4) lines: a
   command handing it more, or naming the runner past the carried-script depth or the scan budget, blocks.
