@@ -21,6 +21,7 @@ test('SKD-04: the testing licensing line lives only in library-routing.md, named
 {
     const body = squash(read('stack/skills/dotnet-testing/SKILL.md'));
     assert.doesNotMatch(body, /paid for commercial use|AwesomeAssertions|licensing decision/);
+    assert.match(body, /\*\*FluentAssertions 7\.x\*\* assertions \(7\.1\+ on xUnit v3\)/, 'the SKD-02 version floor stays in the body - 7.0 does not run on xUnit v3');
     assert.match(body, /When the project has already picked, is picking now or is bumping one of them a major, the alternatives and the reason for each are `references\/library-routing\.md`/);
     const routing = squash(read('stack/skills/dotnet-testing/references/library-routing.md'));
     assert.match(routing, /v8\+ is free only for open-source and non-commercial use and needs a paid license for commercial projects/);
