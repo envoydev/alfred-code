@@ -339,7 +339,9 @@ test('C22: Angular specs route to angular-testing, EF migrations attach the SQL 
     assert.ok(graph.rules['angular-conventions'].skills.includes('angular-testing'), 'the rule pulls the skill it names');
     // audit 2026-10-14 RU12: nested `Migrations/<Context>/` folders attach too
     assert.deepStrictEqual(pathsOf('sql-conventions'), ['**/*.sql', '**/Migrations/**/*.cs']);
-    assert.match(injected('sql-conventions'), /An EF migration \(`Migrations\/\*\*\/\*\.cs`\) is schema work: the same first action adds the migration-safety skill/);
+    // audit 2026-10-30 RU-15: the cite matches the skill's DESCRIPTION ('Use when running an EF Core migration'), not its body
+    assert.match(injected('sql-conventions'), /An EF migration \(`Migrations\/\*\*\/\*\.cs`\) is schema work: the same first action adds the skill covering running an EF Core migration/);
+    assert.match(read('stack/skills/dotnet-migrate/SKILL.md'), /^description: "Use when running an EF Core migration/m, 'the described skill still says so');
     assert.match(injected('winforms-conventions'), /an EF migration's `\*\.Designer\.cs` \(generated, under `Migrations\/`\) is not WinForms - skip/);
     const md = injected('markdown-docs');
     const carve = md.indexOf('The generated docs root is NOT governed here');
@@ -484,7 +486,10 @@ test('T4 cross-track: every seat\'s START reads the brief\'s docs anchors first,
 test('RU09: the navigation rule leaves the docs route to the session-start block and keeps the no-docs fallback', () =>
 {
     const nav = injected('alfred-navigation');
-    assert.ok(nav.includes('- No docs block at session start means no capture ran: say so once and navigate from code.'), nav);
+    // audit 2026-10-30 RU-14: docs-session.js pushes no block when its part is off, and a header with no capture, so the
+    // absence proves nothing about a capture - the rule keeps only the action.
+    assert.ok(nav.includes('- No docs block at session start: say so once and navigate from code.'), nav);
+    assert.ok(!nav.includes('means no capture ran'), nav);
     assert.ok(!nav.includes('docs.js where'), 'the where / show route is the hook\'s block');
     assert.match(read('stack/hooks/docs-session.js'), /names the sections covering a file; .*show <file>#<id>.* prints one/, 'the hook still carries the route');
 });

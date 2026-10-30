@@ -53,8 +53,7 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 2. Stack - languages, frameworks and key libraries at their EXACT versions ('EF Core 10', not
    'EF Core'), test stack + coverage gate, the LSP plugin for the primary language(s). MCP routing
    is NOT hand-filled here - it lives in the generated <docs-path>/awareness/AGENTS-AWARENESS.md,
-   which .claude/rules/alfred-awareness.md imports (user-run /capture-awareness; if that skill was
-   not installed, a lean hand-filled routing list here is the fallback).
+   which .claude/rules/alfred-awareness.md imports (written by `/capture-awareness agents`).
 3. Setup - what a machine needs before build and test work: the SDK / runtime versions (a
    global.json or .nvmrc pin), Docker for the integration tests, the services a test run starts, and
    the env vars a test reads (names only - where the values live is item 10). One line each.

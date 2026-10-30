@@ -1,5 +1,5 @@
 ---
-paths: ["**/angular.json", "**/*.component.ts", "**/*.component.html", "**/*.spec.ts", "**/*.component.scss", "**/src/styles.scss", "**/src/theme/**/*.scss", "**/src/app/**/*.ts", "**/src/app/**/*.html", "**/src/app/**/*.scss", "**/src/lib/**/*.ts", "**/src/lib/**/*.html", "**/src/lib/**/*.scss"]
+paths: ["**/angular.json", "**/*.component.ts", "**/*.component.html", "**/*.spec.ts", "**/*.component.scss", "**/*.component.css", "**/src/styles.scss", "**/src/styles.css", "**/src/global.scss", "**/src/theme/**/*.scss", "**/src/app/**/*.ts", "**/src/app/**/*.html", "**/src/app/**/*.scss", "**/src/app/**/*.css", "**/src/lib/**/*.ts", "**/src/lib/**/*.html", "**/src/lib/**/*.scss", "**/src/lib/**/*.css"]
 ---
 
 <!-- The styling globs are load-bearing, not over-breadth: a Sass compile error IS an ng build

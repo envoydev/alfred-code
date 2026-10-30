@@ -108,3 +108,28 @@ test('RU-18: alfred-docs-root.md drops the legacy docs/<name> alias', () =>
     assert.doesNotMatch(text, /legacy `docs\/<name>`/);
     assert.match(text, /`<docs-path>\/<name>` means this root\./);
 });
+
+// RU-12: the `.sensitive-data` legacy name is alfred-security.md's to state; the docs-root rule no longer repeats it.
+test('RU-12: the legacy secret-store name has one home, alfred-security.md', () =>
+{
+    assert.doesNotMatch(read('stack/rules/alfred-docs-root.md'), /\.sensitive-data/);
+    assert.match(read('stack/rules/alfred-security.md'), /\.sensitive-data/);
+});
+
+// RU-16: the Angular router's own note says stylesheet build inputs are in scope; Ionic's global stylesheet and the
+// .css families now attach it the way they attach the styling rule.
+test('RU-16: angular-repair-agents attaches on every stylesheet family the styling rule names', () =>
+{
+    const globs = (name) => JSON.parse(read(`stack/rules/${name}.md`).match(/^paths:\s*(\[.*\])\s*$/m)[1]);
+    const repair = globs('angular-repair-agents');
+    for (const g of globs('angular-styling-conventions')) assert.ok(repair.includes(g), `${g} attaches the router too`);
+});
+
+// RU-19: capture-awareness is always installed and model-invocable, so the template points at it, with no hand-filled fallback.
+test('RU-19: the AGENTS template names the awareness capture, no hand-filled routing fallback', () =>
+{
+    const text = squash(read('stack/AGENTS.template.md'));
+    assert.match(text, /imports \(written by `\/capture-awareness agents`\)\./);
+    assert.doesNotMatch(text, /hand-filled routing list/);
+    assert.ok(JSON.parse(read('meta/recommendations.json')).always.skills.includes('capture-awareness'));
+});
