@@ -298,17 +298,24 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   guard's own allow label ('Show or use the value this session ...', 'Discard it', 'Allow ... for this session', 'Allow
   the browser code runner / the desktop Shell / this executable this session'), and given while auto-run was off,
   judged at the answer's position by the typed `modeFlags` rows - deleting the stamp or typing the off flag afterwards
-  opens nothing, and no file the model can write decides it. A seat's denial is anchored at its time in the seat
+  opens nothing, and no file the model can write decides it. An answer counts only as the result of an AskUserQuestion
+  call in the same transcript (its `tool_use_id`; the final review of 2026-10-30 FA-4: an `answers`-shaped result under
+  another tool's id opened one), and a typed row is never a compaction summary or a sidechain row - both the model's
+  words (FA-2, `typedRowText`). The stop contract's rotation read takes `SECRET-READ-ALLOW` through the same
+  `securityReceipt` with the guard's SHOW label (FA-3: its session line and age alone silenced the rotation ask). A seat's denial is anchored at its time in the seat
   transcript (the payload's `agent_transcript_path`, else `<session>/subagents/agent-<agent_id>.jsonl`), the answer read
   in the main one after it. A timed-out ask is no answer. With no transcript on disk (a CLI run) the old time rule
   stands; with no prelude the four and `CONFIG-EDIT-ALLOW` read shut. `CONFIG-EDIT-ALLOW` is a workflow gate: session
   and time only. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
   when a whole typed row turning auto-run on (`modeFlags` family + on, or the tagged `/mode-auto-run` row) of this
-  session sits within 5MB either side of that offset, read by position (64KB first; 5ms on a 200MB transcript) - so a
-  Skill-route start more than 5MB of work after its typed prompt runs attended; a stamp missing the line, or over
-  another session's row, is dead. A HAND-WRITTEN one (no `session:`) is live only when its quoted words (8 characters or more,
-  case-insensitive) appear in a turn the user typed, or the user answered 'Start AUTO here' with auto-run off - never a
-  Skill call alone (125ms on 200MB; memoised per stamp mtime).
+  session sits within 5MB either side of that offset, read by position (64KB first; 5ms on a 200MB transcript), AND no
+  typed row of any session turns auto-run off after the newest such row (`typedAutoOffFrom`, receiptAnswered's typed-flag
+  read from that row to the end, about 95ms on 200MB with the row at the start; FA-1: the model rewrote the stamp over an old on-row after the user's off-flag, the stop
+  contract answered its own SHOW ask and the secret receipt opened) - so a Skill-route start more than 5MB of work after
+  its typed prompt runs attended; a stamp missing the line, or over another session's row, is dead. A HAND-WRITTEN one
+  (no `session:`) is live only when its quoted words (8 characters or more, case-insensitive) appear in a turn the user
+  typed, or the user answered 'Start AUTO here' to an AskUserQuestion with auto-run off - never a Skill call alone (125ms
+  on 200MB; memoised per stamp mtime and transcript size).
   - `guard-protected-force-push.js` - blocks force-push to protected branches. It reads the command through
     `shell-writes.js`'s `gitText` (below), so a push counts past a wrapper (`timeout 60`, `env A=1`, `nohup`), in an
     `if` / `for` body, `bash -c '...'`, a heredoc or here-string into a shell, `eval`, a script file and a git alias

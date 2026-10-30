@@ -196,13 +196,26 @@ test('guard-stop-contract: a suggestion close that says nothing is pending on th
 test('guard-stop-contract: a credential shape in a tool result demands the rotate ask - unless the user allowed the read this session', () => {
   // The secret guard's receipt is the user's consent to the value being in the transcript; without
   // honouring it here, every turn after a consented read ended in 'Rotate it now?'.
+  // Since the final review of 2026-10-30 (FA-3) the receipt is read the guard's way: it counts only beside the user's own
+  // SHOW answer to an AskUserQuestion after the guard's denial, which this session's transcript holds.
   const root = fs.mkdtempSync(path.join(TMP, 'projS-'));
   const shape = 'ghp_' + 'A'.repeat(24); // fake by construction - the SHAPE is what the contract reads
-  const tp = transcript('leak', [
+  const SHOW_ANSWER = 'Show or use the value this session - it enters the transcript permanently';
+  const leakRows = [
     { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't9', content: `TOKEN=${shape}` }] } },
     assistantRow('m9', 'Copied the token into .env as asked; all tests green.'),
+  ];
+  const tp = transcript('leak', [
+    { type: 'user', message: { role: 'user', content: 'put the token in .env' } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'd9', is_error: true, content: 'PreToolUse:Read hook error: Blocked: ... write .alfred/state/approvals/SECRET-READ-ALLOW and retry' }] } },
+    { type: 'assistant', message: { id: 'q9', role: 'assistant', content: [{ type: 'tool_use', id: 'q9', name: 'AskUserQuestion', input: { questions: [] } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q9', content: `User has answered your questions: "Show it?"="${SHOW_ANSWER}".` }] },
+      toolUseResult: { questions: [{ question: 'Show it?' }], answers: { 'Show it?': SHOW_ANSWER } } },
+    { type: 'user', message: { role: 'user', content: 'go on' } },
+    ...leakRows,
   ]);
-  const stop = () => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
+  const unasked = transcript('leak-unasked', leakRows); // written before the receipt, so its birth never decides
+  const stop = (t = tp) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: t },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
   const r = stop();
   assert.equal(r.status, 2, 'a shape in a tool result with no consent');
@@ -211,6 +224,7 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   fs.writeFileSync(receipt, '*\n');
   assert.equal(stop().status, 0, 'the consented exposure is not re-asked');
+  assert.equal(stop(unasked).status, 2, 'FA-3: the same receipt with no SHOW answer in the session is no consent');
   // audit 2026-10-08: a Stop naming its session reads the receipt only through a `session:` line naming it
   const stopAs = (sid) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, session_id: sid },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
@@ -2567,9 +2581,10 @@ test("guard-cross-project-write: a block ends in an ask, and the user's allow is
   assert.match(denied.stderr, /state[\\/]approvals[\\/]CROSS-WRITE-ALLOW/, 'the denial names the receipt where 2.8.0 writes it (path.join spells the separator per OS - measured: windows-latest printed a backslash)');
   assert.doesNotMatch(denied.stderr, /stale/, 'no receipt, no staleness talk');
   // the receipt: one root per line, comments allowed, this session's own - and, since audit 2026-10-30 HK-03, written on
-  // the user's own allow answer, which the session's transcript holds
-  fs.writeFileSync(tp, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
-    toolUseResult: { answers: { 'Write outside?': `Allow writes into ${fs.realpathSync.native(other)} for this session` } } }) + '\n'); pause(30);
+  // the user's own allow answer, which the session's transcript holds - the result of an AskUserQuestion call (FA-4)
+  fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
+    + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
+      toolUseResult: { answers: { 'Write outside?': `Allow writes into ${fs.realpathSync.native(other)} for this session` } } }) + '\n'); pause(30);
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   fs.writeFileSync(receipt, `# allowed by the user in this session\n${other}\n`);
   assert.equal(go({ tool_name: 'Write', tool_input: { file_path: target } }).status, 0, 'the receipt opens the named tree');
@@ -5787,8 +5802,13 @@ const rc = {
   said: (text) => ({ type: 'assistant', sessionId: RC, timestamp: rcAt(), message: { id: `m${rcClock}`, role: 'assistant', content: [{ type: 'text', text }] } }),
   skill: (skill, args) => ({ type: 'assistant', sessionId: RC, timestamp: rcAt(), message: { id: `m${rcClock}`, role: 'assistant', content: [{ type: 'tool_use', id: `s${rcClock}`, name: 'Skill', input: { skill, args } }] } }),
 };
-const rcFile = (file, rows) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return file; };
-const rcLine = (row) => JSON.stringify(row) + '\n';
+// An answer row lands after the model's AskUserQuestion call it answers (its `tool_use_id`): the writers put the call first,
+// as Claude Code does - an answer is the user's only as such a call's result (the final review of 2026-10-30, FA-4).
+const rcAskCall = (row) => ({ type: 'assistant', sessionId: row.sessionId, timestamp: row.timestamp, message: { id: `q${row.timestamp}`, role: 'assistant',
+  content: [{ type: 'tool_use', id: row.message.content[0].tool_use_id, name: 'AskUserQuestion', input: { questions: row.toolUseResult.questions } }] } });
+const rcWithCall = (row) => (row.toolUseResult && row.toolUseResult.answers ? [rcAskCall(row), row] : [row]);
+const rcFile = (file, rows) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, rows.flatMap(rcWithCall).map((r) => JSON.stringify(r)).join('\n') + '\n'); return file; };
+const rcLine = (row) => rcWithCall(row).map((r) => JSON.stringify(r) + '\n').join('');
 const SHOW = 'Show or use the value this session - it enters the transcript permanently';
 
 test('audit 2026-10-30 HK-03: SECRET-READ-ALLOW opens only on the user\'s own allow answer to the last denial, never one auto-run gave', () => {
