@@ -121,9 +121,10 @@ function coreEntry(options = {})
             }],
             // Library copies move only on /alfred-code:update, so a session on a newer stack says
             // so at each fresh context - a startup, a /clear and a resume (loading audit 2026-10-21 G12: a cleared
-            // or resumed session never carried it) - and not at a compaction, which would show the user the line again.
+            // or resumed session never carried it), a fork (its own session id - code.claude.com/docs/en/hooks lists `fork`
+            // as a SessionStart source; audit 2026-10-30 HK-24) - and not at a compaction, which would show the user the line again.
             SessionStart: [{
-                matcher: 'startup|clear|resume',
+                matcher: 'startup|clear|resume|fork',
                 hooks: [{ type: 'command', command: launch('setup-plugin/hooks/library-stamp.js'), timeout: 10 }],
             }],
         }, hooksBlock(options.wirings || parseHookWirings(options.sourceDir))),

@@ -169,7 +169,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   of carried scripts and 48 destructive git calls judged by the rm guard, work counts and never time, so a verdict never depends on machine load; each byte is charged
   once, where it comes from - the command, and a script file as it is read up to its first NUL byte, so a
   self-extracting installer costs its shell head; past it the rest is unread and judged conservatively); `-n` and `-o
-  noexec` run nothing, and what `curl` prints does not exist when the hook fires. `gitText` is the ONE reader of a command for every guard that judges a git call (commit, push, force-push, the rm guard's git half):
+  noexec` run nothing, and what `curl` prints does not exist when the hook fires. The secret guard's runner `node <guard>
+  --with-sensitive -- "<command line>"` is carried like `sh -c` too (audit 2026-10-30 HK-01: its line ran through a shell
+  no guard read - `rm -rf ~`, a force push, `cat .env` all passed): every guard on `scanShell` / `gitText` judges it, and
+  the dispatcher judges the line again with the secret and read guards, whose block, deny or rewrite blocks the call.
+  TWO SHARED CONTRACTS (audit 2026-10-30 a0, read by the rm, cross-project, read and secret guards): `shellVars`, the one
+  `$NAME` / `${NAME}` / `$HOME` / `$PWD` / `~` expander - statement assignments followed within the command, a followed
+  `cd` moving `$PWD`, prefix assignments and loop or read variables left unknown - and `PRINT_VERBS` / `printedFiles`,
+  the one table of whole-file print verbs (`cat`, `shuf`, `vis`, `join`, `gzip -c` ...). `gitText` is the ONE reader of a command for every guard that judges a git call (commit, push, force-push, the rm guard's git half):
   aliases expanded, every carried script joined, one scan budget, one parse, and `callDir(call)` for where each call runs. It is also the one home of git ALIAS
   expansion (`expandGitAliases`, T20, R2-m1): every spelling of the call (`/usr/bin/git`, `\git`, `-P`, `--git-dir .git`,
   `--work-tree .`), looked up with its `-c`, `--config-env`, `GIT_CONFIG*` / `HOME` / `XDG_CONFIG_HOME` / `GIT_DIR`
@@ -237,14 +244,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   Every guard appends one row per BLOCK to `<data root>/statistics/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it, split main session / seat by the row's `agent`, joined to its call by
   `tool_use_id`) - the block RATE is what says a gate earns its keep.
-  THE STOP CHAIN (hooks audit 2026-10-08 S1): three hooks can block a `Stop` - the stop contract,
-  docs-session and the turn build check (answer length did until 2026-10-20) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
+  THE STOP CHAIN (hooks audit 2026-10-08 S1): four hooks can block a `Stop` - the stop contract,
+  docs-session, the turn build check (answer length did until 2026-10-20) and forge-session's ref watch on a loud ref
+  move no gated act explains (audit 2026-10-30 HK-23: the chain was documented as three) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
   Code is already continuing as a result of a stop hook', code.claude.com/docs/en/hooks), so a hook that stood down on
   the flag alone never judged the close rewritten after a sibling's block. Each marks its own block (`hook-prelude.js`
   `markStopHeld`, a file under `ALFRED_CODE_HOOK_LOG_DIR` or the temp dir) and stands down on a continuation only when
   IT held this cycle (`stopHeldThisCycle`); a Stop with the flag false opens a new cycle and clears the marker. So
-  every blocker judges each rewritten close and blocks at most ONCE per cycle - at most three continuations, in no fixed
-  order (the three run in parallel), with
+  every blocker judges each rewritten close and blocks at most ONCE per cycle - at most four continuations, in no fixed
+  order (the four run in parallel), with
   Claude Code's 8-consecutive-continuation cap the outer guard - and an unwritable marker dir stands a continuation
   down, the old reading. The stop contract's per-turn probes skip a continuation (the same turn), and its SubagentStop
   hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not). The
@@ -303,7 +311,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     beside main / master / develop - read from `refs/remotes/<remote>/HEAD` (clone or `git remote set-head` sets it; no
     network), and only for a force or a delete, so an ordinary push spawns no git; no recorded remote HEAD, no default. The
     denial says the push is the user's to run themselves, the exact command handed over, never a route around (audit
-    2026-10-20, the hooks track's minor list).
+    2026-10-20, the hooks track's minor list). Audit 2026-10-30 HK-12 / HK-15: HEAD is the branch checked out when the
+    push runs - each `git switch` / `checkout` before it in the same checkout moves it (a path checkout moves nothing), so
+    `git switch main && git push --force` blocks; a bare push takes the refspec its own `-c` or an earlier `git config`
+    sets (`remote.<r>.push`, `remote.<r>.mirror`); and a forced `send-pack`, a `gh api` PATCH with force or a DELETE of a
+    protected ref and `gh repo sync --force` of a protected or the default branch block too (`gitText` exposes
+    `orderOf`, so a carried script's calls run where their carrier stands).
   - `guard-catastrophic-rm.js` (PreToolUse, the shell route) - a recursive `rm` of an unrecoverable target (a bare `.git` included, a `$VAR/.git` path not; and a
     literal `find <target> -delete` / `-exec rm` with no filter test before the action in its `-o` branch, or a piped `Get-ChildItem <target> | Remove-Item`
     with `-Recurse` on either side - 2.1.5 M1; read past any wrapper of shell-writes.js's list, an `if` / `do` body, a subshell
@@ -331,7 +344,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     literal path is resolved and compared with the home directory, the project root and the cwd, or any folder holding the
     first two (audit 2026-10-20 H6: each spelling passed). A `claude plugin marketplace remove|rm` with no `--scope` - the binary by its path or inside `bash -c` too -
     is denied (2.1.7): the CLI then removes the
-    declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
+    declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row.
+    Audit 2026-10-30 HK-08..HK-11: a recursive rm of `.git`'s contents (objects, refs, a `.git/*` glob) blocks while git's
+    transient state (`rebase-merge`, `*.lock`, `MERGE_HEAD`) stays removable; each target resolves against the directory a
+    leading `cd` moved the shell to and through `shellVars` (`$H` after `H=$HOME`, `$(echo ~)`, `%USERPROFILE%`); and a
+    runtime's recursive delete (`shutil.rmtree`, `fs.rmSync` recursive, `File::Path` rmtree, `rimraf`,
+    `[IO.Directory]::Delete` with `true`) of the home, project or cwd blocks - of a build folder it passes. A 'discard it' answer
     is honoured via `<data root>/state/approvals/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`), a security receipt (THE RECEIPTS above).
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). THRESHOLD is 400 lines, and the range cap and every shell span
@@ -401,7 +419,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     2026-10-20 H7: a `find <dirs> -name <one literal name> -exec cat` (or `| xargs cat`) is a sweep of whatever files that
     name matches - a bounded walk from the find's start points (`NAMED_FIND_CAP`, 20,000 entries) sizes each match, and
     one over THRESHOLD lines (a gated extension) or BIG_BYTES (any other) blocks as `named-find-dump`; a name with a glob
-    character stays the sweep rule's.
+    character stays the sweep rule's. Audit 2026-10-30 HK-19: `wholeFiles` reads `shell-writes.js` `PRINT_VERBS`, so
+    `shuf` and the table's other verbs are sized like `cat`; `git show <rev>:<path>` / `:<path>` is sized from the blob
+    (`cat-file`, no filter), a diff naming paths sizes each file it ADDS, and a print of a copy's destination earlier in
+    the command is sized as its source. RU-03: the two Angular rows of the convention notice cover every glob of
+    `angular-conventions.md` and `angular-styling-conventions.md`.
     Every denial on a source file names the navigation line of the session-start tool order and the LSP
     `documentSymbol` / `goToDefinition` / `findReferences` calls (a size denial on another extension and a tree it
     never indexes name grep instead - a file outside `CLAUDE_PROJECT_DIR` among them, and a range-cap denial states how many
@@ -651,8 +673,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     in 10 transcripts, any unjudged row, or a reported stall.
   - `guard-ungated-commit.js` (PreToolUse, the shell route) and the same gate on every MCP server (`^mcp__.*` - the stack's own
     exemption went with its servers, 2026-10-24) - blocks a non-trivial `git commit` without the
-    `<data root>/state/approvals/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
-    run or a branch level with upstream is never gated; `guard-ungated-commit:push` in `ALFRED_CODE_HOOKS_OFF` turns the push half off
+    `<data root>/state/approvals/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE` - and
+    opening a change request from a CLI (`gh pr create`, `glab mr create`) where it would push: the branch ahead of its
+    upstream or, with none set, no remote branch of its name holding HEAD, unless the call names its head (`--head`,
+    `-H`, `--source-branch`) without `--push` (audit 2026-10-30, the hooks report's threat table; `gh pr create` pushes
+    an unpushed branch and its `--dry-run` 'May still push git changes', cli.github.com/manual/gh_pr_create). A dry
+    run of a push or a branch level with upstream is never gated; `guard-ungated-commit:push` in `ALFRED_CODE_HOOKS_OFF` turns the push half off
     (`hook-prelude.js partOff`, the env audit of 2026-10-21; the old `ALFRED_CODE_PUSH_GATE=0` is still read for the 2.x
     line and an update folds it in). 'Level' is
     read BEFORE the command runs, so a history mover (commit, merge, cherry-pick, am, rebase, revert, pull, reset) or an
@@ -792,7 +818,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     read from where it meets HEAD. The git calls are read by shell-writes.js's walker (`gitCalls`), as are the
     git aliases and carried scripts (`expandGitAliases`, `carriedScripts`, above): each alias is expanded in place and each carried script, its own aliases expanded, joins
     the command after a newline; an alias still standing after 5 steps, a lookup git cannot answer, an xargs-fed
-    subcommand, or text past the scan budget that names git gates the call as a commit, unread. Every check reads
+    subcommand, or text past the scan budget that names git gates the call as a commit, unread - and so do a runtime
+    script spawning `git commit` (node exec / spawn, python `subprocess` / `os.system`, ruby / perl `system` and backticks,
+    a PowerShell body), `update-ref` on `refs/heads/*` or `HEAD`, a `commit-tree` fed into a reset / merge / branch /
+    checkout / switch, and `rebase --exec` / `-x` running `git commit` (audit 2026-10-30 HK-17; literal words only, a
+    computed spawn and a runtime's push stay out of model). Every check reads
     git however it is spelled (`/usr/bin/git`, `\git`, `--git-dir <d>`, `--work-tree <d>`), and behind a runner no
     list names (`xcrun`, `arch -arm64`, `bundle exec`, `op run --`, `flock`): a bare `git` word after a head that does
     more than print, read or edit data is the call (`DATA_HEADS` in shell-writes.js, so `echo` / `grep` / `ls` stay text;
@@ -1129,7 +1159,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the
     `<data root>/state/approvals/CROSS-WRITE-ALLOW` receipt, a security one (THE RECEIPTS above); `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
-    tree permanently. A removal (`rm`, PowerShell's remove) of a symbolic link is judged where the link lives - its folder
+    tree permanently. Audit 2026-10-30 HK-13 / HK-14: `scanShell`'s `expandVars` runs `shellVars` first (`$HOME`,
+    `${HOME}`, `~`, `$USERPROFILE`, `$env:USERPROFILE`, `$PWD` after a followed `cd`, `$CLAUDE_PROJECT_DIR`, assigned names,
+    `$(echo ...)`), so `echo x > "$HOME/.zshrc"` is judged; the write targets gain curl `-o` / `--output` /
+    `--output-dir`, wget `-O` / `-P`, tar `-C` on extract and the archive on create, `unzip -d`, `dd of=`, patch's file,
+    `-o`, `-r` and `-d`, `git init` / `clone` / `apply --directory`, and .NET's `[IO.File]::` writes from PowerShell or a
+    pwsh script. A removal (`rm`, PowerShell's remove) of a symbolic link is judged where the link lives - its folder
     resolved, its name kept - unless a trailing slash follows it (audit 2026-10-10 C31, session 0d070bcc: `rm -f` of the
     session's own link to a sibling repo was blocked as a write into it). A PowerShell command's backslashes read as `/`
     before the scan (`..\sib\x` named no parent on a POSIX host and passed), and the main block's row names its branch
@@ -1166,6 +1201,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `allowUnreachableCode` / `allowUnusedLabels` / `skipLibCheck`; a removal blocks), and an eslint config passes when the
     file it leaves differs only in rule severities, each raised (off / 0 -> warn / 1 -> error / 2) - token by token in JSON
     and JS with the value straight inside a `rules` object, line by line in YAML under `rules:` (`severitiesOnlyRise`).
+    Audit 2026-10-30 HK-18: a runtime write over a keyed config is a replace, `git checkout <rev> -- <file>` / `git
+    restore --source` is judged on the version it restores, `git rm` / `git mv` remove the file, `dd of=` and `patch` are
+    judged on what they leave, and a NEW config that shadows an existing one (ESLint / Prettier lookup, a nested
+    `Directory.Build.props`, a `package.json` config key) counts as an edit of it - so 'creating a config passes' holds
+    only where nothing is shadowed.
     A lockfile, a migration, the central
     package file and a solution file are a recorded DECLINE (2.1.5 M13, in its header): legitimate work edits each, and
     whether a migration was applied lives in a database no hook reads.
@@ -1454,7 +1494,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
     a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,
-    `GIT_TERMINAL_PROMPT=0`, ssh BatchMode, 6s cap); PostToolUse after a merge, branch write, release or unknown call
+    `GIT_TERMINAL_PROMPT=0`, ssh BatchMode, 6s cap - the hook's network egress, stated in its header and kept by ruling,
+    audit 2026-10-30 HK-27); PostToolUse after a merge, branch write, release or unknown call
     re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read
     (an allowlist of read tools), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
     running. An act covers the ref it aims at; one naming no ref lands ONE move (at its head, else the single loud

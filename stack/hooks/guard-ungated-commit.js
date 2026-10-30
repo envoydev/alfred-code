@@ -315,8 +315,16 @@ if (forgeLib || PUSH_GATE_ON) {
     if (!push && parsed && forgeLib) { try { acts = forgeLib.classifyCommand(command, gitCwd, { parsed }); } catch { acts = []; } }
     const pub = acts.find(known);
     const spanText = (r) => command.slice(r.at, r.end).trim().replace(/\s+/g, ' ');
+    // Opening a change request from a CLI pushes the current branch when no remote holds it (`gh pr create`: 'a prompt will
+    // ask where to push the branch', and `--dry-run` 'May still push git changes' - cli.github.com/manual/gh_pr_create;
+    // `glab mr create --push`), so it is a publish where it can push - judged below by the branch, as a push is - unless
+    // the call names the head it opens from (`--head`, `-H`, `--source-branch`) without `--push`. Audit 2026-10-30, the
+    // hooks report's threat table: `gh pr create` was not gated.
+    const pushesHead = (text) => /(?:^|\s)--push(?:\s|$)/.test(text) || !/(?:^|\s)(?:--head|-H|--source-branch)(?:[=\s]|$)/.test(text);
+    const opens = !push && !pub && forgeLib ? acts.find((r) => r.strength === 'known' && r.concept === forgeLib.CONCEPTS.CREATE && r.transport === 'shell' && pushesHead(spanText(r))) : null;
     if (push) publishMatch = { index: push.at, call: push, git: true, act: actText(push) };
     else if (pub) publishMatch = { index: pub.at, call: null, git: false, act: spanText(pub), forge: pub };
+    else if (opens) publishMatch = { index: opens.at, call: null, git: false, act: spanText(opens), forge: opens, opens: true };
     else {
       const unknown = acts.find((r) => r.strength === 'unknown');
       if (unknown) askMatch = { ...unknown, act: spanText(unknown) };
@@ -1452,6 +1460,20 @@ if (publishMatch) {
     // replayed exit 0 with no receipt). A mover, or a git call the reader could not judge, before the push counts as ahead.
     if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
     if (!ahead && pushNamesOtherRefs(publishMatch.call.argv || [])) ahead = true;
+  } else if (publishMatch.opens) {
+    // a change request pushes only what no remote holds: ahead of its upstream, or - with none set - no remote branch of
+    // its name holding HEAD (`git push origin feat` sets no upstream); a detached HEAD or a git it cannot read counts
+    try {
+      let up = null;
+      try { up = git('log @{u}..HEAD --oneline'); } catch { up = null; }
+      if (up !== null) ahead = up.length > 0;
+      else {
+        const branch = git('rev-parse --abbrev-ref HEAD');
+        const holders = git('for-each-ref --contains HEAD refs/remotes').split('\n').map((l) => l.split('\t').pop().trim());
+        ahead = branch === 'HEAD' || !holders.some((ref) => ref.startsWith('refs/remotes/') && ref.endsWith(`/${branch}`));
+      }
+    } catch { ahead = true; }
+    if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
   }
   if (!dryRun && ahead && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
     const r = readReceipt('PUSH-GATE', sessionStartMs());

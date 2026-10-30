@@ -295,7 +295,7 @@ test('the core entry wires the library-stamp line at a startup, a clear and a re
     const core = buildEntries().find((e) => e.name === 'alfred-code');
     const start = core.hooks.SessionStart;
     assert.ok(Array.isArray(start) && start.length >= 1, JSON.stringify(core.hooks));
-    assert.strictEqual(start[0].matcher, 'startup|clear|resume', 'its own group leads the event (loading audit 2026-10-21 G12)');
+    assert.strictEqual(start[0].matcher, 'startup|clear|resume|fork', 'its own group leads the event (loading audit 2026-10-21 G12; a fork, audit 2026-10-30 HK-24)');
     assert.strictEqual(start[0].hooks.length, 1, 'no stack hook shares its matcher');
     assert.match(start[0].hooks[0].command, /setup-plugin\/hooks\/library-stamp\.js/);
     assert.strictEqual(start[0].hooks[0].timeout, 10);
