@@ -623,7 +623,8 @@ function noteAssign(assigns, events, tok) {
   const v = raw.slice(m[0].length);
   const d = /[$`]/.test(v) ? '' : dequote(v);
   if (d) assigns.set(m[1], d);
-  events.push({ at: tok.s, kind: 'set', name: m[1], value: dequote(v) });
+  // `raw` keeps the value as written (a single-quoted `'$HOME'` is text, never expanded - shellVars reads it)
+  events.push({ at: tok.s, kind: 'set', name: m[1], value: dequote(v), raw: v });
   return true;
 }
 // The command words of one simple command: { at (its index in words), name (normalised), word (dequoted), via (the
@@ -651,6 +652,7 @@ function commandWordsOf(cmd, assigns, events) {
   let k = 0;
   const chain = [];
   const cand = (at, via) => { const word = dq(at); const c = new Cand(cmd, at, word, normCmd(word, assigns), via, chain.length ? chain.slice() : NO_CHAIN); out.push(c); return c; };
+  const lead = events.length; // the leading assignments: a PREFIX of the command word after them (`H=/x rm $H` expands the old H)
   for (; k < w.length; k++) {
     const raw = w[k].raw;
     if (!wrapper) {
@@ -686,6 +688,7 @@ function commandWordsOf(cmd, assigns, events) {
       }
     }
   }
+  if (out.length) for (let e = lead; e < events.length; e++) events[e].prefix = true;
   // `export G=git`: the declarer's assignments count like the leading ones
   if (out.length && DECLARERS.has(out[out.length - 1].name)) for (let j = k + 1; j < w.length; j++) noteAssign(assigns, events, w[j]);
   // every command word reads the words after it (its lazy `args`); a `find` -exec action's reads to its `;` / `+`
@@ -1928,6 +1931,168 @@ function carriedScripts(raw, opts = {}) {
   return out;
 }
 
+// ---- the variable expander: the ONE home (audit 2026-10-30 a0; HK-04, HK-10, HK-13) --------------------------------
+// What a word names once the shell has expanded it, read from the command's own text: `$NAME` / `${NAME}` (its `:-`,
+// `-`, `:?`, `?`, `:=` forms name the variable when it is set), a leading `~`, `$HOME` / `$USERPROFILE` (PowerShell's
+// `$env:USERPROFILE`, cmd's `%USERPROFILE%` / `%HOMEDRIVE%%HOMEPATH%`), `$PWD` and `$(pwd)` - where the shell stands at
+// that word, the cwd moved by every followed `cd` before it (a subshell's cd ends with it) - `$CLAUDE_PROJECT_DIR`, and
+// `$(echo <words>)` as its words. A name the command assigned before the word, as a statement of its own, is its value,
+// itself expanded at the assignment (`H=$HOME; rm -rf "$H"`); a prefix assignment (`H=/x rm $H`) is that command's
+// environment and expands nothing in its own words. What cannot be known stays as written, for the caller to judge as
+// unexpanded: an unset name, a loop / `read` / `+=` / arithmetic variable, a computed value, a `cd` past one. The word
+// comes in dequoted, so a single-quoted `$` is expanded too - a guard reading it errs toward judging. Every shell guard
+// expands through here (the rm, cross-project and secret guards each kept a partial copy: HOME but no PWD, `~` only).
+// shellVars(P, opts): P is parseShell's result; `opts.cwd` the shell's start directory, `opts.home` (default the account
+// home), `opts.project` ($CLAUDE_PROJECT_DIR), `opts.regions` ([{ from, to, cwd }], gitText's carried scripts, each
+// starting from its own directory). Returns { expand(word, at), valueOf(name, at), pwdAt(at) }.
+const VAR_BINDERS = [
+  /\bfor\s+([A-Za-z_]\w*)\s+in\b/g, /\bselect\s+([A-Za-z_]\w*)\s+in\b/g, /\b([A-Za-z_]\w*)\+=/g, /\blet\s+([A-Za-z_]\w*)/g,
+  /\(\(\s*([A-Za-z_]\w*)/g, /\bgetopts\s+\S+\s+([A-Za-z_]\w*)/g, /\bprintf\s+-v\s+([A-Za-z_]\w*)/g,
+];
+const READ_WORDS = /\b(?:read|mapfile|readarray)\b([^;&|\n]*)/g;
+const VAR_DEPTH = 4;
+const CD_RESOLVE_MAX = 64;
+function shellVars(P, opts = {}) {
+  const home = opts.home !== undefined ? opts.home : homeDir();
+  const events = (P && P.assignEvents) || [];
+  const bound = new Set();
+  const text = String((P && P.command) || '');
+  if (/[$%`~]/.test(text)) {
+    for (const re of VAR_BINDERS) for (const m of text.matchAll(re)) bound.add(m[1]);
+    for (const m of text.matchAll(READ_WORDS)) for (const w of m[1].split(/\s+/)) if (/^[A-Za-z_]\w*$/.test(w)) bound.add(w);
+  }
+  const regions = opts.regions && opts.regions.length ? opts.regions : [{ from: 0, to: Infinity, cwd: opts.cwd || null }];
+  const regionOf = (at) => { let k = regions.length - 1; while (k > 0 && regions[k].from > at) k--; return k; };
+  const anchors = new Map();
+  const norm = (t) => nativePath(unquote(String(t)));
+  // a region's cds, each variable target expanded where it stands (a cd past CD_RESOLVE_MAX of them stays as written)
+  const anchorOf = (k) => {
+    if (anchors.has(k)) return anchors.get(k);
+    const r = regions[k];
+    const own = ((P && P.cds) || []).filter((c) => c.index >= r.from && c.index < r.to);
+    const resolved = [];
+    let budget = CD_RESOLVE_MAX;
+    for (const c of own) {
+      const t = c[1];
+      if (c.popd || t === undefined || !/[$`~%]/.test(String(t)) || budget-- <= 0) { resolved.push(c); continue; }
+      const before = resolved.slice();
+      const x = expandWith(String(t), c.index, 1, (q) => (r.cwd ? anchorer(before, r.cwd, norm)(q) : null));
+      const copy = Object.assign([], c);
+      copy[1] = x;
+      resolved.push(copy);
+    }
+    const f = r.cwd ? anchorer(resolved, r.cwd, norm) : () => null;
+    anchors.set(k, f);
+    return f;
+  };
+  const pwdAt = (at) => anchorOf(regionOf(at))(at);
+  const valueWith = (name, at, depth, pwd) => {
+    if (depth > VAR_DEPTH || bound.has(name)) return null;
+    let ev = null;
+    for (const e of events) if (e.kind === 'set' && e.name === name && e.at < at && !e.prefix) ev = e;
+    if (ev) {
+      const raw = String(ev.raw !== undefined ? ev.raw : ev.value);
+      if (/^'[^']*'$/.test(raw)) return raw.slice(1, -1);
+      const v = String(ev.value);
+      const x = /[$`~%]/.test(v) ? expandWith(v, ev.at, depth + 1, pwd) : v;
+      return /[$`]/.test(x) ? null : x;
+    }
+    const up = name.toUpperCase();
+    if (name === 'HOME' || up === 'USERPROFILE') return home || null;
+    if (name === 'PWD') return pwd(at);
+    if (name === 'CLAUDE_PROJECT_DIR') return opts.project || null;
+    return null;
+  };
+  // linear: one greedy class per alternative, trimmed in code (no lazy run beside an overlapping `\s*`)
+  const SUBST = /\$\(([^()`$]*)\)|`([^`()$]*)`/g;
+  const ECHO_SUBST = /\$\(\s*echo\s([^()`;&|<>]*)\)|`\s*echo\s([^`();&|<>]*)`/g;
+  function expandWith(word, at, depth, pwd) {
+    let s = String(word);
+    if (!/[$`~%]/.test(s)) return s;
+    // `$(echo <words>)`: its words, each expanded as a word of its own
+    s = s.replace(ECHO_SUBST, (m, a, b) => {
+      const words = String(a !== undefined ? a : b).match(/"[^"]*"|'[^']*'|\S+/g) || [];
+      const out = words.map((w) => expandWith(dequote(w), at, depth + 1, pwd));
+      return out.some((w) => /[$`]/.test(w)) ? m : out.join(' ');
+    });
+    s = s.replace(SUBST, (m, a, b) => {
+      const body = String(a !== undefined ? a : b).trim();
+      if (/^pwd(?:\s+-[LP])?$/.test(body)) { const d = pwd(at); return d === null ? m : d; }
+      return m;
+    });
+    if (s[0] === '~' && (s.length === 1 || s[1] === '/' || s[1] === '\\')) {
+      const h = valueWith('HOME', at, depth, pwd);
+      if (h) s = h + s.slice(1);
+    }
+    s = s.replace(/\$\{([A-Za-z_]\w*)(?:(:?[-?=])[^}]*)?\}|\$([A-Za-z_]\w*)/g, (m, br, op, bare) => {
+      const v = valueWith(br || bare, at, depth, pwd);
+      return v === null ? m : v;
+    });
+    s = s.replace(/\$\{?env:([A-Za-z_]\w*)\}?/gi, (m, name) => {
+      const v = /^(?:userprofile|home)$/i.test(name) ? valueWith(name.toUpperCase() === 'HOME' ? 'HOME' : 'USERPROFILE', at, depth, pwd) : null;
+      return v === null ? m : v;
+    });
+    s = s.replace(/%HOMEDRIVE%%HOMEPATH%|%(USERPROFILE|HOMEPATH)%/gi, () => valueWith('USERPROFILE', at, depth, pwd) || '%USERPROFILE%');
+    return s;
+  }
+  return {
+    expand: (word, at) => expandWith(word, at, 0, pwdAt),
+    valueOf: (name, at) => valueWith(name, at, 0, pwdAt),
+    pwdAt,
+  };
+}
+
+// ---- the whole-file print verbs: the ONE table (audit 2026-10-30 a0; HK-06, HK-19) --------------------------------
+// The commands that print a file's whole content under another name than `cat` - each was found printing a credential
+// file raw past the secret guard (`shuf .env`, `vis .env`, `join -t= -v1 .env /dev/null`, `gzip -c .env | gunzip`) or a
+// 700-line source past the read guard (`shuf big.ts`). Per verb: `values` - the one-letter flags that take a value (its
+// operand is no file), `long` the long ones, `needs` - flags without which it prints nothing (a compressor writes a
+// file unless told `-c`), `none` - flags with which it reads no file (`shuf -e` echoes its words), `bounded` - flags that
+// cap what it prints, `digits` - `-1` / `-2` are flags (join's fields), never operands. printedFiles(verb, argv) names
+// the files a call prints and whether it is bounded; null when the verb prints none. Both guards read this table.
+const LONG_VALUES = /^--(?:tabs|width|lines|key|output|separator|suffix|field-separator|head-count|input-range|random-source|read-bytes|bytes|skip-bytes|format|address-radix)$/;
+const COMPRESSOR = { values: 'S', needs: ['-c', '--stdout', '--to-stdout'] };
+const PRINT_VERBS = Object.freeze(Object.fromEntries(Object.entries({
+  cat: { values: '' }, tac: { values: 's' }, nl: { values: 'bdfhilnsvw' }, rev: { values: '' }, fmt: { values: 'wgpdlt' },
+  expand: { values: 't' }, unexpand: { values: 't' }, fold: { values: 'w' }, pr: { values: 'hlowWsSNe' },
+  od: { values: 'tjNAw', bounded: ['-N', '--read-bytes'] }, xxd: { values: 'lscgo', bounded: ['-l'] },
+  hexdump: { values: 'efns', bounded: ['-n'] }, base64: { values: 'w' }, strings: { values: 'not' }, paste: { values: 'd' },
+  column: { values: 'scNR' }, sort: { values: 'ktoST' }, uniq: { values: 'fsw' },
+  zcat: { values: 'S' }, gzcat: { values: 'S' }, zmore: { values: '' }, zless: { values: '' }, bzcat: { values: '' },
+  xzcat: { values: '' }, zstdcat: { values: '' }, lz4cat: { values: '' },
+  shuf: { values: 'nio', bounded: ['-n', '--head-count'], none: ['-e', '--echo', '-i', '--input-range'] },
+  vis: { values: 'Fe' },
+  join: { values: 'aejot12v', digits: true },
+  gzip: COMPRESSOR, gunzip: COMPRESSOR, bzip2: COMPRESSOR, bunzip2: COMPRESSOR, xz: COMPRESSOR, unxz: COMPRESSOR,
+  lzma: COMPRESSOR, unlzma: COMPRESSOR, zstd: COMPRESSOR, unzstd: COMPRESSOR, lz4: COMPRESSOR, brotli: COMPRESSOR,
+}).map(([k, v]) => [k, Object.freeze({ ...v })])));
+function printedFiles(verb, argv) {
+  const spec = Object.prototype.hasOwnProperty.call(PRINT_VERBS, verb) ? PRINT_VERBS[verb] : null;
+  if (!spec) return null;
+  const ops = [];
+  const flags = new Set();
+  const words = (argv || []).map(String);
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w === '--') { ops.push(...words.slice(i + 1)); break; }
+    if (w === '-' || !w.startsWith('-') || (/^-\d/.test(w) && !spec.digits)) { ops.push(w); continue; }
+    if (w.startsWith('--')) {
+      const eq = w.indexOf('=');
+      const n = eq < 0 ? w : w.slice(0, eq);
+      flags.add(n);
+      if (eq < 0 && LONG_VALUES.test(n)) i++;
+      continue;
+    }
+    for (let j = 1; j < w.length; j++) {
+      flags.add(`-${w[j]}`);
+      if (spec.values.includes(w[j])) { if (j + 1 === w.length) i++; break; }
+    }
+  }
+  if (spec.needs && !spec.needs.some((f) => flags.has(f))) return null;
+  if (spec.none && spec.none.some((f) => flags.has(f))) return null;
+  return { files: ops.filter((o) => o && o !== '-'), bounded: !!(spec.bounded && spec.bounded.some((f) => flags.has(f))) };
+}
+
 // ---- git aliases: the ONE home (2.1.6 review T20, re-verify N2, re-verify 2 R2-m1, re-verify 3 R3-m5) ------------
 // A git ALIAS runs another git command - or, with `!`, a shell command, from the repository's top level - and git
 // resolves it before it runs. Each git call whose subcommand is no builtin (git never lets an alias shadow one) is
@@ -2287,4 +2452,5 @@ function enclosingEnd(P, at, closesOf) {
 }
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
-  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE };
+  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
+  shellVars, PRINT_VERBS, printedFiles };
