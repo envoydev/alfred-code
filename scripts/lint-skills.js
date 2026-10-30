@@ -3304,7 +3304,7 @@ function lintAgentPreloads()
 // exactly as generated. A `renames` key or a hooks entry is a finding: 2.0.0 ships neither (S11/S16,
 // and the fold). An entry fetched from OUTSIDE this repo (an object `source`: `github`, `url`,
 // `git-subdir`, ...) ships none of its files, so it is the marketplace's, not the placement's - the
-// hand-written `preferred-tools` entry (plugins.js foreignEntry, which uninstall reads too). `liveIn` is
+// hand-written `preferred-tools` and `session-inspector` entries (plugins.js foreignEntry, which uninstall reads too). `liveIn` is
 // a parsed marketplace for a test; the lint reads the committed file.
 function lintMarketplaceEntries(liveIn)
 {

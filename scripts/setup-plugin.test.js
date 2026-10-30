@@ -33,6 +33,24 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     assert.ok(JSON.stringify(core.hooks).includes('stack/hooks/shell-guards.js') && JSON.stringify(core.hooks).includes('stack/hooks/file-guards.js'), 'the core declares the stack hooks INLINE, so nothing sits at the shared root');
 });
 
+// session-inspector (alfred-mods) is the catalog's second entry from its own repo, pinned per release: no `version` (the
+// mod's own plugin.json holds it), `ref` and `sha` set together (sha wins when they disagree), and the id never renamed.
+// It is the marketplace's, never the stack's: the installer neither installs, updates nor removes it.
+test('session-inspector is listed from alfred-mods, pinned to a release tag and its commit, and foreign to the stack', () => {
+    const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    const entry = mp.plugins.find((x) => x.name === 'session-inspector');
+    assert.ok(entry, 'the session-inspector entry');
+    assert.deepStrictEqual(Object.keys(entry.source).sort(), ['ref', 'repo', 'sha', 'source']);
+    assert.strictEqual(entry.source.source, 'github');
+    assert.strictEqual(entry.source.repo, 'envoydev/alfred-mods');
+    assert.match(entry.source.ref, /^v\d+\.\d+\.\d+$/, 'a release tag, never a branch');
+    assert.match(entry.source.sha, /^[0-9a-f]{40}$/, 'the full commit the tag names');
+    assert.ok(!Object.hasOwn(entry, 'version'), 'no version: the mod\'s own plugin.json holds it, and a copy here would drift');
+    assert.ok(foreignEntry(entry));
+    assert.deepStrictEqual(mp.plugins.filter(foreignEntry).map((x) => x.name), ['preferred-tools', 'session-inspector']);
+    assert.ok([...require('./install/plugins.js').foreignEntries(ROOT)].includes('session-inspector'));
+});
+
 test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'alfred-code');

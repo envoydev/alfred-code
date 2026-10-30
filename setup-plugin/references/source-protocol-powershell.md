@@ -32,7 +32,7 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
   $list = try { claude plugin list --json 2>$null | Out-String | ConvertFrom-Json } catch { $null }
   # PSObject, never `$list.installed`: over a bare array that is one $null per row - truthy, and no rows
   if ($list -and ($list.PSObject.Properties.Name -contains 'installed')) { $list = $list.installed }
-  # the core installed for THIS project or the account, at each scope, this project's rows first - another plugin the catalog lists (preferred-tools) updates on its own
+  # the core installed for THIS project or the account, at each scope, this project's rows first - another plugin the catalog lists (preferred-tools, session-inspector) updates on its own
   $Here = (Get-Item -LiteralPath (Get-Location).Path).FullName
   $rows = @($list | Where-Object { "$($_.id)" -match '^alfred-code@envoydev$' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })
   $rows = @(@($rows | Where-Object { $_.projectPath }) + @($rows | Where-Object { -not $_.projectPath }))
