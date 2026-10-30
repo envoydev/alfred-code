@@ -2006,6 +2006,7 @@ function stripComments(text) {
 const ESCAPED_PLAIN = /[A-Za-z0-9._/@%+=:,-]/;
 const WORD_BREAK = /[\s;&|()<>]/;
 const WIN_BARE_WORD = /^(?:[\w.-]*=)?(?:[A-Za-z]:\\|\\\\)[^"'$`\s;&|()<>]*/;
+let asWrittenPass = false; // judgeShell's Windows as-written reading is under way
 function shellUnescape(text) {
   const s = String(text);
   if (!s.includes('\\')) return s;
@@ -3367,9 +3368,15 @@ if (isShellTool(payload.tool_name)) {
   if (!IS_PWSH && !allowAll) judgeCarried(raw);
   const staged = !IS_PWSH && command === raw && !allowAll;
   // the stages are found as bash hands each word on (shellUnescape: `e\nv`, `g\it d\iff` - final review FC)
-  const seen = staged ? shellUnescape(raw) : raw;
-  const envStaged = staged ? redactEnvStages(seen) : raw;
-  const inPlace = staged ? redactGitStages(envStaged) : raw;
+  let seen = staged ? shellUnescape(raw) : raw;
+  let envStaged = staged ? redactEnvStages(seen) : raw;
+  let inPlace = staged ? redactGitStages(envStaged) : raw;
+  // on Windows the text as written as well, judgeShell's as-written reading (`git diff -- src\app.config`)
+  if (staged && inPlace === seen && seen !== raw && process.platform === 'win32') {
+    seen = raw;
+    envStaged = redactEnvStages(raw);
+    inPlace = redactGitStages(envStaged);
+  }
   // The branch names what was piped: a recursive search is `walk-stage`, never `git-stage` - 12 of 17 'git-stage' rows in
   // one session were greps with no git word (audit 2026-10-10: f6c591fa, 81264f0d, b35afe70, a3d497f8).
   const stagedKind = () => (redactGitStages.kinds && !redactGitStages.kinds.has('git') ? 'walk-stage' : 'git-stage');
@@ -4263,10 +4270,19 @@ function printVerbFiles(verb, rest) {
 }
 
 function judgeShell(text, forceRuntime, main, bodyLang) {
-  cwdAnchor = carriedCwd; // a carried script's shell starts where it was run from (null for the command itself)
   // a shell text is judged as bash hands each word on (shellUnescape); `orig` keeps it as written for a splice
   const orig = text;
-  if (!forceRuntime && !IS_PWSH) text = shellUnescape(text);
+  if (!forceRuntime && !IS_PWSH && !asWrittenPass) {
+    text = shellUnescape(text);
+    // On Windows a backslash in a word is also the separator the model meant (`.claude\settings.json`, `..\x\.env`,
+    // `file://C:\x\.env`): Git Bash drops it, but the guard reads the text as written too, first - the reading before the
+    // unescape - so a credential named either way gets its view (the 2026-10-30 gate's Windows leg)
+    if (process.platform === 'win32' && text !== orig) {
+      asWrittenPass = true;
+      try { judgeShell(orig, forceRuntime, main, bodyLang); } finally { asWrittenPass = false; }
+    }
+  }
+  cwdAnchor = carriedCwd; // a carried script's shell starts where it was run from (null for the command itself)
   // a heredoc body binds a path statements before it reads it, so its built paths come from the whole body
   const builtInBody = forceRuntime ? builtPaths([text]) : null;
   if (forceRuntime) spawnedShell.push(...shellStrings(text, bodyLang));

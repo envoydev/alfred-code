@@ -412,7 +412,7 @@ test('audit 2026-10-30 a0: shellVars expands $NAME / ${NAME} / $HOME / $PWD / ~ 
   assert.strictEqual(ex('H=/x rm -rf $H', '$H'), '$H', "a prefix assignment is the command's environment, not its arguments");
   assert.strictEqual(ex('HOME=/elsewhere; rm -rf ~', '~'), '/elsewhere', 'a reassigned HOME moves the tilde');
   assert.strictEqual(ex('cd $UNSET && cat $PWD/x', '$PWD/x'), '$PWD/x', 'a cd that cannot be followed leaves $PWD unknown');
-  assert.strictEqual(ex('cd ~/code && echo $PWD', '$PWD'), `${home}/code`, 'a cd target is expanded too');
+  assert.strictEqual(ex('cd ~/code && echo $PWD', '$PWD'), path.join(home, 'code'), 'a cd target is expanded too - a resolved anchor, native separators');
   const v = shell.shellVars(shell.parseShell('cd .. && x'), { cwd, home });
   assert.strictEqual(v.pwdAt(9), path.dirname(cwd), 'pwdAt is exported for a caller resolving a relative path');
 });
@@ -460,4 +460,14 @@ test('audit 2026-10-30 HK-01: the --with-sensitive runner is a carrier - its lin
   assert.match(shell.gitText(`node ${g} --with-sensitive -- "git push --force origin main"`, TMP).command, /git push --force origin main/);
   assert.deepStrictEqual(shell.scanShell(`node ${g} --with-sensitive -- "echo x > /elsewhere/f"`, {}).targets.map((t) => t.raw), ['/elsewhere/f']);
   assert.deepStrictEqual(shell.sensitiveRuns(`bash -c 'node ${g} --with-sensitive -- "cat .env"'`).map((s) => s.text), ['cat .env'], 'nested in a carried script');
+});
+
+// The 2026-10-30 gate's Windows leg: bash keeps a backslash inside double quotes unless it escapes `$`, a backtick, `"`,
+// `\` or a newline, so `pwsh -Command "[IO.File]::WriteAllText('C:\x\sib\f.txt', 'x')"` hands PowerShell the path as
+// written. The script reader dropped every backslash there and read a relative name inside the project (HK-14 passed).
+test('runtimeScripts: a double-quoted script keeps each backslash bash keeps, and loses each one bash undoes', () => {
+  const [ps] = shell.runtimeScripts(`pwsh -Command "[IO.File]::WriteAllText('C:\\a\\sib\\f.txt', 'x')"`);
+  assert.strictEqual(ps.body, "[IO.File]::WriteAllText('C:\\a\\sib\\f.txt', 'x')", 'a backslash before a plain letter stays');
+  const [js] = shell.runtimeScripts('node -e "console.log(\\"a\\\\b\\$c\\")"');
+  assert.strictEqual(js.body, 'console.log("a\\b$c")', 'an escaped quote, backslash and dollar are undone');
 });

@@ -1261,9 +1261,11 @@ function wordsFrom(text, from, expands) {
     }
     if (c === '"') {
       cur = cur || '';
+      // inside double quotes bash undoes a backslash only before `$`, a backtick, `"`, `\` or a newline: a quoted
+      // `'C:\x\f.txt'` reaches pwsh as written (the 2026-10-30 gate's Windows leg)
       for (i++; i < text.length && text[i] !== '"'; i++) {
         if (text[i] === '$') exp = true;
-        cur += text[i] === '\\' && i + 1 < text.length ? text[++i] : text[i];
+        cur += text[i] === '\\' && i + 1 < text.length && '$`"\\\n'.includes(text[i + 1]) ? text[++i] : text[i];
       }
       continue;
     }

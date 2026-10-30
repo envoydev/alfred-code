@@ -697,10 +697,17 @@ test('guard-catastrophic-rm: the catastrophic-target matrix', () => {
     'rm -rf dist; rm -rf /', 'rm -rf ..', 'rm -rf ../*', 'rm -rf a/../..']) {
     assert.equal(rm(c), 2, `must block: ${c}`);
   }
-  for (const c of ['rm -rf bin obj node_modules', 'git commit -m "rm -rf /"', 'rm -f /', 'rm -rf ./build/*', 'rm -rf /tmp/*', 'rm -rf ~/projects',
+  for (const c of ['rm -rf bin obj node_modules', 'git commit -m "rm -rf /"', 'rm -f /', 'rm -rf ./build/*', 'rm -rf ~/projects',
     'echo rm -rf /', 'rm -rf ./build 2>&1', 'rm -rf /usr/', 'find . -name "*.o" -delete']) {
     assert.equal(rm(c), 0, `must allow: ${c}`);
   }
+  // `/tmp/*` expands to what /tmp holds (audit 2026-10-30 HK-08..11), and on Linux os.tmpdir() IS /tmp, so this suite's
+  // own project root sits in it - a folder holding the project is caught, the H6 rule. The verdict follows the disk.
+  const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
+  const tmpRoot = real('/tmp');
+  const holdsProtected = [process.env.CLAUDE_PROJECT_DIR, os.homedir(), process.cwd()]
+    .some((p) => p && (real(p) + path.sep).startsWith(tmpRoot + path.sep));
+  assert.equal(rm('rm -rf /tmp/*'), holdsProtected ? 2 : 0, `rm -rf /tmp/* ${holdsProtected ? 'holds the project, the home dir or the cwd' : 'holds none of them'}`);
 });
 
 // 2.1.6 audit (guards:S3): a repository's .git holds the unpushed commits, the stashes and the reflog - nothing recovers them.
