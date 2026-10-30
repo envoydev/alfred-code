@@ -16,8 +16,8 @@ Container-backed, end-to-end tests that boot the real Aspire AppHost in-process 
 
 ```xml
 <PackageReference Include="Aspire.Hosting.Testing" />
-<PackageReference Include="xunit" />
-<PackageReference Include="xunit.runner.visualstudio" />
+<PackageReference Include="xunit.v3" />
+<PackageReference Include="xunit.runner.visualstudio" />   <!-- with Microsoft.NET.Test.Sdk, the VSTest mode only - references/library-routing.md -->
 <PackageReference Include="Microsoft.NET.Test.Sdk" />
 <PackageReference Include="Npgsql" />      <!-- the Respawn reset below opens a real connection -->
 <PackageReference Include="Respawn" />
@@ -59,7 +59,7 @@ public sealed class AspireAppFixture : IAsyncLifetime
     public DistributedApplication App => _app
         ?? throw new InvalidOperationException("App not initialized");
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         var builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.YourApp_AppHost>([
@@ -77,7 +77,7 @@ public sealed class AspireAppFixture : IAsyncLifetime
             .WaitForResourceHealthyAsync("api", healthCts.Token);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_app is not null) await _app.DisposeAsync();
     }
@@ -93,7 +93,7 @@ public sealed class ApiTests(AspireAppFixture fixture)
     public async Task Root_Returns_200()
     {
         var client = fixture.App.CreateHttpClient("api");
-        var response = await client.GetAsync("/");
+        var response = await client.GetAsync("/", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

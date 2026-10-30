@@ -12,7 +12,7 @@ the step. The staged run has its own mechanics (`stage-close.md`) and never uses
   file:line, the rule it breaks, the smallest correct change already decided and the check that proves
   it; then the `0.`-numbered fix discipline's text folded in whole; then the line `plan: loop-code-quality` (the small-tier
   stamp's own id - the dispatch hook passes a brief only on its own plan's stamp); then `note: none` - a scoped fix
-  has no memory hand-off. A brief that does hand a note names it literally, read side included (memory
+  has no note hand-off. A brief that does hand a note names it literally, read side included (handoff
   hygiene: `references/domain-trio-protocol.md`).
 - **substantial-tier designer brief** - the finding, its assessment entry (rule, severity, remediation)
   as the requirement, and the fix discipline; the designer returns the decomposition, and the body's
@@ -41,7 +41,7 @@ Deferred: <structural items declined or undecided | none>
 
 The invocation names the rounds already consumed so the 3-round cap survives the resume, and names no
 `RUN-STATE.md` - that file is the staged run's, and an invocation naming it resumes staged. On a RESUMED
-session no mode ask fires: the `Mode:` line is what the body's Rules have the small-tier stamp quote.
+session no mode ask fires: the `Mode:` line is what the body's Execution modes have the small-tier stamp quote.
 The declined set does NOT carry across the resume - it lives in context only, so the new session starts
 with a clean one.
 

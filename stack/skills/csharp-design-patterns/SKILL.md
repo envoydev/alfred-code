@@ -51,7 +51,7 @@ When the user asks for help with patterns:
 | Tree structure where leaves and containers are treated uniformly | Composite | - |
 | Add behavior to objects without subclassing | Decorator | Pipelines/middleware may already do this |
 | Complex subsystem needs a simple entry point | Facade | A plain service class is often enough |
-| Thousands of similar objects, memory pressure | Flyweight | Measure first; strings are already interned |
+| Thousands of similar objects, memory pressure | Flyweight | Measure first; string literals are interned, runtime-built strings are not - pool or intern them only once measured |
 | Control access to an object (lazy, remote, caching, auth) | Proxy | `Lazy<T>`, DispatchProxy, or interceptors |
 | Request handled by one of several handlers in sequence | Chain of Responsibility | ASP.NET Core middleware is this pattern |
 | Operations as objects (undo, queueing, scheduling) | Command | MediatR-style handlers, `ICommand` in WPF |

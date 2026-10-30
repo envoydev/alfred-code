@@ -13,7 +13,7 @@ Runner, substitute library and assertion library are project-level decisions: pi
 
 | Runner | When to pick |
 |---|---|
-| **xUnit** | Default for new projects. `[Fact]` / `[Theory]` + `[InlineData]` / `[MemberData]` / `[ClassData]`. No `[SetUp]` / `[TearDown]` - use constructor + `IDisposable` / `IAsyncLifetime`. Parallel by default. v3 is the current major: its packages are `xunit.v3.*` and its `IAsyncLifetime` returns `ValueTask`, while the fixtures in these references are v2-shaped (`Task`) - on v3, match the signatures through the documentation tools. |
+| **xUnit v3** | Default for new projects. `[Fact]` / `[Theory]` + `[InlineData]` / `[MemberData]` / `[ClassData]`. No `[SetUp]` / `[TearDown]` - use constructor + `IDisposable` / `IAsyncLifetime`, whose `InitializeAsync` / `DisposeAsync` return `ValueTask` on v3 (the fixtures in these references are v3-shaped). Parallel by default. Packages: `xunit.v3` (4.x runs on Microsoft.Testing.Platform v2, the project is `<OutputType>Exe</OutputType>`); `dotnet test` then needs global.json's `"test": { "runner": "Microsoft.Testing.Platform" }`, or, for the VSTest mode, `xunit.runner.visualstudio` 3.x and `Microsoft.NET.Test.Sdk` beside it. Pass `TestContext.Current.CancellationToken` to every call that takes a token (analyzer xUnit1051). An existing v2 project (`xunit`, `xunit.abstractions`) stays on v2 until a deliberate migration. |
 | **NUnit** | When the project already uses it, or for parameterized-test ergonomics (`[TestCase]`, `[TestCaseSource]`, `[Values]`, `[ValueSource]`). |
 | **MSTest** | When the project ships with it (Visual Studio templates, internal Microsoft tooling). `[TestClass]` / `[TestMethod]` / `[DataRow]` / `[DynamicData]`. |
 
@@ -38,7 +38,7 @@ Common rules regardless of library:
 
 | Library | When to pick |
 |---|---|
-| **FluentAssertions 7.x** | Default. Rich diff output, structural equality, async support. Stay on 7.x: v8+ is free only for open-source and non-commercial use and needs a paid license for commercial projects (v7 stays Apache-2.0) - upgrading a client project is a licensing decision, not a routine bump. |
+| **FluentAssertions 7.x** | Default. Rich diff output, structural equality, async support; 7.1+ works with xUnit v3. Stay on 7.x: v8+ is free only for open-source and non-commercial use and needs a paid license for commercial projects, while v7 stays open source and keeps receiving bugfixes - upgrading a client project is a licensing decision, not a routine bump. |
 | **AwesomeAssertions** | Apache-2.0 community fork taken from FluentAssertions' last Apache-licensed release (v7) and developed forward independently. Drop-in choice when you want a permissive license and ongoing fixes without FA v8's commercial terms. |
 | **Shouldly** | Project preference. Simpler API; good when FA's surface area feels heavy. |
 | **xUnit/NUnit/MSTest built-in `Assert`** | When the project has no FA/Shouldly dependency and stays minimal. |

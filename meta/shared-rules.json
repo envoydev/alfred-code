@@ -1,6 +1,19 @@
 {
   "_comment": "Shared-rules registry - the sanctioned exceptions to one-home-per-piece: rules whose text deliberately lives in more than one stack file (one canonical owner + inline restatements, no prose cross-mentions). Each copy is pinned by a marker - a distinctive phrase from that file's own wording, matched whitespace-normalized so md line wrapping never breaks it. Lint check 24 fails the moment any copy's marker no longer matches, and the finding lists every other copy - the multi-home sync is forced by the lint, not remembered. Repo-internal, never shipped.",
   "rules": {
+    "repair-router-ask-first": {
+      "_note": "Audit 2026-10-30 RU-02: on a red .NET or Angular build two first steps met - the always-on interaction rule's 'Code fails - the FIRST action is the habits-root-cause Skill call' and the routers' resolver ask. The routers state the one order (the ask, then the root-cause load on an in-session pick), so the more specific rule says outright that it goes first; both routers carry it word for word.",
+      "owner": {
+        "file": "stack/rules/dotnet-repair-agents.md",
+        "marker": "that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/angular-repair-agents.md",
+          "marker": "that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call"
+        }
+      ]
+    },
     "repair-router-delegation-protocol": {
       "_note": "The repair routers' shared delegation protocol (BLOCKED_CONTRACT_CHANGE routing, the no-Agent-tool seat carve-out, the read-only seat's report-and-name action - verifiers, designers, reviewers and analyzers hold no Edit, audit M62 - the diagnoser's gatherer-only dispatch) - verbatim in both routers because either may be absent per project.",
       "owner": {
@@ -1272,7 +1285,7 @@
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         },
         {
@@ -1648,6 +1661,61 @@
         }
       ]
     },
+    "dotnet11-runasync-rethrow": {
+      "_note": "The .NET 11 IHost.RunAsync / StopAsync rethrow of a failed BackgroundService's exception (learn.microsoft.com/dotnet/core/compatibility/extensions/11/ihost-runasync-stopasync-throw-backgroundservice-failure, an RC1 fact at the 2026-10-30 audit) - hosted-services owns the full note, windows-service the exit-code consequence. Version-coupled: .NET 11 GA, or the floor reaching .NET 11, rewrites both together (audit 2026-10-30 SKD-10).",
+      "owner": {
+        "file": "stack/skills/dotnet-hosted-services/references/newer-versions.md",
+        "marker": "`IHost.RunAsync`/`StopAsync` (and their synchronous forms) will *throw* the captured `BackgroundService` exception instead of completing quietly"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-windows-service/SKILL.md",
+          "marker": "from .NET 11 the host's `RunAsync` rethrows the worker's exception and the process exits non-zero - keep the explicit `Environment.Exit(1)` until the floor reaches .NET 11"
+        }
+      ]
+    },
+    "review-target-read": {
+      "_note": "The two own reviewers read their target the same way: the `## Target` section (the change set, a branch, a change request, paths, and where the code is read) is byte-identical in review-code and review-security, and their Dispatch paragraph counts the target with the same sentence. It drifted unregistered until the 2026-10-30 audit (SKF-04); the markers pin both ends of the Target section and the count, and scripts/own-reviewers.test.js fails a Target section that differs between the two.",
+      "owner": {
+        "file": "stack/skills/review-code/SKILL.md",
+        "marker": "the secret guard masks only a `git diff` whose path it can read"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "the secret guard masks only a `git diff` whose path it can read"
+        },
+        {
+          "file": "stack/skills/review-code/SKILL.md",
+          "marker": "Code is read where the target lives"
+        },
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "Code is read where the target lives"
+        },
+        {
+          "file": "stack/skills/review-code/SKILL.md",
+          "marker": "Run inline. First count the target from its own diff: changed lines (the change set `git diff HEAD --shortstat` plus each untracked file's lines, a path the same under `-- <path>`, a branch `git diff --shortstat <base>...<branch>`, a change request `git diff --shortstat <base>...<head>` over its fetched head, the forge tool's own counts - `gh pr view <n> --json additions,deletions` - only when no ref exists) and touched stacks (the convention rules the changed files attach"
+        },
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "Run inline. First count the target from its own diff: changed lines (the change set `git diff HEAD --shortstat` plus each untracked file's lines, a path the same under `-- <path>`, a branch `git diff --shortstat <base>...<branch>`, a change request `git diff --shortstat <base>...<head>` over its fetched head, the forge tool's own counts - `gh pr view <n> --json additions,deletions` - only when no ref exists) and touched stacks (the convention rules the changed files attach"
+        }
+      ]
+    },
+    "review-passes-vendored": {
+      "_note": "review-code's eight review passes and refute pass, vendored VERBATIM (whole file) into task-verify-code, which runs passes 1, 2, 3, 5 and 6 from its own copy - a pointer into another skill's folder breaks wherever that folder is absent (a Cursor twin, a trimmed install) and named a Claude-only path (2026-10-30 audit SKF-01). An edit to the owner is a copy of the whole file over the site; scripts/own-reviewers.test.js fails the pair when they differ.",
+      "owner": {
+        "file": "stack/skills/review-code/references/passes.md",
+        "marker": "The method `review-code` runs, and `task-verify-code` uses for its code checks."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-verify-code/references/passes.md",
+          "marker": "The method `review-code` runs, and `task-verify-code` uses for its code checks."
+        }
+      ]
+    },
     "domain-trio-protocol-vendored": {
       "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, so each loop and the greenfield build reads its own copy. An edit to the owner file is a copy of the whole file over each site. Its deep-dive pointers into the owner's references/ are a sanctioned cross-folder read, like every sibling pointer check 34 resolves (2.1.5 audit M98): the owner is always installed (a locked always skill), and every such pointer names its inline fallback ('where installed', or what to do absent it), so a copy still runs where the owner's folder is missing (a Cursor twin, a trimmed install) - vendoring those references too would put five more files in four more folders.",
       "owner": {
@@ -1766,7 +1834,19 @@
         },
         {
           "file": "stack/skills/capture-usage-report/SKILL.md",
-          "marker": "at most six at a time, and never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS`"
+          "marker": "one AUTHOR subagent per bundle, never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/SKILL.md",
+          "marker": "the `ALFRED_CODE_MAXIMUM_RUN_AGENTS` fan-out cap (default 5)"
+        },
+        {
+          "file": "stack/skills/habits-execution-strategy/SKILL.md",
+          "marker": "Up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (the start line's 'Agents at once', else 5), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md",
+          "marker": "(parallel, one per source, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once"
         }
       ]
     },
@@ -2280,7 +2360,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "never a per-claim edit stream"
         }
       ]
@@ -3712,7 +3792,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "A browser, desktop or mobile tool (the stack ships none since 2026-10-24; a seat names each by its job, the tools its start line orders) is simply absent from a seat's tools when the user registered none, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
+      "_note": "No seat holds a browser, desktop or mobile tool: the stack ships none since 2026-10-24, every meta/seat-tools.json row grants built-ins only, and the start line names a seat only the jobs its grant reaches - so since audit 2026-10-30 AG-02 a seat names no such tool at all (a user-registered UI server for seats is the planned seat-tools phase 4, which restores the drive branches), and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. When phase 4 brings a server back, the seat names it only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -3724,11 +3804,7 @@
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the browser evidence was not obtainable here"
-        },
-        {
-          "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the desktop evidence was not obtainable here"
+          "marker": "says plainly which of the browser, desktop or device evidence was not obtainable here"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
@@ -3750,10 +3826,7 @@
           "file": "stack/agents/wpf-verifier.md",
           "marker": "report the view checks as UNVERIFIED with the reason"
         },
-        {
-          "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the device evidence was not obtainable here"
-        },
+
         {
           "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "a native screen nothing observed is never a silent pass"
@@ -6291,36 +6364,36 @@
       ]
     },
     "config-protection-gate-named": {
-      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig, a loosening of one in an existing MSBuild file (a pure MSBuild tightening passes - audit 2026-10-11 SD16), or any edit to an existing .editorconfig or lint / format config, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys, and nx plus the TypeScript and Angular style references name the lint / format half (audit 2026-10-14 SKS15). 2.1.4 audit I44.",
+      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig, a loosening of one in an existing MSBuild file (a pure MSBuild tightening passes - audit 2026-10-11 SD16), or any edit to an existing .editorconfig or lint / format config, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys, and nx plus the TypeScript and Angular style references name the lint / format half (audit 2026-10-14 SKS15). 2.1.4 audit I44. Since audit 2026-10-30 HK-16 no copy restates the receipt's lines: each says to write the lines the denial prints, its `session:` line included.",
       "owner": {
         "file": "stack/skills/typescript/SKILL.md",
-        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
       },
       "sites": [
         {
           "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         },
         {
           "file": "stack/skills/dotnet-code-quality/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         },
         {
           "file": "stack/skills/nx/SKILL.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         },
         {
           "file": "stack/skills/typescript/references/typescript-style.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         },
         {
           "file": "stack/skills/angular-conventions/references/angular-style.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         }
       ]
     },
     "security-review-output-contract": {
-      "_note": "What a security review does with a finding it cannot route: it stays in the report, tagged with its surface and marked UNVERIFIED, rather than being dropped because the skill that owns it is not installed. Restated in each security skill because a project installs only its own stacks' - a .NET-only install never sees the Angular one, so a cross-cutting rule stated once would be absent there.",
+      "_note": "What a security review does with a finding it cannot route: it stays in the report, tagged with its surface and marked UNVERIFIED, rather than being dropped because the skill that owns it is not installed. Restated in each security skill because a project installs only its own stacks' - a .NET-only install never sees the Angular one, so a cross-cutting rule stated once would be absent there. database-security is a variant site with its own marker (audit 2026-10-30 SKS-08): its two routes are the .NET security skills, and an unrouted finding stays in its report with the fix stated in full.",
       "owner": {
         "file": "stack/skills/angular-security/SKILL.md",
         "marker": "when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED"
@@ -6337,6 +6410,10 @@
         {
           "file": "stack/skills/ionic-security/SKILL.md",
           "marker": "when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED"
+        },
+        {
+          "file": "stack/skills/database-security/SKILL.md",
+          "marker": "when neither is installed, keep the finding here with its fix stated in full"
         }
       ]
     },
@@ -7022,7 +7099,7 @@
       ]
     },
     "auto-mode-contract": {
-      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, and the stack-modes spec of 2026-10-27 section 7: four mode flags in the leading run right after the command, auto-run lasting the session through the hook's AUTO stamp, each run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line the flag holds for that run only, M2): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph, so a flag reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
+      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, and the stack-modes spec of 2026-10-27 section 7: four mode flags in the leading run right after the command, auto-run lasting the session through the hook's AUTO stamp, each run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line the flag holds for that run only, M2): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph (a capture part reached only through its router reads the router's, audit 2026-10-30 SKC-06), so a flag reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
       "owner": {
         "file": "stack/skills/loop-code-quality/SKILL.md",
         "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
@@ -7057,7 +7134,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "file": "stack/skills/task-solve/references/full-spec.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -7069,27 +7146,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/capture-quality/references/architecture-quality.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-awareness/references/architecture.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
           "file": "stack/skills/capture-awareness/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-quality/references/code-quality.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-awareness/references/project-code-style.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -7140,12 +7197,16 @@
       ]
     },
     "anti-gaming-sweep-commands": {
-      "_note": "The final-gate anti-gaming sweep's four commands (audit 2026-10-14 SKF-16): the code-quality loop owns them, and the coverage loop vendors the same list, since either loop may be installed alone and its never-weaken rule needs a mechanical check behind it. Each copy keeps its own intro (where the baseline is recorded) and report line; the commands are the shared rule.",
+      "_note": "The final-gate anti-gaming sweep's four commands (audit 2026-10-14 SKF-16): the code-quality loop owns them, and the coverage and architecture loops vendor the same list (the architecture loop since the 2026-10-30 audit SKF-05 ruling - its implementers edit code and tests too), since each loop may be installed alone and its never-weaken rule needs a mechanical check behind it. Each copy keeps its own intro (where the baseline is recorded) and report line; the commands are the shared rule.",
       "owner": {
         "file": "stack/skills/loop-code-quality/references/anti-gaming-sweep.md",
         "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
       },
       "sites": [
+        {
+          "file": "stack/skills/loop-architecture-quality/references/anti-gaming-sweep.md",
+          "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
+        },
         {
           "file": "stack/skills/loop-test-coverage-quality/references/anti-gaming-sweep.md",
           "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
@@ -7593,6 +7654,27 @@
         {
           "file": "stack/skills/dotnet-project-setup/SKILL.md",
           "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
+        }
+      ]
+    },
+    "config-protection-auto-run-loosening": {
+      "_note": "The auto-run half of the allowance ask (audit 2026-10-30 SKS-01, ruled skill-side): the ask keeps 'Allow this edit (Recommended)' for a tightening the guard still holds (the ESLint judge holds a new rule) or a key moving into a shared base, and auto-run - which answers with the Recommended option - never allows a held loosening. The guard's own deny text and labels are unchanged.",
+      "owner": {
+        "file": "stack/skills/typescript/SKILL.md",
+        "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+        },
+        {
+          "file": "stack/skills/nx/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
         }
       ]
     },
@@ -8579,6 +8661,19 @@
         {
           "file": "stack/skills/capture-awareness/SKILL.md",
           "marker": "A mode word next, `DELEGATED` or `INLINE`"
+        }
+      ]
+    },
+    "format-check-source": {
+      "_note": "Where the project's format check comes from - its own `format:check` script, else the CI workflow's format step - stated by the commit gate and the done gate alike (audit 2026-10-30 SKC-19). Owned by the commit checkpoint, whose Format step runs it over every staged path; the done gate names the same source for its re-run.",
+      "owner": {
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+        "marker": "(a `format:check` script, the CI workflow's format step)"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-done-gate/SKILL.md",
+          "marker": "(a `format:check` script, the CI workflow's format step)"
         }
       ]
     }

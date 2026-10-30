@@ -31,7 +31,7 @@ labelled as such, never presented with tier-1 confidence.
 
 `references/evidence-tiers.md` carries the table (what each tier buys, and the code-first path a
 tier-4 report takes) plus what this skill can and cannot reach - files, logs, the repo history,
-the app itself, `gh` and an error-monitoring MCP where the project has one, and never a LINK.
+the app itself, `gh` and the error-monitoring tool when the start line's tool order ranks one, and never a LINK.
 Read it at step 1, before the tier is named.
 
 ## State - two layers, split by durability
@@ -107,9 +107,9 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    `<docs-path>/preferences/`, and both assessments, `<docs-path>/quality/CODE-ASSESSMENT.md` and
    `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` - an assessment entry is a lead, never proof. Then load the signature
    catalogue that matches the failure's origin, matched from YOUR skill list by what each skill
-   says it covers, never by a remembered name: the one covering local-runtime crash signatures
+   says it covers, never by a remembered name: the one covering runtime crash signatures
    (null-reference, DI resolution, async deadlock, race, disposed lifecycle, config drift) for a
-   failure on your own machine, the one covering red-pipeline signatures (compile/restore,
+   failure on your own machine or a production event's trace, the one covering red-pipeline signatures (compile/restore,
    green-locally-red-on-the-runner, quality gate, signing, workflow drift, infra flake) for a
    red CI run. **Before writing 'none installed': re-read the skill list text once more end to end
    for a description match** - a catalogue present in that list and skipped is the measured failure
@@ -117,7 +117,8 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    no such catalogue - say so and proceed on the method alone. **A red pipeline is the one route that leaves this skill:** CI
    needs the `gh` log pull and the CI-versus-local environment delta, which is
    issue-diagnoser-ci's specialty - offer that dispatch as the recommended option at this
-   stop rather than re-deriving it here. Write the findings file with the observable and
+   stop rather than re-deriving it here, the seat dispatched exactly as the roster spells it
+   (`alfred-code:issue-diagnoser-ci` where the core plugin carries it). Write the findings file with the observable and
    `Tier: <n>`. *Stop.*
 2. **GATHER** - per the mode: dispatch one evidence-gatherer per source (reproduce this path,
    pull and grep that log window, capture that screen) exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), several in parallel, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), when several
@@ -224,5 +225,5 @@ cycle in the same chat, even when an earlier cycle already loaded it.
   you did not prove as the answer - an honest 'unproven, here is what would decide it' with the
   4c instrumentation card beats a plausible guess that sends the fix at the wrong symbol.
 - Never state a source was checked that you could not reach - an unfetchable link, an absent
-  monitoring MCP, and a log the project does not retain are each named, not silently skipped.
+  error-monitoring tool, and a log the project does not retain are each named, not silently skipped.
 - Never keep run state only in chat: a stamp that is not in the findings file does not exist.

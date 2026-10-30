@@ -644,3 +644,17 @@ keeps its text (3.5.0 rewrote its description), and uninstall removes it in eith
 
 The catalog also lists `session-inspector`, a standalone mod from `envoydev/alfred-mods` pinned to its release. The
 stack never installs, updates or removes it; install it from one marketplace only.
+
+## after 3.5.1 - the 2026-10-30 audit: the guards close their gaps, receipts need your answer
+
+The guards read more of what a command really does. The rm guard expands globs and variables (`rm -rf "$H"` after
+`H=$HOME`, `rm -rf /tmp/*` when it holds the project). The cross-project guard sees the other write verbs (`curl -o`,
+`wget -O`, `tar -C`, `unzip -d`, `dd of=`, `patch`, `git apply`, `git clone`, PowerShell's `[IO.File]` calls), and the
+secret guard reads a script file a command runs, a backslash the shell drops (`cat .e\nv`) and a shell string carried
+in a variable. A session transcript is no longer a write target from inside a session.
+
+An approval receipt now opens a gate only after you answered the guard's ask with its allow option. `DISCARD-ALLOW`,
+`CROSS-WRITE-ALLOW`, `CONFIG-EDIT-ALLOW` and `DESKTOP-EXEC-ALLOW` also need a `session:` line naming the session, and
+each denial prints the exact lines. A receipt left from an older release does not open anything: the next denial asks
+again. Under auto-run a guard's security ask always takes its safe option and lists the act for you in the close.
+Nothing to do by hand.

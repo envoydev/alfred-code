@@ -12,17 +12,28 @@ const { hookDisabled, partOff, PART_SWITCHES, yieldToCopiedTwin, standDown, neve
 const { spawnSync, execFileSync } = require('node:child_process');
 const { coreEntry } = require('./build-marketplace.js');
 
-function project(settings)
+// `twins`: copied hook files put on disk in `.claude/hooks/` (HK-02: a twin with no file is none).
+function project(settings, twins = [])
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-'));
-    fs.mkdirSync(path.join(dir, '.claude'));
+    fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
     if (settings !== null) fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), settings);
+    for (const file of twins) fs.writeFileSync(path.join(dir, '.claude', 'hooks', file), '// copied\n');
     return dir;
 }
 
-const wiring = (file) => JSON.stringify({
-    hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: `"$CLAUDE_PROJECT_DIR/.claude/hooks/${file}"`, timeout: 10 }] }] },
-});
+// A copied twin's wiring as the copy route writes it (HK-02): every row the core's own entry wires the file on, under the
+// copied command - quoted, or the bare spelling earlier installs wrote.
+const wiring = (file, { quoted = true } = {}) =>
+{
+    const command = quoted ? `"$CLAUDE_PROJECT_DIR/.claude/hooks/${file}"` : `$CLAUDE_PROJECT_DIR/.claude/hooks/${file}`;
+    const hooks = {};
+    for (const [event, blocks] of Object.entries(coreEntry().hooks))
+        for (const block of blocks)
+            if (block.hooks.some((h) => h.command.includes(`/${file}"`)))
+                (hooks[event] = hooks[event] || []).push({ ...(block.matcher ? { matcher: block.matcher } : {}), hooks: [{ type: 'command', command, timeout: 10 }] });
+    return JSON.stringify({ hooks });
+};
 
 test('ALFRED_CODE_HOOKS_OFF names hooks exactly, with or without the .js suffix', () => {
     const env = { ALFRED_CODE_HOOKS_OFF: 'guard-secret-value, docs-session.js' };
@@ -68,7 +79,7 @@ test('a COPIED hook never yields - only the plugin copy steps aside', () => {
 });
 
 test('the plugin copy yields when the project still wires its own twin, and only then', () => {
-    const dir = project(wiring('guard-secret-value.js'));
+    const dir = project(wiring('guard-secret-value.js'), ['guard-secret-value.js']);
     const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: '/somewhere/plugin' };
     assert.strictEqual(yieldToCopiedTwin('guard-secret-value.js', env), true);
     assert.strictEqual(yieldToCopiedTwin('guard-secret-value', env), true, 'the suffix is optional');
@@ -80,7 +91,7 @@ test('the plugin copy yields when the project still wires its own twin, and only
 // M4 (Task 16 review, R54): a LOCAL-scope copy-route install wires its hooks in settings.local.json -
 // a plugin copy beside it that read settings.json alone fired every guard twice.
 test('the plugin copy yields to a twin wired in settings.local.json too (M4)', () => {
-    const dir = project(JSON.stringify({ env: {} }));
+    const dir = project(JSON.stringify({ env: {} }), ['guard-secret-value.js']);
     fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), wiring('guard-secret-value.js'));
     const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: '/somewhere/plugin' };
     assert.strictEqual(yieldToCopiedTwin('guard-secret-value.js', env), true);
@@ -91,9 +102,7 @@ test('the plugin copy yields to a twin wired in settings.local.json too (M4)', (
 });
 
 test('an unquoted legacy wiring counts too - both spellings shipped', () => {
-    const dir = project(JSON.stringify({
-        hooks: { Stop: [{ hooks: [{ type: 'command', command: '$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js' }] }] },
-    }));
+    const dir = project(wiring('guard-stop-contract.js', { quoted: false }), ['guard-stop-contract.js']);
     assert.strictEqual(yieldToCopiedTwin('guard-stop-contract.js', { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: '/p' }), true);
     fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -267,7 +276,10 @@ test('every hook points at the prelude header for its gates instead of listing t
 // core, on for the skills, now carries them too - both would fire (S15). The core's copy stands down
 // through the existing migration-window gate.
 test('a core-carried hook stands down while the project wires its copied twin (the copy route)', () => {
-    const s = scopes({ project: wiring('guard-protected-force-push.js') });
+    // the copy route wires the copied dispatcher, which runs the force-push guard (HK-02: its file on disk, its own row)
+    const s = scopes({ project: wiring('shell-guards.js') });
+    fs.mkdirSync(path.join(s.repo, '.claude', 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(s.repo, '.claude', 'hooks', 'shell-guards.js'), '// copied\n');
     const twin = fire('guard-protected-force-push.js', s.env(CORE_ROOT));
     assert.strictEqual(twin.status, 0, twin.stderr);
     assert.strictEqual(twin.stdout + twin.stderr, '', 'the core copy says nothing - the project copy is the one that denies');
@@ -1270,4 +1282,171 @@ test('SESSION_ID_RE: an id that can join a path - a UUID, never a separator or .
     assert.ok(SESSION_ID_RE.test('64da2f9e-1b2c-4d5e-8f90-123456789abc'));
     assert.ok(SESSION_ID_RE.test('sess-12'));
     for (const bad of ['', '../x', 'a/b', 'a\\b', '.hidden', '-x', 'x'.repeat(129)]) assert.ok(!SESSION_ID_RE.test(bad), bad);
+});
+
+// HK-02 (audit 2026-10-30): the plugin copy stood down for ANY settings entry naming its twin - any event, any matcher,
+// no file on disk - so one committed `"matcher": "Nothing"` entry switched the plugin's dispatchers off and `rm -rf ~`,
+// `git push --force origin main` and a Read of `.env` all passed. A twin now counts only when its file is on disk and its
+// entries cover every row the plugin wires the hook on (the event, and a matcher firing on every tool the row does).
+const WORKTREE_HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+const PLUGIN_ROOT = path.join(__dirname, '..');
+function twinProject({ settings = {}, local = null, files = [] } = {})
+{
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-twin-')));
+    const repo = path.join(dir, 'repo');
+    const home = path.join(dir, 'home');
+    fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
+    fs.mkdirSync(home);
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'version: 3.5.1\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify(settings));
+    if (local !== null) fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify(local));
+    for (const f of files) fs.copyFileSync(path.join(WORKTREE_HOOKS, f), path.join(repo, '.claude', 'hooks', f));
+    spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    return { dir, repo, home, env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PROJECT_DIR: repo }, done: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+const copied = (file, args = '') => ({ type: 'command', command: `"$CLAUDE_PROJECT_DIR/.claude/hooks/${file}"${args ? ` ${args}` : ''}`, timeout: 10 });
+const onEvent = (event, matcher, ...hooks) => ({ hooks: { [event]: [{ ...(matcher === undefined ? {} : { matcher }), hooks }] } });
+function dispatch(p, file, payload, args = [])
+{
+    const env = { PATH: process.env.PATH, HOME: p.home, USERPROFILE: p.home, CLAUDE_CONFIG_DIR: path.join(p.home, '.claude'), ...p.env };
+    return spawnSync(process.execPath, [path.join(WORKTREE_HOOKS, file), ...args], {
+        input: JSON.stringify({ session_id: 's', cwd: p.repo, hook_event_name: 'PreToolUse', ...payload }), cwd: p.repo, env, encoding: 'utf8' });
+}
+const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
+const DOTENV = 'API_KEY=sk-live-abcdef1234567890abcdef12\n';
+
+test('HK-02 replay: a dangling shell-guards twin under matcher Nothing no longer stands the plugin dispatcher down', () => {
+    const p = twinProject({ settings: onEvent('PreToolUse', 'Nothing', copied('shell-guards.js'), copied('file-guards.js')) });
+    try
+    {
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env), false, 'no file on disk, and a matcher that fires on no shell tool');
+        assert.strictEqual(yieldToCopiedTwin('file-guards', p.env), false);
+        for (const command of ['rm -rf ~', 'git push --force origin main'])
+        {
+            const r = dispatch(p, 'shell-guards.js', bash(command));
+            assert.strictEqual(r.status, 2, `${command} must be blocked: ${r.stdout}${r.stderr}`);
+        }
+        fs.writeFileSync(path.join(p.repo, '.env'), DOTENV);
+        const read = dispatch(p, 'file-guards.js', { tool_name: 'Read', tool_input: { file_path: path.join(p.repo, '.env') } });
+        assert.strictEqual(read.status, 2, `a Read of .env must be blocked: ${read.stdout}${read.stderr}`);
+    }
+    finally { p.done(); }
+});
+
+test('HK-02: the twin file must exist AND its entries must cover the plugin row - each half alone is not a twin', () => {
+    const shellRow = (matcher, event = 'PreToolUse') => onEvent(event, matcher, copied('shell-guards.js'));
+    const cases = [
+        ['file on disk, matcher Nothing', shellRow('Nothing'), ['shell-guards.js'], false],
+        ['right row, no file on disk', shellRow('Bash|PowerShell|Monitor'), [], false],
+        ['file on disk, right matcher on another event', shellRow('Bash|PowerShell|Monitor', 'PostToolUse'), ['shell-guards.js'], false],
+        ['file on disk, Bash alone (PowerShell and Monitor unjudged)', shellRow('Bash'), ['shell-guards.js'], false],
+        ['file on disk, the copy route\'s row', shellRow('Bash|PowerShell|Monitor'), ['shell-guards.js'], true],
+        ['file on disk, a comma list of the same tools', shellRow('Bash, PowerShell, Monitor'), ['shell-guards.js'], true],
+        ['file on disk, match-all *', shellRow('*'), ['shell-guards.js'], true],
+        ['file on disk, matcher omitted', shellRow(undefined), ['shell-guards.js'], true],
+        ['file on disk, a regex that fires on every shell tool', shellRow('^(Bash|PowerShell|Monitor)$'), ['shell-guards.js'], true],
+        ['file on disk, a regex that misses Monitor', shellRow('^(Bash|PowerShell)$'), ['shell-guards.js'], false],
+    ];
+    for (const [name, settings, files, want] of cases)
+    {
+        const p = twinProject({ settings, files });
+        try { assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env), want, name); }
+        finally { p.done(); }
+    }
+    const d = twinProject({ settings: shellRow('Bash|PowerShell|Monitor') });
+    try
+    {
+        fs.mkdirSync(path.join(d.repo, '.claude', 'hooks', 'shell-guards.js'));
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', d.env), false, 'a directory named like the twin');
+    }
+    finally { d.done(); }
+});
+
+// The rows the copy route writes for these hooks, through its own writer (settings.js hookCommand / timeoutFor).
+function copyRouteSettings(specs)
+{
+    const settings = require('./install/settings.js');
+    const hooks = {};
+    for (const spec of specs)
+    {
+        const [file, matcher] = spec.split('::');
+        const [event, key] = matcher.startsWith('@') ? [matcher.slice(1).split(':')[0], matcher.split(':')[1]] : ['PreToolUse', matcher];
+        (hooks[event] = hooks[event] || []).push({ ...(key === undefined ? {} : { matcher: key }),
+            hooks: [{ type: 'command', command: settings.hookCommand(file, '').command, timeout: settings.timeoutFor(file, event) }] });
+    }
+    return { hooks };
+}
+
+test('HK-02 legitimate twin: the copy route\'s own wiring and files still stand the plugin copy down (no double run)', () => {
+    const secretRows = require('../meta/stack-manifest.json').hooks
+        .filter((h) => h.file === 'guard-secret-value.js' && /^(?:@|\^mcp__)/.test(h.matcher)).map((h) => `guard-secret-value.js::${h.matcher}`);
+    const wired = copyRouteSettings(['shell-guards.js::Bash|PowerShell|Monitor', 'file-guards.js::Read|Edit|Write|MultiEdit|NotebookEdit|Grep', ...secretRows]);
+    const p = twinProject({ settings: wired, files: ['shell-guards.js', 'file-guards.js', 'guard-secret-value.js', 'guard-catastrophic-rm.js',
+        'guard-protected-force-push.js', 'hook-prelude.js', 'shell-writes.js'] });
+    try
+    {
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env), true, 'the shell dispatcher yields to its copy');
+        assert.strictEqual(yieldToCopiedTwin('file-guards', p.env), true, 'the file dispatcher yields to its copy');
+        assert.strictEqual(yieldToCopiedTwin('guard-secret-value', p.env), true, 'the secret guard\'s own rows are covered');
+        const r = dispatch(p, 'shell-guards.js', bash('rm -rf ~'));
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.strictEqual(r.stdout + r.stderr, '', 'the plugin copy says nothing - the copy is the guard');
+        const copy = spawnSync(process.execPath, [path.join(p.repo, '.claude', 'hooks', 'shell-guards.js')], {
+            input: JSON.stringify({ session_id: 's', cwd: p.repo, hook_event_name: 'PreToolUse', ...bash('rm -rf ~') }), cwd: p.repo,
+            env: { PATH: process.env.PATH, HOME: p.home, CLAUDE_PROJECT_DIR: p.repo, CLAUDE_CONFIG_DIR: path.join(p.home, '.claude') }, encoding: 'utf8' });
+        assert.strictEqual(copy.status, 2, `the copy itself blocks: ${copy.stderr}`);
+        // the same wiring in settings.local.json (a local-scope copy install)
+        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(wired));
+        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.json'), '{}');
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env), true, 'a local-scope copy install');
+        // a secret-guard twin wired on SessionStart alone leaves its other rows uncovered
+        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(onEvent('SessionStart', undefined, copied('guard-secret-value.js'))));
+        assert.strictEqual(yieldToCopiedTwin('guard-secret-value', p.env), false, 'one of its rows uncovered');
+    }
+    finally { p.done(); }
+});
+
+test('HK-02: the file dispatcher judges coverage per call - a twin wired on Read alone yields the Read, never the Grep', () => {
+    const p = twinProject({ settings: onEvent('PreToolUse', 'Read', copied('file-guards.js')), files: ['file-guards.js'] });
+    try
+    {
+        fs.writeFileSync(path.join(p.repo, '.env'), DOTENV);
+        const read = dispatch(p, 'file-guards.js', { tool_name: 'Read', tool_input: { file_path: path.join(p.repo, '.env') } });
+        assert.strictEqual(read.status, 0, 'the Read is the copy\'s');
+        assert.strictEqual(read.stdout + read.stderr, '');
+        const grep = dispatch(p, 'file-guards.js', { tool_name: 'Grep', tool_input: { pattern: 'API_KEY', path: path.join(p.repo, '.env'), output_mode: 'content' } });
+        assert.strictEqual(grep.status, 2, `the Grep has no twin, so the plugin judges it: ${grep.stdout}${grep.stderr}`);
+    }
+    finally { p.done(); }
+});
+
+test('HK-02: a guard the plugin dispatcher runs in-process yields only to a twin covering that dispatcher\'s tools', () => {
+    // the per-guard wiring older installs wrote (before the shell rows folded into the dispatcher, R11) is a real twin...
+    const legacy = twinProject({ settings: onEvent('PreToolUse', 'Bash|PowerShell|Monitor', copied('guard-catastrophic-rm.js')), files: ['guard-catastrophic-rm.js'] });
+    try { assert.strictEqual(dispatch(legacy, 'shell-guards.js', bash('rm -rf ~'), ['guard-catastrophic-rm']).status, 0, 'the copied rm guard is wired on the shell'); }
+    finally { legacy.done(); }
+    // ...a guard twin on a matcher that never fires, or on the guard's own SessionStart row only, is not
+    for (const settings of [onEvent('PreToolUse', 'Nothing', copied('guard-catastrophic-rm.js'), copied('guard-secret-value.js')),
+        onEvent('SessionStart', undefined, copied('guard-catastrophic-rm.js'), copied('guard-secret-value.js'))])
+    {
+        const p = twinProject({ settings, files: ['guard-catastrophic-rm.js', 'guard-secret-value.js'] });
+        try
+        {
+            assert.strictEqual(dispatch(p, 'shell-guards.js', bash('rm -rf ~'), ['guard-catastrophic-rm']).status, 2, JSON.stringify(settings));
+            fs.writeFileSync(path.join(p.repo, '.env'), DOTENV);
+            const r = dispatch(p, 'file-guards.js', { tool_name: 'Read', tool_input: { file_path: path.join(p.repo, '.env') } }, ['guard-secret-value']);
+            assert.strictEqual(r.status, 2, `the secret guard judges the Read: ${r.stdout}${r.stderr}`);
+        }
+        finally { p.done(); }
+    }
+});
+
+test('HK-02: standDown carries the narrowed twin rule, and a copied hook still never yields', () => {
+    const p = twinProject({ settings: onEvent('PreToolUse', 'Nothing', copied('guard-secret-value.js')), files: ['guard-secret-value.js'] });
+    try
+    {
+        assert.strictEqual(standDown('guard-secret-value', p.env, ['node', 'x.js']), false, 'a protective guard never stands down for a twin that does not cover it');
+        assert.strictEqual(yieldToCopiedTwin('guard-secret-value', { CLAUDE_PROJECT_DIR: p.repo }), false, 'no plugin root: this IS the copy');
+    }
+    finally { p.done(); }
 });

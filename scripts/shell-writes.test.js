@@ -372,3 +372,102 @@ test('sed: the script is the first operand unless -e / -f name it, and every oth
   assert.deepStrictEqual(targets("sed -e 's/i/x/' f"), [], 'an i inside a script is no flag');
   assert.deepStrictEqual(targets("sed -n -e '/a/d' -- -i"), [], 'an operand spelled -i after -- is a file, not the flag');
 });
+
+// ---- audit 2026-10-30 a0: the shared contracts every shell guard reads (T1; T2 consumes them) ----------------------
+test('audit 2026-10-30 a0: shellVars expands $NAME / ${NAME} / $HOME / $PWD / ~ the way the shell will at that word', () => {
+  const home = path.join(TMP, 'home-a0');
+  const cwd = path.join(home, 'code', 'proj');
+  const at = (cmd, word, n = 0) => { let i = -1; for (let k = 0; k <= n; k++) i = cmd.indexOf(word, i + 1); return i; };
+  const ex = (cmd, word, opts = {}, n = 0) => {
+    const P = shell.parseShell(cmd);
+    return shell.shellVars(P, { cwd, home, ...opts }).expand(shell.dequote(word), at(cmd, word, n));
+  };
+  assert.strictEqual(ex('rm -rf "$HOME"', '"$HOME"'), home, '$HOME is the home directory');
+  assert.strictEqual(ex('rm -rf ${HOME}/x', '${HOME}/x'), `${home}/x`, '${HOME}');
+  assert.strictEqual(ex('rm -rf ~', '~'), home, 'a leading tilde');
+  assert.strictEqual(ex('rm -rf ~/x', '~/x'), `${home}/x`);
+  assert.strictEqual(ex('echo a~b', 'a~b'), 'a~b', 'a tilde inside a word is a name (RUNNER~1)');
+  assert.strictEqual(ex('cat $PWD/.env', '$PWD/.env'), `${cwd}/.env`, '$PWD is where the shell stands');
+  assert.strictEqual(ex('cat "$PWD"/.env', '"$PWD"/.env'), `${cwd}/.env`);
+  assert.strictEqual(ex('cd .. && cat $PWD/x', '$PWD/x'), `${path.dirname(cwd)}/x`, 'a followed cd moves $PWD');
+  assert.strictEqual(ex('cd /tmp && cd sub && echo $PWD', '$PWD'), path.resolve('/tmp/sub'));
+  assert.strictEqual(ex('(cd /tmp); echo $PWD', '$PWD'), cwd, 'a subshell cd ends with it');
+  assert.strictEqual(ex('H=$HOME; rm -rf "$H"', '"$H"'), home, 'an assignment followed within the command, its value expanded too');
+  assert.strictEqual(ex('D=/srv/x; E=$D/y; rm -rf $E', '$E'), '/srv/x/y', 'a chain of assignments');
+  assert.strictEqual(ex('rm -rf $(echo ~)', '$(echo ~)'), home, '$(echo <literal>) is its literal, tilde-expanded');
+  assert.strictEqual(ex('rm -rf `echo $HOME`', '`echo $HOME`'), home);
+  assert.strictEqual(ex('rm -rf "$(pwd)"', '"$(pwd)"'), cwd, '$(pwd) is $PWD');
+  assert.strictEqual(ex('rm -rf "${HOME:?}"', '"${HOME:?}"'), home, 'a default / error form names the variable');
+  assert.strictEqual(ex('echo $USERPROFILE/x', '$USERPROFILE/x'), `${home}/x`, 'USERPROFILE is the home directory');
+  assert.strictEqual(ex('Remove-Item $env:USERPROFILE', '$env:USERPROFILE'), home, "PowerShell's $env:");
+  assert.strictEqual(ex('rd /s /q %USERPROFILE%', '%USERPROFILE%'), home, "cmd's %NAME%");
+  assert.strictEqual(ex('echo x > $CLAUDE_PROJECT_DIR/f', '$CLAUDE_PROJECT_DIR/f', { project: cwd }), `${cwd}/f`);
+  assert.strictEqual(ex('cd /tmp && rm -rf x', 'x'), 'x', 'a plain word is itself');
+  // what is never guessed: an unset name, a loop or read variable, a computed value, a name assigned AFTER the word
+  assert.strictEqual(ex('rm -rf $OTHER/x', '$OTHER/x'), '$OTHER/x', 'an unset name stays');
+  assert.strictEqual(ex('for H in a b; do rm -rf $H; done', '$H'), '$H', 'a loop variable stays');
+  assert.strictEqual(ex('H=/x; read H; rm -rf $H', '$H'), '$H', 'a read variable stays');
+  assert.strictEqual(ex('H=$(date); rm -rf $H', '$H'), '$H', 'a computed value stays');
+  assert.strictEqual(ex('rm -rf $H; H=/x', '$H'), '$H', 'an assignment after the word does not reach back');
+  assert.strictEqual(ex('H=/x rm -rf $H', '$H'), '$H', "a prefix assignment is the command's environment, not its arguments");
+  assert.strictEqual(ex('HOME=/elsewhere; rm -rf ~', '~'), '/elsewhere', 'a reassigned HOME moves the tilde');
+  assert.strictEqual(ex('cd $UNSET && cat $PWD/x', '$PWD/x'), '$PWD/x', 'a cd that cannot be followed leaves $PWD unknown');
+  assert.strictEqual(ex('cd ~/code && echo $PWD', '$PWD'), path.join(home, 'code'), 'a cd target is expanded too - a resolved anchor, native separators');
+  const v = shell.shellVars(shell.parseShell('cd .. && x'), { cwd, home });
+  assert.strictEqual(v.pwdAt(9), path.dirname(cwd), 'pwdAt is exported for a caller resolving a relative path');
+});
+
+test('audit 2026-10-30 a0: printedFiles - the ONE whole-file print verb table (HK-06, HK-19)', () => {
+  const pf = (cmd) => { const [verb, ...argv] = cmd.split(' '); const r = shell.printedFiles(verb, argv); return r && (r.bounded ? ['bounded', ...r.files] : r.files); };
+  for (const v of ['cat', 'tac', 'nl', 'rev', 'shuf', 'vis', 'sort', 'uniq', 'od', 'xxd', 'hexdump', 'base64', 'strings', 'paste', 'fold', 'fmt',
+    'expand', 'unexpand', 'pr', 'column', 'zcat', 'gzcat', 'bzcat', 'xzcat', 'zstdcat'])
+    assert.deepStrictEqual(pf(`${v} .env`), ['.env'], `${v} prints its operand whole`);
+  assert.deepStrictEqual(pf('shuf -n 3 big.ts'), ['bounded', 'big.ts'], 'shuf -n is bounded');
+  assert.strictEqual(pf('shuf -e a b'), null, 'shuf -e echoes its arguments, no file');
+  assert.strictEqual(pf('shuf -i 1-9'), null, 'shuf -i is a range, no file');
+  assert.deepStrictEqual(pf('join -t= -v1 .env /dev/null'), ['.env', '/dev/null'], 'join prints its files');
+  assert.deepStrictEqual(pf('join -1 2 -2 1 a b'), ['a', 'b'], "join's -1 / -2 take a field");
+  assert.deepStrictEqual(pf('vis -F 80 .env'), ['.env'], "vis's -F takes a width");
+  assert.deepStrictEqual(pf('gzip -c .env'), ['.env'], 'gzip -c prints the file (compressed) to stdout');
+  assert.deepStrictEqual(pf('gzip -dc f.gz'), ['f.gz'], 'a cluster holding c');
+  assert.deepStrictEqual(pf('gunzip --stdout f.gz'), ['f.gz']);
+  assert.deepStrictEqual(pf('xz -c f'), ['f']);
+  assert.deepStrictEqual(pf('bzip2 -kc f'), ['f']);
+  assert.strictEqual(pf('gzip .env'), null, 'gzip without -c writes a file, prints nothing');
+  assert.deepStrictEqual(pf('sort -k 2 -o out.txt a'), ['a'], "sort's -k and -o take a value");
+  assert.deepStrictEqual(pf('cat -- -x'), ['-x'], 'after -- a dash word is a file');
+  assert.deepStrictEqual(pf('cat - f'), ['f'], 'stdin is no file');
+  assert.strictEqual(pf('grep x f'), null, 'grep is no whole-file print');
+  assert.ok(Object.isFrozen(shell.PRINT_VERBS), 'the table is frozen: one home, read-only for every guard');
+});
+
+test('audit 2026-10-30 HK-01: the --with-sensitive runner is a carrier - its line is shell text like sh -c', () => {
+  const g = '/x/stack/hooks/guard-secret-value.js';
+  const texts = (c) => shell.carriedScripts(c).filter((s) => s.runner).map((s) => s.text);
+  assert.deepStrictEqual(texts(`node "${g}" --with-sensitive -- "rm -rf ~"`), ['rm -rf ~'], 'one word after -- is the line');
+  assert.deepStrictEqual(texts(`node ${g} --with-sensitive -- 'cat .env'`), ['cat .env']);
+  assert.deepStrictEqual(texts(`node ${g} --with-sensitive -- rm -rf "a b"`), ["rm -rf 'a b'"], 'several words are one argv line, quoted');
+  assert.deepStrictEqual(texts(`node ${g} --with-sensitive "git push -f"`), ['git push -f'], 'no -- before the line');
+  assert.deepStrictEqual(texts(`/usr/local/bin/node --no-warnings ${g} --with-sensitive -- x`), ['x'], 'node by path, its own options first');
+  assert.deepStrictEqual(texts(`env A=1 nodejs ${g} --with-sensitive -- y`), ['y'], 'past a wrapper');
+  assert.deepStrictEqual(texts(`node ${g} --presence .env KEY`), [], 'the presence view carries nothing');
+  assert.deepStrictEqual(texts(`node ${g} --with-sensitive --`), [], 'an empty runner carries nothing');
+  // final review FB: the script word before the flag is never matched by name - `node "$G"` and `--disable-warning X <G>`
+  // passed a basename test - so another script given the flag is judged too (a false block, never a line run unread)
+  assert.deepStrictEqual(texts(`node other.js --with-sensitive -- "rm -rf ~"`), ['rm -rf ~'], 'any script given the flag is judged as the runner');
+  assert.deepStrictEqual(texts(`echo node ${g} --with-sensitive -- "rm -rf ~"`), [], 'a printed runner runs nothing');
+  // the shared readers see the line
+  assert.match(shell.gitText(`node ${g} --with-sensitive -- "git push --force origin main"`, TMP).command, /git push --force origin main/);
+  assert.deepStrictEqual(shell.scanShell(`node ${g} --with-sensitive -- "echo x > /elsewhere/f"`, {}).targets.map((t) => t.raw), ['/elsewhere/f']);
+  assert.deepStrictEqual(shell.sensitiveRuns(`bash -c 'node ${g} --with-sensitive -- "cat .env"'`).map((s) => s.text), ['cat .env'], 'nested in a carried script');
+});
+
+// The 2026-10-30 gate's Windows leg: bash keeps a backslash inside double quotes unless it escapes `$`, a backtick, `"`,
+// `\` or a newline, so `pwsh -Command "[IO.File]::WriteAllText('C:\x\sib\f.txt', 'x')"` hands PowerShell the path as
+// written. The script reader dropped every backslash there and read a relative name inside the project (HK-14 passed).
+test('runtimeScripts: a double-quoted script keeps each backslash bash keeps, and loses each one bash undoes', () => {
+  const [ps] = shell.runtimeScripts(`pwsh -Command "[IO.File]::WriteAllText('C:\\a\\sib\\f.txt', 'x')"`);
+  assert.strictEqual(ps.body, "[IO.File]::WriteAllText('C:\\a\\sib\\f.txt', 'x')", 'a backslash before a plain letter stays');
+  const [js] = shell.runtimeScripts('node -e "console.log(\\"a\\\\b\\$c\\")"');
+  assert.strictEqual(js.body, 'console.log("a\\b$c")', 'an escaped quote, backslash and dollar are undone');
+});

@@ -131,7 +131,7 @@ Where a `scorer: on` line naming the inline plan or a `scorer: stacked` line is 
 
 - **One agent, in order** - the quality check fails for these units.
 - **One agent, batched calls** - the check passes and the units are small. Reads, searches and commands that do not depend on each other go in the same turn; a call whose input is another's result waits.
-- **Parallel seats** - the check passes for two or more units that are each sizeable (about ten tool calls, or a wide read that would flood this context) and whose shared contracts already exist in code. Up to 3 at once by default, more only on the user's ask. Never for a handful of calls (those are batched), never to re-check your own work.
+- **Parallel seats** - the check passes for two or more units that are each sizeable (about ten tool calls, or a wide read that would flood this context) and whose shared contracts already exist in code. Up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (the start line's 'Agents at once', else 5), queueing the rest as seats return. Never for a handful of calls (those are batched), never to re-check your own work.
 - **A fork or a briefed seat** - a fork starts from this whole conversation and re-sends it on every turn it takes; a named or Explore seat starts from its own floor plus the brief. Past the install's fresh-session trigger, brief a named or Explore seat; fork only a seat that needs this conversation's own state - the re-sent parent dominates a fork's input.
 
 Edit seats are the house `<stack>-implementer`, inside a flow (Route, above); read-only seats run on any route. The dispatch guard blocks a generic dispatch while a flow stamp is live. Seats that edit files in one directory each get a separate worktree where the platform offers one - and only when every contract they build on is COMMITTED: a worktree branches from HEAD, so seats that need this session's uncommitted plan, keys or files build in the shared tree, one owner per file. With no dispatch available, run the tracks inline in order.
@@ -158,7 +158,13 @@ A wait of minutes runs in the background (the quality-gates rule).
 
 Beyond the always-on stops:
 
-- A plan needing more than about five seats, or a scope far past the request: ONE AskUserQuestion first, the trimmed plan recommended.
+- A plan needing more than about five seats, or a scope far past the request: ONE AskUserQuestion first, the trimmed plan recommended:
+
+  ```ask
+  The plan needs <N> seats / reaches <the scope past the request>. Run the trimmed plan?
+  - 'Run the trimmed plan (Recommended)' - <the seats or scope kept, and what is left out>
+  - 'Run the full plan' - <N> seats, queued at the agent cap
+  ```
 - A required secret or service is missing and no local stand-in exists: report it, do not work around it.
 
 ## The close

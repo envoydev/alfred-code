@@ -28,7 +28,7 @@ kept as `windows-desktop` in the record of its old servers an update prints): sh
 file writes, moves and deletes are not there unless the user turns them on. What stays on: the observe, input and wait tools, `ControlStatus`, `App`, `Clipboard`, `Scrape` and `Notification`.
 Windows-MCP gates by tool name, never by mode, so `App` stays whole - and its `launch_executable` mode
 starts any program (`powershell.exe -Command ...` included): a house guard denies that mode unless the
-user allowed it in `<data root>/state/approvals/DESKTOP-EXEC-ALLOW`, while `launch`, `switch` and `resize` pass.
+user allowed it and the lines the denial prints are written into `<data root>/state/approvals/DESKTOP-EXEC-ALLOW`, while `launch`, `switch` and `resize` pass.
 The server reads the list at start, so reconnect it from `/mcp` after a change. Windows-MCP matches the names
 case-sensitively and skips an unknown one silently, so spell each as the Tools list above does. Its own
 `WINDOWS_MCP_TOOLS` (its `--tools`) OVERRIDES the exclude list: leave it unset. Turning a tool on is the user's

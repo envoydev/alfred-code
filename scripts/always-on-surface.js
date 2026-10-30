@@ -84,16 +84,27 @@ function capabilitiesFixedText(skillText)
     return { policy: injectedRuleText(policy.join('\n')) };
 }
 
+// The map line the awareness script writes into that rule when the map exists - read from the skill's own script, so
+// the measure follows its text; none when the script cannot be loaded.
+function awarenessMapLine(capabilitiesDir = path.join(STACK, 'skills', 'capture-awareness'))
+{
+    try { return String(require(path.join(capabilitiesDir, 'scripts', 'awareness-state.js')).MAP_LINE || ''); }
+    catch { return ''; }
+}
+
 // The generated awareness rule's own text: SKILL.md's copy target as injected, its import slot left out - the docs it
-// imports are the project's own run book and siblings, never the stack's fixed text.
-function awarenessRuleText(skillText)
+// imports are the project's own run book and siblings, never the stack's fixed text - and its map slot counted as the
+// line the script writes there (the worst case, a project with a map; audit 2026-10-30 RU-17: the slot's own
+// placeholder was counted instead).
+function awarenessRuleText(skillText, mapLine = awarenessMapLine())
 {
     const lines = String(skillText || '').split(/\r?\n/);
     const marker = lines.findIndex((l) => /COPY TARGET/.test(l));
     const open = marker === -1 ? -1 : lines.findIndex((l, i) => i > marker && /^```markdown\s*$/.test(l));
     const close = open === -1 ? -1 : lines.findIndex((l, i) => i > open && /^```\s*$/.test(l));
     if (close === -1) return '';
-    return injectedRuleText(lines.slice(open + 1, close).filter((l) => !/^<the script's import lines/.test(l)).join('\n'));
+    return injectedRuleText(lines.slice(open + 1, close).filter((l) => !/^<the script's import lines/.test(l))
+        .map((l) => (/^<the script's map line/.test(l) ? mapLine : l)).join('\n'));
 }
 
 function alwaysOnSurface({
@@ -134,7 +145,7 @@ function alwaysOnSurface({
     const readSoft = (file) => { try { return read(file); } catch { return ''; } };
     // The agents reference holds the stamped usage policy in its copy target.
     const fixed = capabilitiesFixedText(readSoft(path.join(capabilitiesDir, 'references', 'agents.md')));
-    const generated = fixed.policy.length + awarenessRuleText(readSoft(path.join(capabilitiesDir, 'SKILL.md'))).length;
+    const generated = fixed.policy.length + awarenessRuleText(readSoft(path.join(capabilitiesDir, 'SKILL.md')), awarenessMapLine(capabilitiesDir)).length;
     return { rules, agents, agentTools, skills, manualOnly, generated, total: rules + agents + agentTools + skills + generated };
 }
 
@@ -158,4 +169,4 @@ const alwaysOnParts = (s) => `pathless rules ${s.rules} (as injected), agent des
     + ` (${s.manualOnly} manual-only not in context), generated capabilities fixed text ${s.generated}`
     + `, agent tools lists ${s.agentTools} (listed beside each description)`;
 
-module.exports = { frontmatterOf, frontmatterValue, injectedRuleText, capabilitiesFixedText, awarenessRuleText, alwaysOnSurface, alwaysOnParts, listedTools };
+module.exports = { frontmatterOf, frontmatterValue, injectedRuleText, capabilitiesFixedText, awarenessRuleText, awarenessMapLine, alwaysOnSurface, alwaysOnParts, listedTools };

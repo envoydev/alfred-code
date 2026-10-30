@@ -25,9 +25,10 @@ one part, and the typed command with no topic word runs all three behind one ask
   `/loop-code-quality`, `/loop-test-coverage-quality`), building the architecture map (the awareness capture's architecture part), recording
   the code style, a security audit (the security-auditor seat) or one diff (task-verify-code, review-code). Each part's
   own `## When to use` names the rest of its boundary.
-- A part's run gate is there because a conversational question - 'what are the risks here?', 'is this code any
-  good?', 'what is our coverage?' - can match this skill: no seats, instrumented suite or doc rewrite start on a
-  description match without its answer.
+- A part's run gate is there because a conversational question - 'what are the risks here?', 'what is our
+  coverage?' - can match this skill: no seats, instrumented suite or doc rewrite start on a description match without
+  its answer. A bare 'is this code any good?' measured no load (0 of 10), so the code part runs from its topic word or
+  a request that names the code assessment.
 
 **Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
 
@@ -64,7 +65,7 @@ Read the arguments in this order.
 | empty, or flags only, the user's message the typed command | the chain, no target |
 | empty, a description match on 'what is our test coverage?' | the coverage part, no target, its run gate asked |
 | `test coverage`, a description match on 'how is our test coverage?' | the coverage part, no target (no path named `test`) |
-| empty, a description match on 'how good is this code?' | ONE question: code-quality (Recommended), architecture-quality, test-coverage-quality |
+| empty, a description match on 'assess the quality of this service' | ONE question: code-quality (Recommended), architecture-quality, test-coverage-quality |
 
 The part pick, when a description match names none of the parts or more than one - the other two in table order:
 
@@ -79,9 +80,15 @@ Which quality capture should run? The request names none of the three parts, or 
 
 The part runs alone, with its target, by its own reference - its run gate, mode ask, steps and REPORT as written there:
 
-- architecture-quality: read `references/architecture-quality.md` and follow it.
+- architecture-quality: read `references/architecture-quality.md` and follow it. Alone, it runs section 3 step 1's
+  state block first: its INLINE verify-and-rewrite path keys on the `architecture-quality:` line that block prints.
+  - `references/architecture-quality-doc-shape.md` - the findings gate, the buckets and the doc's shape, read before JUDGE.
 - code-quality: read `references/code-quality.md` and follow it.
+  - `references/code-quality-doc-shape.md` - the rule sources, the findings gate and the doc's shape, read before JUDGE.
 - test-coverage-quality: read `references/test-coverage-quality.md` and follow it.
+  - `references/test-coverage-quality-weak-points.md` - the exclusions, the findings gate and the buckets, read at ANALYZE.
+
+Each part's contract file is read in full at its step, never from the part's mention alone.
 
 ## 3. The chain
 
@@ -183,9 +190,6 @@ Run the chosen parts through their analyzer seats or in this session?
 - A calling flow hands `<topic> <DELEGATED|INLINE> <target>`. A mode word right after the topic marks a run a flow
   started: it skips the part's run gate and mode ask, and inherits the mode.
 - A person may type the same form, and has then chosen.
-- The calls: `loop-architecture-quality` hands `architecture-quality <mode> <target>` after its map capture,
-  `loop-code-quality` hands `code-quality <mode> <target>`, and `loop-test-coverage-quality` hands
-  `test-coverage-quality <mode> <target>`.
 
 ## 5. The close
 

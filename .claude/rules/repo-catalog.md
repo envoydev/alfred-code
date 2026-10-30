@@ -30,7 +30,7 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   in two installs, still naming `context7`, ~700-char descriptions on every call). Update now takes such a copy
   over and says so (`taking over a copy the stamp did not record`); `library-check.js` names it `unrecorded`
   before then. The core's SessionStart line
-  (`setup-plugin/hooks/library-stamp.js`, at a startup, a `/clear` and a resume - never a compaction, loading audit 2026-10-21 G12) says when the copies
+  (`setup-plugin/hooks/library-stamp.js`, at a startup, a `/clear`, a resume and a fork - never a compaction, loading audit 2026-10-21 G12; the fork, audit 2026-10-30 HK-24) says when the copies
   are older than the stack - and, for a stamp from before 2.1.0 (no `seats-route:`) under a core at or
   past it, that the skills and seat denies wait for `/alfred-code:update` (the skew window: the core
   updates itself, the copies do not). `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy
@@ -101,7 +101,9 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   every orchestrator routes as a seat death - one scoped re-dispatch, then BLOCKED to the user, pinned as
   `seat-statusless-return`): implementers 250 (max seen 116), verifiers
   350 (152), `architecture-analyzer` 100 (30), and the four resolvers the implementers' 250 (one run seen) since an
-  until-green loop is the runaway the cap is for; every other seat had too few runs, so none. Lint check 15d fails a
+  until-green loop is the runaway the cap is for; `code-quality-analyzer` 150 (max 75 over 119 runs, re-measured
+  2026-10-30, audit AG-06) and `integration-reviewer` the verifiers' 350 by kind (no run yet, the widest gate); every
+  other seat had too few runs, so none. Lint check 15d fails a
   seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`capture-awareness`'s architecture part writes `awareness/ARCHITECTURE-AWARENESS.md` and its line in
   `alfred-awareness.md` - 3.5.0 took the map and code-style captures in as parts; the findings go to `capture-quality`'s architecture-quality part

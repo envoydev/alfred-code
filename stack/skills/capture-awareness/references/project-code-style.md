@@ -12,8 +12,6 @@ The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL 
 - It fans out code-style-analyzer agents (one per detected language) and merges their reports into `preferences/PROJECT-CODE-PREFERENCES.md` under the docs root, the doc every session and seat reads before it changes code.
 - Not for architecture (the architecture part), the user's own code, architecture or git preferences (the preferences capture), one language's style question (the code-style-analyzer seat alone, picked from the @ typeahead), or enforcing style (the per-language configs stay the enforced source).
 
-**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
-
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before a first capture's fan-out, via AskUserQuestion - characterize via code-style-analyzer seats (recommend it: the seats absorb the reads), or in-session? - unless the mode is already answered: the router's chain asked it, or a mode word after the topic (a calling flow) picked the run's mode, which is inherited, never re-asked. Pick once, hold for the run:
 

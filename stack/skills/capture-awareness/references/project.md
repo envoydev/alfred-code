@@ -131,7 +131,7 @@ Never ask for a credential's VALUE, and the doc never holds one - not in an ask,
 report. The doc records the login steps and WHERE it lives - an environment variable, a key in a gitignored local
 file (the project's sensitive data, `<data root>/.secrets`, first), a vault item - and the user puts the
 value there by hand. A value the user pastes anyway is never written anywhere: redact it as `<redacted>`, record
-only where it should live, and follow the security baseline's credential rule (the rotation ask). A seat that needs
+only where it should live, and follow the security rule's credential line (the rotation ask). A seat that needs
 the value to log in checks the file for presence (the secret guard's `--presence`) and goes through that guard's
 one ask before it types it; a command that needs it runs through the guard's `--with-sensitive`.
 
@@ -224,7 +224,7 @@ lives, never by value. Before a local start, run the Data target check; before a
 - Reach: <the URL and port, the window, or the CLI entry>
 - Log in: <numbered steps - the screen, the fields, the role to pick - or 'no login, the app is open'>
 - Accounts: <one line per role - its purpose and the user name's home>
-- Credentials live in: <env var `<NAME>` | `<data root>/.secrets`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login through a browser server started with the sensitive data as its secrets (Playwright MCP's `--secrets <data root>/.secrets`) types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the server fills from the store and shows as `<secret>NAME</secret>` - read that marker in the first fill's result before concluding - no marker means the server holds no store, so ask the user to sign in, never retype the key; a key added after the server started needs a reconnect (`/mcp`) first; any other typed value goes through the secret guard's ask
+- Credentials live in: <env var `<NAME>` | `<data root>/.secrets`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login asks the user to sign in, never types a stored value or its key name into a form; any other typed value goes through the secret guard's ask
 
 ## Flows to verify
 <!-- id: flows-to-verify -->

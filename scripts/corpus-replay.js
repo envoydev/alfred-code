@@ -77,6 +77,11 @@ const ROUTES = [
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
     pattern: '^mcp__.+__browser_file_upload$',
     tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `browser-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_file_upload`, `mcp__${s}__browser_file_upload`]) },
+  // A file server's read tools, the secret guard's fifth read route (audit 2026-10-30 HK-26): a user-registered
+  // filesystem server under any registration name.
+  { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
+    pattern: '^mcp__.+__(read_file|read_text_file|read_multiple_files)$',
+    tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['read_file', 'read_text_file', 'read_multiple_files'].map((t) => `mcp__${s}__${t}`)) },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the

@@ -4,6 +4,7 @@ description: "Use as the code-quality capture's read-only gatherer for one modul
 tools: LSP, Read, Bash, Grep, Glob, Skill, WebFetch
 model: sonnet
 effort: medium
+maxTurns: 150
 color: yellow
 ---
 

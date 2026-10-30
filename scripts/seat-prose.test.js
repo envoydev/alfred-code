@@ -207,14 +207,15 @@ test('M58: the six support seats each return a literal status: line', () =>
 // API response): implementers n=58, max 116; verifiers n=124, max 152; architecture-analyzer n=38, max 30. Each
 // cap is twice the most seen, rounded up to the next 50. The resolvers (one run seen, 20 turns) take the
 // implementer's cap - the nearest measured shape, an edit-build-test loop - because an until-green loop is the
-// runaway the cap exists for. Every other seat had too few runs to set one, so it has none.
+// runaway the cap exists for. Every other seat had too few runs to set one, so it has none. Audit 2026-10-30 AG-06
+// re-measured: code-quality-analyzer 119 runs, max 75, so 150; integration-reviewer (no run) the verifiers' 350 by kind.
 test('M59: the turn caps sit where the measurement put them, and nowhere else', () =>
 {
-    const CAP = { implementer: 250, verifier: 350, resolver: 250, 'architecture-analyzer': 100 };
+    const CAP = { implementer: 250, verifier: 350, resolver: 250, 'architecture-analyzer': 100, 'code-quality-analyzer': 150, 'integration-reviewer': 350 };
     const kind = (s) => (/-implementer$/.test(s) ? 'implementer' : /-verifier$/.test(s) ? 'verifier'
         : /-resolver$/.test(s) ? 'resolver' : s);
     const capped = seats.filter((s) => CAP[kind(s)]);
-    assert.strictEqual(capped.length, 25, '10 implementers, 10 verifiers, 4 resolvers, architecture-analyzer');
+    assert.strictEqual(capped.length, 27, '10 implementers, 10 verifiers, 4 resolvers, architecture-analyzer, code-quality-analyzer, integration-reviewer');
     for (const s of seats) assert.strictEqual(meta(s).maxTurns, CAP[kind(s)], `${s}: maxTurns`);
     // Review B1: the transcript count is the de-duplicated one, and the cap's CLI floor is named.
     const claude = squash(require('./claude-docs.js').readClaudeDocs());

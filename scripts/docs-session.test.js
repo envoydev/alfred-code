@@ -2785,3 +2785,37 @@ test('a three-level chain names parent then root', () => {
     assert.deepStrictEqual(layout.ancestorPrefsDirs(leaf, { env }).map((e) => e.role), ['parent', 'root']);
   } finally { fs.rmSync(top, { recursive: true, force: true }); }
 });
+
+// Audit 2026-10-30 HK-28 (unverified there): the stop contract seals an output-scorer's report at PreToolUse SubagentHandback
+// (`wx`) before a sibling hook's verdict - so a docs-session deny of that hand-back would seal a delivery that never left,
+// and the re-sent report could not be sealed. Replayed here: docs-session asks only a seat whose OWN writes changed a
+// watched file, and the scorer seat holds no write tool (LSP, Read, Grep, Glob, WebFetch), so its hand-back is never
+// denied - a watched change by the main session or a writing seat beside it included - and the seal it gets is the
+// delivered report. The writing seat's hand-back beside it is denied, which shows the replay can produce the deny.
+test('HK-28 replay: an output-scorer seat is never denied at its hand-back, so the seal never seals an undelivered report', () => {
+  const tools = /^tools:\s*(.*)$/m.exec(fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', 'output-scorer.md'), 'utf8'))[1].split(/,\s*/);
+  for (const t of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell']) assert.ok(!tools.includes(t), `the scorer seat holds ${t}`);
+  const r = watched();
+  try {
+    const s = sid();
+    const scorer = { agent_type: 'alfred-code:output-scorer' };
+    r.hook(subStart(s, 'sc1', scorer), GIT);
+    r.hook(subStart(s, 'impl1'), GIT);
+    // the scorer reads the watched file; the main session and a writing seat beside it change it
+    r.hook({ ...preBy(s, 'sc1', 'src/Api/Program.cs', scorer), tool_name: 'Read' }, { ...GIT, ...ALLOW });
+    touch(r);
+    touchBy(r, s, 'impl1');
+    const folder = path.join(r.root, '.alfred', 'state', 'sessions', 'scorer', s, 'x');
+    fs.mkdirSync(folder, { recursive: true });
+    const card = path.join(folder, 'hk28.score.md');
+    const report = `score-file: ${card}\n## Checks\n| P1 | yes | "q" |`;
+    const handBackInput = handBack(s, 'sc1', report, scorer);
+    const docs = r.hook(handBackInput, GIT);
+    assert.strictEqual(docs.stdout, '', 'docs-session never denies the scorer\'s hand-back');
+    const seal = spawnSync(process.execPath, [path.join(require('./docs-fixture').HOOKS, 'guard-stop-contract.js')],
+      { cwd: r.root, input: JSON.stringify(handBackInput), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: r.root } });
+    assert.deepStrictEqual([seal.status, seal.stdout.trim()], [0, ''], 'the seal never delays the hand-back');
+    assert.match(fs.readFileSync(card, 'utf8'), /^seal: sha256 [0-9a-f]{64}\nscore-file: /, 'the delivered report is the sealed one');
+    assert.ok(denied(r.hook(handBack(s, 'impl1', 'status: DONE'), GIT)), 'the writing seat beside it is asked - the replay can deny');
+  } finally { r.rm(); }
+});

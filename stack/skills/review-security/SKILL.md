@@ -64,6 +64,8 @@ Findings, most severe first (HIGH, then MEDIUM; a LOW is a lead):
 file:line | severity | category | exploit scenario | fix
 ```
 
+A filled row: `src/api/orders.ts:57 | HIGH | injection | an order id of '1 OR 1=1' returns every customer's orders | bind the id as a query parameter`.
+
 Then the leads, one line each:
 
 ```text

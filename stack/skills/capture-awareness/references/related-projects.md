@@ -37,7 +37,7 @@ The user names the related projects - local paths or git URLs, optionally with a
 `./server`, `./client` in a monorepo are valid locations, and their entries carry the dependency direction a
 cross-domain build orders by. Never guess at siblings from the filesystem: with no arguments and no doc, the
 siblings ask above takes the locations as typed text. A location outside the docs root for any file this step writes
-takes the user's explicit approval first, per the docs-root baseline.
+takes the user's explicit approval first, per the docs-root rule.
 
 ## Execution modes
 

@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
-    "version": "3.5.1"
+    "version": "3.6.0"
   },
   "plugins": [
     {
@@ -42,7 +42,7 @@
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: init installs it from scratch into a project and, typed again after the restart, bootstraps it once (tools, status line, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "3.5.1",
+      "version": "3.6.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -168,12 +168,23 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js\"",
-                "timeout": 70
+                "timeout": 70,
+                "onFailure": "block"
               }
             ]
           },
           {
             "matcher": "^mcp__.+__browser_file_upload$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files)$",
             "hooks": [
               {
                 "type": "command",
@@ -328,7 +339,7 @@
         ],
         "SessionStart": [
           {
-            "matcher": "startup|clear|resume",
+            "matcher": "startup|clear|resume|fork",
             "hooks": [
               {
                 "type": "command",

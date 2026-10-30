@@ -1372,10 +1372,14 @@ const secretInSession = () => secretExposure() !== null;
 
 // The secret guard's receipt is the user's CONSENT to a value being in this transcript - the remote
 // user who asked to see it, or to have it placed where a blind copy cannot reach. A shape that
-// entered under a live receipt is not re-asked for rotation every turn; the receipt is read with
-// the same session scope the guard applies (under 8h, this session's own transcript, and a
-// `session: <id>` line naming it when the payload carries a session id). Its path is
-// pinned in shared-rules.json with the guard's.
+// entered under a live receipt is not re-asked for rotation every turn; the receipt is read the way
+// the guard reads it (hook-prelude.js securityReceipt with the guard's own SHOW label): under 8h, not
+// older than this session's transcript, a `session: <id>` line naming the session when the payload
+// carries one, AND the user's own SHOW answer to an AskUserQuestion after the guard's last denial, given
+// with auto-run off. The file is one the model can write, so its session line and age alone silenced
+// the rotation ask after a token entered a tool result (the final review of 2026-10-30 FA-3). No
+// prelude beside this hook: no consent read. Its path is pinned in shared-rules.json with the guard's.
+const SECRET_SHOW_LABEL = 'Show or use the value this session - it enters the transcript permanently';
 function secretReadAllowed() {
   try {
     const path = require('path');
@@ -1384,18 +1388,11 @@ function secretReadAllowed() {
     let layout = null;
     try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
     const receipt = layout ? layout.findState(root, 'approvals', 'SECRET-READ-ALLOW') : path.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW');
-    const st = fs.statSync(receipt);
-    let sessionStartMs = 0;
-    try {
-      const t = fs.statSync(String(payload.transcript_path || ''));
-      sessionStartMs = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
-    const lines = fs.readFileSync(receipt, 'utf8').split(/\r?\n/).map((l) => l.trim());
-    // the guard's session binding: a call naming its session reads the receipt only through a `session: <id>` line
-    const sid = typeof payload.session_id === 'string' && /^[\w.-]{1,128}$/.test(payload.session_id) ? payload.session_id : '';
-    if (sid && !lines.some((l) => { const m = l.match(/^session:\s*(\S+)$/); return m && m[1] === sid; })) return false;
-    return lines.some((l) => l && !l.startsWith('#') && !/^session:/.test(l));
+    let receipts = null;
+    try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
+    if (!receipts || typeof receipts.securityReceipt !== 'function') return false;
+    const held = receipts.securityReceipt(receipt, payload, { marker: 'SECRET-READ-ALLOW', labels: [SECRET_SHOW_LABEL] });
+    return Boolean(held && held.live && held.lines.length > 0);
   } catch {
     return false; // absent or unreadable - no consent recorded
   }

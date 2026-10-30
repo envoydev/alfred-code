@@ -84,11 +84,6 @@ function wiringRows(rows, { listGuards = false } = {})
 // ---- the hook -----------------------------------------------------------------------------------
 function main()
 {
-    try
-    {
-        if (require('./hook-prelude.js').yieldToCopiedTwin(SELF)) process.exit(0);
-    }
-    catch { /* an install without the prelude runs every guard */ }
     let stdin;
     try { stdin = fs.readFileSync(0); }
     catch { stdin = Buffer.alloc(0); }
@@ -96,6 +91,13 @@ function main()
     // answer each guard gave it alone (they all fail open on it).
     let tool = '';
     try { tool = String((JSON.parse(stdin.toString('utf8')) || {}).tool_name || ''); } catch { tool = ''; }
+    // GATE 2 per call (HK-02): the copy's wiring must fire on THIS tool, so a copy wired on fewer tools than the plugin row
+    // leaves the rest to the plugin, never to nobody.
+    try
+    {
+        if (require('./hook-prelude.js').yieldToCopiedTwin(SELF, undefined, { event: 'PreToolUse', tool })) process.exit(0);
+    }
+    catch { /* an install without the prelude runs every guard */ }
     const named = process.argv.slice(2).filter((a) => NAMES.includes(a));
     const guards = (named.length ? RUN_ORDER.filter((g) => named.includes(g)) : RUN_ORDER).filter((g) => TOOLS.get(g).includes(tool));
     let shell;

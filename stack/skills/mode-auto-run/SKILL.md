@@ -9,7 +9,9 @@ disable-model-invocation: true
 The user typed `/mode-auto-run <request>` and walked away. Typing it is the waiver: the hook has turned auto-run on for
 this session (its `AUTO` stamp) and opened this run's marker, every ask that marks a (Recommended) option is answered
 with it, and the run goes on until its close. Auto-run outlives the run: it stays on for the session until the user
-types `--mode-auto-run-off` after a command. The limits stay where they are - nothing outward, nothing paid.
+types `--mode-auto-run-off` after a command. The limits stay where they are - nothing outward, nothing paid. A guard's
+security ask - a credential shown, work discarded, a write outside the project, a desktop launch - is never auto-run's
+to allow: take its safe option and list the act for the user in the close.
 
 **Availability** - the flows this skill names are user-typed commands, installed only where the install picked them. The
 `Solve flow:` line in context says whether the solve flow is installed here; any other flow named below is never run

@@ -33,13 +33,15 @@ The single organizing idea: the compiler is the cheapest test you have. Configur
 
 Keep these in one shared base `tsconfig` and have each project `extends` it. A per-project config that redefines the flags drifts; one that inherits them cannot.
 
-Where the house config-protection guard runs, an edit to a tsconfig that already exists passes when every strictness key it changes moves to its strict value - make it with the file tools, since a shell command naming a strictness key is held whatever it does - and one that removes or loosens a strictness key is held until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new tsconfig takes the full set from the start.
+Where the house config-protection guard runs, an edit to a tsconfig that already exists passes when every strictness key it changes moves to its strict value - make it with the file tools, since a shell command naming a strictness key is held whatever it does - and one that removes or loosens a strictness key is held until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` and retry the same edit; a new tsconfig takes the full set from the start.
 
 ```ask
 The config-protection guard holds this edit: <file> - <the change>, <N> new errors.
 - 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
 - 'Keep the config as it is' - nothing changes in the file
 ```
+
+Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
 
 ## Don't lie to the compiler
 

@@ -14,7 +14,7 @@ lacks the tool) and stay inline on an inline answer. A shape that stays inline n
 
 ## The shapes
 
-- **Dispatch gatherers** (parallel, one per source, each seat named exactly as the roster spells it -
+- **Dispatch gatherers** (parallel, one per source, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once, each seat named exactly as the roster spells it -
   `alfred-code:evidence-gatherer` where the core plugin carries it) when any of these holds: the evidence spans
   two or more independent sources (a server log AND a DB state AND a repro run); a log or trace
   runs to hundreds of lines, so reading it here would flood the context the diagnosis needs; the

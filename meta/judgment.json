@@ -9,7 +9,7 @@
     "skill:task-build-from-scratch": "greenfield-time - starting a project from nothing",
     "skill:dotnet-project-setup": "setup-time - the solution build spine",
     "skill:dotnet-performance": "perf-work-time - deliberate optimization passes and benchmarks",
-    "skill:dotnet-diagnostics": "diagnosis-time - benchmarks and crash/hang/leak dumps",
+    "skill:dotnet-diagnostics": "diagnosis-time - profiling, benchmarks and crash/hang/leak dumps",
     "agent:security-auditor": "audit-time - the deliberate security posture audit"
   }
 }

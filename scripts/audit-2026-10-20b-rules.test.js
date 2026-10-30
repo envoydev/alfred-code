@@ -34,7 +34,10 @@ test('R1: the preferences rule and the git seed agree on what a git preference c
 // the house rules, and the preferences rule ranks the user's own docs above the project's code-style doc.
 test('R2: inherited conventions beat the house rules, the user\'s preferences beat the code\'s own style', () =>
 {
-    assert.match(injected('alfred-interaction'), /Inherited code: its conventions win over these house rules unless broken or unsafe; an entry of the user's preferences docs wins over both\./);
+    // audit 2026-10-30 RU-11: the tail 'an entry of the user's preferences docs wins over both' restated the preferences
+    // rule's own ranking (below), so the line ends at the house rules.
+    assert.match(injected('alfred-interaction'), /Inherited code: its conventions win over these house rules unless broken or unsafe\./);
+    assert.doesNotMatch(injected('alfred-interaction'), /preferences docs wins over both/);
     // 2026-10-21: 'personal' names PERSONAL-PREFERENCES.md now, so the ranking says 'personal code'.
     assert.ok(injected('alfred-preferences').includes('in this order: the personal code and architecture docs, the project doc,'), 'the preferences rule ranks the user over the code');
 });

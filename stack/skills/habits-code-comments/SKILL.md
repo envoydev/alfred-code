@@ -1,6 +1,7 @@
 ---
 name: habits-code-comments
 description: "Use when writing a doc comment or an inline comment - XML docs, TSDoc, JSDoc, docstring. Not for READMEs or docs pages, which the docs skills own."
+user-invocable: false
 ---
 
 # Code comments - the default is none

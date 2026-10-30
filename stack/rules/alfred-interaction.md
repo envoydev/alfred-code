@@ -49,4 +49,12 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 - Every task settles how it runs before its first edit - route, mode, model. A small task settles it inline, no Skill call, and gets no plan: a typo, a one-line fix, formatting, a dep bump, a single-file rename, or a mechanical change across 10+ files once the user confirms its scope list. Any other task of more than a few steps across more than one file or subtask, one spanning stacks or touching auth, a migration or a public contract, or one that would fan work out to seats - the FIRST action is the `habits-execution-strategy` Skill call, before the first edit. Defaults, also in a resumed session: a direct edit on the session's model; one agent; independent tool calls batched; cheap checks per batch, the heavy suite once at the end; a CI-parity run before a push where the project has one.
 - Code fails - the FIRST action is the `habits-root-cause` Skill call, before the next fix lands.
 - Several FIRST actions due at once (two habit pointers, or one beside a convention rule's attach) load in the same call - one message of Skill calls, before the act any of them guards.
-- Inherited code: its conventions win over these house rules unless broken or unsafe; an entry of the user's preferences docs wins over both.
+- Inherited code: its conventions win over these house rules unless broken or unsafe.
+
+<!-- Tier note (audit 2026-10-30 RU-07, the user's ruling): the communication style, the answer budget, the dash and
+     quote rule and the no-name line ship at project tier into every install on purpose - the house voice is the
+     stack's standard, and the answer budget is a rule (the user's ruling: no hook blocks an answer's length or its
+     dashes, guard-answer only reminds), so it cannot live in a personal doc a session may not load. A person or team
+     that wants another voice states it in `preferences/PERSONAL-PREFERENCES.md` through `/capture-preferences`, which
+     ranks above the house conventions (alfred-preferences.md). Comments are stripped before injection, so this note
+     costs no always-on chars. -->

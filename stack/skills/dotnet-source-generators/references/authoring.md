@@ -57,7 +57,7 @@ Get this right and an edit elsewhere in the file produces an identical model, th
 
 ## Diagnostics
 
-Validate inside the pipeline and build every `Diagnostic` from a `DiagnosticDescriptor` (stable id, category, severity) with a real `Location` so the squiggle lands on the offending code.
+Validate inside the pipeline and build every `Diagnostic` from a `DiagnosticDescriptor` (stable id, category, severity) with a real `Location` so the squiggle lands on the offending code. A `Location` pins its `SyntaxTree`, which must not pass the transform step: carry the file path, `TextSpan` and `LinePositionSpan` in the equatable model and rebuild it with `Location.Create(path, span, lineSpan)` when the diagnostic is reported.
 
 ## Emitting output
 

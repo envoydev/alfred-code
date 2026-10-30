@@ -18,13 +18,13 @@ On any non-trivial diff, before committing or presenting, in order:
 
 1. **Format.** The formatter half is never skipped, and it must be FRESH: a formatter run from
    earlier in the session does not cover files edited since. After the last edit, run the project's
-   own format CHECK - the command CI runs (a `format:check` script, the workflow's format step), else
+   own format CHECK - the command CI runs (a `format:check` script, the CI workflow's format step), else
    the formatter's check mode - over EVERY staged path, inherited files included, not only the files
    this session edited; fix what it names with the formatter's write mode, re-stage, check again.
    Its clean verdict is the receipt's `format:` line.
 2. **Review.** Run the house review - `task-verify-code` when a plan built the change, else
    `review-code` over the paths this commit takes in (the Scope paragraph below), named as its target; both are model-invocable, so the gate holds in autonomous flows
-   too - plus any diff gates named in the project's `AGENTS.md`. A DISPATCHED domain-verifier pass over exactly this diff satisfies it the
+   too - plus any diff gates named in the project's instruction file (`AGENTS.md` or `CLAUDE.md`). A DISPATCHED domain-verifier pass over exactly this diff satisfies it the
    same way - the right call when the session's context is already heavy. Either way the review is
    a real invocation THIS session: a receipt claiming 'task-verify-code inline' or 'review-code inline' with no Skill
    call in the transcript is a replay from memory, not the gate. It must be FRESH, like the format
@@ -163,7 +163,8 @@ card under `<docs-path>/work/cross-project-tasks/`, printed as the docs-root rul
 
 ## Publishing - push and change-request merge
 
-The same ceremony: a `git push` and a change-request merge - `gh pr merge`, `glab mr merge`, an MCP merge tool, any route - leave this machine, so they carry their own
+The same ceremony: a `git push` and a change-request merge - `gh pr merge`, `glab mr merge`, an MCP merge tool, any route - leave this machine,
+and so does opening a change request from a CLI (`gh pr create`, `glab mr create`) where it would push the branch, so they carry their own
 receipt, `<data root>/state/approvals/PUSH-GATE`, in the SAME five-line shape - `VERIFIED <what is being
 published, one phrase>`, `authorized: "<the user's words asking for THIS publish, verbatim>"`,
 `head:`, `spec: <the commit set going out>` and `live-probe:` - or `WAIVED - "<their words>"`; no

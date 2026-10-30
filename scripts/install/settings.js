@@ -63,11 +63,13 @@ const ASYNC_HOOKS = { 'instrument-tool-usage.js': '*' };
 const asyncFor = (file, event) => { const on = ASYNC_HOOKS[file]; return on === '*' || (Array.isArray(on) && on.includes(event)); };
 // A hook that FAILS - cannot start, times out, exits other than 0 / 2, prints invalid output - lets the call through by
 // default; `onFailure: "block"` blocks it instead, as an exit 2 would (code.claude.com/docs/en/hooks, 'Block the action
-// when a hook fails', Claude Code 2.1.295+). Only the shell-guard dispatcher carries it (audit 2026-10-14 HK07, the user's
-// ruling): its rm, force-push and secret guards are the ones a crashed or stalled dispatcher would silently pass, and the
-// price - a broken install blocks every shell call until fixed - is paid on the shell route only. An older Claude Code drops the
+// when a hook fails', Claude Code 2.1.295+). The two dispatchers carry it: the shell one (audit 2026-10-14 HK07, the user's
+// ruling) for its rm, force-push and secret guards, and the file one (audit 2026-10-30 HK-21, the plan's ruling) for the
+// secret guard on Read and Grep - each a protective guard a crashed or stalled dispatcher would silently pass. The price: a
+// broken install blocks every shell and file-tool call until fixed; the rollback is dropping the row here (an update then
+// takes the key off the copy route's entry) or `claude plugin disable` on the plugin route. An older Claude Code drops the
 // key: its hook entry is a non-strict zod object (2.1.100 and 2.1.294 bundles read 2026-10-14), so nothing is rejected.
-const BLOCK_ON_FAILURE = { [`${shellGuards.SELF}.js`]: ['PreToolUse'] };
+const BLOCK_ON_FAILURE = { [`${shellGuards.SELF}.js`]: ['PreToolUse'], [`${fileGuards.SELF}.js`]: ['PreToolUse'] };
 const onFailureFor = (file, event) => ((BLOCK_ON_FAILURE[file] || []).includes(event) ? 'block' : undefined);
 const hookEntry = (command, timeout, file, event) => ({ type: 'command', command, timeout, ...(asyncFor(file, event) ? { async: true } : {}),
     ...(onFailureFor(file, event) ? { onFailure: onFailureFor(file, event) } : {}) });
@@ -322,8 +324,10 @@ function wireHooks(data, specs, retiredHooks)
                 if (ours.has(h.command) && h.timeout !== timeoutFor(fileOf(h.command), event)) { h.timeout = timeoutFor(fileOf(h.command), event); changed = true; }
                 // ...and the async flag onto a side-effect hook an earlier install wired blocking.
                 if (ours.has(h.command) && asyncFor(fileOf(h.command), event) && h.async !== true) { h.async = true; changed = true; }
-                // ...and the block-on-failure flag onto the shell-guard dispatcher an earlier install wired without it.
+                // ...and the block-on-failure flag onto a dispatcher an earlier install wired without it - and off an entry of
+                // ours the table no longer names, so dropping a row is a rollback on this route too (HK-21).
                 if (ours.has(h.command) && onFailureFor(fileOf(h.command), event) && h.onFailure !== onFailureFor(fileOf(h.command), event)) { h.onFailure = onFailureFor(fileOf(h.command), event); changed = true; }
+                else if (ours.has(h.command) && !onFailureFor(fileOf(h.command), event) && h.onFailure === 'block') { delete h.onFailure; changed = true; }
             }
 
     // Prune OUR hook file from a PreToolUse matcher this version no longer wires. Keyed on the

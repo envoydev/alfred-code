@@ -1,6 +1,7 @@
 ---
 name: habits-root-cause
 description: "Use when a failure's cause is unproven, before any fix - red test, build or auth error, stack trace, flaky run. Not for a known error code, which catalogs hold."
+user-invocable: false
 ---
 
 # Root cause - one hypothesis, one change, then the fix
@@ -22,6 +23,12 @@ A fix aimed at a symptom moves the failure somewhere nobody is looking. It finds
 5. **One hypothesis, one change.** Write it as one line in your reply BEFORE the change - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next. A cause worked out silently and stated only in the close is not a hypothesis - it is the fix explaining itself afterwards. Two changes at once prove nothing. A killed hypothesis is progress: revert its change before the next one, and note it so it is not tried twice.
 6. **Fix at the root, test first.** Where writing tests is in scope, a test that fails for the reason you found lands first. Then ONE fix for the cause - never a guard around the symptom, never a bundle of 'while I am here' edits - then the repro and the relevant suite, output quoted, per `habits-done-gate`. The repro still red after the fix means the hypothesis was wrong: revert the fix and go back to step 3.
 7. **Three fixes that did not hold: stop.** Three fixes that left the repro red, or that each surfaced a failure somewhere else, mean the shape is wrong, not the line. Put the design question to whoever owns the design - in a chat, ONE AskUserQuestion with the redesign recommended; a seat returns it in its report - instead of forcing a fourth fix. Each option names the measured quantity it changes, and what it claims about it ('memory stays bounded') agrees with the runs so far.
+
+   ```ask
+   Three fixes left <the repro> red. Redesign <the part> or try a fourth fix?
+   - 'Redesign <the part> (Recommended)' - <the measured quantity it changes, and what it claims about it>
+   - 'One more fix at <the line>' - <what it changes; why the three before it did not hold>
+   ```
 
 No root cause in the code - the evidence points at the environment, timing or an outside service: say what was ruled out, then handle it where it surfaces (a retry, a timeout, a clear error) and add a log point that catches it next time.
 

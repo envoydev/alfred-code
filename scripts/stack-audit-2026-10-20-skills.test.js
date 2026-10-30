@@ -115,10 +115,13 @@ test('row 4: npm CI installs take --ignore-scripts on npm 11 only, and the basel
     const ops = read('stack/skills/npm/references/ci-and-operations.md');
     for (const line of ops.split('\n').filter((l) => /--ignore-scripts/.test(l)))
         assert.match(line, /on npm 11 only/, `an unconditional --ignore-scripts: ${line.slice(0, 120)}`);
+    // audit 2026-10-30 SKS-11: the npm 11 baseline (its ask included) moved to references/npm11-baseline.md
     const npm = read('stack/skills/npm/SKILL.md');
-    assert.strictEqual([...npm.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length, 2);
+    const npm11 = read('stack/skills/npm/references/npm11-baseline.md');
+    assert.strictEqual([...npm.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length, 1);
+    assert.strictEqual([...npm11.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length, 1);
     assert.match(npm, /'Add the baseline and approve the list \(Recommended\)'/);
-    assert.match(npm, /'Add the baseline \(Recommended\)'/);
+    assert.match(npm11, /'Add the baseline \(Recommended\)'/);
 });
 
 // Row 5 (DRIFTED): on the floor the built-in generator's source generator wires XML comments with no app code
@@ -229,7 +232,8 @@ test('S9: habits-explain-topic agrees with the budget rule', () =>
 test('row 15: the small wording fixes hold', () =>
 {
     assert.match(read('stack/skills/task-build-from-scratch/SKILL.md'), /check the four paths, never list them by default/);
-    assert.match(read('stack/skills/task-version-upgrade/SKILL.md'), /Auto-run is the user's to turn on \(`--mode-auto-run-on`\) only/);
+    // The 2026-10-30 audit (SKF-17) dropped this sentence's two restatements; the gate rule it guarded stays once.
+    assert.match(read('stack/skills/task-version-upgrade/SKILL.md'), /Under auto-run the gate is answered, not skipped - and only when the user turned auto-run on/);
     assert.match(read('stack/skills/dotnet-architecture-tests/SKILL.md'), /^## Pick the library: NetArchTest\.eNhancedEdition by default$/m);
     assert.match(flat(read('stack/skills/dotnet-migrate/SKILL.md')), /`dotnet package update <name>@<version>` on the \.NET 10 SDK, `dotnet add package <name> --version <version>` below it - never a hand edit of the version/);
     assert.doesNotMatch(read('stack/skills/markdown-style/SKILL.md'), /several would go through one AskUserQuestion/);

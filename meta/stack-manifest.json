@@ -434,7 +434,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-diagnostics",
-      "note": "measure/diagnose a live .NET process (hub, references/): BenchmarkDotNet microbenchmarks + crash/hang/OOM dump capture & first-look SOS analysis"
+      "note": "measure/diagnose a live .NET process (hub, references/): CPU profiling (dotnet-counters, dotnet-trace) + BenchmarkDotNet microbenchmarks + crash/hang/OOM dump capture & first-look SOS analysis"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -481,7 +481,7 @@
     },
     {
       "file": "issue-diagnoser-ci.md",
-      "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis through the forge tool the session line names (gh, glab, an MCP pipeline read) - categorize, local repro, route"
+      "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis through the forge tool the session line names (gh, glab) - categorize, local repro, route"
     },
     {
       "file": "issue-diagnoser-runtime.md",
@@ -713,7 +713,7 @@
       "file": "guard-read-whole-file.js",
       "matcher": "Read",
       "event": "",
-      "note": "block whole-file Read of a >400-line source file - locate via the navigation server first; caps cumulative half-split reconstruction"
+      "note": "block whole-file Read of a >400-line source file - locate via the navigation tools first (the LSP tool, then a scoped grep, or a server the tool order ranks); caps cumulative half-split reconstruction"
     },
     {
       "file": "guard-read-whole-file.js",
@@ -744,6 +744,12 @@
       "matcher": "^mcp__.+__browser_file_upload$",
       "event": "",
       "note": "the fourth read route: Playwright MCP's browser_file_upload hands a workspace file to whatever page asks - the Read judgement over tool_input.paths, matched by the tool's name under whatever server the user registered (audit 2026-10-14 PL3; the stack ships no browser server since 2026-10-24)"
+    },
+    {
+      "file": "guard-secret-value.js",
+      "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files)$",
+      "event": "",
+      "note": "the fifth read route: a filesystem server the user registers returns a file's text - the Read judgement over tool_input.path (a head as a window) or .paths, matched by the tool's name under any registration (audit 2026-10-30 HK-26)"
     },
     {
       "file": "guard-secret-value.js",

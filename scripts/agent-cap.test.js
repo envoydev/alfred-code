@@ -708,7 +708,8 @@ test('the fan-out flows read ALFRED_CODE_MAXIMUM_RUN_AGENTS: no pinned 3, no lif
     const STACK = path.join(__dirname, '..', 'stack');
     const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]));
     const texts = walk(STACK).filter((f) => /\.md$/.test(f)).map((f) => [path.relative(STACK, f), fs.readFileSync(f, 'utf8')]);
-    assert.deepStrictEqual(texts.filter(([, t]) => /up to 3 (?:implementers )?at once|capped at 3 implementers/.test(t)).map(([f]) => f), []);
+    // case-blind since the 2026-10-30 audit: 'Up to 3 at once' (SKF-02 / SKC-01), '3-implementer' and SKC-07's dead six slipped past
+    assert.deepStrictEqual(texts.filter(([, t]) => /up to 3 (?:implementers )?at once|capped at 3 implementers|3-implementer fan-out|at most six at a time/i.test(t)).map(([f]) => f), []);
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'shared-rules.json'), 'utf8'));
     const reg = (rules.rules || rules)['fan-out-cap'];
     const sites = [reg.owner, ...reg.sites];

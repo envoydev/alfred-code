@@ -1110,9 +1110,13 @@ function autoModeStart() {
     // The user's words, verbatim but for the line breaks and double quotes the stamp's one-line quote cannot hold.
     const words = (IS_SKILL_CALL ? `/${skill} ${autoArgs()}` : typedLine()).replace(/\s+/g, ' ').trim().replace(/"/g, "'").slice(0, 400);
     const from = current && current.session && current.session !== sid && /^AUTO\b/.test(current.first) ? current.session : '';
+    // The transcript's size now: the reader proves the stamp by the typed row turning auto-run on near this offset
+    // (hook-prelude.js autoStampVerified, audit 2026-10-30 HK-03) - a stamp the model wrote by hand carries none it can back.
+    let size = 0;
+    try { size = fs.statSync(String(payload.transcript_path || '')).size; } catch { size = 0; }
     try {
       fs.mkdirSync(nodePath.dirname(file), { recursive: true });
-      fs.writeFileSync(file, `AUTO - "${words}"\nsession: ${sid}\nskill: ${skill}\nat: ${new Date().toISOString()}\n${from ? `taken-from: ${from}\n` : ''}`);
+      fs.writeFileSync(file, `AUTO - "${words}"\nsession: ${sid}\nskill: ${skill}\nat: ${new Date().toISOString()}\n${from ? `taken-from: ${from}\n` : ''}transcript-size: ${size}\n`);
     } catch { return null; }   // no stamp, no auto-run: the run asks as it always has
     // the stamp this one replaces, left in the pre-2.8.0 flow/, would be read again once the new one goes
     if (current && current.file !== file) try { fs.rmSync(current.file, { force: true }); } catch { /* the new one wins while it stands */ }
@@ -1241,6 +1245,7 @@ if (auto) {
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
     + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop) - waits for the user, so put only those; '
+    + "a guard's security ask (a credential shown, work discarded, a write outside the project, a desktop launch) is never auto-run's to allow: take its safe option and list the act for the user in the close; "
     + "write every AskUserQuestion's questions and labels in English while auto-run is on - the hook reads English only and an ask it cannot read waits for the user - and the rest of the run in the user's language. "
     + `(2) Do not end a turn between steps: the Stop hook sends you back while ${auto.marker} stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. `
     + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '

@@ -9,7 +9,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - Read only what is needed: `Read` is for code already located, never a whole file to find a symbol (`guard-read-whole-file.js` blocks it). Answer a blocked read with the ranged read its denial names - never the same read in another shape or against a second path; before editing, read the body and what it calls.
 - A shell read (`cat`, `sed`, `head`, `awk`, python, a heredoc) is the same read under the same rules. Only a plain one-file view (`cat`, `head`, `tail`, `sed -n`, `grep`, no pipe or redirect) attaches path-scoped rules; a shell write never does, so the read guard names the governing rule on the first shell write.
 - Never fetch what is already in context, by any route - no repeat symbol lookup, no second read of an unchanged file or range; re-check an edit at the edited range only.
-- No docs block at session start means no capture ran: say so once and navigate from code.
+- No docs block at session start: say so once and navigate from code.
 - What the STACK does or wants is read from its own artifacts - the owning command's doc for a reconcile, the rule or hook that reads a setting for what it does - never guessed by hand-comparing files.
 
 ## Locating symbols

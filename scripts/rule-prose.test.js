@@ -139,7 +139,7 @@ test('M72: the architecture part writes no rule of its own - the awareness scrip
     const shapes = read('stack/skills/capture-awareness/references/architecture-doc-shapes.md');
     assert.ok(!shapes.includes('## .claude/rules/alfred-architecture.md'), 'no marker rule template is left');
     assert.ok(!squash(read('stack/skills/capture-awareness/references/architecture.md')).includes('with `<docs-path>` baked to the LITERAL resolved root'), 'no step bakes a path');
-    assert.match(read('stack/skills/capture-awareness/scripts/awareness-state.js'), /`Architecture map: \\`<docs-path>\/\$\{AWARENESS_DIR\}\/\$\{MAP_DOC\}\\` - read it by section before a structural change\.`/);
+    assert.match(read('stack/skills/capture-awareness/scripts/awareness-state.js'), /`Architecture map: \\`<docs-path>\/\$\{AWARENESS_DIR\}\/\$\{MAP_DOC\}\\` - only pointed at, never imported: read it by section before a structural change\.`/);
 });
 
 // ------------------------------------------------------------------ M73
@@ -243,12 +243,15 @@ test('rules F9: the simplification-ceiling line sits with the comment rules and 
     assert.ok(homes(registry()['implementer-ceilings-row']).some((h) => h.file === 'stack/rules/alfred-quality-gates.md'));
 });
 
-test('rules F10: an in-session pick on a broken build starts at the root-cause habit, in both routers', () =>
+// Audit 2026-10-30 RU-02: the always-on 'Code fails - the FIRST action is the habits-root-cause Skill call' and the routers'
+// resolver ask were two first steps on one red build; the routers now state the one order - the ask, then the load.
+test('rules F10 / RU-02: on a broken build the resolver ask comes first, and an in-session pick starts at the root-cause habit, in both routers', () =>
 {
     for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
     {
         const text = squash(rule(name));
-        assert.ok(text.includes('resolver recommended; an in-session pick starts at the `habits-root-cause` Skill call)'), name);
+        assert.ok(text.includes('resolver recommended) - that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call:'), name);
+        assert.ok(homes(registry()['repair-router-ask-first']).some((h) => h.file === `stack/rules/${name}.md`), `${name}: the order is pinned`);
         assert.ok(text.includes('offer the resolver through AskUserQuestion'), `${name}: the pinned ask stays`);
     }
     const graph = JSON.parse(read('meta/stack-graph.json'));
@@ -336,7 +339,9 @@ test('C22: Angular specs route to angular-testing, EF migrations attach the SQL 
     assert.ok(graph.rules['angular-conventions'].skills.includes('angular-testing'), 'the rule pulls the skill it names');
     // audit 2026-10-14 RU12: nested `Migrations/<Context>/` folders attach too
     assert.deepStrictEqual(pathsOf('sql-conventions'), ['**/*.sql', '**/Migrations/**/*.cs']);
-    assert.match(injected('sql-conventions'), /An EF migration \(`Migrations\/\*\*\/\*\.cs`\) is schema work: the same first action adds the migration-safety skill/);
+    // audit 2026-10-30 RU-15: the cite matches the skill's DESCRIPTION ('Use when running an EF Core migration'), not its body
+    assert.match(injected('sql-conventions'), /An EF migration \(`Migrations\/\*\*\/\*\.cs`\) is schema work: the same first action adds the skill covering running an EF Core migration/);
+    assert.match(read('stack/skills/dotnet-migrate/SKILL.md'), /^description: "Use when running an EF Core migration/m, 'the described skill still says so');
     assert.match(injected('winforms-conventions'), /an EF migration's `\*\.Designer\.cs` \(generated, under `Migrations\/`\) is not WinForms - skip/);
     const md = injected('markdown-docs');
     const carve = md.indexOf('The generated docs root is NOT governed here');
@@ -481,7 +486,10 @@ test('T4 cross-track: every seat\'s START reads the brief\'s docs anchors first,
 test('RU09: the navigation rule leaves the docs route to the session-start block and keeps the no-docs fallback', () =>
 {
     const nav = injected('alfred-navigation');
-    assert.ok(nav.includes('- No docs block at session start means no capture ran: say so once and navigate from code.'), nav);
+    // audit 2026-10-30 RU-14: docs-session.js pushes no block when its part is off, and a header with no capture, so the
+    // absence proves nothing about a capture - the rule keeps only the action.
+    assert.ok(nav.includes('- No docs block at session start: say so once and navigate from code.'), nav);
+    assert.ok(!nav.includes('means no capture ran'), nav);
     assert.ok(!nav.includes('docs.js where'), 'the where / show route is the hook\'s block');
     assert.match(read('stack/hooks/docs-session.js'), /names the sections covering a file; .*show <file>#<id>.* prints one/, 'the hook still carries the route');
 });

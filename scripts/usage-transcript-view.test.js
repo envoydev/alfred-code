@@ -110,7 +110,7 @@ test('usage errors exit 2 with the usage line; a missing transcript or bad json 
 test('the skill: authors on a model named in the dispatch, the reader before any helper script, the spot check in step 5', () => {
   const read = (rel) => fs.readFileSync(path.join(SKILL, rel), 'utf8').replace(/\s+/g, ' ');
   const skill = read('SKILL.md');
-  assert.match(skill, /\*\*Who writes each bundle\.\*\* One session to audit, or no subagent dispatch: write it here\. Two or more: one AUTHOR subagent per bundle, at most six at a time, and never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS`, each on a mid-tier model named in the dispatch \(`model: 'sonnet'` on Claude Code's Agent call\) - never a default seat, which takes this session's model/);
+  assert.match(skill, /\*\*Who writes each bundle\.\*\* One session to audit, or no subagent dispatch: write it here\. Two or more: one AUTHOR subagent per bundle, never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once, each on a mid-tier model named in the dispatch \(`model: 'sonnet'` on Claude Code's Agent call\) - never a default seat, which takes this session's model/);
   assert.match(skill, /\*\*Gather with the reader, never a helper script\.\*\* Each bundle starts with `node <snapshot>\/stack\/skills\/capture-usage-report\/scripts\/transcript-view\.js pack <transcript> <usage json> --out <tmp>\/<sid>-evidence\.md`/);
   assert.match(skill, /It quotes the transcript, so it stays in `<tmp>`, out of the bundle\./);
   assert.match(skill, /The spot check, when authors wrote the bundles: the two with the most flagged moments in their pack/);

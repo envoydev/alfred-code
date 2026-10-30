@@ -407,7 +407,10 @@ test('hook_profile minimal keeps the protective three inside the dispatcher', ()
 
 test('the plugin dispatcher steps aside for a wired copy of itself; the copy judges', () => {
   const dir = project();
-  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/shell-guards.js"', timeout: 80 }] }] } }));
+  // HK-02: a twin is its file on disk, wired on the plugin row's event and every tool of its matcher
+  fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
+  fs.copyFileSync(DISPATCH, path.join(dir, '.claude', 'hooks', 'shell-guards.js'));
+  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell|Monitor', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/shell-guards.js"', timeout: 80 }] }] } }));
   const plugin = run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT } });
   assert.deepStrictEqual(plugin, { status: 0, stdout: '', stderr: '' });
   assert.strictEqual(run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } }).status, 2);
@@ -415,7 +418,9 @@ test('the plugin dispatcher steps aside for a wired copy of itself; the copy jud
 
 test('an old per-guard copy still wired: the plugin dispatcher skips exactly that guard', () => {
   const dir = project();
-  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"', timeout: 10 }] }] } }));
+  fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
+  fs.copyFileSync(path.join(HOOKS, 'guard-catastrophic-rm.js'), path.join(dir, '.claude', 'hooks', 'guard-catastrophic-rm.js'));
+  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell|Monitor', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"', timeout: 10 }] }] } }));
   const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT };
   assert.strictEqual(run(DISPATCH, bashPayload('rm -rf .', dir), { cwd: dir, env }).status, 0, 'the copied twin judges rm, not the plugin');
   assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env }).status, 2, 'every other guard still runs here');
@@ -974,4 +979,39 @@ test('audit 2026-10-21 H5: the zsh test scan stays linear when the openers have 
   assert.ok(ms < 3000, `320,000 openers judged in ${Math.round(ms)}ms`);
   assert.notEqual(r.status, null, 'the dispatcher finished');
   assert.equal(own(dir, '(( 1 == 1 )) && [[ $a == b ]] && echo y', ZSH).command, null, 'a closed test is still left as written');
+});
+
+// audit 2026-10-30 HK-01 (BLOCKER): the sanctioned runner `node <guard> --with-sensitive -- "<command line>"` ran its line
+// through a shell no guard read - `rm -rf ~`, a force push to main, `cat .env`, a write outside the project and an ungated
+// commit all passed. The line is a carried script now: every guard judges it, the masked legitimate use still runs.
+test('audit 2026-10-30 HK-01: the --with-sensitive runner carries its command line to every shell guard', () => {
+  const dir = project('hk01-');
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=sk-live-abcdef1234567890abcdef12\n');
+  const other = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'hk01-other-')));
+  const runner = (line) => `node "${path.join(HOOKS, 'guard-secret-value.js')}" --with-sensitive -- ${line}`;
+  const fire = (command) => run(DISPATCH, bashPayload(command, dir), { env: { CLAUDE_PROJECT_DIR: dir } });
+  const blocked = (command, why, re) => {
+    const r = fire(command);
+    let deny = false;
+    try { deny = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision === 'deny'; } catch { /* exit 2 */ }
+    assert.ok(r.status === 2 || deny, `${why}: ${command}\n${r.stderr}${r.stdout}`);
+    if (re) assert.match(`${r.stderr}${r.stdout}`, re, why);
+  };
+  blocked(runner('"rm -rf ~"'), 'a recursive rm of home', /recursive rm/);
+  blocked(runner('rm -rf ~'), 'the argv form: several words are one command line');
+  blocked(runner("'rm -rf ~'"), 'a single-quoted line');
+  blocked(runner('"git push --force origin main"'), 'a force push to main');
+  blocked(runner('"cat .env"'), 'a raw credential file read: the runner masks only the store values', /with-sensitive/);
+  blocked(runner(`"echo x > ${other}/f.txt"`), 'a write outside the project');
+  blocked(runner('"git commit -am x"'), 'an ungated commit');
+  blocked(`bash -c '${runner('"rm -rf ~"')}'`, 'a runner inside a carried script');
+  blocked(`node ${path.join(HOOKS, 'guard-secret-value.js')} --with-sensitive 'rm -rf ~'`, 'no `--` before the line');
+  // the legitimate, masked use still runs
+  for (const ok of ['"npm run deploy"', '\'curl -s -H "Authorization: Bearer $API_KEY" https://api.example.invalid/x\'', '"node scripts/deploy.js --env prod"', 'psql "$DATABASE_URL" -c "select 1"']) {
+    const r = fire(runner(ok));
+    assert.equal(r.status, 0, `${ok} runs: ${r.stderr}${r.stdout}`);
+    assert.ok(!/permissionDecision":"deny/.test(r.stdout), `${ok} is not denied`);
+  }
+  const rows = ledgerRows(dir).filter((r) => r.detail && r.detail.branch === 'sensitive-runner');
+  assert.ok(rows.length >= 1, 'the runner block writes its own ledger row');
 });

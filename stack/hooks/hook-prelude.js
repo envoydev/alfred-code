@@ -164,28 +164,106 @@ function partOff(hook, part, env)
     });
 }
 
-// Every command string in the settings file, whatever the event and matcher nesting.
-function wiredCommands(settingsFile)
+// Every hook entry in a settings file - its event, its matcher ('' when it has none) and its command - whatever
+// the nesting. A file that does not parse holds none.
+function wiredEntries(settingsFile)
 {
     let parsed;
     try { parsed = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
     catch { return []; }
     const hooks = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.hooks : null;
-    if (!hooks || typeof hooks !== 'object') return [];
+    if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
     const out = [];
-    for (const blocks of Object.values(hooks))
+    for (const [event, blocks] of Object.entries(hooks))
     {
         if (!Array.isArray(blocks)) continue;
         for (const block of blocks)
         {
-            const list = block && Array.isArray(block.hooks) ? block.hooks : [];
-            for (const entry of list) if (entry && typeof entry.command === 'string') out.push(entry.command);
+            if (!block || typeof block !== 'object') continue;
+            const matcher = typeof block.matcher === 'string' ? block.matcher : '';
+            const list = Array.isArray(block.hooks) ? block.hooks : [];
+            for (const entry of list) if (entry && typeof entry.command === 'string') out.push({ event, matcher, command: entry.command });
         }
     }
     return out;
 }
 
-function yieldToCopiedTwin(hook, env)
+// HOW CLAUDE CODE READS A MATCHER (code.claude.com/docs/en/hooks, the matcher table, read 2026-10-30): `*`, '' or none
+// fires on everything; one made only of letters, digits, `_`, `-`, spaces, `,` and `|` is a list of exact names split
+// on `|` or `,`; anything else is a JavaScript regex, unanchored (`RegExp.prototype.test`).
+const MATCH_ALL = (matcher) => matcher === '' || matcher === '*';
+const NAME_LIST_RE = /^[A-Za-z0-9_\- ,|]+$/;
+const namesOf = (matcher) => matcher.split(/[|,]/).map((n) => n.trim()).filter(Boolean);
+function matcherFires(matcher, name)
+{
+    if (MATCH_ALL(matcher)) return true;
+    if (NAME_LIST_RE.test(matcher)) return namesOf(matcher).includes(name);
+    try { return new RegExp(matcher).test(name); }
+    catch { return false; }
+}
+// Do these matchers (one event's twin entries) fire on every call the plugin row fires on? A name list is covered
+// name by name; a regex row only by the same regex or a match-all - no other is known to fire on all it does.
+function covers(matchers, row)
+{
+    if (matchers.some(MATCH_ALL)) return true;
+    if (MATCH_ALL(row)) return false;
+    if (NAME_LIST_RE.test(row)) return namesOf(row).every((name) => matchers.some((m) => matcherFires(m, name)));
+    return matchers.includes(row);
+}
+
+// The rows the core's own entry wires each hook FILE on (its basename, no `.js`): read once per process from the
+// marketplace declaration at the plugin root this prelude ships in - the plugin cache is the whole repo.
+let coreRowsCache = null;
+function coreRows()
+{
+    if (coreRowsCache) return coreRowsCache;
+    const rows = new Map();
+    try
+    {
+        const market = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
+        const core = (Array.isArray(market && market.plugins) ? market.plugins : []).find((p) => p && p.name === CORE_PLUGIN);
+        const hooks = core && core.hooks && typeof core.hooks === 'object' ? core.hooks : {};
+        for (const [event, blocks] of Object.entries(hooks))
+            for (const block of Array.isArray(blocks) ? blocks : [])
+                for (const h of block && Array.isArray(block.hooks) ? block.hooks : [])
+                {
+                    const file = /([\w.-]+)\.js(?=["'\s]|$)/.exec(String((h && h.command) || ''));
+                    if (!file) continue;
+                    const name = file[1].toLowerCase();
+                    if (!rows.has(name)) rows.set(name, []);
+                    rows.get(name).push({ event, matcher: typeof block.matcher === 'string' ? block.matcher : '' });
+                }
+    }
+    catch { /* no declaration: no row, so nothing yields */ }
+    coreRowsCache = rows;
+    return rows;
+}
+
+// The plugin rows THIS run of the hook stands for. A caller that knows its call says so (`{ event, tool }` - the file
+// dispatcher, per call). A guard the plugin's dispatcher runs in its own process stands for that dispatcher's row on the
+// tools the dispatcher runs it for. Any other run is one of the hook's own rows in the core entry, so all of them.
+function pluginRowsOf(wanted, call)
+{
+    if (call && typeof call.event === 'string' && call.event) return [{ event: call.event, matcher: typeof call.tool === 'string' ? call.tool : '' }];
+    const main = require.main;
+    const host = main && typeof main.filename === 'string' ? baseName(path.basename(main.filename)) : '';
+    if (host && host !== wanted && path.dirname(main.filename) === __dirname && (host === 'shell-guards' || host === 'file-guards'))
+    {
+        const ex = main.exports || {};
+        if (host === 'shell-guards') return typeof ex.MATCHER === 'string' ? [{ event: 'PreToolUse', matcher: ex.MATCHER }] : [];
+        const tools = ex.TOOLS instanceof Map ? ex.TOOLS.get(wanted) : null;
+        return Array.isArray(tools) && tools.length ? [{ event: 'PreToolUse', matcher: tools.join('|') }] : [];
+    }
+    return coreRows().get(wanted) || [];
+}
+
+// GATE 2 (HK-02, audit 2026-10-30). The plugin copy yields only to a REAL twin: the copied file on disk at
+// `<project>/.claude/hooks/<hook>.js`, and entries naming it - in settings.json or settings.local.json (a local-scope
+// install, M4, R54) - that cover EVERY plugin row this run stands for: the same event, a matcher firing on each tool
+// the row fires on. A string naming the twin anywhere - any event, matcher `Nothing`, no file - stood every plugin
+// guard down, the dispatchers' protective ones included (replayed: `rm -rf ~`, `git push --force origin main` and a
+// Read of `.env` all passed). Anything unread - no rows, no file, an unparseable settings file - is no twin.
+function yieldToCopiedTwin(hook, env, call)
 {
     const source = env || process.env;
     if (!source || !source.CLAUDE_PLUGIN_ROOT) return false;   // this IS the copied hook
@@ -193,15 +271,19 @@ function yieldToCopiedTwin(hook, env)
     if (!root) return false;
     const wanted = baseName(hook);
     if (!wanted) return false;
+    const hooksDir = path.join(root, '.claude', 'hooks');
+    if (path.resolve(__dirname) === path.resolve(hooksDir)) return false;   // the copy itself, under an inherited plugin root
     const target = (COPIED_PREFIX + wanted + '.js').toLowerCase();
-    // A local-scope install wires its copies in settings.local.json (M4, R54) - both files count.
-    const commands = ['settings.json', 'settings.local.json'].flatMap((name) => wiredCommands(path.join(root, '.claude', name)));
-    for (const command of commands)
+    const twins = ['settings.json', 'settings.local.json'].flatMap((name) => wiredEntries(path.join(root, '.claude', name))).filter(({ command }) =>
     {
         const clean = command.replace(/"/g, '').trim().toLowerCase();
-        if (clean === target || clean.startsWith(target + ' ')) return true;
-    }
-    return false;
+        return clean === target || clean.startsWith(target + ' ');
+    });
+    if (!twins.length) return false;
+    try { if (!fs.statSync(path.join(hooksDir, `${wanted}.js`)).isFile()) return false; }
+    catch { return false; }
+    const rows = pluginRowsOf(wanted, call);
+    return rows.length > 0 && rows.every((row) => covers(twins.filter((t) => t.event === row.event).map((t) => t.matcher), row.matcher));
 }
 
 const CORE_PLUGIN = 'alfred-code';
@@ -368,7 +450,11 @@ function approvalStamp(input, env, planId)
                 catch { /* no transcript - the age cap decides */ }
             }
         }
-        return { file, first, session, skill, live, mtimeMs: stamp.mtimeMs };
+        // The root AUTO stamp is the user's waiver only where the transcript shows the user typing it (audit 2026-10-30
+        // HK-03): a stamp the model wrote by hand opened the dispatch gate and the stop contract's ask answering. A plan's
+        // own stamp is a workflow gate and keeps the rule above.
+        const verified = !live || planId || !/^AUTO\b/.test(first) ? true : autoStampVerified({ file, text, first, session, mtimeMs: stamp.mtimeMs }, payload);
+        return { file, first, session, skill, live: live && verified, mtimeMs: stamp.mtimeMs };
     }
     catch { return null; }
 }
@@ -376,6 +462,340 @@ function autoStampLive(input, env)
 {
     const stamp = approvalStamp(input, env);
     return Boolean(stamp && stamp.live && /^AUTO\b/.test(stamp.first));
+}
+
+// --- RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings) ---------------------------------------------------
+// A receipt under <data root>/state/approvals/ is a file the model can write, so its content alone is no consent. Two
+// readers every receipt guard shares:
+// - readReceiptFile: the lines (no blank, `#` or `session:` line) and whether the file is live for THIS call - under 8h,
+//   not older than the transcript (a birthtime equal to the ctime is a filesystem's fallback, unknown) and, where the call
+//   names its session, carrying a `session: <id>` line naming it (HK-16; the secret guard's rule since audit 2026-10-08).
+// - receiptAnswered: for the four SECURITY receipts (SECRET-READ, DISCARD, DESKTOP-EXEC, CROSS-WRITE) the transcript must
+//   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label - the
+//   result of an AskUserQuestion call in this transcript, never an `answers`-shaped result of another tool (FA-4) - and
+//   given while auto-run was off - judged at the answer's place: a typed family command whose leading run turns auto-run
+//   on (modeFlags) puts every later answer under auto-run until a typed off-flag, so deleting the stamp or typing the
+//   off-flag afterwards opens nothing. The stamp and the `auto-answer` ledger row never decide it. A denial raised in a
+//   seat (`agent_id`) is anchored at its time in the seat's own transcript, and the answer must land after it.
+// A payload with no transcript (a CLI run, a test fixture) keeps the time rule alone: every real session carries one.
+const RECEIPT_MAX_MS = 8 * 60 * 60 * 1000;
+const RECEIPT_SESSION_RE = /^session:[ \t]*(\S+)[ \t]*$/;
+const SCAN_CHUNK = 4 * 1024 * 1024;
+const ROW_PARSE_MAX = 4 * 1024 * 1024;
+// Every line of `file` that holds one of `needles`, in file order: onLine(lineBuffer, byteOffset). A needle is searched in
+// the raw bytes and only a line it hits is handed on, so a long transcript costs its read and no per-line work. `from`
+// starts the read at a line's first byte.
+function linesWith(file, needles, onLine, from = 0)
+{
+    let fd;
+    try
+    {
+        fd = fs.openSync(file, 'r');
+        const size = fs.fstatSync(fd).size;
+        const keys = needles.map((n) => Buffer.from(n));
+        const chunk = Buffer.alloc(Math.min(SCAN_CHUNK, Math.max(1, size - from)));
+        let carry = Buffer.alloc(0);
+        let base = from;
+        let pos = from;
+        while (pos < size)
+        {
+            const n = fs.readSync(fd, chunk, 0, Math.min(chunk.length, size - pos), pos);
+            if (n <= 0) break;
+            pos += n;
+            const buf = carry.length ? Buffer.concat([carry, chunk.subarray(0, n)]) : chunk.subarray(0, n);
+            const end = pos >= size ? buf.length : buf.lastIndexOf(10) + 1;
+            const starts = new Set();
+            for (const key of keys)
+            {
+                let at = buf.indexOf(key);
+                while (at !== -1 && at < end)
+                {
+                    starts.add(at === 0 ? 0 : buf.lastIndexOf(10, at - 1) + 1);
+                    const nl = buf.indexOf(10, at);
+                    at = nl === -1 ? -1 : buf.indexOf(key, nl + 1);
+                }
+            }
+            for (const s of [...starts].sort((a, b) => a - b))
+            {
+                const nl = buf.indexOf(10, s);
+                onLine(buf.subarray(s, nl === -1 || nl > end ? end : nl), base + s);
+            }
+            carry = Buffer.from(buf.subarray(end));
+            base += end;
+        }
+    }
+    catch { /* an unreadable file is read as far as it went */ }
+    finally { if (fd !== undefined) try { fs.closeSync(fd); } catch { /* closed */ } }
+}
+const rowOf = (line) => { if (line.length > ROW_PARSE_MAX) return null; try { return JSON.parse(line.toString('utf8')); } catch { return null; } };
+const contentText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && typeof p.text === 'string' ? p.text : typeof p === 'string' ? p : '')).join('\n') : '');
+// The text of a turn the user TYPED: a user row, never a meta row (a skill body, an expansion), a compaction summary or a
+// sidechain row (both the model's words - the final review of 2026-10-30 FA-2: `AUTO - "Pending Tasks"` was proven by a
+// summary), a tool result (an ask's answer is the harness's row) or a harness prompt (a task notice, a command's output, a
+// seat's hand-back). The tagged `<command-name>` / `<command-args>` row of a typed command is the user's.
+function typedRowText(row)
+{
+    if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary || row.isSidechain) return '';
+    const c = row.message && row.message.content;
+    if (Array.isArray(c) && c.some((x) => x && x.type === 'tool_result')) return '';
+    const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+    return text.trim() && !harnessPrompt(text) ? text : '';
+}
+// 'on' / 'off' when a typed line's leading run switches auto-run (the one parser), else null.
+const autoEventOf = (text) => { const f = modeFlags(text); return f.family && f.autoRun ? f.autoRun : null; };
+const normLabel = (t) => String(t).replace(/\s*\(recommended\)\s*$/i, '').replace(/["'“‘”’]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+const tsOfRow = (row) => { const t = Date.parse(row && row.timestamp); return Number.isFinite(t) ? t : 0; };
+// An answered ask's labels (each answer and its comma-split parts), or null for no answer row or one the idle timeout closed.
+function answerLabelsOf(row)
+{
+    const result = row && row.toolUseResult;
+    const answers = result && typeof result === 'object' ? result.answers : null;
+    if (!answers || typeof answers !== 'object' || askTimedOut(result)) return null;
+    const labels = [];
+    for (const a of Object.values(answers)) for (const one of [a, ...String(a).split(/,\s*/)]) if (normLabel(one)) labels.push(normLabel(one));
+    return labels.length ? labels : null;
+}
+// A hook's denial naming `marker` (exit 2 or a deny: an error tool result), or false.
+function deniedIn(row, marker)
+{
+    const c = row && row.type === 'user' && row.message && row.message.content;
+    return Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.is_error === true && contentText(b.content).includes(marker));
+}
+const ANSWER_NEEDLE = '"answers":';
+const AUTO_NEEDLE = 'mode-auto-run';
+// An AskUserQuestion call in an assistant row, as Claude Code serializes it (compact JSON, the needles above alike).
+const ASK_NEEDLE = '"name":"AskUserQuestion"';
+const isTypedCandidate = (line) => line.includes('"type":"user"') && !line.includes('"tool_result"');
+// 'on' / 'off' when a transcript line is a typed row switching auto-run, else null: the one typed-flag read every judge of
+// auto-run shares. With `session`, a row naming another session is none.
+function typedAutoEvent(line, session)
+{
+    if (!line.includes(AUTO_NEEDLE) || !isTypedCandidate(line)) return null;
+    const row = rowOf(line);
+    if (!row || (session && row.sessionId && row.sessionId !== session)) return null;
+    return autoEventOf(typedRowText(row));
+}
+// An answer is the user's only as the result of an AskUserQuestion call (the final review of 2026-10-30 FA-4: an
+// `answers`-shaped result under another tool's id opened a receipt). The ids of the AskUserQuestion calls an assistant row
+// makes, and the ids a user row's tool results answer.
+const askCallIds = (row) => { const c = row && row.type === 'assistant' && row.message && row.message.content;
+    return Array.isArray(c) ? c.filter((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && typeof b.id === 'string').map((b) => b.id) : []; };
+const resultIds = (row) => { const c = row && row.type === 'user' && row.message && row.message.content;
+    return Array.isArray(c) ? c.filter((b) => b && b.type === 'tool_result' && typeof b.tool_use_id === 'string').map((b) => b.tool_use_id) : []; };
+function readReceiptFile(file, input)
+{
+    try
+    {
+        const payload = input && typeof input === 'object' ? input : {};
+        const st = fs.statSync(file);
+        if (!st.isFile()) return null;
+        const all = fs.readFileSync(file, 'utf8').split(/\r?\n/).map((l) => l.trim());
+        const sessions = all.map((l) => RECEIPT_SESSION_RE.exec(l)).filter(Boolean).map((m) => m[1]);
+        const lines = all.filter((l) => l && !l.startsWith('#') && !/^session:/.test(l));
+        let born = 0;
+        try
+        {
+            const t = fs.statSync(String(payload.transcript_path || ''));
+            born = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
+        }
+        catch { born = 0; }
+        const sid = typeof payload.session_id === 'string' ? payload.session_id : '';
+        const why = Date.now() - st.mtimeMs > RECEIPT_MAX_MS ? 'it is stale - older than 8h'
+            : born && st.mtimeMs < born ? 'it is stale - written before this session began'
+                : sid && !sessions.includes(sid) ? (sessions.length ? 'its session: line names another session' : 'it has no session: line naming this session') : '';
+        return { file, lines, sessions, live: !why, why, mtimeMs: st.mtimeMs };
+    }
+    catch { return null; }
+}
+// Whether the user answered this guard's last denial with its allow label, auto-run off (see above). `labels` holds the
+// allow label(s), each a string or a RegExp tested on the normalized answer; `marker` is text every denial of the guard
+// carries (its receipt's file name).
+function receiptAnswered(input, spec)
+{
+    const payload = input && typeof input === 'object' ? input : {};
+    const tp = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
+    let isFile = false;
+    try { isFile = tp !== '' && fs.statSync(tp).isFile(); } catch { isFile = false; }
+    if (!isFile) return { ok: true, why: '' };
+    const marker = String(spec && spec.marker || '');
+    const wants = ((spec && spec.labels) || []).map((l) => (l instanceof RegExp ? l : normLabel(l)));
+    const carries = (labels) => labels.some((l) => wants.some((w) => (w instanceof RegExp ? w.test(l) : w === l)));
+    let seatAt = 0;
+    if (payload.agent_id)
+    {
+        const seatFile = typeof payload.agent_transcript_path === 'string' && payload.agent_transcript_path ? payload.agent_transcript_path
+            : path.join(path.dirname(tp), path.basename(tp, '.jsonl'), 'subagents', `agent-${String(payload.agent_id).replace(/[^\w-]/g, '')}.jsonl`);
+        linesWith(seatFile, [marker], (line) =>
+        {
+            if (!line.includes('"is_error":true')) return;
+            const row = rowOf(line);
+            if (deniedIn(row, marker)) seatAt = tsOfRow(row) || Infinity;
+        });
+    }
+    let auto = false;
+    let lastDenial = -1;
+    const answers = [];
+    const asks = new Set();
+    linesWith(tp, [marker, ANSWER_NEEDLE, AUTO_NEEDLE, ASK_NEEDLE], (line, at) =>
+    {
+        const ev = typedAutoEvent(line, '');
+        if (ev) auto = ev === 'on';
+        if (line.includes(ASK_NEEDLE)) for (const id of askCallIds(rowOf(line))) asks.add(id);
+        if (line.includes(marker) && line.includes('"is_error":true') && deniedIn(rowOf(line), marker)) lastDenial = at;
+        if (line.includes(ANSWER_NEEDLE) && line.includes('"toolUseResult"'))
+        {
+            const row = rowOf(line);
+            const labels = answerLabelsOf(row);
+            if (labels) answers.push({ at, ts: tsOfRow(row), labels, auto, ids: resultIds(row) });
+        }
+    });
+    const hits = answers.filter((a) => a.ids.some((id) => asks.has(id)) && (seatAt ? a.ts > seatAt : a.at > lastDenial) && carries(a.labels));
+    if (hits.some((a) => !a.auto)) return { ok: true, why: '' };
+    return { ok: false, why: hits.length ? 'the allow answer was given while auto-run was on, which answers its own asks'
+        : `no ask answered with the allow label after ${seatAt ? 'this seat\'s' : 'this guard\'s'} last denial in this session` };
+}
+// A security receipt: readReceiptFile, live only when receiptAnswered also holds. null when absent.
+function securityReceipt(file, input, spec)
+{
+    const r = readReceiptFile(file, input);
+    if (!r || !r.live) return r;
+    const a = receiptAnswered(input, spec);
+    return a.ok ? r : { ...r, live: false, why: a.why, autoRun: /auto-run/.test(a.why) };
+}
+// The lines a denial tells the model to write, its `session:` line first (HK-16), indented for the denial's text.
+function receiptLinesText(input, lines)
+{
+    const payload = input && typeof input === 'object' ? input : {};
+    const sid = typeof payload.session_id === 'string' && /^[\w.-]{1,128}$/.test(payload.session_id) ? payload.session_id : '';
+    return [sid ? `session: ${sid}` : 'session: <this session id - $CLAUDE_CODE_SESSION_ID>', ...lines].map((l) => `  ${l}\n`).join('');
+}
+// The sentence a denial adds when a receipt is there but shut, or ''.
+function receiptShutText(r, rel)
+{
+    if (!r || r.live) return '';
+    return `The receipt at ${rel} is not honoured: ${r.why}.` + (r.autoRun
+        ? ' Under auto-run this gate is a hard stop: it opens only on the user\'s own answer, given with auto-run off (`--mode-auto-run-off`).'
+        : ' Rewrite it only on a fresh answer.') + '\n';
+}
+
+// The AUTO stamp's proof (HK-03). A stamp the start hook wrote names its session and records the transcript's size when
+// it was written (`transcript-size:`); it counts when a typed row turning auto-run on sits near that offset - the prompt
+// row lands just before the hook on some builds and just after it on others, and the model's Skill route writes it up to
+// lastTypedPrompt's 4MB tail after the row - read by position - AND no typed row turns auto-run off after the newest such
+// row (the final review of 2026-10-30 FA-1: a stamp the model rewrote over an old on-row, after the user typed the
+// off-flag, got the model's own SHOW ask answered and opened the secret receipt). The off read is receiptAnswered's
+// typed-flag read from that row to the end, and an off-row of any session in this file counts.
+// Its quoted words are the typed line's or, on the Skill route, the model's args, so they are never matched. A stamp with
+// no `session:` line is task-solve's hand-written waiver: its quoted words (the text after `AUTO -` when unquoted;
+// whitespace collapsed, double quotes single, the first 400 characters, at least 8 - a shorter quote matches any turn)
+// must appear in a turn the user typed in this session, letter case aside, or the user answered 'Start AUTO here' to an
+// AskUserQuestion with auto-run off - never a Skill call alone (the 2026-10-14 ruling 'narrow to a typed user turn'). No
+// transcript: the time rule alone, as before. A proof is kept per stamp and transcript size within one process.
+// 200MB measured: the positioned read 5ms, the off read from an on-row at the start about 95ms (paid only while a
+// session-named stamp is live), the hand-written scan 125ms, receiptAnswered 135ms.
+const AUTO_NEAR = 64 * 1024;
+const AUTO_WINDOW = 5 * 1024 * 1024;
+const AUTO_WORDS_MIN = 8;
+const autoProofs = new Map();
+const normWords = (s) => String(s).replace(/\s+/g, ' ').trim().replace(/"/g, "'");
+// Whether a typed row turns auto-run off anywhere in `file` from byte `from` (a line's first byte) on.
+function typedAutoOffFrom(file, from)
+{
+    let off = false;
+    linesWith(file, [AUTO_NEEDLE], (line) => { if (!off && typedAutoEvent(line, '') === 'off') off = true; }, from);
+    return off;
+}
+function typedAutoOnNear(file, offset, session)
+{
+    let fd;
+    try
+    {
+        fd = fs.openSync(file, 'r');
+        const size = fs.fstatSync(fd).size;
+        let judged = -1;
+        for (const span of [AUTO_NEAR, AUTO_WINDOW])
+        {
+            const from = Math.max(0, offset - span);
+            const to = Math.min(size, offset + span);
+            if (to <= from) continue;
+            const buf = Buffer.alloc(to - from);
+            const n = fs.readSync(fd, buf, 0, buf.length, from);
+            const view = buf.subarray(0, n);
+            // the newest whole typed on-row of this session in the span, as the byte just past it
+            let newest = -1;
+            let at = view.indexOf(AUTO_NEEDLE);
+            while (at !== -1)
+            {
+                const prev = at === 0 ? -1 : view.lastIndexOf(10, at - 1);
+                const nl = view.indexOf(10, at);
+                const whole = (prev !== -1 || from === 0) && (nl !== -1 || from + n >= size);
+                const line = view.subarray(prev + 1, nl === -1 ? n : nl);
+                if (whole && typedAutoEvent(line, session) === 'on') newest = nl === -1 ? from + n : from + nl + 1;
+                at = nl === -1 ? -1 : view.indexOf(AUTO_NEEDLE, nl + 1);
+            }
+            if (newest > judged)
+            {
+                judged = newest;
+                if (!typedAutoOffFrom(file, newest)) return true;
+            }
+        }
+        return false;
+    }
+    catch { return false; }
+    finally { if (fd !== undefined) try { fs.closeSync(fd); } catch { /* closed */ } }
+}
+function typedWordsOrStart(file, words)
+{
+    const want = words.toLowerCase();
+    let auto = false;
+    let found = false;
+    const asks = new Set();
+    linesWith(file, ['"type":"user"', ANSWER_NEEDLE, ASK_NEEDLE], (line) =>
+    {
+        if (found) return;
+        if (line.includes(ASK_NEEDLE)) for (const id of askCallIds(rowOf(line))) asks.add(id);
+        if (isTypedCandidate(line))
+        {
+            const text = typedRowText(rowOf(line));
+            if (!text) return;
+            const ev = autoEventOf(text);
+            if (ev) auto = ev === 'on';
+            const tagged = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(text);
+            const asLine = tagged ? `/${tagged[1]} ${(/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || ''}` : '';
+            if ([text, asLine].some((t) => t && normWords(t).toLowerCase().includes(want))) found = true;
+            return;
+        }
+        if (line.includes('"toolUseResult"'))
+        {
+            const row = rowOf(line);
+            const labels = answerLabelsOf(row);
+            if (labels && !auto && labels.some((l) => l.startsWith('start auto here')) && resultIds(row).some((id) => asks.has(id))) found = true;
+        }
+    });
+    return found;
+}
+function autoStampVerified(stamp, payload)
+{
+    const tp = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
+    let size = -1;
+    try { const st = tp !== '' ? fs.statSync(tp) : null; size = st && st.isFile() ? st.size : -1; } catch { size = -1; }
+    if (size < 0) return true;
+    const key = `${stamp.file}|${stamp.mtimeMs}|${tp}|${size}`;
+    if (autoProofs.has(key)) return autoProofs.get(key);
+    let ok = false;
+    if (stamp.session)
+    {
+        const offset = Number((/^transcript-size:[ \t]*(\d+)/m.exec(stamp.text) || [])[1]);
+        ok = Number.isFinite(offset) && typedAutoOnNear(tp, offset, stamp.session);
+    }
+    else
+    {
+        const quoted = /^AUTO\b[^"]*"([\s\S]*)"\s*$/.exec(stamp.first);
+        const words = normWords(quoted ? quoted[1] : stamp.first.replace(/^AUTO\b\s*-?\s*/, '')).slice(0, 400);
+        ok = words.length >= AUTO_WORDS_MIN && typedWordsOrStart(tp, words);
+    }
+    autoProofs.set(key, ok);
+    return ok;
 }
 
 // --- the mode flags (stack-modes spec section 1): ONE parser every reader of a mode calls -------------------------
@@ -692,12 +1112,12 @@ function cursorStandDown(input, file, argv)
 // The one call every hook makes: true means do nothing at all, exit 0, print nothing. `setUp: false` skips
 // GATE 4 alone - for a hook that keeps one check live in a repo never set up and reads neverSetUp() itself
 // (the dispatch guard's implementer gate, M9).
-function standDown(hook, env, argv, { setUp = true } = {})
+function standDown(hook, env, argv, { setUp = true, call } = {})
 {
     try
     {
         if (isCliInvocation(argv)) return false;
-        return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env)
+        return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env, call)
             || (setUp && neverSetUp(env) && !PROTECTIVE.has(baseName(hook)));
     }
     catch { return false; }
@@ -1309,4 +1729,4 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };

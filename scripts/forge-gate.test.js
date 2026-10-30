@@ -237,3 +237,32 @@ test('a push from a worktree is ledgered where the main checkout\'s ref watch re
   assert.strictEqual(r.status, 0, r.stderr);
   assert.deepStrictEqual(acts(dir).map((a) => a.ref), ['feat/wt']);
 });
+
+// Audit 2026-10-30 (hooks report, the threat table's low row): `gh pr create` was never gated, while it pushes the current
+// branch when that is not on a remote yet (cli.github.com/manual/gh_pr_create: 'When the current branch isn't fully pushed
+// to a git remote, a prompt will ask where to push the branch'; `--dry-run` 'May still push git changes'). Opening a change
+// request is gated only where it can push: a branch ahead of its upstream or on no remote; `--head` skips the push.
+test('opening a change request from a branch no remote holds needs the publish receipt; a pushed branch or --head passes', () => {
+  const { dir, git } = pushRepo();
+  git('checkout', '-qb', 'feat/x');
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  for (const cmd of ['gh pr create --fill', 'gh pr create --dry-run --fill', 'glab mr create --fill --push', 'git commit -qam y && gh pr create --fill']) {
+    const r = run(dir, bash(cmd));
+    assert.strictEqual(r.status, 2, `${cmd}: an unpushed branch goes out with it\n${r.stderr}`);
+    assert.match(r.stderr, /PUSH-GATE/);
+  }
+  assert.strictEqual(run(dir, bash('gh pr create --head feat/x --fill')).status, 0, '--head skips the push');
+  assert.strictEqual(run(dir, bash('gh api repos/o/r/pulls -X POST -f head=feat/x')).status, 0, 'the API route pushes nothing');
+  git('push', '-q', 'origin', 'feat/x');
+  assert.strictEqual(run(dir, bash('gh pr create --fill')).status, 0, 'pushed with no upstream set: a remote branch of its name holds HEAD');
+  git('branch', '-q', '--set-upstream-to', 'origin/feat/x');
+  assert.strictEqual(run(dir, bash('gh pr create --fill')).status, 0, 'level with its upstream');
+  fs.writeFileSync(path.join(dir, 'c.txt'), 'c\n');
+  git('add', '-A'); git('commit', '-qm', 'c');
+  assert.strictEqual(run(dir, bash('gh pr create --fill')).status, 2, 'one commit ahead of its upstream');
+  receipt(dir, headOf(dir));
+  const ok = run(dir, bash('gh pr create --fill'));
+  assert.strictEqual(ok.status, 0, ok.stderr);
+  assert.deepStrictEqual(acts(dir).map((a) => a.concept), ['change.create'], 'and the act is ledgered for the ref watch');
+});

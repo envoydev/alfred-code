@@ -35,7 +35,7 @@ Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas b
 
 - N+1 comes from lazy-loading an association inside a loop, or querying per item. Fix by fetching in one query (eager fetch) or a single set query over the id list, not a call per id.
 - Multiple eager collection fetches cause a cartesian explosion (rows multiply). Prefer **projection** (below); otherwise split into multiple queries (EF `AsSplitQuery`, NH futures) - see the reference.
-- **Read the generated SQL, do not infer it.** Log or capture the statements for the changed read and quote the statement count: one query, not one per row. A fixed N+1 that was never counted is a claimed fix. For a write or bulk path, run the test that covers it and quote its result line.
+- **Read the generated SQL, do not infer it.** A fixed N+1 that was never counted is a claimed fix - the proof is the `## Prove it` steps below.
 
 ## Projection and read models
 
@@ -64,3 +64,10 @@ Mutate set-based, not load-loop-save - one statement, no materialization. The co
 
 - Full ORM (EF Core / NHibernate) for CRUD, validation-focused and domain-heavy writes; a micro-ORM (Dapper) for complex reads, reporting, and bulk. They coexist in one project - ORM for writes, Dapper for reads.
 - Dapper read store: inject a pooled `DbDataSource` (`NpgsqlDataSource` on Postgres), open a connection per call, map an internal row type to a domain DTO by hand. Parent + children in one round trip: `QueryMultipleAsync` returns both result sets, then stitch in memory - never materialize two tables and join them in C# (push the join into SQL; shaping it engine-side is the Postgres engine skill's).
+
+## Prove it
+
+A changed read is done only when its SQL was counted, never inferred. Before any done word:
+
+1. Capture the SQL the changed read issues - EF Core's `LogTo(Console.WriteLine, LogLevel.Information)` or `ToQueryString()`, NHibernate's `show_sql` or a profiler - and quote the statement count before and after: one query, not one per row.
+2. Run the test that covers the read, or for a write or bulk path the one that covers that path, with `dotnet test -v minimal` and quote its summary line.

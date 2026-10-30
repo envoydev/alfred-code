@@ -1403,7 +1403,8 @@ test("guard-secret-value: a block ends in an ask, and the user's allow is honour
       assert.equal(bash(`echo 'TOKEN=${'ghp_' + 'A'.repeat(24)}' >> ${path.join(f.dir, '.env')}`), 2, `${JSON.stringify(body)}: the literal check stands`);
       const other = run({ tool_name: 'Read', tool_input: { file_path: f.secret }, session_id: 'suite' });
       assert.equal(other.status, 2);
-      assert.match(other.stderr, /stale \(older than 8h, from before this session, or naming another\)/);
+      // T1's leftover (audit 2026-10-30): the denial names the receipt's own reason, never a list of three
+      assert.match(other.stderr, body === '*\n' ? /does not count \(it has no session: line naming this session\)/ : /does not count \(its session: line names another session\)/);
     }
     fs.writeFileSync(receipt, 'session: other\nsession: suite\n*\n');
     assert.equal(bash(`cat ${f.dotenv}`), 0, 'a receipt may name several sessions');
@@ -1412,7 +1413,7 @@ test("guard-secret-value: a block ends in an ask, and the user's allow is honour
     const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(receipt, old, old);
     const aged = run({ tool_name: 'Read', tool_input: { file_path: f.secret }, session_id: 'suite' });
     assert.equal(aged.status, 2, 'a 9h-old receipt is absent');
-    assert.match(aged.stderr, /stale/, 'and the denial says so');
+    assert.match(aged.stderr, /does not count \(it is stale - older than 8h\)/, 'and the denial says so');
     assert.match(cli('--redacted', f.secret).stdout, /stale/, 'the redacted view says so too');
   } finally {
     fs.rmSync(receipt, { force: true });
@@ -2878,4 +2879,170 @@ test('both store names are all-secret; the project\'s own .secrets passes, the d
   for (const cmd of ['act --secret-file .secrets', 'docker run --env-file .secrets img', 'cp .secrets.example .secrets', 'git rm --cached .secrets'])
     assert.notStrictEqual(at(cmd), 2, cmd);
   assert.strictEqual(at('tar cf - .'), 2, 'a tree above the data-root store is still refused');
+});
+
+test('HK-04: $PWD names where the shell stands however it is spelled - quoted in pieces, assigned, after a cd', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk04-'));
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=abc123\n');
+  fs.writeFileSync(path.join(dir, 'README.md'), '# readme\n');
+  fs.mkdirSync(path.join(dir, 'sub'));
+  const at = (command, cwd = dir) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }));
+  for (const c of ['cat $PWD/.env', 'cat "$PWD/.env"', 'cat "$PWD"/.env', 'cat "${PWD}"/.env', 'grep KEY "$PWD"/.env', 'head -5 "$PWD"/.env',
+    'f=$PWD/.env; cat $f', 'f="$PWD"/.env; cat "$f"', 'D=$PWD; cat $D/.env', 'cat "$(pwd)"/.env', 'for f in "$PWD"/.env; do cat "$f"; done'])
+    assert.notStrictEqual(at(c), 0, c);
+  // a followed cd moves $PWD: from sub, `cd ..` lands on the folder holding the file
+  assert.notStrictEqual(at('cd .. && cat $PWD/.env', path.join(dir, 'sub')), 0, 'cd .. && cat $PWD/.env (from sub)');
+  assert.notStrictEqual(at('cd sub && cat "$PWD"/../.env'), 0, 'cd sub && cat "$PWD"/../.env');
+  // the legitimate twins: another file, a listing, a print of the path, and no file where the shell stands
+  for (const c of ['cat "$PWD"/README.md', 'ls "$PWD"', 'echo "$PWD"/.env', 'f="$PWD"/README.md; cat "$f"'])
+    assert.strictEqual(at(c), 0, c);
+  assert.strictEqual(at('cat "$PWD"/.env', path.join(dir, 'sub')), 0, 'no .env in sub');
+  assert.strictEqual(at('cd sub && cat "$PWD"/.env'), 0, 'cd sub moves $PWD off the file');
+});
+
+test('HK-05: env and printenv with their printing options, a ps that shows the environment and /proc/*/environ are dumps', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk05-'));
+  const raw = (command) => run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir });
+  const at = (command) => verdict(raw(command));
+  // the masked listing in place, its own options and filter kept
+  for (const c of ['env -0', 'env --null', 'env -u HOME', 'env --unset=HOME', 'env -uHOME', 'env -u HOME -0', 'printenv -0', 'printenv --null', 'env -v', 'sudo env -0'])
+    assert.strictEqual(at(c), REWRITE, c);
+  const nul = updatedCommand(raw("env -0 | tr '\\0' '\\n'"));
+  assert.ok(nul && /--redacted-env\b.*\| tr '\\0' '\\n'$/.test(nul), `env -0 | tr: the view, the filter kept (${nul})`);
+  // the view keeps env's NUL separator when it was asked for
+  const view = spawnSync(process.execPath, [HOOK, '--redacted-env', '-0'], { encoding: 'utf8', env: { PATH: process.env.PATH, HK05_PLAIN: 'one', HK05_API_TOKEN: FAKE_TOKEN } });
+  assert.ok(view.stdout.includes('HK05_PLAIN=one\0'), 'NUL-separated with -0');
+  assert.ok(!view.stdout.includes(FAKE_TOKEN), 'the credential masked');
+  // the process table with environments, and a process's environ file: no masked form, so refused
+  for (const c of ['ps eww $$', 'ps e', 'ps axe', 'ps -E -p $$', 'ps auxeww', 'cat /proc/self/environ', "tr '\\0' '\\n' < /proc/1/environ",
+    'strings /proc/$$/environ', 'xargs -0 -n1 < /proc/self/environ', 'cat /proc/*/environ', 'sort -z /proc/self/environ'])
+    assert.strictEqual(at(c), 2, c);
+  // ${!name} prints the value of the variable a name holds; launchctl getenv prints one variable like printenv
+  assert.strictEqual(at('for v in $(compgen -e); do echo "$v=${!v}"; done'), REWRITE, 'an indirect print of every variable');
+  assert.notStrictEqual(at('launchctl getenv API_TOKEN'), 0, 'launchctl getenv of a credential name');
+  // the legitimate twins: env running a command, printenv of one plain name, ps without the environment, a look at /proc
+  for (const c of ['env -u NODE_OPTIONS node --version', 'env -i PATH=/usr/bin ls', 'env -0 true', 'env FOO=1 make', 'printenv HOME',
+    'ps aux', 'ps -ef', 'ps -e', 'ps -o pid,comm -p $$', 'ps -o pid,etime -p $$', 'ps -p $$ -o command', 'ls /proc/self/fd', 'cat /proc/cpuinfo',
+    'test -r /proc/self/environ && echo yes', 'ls -l /proc/self/environ', 'launchctl getenv HOME', 'echo "${!prefix@}"'])
+    assert.strictEqual(at(c), 0, c);
+});
+
+test('HK-06: the one print-verb table (shuf, vis, join, a compressor to stdout) prints a credential file as its masked view', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk06-'));
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=abc123def456\nDB_HOST=localhost\n');
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'b\na\n');
+  const raw = (command) => run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir });
+  for (const c of ['shuf .env', 'shuf -n 1 .env', 'vis .env', 'join -t= -v1 .env /dev/null', 'gzip -c .env | gunzip', 'gzip -9c .env | zcat', 'xz -c .env | xz -dc', 'bzip2 -c .env | bunzip2']) {
+    const r = raw(c);
+    assert.strictEqual(verdict(r), REWRITE, c);
+    // gzip is on every runner (Git Bash too); the other pipelines are judged, not run
+    if (!/^gzip/.test(c)) continue;
+    const out = spawnSync('sh', ['-c', updatedCommand(r)], { cwd: dir, encoding: 'utf8' });
+    assert.ok(!(out.stdout + out.stderr).includes('abc123def456'), `${c}: the value printed`);
+    assert.match(out.stdout, /API_KEY=<set \(12 chars\)>/, `${c}: the masked view comes through the pipeline (${out.stdout} ${out.stderr})`);
+  }
+  // the legitimate twins: the same verbs on a clean file, a compressor writing a file, shuf's own words
+  for (const c of ['shuf notes.txt', 'vis notes.txt', 'join notes.txt notes.txt', 'gzip -c notes.txt | gunzip', 'gzip -k .env', 'shuf -e a b c', 'shuf -i 1-5', 'gzip -c .env > out.gz'])
+    assert.strictEqual(verdict(raw(c)), 0, c);
+});
+
+test('HK-07: a credential file past 512KB is judged by its first 512KB, and a Read window by the lines it asks for', () => {
+  const MAX = 512 * 1024;
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk07-'));
+  const LINE = 'PLAIN_SETTING=value-value-value\n';
+  // a dotenv of exactly `bytes` bytes: `first` on line 1, filler lines, `last` as the final line
+  const sized = (name, bytes, first, last = '') => {
+    const parts = [first];
+    let n = first.length;
+    while (n + LINE.length + last.length + 64 < bytes) { parts.push(LINE); n += LINE.length; }
+    parts.push(last);
+    n += last.length;
+    parts.push(`#${'x'.repeat(bytes - n - 2)}\n`);
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, parts.join(''));
+    assert.strictEqual(fs.statSync(file).size, bytes, name);
+    return file;
+  };
+  const env = { CLAUDE_PROJECT_DIR: dir };
+  const readAt = (file, extra = {}) => run({ tool_name: 'Read', tool_input: { file_path: file, ...extra }, cwd: dir, session_id: 'suite' }, env).status;
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, env));
+  // the boundary: one byte under, exactly at, one byte over the cap - the key on line 1 is judged in all three
+  for (const [name, bytes] of [['under.env', MAX - 1], ['at.env', MAX], ['over.env', MAX + 1]]) {
+    const file = sized(name, bytes, 'API_KEY=abc123def456\n');
+    assert.strictEqual(readAt(file), 2, `Read ${name} (${bytes} bytes)`);
+    assert.strictEqual(at(`cat ${name}`), REWRITE, `cat ${name}`);
+    assert.strictEqual(at(`head -5 ${name}`), REWRITE, `head -5 ${name}`);
+  }
+  // the rewritten view of a big file prints no value, and says why there is no view
+  const big = run({ tool_name: 'Bash', tool_input: { command: 'cat over.env' }, cwd: dir, session_id: 'suite' }, env);
+  const shown = spawnSync('sh', ['-c', updatedCommand(big)], { cwd: dir, encoding: 'utf8' });
+  assert.ok(!(shown.stdout + shown.stderr).includes('abc123def456'), 'the view of a big file printed the value');
+  assert.match(shown.stdout + shown.stderr, /larger than 524288 bytes - no redacted view/, 'the big-file note');
+  // the Grep tool, named file and tree walk, judges a big file by the same head
+  const grepAt = (input) => run({ tool_name: 'Grep', tool_input: { output_mode: 'content', ...input }, cwd: dir, session_id: 'suite' }, env).status;
+  assert.strictEqual(grepAt({ pattern: 'API_KEY', path: path.join(dir, 'over.env') }), 2, 'Grep content of a big credential file');
+  const walk = path.join(dir, 'walk');
+  fs.mkdirSync(walk);
+  fs.renameSync(sized('w.env', MAX + 1, 'API_KEY=abc123def456\n'), path.join(walk, 'w.env'));
+  assert.strictEqual(grepAt({ pattern: 'API_KEY', path: walk }), 2, 'Grep content over a tree holding a big credential file');
+  // a key past the first 512KB: a Read window over its line is judged, a window elsewhere is not, the prefix is clean
+  const tail = sized('tail.env', MAX + 200 * 1024, '# settings\n', 'API_KEY=abc123def456\n');
+  const keyLine = fs.readFileSync(tail, 'utf8').split('\n').findIndex((l) => l.startsWith('API_KEY=')) + 1;
+  assert.strictEqual(readAt(tail, { offset: keyLine - 2, limit: 5 }), 2, 'a window over the key');
+  assert.strictEqual(readAt(tail, { offset: 1, limit: 50 }), 0, 'a window of the clean head');
+  assert.strictEqual(readAt(tail, { offset: keyLine + 1, limit: 50 }), 0, 'a window after the key');
+  assert.strictEqual(readAt(tail), 0, 'no window: the first 512KB are clean (the stated ceiling)');
+  // a big JSON state file is cut mid-document: its pairs are still read
+  const state = path.join(dir, 'terraform.tfstate');
+  const pad = Array.from({ length: 30000 }, (_, i) => `    { "name": "res${i}", "type": "null_resource" }`).join(',\n');
+  fs.writeFileSync(state, `{\n  "version": 4,\n  "outputs": { "db": { "value": { "password": "Zq9-live-db-pass-41x" } } },\n  "resources": [\n${pad}\n  ]\n}\n`);
+  assert.ok(fs.statSync(state).size > MAX, 'the state file is past the cap');
+  assert.strictEqual(readAt(state), 2, 'Read of a big terraform state holding a password');
+  // the legitimate twins: a big clean file, read whole or in a window, and printed
+  const clean = sized('clean.log', MAX + 4096, 'started\n');
+  assert.strictEqual(readAt(clean), 0, 'Read of a big clean file');
+  assert.strictEqual(readAt(clean, { offset: 100, limit: 20 }), 0, 'a window of a big clean file');
+  assert.strictEqual(at('head -5 clean.log'), 0, 'head of a big clean file');
+  const cleanTree = path.join(dir, 'clean-tree');
+  fs.mkdirSync(cleanTree);
+  fs.renameSync(clean, path.join(cleanTree, 'clean.log'));
+  assert.strictEqual(grepAt({ pattern: 'started', path: cleanTree }), 0, 'Grep content over a tree holding a big clean file');
+});
+
+// Audit 2026-10-30 HK-26: a filesystem server the user registers reads a file by `path` (read_text_file, the older
+// read_file) or `paths` (read_multiple_files) - the server's README, 2026-10-30 - and no guard judged it. Each path takes
+// the Read judgement, matched by the tool's name under any registration; a listing or a clean file passes.
+test('HK-26: a filesystem server read of a credential file is refused, a clean one passes, under any registration name', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk26-'));
+  const envFile = path.join(dir, '.env');
+  fs.writeFileSync(envFile, `API_TOKEN=${FAKE_TOKEN}\n`);
+  const readme = path.join(dir, 'README.md');
+  fs.writeFileSync(readme, '# readme\n');
+  fs.mkdirSync(path.join(dir, '.alfred'));
+  const store = path.join(dir, '.alfred', '.secrets');
+  fs.writeFileSync(store, 'DB_HOST=db.internal\n');
+  const call = (tool, input) => run({ tool_name: tool, tool_input: input, cwd: dir, session_id: 'fs' }, { CLAUDE_PROJECT_DIR: dir });
+  const names = ['mcp__filesystem__read_text_file', 'mcp__plugin_fs_fs__read_text_file', 'mcp__files__read_file']; // mcp-fixture
+  for (const tool of names) {
+    const r = call(tool, { path: envFile });
+    assert.strictEqual(r.status, 2, `${tool}: a credential .env`);
+    assert.match(r.stderr, /Blocked: read_(?:text_)?file of .*\.env, which holds a credential under `API_TOKEN`/);
+    assert.strictEqual(call(tool, { path: store }).status, 2, `${tool}: the sensitive-data store`);
+    assert.strictEqual(call(tool, { path: readme }).status, 0, `${tool}: a clean file`);
+    assert.strictEqual(call(tool, { path: '.env' }).status, 2, `${tool}: a relative path, resolved like a Read's`);
+    assert.strictEqual(call(tool, { path: envFile, head: 1 }).status, 2, `${tool}: head of a credential file`);
+  }
+  const many = 'mcp__filesystem__read_multiple_files'; // mcp-fixture
+  assert.strictEqual(call(many, { paths: [readme, envFile] }).status, 2, 'any one path in the list');
+  assert.strictEqual(call(many, { paths: [readme] }).status, 0, 'a clean list');
+  assert.strictEqual(call(many, {}).status, 0, 'paths omitted');
+  assert.strictEqual(call('mcp__filesystem__list_directory', { path: dir }).status, 0, 'a listing is not judged here'); // mcp-fixture
+  assert.strictEqual(call('mcp__filesystem__get_file_info', { path: envFile }).status, 0, 'file facts are not judged here'); // mcp-fixture
+  // the manifest wires the guard on those three tools, under any server name, and on no other
+  const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
+    .find((h) => h.file === 'guard-secret-value.js' && /read_text_file/.test(h.matcher));
+  assert.ok(row, 'a manifest row');
+  const re = new RegExp(row.matcher);
+  for (const tool of [...names, many]) assert.ok(re.test(tool), tool);
+  for (const tool of ['mcp__filesystem__list_directory', 'mcp__filesystem__read_text_file_x', 'read_text_file']) assert.ok(!re.test(tool), tool); // mcp-fixture
 });

@@ -22,6 +22,10 @@
 //   baseline then moves to now.
 // - The end snapshot is kept per repo (REFS-LAST.json); the next session's child diffs against it and reports only when
 //   that session asked about a forge call (an armed auto-merge landing later).
+// NETWORK EGRESS (audit 2026-10-30 HK-27, kept and recorded): the watch is the network half of this hook - `git ls-remote`
+// to the branch's own remote, from the detached SessionStart child, after a ref-moving call (PostToolUse) and at Stop;
+// bounded by forge.js (LS_REMOTE_MS 6s, GIT_TERMINAL_PROMPT=0, ssh BatchMode), sending nothing beyond git's own protocol.
+// The session line above makes no network call.
 // An unreachable remote is `ref watch: not checked (<why>)`, never clean. `forge-session:watch` in ALFRED_CODE_HOOKS_OFF
 // turns the watch off; ALFRED_CODE_FORGE_WATCH=loud-only drops the summary tier and the session line says so. A check
 // that fails or answers slowly pauses the catch-all (THE PAUSE below); ALFRED_CODE_FORGE_WATCH=publish-only holds it to

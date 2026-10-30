@@ -1,6 +1,7 @@
 ---
 name: habits-test-first
 description: "Use before writing production code for a feature, bug fix or behavior change - before the first source edit. Not for config or docs edits, which skip tests."
+user-invocable: false
 ---
 
 # Test first - red for the right reason, then green, then clean
@@ -36,7 +37,7 @@ Then the next behavior, from step 1.
 
 ## A bug fix
 
-The test reproduces the bug first: it fails for the cause found (`habits-root-cause`, step 6), then
+The test reproduces the bug first: it fails for the cause found (`habits-root-cause`, its 'Fix at the root, test first' step), then
 the fix turns it green. A fix with no failing test first is a guess the suite cannot hold.
 
 ## When no test fits
