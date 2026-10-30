@@ -2608,7 +2608,7 @@ function readOnlyStep(step) {
   if (/^(?:z|gz|bz|xz|zstd|lz4)cat$|^z(?:more|less)$/i.test(verb)) return true; // they only ever print
   const pv = shellWrites && shellWrites.PRINT_VERBS && shellWrites.PRINT_VERBS[verb.toLowerCase()];
   if (pv && pv.needs && typeof shellWrites.printedFiles === 'function') {
-    const rest = levelFlagsOff(words.slice(1).map(unq));
+    const rest = words.slice(1).map(unq);
     if (shellWrites.printedFiles(verb.toLowerCase(), rest)) return true;
     const asFilter = shellWrites.printedFiles(verb.toLowerCase(), ['-c', ...rest]);
     if (asFilter && !asFilter.files.length) return true;
@@ -4100,14 +4100,10 @@ function printVerbFiles(verb, rest) {
     argv.push(w);
   }
   const spec = (shellWrites.PRINT_VERBS || {})[v] || {};
-  const p = shellWrites.printedFiles(v, spec.needs ? levelFlagsOff(argv) : argv);
+  // a compressor's level (`-9`, `-9c`) is read as a flag by the table itself (its `levels`; final review FB)
+  const p = shellWrites.printedFiles(v, argv);
   if (!p || !p.files.length) return null;
   return { files: p.files, verb, argv, compressor: Boolean(spec.needs) };
-}
-// A compressor's level (`-9`, `-9c`) is a flag, which the table's operand rule (`-<digit>` is an operand where `digits`
-// is unset) reads as a file: the level is dropped, a cluster after it kept (`-9c` is `-c`).
-function levelFlagsOff(argv) {
-  return argv.map((w) => { const m = /^-\d+([A-Za-z]*)$/.exec(w); return m ? (m[1] ? `-${m[1]}` : null) : w; }).filter((w) => w !== null);
 }
 
 function judgeShell(text, forceRuntime, main, bodyLang) {

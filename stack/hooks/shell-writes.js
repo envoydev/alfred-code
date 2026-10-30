@@ -2294,10 +2294,13 @@ function shellVars(P, opts = {}) {
 // 700-line source past the read guard (`shuf big.ts`). Per verb: `values` - the one-letter flags that take a value (its
 // operand is no file), `long` the long ones, `needs` - flags without which it prints nothing (a compressor writes a
 // file unless told `-c`), `none` - flags with which it reads no file (`shuf -e` echoes its words), `bounded` - flags that
-// cap what it prints, `digits` - `-1` / `-2` are flags (join's fields), never operands. printedFiles(verb, argv) names
+// cap what it prints, `digits` - `-1` / `-2` are flags (join's fields), never operands, `levels` - a digit is a flag in
+// any cluster (a compressor's `-9c`). printedFiles(verb, argv) names
 // the files a call prints and whether it is bounded; null when the verb prints none. Both guards read this table.
 const LONG_VALUES = /^--(?:tabs|width|lines|key|output|separator|suffix|field-separator|head-count|input-range|random-source|read-bytes|bytes|skip-bytes|format|address-radix)$/;
-const COMPRESSOR = { values: 'S', needs: ['-c', '--stdout', '--to-stdout'] };
+// `levels`: a digit is a flag (a compression level), alone or in a cluster - `-9`, `-9c`, `-19` (final review 2026-10-30,
+// FB: `gzip -9c <file>` read `-9c` as the file, and the secret guard kept a local workaround)
+const COMPRESSOR = { values: 'S', needs: ['-c', '--stdout', '--to-stdout'], levels: true };
 const PRINT_VERBS = Object.freeze(Object.fromEntries(Object.entries({
   cat: { values: '' }, tac: { values: 's' }, nl: { values: 'bdfhilnsvw' }, rev: { values: '' }, fmt: { values: 'wgpdlt' },
   expand: { values: 't' }, unexpand: { values: 't' }, fold: { values: 'w' }, pr: { values: 'hlowWsSNe' },
@@ -2321,7 +2324,7 @@ function printedFiles(verb, argv) {
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     if (w === '--') { ops.push(...words.slice(i + 1)); break; }
-    if (w === '-' || !w.startsWith('-') || (/^-\d/.test(w) && !spec.digits)) { ops.push(w); continue; }
+    if (w === '-' || !w.startsWith('-') || (/^-\d/.test(w) && !spec.digits && !spec.levels)) { ops.push(w); continue; }
     if (w.startsWith('--')) {
       const eq = w.indexOf('=');
       const n = eq < 0 ? w : w.slice(0, eq);

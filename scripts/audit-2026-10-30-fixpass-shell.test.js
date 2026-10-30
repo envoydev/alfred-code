@@ -182,3 +182,13 @@ test('FB 5: git\'s own regenerable leftovers may go; a submodule\'s repo, the ho
   assert.match(sub.out, /git rm/, 'then git rm');
 });
 
+test('FB 6: the print-verb table reads a compressor\'s level cluster (-9c) as flags', () => {
+  assert.deepStrictEqual(shell.printedFiles('gzip', ['-9c', '.env']), { files: ['.env'], bounded: false });
+  assert.deepStrictEqual(shell.printedFiles('xz', ['-9ec', 'a']), { files: ['a'], bounded: false });
+  assert.deepStrictEqual(shell.printedFiles('zstd', ['-19', '-c', 'a']), { files: ['a'], bounded: false });
+  assert.strictEqual(shell.printedFiles('gzip', ['-9', 'a']), null, 'a level alone writes a file: no print');
+  assert.deepStrictEqual(shell.printedFiles('join', ['-1', '2', 'a', 'b']), { files: ['a', 'b'], bounded: false }, 'join keeps its own digits rule');
+  const dir = project('fb6-');
+  assert.strictEqual(fire(dir, 'gzip -9c ./build.log > out.gz').v, 0, 'a clean file compressed to a file');
+  assert.strictEqual(fire(dir, 'gzip -9c .env | zcat').v, 'rewrite', 'the credential file through a level cluster');
+});
