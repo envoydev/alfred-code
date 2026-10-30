@@ -684,7 +684,9 @@ function respellRenamed({ projectRoot, renamed, docsPath = '', owned = () => fal
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
     const instructions = instructionFiles(projectRoot);
     let total = 0;
-    for (const file of [...instructions, ...generatedRules(projectRoot), ...awarenessDocs(projectRoot, docsPath)])
+    // removed as a superseded rule, never re-spelled (spec 2026-10-29 5 step 7)
+    const kept = generatedRules(projectRoot).filter((file) => path.basename(file) !== 'alfred-architecture.md'); // the retired marker
+    for (const file of [...instructions, ...kept, ...awarenessDocs(projectRoot, docsPath)])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }

@@ -2828,3 +2828,21 @@ test('isMapFile and the part filter', () => {
     for (const flag of ['--map', '--no-map']) assert.match(r.cli(['lint', 'awareness', flag]).stdout, /watch\.json is not valid JSON/, flag);
   } finally { r.rm(); }
 });
+
+// The 3.5.0 review, M6: in the domain the map shares, newModule is the architecture part's, so its row is the map's
+// side; in any other domain it is that domain's own and never the map's.
+test('lint --no-map leaves the architecture part\'s newModule row out, --map keeps it', () => {
+  const r = moved();
+  try {
+    r.write(`${AWD}/ARCHITECTURE-AWARENESS.md`, MAP);
+    r.write(`${AWD}/watch.json`, JSON.stringify({ newModule: { globs: ['src/*/'], sections: ['ARCHITECTURE-AWARENESS#nope'] } }));
+    const row = /awareness\/watch\.json 'newModule' names a section that does not exist: ARCHITECTURE-AWARENESS#nope/;
+    assert.doesNotMatch(r.cli(['lint', 'awareness', '--no-map']).stdout, row);
+    assert.match(r.cli(['lint', 'awareness', '--map']).stdout, row);
+    assert.match(r.cli(['lint', 'awareness']).stdout, row);
+    r.write('.claude/docs/ops/watch.json', JSON.stringify({ newModule: { globs: ['svc/*/'], sections: ['OPS#nope'] } }));
+    const ops = /ops\/watch\.json 'newModule' names a section that does not exist: OPS#nope/;
+    assert.match(r.cli(['lint', 'ops', '--no-map']).stdout, ops);
+    assert.doesNotMatch(r.cli(['lint', 'ops', '--map']).stdout, ops);
+  } finally { r.rm(); }
+});

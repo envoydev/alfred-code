@@ -704,6 +704,19 @@ test('F26: an edited architecture rule stays and is named', () =>
     assert.deepStrictEqual(g.lines, ['  kept: .claude/rules/alfred-architecture.md - edited since it was generated']);
 });
 
+// The 3.5.0 review, M4: a 3.5.0 update re-spelled the marker's description on a project with no map (measured
+// 2026-10-30), so that text is the stack's own too - unedited it goes, edited it is still kept and named.
+const ARCH_TEXT_350 = ARCH_TEXT.replace('/capture-architecture;', '/capture-awareness architecture;'); // legacy
+test('removeGeneratedRules removes a marker 3.5.0 respelled', () =>
+{
+    const g = genProject({ 'alfred-architecture': ARCH_TEXT_350 });
+    assert.ok(!g.has('alfred-architecture'), g.lines.join('\n'));
+    assert.deepStrictEqual(g.lines, ['  rule removed: alfred-architecture (generated)']);
+    const edited = genProject({ 'alfred-architecture': `${ARCH_TEXT_350}\nMy own note.\n` });
+    assert.ok(edited.has('alfred-architecture'));
+    assert.deepStrictEqual(edited.lines, ['  kept: .claude/rules/alfred-architecture.md - edited since it was generated']);
+});
+
 test('F26: an awareness rule equal to its generator goes; one with no docs left is kept', () =>
 {
     const text = (root) => inventory.composeAwarenessRule({ projectRoot: root, docs: '.alfred/docs' }).text;
