@@ -1,6 +1,19 @@
 {
   "_comment": "Shared-rules registry - the sanctioned exceptions to one-home-per-piece: rules whose text deliberately lives in more than one stack file (one canonical owner + inline restatements, no prose cross-mentions). Each copy is pinned by a marker - a distinctive phrase from that file's own wording, matched whitespace-normalized so md line wrapping never breaks it. Lint check 24 fails the moment any copy's marker no longer matches, and the finding lists every other copy - the multi-home sync is forced by the lint, not remembered. Repo-internal, never shipped.",
   "rules": {
+    "repair-router-ask-first": {
+      "_note": "Audit 2026-10-30 RU-02: on a red .NET or Angular build two first steps met - the always-on interaction rule's 'Code fails - the FIRST action is the habits-root-cause Skill call' and the routers' resolver ask. The routers state the one order (the ask, then the root-cause load on an in-session pick), so the more specific rule says outright that it goes first; both routers carry it word for word.",
+      "owner": {
+        "file": "stack/rules/dotnet-repair-agents.md",
+        "marker": "that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/angular-repair-agents.md",
+          "marker": "that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call"
+        }
+      ]
+    },
     "repair-router-delegation-protocol": {
       "_note": "The repair routers' shared delegation protocol (BLOCKED_CONTRACT_CHANGE routing, the no-Agent-tool seat carve-out, the read-only seat's report-and-name action - verifiers, designers, reviewers and analyzers hold no Edit, audit M62 - the diagnoser's gatherer-only dispatch) - verbatim in both routers because either may be absent per project.",
       "owner": {

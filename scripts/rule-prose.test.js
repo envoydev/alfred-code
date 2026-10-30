@@ -243,12 +243,15 @@ test('rules F9: the simplification-ceiling line sits with the comment rules and 
     assert.ok(homes(registry()['implementer-ceilings-row']).some((h) => h.file === 'stack/rules/alfred-quality-gates.md'));
 });
 
-test('rules F10: an in-session pick on a broken build starts at the root-cause habit, in both routers', () =>
+// Audit 2026-10-30 RU-02: the always-on 'Code fails - the FIRST action is the habits-root-cause Skill call' and the routers'
+// resolver ask were two first steps on one red build; the routers now state the one order - the ask, then the load.
+test('rules F10 / RU-02: on a broken build the resolver ask comes first, and an in-session pick starts at the root-cause habit, in both routers', () =>
 {
     for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
     {
         const text = squash(rule(name));
-        assert.ok(text.includes('resolver recommended; an in-session pick starts at the `habits-root-cause` Skill call)'), name);
+        assert.ok(text.includes('resolver recommended) - that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call:'), name);
+        assert.ok(homes(registry()['repair-router-ask-first']).some((h) => h.file === `stack/rules/${name}.md`), `${name}: the order is pinned`);
         assert.ok(text.includes('offer the resolver through AskUserQuestion'), `${name}: the pinned ask stays`);
     }
     const graph = JSON.parse(read('meta/stack-graph.json'));
