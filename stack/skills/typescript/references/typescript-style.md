@@ -240,7 +240,7 @@ function pageSize(cfg: { size?: number }): number {
 1. New projects: adopt `strictTypeChecked` + `stylisticTypeChecked`, `strict: true` tsconfig (ideally `@tsconfig/strictest`), Prettier, and .editorconfig on day one. Add consistent-type-imports and import/order.
 2. Existing projects: enable `strict` first and fix the fallout, then layer typed linting, then add `noUncheckedIndexedAccess`/`exactOptionalPropertyTypes` incrementally per directory.
 - Threshold to change: if typed linting is too slow in CI, drop to non-type-checked `recommended` + `stylistic` until capacity improves, then re-enable.
-- Where the house config-protection guard runs, an edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) that does more than raise ESLint rule severities is blocked until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path.
+- Where the house config-protection guard runs, an edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) that does more than raise ESLint rule severities is blocked until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`.
 
 ## Caveats
 - The `strict` / strict-type-checked rulesets can change in minor typescript-eslint releases - pin versions.

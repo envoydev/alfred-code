@@ -71,8 +71,8 @@ or you pay for the wrong tool:
   `@nx/enforce-module-boundaries` ESLint rule so a forbidden cross-project import fails lint - the
   boundary is a build-failing rule, not a convention. Where the house config-protection guard runs, an
   edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) that does more than raise ESLint rule severities is blocked until the user
-  allows it - ask once, never route around the block, and on Allow the receipt
-  `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path. Adding the boundary rule or its
+  allows it - ask once, never route around the block, and on Allow write the lines the denial
+  prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`. Adding the boundary rule or its
   `depConstraints` is a tightening the guard still holds, so 'Allow' fits it. Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
 
 ## The CLI is the lever; the Nx MCP is optional
