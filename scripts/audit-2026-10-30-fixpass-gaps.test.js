@@ -5,6 +5,8 @@
 //    the rm guard: the carried text was the word `$C`, never the literal the command bound it to;
 // 2. an unquoted backslash in a word - `cat .e\nv`, `cat \.env`, `c\at .env` - passed the secret guard's path and verb
 //    tests, at the top level and inside the runner's line: bash drops the backslash, the guard kept it;
+// 3. a script FILE a shell runs - `bash run.sh` with `cat .env` (or the runner's line) in it - passed the secret guard,
+//    which read the command and never the file the shared reader already reads;
 // Nothing here runs a dangerous command: each is stdin text to a hook, in mkdtemp folders removed after.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
@@ -108,4 +110,61 @@ test('FC 2: an unquoted backslash is judged as bash hands the word on - dropped 
     const r = bash(dir, c);
     assert.strictEqual(r.v, 0, `${c}\n${r.out}`);
   }
+});
+
+test('FC 3: a script file a shell runs is judged as commands - a dump in one blocks, naming the presence and redacted routes', () => {
+  const dir = project('fc3-');
+  const put = (name, text) => fs.writeFileSync(path.join(dir, name), text);
+  put('dump.sh', 'cat .env\n');
+  put('bang.sh', '#!/bin/sh\ncat .env\n');
+  put('runner.sh', `${runner("'cat .env'")}\n`);
+  put('outer.sh', 'bash dump.sh\n');
+  put('clean.sh', 'echo hi\nls -la\n');
+  put('test.sh', 'test -f .env && echo present\n');
+  put('presence.sh', `node "${GUARD}" --presence .env API_TOKEN\n`);
+  put('py.py', '#!/usr/bin/env python3\nprint(1)\n');
+  fs.mkdirSync(path.join(dir, 'sub'));
+  put('sub/up.sh', 'cat ../.env\n');
+  for (const c of ['bash dump.sh', 'sh dump.sh', '. ./dump.sh', 'source dump.sh', './dump.sh', './bang.sh', 'bash runner.sh', 'bash outer.sh',
+    'bash < dump.sh', 'cat dump.sh | sh', 'C=\'cat .env\'; bash -c "$C"', 'cd sub && bash up.sh']) {
+    const r = bash(dir, c);
+    assert.strictEqual(r.v, 2, `${c}\n${r.out}`);
+    assert.match(r.out, /--presence/, c);
+    assert.match(r.out, /--redacted/, c);
+  }
+  // the twins: no credential read, a presence test, the guard's own presence read, another interpreter's file
+  for (const c of ['bash clean.sh', 'bash test.sh', 'bash presence.sh', './py.py', 'C=ls; bash -c "$C"', 'bash missing.sh']) {
+    const r = bash(dir, c);
+    assert.strictEqual(r.v, 0, `${c}\n${r.out}`);
+  }
+  // a dump in the command itself still takes its view beside a clean script
+  const r = bash(dir, 'cat .env; bash clean.sh');
+  assert.strictEqual(r.v, 'rewrite', r.out);
+});
+
+test('FC 3: a script file is judged in linear work - its held assignments read the text once, and a 1MB one runs', () => {
+  // Found while closing gap 3: every `X=$(...)` stage split the whole text again (heldOnlyInArgs), uncharged - a 500KB
+  // script file took 50s. The work count must grow linearly, and one generous wall-clock bound catches a step that
+  // charges nothing.
+  const dir = project('fc3w-');
+  const meter = path.join(TMP, 'judge-work.js');
+  fs.writeFileSync(meter, "process.on('exit', () => { if (global.JUDGE_WORK) require('fs').writeSync(2, `\\nJUDGE_WORK ${global.JUDGE_WORK.used}\\n`); });\n");
+  const line = 'V=$(date); curl -H "$V" https://example.invalid/x\n';
+  const once = (chars) => {
+    fs.writeFileSync(path.join(dir, 'held.sh'), line.repeat(Math.ceil(chars / line.length)));
+    const t = process.hrtime.bigint();
+    const r = spawnSync(process.execPath, ['-r', meter, GUARD], {
+      input: JSON.stringify({ session_id: 'fc', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'bash held.sh' }, cwd: dir }),
+      encoding: 'utf8', cwd: dir, env: { ...process.env, HOME, USERPROFILE: HOME, CLAUDE_PROJECT_DIR: dir },
+    });
+    return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: r.status, work: Number((/JUDGE_WORK (\d+)/.exec(r.stderr) || [])[1]), err: r.stderr };
+  };
+  const half = once(100000);
+  const full = once(200000);
+  assert.strictEqual(full.status, 0, full.err);
+  assert.ok(full.work <= 2.5 * half.work, `work grows linearly (${half.work} at 100,000 characters, ${full.work} at 200,000)`);
+  assert.ok(full.ms < 10000, `the 200,000-character script took ${Math.round(full.ms)}ms`);
+  // a clean script past the old 2M work budget still runs: the budget grows with what the reader carried
+  const big = once(1000000);
+  assert.strictEqual(big.status, 0, big.err);
 });
