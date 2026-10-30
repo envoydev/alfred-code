@@ -26,20 +26,18 @@ Not for a monorepo without Nx (pnpm or npm workspaces, Turborepo).
   (`nx show project <name>`) or the affected set (below). The full graph is large; pull only the slice
   the task needs.
 - What the cheap call buys, so you can decide before paying for it - `nx show project my-app --json`
-  returns the resolved configuration under `project.data` plus a `sourceMap` saying which file or
-  plugin contributed each key:
+  prints the project's resolved configuration itself, inferred targets included:
 
   ```json
-  { "project": { "name": "my-app", "type": "app", "data": {
-      "root": "apps/my-app", "sourceRoot": "apps/my-app/src", "projectType": "application",
-      "tags": [], "metadata": { "technologies": ["react"] },
-      "targets": { "build": { "executor": "nx:run-commands", "cache": true,
-                              "dependsOn": ["^build"], "outputs": ["{projectRoot}/dist"] } } } },
-    "sourceMap": { "targets.build": ["apps/my-app/vite.config.ts", "@nx/vite/plugin"] } }
+  { "name": "my-app", "root": "apps/my-app", "sourceRoot": "apps/my-app/src",
+    "projectType": "application", "tags": [], "implicitDependencies": [],
+    "targets": { "build": { "executor": "nx:run-commands", "cache": true,
+                            "dependsOn": ["^build"], "outputs": ["{projectRoot}/dist"] } } }
   ```
 
-  The `sourceMap` is the answer to 'where does this target come from' - read it instead of grepping
-  for a config file that may not exist, because an inferred target has no `project.json` entry.
+  An inferred target has no `project.json` entry - `nx show project <name> --web` shows each target's
+  source (the file or plugin that added it); verify the view at use instead of grepping for a config
+  file that may not exist.
 
 ## Scope every gate with `nx affected`
 - Run build, test, and lint over the affected set, not the whole tree: `nx affected -t build`,
