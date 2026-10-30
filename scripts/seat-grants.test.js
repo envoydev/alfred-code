@@ -185,7 +185,9 @@ test('I18: related-project-analyzer keeps the restriction and claims no rm-guard
     const text = squash(body('related-project-analyzer'));
     assert.doesNotMatch(text, /guard-catastrophic-rm\.js/, 'the rm guard blocks only catastrophic targets');
     assert.doesNotMatch(text, /blocked at the tool call/);
-    // the cross-project guard does stop an rm outside the project, but a delete inside the host repo passes
-    // every guard - so the body claims no net at all rather than a partial one
-    assert.match(text, /Never count on a hook to stop a wider delete - one inside the host repo passes every guard/);
+    // the read-only seat gate (shell-guards.js READ_ONLY_SEAT, audit 2026-10-20 A-T1) denies a literal write target
+    // outside the temp dirs, but one the shell expands at run time passes every guard (audit 2026-10-30 AG-10) - so the
+    // body claims no net at all rather than a partial one
+    assert.match(text, /Never count on a hook to stop a wider delete - a target the shell expands at run time passes every guard/);
+    assert.doesNotMatch(text, /one inside the host repo passes every guard/);
 });

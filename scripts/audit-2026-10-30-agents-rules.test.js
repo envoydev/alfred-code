@@ -46,3 +46,43 @@ test('AG-05: issue-diagnoser-ci and its gatherer pull logs through the forge too
     assert.match(agent('issue-diagnoser-ci'), /pull this run's log through the forge tool the session's `Forge:` line names/);
     assert.ok(descriptionOf('issue-diagnoser-ci').length <= 300);
 });
+
+// AG-08: review-security can be switched off per project (skillOverrides), so the auditor's drop pass names its absent path.
+test('AG-08: security-auditor says what to do when not-a-finding.md is absent', () =>
+{
+    assert.match(agent('security-auditor'), /not-a-finding\.md` and drop what it lists; .* Absent \(the project switched `review-security` off\): skip the drop pass and say `not-a-finding: unavailable`/);
+});
+
+// AG-10: since audit 2026-10-20 A-T1 the read-only seat gate (READ_ONLY_SEAT matches `*-analyzer`) denies a literal write
+// target outside the temp dirs; only a run-time-expanded one passes.
+test('AG-10: related-project-analyzer states the guard gap that is real', () =>
+{
+    const text = agent('related-project-analyzer');
+    assert.match(text, /a target the shell expands at run time passes every guard/);
+    assert.match(read('stack/hooks/shell-guards.js'), /\[a-z\]\[\\w-\]\*-analyzer/, 'the gate still covers the analyzers');
+});
+
+// AG-11: the LSP is already the first rank of the navigation sentence; 'or the LSP' after it was a server-era remnant.
+test('AG-11: dotnet-build-error-resolver names the LSP once in its navigation line', () =>
+{
+    assert.doesNotMatch(agent('dotnet-build-error-resolver'), /reported as name-matched\) or the LSP/);
+});
+
+// AG-12: the three analyzers hold no handoff instruction, so 'write any handoff note first' was vacuous there; the pinned
+// handback clause (verifier-memory-before-report) stays.
+test('AG-12: the three analyzers drop the vacuous handoff-note clause and keep the handback clause', () =>
+{
+    for (const seat of ['code-style-analyzer', 'test-coverage-analyzer', 'related-project-analyzer'])
+    {
+        const text = agent(seat);
+        assert.doesNotMatch(text, /write any handoff note first/, seat);
+        assert.doesNotMatch(text, /handoff\.js (put|list)/, `${seat}: still no handoff bus, so no note to write`);
+        assert.match(text, /Your report IS the deliverable - deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it/, seat);
+    }
+});
+
+// AG-13: every sibling gatherer bounds its return in tokens; code-style-analyzer fans out one dispatch per language.
+test('AG-13: code-style-analyzer bounds its return by lines and tokens', () =>
+{
+    assert.match(agent('code-style-analyzer'), /120 lines and ~1\.5k tokens at most in total/);
+});
