@@ -15,7 +15,7 @@ The architecture-decision skill decides *what* the structure should be (clean, v
 
 ## Pick the library: NetArchTest.eNhancedEdition by default
 
-Default to **NetArchTest.eNhancedEdition**: lightweight, fluent, fast, and zero-ceremony - assertions over namespaces, dependencies, and layering that read cleanly in a normal test. It is the maintained successor of NetArchTest.Rules (dormant since 1.3.2, 2021): same `NetArchTest.Rules` namespace and `Types.InAssembly(...)` chain, but not fully backwards compatible - `TestResult` lists `FailingTypes`, not `FailingTypeNames`, so a suite moving over recompiles and fixes its messages. A repo already on NetArchTest.Rules stays on it until that move is its own change.
+Default to **NetArchTest.eNhancedEdition**: lightweight, fluent, fast, and zero-ceremony - assertions over namespaces, dependencies, and layering that read cleanly in a normal test. It is a fork of NetArchTest.Rules 1.3.2 (that package dormant since 2021) adding slices and `FailingTypes` - check its release activity at use. Same `NetArchTest.Rules` namespace and `Types.InAssembly(...)` chain, but not fully backwards compatible - `TestResult` lists `FailingTypes`, not `FailingTypeNames`, so a suite moving over recompiles and fixes its messages. A repo already on NetArchTest.Rules stays on it until that move is its own change.
 
 ```csharp
 [Fact]

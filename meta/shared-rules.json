@@ -1648,6 +1648,19 @@
         }
       ]
     },
+    "dotnet11-runasync-rethrow": {
+      "_note": "The .NET 11 IHost.RunAsync / StopAsync rethrow of a failed BackgroundService's exception (learn.microsoft.com/dotnet/core/compatibility/extensions/11/ihost-runasync-stopasync-throw-backgroundservice-failure, an RC1 fact at the 2026-10-30 audit) - hosted-services owns the full note, windows-service the exit-code consequence. Version-coupled: .NET 11 GA, or the floor reaching .NET 11, rewrites both together (audit 2026-10-30 SKD-10).",
+      "owner": {
+        "file": "stack/skills/dotnet-hosted-services/references/newer-versions.md",
+        "marker": "`IHost.RunAsync`/`StopAsync` (and their synchronous forms) will *throw* the captured `BackgroundService` exception instead of completing quietly"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-windows-service/SKILL.md",
+          "marker": "from .NET 11 the host's `RunAsync` rethrows the worker's exception and the process exits non-zero - keep the explicit `Environment.Exit(1)` until the floor reaches .NET 11"
+        }
+      ]
+    },
     "domain-trio-protocol-vendored": {
       "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, so each loop and the greenfield build reads its own copy. An edit to the owner file is a copy of the whole file over each site. Its deep-dive pointers into the owner's references/ are a sanctioned cross-folder read, like every sibling pointer check 34 resolves (2.1.5 audit M98): the owner is always installed (a locked always skill), and every such pointer names its inline fallback ('where installed', or what to do absent it), so a copy still runs where the owner's folder is missing (a Cursor twin, a trimmed install) - vendoring those references too would put five more files in four more folders.",
       "owner": {

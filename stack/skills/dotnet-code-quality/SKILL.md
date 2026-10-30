@@ -30,11 +30,11 @@ dotnet tool install csharpier
 dotnet csharpier check .          # CI: fails on unformatted code (use 'format' to write)
 ```
 
-Add a `.csharpierignore` for generated or vendored trees. Tool pinning in `.config/dotnet-tools.json` is `dotnet-project-setup`.
+Add a `.csharpierignore` for generated or vendored trees.
 
 ## First-party SDK analyzers before any third-party pack
 
-Turn on the analyzers that ship with the SDK first - they cost nothing and catch real defects. Set them once in `Directory.Build.props` (not per-project; layout is `dotnet-project-setup`):
+Turn on the analyzers that ship with the SDK first - they cost nothing and catch real defects. Set them once in `Directory.Build.props` (not per-project):
 
 ```xml
 <PropertyGroup>

@@ -312,14 +312,17 @@ test('M128: typescript, ionic and dotnet-performance close on a quoted check; op
 // loaded by a path-scoped rule as its FIRST action, record their invocation choice as model-only. With `user-invocable: false` the model's skill listing
 // was byte-identical and the layer loaded before the first edit 4 of 4 times, as without it; only the `/` entry went.
 // `markdown-style` stays typeable: its description advertises a user action ('lint / style-check / fix this markdown'),
-// and it rides every install (review-216-ab MINOR 3).
-test('M128: the rule-forced convention layers are model-only, and no other skill is', () =>
+// and it rides every install (review-216-ab MINOR 3). Audit 2026-10-30: SKD-14 added `csharp` (the C# rule's first action);
+// the S16 ruling adds the convention hubs, the description-fired ones (no path rule loads them first) in HUBS.
+test('M128: the rule-forced convention layers and the S16 hubs are model-only, and no other skill is', () =>
 {
     const flagged = fs.readdirSync(SKILLS).filter((d) => fs.existsSync(path.join(SKILLS, d, 'SKILL.md')))
         .filter((d) => /^user-invocable:\s*false\s*$/m.test((/^---\n([\s\S]*?)\n---/.exec(skill(d)) || [])[1] || '')).sort();
-    const FORCED = ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript'];
+    const FORCED = ['csharp', 'dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript'];
+    const HUBS = [];
     assert.doesNotMatch(skill('markdown-style'), /^user-invocable:/m, 'markdown-style keeps its / entry');
-    assert.deepStrictEqual(flagged, FORCED);
+    assert.deepStrictEqual(flagged, [...FORCED, ...HUBS].sort());
+    for (const name of HUBS) assert.doesNotMatch(skill(name), /^disable-model-invocation:/m, `${name} stays model-invocable`);
     const pathRules = fs.readdirSync(path.join(ROOT, 'stack', 'rules')).map((f) => read(`stack/rules/${f}`)).filter((t) => /^---\n(?:(?!---\n)[^\n]*\n)*?paths:/.test(t));
     for (const name of FORCED)
     {
