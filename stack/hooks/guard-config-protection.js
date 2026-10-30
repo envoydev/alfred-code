@@ -10,6 +10,13 @@
 // spells it, a bare file name, or `*`; this session's own, under 8h).
 // The hooks off-list switches the gate off (the old ALFRED_CODE_CONFIG_PROTECT=0, read for the 2.x line, folds into it). The shell route reads the writes through shell-writes.js's
 // scanShell (wrappers, carried scripts, a cd's anchor), then its own segment parser for the PowerShell verbs.
+// Audit 2026-10-30 HK-18: a runtime's write replaces the file like a redirect; `git checkout <rev> -- <config>` and
+// `git restore --source` are judged on the version they restore, `git rm` / `git mv` as a removal, `dd of=` as a
+// replace, `patch` and `git apply` on the lines their diff changes; and - the user's ruling - a NEW config that shadows
+// an existing one (a higher-ranked file in its folder, any config in a folder below one, a new ignore file, a new
+// package.json config key that outranks one) is judged as an edit of the config it shadows, the same ask.
+// Ceilings: a runtime's read-modify-write of a keyed file is a replace (asked even when it leaves the keys), `npm pkg
+// set`, a `sed -i` inside package.json's config keys, a patch fed through a pipe, and `git stash` / `reset --hard`.
 // Declined (2.1.5 M13), on the record so the gap is a choice: a lockfile (package-lock.json, yarn.lock,
 // packages.lock.json), a migration, the central package file (Directory.Packages.props) and a solution file
 // (.sln). None is a CHECK a change weakens, and legitimate work edits each - a dependency bump, a new project, a
@@ -50,7 +57,7 @@ try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } cat
 const WHOLE_FILE = [
   /^\.editorconfig$/, /^\.globalconfig$/, /\.ruleset$/, /^stylecop\.json$/,
   /^\.eslintrc(\.(js|cjs|mjs|json|ya?ml))?$/, /^eslint\.config\.[cm]?[jt]s$/,
-  /^\.prettierrc(\.(js|cjs|mjs|json|ya?ml|toml))?$/, /^prettier\.config\.[cm]?[jt]s$/,
+  /^\.prettierrc(\.([cm]?[jt]s|json5?|ya?ml|toml))?$/, /^prettier\.config\.[cm]?[jt]s$/,
   /^biome\.jsonc?$/, /^\.stylelintrc(\.(js|cjs|json|ya?ml))?$/, /^stylelint\.config\.[cm]?js$/,
   /^\.(eslint|prettier|stylelint)ignore$/,
 ];
@@ -150,8 +157,13 @@ function judgeFileTool() {
   const target = ti.file_path || ti.notebook_path || '';
   if (!target) return null;
   const abs = resolveIn(target);
-  if (!fs.existsSync(abs)) return null; // creation - there is nothing to weaken yet
+  // creation - there is nothing to weaken yet, unless the new file shadows a config that exists (HK-18, below)
+  if (!fs.existsSync(abs)) return shadowHit(abs);
   const base = path.basename(abs);
+  if (base === 'package.json') {
+    const change = appliedChange(ti, abs);
+    return change && change.applied ? pkgChange(change.before, change.after, abs) : null;
+  }
   if (WHOLE_FILE.some((re) => re.test(base))) {
     // An eslint config edit that only RAISES rule severities is no weakening (audit 2026-10-14 HK19, below).
     const change = ESLINT_FILE.test(base) ? appliedChange(ti, abs) : null;
@@ -335,19 +347,33 @@ function judgeScan(command) {
   let scan;
   try { scan = shell.scanShell(command, { cwd: CWD }); } catch { return null; }
   const norm = (t) => nativePath(shell.unquote(t));
+  const anchorFor = (at) => shell.anchorAt(scan.cds, at, CWD, norm);
   for (const t of scan.targets) {
-    const raw = scan.expandVars(String(t.raw || ''));
+    if (t.verb === 'patch') continue; // judged on the diff it applies (judgePatches)
+    const raw = scan.expandVars(String(t.raw || ''), t.index);
     if (!raw || shell.isVar(raw)) continue;
     const base = path.basename(raw);
     const whole = WHOLE_FILE.some((re) => re.test(base));
     const keyed = KEYED.find((k) => k.file.test(base));
-    if (!whole && !keyed) continue;
-    const anchor = shell.anchorAt(scan.cds, t.index, CWD, norm);
+    if (!whole && !keyed && base !== 'package.json') continue;
+    const anchor = anchorFor(t.index);
     if (anchor === null && !path.isAbsolute(nativePath(raw))) continue; // relative from an unknown anchor
     const abs = path.resolve(anchor || CWD, nativePath(raw));
-    if (!fs.existsSync(abs)) continue;
+    if (!fs.existsSync(abs)) {
+      const shadow = t.verb === 'rm' ? null : shadowHit(abs);
+      if (shadow) return shadow;
+      continue;
+    }
     if (whole) return { abs, why: WHOLE_WHY };
-    if (t.what === 'an in-place edit' || t.verb === 'interpreter') {
+    if (base === 'package.json') {
+      const pkg = jsonOf(abs);
+      const key = pkg && Object.keys(PKG_KEYS).find((k) => pkg[k] !== undefined);
+      if (key && t.what !== 'an in-place edit') return { abs, why: `the command replaces or removes package.json, which holds the \`${key}\` config` };
+      continue;
+    }
+    // A runtime's write REPLACES the file with what its script computes, like a redirect (audit 2026-10-30 HK-18: `node -e
+    // "writeFileSync('tsconfig.json', '{}')"` passed unless it named a key) - only sed / perl -i edit it in place.
+    if (t.what === 'an in-place edit') {
       if (KEY_WORDS.test(command)) return { abs, why: 'the command names a strictness / warning setting' };
       if (inPlaceWeakens(command, abs, keyed)) return { abs, why: 'the in-place edit changes a strictness / warning setting' };
       continue;
@@ -355,6 +381,331 @@ function judgeScan(command) {
     let text = '';
     try { text = fs.readFileSync(abs, 'utf8'); } catch { text = ''; }
     if (keyPairs(text, keyed)) return { abs, why: 'the command replaces or removes a file holding strictness / warning settings' };
+  }
+  return judgePatches(command, anchorFor) || judgeGitVerbs(command);
+}
+
+// ---- shadowing (audit 2026-10-30 HK-18; the user's ruling: a new config that shadows a protected one is a weakening) --
+// A linter or formatter reads the config NEAREST the file it checks - ESLint searches up from the file's folder for an
+// `eslint.config.*` (eslint.org/docs/latest/use/configure/configuration-files), Prettier stops at the first config it meets
+// on the way up (prettier.io/docs/configuration) - and in one folder the higher-ranked file wins. So a NEW config that
+// outranks one in its own folder, or sits in a folder below one, changes the check for every file it covers: it is judged
+// as an edit of the config it shadows, the same ask. A new ignore file narrows the config at or above it the same way.
+// Stylelint and Biome state no order among their files (stylelint.io/user-guide/configure), so a second one in the same
+// folder is read as winning; MSBuild imports the nearest Directory.Build.props / .targets only, so a new one below a
+// keyed one shadows it. Ranks: lower wins; null is unknown.
+const RANKS = {
+  eslint: [/^eslint\.config\.js$/, /^eslint\.config\.mjs$/, /^eslint\.config\.cjs$/, /^eslint\.config\.ts$/, /^eslint\.config\.mts$/, /^eslint\.config\.cts$/,
+    /^\.eslintrc\.js$/, /^\.eslintrc\.cjs$/, /^\.eslintrc\.yaml$/, /^\.eslintrc\.yml$/, /^\.eslintrc\.json$/, /^\.eslintrc$/],
+  prettier: [/^\.prettierrc$/, /^\.prettierrc\.(?:json5?|ya?ml)$/, /^(?:\.prettierrc|prettier\.config)\.[jt]s$/, /^(?:\.prettierrc|prettier\.config)\.m[jt]s$/,
+    /^(?:\.prettierrc|prettier\.config)\.c[jt]s$/, /^\.prettierrc\.toml$/],
+  stylelint: [/^(?:\.stylelintrc(?:\.(?:[cm]?js|json|ya?ml))?|stylelint\.config\.[cm]?[jt]s)$/],
+  biome: [/^biome\.jsonc?$/],
+  editorconfig: [/^\.editorconfig$/],
+};
+const UNORDERED = new Set(['stylelint', 'biome']);
+const IGNORES = { '.eslintignore': 'eslint', '.prettierignore': 'prettier', '.stylelintignore': 'stylelint' };
+// package.json's own config keys: [family, rank among that family's files] - Prettier reads the key first, ESLint's legacy
+// lookup last; `eslintIgnore` is an ignore list.
+const PKG_KEYS = { eslintConfig: ['eslint', 12], prettier: ['prettier', -1], stylelint: ['stylelint', null], eslintIgnore: ['eslint', 'ignore'] };
+const MSBUILD_SHADOW = /^Directory\.Build\.(?:props|targets)$/;
+const jsonOf = (file) => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return j && typeof j === 'object' ? j : null; } catch { return null; } };
+function familyOf(base) {
+  if (IGNORES[base]) return { family: IGNORES[base], ignore: true };
+  for (const [family, list] of Object.entries(RANKS)) {
+    const k = list.findIndex((re) => re.test(base));
+    if (k >= 0) return { family, rank: UNORDERED.has(family) ? null : k };
+  }
+  return null;
+}
+// The configs of one family a folder holds (never an ignore file): { abs, rank }.
+function configsIn(dir, family) {
+  const out = [];
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { return out; }
+  for (const n of names) {
+    const f = familyOf(n);
+    if (f && f.family === family && !f.ignore) out.push({ abs: path.join(dir, n), rank: f.rank });
+  }
+  if (names.includes('package.json')) {
+    const pkg = jsonOf(path.join(dir, 'package.json'));
+    for (const [k, [fam, rank]] of Object.entries(PKG_KEYS)) {
+      if (fam === family && rank !== 'ignore' && pkg && pkg[k] !== undefined) out.push({ abs: path.join(dir, 'package.json'), key: k, rank: UNORDERED.has(fam) ? null : rank });
+    }
+  }
+  return out;
+}
+const ROOT_ABS = path.resolve(ROOT);
+const underRoot = (d) => { const r = path.relative(ROOT_ABS, d); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
+// The existing config a new one at `abs` (family `f`) would shadow, or null.
+function shadowed(abs, f) {
+  const home = path.dirname(abs);
+  let d = home;
+  for (let i = 0; i < 64 && underRoot(d); i++) {
+    for (const e of configsIn(d, f.family)) {
+      if (e.abs === abs && !e.key) continue;
+      if (d !== home || f.ignore) return e;
+      if (f.rank === null || e.rank === null || f.rank < e.rank) return e;
+    }
+    const up = path.dirname(d);
+    if (up === d) break;
+    d = up;
+  }
+  return null;
+}
+function msbuildShadowed(abs) {
+  const base = path.basename(abs);
+  const keyed = KEYED[1];
+  let d = path.dirname(path.dirname(abs));
+  for (let i = 0; i < 64 && underRoot(d); i++) {
+    const p = path.join(d, base);
+    let text = '';
+    try { text = fs.readFileSync(p, 'utf8'); } catch { text = ''; }
+    if (text && keyPairs(text, keyed)) return { abs: p };
+    const up = path.dirname(d);
+    if (up === d) break;
+    d = up;
+  }
+  return null;
+}
+const shownOf = (e) => `${path.relative(ROOT_ABS, e.abs).split(path.sep).join('/') || path.basename(e.abs)}${e.key ? `'s \`${e.key}\` key` : ''}`;
+function shadowHit(abs) {
+  const base = path.basename(abs);
+  const f = familyOf(base);
+  const over = f ? shadowed(abs, f) : MSBUILD_SHADOW.test(base) ? msbuildShadowed(abs) : null;
+  return over ? { abs, why: `it would take precedence over ${shownOf(over)}`, shadow: shownOf(over) } : null;
+}
+// package.json: a change to an existing config key is an edit of that config; a new key is a new config, judged for
+// shadowing at its rank.
+function pkgChange(beforeText, afterText, abs) {
+  let b;
+  let a;
+  try { b = JSON.parse(beforeText); a = JSON.parse(afterText); } catch { return null; }
+  if (!b || !a || typeof b !== 'object' || typeof a !== 'object') return null;
+  for (const [k, [family, rank]] of Object.entries(PKG_KEYS)) {
+    if (JSON.stringify(b[k]) === JSON.stringify(a[k])) continue;
+    if (b[k] !== undefined) return { abs, why: `the change rewrites its \`${k}\` config` };
+    const over = shadowed(abs, rank === 'ignore' ? { family, ignore: true } : { family, rank: UNORDERED.has(family) ? null : rank });
+    if (over) return { abs, why: `a new \`${k}\` key would take precedence over ${shownOf(over)}`, shadow: shownOf(over) };
+  }
+  return null;
+}
+
+// ---- patch / git apply: the files a diff changes, each judged on its changed lines (audit 2026-10-30 HK-18) ----------
+// A whole-file config the diff touches blocks; a keyed one when a changed line names a strictness key (or the file is
+// deleted); package.json when a changed line names one of its config keys. A patch whose text cannot be read (a pipe)
+// is judged only by the file it names.
+const KEYED_LINE = new RegExp(`${KEY_WORDS.source}|"(?:extends|exclude)"`);
+const PKG_LINE = /"(?:eslintConfig|prettier|stylelint|eslintIgnore)"/;
+function diffFiles(text, strip) {
+  const files = new Map();
+  const cut = (p) => {
+    const parts = p.replace(/^"|"$/g, '').split('/');
+    return strip === null ? parts[parts.length - 1] : parts.slice(Math.min(strip, parts.length - 1)).join('/');
+  };
+  let old = null;
+  let cur = null;
+  for (const line of String(text).split('\n')) {
+    let m;
+    if ((m = /^--- (\S+)/.exec(line))) { old = m[1]; continue; }
+    if ((m = /^\+\+\+ (\S+)/.exec(line))) {
+      const removed = m[1] === '/dev/null';
+      const name = removed ? old : m[1];
+      cur = name && name !== '/dev/null' ? cut(name) : null;
+      if (cur && !files.has(cur)) files.set(cur, []);
+      if (cur && removed) files.get(cur).push(null);
+      continue;
+    }
+    if (cur && /^[+-]/.test(line)) files.get(cur).push(line.slice(1));
+  }
+  return files;
+}
+function changeHits(abs, lines) {
+  if (!fs.existsSync(abs)) return null;
+  const base = path.basename(abs);
+  if (WHOLE_FILE.some((re) => re.test(base))) return { abs, why: `the patch changes it - ${WHOLE_WHY}` };
+  const keyed = KEYED.find((k) => k.file.test(base));
+  const removed = lines.includes(null);
+  if (keyed && (removed || lines.some((l) => l !== null && KEYED_LINE.test(l)))) return { abs, why: 'the patch changes a strictness / warning setting' };
+  if (base === 'package.json' && (removed || lines.some((l) => l !== null && PKG_LINE.test(l)))) return { abs, why: 'the patch changes a config key in package.json' };
+  return null;
+}
+const PATCH_VALUE = 'pFDBYzVgrodi';
+function patchArgs(argv) {
+  const o = { strip: null, input: null, dir: null, output: null, pos: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--') { o.pos.push(...argv.slice(i + 1)); break; }
+    const long = /^--(strip|input|directory|output)(?:=(.*))?$/.exec(a);
+    if (long) {
+      const v = long[2] !== undefined ? long[2] : argv[++i];
+      if (long[1] === 'strip') o.strip = Number(v); else if (long[1] === 'input') o.input = v; else if (long[1] === 'directory') o.dir = v; else o.output = v;
+      continue;
+    }
+    if (a.startsWith('--')) { if (/^--(?:fuzz|ifdef|prefix|basename-prefix|suffix|version-control|reject-file|get)$/.test(a)) i++; continue; }
+    if (a.length > 1 && a[0] === '-') {
+      for (let k = 1; k < a.length; k++) {
+        if (!PATCH_VALUE.includes(a[k])) continue;
+        const v = k === a.length - 1 ? argv[++i] : a.slice(k + 1);
+        if (a[k] === 'p') o.strip = Number(v); else if (a[k] === 'i') o.input = v; else if (a[k] === 'd') o.dir = v; else if (a[k] === 'o') o.output = v;
+        break;
+      }
+      continue;
+    }
+    o.pos.push(a);
+  }
+  return o;
+}
+function applyArgs(argv) {
+  const o = { strip: 1, write: true, files: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (/^--(?:check|stat|numstat|summary)$/.test(a) && !argv.includes('--apply')) o.write = false;
+    else if (/^-p\d+$/.test(a)) o.strip = Number(a.slice(2));
+    else if (a === '-p') o.strip = Number(argv[++i]);
+    else if (/^--(?:directory|include|exclude|whitespace|build-fake-ancestor)$/.test(a) || a === '-C') i++;
+    else if (!a.startsWith('-')) o.files.push(a);
+  }
+  return o;
+}
+function judgePatches(command, anchorFor) {
+  if (!/\b(?:patch|apply)\b/.test(command)) return null;
+  const heredocs = shell.heredocsOf(command);
+  let words;
+  try { words = shell.commandWords(command); } catch { return null; }
+  for (const w of words) {
+    const isPatch = w.name === 'patch';
+    const isApply = w.name === 'git' && w.argv[0] === 'apply';
+    if (!isPatch && !isApply) continue;
+    const base = anchorFor(w.at) || CWD;
+    // the diff's text: a named file, else the command's `<` file or heredoc
+    const readText = (file) => { try { return fs.readFileSync(path.resolve(base, nativePath(file)), 'utf8'); } catch { return null; } };
+    let text = null;
+    const stdin = () => {
+      for (const r of w.cmd.redirs || []) {
+        if (r.op === '<' && r.target) return readText(shell.unquote(r.target.raw));
+        if (r.op === '<<' || r.op === '<<-') { const h = heredocs.find((x) => x.index === r.at); if (h) return shell.heredocBody(command, h); }
+      }
+      return null;
+    };
+    if (isPatch) {
+      const o = patchArgs(w.argv);
+      const file = o.input || o.pos[1] || null;
+      text = file ? readText(file) : stdin();
+      const at = o.dir ? path.resolve(base, nativePath(o.dir)) : base;
+      if (o.pos[0]) {
+        const abs = path.resolve(at, nativePath(o.pos[0]));
+        const all = text === null ? [null] : [...diffFiles(text, o.strip).values()].flat();
+        const hit = changeHits(abs, all.length ? all : [null]);
+        if (hit) return hit;
+        continue;
+      }
+      if (text === null) continue;
+      for (const [rel, lines] of diffFiles(text, o.strip)) { const hit = changeHits(path.resolve(at, nativePath(rel)), lines); if (hit) return hit; }
+    } else {
+      const o = applyArgs(w.argv.slice(1));
+      if (!o.write) continue;
+      const texts = o.files.length ? o.files.map(readText) : [stdin()];
+      for (const t of texts) {
+        if (t === null) continue;
+        for (const [rel, lines] of diffFiles(t, o.strip)) { const hit = changeHits(path.resolve(base, nativePath(rel)), lines); if (hit) return hit; }
+      }
+    }
+  }
+  return null;
+}
+
+// ---- git's path-restoring and removing verbs (audit 2026-10-30 HK-18) ------------------------------------------------
+// `git checkout <rev> -- <config>` / `git restore --source <rev> <config>` replace the file with another version - judged
+// on that version against the file as it stands, the file tool's rule - and `git rm` / `git mv` remove it (a `mv` onto a
+// config replaces it). A folder pathspec reaches the configs directly inside it. A version git cannot show passes: the
+// checkout fails the same way.
+let gitSafe = null;
+try { ({ gitSafe } = require('./hook-prelude.js')); } catch { gitSafe = null; }
+if (!gitSafe) gitSafe = (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }];
+const isConfigBase = (base) => WHOLE_FILE.some((re) => re.test(base)) || KEYED.some((k) => k.file.test(base)) || base === 'package.json';
+function configsAt(abs) {
+  let st;
+  try { st = fs.statSync(abs); } catch { return []; }
+  if (!st.isDirectory()) return isConfigBase(path.basename(abs)) ? [abs] : [];
+  let names = [];
+  try { names = fs.readdirSync(abs); } catch { names = []; }
+  return names.filter(isConfigBase).map((n) => path.join(abs, n));
+}
+function removedHit(abs) {
+  const base = path.basename(abs);
+  if (WHOLE_FILE.some((re) => re.test(base))) return { abs, why: `the command removes it - ${WHOLE_WHY}` };
+  let text = '';
+  try { text = fs.readFileSync(abs, 'utf8'); } catch { text = ''; }
+  const keyed = KEYED.find((k) => k.file.test(base));
+  if (keyed && keyPairs(text, keyed)) return { abs, why: 'the command removes a file holding strictness / warning settings' };
+  const pkg = base === 'package.json' ? jsonOf(abs) : null;
+  if (pkg && Object.keys(PKG_KEYS).some((k) => pkg[k] !== undefined)) return { abs, why: 'the command removes package.json, which holds a config key' };
+  return null;
+}
+function restoredHit(abs, dir, rev) {
+  let before = '';
+  try { before = fs.readFileSync(abs, 'utf8'); } catch { return null; }
+  const rel = path.relative(dir, abs).split(path.sep).join('/');
+  let after;
+  try {
+    after = require('child_process').execFileSync(...gitSafe(['-C', dir, 'show', `${rev || ''}:./${rel}`], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 8 * 1024 * 1024 }));
+  } catch { return null; }
+  if (after === before) return null;
+  const base = path.basename(abs);
+  if (WHOLE_FILE.some((re) => re.test(base))) {
+    return ESLINT_FILE.test(base) && severitiesOnlyRise(before, after, base) ? null : { abs, why: `the command restores another version of it - ${WHOLE_WHY}` };
+  }
+  if (base === 'package.json') return pkgChange(before, after, abs);
+  const keyed = KEYED.find((k) => k.file.test(base));
+  if (!keyed || keyPairs(before, keyed) === keyPairs(after, keyed)) return null;
+  const tightens = keyed === KEYED[1] ? onlyTightens(before, after, keyed) : tsOnlyTightens(before, after, keyed);
+  return tightens ? null : { abs, why: 'the version it restores changes a strictness / warning setting' };
+}
+const GIT_PATH_VERBS = new Set(['checkout', 'restore', 'rm', 'mv']);
+function judgeGitVerbs(command) {
+  if (!/\bgit\b/.test(command) || !/\b(?:checkout|restore|rm|mv)\b/.test(command)) return null;
+  let read;
+  try { read = shell.gitText(command, CWD); } catch { return null; }
+  for (const call of read.calls) {
+    if (!GIT_PATH_VERBS.has(call.sub)) continue;
+    const dir = read.callDir(call);
+    const at = (p) => path.resolve(dir, nativePath(p));
+    const argv = call.argv;
+    const dashes = argv.indexOf('--');
+    const pos = (arr) => arr.filter((a) => !a.startsWith('-'));
+    if (call.sub === 'rm' || call.sub === 'mv') {
+      if (argv.some((a) => a === '-n' || a === '--dry-run')) continue;
+      const words = dashes >= 0 ? [...pos(argv.slice(0, dashes)), ...argv.slice(dashes + 1)] : pos(argv);
+      const sources = call.sub === 'mv' ? words.slice(0, -1) : words;
+      for (const s of sources) for (const abs of configsAt(at(s))) { const hit = removedHit(abs); if (hit) return hit; }
+      if (call.sub === 'mv' && words.length >= 2) {
+        const dest = at(words[words.length - 1]);
+        if (fs.existsSync(dest) && !fs.statSync(dest).isDirectory() && isConfigBase(path.basename(dest))) { const hit = removedHit(dest); if (hit) return hit; }
+      }
+      continue;
+    }
+    let rev = null;
+    let paths = [];
+    if (call.sub === 'restore') {
+      const staged = argv.some((a) => a === '--staged' || a === '-S');
+      if (staged && !argv.some((a) => a === '--worktree' || a === '-W')) continue; // the index only
+      for (let i = 0; i < argv.length && (dashes < 0 || i < dashes); i++) {
+        const m = /^(?:--source=|-s)(.+)$/.exec(argv[i]);
+        if (argv[i] === '-s' || argv[i] === '--source') rev = argv[++i]; else if (m) rev = m[1];
+      }
+      const valued = new Set(['-s', '--source']);
+      const before = [];
+      for (let i = 0; i < (dashes >= 0 ? dashes : argv.length); i++) { if (valued.has(argv[i])) { i++; continue; } if (!argv[i].startsWith('-')) before.push(argv[i]); }
+      paths = dashes >= 0 ? [...before, ...argv.slice(dashes + 1)] : before;
+    } else {
+      if (argv.some((a) => /^-[bB]$|^--orphan$|^-p$|^--patch$/.test(a))) continue;
+      const before = pos(dashes >= 0 ? argv.slice(0, dashes) : argv);
+      if (dashes >= 0) { rev = before[0] || null; paths = argv.slice(dashes + 1); }
+      else if (before.length >= 2) { rev = before[0]; paths = before.slice(1); }
+      else if (before.length === 1 && configsAt(at(before[0])).length && !fs.statSync(at(before[0])).isDirectory()) paths = before;
+    }
+    for (const p of paths) for (const abs of configsAt(at(p))) { const hit = restoredHit(abs, dir, rev); if (hit) return hit; }
   }
   return null;
 }
@@ -463,7 +814,9 @@ if (allowed) process.exit(0);
 global.BLOCK_DETAIL = { file: rel, why: hit.why };
 const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', 'CONFIG-EDIT-ALLOW') : receipt).split(path.sep).join('/');
 process.stderr.write(
-  `Blocked: ${rel} already exists and ${hit.why}. Weakening a check to get a green result is not a fix -\n` +
+  (hit.shadow
+    ? `Blocked: a new ${rel} counts as an edit of ${hit.shadow} - ${hit.why}, so it changes that check.\nWeakening a check to get a green result is not a fix -\n`
+    : `Blocked: ${rel} already exists and ${hit.why}. Weakening a check to get a green result is not a fix -\n`) +
   `go back to the code the check flagged (habits-done-gate, step 4: 'Fix the cause - never suppress\n` +
   `a warning, weaken a test, or stub code to go green').\n\n` +
   `If the TASK is this config (the user asked for the rule change), do not decide for them: end this turn\n` +
@@ -471,6 +824,6 @@ process.stderr.write(
   `  'Fix the code instead (Recommended)' - leave the check as it is\n` +
   `  'Allow this config change' - the user wants the check itself changed\n` +
   `On 'Allow', write the receipt ${receiptRel} with the line \`${rel}\` and retry the SAME call. It is\n` +
-  `honoured for this session only, under 8h. Creating a config that does not exist yet passes untouched.\n`,
+  `honoured for this session only, under 8h. Creating a config passes untouched unless it shadows one that exists.\n`,
 );
 process.exit(2);

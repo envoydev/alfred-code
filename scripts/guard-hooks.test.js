@@ -5608,3 +5608,78 @@ test('audit 2026-10-30 HK-13, HK-14: every $HOME spelling and the other write ve
   allows("[IO.File]::WriteAllText('out.txt', 'x')", 'HK-14 twin on the PowerShell tool', { tool: 'PowerShell' });
   allows(`[IO.File]::ReadAllText('${sib}/f.txt')`, 'HK-14 twin on the PowerShell tool', { tool: 'PowerShell' });
 });
+
+test('audit 2026-10-30 HK-18: a runtime write, git restoring or removing verbs, dd, patch and a shadowing config reach the config guard', () => {
+  const { dir, git } = hkProject('hk-cfg');
+  const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
+  const ts = (strict, paths) => JSON.stringify({ compilerOptions: { strict, paths } }, null, 2) + '\n';
+  put('tsconfig.json', ts(false, {}));
+  put('tsconfig.app.json', ts(true, { a: ['b'] }));
+  put('.eslintrc.json', '{ "rules": { "no-console": "error" } }\n');
+  put('.prettierrc', '{ "semi": true }\n');
+  put('package.json', JSON.stringify({ name: 'x', version: '1.0.0', stylelint: { rules: {} } }, null, 2) + '\n');
+  put('Directory.Build.props', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>\n');
+  put('src/a.ts', 'export const a = 1;\n');
+  put('fix.diff', '--- a/tsconfig.json\n+++ b/tsconfig.json\n@@ -1,3 +1,3 @@\n {\n   "compilerOptions": {\n-    "strict": true,\n+    "strict": false,\n');
+  put('paths.diff', '--- a/tsconfig.app.json\n+++ b/tsconfig.app.json\n@@ -2,2 +2,2 @@\n-    "paths": {"a": ["b"]}\n+    "paths": {}\n');
+  git('add', '-A'); git('commit', '-qm', 'configs v1');
+  put('tsconfig.json', ts(true, {}));
+  put('tsconfig.app.json', ts(true, {}));
+  put('.eslintrc.json', '{ "rules": { "no-console": "error", "eqeqeq": "error" } }\n');
+  git('add', '-A'); git('commit', '-qm', 'configs v2');
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  const cfgIn = (payload) => runIn('guard-config-protection.js', { cwd: dir, ...payload }, { cwd: dir, env });
+  const sh = (command) => cfgIn({ tool_name: 'Bash', tool_input: { command } });
+  const write = (rel, content) => cfgIn({ tool_name: 'Write', tool_input: { file_path: path.join(dir, rel), content } });
+  const edit = (rel, old_string, new_string) => cfgIn({ tool_name: 'Edit', tool_input: { file_path: path.join(dir, rel), old_string, new_string } });
+  const blocked = (r, why) => assert.equal(r.status, 2, `must block (${why})\n${r.stderr}`);
+  const passed = (r, why) => assert.equal(r.status, 0, `must allow (${why})\n${r.stderr}`);
+  // route gaps
+  for (const c of [
+    `node -e "require('fs').writeFileSync('tsconfig.json','{}')"`,
+    `python3 -c "open('tsconfig.json','w').write('{}')"`,
+    `python3 - <<'EOF'\nopen('Directory.Build.props', 'w').write('<Project/>')\nEOF`,
+    'git checkout HEAD~1 -- tsconfig.json',
+    'git checkout HEAD~1 .eslintrc.json',
+    'git restore --source HEAD~1 tsconfig.json',
+    'git restore -s HEAD~1 -- .eslintrc.json',
+    'git rm .eslintrc.json',
+    'git rm -q --cached tsconfig.json',
+    'git mv .eslintrc.json old.json',
+    'git mv tsconfig.json tsconfig.old.json',
+    'dd if=/dev/null of=tsconfig.json',
+    'patch tsconfig.json fix.diff',
+    'patch -p1 < fix.diff',
+    'patch -p1 -i fix.diff',
+    'git apply fix.diff',
+  ]) blocked(sh(c), `HK-18: ${c}`);
+  for (const c of [
+    `node -e "require('fs').writeFileSync('notes.json','{}')"`,
+    'git checkout HEAD~1 -- tsconfig.app.json',
+    'git checkout HEAD -- .eslintrc.json',
+    'git checkout -- .eslintrc.json',
+    'git restore --staged .eslintrc.json',
+    'git checkout HEAD~1 -- src/a.ts',
+    'git rm src/a.ts',
+    'git mv src/a.ts src/b.ts',
+    'dd if=tsconfig.json of=/dev/null',
+    'patch -p1 < paths.diff',
+    'git apply --check fix.diff',
+  ]) passed(sh(c), `HK-18 twin: ${c}`);
+  // shadowing: a new config whose precedence beats an existing one is an edit of it (the user's ruling)
+  blocked(write('eslint.config.js', 'export default [];\n'), 'a flat config beside .eslintrc.json');
+  blocked(write('src/.eslintrc.json', '{ "rules": {} }\n'), 'a nested eslint config');
+  blocked(write('.eslintignore', '**/*\n'), 'a new eslint ignore file');
+  blocked(write('src/.prettierrc', '{ "semi": false }\n'), 'a nearer prettier config');
+  blocked(write('sub/Directory.Build.props', '<Project/>\n'), 'a nearer Directory.Build.props');
+  blocked(sh(`echo 'export default []' > eslint.config.js`), 'a flat config written by the shell');
+  blocked(edit('package.json', '"name": "x"', '"name": "x",\n  "prettier": { "semi": false }'), 'a package.json prettier key beats .prettierrc');
+  blocked(edit('package.json', '"stylelint": {\n    "rules": {}\n  }', '"stylelint": {\n    "rules": {},\n    "ignoreFiles": ["**/*"]\n  }'), 'a changed stylelint key in package.json');
+  passed(write('.prettierrc.toml', 'semi = false\n'), 'a lower-precedence prettier file in the same folder is never read');
+  blocked(write('.stylelintrc.json', '{}\n'), 'stylelint states no order among its files, so a second one in the folder may win');
+  passed(write('biome.json', '{}\n'), 'a first biome config shadows nothing');
+  passed(write('src/tsconfig.json', '{}\n'), 'a nested tsconfig is a new project, not a shadow');
+  passed(write('docs/notes.json', '{}\n'), 'no config at all');
+  passed(edit('package.json', '"version": "1.0.0"', '"version": "1.0.1"'), 'a package.json edit away from its config keys');
+  passed(edit('package.json', '"name": "x"', '"name": "x",\n  "eslintConfig": { "rules": {} }'), 'eslintConfig in package.json ranks below .eslintrc.json');
+});
