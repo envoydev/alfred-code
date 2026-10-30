@@ -17,8 +17,10 @@ How it works: the first run writes a `.received.` file with the actual output; y
 ## Install and initialize (xUnit)
 
 ```bash
-dotnet add package Verify.Xunit
+dotnet add package Verify.XunitV3
 ```
+
+`Verify.XunitV3` is the adapter for xUnit v3; a v2 project keeps `Verify.Xunit`.
 
 Configure once via a module initializer, mainly to scrub the values that differ every run:
 
@@ -81,7 +83,8 @@ Capture status, selected headers, and body together so a route's whole contract 
 public async Task GetUser_Returns_Expected_Response()
 {
     var client = _factory.CreateClient();
-    var response = await client.GetAsync("/api/users/123");
+    var ct = TestContext.Current.CancellationToken;
+    var response = await client.GetAsync("/api/users/123", ct);
 
     await Verify(new
     {
@@ -89,7 +92,7 @@ public async Task GetUser_Returns_Expected_Response()
         Headers = response.Headers
             .Where(h => h.Key.StartsWith("X-"))   // custom headers only
             .ToDictionary(h => h.Key, h => h.Value.First()),
-        Body = await response.Content.ReadAsStringAsync()
+        Body = await response.Content.ReadAsStringAsync(ct)
     });
 }
 ```

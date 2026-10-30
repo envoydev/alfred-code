@@ -434,7 +434,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-diagnostics",
-      "note": "measure/diagnose a live .NET process (hub, references/): BenchmarkDotNet microbenchmarks + crash/hang/OOM dump capture & first-look SOS analysis"
+      "note": "measure/diagnose a live .NET process (hub, references/): CPU profiling (dotnet-counters, dotnet-trace) + BenchmarkDotNet microbenchmarks + crash/hang/OOM dump capture & first-look SOS analysis"
     },
     {
       "repo": "envoydev/alfred-code",

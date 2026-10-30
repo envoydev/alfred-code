@@ -103,6 +103,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | You are about to... | Load |
 |---|---|
 | add OpenTelemetry tracing / metrics instrumentation | `dotnet-web-backend` (wiring in the hub; manual spans / metrics in its `references/observability.md`) |
+| find where a slow or CPU-bound process spends its time - `dotnet-counters`, `dotnet-trace`, 'my app is slow' | `dotnet-diagnostics` (its `references/profiling.md`) |
 | write a microbenchmark (BenchmarkDotNet) | `dotnet-diagnostics` (its `references/microbenchmarking.md`) |
 | capture or analyze a crash / hang dump | `dotnet-diagnostics` (its `references/dumps.md`) |
 | inspect a compiled assembly's real API or behavior | `ilspy-decompile` |
