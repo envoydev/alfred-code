@@ -5533,3 +5533,78 @@ test('audit 2026-10-30 HK-12, HK-15: a chained switch, a configured refspec, gh 
   allows('git switch feature && git push --force', 'HK-12 twin from main');
   blocks('git push --force', 'control: a bare force on main');
 });
+
+test('audit 2026-10-30 HK-13, HK-14: every $HOME spelling and the other write verbs reach the cross-project guard', () => {
+  const { home, dir } = hkProject('hk-xw');
+  const sib = path.join(home, 'code', 'sib');
+  fs.mkdirSync(sib, { recursive: true });
+  spawnSync('git', ['init', '-q', sib], { encoding: 'utf8' });
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+  const xwIn = (command, { tool = 'Bash' } = {}) => runIn('guard-cross-project-write.js', { tool_name: tool, tool_input: { command }, cwd: dir }, { cwd: dir, env });
+  const blocks = (c, why, opts) => { const r = xwIn(c, opts); assert.equal(r.status, 2, `must block (${why}): ${c}\n${r.stderr}`); };
+  const allows = (c, why, opts) => { const r = xwIn(c, opts); assert.equal(r.status, 0, `must allow (${why}): ${c}\n${r.stderr}`); };
+  // HK-13: the home and project variables are expanded before the unexpanded-variable skip
+  for (const c of [
+    'echo x > "$HOME/.zshrc"',
+    'echo x > ${HOME}/.zshrc',
+    'cp README.md $HOME/x.md',
+    'rm -f $HOME/.gitconfig',
+    "sed -i '' 's/a/b/' $HOME/.zshrc",
+    'H=$HOME; echo x > "$H/.zshrc"',
+    'echo x > "$(echo ~)/.zshrc"',
+    'echo x > "$CLAUDE_PROJECT_DIR/../sib/f.txt"',
+    'cd ../sib && echo x > "$PWD/f.txt"',
+  ]) blocks(c, 'HK-13');
+  blocks('Set-Content -Path $env:USERPROFILE/x.txt -Value y', 'HK-13 on the PowerShell tool', { tool: 'PowerShell' });
+  for (const c of [
+    'echo x > "$HOME/.claude/notes.md"',
+    'echo x > "$CLAUDE_PROJECT_DIR/out.txt"',
+    'echo x > "$PWD/out.txt"',
+    'H=$HOME/code/proj; echo x > "$H/out.txt"',
+    'for f in a b; do echo x > $f; done',
+    'echo x > $UNSET_THING/f.txt',
+    "echo '$HOME/.zshrc' > notes.txt",
+  ]) allows(c, 'HK-13 twin');
+  // HK-14: the destinations of the other write verbs
+  for (const c of [
+    'curl -o ../sib/f.txt https://example.invalid/x',
+    'curl -fsSLo ../sib/f.txt https://example.invalid/x',
+    'curl --output=../sib/f.txt https://example.invalid/x',
+    'wget -O ../sib/f.txt https://example.invalid/x',
+    'wget --directory-prefix=../sib https://example.invalid/x',
+    'tar xf a.tgz -C ../sib',
+    'tar -xzf a.tgz --directory=../sib',
+    'tar czf ../sib/out.tgz src',
+    'unzip a.zip -d ../sib',
+    'dd if=a.txt of=../sib/f.txt',
+    'patch ../sib/f.txt fix.diff',
+    'patch -d ../sib -p1 -i fix.diff',
+    'git apply --directory=../sib fix.diff',
+    'git init ../sib/new',
+    'git clone https://example.invalid/r.git ../sib/r',
+    `pwsh -Command "[IO.File]::WriteAllText('${sib}/f.txt', 'x')"`,
+  ]) blocks(c, 'HK-14');
+  blocks(`[IO.File]::WriteAllText('${sib}/f.txt', 'x')`, 'HK-14 on the PowerShell tool', { tool: 'PowerShell' });
+  blocks(`[System.IO.File]::Copy('a.txt', '${sib}/b.txt')`, 'HK-14 on the PowerShell tool', { tool: 'PowerShell' });
+  for (const c of [
+    'curl -o out/f.txt https://example.invalid/x',
+    'curl -sS https://example.invalid/x -o /dev/null',
+    'curl -O https://example.invalid/x',
+    'wget -O - https://example.invalid/x',
+    'tar xf a.tgz -C vendor',
+    'tar tf ../sib/a.tgz',
+    'tar xf ../sib/a.tgz',
+    'tar cf - src | gzip > out.tgz',
+    'unzip ../sib/a.zip -d vendor',
+    'dd if=../sib/a.txt of=out.txt',
+    'patch -p1 < fix.diff',
+    'patch -p1 -i ../sib/fix.diff',
+    'git clone https://example.invalid/r.git vendor/r',
+    'git clone ../sib local-copy',
+    'git init',
+    'echo "curl -o ../sib/f.txt x"',
+    `echo '[IO.File]::WriteAllText("${sib}/f.txt", "x")'`,
+  ]) allows(c, 'HK-14 twin');
+  allows("[IO.File]::WriteAllText('out.txt', 'x')", 'HK-14 twin on the PowerShell tool', { tool: 'PowerShell' });
+  allows(`[IO.File]::ReadAllText('${sib}/f.txt')`, 'HK-14 twin on the PowerShell tool', { tool: 'PowerShell' });
+});

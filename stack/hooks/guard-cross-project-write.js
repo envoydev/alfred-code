@@ -27,7 +27,11 @@
 // relative path after `cd -` or `cd $DIR`).
 // The command is read through shell-writes.js `scanShell`: a wrapper, `bash -c '...'`, `eval`, a heredoc into a shell, a
 // script FILE a shell runs and a git alias are read as what they run, and what the reader cannot read is asked, never
-// passed (below). Out of model (audit 2026-10-20 refreshed this list): a path the shell COMPUTES (`$(...)`, a loop
+// passed (below). A target word is expanded by the module's one expander first (audit 2026-10-30 HK-13): `$HOME`,
+// `${HOME}`, `~`, `$USERPROFILE` / `$env:USERPROFILE`, `$PWD` after a followed cd, `$CLAUDE_PROJECT_DIR`, a name the
+// command assigned and `$(echo ...)`; and the write verbs include `curl -o`, `wget -O` / `-P`, `tar -C` / `tar cf`,
+// `unzip -d`, `dd of=`, `patch`, `git init` / `clone` / `apply --directory` and .NET's `[IO.File]::` writes (HK-14).
+// Out of model (audit 2026-10-20 refreshed this list): a path the shell COMPUTES (`$(...)`, a loop
 // variable), `xargs rm` fed a listing and `find ... -delete` - the rm guard judges the last two for what they destroy.
 const fs = require('fs');
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
@@ -510,7 +514,7 @@ const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNor
 // `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
 // anchor still at the project root is this project's own file - the case that must never block.
 function judge(rawIn, index, what, verb) {
-  const raw = scan.expandVars(rawIn);
+  const raw = scan.expandVars(rawIn, index);
   if (isVar(raw)) return; // an unexpanded variable - cannot judge, don't guess
   const base = anchorAt(index);
   // `C:\\other\\f.txt` and `\\\\server\\share\\f.txt` are as explicit as a leading `/`, but neither

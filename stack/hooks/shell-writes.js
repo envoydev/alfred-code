@@ -1031,7 +1031,134 @@ function writesOf(cmd, c, out) {
       const dir = call.dirs.reduce((acc, d) => (acc === null || path.isAbsolute(d) || isVar(d) ? d : path.join(acc, d)), null);
       push(dir, 'a git write in another checkout', 'git');
     }
+    for (const t of gitDestinations(call)) push(t, 'a git write in another checkout', 'git');
+  } else {
+    for (const t of verbDestinations(lower, c.argv)) push(t, 'a download, extract or patch destination');
   }
+}
+
+// ---- the other write verbs' destinations (audit 2026-10-30 HK-14) --------------------------------------------------
+// `curl -o`, `wget -O`, `tar -C` / `tar cf`, `unzip -d`, `dd of=`, `patch <file>`, and `git init` / `git clone` /
+// `git apply --directory` wrote into a sibling folder unjudged. Each verb's own option grammar names its destination;
+// `-` (stdout) and a remote-named download (`curl -O`, `wget` with no `-O`) name none.
+const CURL_FLAGS = 'sSLfkviIONgGjJlnqR#:Z';
+function flagValue(argv, i, letter, flags) {
+  // a cluster of value-less flags ending in `letter` takes the next word; one with text after `letter` holds it
+  const a = argv[i];
+  if (a.length < 2 || a[0] !== '-' || a[1] === '-') return null;
+  const k = a.indexOf(letter, 1);
+  if (k < 0 || ![...a.slice(1, k)].every((ch) => flags.includes(ch))) return null;
+  return k === a.length - 1 ? { value: argv[i + 1], skip: 1 } : { value: a.slice(k + 1), skip: 0 };
+}
+function longValue(argv, i, names) {
+  const a = argv[i];
+  for (const n of names) {
+    if (a === n) return { value: argv[i + 1], skip: 1 };
+    if (a.startsWith(`${n}=`)) return { value: a.slice(n.length + 1), skip: 0 };
+  }
+  return null;
+}
+function verbDestinations(verb, argv) {
+  const out = [];
+  const take = (v) => { if (v && v !== '-') out.push(v); };
+  const walk = (fn) => { for (let i = 0; i < argv.length; i++) { const r = fn(i); if (r) { take(r.value); i += r.skip; } } };
+  if (verb === 'curl') {
+    walk((i) => longValue(argv, i, ['--output', '--output-dir', '--dump-header', '--cookie-jar']) || flagValue(argv, i, 'o', CURL_FLAGS) || flagValue(argv, i, 'D', CURL_FLAGS) || flagValue(argv, i, 'c', CURL_FLAGS));
+  } else if (verb === 'wget') {
+    walk((i) => longValue(argv, i, ['--output-document', '--directory-prefix', '--output-file', '--append-output'])
+      || flagValue(argv, i, 'O', 'qvnckNrpSx') || flagValue(argv, i, 'P', 'qvnckNrpSx') || flagValue(argv, i, 'o', 'qvnckNrpSx') || flagValue(argv, i, 'a', 'qvnckNrpSx'));
+  } else if (verb === 'unzip') {
+    walk((i) => (argv[i] === '-d' ? { value: argv[i + 1], skip: 1 } : /^-d./.test(argv[i]) ? { value: argv[i].slice(2), skip: 0 } : null));
+  } else if (verb === 'dd') {
+    for (const a of argv) if (a.startsWith('of=')) take(a.slice(3));
+  } else if (verb === 'tar' || verb === 'bsdtar' || verb === 'gtar') {
+    out.push(...tarDestinations(argv));
+  } else if (verb === 'patch') {
+    out.push(...patchDestinations(argv));
+  }
+  return out;
+}
+// tar: an extract writes under `-C <dir>`; a create, append or update writes its archive (`-f <file>`, or the word an
+// old-style cluster's `f` takes: `tar czf out.tgz src`). A listing writes nothing.
+function tarDestinations(argv) {
+  const out = [];
+  let mode = '';
+  let archive = null;
+  const dirs = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const long = /^--(extract|get|create|append|update|list|diff|compare|delete)$/.exec(a);
+    if (long) { mode = { extract: 'x', get: 'x', create: 'c', append: 'r', update: 'u', list: 't' }[long[1]] || mode; continue; }
+    const lv = longValue(argv, i, ['--directory', '--file']);
+    if (lv) { if (a.startsWith('--directory')) dirs.push(lv.value); else archive = lv.value; i += lv.skip; continue; }
+    if (a.startsWith('--')) continue;
+    // the first word may be an old-style cluster with no dash (`xzf`, `czf`)
+    const cluster = a.startsWith('-') ? a.slice(1) : (i === 0 && /^[A-Za-z]+$/.test(a) ? a : null);
+    if (cluster === null) continue;
+    for (let k = 0; k < cluster.length; k++) {
+      const ch = cluster[k];
+      if ('xcrutd'.includes(ch) && !mode) mode = ch === 'd' ? 't' : ch;
+      if (ch === 'f' || ch === 'C') {
+        const rest = cluster.slice(k + 1);
+        const v = a.startsWith('-') && rest ? rest : argv[++i];
+        if (ch === 'f') archive = v; else dirs.push(v);
+        break;
+      }
+    }
+  }
+  if (mode === 'x') out.push(...dirs.filter(Boolean));
+  if ('cru'.includes(mode) && mode && archive && archive !== '-') out.push(archive);
+  return out;
+}
+// patch [options] [originalfile [patchfile]]: the file it patches, `-o <out>`, `-r <rejects>`, and `-d <dir>`, where
+// every file the patch names is written.
+const PATCH_VALUE = 'pFDBYzVgrodi';
+function patchDestinations(argv) {
+  const out = [];
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const lv = longValue(argv, i, ['--output', '--reject-file', '--directory', '--input', '--strip', '--fuzz', '--ifdef', '--prefix', '--basename-prefix', '--suffix', '--version-control', '--get']);
+    if (lv) { if (/^--(?:output|reject-file|directory)/.test(a)) out.push(lv.value); i += lv.skip; continue; }
+    if (a === '--') { positional.push(...argv.slice(i + 1)); break; }
+    if (a.startsWith('--')) continue;
+    if (a.length > 1 && a[0] === '-') {
+      for (let k = 1; k < a.length; k++) {
+        if (!PATCH_VALUE.includes(a[k])) continue;
+        const v = k === a.length - 1 ? argv[++i] : a.slice(k + 1);
+        if ('ord'.includes(a[k])) out.push(v);
+        break;
+      }
+      continue;
+    }
+    positional.push(a);
+  }
+  if (positional[0]) out.push(positional[0]);
+  return out.filter((v) => v && v !== '-');
+}
+// git: `init <dir>` (and `--separate-git-dir`), `clone <repo> <dir>`, `apply --directory=<root>`.
+const CLONE_VALUE = new Set(['-b', '--branch', '-o', '--origin', '--depth', '--reference', '--reference-if-able', '-c', '--config', '--template',
+  '--separate-git-dir', '-u', '--upload-pack', '-j', '--jobs', '--filter', '--shallow-since', '--shallow-exclude', '--bundle-uri', '--server-option', '--ref-format']);
+const INIT_VALUE = new Set(['--template', '--separate-git-dir', '-b', '--initial-branch', '--object-format', '--ref-format']);
+function gitDestinations(call) {
+  const out = [];
+  const argv = call.argv;
+  const positional = (values) => {
+    const pos = [];
+    for (let i = 0; i < argv.length; i++) {
+      const a = argv[i];
+      if (a === '--') { pos.push(...argv.slice(i + 1)); break; }
+      if (values.has(a)) { if (a === '--separate-git-dir') out.push(argv[i + 1]); i++; continue; }
+      if (a.startsWith('--separate-git-dir=')) { out.push(a.slice(19)); continue; }
+      if (a.startsWith('-')) continue;
+      pos.push(a);
+    }
+    return pos;
+  };
+  if (call.sub === 'init') { const p = positional(INIT_VALUE); if (p[0]) out.push(p[0]); }
+  else if (call.sub === 'clone') { const p = positional(CLONE_VALUE); if (p[1]) out.push(p[1]); }
+  else if (call.sub === 'apply') { for (let i = 0; i < argv.length; i++) { const lv = longValue(argv, i, ['--directory']); if (lv) { out.push(lv.value); i += lv.skip; } } }
+  return out.filter(Boolean);
 }
 
 // ---- git calls: the ONE finder both guards read ------------------------------------------------------------------
@@ -1171,6 +1298,16 @@ const PATH_NAME_CALL = new RegExp(String.raw`\bPath\s*\(\s*([A-Za-z_$][\w$]*)\s*
 const WRITE_ARGV = /\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile)\s*\(\s*(?:process|sys)\.argv\[(\d+)\]/g;
 const OPEN_ARGV = /\b(?:open|fopen)\s*\(\s*sys\.argv\[(\d+)\]\s*,\s*(?:mode\s*=\s*)?(["'])([^"'\n]*)\2/g;
 const WRITE_EXPR = /\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile)\s*\(\s*(?!["']|[A-Za-z_$][\w$]*\s*[,)]|(?:process|sys)\.argv\[\d+\])(?=\S)/g;
+// .NET's file API, called from PowerShell (the tool's own command, or a `pwsh -Command` / heredoc script): the path it
+// writes, and a Copy / Move / Replace's destination - a Move's or Replace's source is removed too (audit 2026-10-30 HK-14:
+// `[IO.File]::WriteAllText('<sibling>/f', ...)` passed). Literal paths only, like every runtime write here.
+const PS_FILE_CALL = /\[(?:System\.)?IO\.(?:File|Directory)\]::(WriteAllText|WriteAllLines|WriteAllBytes|AppendAllText|AppendAllLines|AppendText|CreateText|CreateDirectory|Create|Delete|OpenWrite|Copy|Move|Replace)\s*\(\s*(["'])([^"'\n]+)\2(?:\s*,\s*(["'])([^"'\n]+)\4)?/gi;
+function psFilePaths(m) {
+  const method = m[1].toLowerCase();
+  if (method === 'copy') return m[5] ? [m[5]] : [];
+  if (method === 'move' || method === 'replace') return [m[3], ...(m[5] ? [m[5]] : [])];
+  return [m[3]];
+}
 // The target a script's computed write reports: a variable spelling, so a guard that cannot judge `$NAME` skips it.
 const UNKNOWN_WRITE = '$UNKNOWN_INTERPRETER_WRITE';
 // Where a script's string literals sit, so a write verb only counts in CODE (audit 2026-10-20 C31, 970539b7: a python
@@ -1268,6 +1405,7 @@ function interpreterTargets(raw, P, heredocs) {
     for (const m of body.matchAll(WRITE_CALL)) if (!inStr(m.index)) literal(m[2], index);
     for (const m of body.matchAll(OPEN_CALL)) if (!inStr(m.index) && /[wax+]/.test(m[4])) literal(m[2], index);
     for (const m of body.matchAll(PATH_CALL)) if (!inStr(m.index)) literal(m[2], index);
+    for (const m of body.matchAll(PS_FILE_CALL)) if (!inStr(m.index)) for (const p of psFilePaths(m)) literal(p, index);
     const destroyed = new Set([...body.matchAll(DESTROYED)].filter((d) => !inStr(d.index)).map((d) => d[1]));
     for (const b of body.matchAll(PATH_BIND)) if (!inStr(b.index) && destroyed.has(b[1])) literal(b[3], index);
     // `p = '<literal>'` ... `open(p, 'w')` / `writeFileSync(f, ...)` / `Path(p).write_text(...)`: the name resolves to every
@@ -2483,8 +2621,23 @@ function scanShell(rawCommand, opts = {}) {
   const P = parseShell(command);
   if (P.tooDeep) return empty(`subshells nested past ${MAX_NEST}`);
   const assigns = P.assigns;
-  const expandVars = (t) => t.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g,
-    (m, br, bare) => (assigns.has(br || bare) ? assigns.get(br || bare) : m));
+  // A target word as the shell expands it where it stands (`at`, its index; none reads the command's end): the one
+  // expander first - `$HOME` / `${HOME}` / `~` / `$USERPROFILE` / `$env:USERPROFILE`, `$PWD` after a followed cd,
+  // `$CLAUDE_PROJECT_DIR`, a name the command assigned, `$(echo ...)` (audit 2026-10-30 HK-13: every `$HOME` spelling was
+  // an unexpanded variable to the cross-project guard) - then any literal the command assigned the name, as before.
+  let vars;
+  const expandVars = (t, at) => {
+    let s = String(t);
+    if (/[$`~%]/.test(s)) {
+      if (vars === undefined) {
+        try {
+          vars = shellVars(P, { cwd: opts.cwd || null, home: opts.home, project: opts.project !== undefined ? opts.project : (process.env.CLAUDE_PROJECT_DIR || null) });
+        } catch { vars = null; }
+      }
+      if (vars) s = vars.expand(s, at === undefined ? Infinity : at);
+    }
+    return s.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, br, bare) => (assigns.has(br || bare) ? assigns.get(br || bare) : m));
+  };
   const targets = [];
   const gitWrites = [];
   for (let k = 0; k < P.cmds.length; k++) {
@@ -2503,6 +2656,13 @@ function scanShell(rawCommand, opts = {}) {
     }
   }
   targets.push(...interpreterTargets(raw, P, heredocs));
+  // the PowerShell tool's own command calling .NET's file API (a quoted one is text, or a runtime's script read above)
+  if (/IO\.(?:File|Directory)\]::/i.test(command)) {
+    for (const m of command.matchAll(PS_FILE_CALL)) {
+      if (P.inQuotes(m.index)) continue;
+      for (const p of psFilePaths(m)) targets.push({ raw: p, index: m.index, what: 'a .NET file write', verb: /^delete$/i.test(m[1]) ? 'rm' : 'interpreter' });
+    }
+  }
   const files = opts.files !== undefined ? !!opts.files : !!opts.cwd;
   const depth = opts.depth || 0;
   const carried = carriedOf(P, raw, heredocs, { cwd: opts.cwd || null, files }, run);
