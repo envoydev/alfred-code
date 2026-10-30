@@ -168,7 +168,8 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js\"",
-                "timeout": 70
+                "timeout": 70,
+                "onFailure": "block"
               }
             ]
           },

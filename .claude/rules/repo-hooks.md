@@ -202,8 +202,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   carries `onFailure: "block"` on both routes (`settings.js` `BLOCK_ON_FAILURE` / `onFailureFor`, read by
   `build-marketplace.js`; audit 2026-10-14 HK07, the user's ruling): on 2.1.295+ a dispatcher that cannot start, exits
   other than 0 / 2, prints invalid output or stalls past its budget blocks the call as an exit 2 would ('Block the action
-  when a hook fails'), the price being that a broken install blocks every shell call until fixed - the file dispatcher
-  and every other hook keep the default `continue`. An older Claude Code drops the key: its hook entry is a non-strict
+  when a hook fails'), the price being that a broken install blocks every shell call until fixed. The FILE dispatcher
+  carries it too (audit 2026-10-30 HK-21, the plan's ruling: a crashed `file-guards.js` let a Read of a credential file
+  through), so a broken install blocks every Read, Edit, Write and Grep as well; every other hook keeps the default
+  `continue`. Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
+  dispatcher still returns, and a cold dispatcher answers well inside its budget (`hooks-entry.test.js`, HK-21). The
+  rollback is dropping the dispatcher's `BLOCK_ON_FAILURE` row - an update then takes the key off the copy route's entry -
+  or `claude plugin disable` on the plugin route. An older Claude Code drops the key: its hook entry is a non-strict
   zod object, so the entry parses with the key stripped (the 2.1.100 and 2.1.294 bundles read 2026-10-14; the 2.1.294
   plugin validator says 'Claude Code ignores unrecognized fields at load time'). The copy route backfills the key onto
   an older entry.
