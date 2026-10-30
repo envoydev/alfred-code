@@ -736,22 +736,24 @@ const realOf = (p) => { try { return realStrict(p); } catch { return pathMod.res
 const sessionIdOf = (v) => (typeof v === 'string' && /^[\w.-]{1,128}$/.test(v) ? v : '');
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+// Audit 2026-10-30 HK-03: the file is one the model can write, so it counts only after the user answered this guard's
+// last denial 'Show or use the value ...' with auto-run off (hook-prelude.js securityReceipt; the hook's own payload
+// carries the seat's `agent_id`). A CLI run (`--redacted`, no transcript) reads it only for its note. No prelude: shut.
+const SHOW_LABEL = 'Show or use the value this session - it enters the transcript permanently';
 function readReceipt(root, transcriptPath, sessionId) {
   const r = { path: layout ? layout.findState(root, 'approvals', 'SECRET-READ-ALLOW') : pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'),
-    write: layout ? layout.statePath(root, 'approvals', 'SECRET-READ-ALLOW') : null, stale: false, all: false, files: new Set(), names: new Set(), live: false, session: sessionIdOf(sessionId) };
+    write: layout ? layout.statePath(root, 'approvals', 'SECRET-READ-ALLOW') : null, stale: false, all: false, files: new Set(), names: new Set(), live: false, session: sessionIdOf(sessionId), why: '' };
   try {
-    const st = fs.statSync(r.path);
-    let sessionStartMs = 0;
-    try {
-      const t = fs.statSync(String(transcriptPath || ''));
-      sessionStartMs = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    const lines = Date.now() - st.mtimeMs > MAX_RECEIPT_AGE_MS || (sessionStartMs && st.mtimeMs < sessionStartMs) ? null
-      : fs.readFileSync(r.path, 'utf8').split(LINES).map((l) => l.trim());
-    const sessions = (lines || []).map((l) => l.match(/^session:\s*(\S+)$/)).filter(Boolean).map((m) => m[1]);
-    if (!lines || (r.session && !sessions.includes(r.session))) {
+    let receipts = null;
+    try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
+    const input = { ...(payload && typeof payload === 'object' ? payload : {}), transcript_path: transcriptPath || undefined, session_id: r.session || undefined };
+    const held = receipts && receipts.securityReceipt ? receipts.securityReceipt(r.path, input, { marker: 'SECRET-READ-ALLOW', labels: [SHOW_LABEL] })
+      : fs.existsSync(r.path) ? { live: false, lines: [], why: 'no receipt reader beside this guard' } : null;
+    const lines = held && held.live ? held.lines : null;
+    if (held && !held.live) {
       r.stale = true;
-    } else {
+      r.why = held.why;
+    } else if (lines) {
       for (const e of lines) {
         if (!e || e.startsWith('#') || /^session:/.test(e)) continue;
         if (e === '*') r.all = true;

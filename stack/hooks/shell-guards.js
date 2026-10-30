@@ -712,6 +712,56 @@ function slowProbe(timings, totalMs)
     return { mode: 'probe', kind: 'slow', reason: `probe: slow - the dispatcher ran ${totalMs}ms`, detail: { branch: 'slow', total_ms: totalMs, ...timings } };
 }
 
+// ---- the sensitive runner's line (audit 2026-10-30 HK-01, the BLOCKER) ---------------------------------------------
+// `node <guard> --with-sensitive -- "<command line>"` runs its line through a shell with the store's values in its
+// environment, masking only those values' exact text in the output. shell-writes.js carries the line like `sh -c`, so
+// every guard reading through it judges the line already; the guards that keep a reader of their own - the secret guard
+// (`cat .env` raw: the masker knows only the store's values) and the read guard - judge each line here, as the command
+// it is. Their block, deny or rewrite of the line blocks the whole call: a rewrite cannot be spliced into the runner's
+// quoted argument, and a line that needs one would print what the runner does not mask.
+const OWN_READERS = ['guard-secret-value', 'guard-read-whole-file'];
+const RUNNER_LINES_MAX = 4;
+function runnerResults(stdin, guards)
+{
+    let payload;
+    try { payload = JSON.parse(stdin.toString('utf8')); }
+    catch { return []; }
+    if (!payload || typeof payload !== 'object' || !payload.tool_input || typeof payload.tool_input.command !== 'string') return [];
+    if (!/with-sensitive/.test(payload.tool_input.command)) return [];
+    let sw;
+    try { sw = require('./shell-writes.js'); }
+    catch { return []; }
+    const cwd = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : (process.env.CLAUDE_PROJECT_DIR || process.cwd());
+    let lines = [];
+    try { lines = sw.sensitiveRuns(payload.tool_input.command, { cwd }); }
+    catch { lines = []; }
+    const out = [];
+    let prelude = null;
+    try { prelude = require('./hook-prelude.js'); }
+    catch { prelude = null; }
+    for (const line of lines.slice(0, RUNNER_LINES_MAX))
+    {
+        const inner = Buffer.from(JSON.stringify({ ...payload, cwd: line.cwd || payload.cwd, tool_input: { ...payload.tool_input, command: line.text } }));
+        for (const g of OWN_READERS.filter((name) => guards.includes(name)))
+        {
+            const r = runGuard(path.join(__dirname, `${g}.js`), inner);
+            const { json } = parseOut(r.stdout);
+            const hso = json && json.hookSpecificOutput && typeof json.hookSpecificOutput === 'object' ? json.hookSpecificOutput : {};
+            const why = r.code === 2 ? r.stderr : hso.permissionDecision === 'deny' ? String(hso.permissionDecisionReason || '')
+                : hso.updatedInput ? `${String(hso.additionalContext || '')}\nRewritten outside the runner, it would run as: ${String((hso.updatedInput || {}).command || '').slice(0, 400)}` : null;
+            if (why === null) continue;
+            const text = `Blocked: the --with-sensitive runner runs \`${line.text.slice(0, 120)}\` through a shell, and that line is judged as the command it is - `
+                + 'the runner masks only the stored values\' exact text in its output, so it never makes a line safe.\n'
+                + `${g}.js on the line:\n${String(why).trim()}\n`
+                + 'Run the line\'s safe form instead, outside the runner or inside it; nothing ran.';
+            ledgerRow(payload, prelude, { reason: firstLine(text).slice(0, 200), agent: payload.agent_id || null, tool_use_id: payload.tool_use_id || null,
+                detail: { branch: 'sensitive-runner', guard: g, matched: line.text.slice(0, 120) } });
+            out.push({ guard: `${g}.js`, code: 2, stdout: '', stderr: text });
+        }
+    }
+    return out;
+}
+
 // ---- the hook -----------------------------------------------------------------------------------
 function main()
 {
@@ -734,6 +784,7 @@ function main()
     const guards = named.length ? RUN_ORDER.filter((g) => named.includes(g)) : RUN_ORDER;
     const results = [...own.results];
     const spent = {};
+    let protectiveBlock = false;
     for (const g of guards)
     {
         const at = performance.now();
@@ -743,7 +794,15 @@ function main()
         // A protective block is a correct answer alone, so it is answered now: a guard still to run that
         // stalls past the budget would otherwise drop it - a timed-out command hook's output is discarded and the
         // call runs (code.claude.com/docs/en/hooks, 'Timeouts').
-        if (r.code === 2 && PROTECTIVE.has(g)) break;
+        if (r.code === 2 && PROTECTIVE.has(g)) { protectiveBlock = true; break; }
+    }
+    // the sensitive runner's line, judged by the guards with a reader of their own (HK-01)
+    if (!protectiveBlock && stdin.includes('with-sensitive'))
+    {
+        const at = performance.now();
+        try { results.push(...runnerResults(stdin, guards)); }
+        catch { /* a runner read that fails leaves the guards' own verdicts */ }
+        spent['sensitive-runner'] = Math.round(performance.now() - at);
     }
     try
     {

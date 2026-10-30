@@ -27,7 +27,11 @@
 // relative path after `cd -` or `cd $DIR`).
 // The command is read through shell-writes.js `scanShell`: a wrapper, `bash -c '...'`, `eval`, a heredoc into a shell, a
 // script FILE a shell runs and a git alias are read as what they run, and what the reader cannot read is asked, never
-// passed (below). Out of model (audit 2026-10-20 refreshed this list): a path the shell COMPUTES (`$(...)`, a loop
+// passed (below). A target word is expanded by the module's one expander first (audit 2026-10-30 HK-13): `$HOME`,
+// `${HOME}`, `~`, `$USERPROFILE` / `$env:USERPROFILE`, `$PWD` after a followed cd, `$CLAUDE_PROJECT_DIR`, a name the
+// command assigned and `$(echo ...)`; and the write verbs include `curl -o`, `wget -O` / `-P`, `tar -C` / `tar cf`,
+// `unzip -d`, `dd of=`, `patch`, `git init` / `clone` / `apply --directory` and .NET's `[IO.File]::` writes (HK-14).
+// Out of model (audit 2026-10-20 refreshed this list): a path the shell COMPUTES (`$(...)`, a loop
 // variable), `xargs rm` fed a listing and `find ... -delete` - the rm guard judges the last two for what they destroy.
 const fs = require('fs');
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
@@ -235,35 +239,28 @@ function sessionScratchAllowed(target) {
 // to be honourable or the ask offers a route this guard then denies - the failure the git rule
 // recorded: an ask recommended a sibling-repo commit, the user took it, the guard denied it at the
 // first git verb. So the answer is recorded as a receipt this guard reads:
-// <data root>/state/approvals/CROSS-WRITE-ALLOW (the pre-2.8.0 <docs-path>/flow/ one still read), one root per line, '#' comments allowed. Session-scoped
-// the way the dispatch guard's APPROVAL stamp is - older than 8h, or written before this session
-// began (the transcript's birthtime, where the filesystem reports a real one), reads as absent -
-// and a root that contains the project is dropped, the containment rule above.
+// <data root>/state/approvals/CROSS-WRITE-ALLOW (the pre-2.8.0 <docs-path>/flow/ one still read), one root per line, '#' comments
+// allowed, read below as a security receipt (older than 8h, written before this session began, naming another session, or
+// with no allow answer in the transcript, it reads as absent) - and a root that contains the project is dropped, the
+// containment rule above.
 // ALFRED_CODE_ALLOW_WRITE_OUTSIDE stays the permanent lever for a tree the project owns.
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 const RECEIPT = layout ? layout.findState(ROOT, 'approvals', 'CROSS-WRITE-ALLOW') : path.resolve(ROOT, docsRootEnv(), 'flow', 'CROSS-WRITE-ALLOW');
 // Where a denial says to write it, relative to the project.
 const receiptRelOf = () => (layout ? path.relative(ROOT, layout.statePath(ROOT, 'approvals', 'CROSS-WRITE-ALLOW')) : path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'CROSS-WRITE-ALLOW'));
-const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
-let receiptStale = false;
-let receiptLines = [];
-const receiptRoots = (() => {
-  try {
-    const st = fs.statSync(RECEIPT);
-    let sessionStartMs = 0;
-    try {
-      const t = fs.statSync(String(payload.transcript_path || ''));
-      sessionStartMs = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs > MAX_RECEIPT_AGE_MS || (sessionStartMs && st.mtimeMs < sessionStartMs)) {
-      receiptStale = true;
-      return [];
-    }
-    receiptLines = fs.readFileSync(RECEIPT, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-    return receiptLines.map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
-  } catch { return []; } // absent or unreadable - no allowance recorded
-})();
+// A security receipt (audit 2026-10-30 HK-03 / HK-16, hook-prelude.js securityReceipt): this session's own (`session:`),
+// under 8h, and only after the user answered this guard's last denial with an 'Allow ... for this session' label, auto-run
+// off. No prelude, no reader: shut.
+let receipts = null;
+try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
+const ALLOW_LABEL = /^allow .+ for this session$/;
+const held = receipts && receipts.securityReceipt ? receipts.securityReceipt(RECEIPT, payload, { marker: 'CROSS-WRITE-ALLOW', labels: [ALLOW_LABEL] }) : null;
+const receiptLines = held && held.live ? held.lines : [];
+const receiptRoots = receiptLines.map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
+// The lines a denial tells the model to write, its session line first (HK-16), and why a receipt there is shut.
+const writeLines = (lines) => (receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, lines) : lines.map((l) => `  ${l}\n`).join(''));
+const shutText = (rel) => (receipts && receipts.receiptShutText ? receipts.receiptShutText(held, rel) : '');
 // ~/.claude-<name> account dirs (a second account's CLAUDE_CONFIG_DIR) are siblings of ~/.claude, matched by prefix.
 // The prefix is dropped only when the project itself sits under such a dir (the containment rule above) -
 // checking whether the project sat under HOME instead disabled it for every real project, and a
@@ -464,10 +461,11 @@ function block(what, shown, abs = shown) {
     `  'Task card in this project (Recommended)' - write ${card}:\n` +
     `  per task what changes where (file + symbol), why, the shared contract, how ${other} verifies it;\n` +
     `  then finish your side, or say what is blocked until it lands.\n` +
-    `  'Allow writes into ${otherRoot} for this session' - write ${receiptRel} with that root on its own\n` +
-    `  line and retry (this session only, under 8h).\n` +
+    `  'Allow writes into ${otherRoot} for this session' - write ${receiptRel} with exactly these lines\n` +
+    `  and retry; it counts only after the user's own answer to this denial, never one auto-run gave (under 8h):\n` +
+    writeLines([otherRoot]) +
     `  'Drop the change'.\n` +
-    (receiptStale ? `The receipt at ${receiptRel} is stale (older than 8h or from before this session) - rewrite it only on a fresh 'allow'.\n` : '') +
+    shutText(receiptRel) +
     `Reading ${other} stays open. A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`,
   );
   process.exit(2);
@@ -510,7 +508,7 @@ const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNor
 // `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
 // anchor still at the project root is this project's own file - the case that must never block.
 function judge(rawIn, index, what, verb) {
-  const raw = scan.expandVars(rawIn);
+  const raw = scan.expandVars(rawIn, index);
   if (isVar(raw)) return; // an unexpanded variable - cannot judge, don't guess
   const base = anchorAt(index);
   // `C:\\other\\f.txt` and `\\\\server\\share\\f.txt` are as explicit as a leading `/`, but neither
@@ -576,9 +574,11 @@ for (const u of unread) {
     `and a script it cannot read is never let through, since the same text a little shorter is judged.\n` +
     `Do not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
     `  'Allow ${shown} for this session (Recommended)' - when it is this project's own and writes only here:\n` +
-    `  write ${receiptRel} with the line ${u.path || 'unread'} and retry the SAME command.\n` +
+    `  write ${receiptRel} with exactly these lines and retry the SAME command:\n` +
+    writeLines([u.path || 'unread']) +
     `  'Drop it' - run a smaller piece the guard can read instead.\n` +
-    `The receipt is honoured for this session only, under 8h.`,
+    `The receipt counts only after the user's own answer to this denial, never one auto-run gave - this session, under 8h.\n` +
+    shutText(receiptRel),
   );
   process.exit(2);
 }

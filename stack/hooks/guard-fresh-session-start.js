@@ -1110,9 +1110,13 @@ function autoModeStart() {
     // The user's words, verbatim but for the line breaks and double quotes the stamp's one-line quote cannot hold.
     const words = (IS_SKILL_CALL ? `/${skill} ${autoArgs()}` : typedLine()).replace(/\s+/g, ' ').trim().replace(/"/g, "'").slice(0, 400);
     const from = current && current.session && current.session !== sid && /^AUTO\b/.test(current.first) ? current.session : '';
+    // The transcript's size now: the reader proves the stamp by the typed row turning auto-run on near this offset
+    // (hook-prelude.js autoStampVerified, audit 2026-10-30 HK-03) - a stamp the model wrote by hand carries none it can back.
+    let size = 0;
+    try { size = fs.statSync(String(payload.transcript_path || '')).size; } catch { size = 0; }
     try {
       fs.mkdirSync(nodePath.dirname(file), { recursive: true });
-      fs.writeFileSync(file, `AUTO - "${words}"\nsession: ${sid}\nskill: ${skill}\nat: ${new Date().toISOString()}\n${from ? `taken-from: ${from}\n` : ''}`);
+      fs.writeFileSync(file, `AUTO - "${words}"\nsession: ${sid}\nskill: ${skill}\nat: ${new Date().toISOString()}\n${from ? `taken-from: ${from}\n` : ''}transcript-size: ${size}\n`);
     } catch { return null; }   // no stamp, no auto-run: the run asks as it always has
     // the stamp this one replaces, left in the pre-2.8.0 flow/, would be read again once the new one goes
     if (current && current.file !== file) try { fs.rmSync(current.file, { force: true }); } catch { /* the new one wins while it stands */ }

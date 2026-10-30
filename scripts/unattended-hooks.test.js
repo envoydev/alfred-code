@@ -107,10 +107,12 @@ test('unattended: a live AUTO waiver of this session is nobody at the terminal (
     const root = fs.mkdtempSync(path.join(TMP, 'auto-'));
     const flow = path.join(root, '.alfred', 'docs', 'flow');
     fs.mkdirSync(flow, { recursive: true });
-    const t = transcripts();
+    // the user TYPED the waiver the hand-written stamps below quote (audit 2026-10-30 HK-03, hook-prelude.js autoStampVerified)
+    const waiver = { type: 'user', entrypoint: 'cli', message: { role: 'user', content: [{ type: 'text', text: 'run it overnight, take every recommendation' }] } };
+    const t = { interactive: file([waiver, ...convo('cli')]) };
     const env = { CLAUDE_PROJECT_DIR: root };
     // the session began before its AUTO stamp was written (a stamp older than the transcript is another session's)
-    const cycle = file([{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }, ...convo('cli')]);
+    const cycle = file([waiver, { type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }, ...convo('cli')]);
     assert.strictEqual(unattended({ transcript_path: t.interactive }, env), false, 'no stamp - a person');
     fs.writeFileSync(path.join(flow, 'APPROVAL'), 'APPROVED - "go"\n');
     assert.strictEqual(unattended({ transcript_path: t.interactive }, env), false, 'an APPROVED stamp keeps the asks');

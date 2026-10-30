@@ -623,7 +623,8 @@ function noteAssign(assigns, events, tok) {
   const v = raw.slice(m[0].length);
   const d = /[$`]/.test(v) ? '' : dequote(v);
   if (d) assigns.set(m[1], d);
-  events.push({ at: tok.s, kind: 'set', name: m[1], value: dequote(v) });
+  // `raw` keeps the value as written (a single-quoted `'$HOME'` is text, never expanded - shellVars reads it)
+  events.push({ at: tok.s, kind: 'set', name: m[1], value: dequote(v), raw: v });
   return true;
 }
 // The command words of one simple command: { at (its index in words), name (normalised), word (dequoted), via (the
@@ -651,6 +652,7 @@ function commandWordsOf(cmd, assigns, events) {
   let k = 0;
   const chain = [];
   const cand = (at, via) => { const word = dq(at); const c = new Cand(cmd, at, word, normCmd(word, assigns), via, chain.length ? chain.slice() : NO_CHAIN); out.push(c); return c; };
+  const lead = events.length; // the leading assignments: a PREFIX of the command word after them (`H=/x rm $H` expands the old H)
   for (; k < w.length; k++) {
     const raw = w[k].raw;
     if (!wrapper) {
@@ -686,6 +688,7 @@ function commandWordsOf(cmd, assigns, events) {
       }
     }
   }
+  if (out.length) for (let e = lead; e < events.length; e++) events[e].prefix = true;
   // `export G=git`: the declarer's assignments count like the leading ones
   if (out.length && DECLARERS.has(out[out.length - 1].name)) for (let j = k + 1; j < w.length; j++) noteAssign(assigns, events, w[j]);
   // every command word reads the words after it (its lazy `args`); a `find` -exec action's reads to its `;` / `+`
@@ -1028,7 +1031,134 @@ function writesOf(cmd, c, out) {
       const dir = call.dirs.reduce((acc, d) => (acc === null || path.isAbsolute(d) || isVar(d) ? d : path.join(acc, d)), null);
       push(dir, 'a git write in another checkout', 'git');
     }
+    for (const t of gitDestinations(call)) push(t, 'a git write in another checkout', 'git');
+  } else {
+    for (const t of verbDestinations(lower, c.argv)) push(t, 'a download, extract or patch destination');
   }
+}
+
+// ---- the other write verbs' destinations (audit 2026-10-30 HK-14) --------------------------------------------------
+// `curl -o`, `wget -O`, `tar -C` / `tar cf`, `unzip -d`, `dd of=`, `patch <file>`, and `git init` / `git clone` /
+// `git apply --directory` wrote into a sibling folder unjudged. Each verb's own option grammar names its destination;
+// `-` (stdout) and a remote-named download (`curl -O`, `wget` with no `-O`) name none.
+const CURL_FLAGS = 'sSLfkviIONgGjJlnqR#:Z';
+function flagValue(argv, i, letter, flags) {
+  // a cluster of value-less flags ending in `letter` takes the next word; one with text after `letter` holds it
+  const a = argv[i];
+  if (a.length < 2 || a[0] !== '-' || a[1] === '-') return null;
+  const k = a.indexOf(letter, 1);
+  if (k < 0 || ![...a.slice(1, k)].every((ch) => flags.includes(ch))) return null;
+  return k === a.length - 1 ? { value: argv[i + 1], skip: 1 } : { value: a.slice(k + 1), skip: 0 };
+}
+function longValue(argv, i, names) {
+  const a = argv[i];
+  for (const n of names) {
+    if (a === n) return { value: argv[i + 1], skip: 1 };
+    if (a.startsWith(`${n}=`)) return { value: a.slice(n.length + 1), skip: 0 };
+  }
+  return null;
+}
+function verbDestinations(verb, argv) {
+  const out = [];
+  const take = (v) => { if (v && v !== '-') out.push(v); };
+  const walk = (fn) => { for (let i = 0; i < argv.length; i++) { const r = fn(i); if (r) { take(r.value); i += r.skip; } } };
+  if (verb === 'curl') {
+    walk((i) => longValue(argv, i, ['--output', '--output-dir', '--dump-header', '--cookie-jar']) || flagValue(argv, i, 'o', CURL_FLAGS) || flagValue(argv, i, 'D', CURL_FLAGS) || flagValue(argv, i, 'c', CURL_FLAGS));
+  } else if (verb === 'wget') {
+    walk((i) => longValue(argv, i, ['--output-document', '--directory-prefix', '--output-file', '--append-output'])
+      || flagValue(argv, i, 'O', 'qvnckNrpSx') || flagValue(argv, i, 'P', 'qvnckNrpSx') || flagValue(argv, i, 'o', 'qvnckNrpSx') || flagValue(argv, i, 'a', 'qvnckNrpSx'));
+  } else if (verb === 'unzip') {
+    walk((i) => (argv[i] === '-d' ? { value: argv[i + 1], skip: 1 } : /^-d./.test(argv[i]) ? { value: argv[i].slice(2), skip: 0 } : null));
+  } else if (verb === 'dd') {
+    for (const a of argv) if (a.startsWith('of=')) take(a.slice(3));
+  } else if (verb === 'tar' || verb === 'bsdtar' || verb === 'gtar') {
+    out.push(...tarDestinations(argv));
+  } else if (verb === 'patch') {
+    out.push(...patchDestinations(argv));
+  }
+  return out;
+}
+// tar: an extract writes under `-C <dir>`; a create, append or update writes its archive (`-f <file>`, or the word an
+// old-style cluster's `f` takes: `tar czf out.tgz src`). A listing writes nothing.
+function tarDestinations(argv) {
+  const out = [];
+  let mode = '';
+  let archive = null;
+  const dirs = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const long = /^--(extract|get|create|append|update|list|diff|compare|delete)$/.exec(a);
+    if (long) { mode = { extract: 'x', get: 'x', create: 'c', append: 'r', update: 'u', list: 't' }[long[1]] || mode; continue; }
+    const lv = longValue(argv, i, ['--directory', '--file']);
+    if (lv) { if (a.startsWith('--directory')) dirs.push(lv.value); else archive = lv.value; i += lv.skip; continue; }
+    if (a.startsWith('--')) continue;
+    // the first word may be an old-style cluster with no dash (`xzf`, `czf`)
+    const cluster = a.startsWith('-') ? a.slice(1) : (i === 0 && /^[A-Za-z]+$/.test(a) ? a : null);
+    if (cluster === null) continue;
+    for (let k = 0; k < cluster.length; k++) {
+      const ch = cluster[k];
+      if ('xcrutd'.includes(ch) && !mode) mode = ch === 'd' ? 't' : ch;
+      if (ch === 'f' || ch === 'C') {
+        const rest = cluster.slice(k + 1);
+        const v = a.startsWith('-') && rest ? rest : argv[++i];
+        if (ch === 'f') archive = v; else dirs.push(v);
+        break;
+      }
+    }
+  }
+  if (mode === 'x') out.push(...dirs.filter(Boolean));
+  if ('cru'.includes(mode) && mode && archive && archive !== '-') out.push(archive);
+  return out;
+}
+// patch [options] [originalfile [patchfile]]: the file it patches, `-o <out>`, `-r <rejects>`, and `-d <dir>`, where
+// every file the patch names is written.
+const PATCH_VALUE = 'pFDBYzVgrodi';
+function patchDestinations(argv) {
+  const out = [];
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const lv = longValue(argv, i, ['--output', '--reject-file', '--directory', '--input', '--strip', '--fuzz', '--ifdef', '--prefix', '--basename-prefix', '--suffix', '--version-control', '--get']);
+    if (lv) { if (/^--(?:output|reject-file|directory)/.test(a)) out.push(lv.value); i += lv.skip; continue; }
+    if (a === '--') { positional.push(...argv.slice(i + 1)); break; }
+    if (a.startsWith('--')) continue;
+    if (a.length > 1 && a[0] === '-') {
+      for (let k = 1; k < a.length; k++) {
+        if (!PATCH_VALUE.includes(a[k])) continue;
+        const v = k === a.length - 1 ? argv[++i] : a.slice(k + 1);
+        if ('ord'.includes(a[k])) out.push(v);
+        break;
+      }
+      continue;
+    }
+    positional.push(a);
+  }
+  if (positional[0]) out.push(positional[0]);
+  return out.filter((v) => v && v !== '-');
+}
+// git: `init <dir>` (and `--separate-git-dir`), `clone <repo> <dir>`, `apply --directory=<root>`.
+const CLONE_VALUE = new Set(['-b', '--branch', '-o', '--origin', '--depth', '--reference', '--reference-if-able', '-c', '--config', '--template',
+  '--separate-git-dir', '-u', '--upload-pack', '-j', '--jobs', '--filter', '--shallow-since', '--shallow-exclude', '--bundle-uri', '--server-option', '--ref-format']);
+const INIT_VALUE = new Set(['--template', '--separate-git-dir', '-b', '--initial-branch', '--object-format', '--ref-format']);
+function gitDestinations(call) {
+  const out = [];
+  const argv = call.argv;
+  const positional = (values) => {
+    const pos = [];
+    for (let i = 0; i < argv.length; i++) {
+      const a = argv[i];
+      if (a === '--') { pos.push(...argv.slice(i + 1)); break; }
+      if (values.has(a)) { if (a === '--separate-git-dir') out.push(argv[i + 1]); i++; continue; }
+      if (a.startsWith('--separate-git-dir=')) { out.push(a.slice(19)); continue; }
+      if (a.startsWith('-')) continue;
+      pos.push(a);
+    }
+    return pos;
+  };
+  if (call.sub === 'init') { const p = positional(INIT_VALUE); if (p[0]) out.push(p[0]); }
+  else if (call.sub === 'clone') { const p = positional(CLONE_VALUE); if (p[1]) out.push(p[1]); }
+  else if (call.sub === 'apply') { for (let i = 0; i < argv.length; i++) { const lv = longValue(argv, i, ['--directory']); if (lv) { out.push(lv.value); i += lv.skip; } } }
+  return out.filter(Boolean);
 }
 
 // ---- git calls: the ONE finder both guards read ------------------------------------------------------------------
@@ -1168,6 +1298,16 @@ const PATH_NAME_CALL = new RegExp(String.raw`\bPath\s*\(\s*([A-Za-z_$][\w$]*)\s*
 const WRITE_ARGV = /\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile)\s*\(\s*(?:process|sys)\.argv\[(\d+)\]/g;
 const OPEN_ARGV = /\b(?:open|fopen)\s*\(\s*sys\.argv\[(\d+)\]\s*,\s*(?:mode\s*=\s*)?(["'])([^"'\n]*)\2/g;
 const WRITE_EXPR = /\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile)\s*\(\s*(?!["']|[A-Za-z_$][\w$]*\s*[,)]|(?:process|sys)\.argv\[\d+\])(?=\S)/g;
+// .NET's file API, called from PowerShell (the tool's own command, or a `pwsh -Command` / heredoc script): the path it
+// writes, and a Copy / Move / Replace's destination - a Move's or Replace's source is removed too (audit 2026-10-30 HK-14:
+// `[IO.File]::WriteAllText('<sibling>/f', ...)` passed). Literal paths only, like every runtime write here.
+const PS_FILE_CALL = /\[(?:System\.)?IO\.(?:File|Directory)\]::(WriteAllText|WriteAllLines|WriteAllBytes|AppendAllText|AppendAllLines|AppendText|CreateText|CreateDirectory|Create|Delete|OpenWrite|Copy|Move|Replace)\s*\(\s*(["'])([^"'\n]+)\2(?:\s*,\s*(["'])([^"'\n]+)\4)?/gi;
+function psFilePaths(m) {
+  const method = m[1].toLowerCase();
+  if (method === 'copy') return m[5] ? [m[5]] : [];
+  if (method === 'move' || method === 'replace') return [m[3], ...(m[5] ? [m[5]] : [])];
+  return [m[3]];
+}
 // The target a script's computed write reports: a variable spelling, so a guard that cannot judge `$NAME` skips it.
 const UNKNOWN_WRITE = '$UNKNOWN_INTERPRETER_WRITE';
 // Where a script's string literals sit, so a write verb only counts in CODE (audit 2026-10-20 C31, 970539b7: a python
@@ -1193,18 +1333,21 @@ function codeStrings(body) {
   }
   return (at) => mark[at] === 1;
 }
-function interpreterTargets(raw, P, heredocs) {
+// The scripts a command hands a runtime (the ONE reader of them - the write targets below, the rm guard's runtime delete
+// and the commit guard's runtime commit, audit 2026-10-30 HK-11 / HK-17): a heredoc fed to a pipeline holding a runtime,
+// and the script argument after a runtime's `-e` / `-c` / `-Command`. Each: { body, index, runtime, shellExpands, argv }.
+function runtimeScriptsOf(raw, P, heredocs) {
   const scripts = [];
   const runtimes = [];
   for (const cmd of P.cmds) for (const c of cmd.cands) if (INTERP.test(c.name)) runtimes.push({ cmd, c, at: cmd.words[c.at].s });
-  if (!runtimes.length) return [];
-  const runElems = new Set(runtimes.map((r) => r.cmd.elem));
+  if (!runtimes.length) return scripts;
+  const runElems = new Map(runtimes.map((r) => [r.cmd.elem, r.c.name]));
   // a heredoc fed to a pipeline one of whose stages is a runtime: the heredoc's own command is in that element
   const heredocCmd = heredocOwners(P, heredocs);
   for (const h of heredocs) {
     const owner = heredocCmd.get(h.index);
     // an unquoted tag's body is expanded by the shell; `<<'EOF'` / `<<\EOF` hands it over verbatim
-    if (owner && runElems.has(owner.elem)) scripts.push({ body: bodyOf(raw, h), index: h.index, shellExpands: !/['"\\]/.test(raw.slice(h.index, h.openEnd)) });
+    if (owner && runElems.has(owner.elem)) scripts.push({ body: bodyOf(raw, h), index: h.index, runtime: runElems.get(owner.elem), shellExpands: !/['"\\]/.test(raw.slice(h.index, h.openEnd)) });
   }
   // `node -e "…"` / `python3 -c '…'` - the whole script argument after its flag
   for (const r of runtimes) {
@@ -1212,9 +1355,21 @@ function interpreterTargets(raw, P, heredocs) {
     const words = wordsFrom(raw, r.cmd.words[r.c.at].e, expands);
     for (let i = 0; i < words.length - 1; i++) {
       // the words after the script are its argv: node's process.argv[1] and python's sys.argv[1] are the first of them
-      if (SCRIPT_FLAG.test(words[i]) && !words[i + 1].startsWith('-')) scripts.push({ body: words[i + 1], index: r.at, shellExpands: expands[i + 1], argv: words.slice(i + 2) });
+      if (SCRIPT_FLAG.test(words[i]) && !words[i + 1].startsWith('-')) scripts.push({ body: words[i + 1], index: r.at, runtime: r.c.name, shellExpands: expands[i + 1], argv: words.slice(i + 2) });
     }
   }
+  return scripts;
+}
+// runtimeScripts(raw): the same, read from a command's text (heredocs, comments and continuations as scanShell reads them).
+function runtimeScripts(raw) {
+  const text = String(raw || '');
+  const heredocs = heredocsOf(text);
+  const P = parseShell(joinContinuations(blankComments(blankHeredocs(text, heredocs))));
+  return P.tooDeep ? [] : runtimeScriptsOf(text, P, heredocs).map((s) => ({ ...s, P }));
+}
+function interpreterTargets(raw, P, heredocs) {
+  const scripts = runtimeScriptsOf(raw, P, heredocs);
+  if (!scripts.length) return [];
   // A `$NAME` the SHELL expands in the script (a double-quoted `-e "..."`, an unquoted heredoc) takes the newest literal
   // the same command assigned it before the runtime (audit 2026-10-20 C25, 4d71a1b3: `D=<docs>/x; node -e "...
   // writeFileSync('$D/SUMMARY.md', ...)"` was an unknown write, held by the docs gate as a source edit). Anything else
@@ -1250,6 +1405,7 @@ function interpreterTargets(raw, P, heredocs) {
     for (const m of body.matchAll(WRITE_CALL)) if (!inStr(m.index)) literal(m[2], index);
     for (const m of body.matchAll(OPEN_CALL)) if (!inStr(m.index) && /[wax+]/.test(m[4])) literal(m[2], index);
     for (const m of body.matchAll(PATH_CALL)) if (!inStr(m.index)) literal(m[2], index);
+    for (const m of body.matchAll(PS_FILE_CALL)) if (!inStr(m.index)) for (const p of psFilePaths(m)) literal(p, index);
     const destroyed = new Set([...body.matchAll(DESTROYED)].filter((d) => !inStr(d.index)).map((d) => d[1]));
     for (const b of body.matchAll(PATH_BIND)) if (!inStr(b.index) && destroyed.has(b[1])) literal(b[3], index);
     // `p = '<literal>'` ... `open(p, 'w')` / `writeFileSync(f, ...)` / `Path(p).write_text(...)`: the name resolves to every
@@ -1789,6 +1945,56 @@ function writtenScripts(P, raw, heredocs, anchor, run) {
   return out;
 }
 
+// THE SENSITIVE RUNNER (audit 2026-10-30 HK-01, the BLOCKER): `node <path>/guard-secret-value.js --with-sensitive --
+// "<command line>"` - the route alfred-security.md mandates and every session's `Sensitive data:` line prints - runs its line
+// through a shell (`spawn(line, { shell: true })`: sh, cmd.exe on Windows) with the store's values in its environment, and
+// no guard read that line: `rm -rf ~`, a force push to main, `cat .env`, a write outside the project and an ungated commit
+// all ran through it. It is a carried script here, like `sh -c`, so every guard reading this module judges the line: one
+// word after `--` (or after the flag) is the line itself, several words are one command line, each quoted for the shell -
+// the runner's own rule. The runner masks only the store's exact values in what the line prints; it never made the line
+// safe. Returns { text, at, end, mapped } for the call `c`, or null.
+const RUNNER_FILE = 'guard-secret-value.js';
+const NODE_VALUE_OPTS = new Set(['-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--input-type', '--title', '--conditions', '-C']);
+const runnerQuote = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`);
+function runnerLine(c, P) {
+  if (c.name !== 'node' && c.name !== 'nodejs') return null;
+  const argv = c.argv;
+  let k = 0;
+  for (; k < argv.length && argv[k].startsWith('-'); k++) {
+    if (/^-(?:e|p|-eval|-print)$/.test(argv[k])) return null; // an inline script is the runtime reader's, never this runner
+    if (NODE_VALUE_OPTS.has(argv[k])) k++;
+  }
+  if (k >= argv.length || argv[k + 1] !== '--with-sensitive') return null;
+  const file = String(argv[k]).replace(/\\/g, '/');
+  if ((FOLDS_CASE ? file.toLowerCase() : file).split('/').pop() !== RUNNER_FILE) return null;
+  let from = k + 2;
+  if (argv[from] === '--') from++;
+  const words = argv.slice(from);
+  if (!words.length) return null;
+  // an unquoted word is passed as the outer shell expands it (`~`, `$HOME`), which the line's own shell expands alike;
+  // a quoted one reaches the runner as text and is quoted again for its shell
+  if (words.length > 1) return { text: c.args.slice(from).map((t, i) => (/^[^'"\\]*$/.test(t.raw) ? t.raw : runnerQuote(words[i]))).join(' '), mapped: false };
+  const t = c.args[from];
+  const single = t && (t.raw[0] === "'" || t.raw[0] === '"') && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
+  return single ? { text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true } : { text: words[0], mapped: false };
+}
+// sensitiveRuns(raw, opts) - the command lines a command hands the sensitive runner, through every carried script (3 deep):
+// [{ text, cwd }]. The shell dispatcher judges each one again with the guards that keep a reader of their own.
+function sensitiveRuns(raw, opts = {}) {
+  const run = opts.run || newRun(opts);
+  const out = [];
+  const walk = (text, cwd, depth) => {
+    // a line read from no file names the runner in its own text; one reading script files is walked whole
+    if (depth > 3 || run.budget.over() || (!opts.files && !/with-sensitive/.test(text))) return;
+    for (const sc of carriedScripts(text, { cwd: cwd || undefined, files: opts.files, run })) {
+      if (sc.runner) out.push({ text: sc.text, cwd: sc.cwd || cwd || null });
+      walk(sc.text, sc.cwd || cwd, depth + 1);
+    }
+  };
+  walk(String(raw || ''), opts.cwd || null, 0);
+  return out;
+}
+
 function carriedOf(P, raw, heredocs, opts, run) {
   const cwd = opts.cwd || null;
   const files = opts.files !== undefined ? !!opts.files : !!cwd;
@@ -1904,6 +2110,12 @@ function carriedOf(P, raw, heredocs, opts, run) {
         for (const g of got) push({ text: g.text, cwd: g.cwd, at, end: el.to, mapped: false });
         continue;
       }
+      // the sensitive runner: its command line runs through a shell (audit 2026-10-30 HK-01)
+      const sr = runnerLine(c, P);
+      if (sr) {
+        push({ ...sr, at: sr.mapped ? sr.at : at, end: sr.mapped ? sr.end : el.to, cwd: anchor(at), runner: true });
+        continue;
+      }
       // a file run by its path: a word holding a `/`, no expansion
       if (c.word.includes('/') && !/[$`]/.test(c.word)) {
         const t = fromFile(c.word, at, true, tok);
@@ -1926,6 +2138,168 @@ function carriedScripts(raw, opts = {}) {
   const out = carriedOf(P, text, heredocs, opts, run);
   out.unread = run.unread;
   return out;
+}
+
+// ---- the variable expander: the ONE home (audit 2026-10-30 a0; HK-04, HK-10, HK-13) --------------------------------
+// What a word names once the shell has expanded it, read from the command's own text: `$NAME` / `${NAME}` (its `:-`,
+// `-`, `:?`, `?`, `:=` forms name the variable when it is set), a leading `~`, `$HOME` / `$USERPROFILE` (PowerShell's
+// `$env:USERPROFILE`, cmd's `%USERPROFILE%` / `%HOMEDRIVE%%HOMEPATH%`), `$PWD` and `$(pwd)` - where the shell stands at
+// that word, the cwd moved by every followed `cd` before it (a subshell's cd ends with it) - `$CLAUDE_PROJECT_DIR`, and
+// `$(echo <words>)` as its words. A name the command assigned before the word, as a statement of its own, is its value,
+// itself expanded at the assignment (`H=$HOME; rm -rf "$H"`); a prefix assignment (`H=/x rm $H`) is that command's
+// environment and expands nothing in its own words. What cannot be known stays as written, for the caller to judge as
+// unexpanded: an unset name, a loop / `read` / `+=` / arithmetic variable, a computed value, a `cd` past one. The word
+// comes in dequoted, so a single-quoted `$` is expanded too - a guard reading it errs toward judging. Every shell guard
+// expands through here (the rm, cross-project and secret guards each kept a partial copy: HOME but no PWD, `~` only).
+// shellVars(P, opts): P is parseShell's result; `opts.cwd` the shell's start directory, `opts.home` (default the account
+// home), `opts.project` ($CLAUDE_PROJECT_DIR), `opts.regions` ([{ from, to, cwd }], gitText's carried scripts, each
+// starting from its own directory). Returns { expand(word, at), valueOf(name, at), pwdAt(at) }.
+const VAR_BINDERS = [
+  /\bfor\s+([A-Za-z_]\w*)\s+in\b/g, /\bselect\s+([A-Za-z_]\w*)\s+in\b/g, /\b([A-Za-z_]\w*)\+=/g, /\blet\s+([A-Za-z_]\w*)/g,
+  /\(\(\s*([A-Za-z_]\w*)/g, /\bgetopts\s+\S+\s+([A-Za-z_]\w*)/g, /\bprintf\s+-v\s+([A-Za-z_]\w*)/g,
+];
+const READ_WORDS = /\b(?:read|mapfile|readarray)\b([^;&|\n]*)/g;
+const VAR_DEPTH = 4;
+const CD_RESOLVE_MAX = 64;
+function shellVars(P, opts = {}) {
+  const home = opts.home !== undefined ? opts.home : homeDir();
+  const events = (P && P.assignEvents) || [];
+  const bound = new Set();
+  const text = String((P && P.command) || '');
+  if (/[$%`~]/.test(text)) {
+    for (const re of VAR_BINDERS) for (const m of text.matchAll(re)) bound.add(m[1]);
+    for (const m of text.matchAll(READ_WORDS)) for (const w of m[1].split(/\s+/)) if (/^[A-Za-z_]\w*$/.test(w)) bound.add(w);
+  }
+  const regions = opts.regions && opts.regions.length ? opts.regions : [{ from: 0, to: Infinity, cwd: opts.cwd || null }];
+  const regionOf = (at) => { let k = regions.length - 1; while (k > 0 && regions[k].from > at) k--; return k; };
+  const anchors = new Map();
+  const norm = (t) => nativePath(unquote(String(t)));
+  // a region's cds, each variable target expanded where it stands (a cd past CD_RESOLVE_MAX of them stays as written)
+  const anchorOf = (k) => {
+    if (anchors.has(k)) return anchors.get(k);
+    const r = regions[k];
+    const own = ((P && P.cds) || []).filter((c) => c.index >= r.from && c.index < r.to);
+    const resolved = [];
+    let budget = CD_RESOLVE_MAX;
+    for (const c of own) {
+      const t = c[1];
+      if (c.popd || t === undefined || !/[$`~%]/.test(String(t)) || budget-- <= 0) { resolved.push(c); continue; }
+      const before = resolved.slice();
+      const x = expandWith(String(t), c.index, 1, (q) => (r.cwd ? anchorer(before, r.cwd, norm)(q) : null));
+      const copy = Object.assign([], c);
+      copy[1] = x;
+      resolved.push(copy);
+    }
+    const f = r.cwd ? anchorer(resolved, r.cwd, norm) : () => null;
+    anchors.set(k, f);
+    return f;
+  };
+  const pwdAt = (at) => anchorOf(regionOf(at))(at);
+  const valueWith = (name, at, depth, pwd) => {
+    if (depth > VAR_DEPTH || bound.has(name)) return null;
+    let ev = null;
+    for (const e of events) if (e.kind === 'set' && e.name === name && e.at < at && !e.prefix) ev = e;
+    if (ev) {
+      const raw = String(ev.raw !== undefined ? ev.raw : ev.value);
+      if (/^'[^']*'$/.test(raw)) return raw.slice(1, -1);
+      const v = String(ev.value);
+      const x = /[$`~%]/.test(v) ? expandWith(v, ev.at, depth + 1, pwd) : v;
+      return /[$`]/.test(x) ? null : x;
+    }
+    const up = name.toUpperCase();
+    if (name === 'HOME' || up === 'USERPROFILE') return home || null;
+    if (name === 'PWD') return pwd(at);
+    if (name === 'CLAUDE_PROJECT_DIR') return opts.project || null;
+    return null;
+  };
+  // linear: one greedy class per alternative, trimmed in code (no lazy run beside an overlapping `\s*`)
+  const SUBST = /\$\(([^()`$]*)\)|`([^`()$]*)`/g;
+  const ECHO_SUBST = /\$\(\s*echo\s([^()`;&|<>]*)\)|`\s*echo\s([^`();&|<>]*)`/g;
+  function expandWith(word, at, depth, pwd) {
+    let s = String(word);
+    if (!/[$`~%]/.test(s)) return s;
+    // `$(echo <words>)`: its words, each expanded as a word of its own
+    s = s.replace(ECHO_SUBST, (m, a, b) => {
+      const words = String(a !== undefined ? a : b).match(/"[^"]*"|'[^']*'|\S+/g) || [];
+      const out = words.map((w) => expandWith(dequote(w), at, depth + 1, pwd));
+      return out.some((w) => /[$`]/.test(w)) ? m : out.join(' ');
+    });
+    s = s.replace(SUBST, (m, a, b) => {
+      const body = String(a !== undefined ? a : b).trim();
+      if (/^pwd(?:\s+-[LP])?$/.test(body)) { const d = pwd(at); return d === null ? m : d; }
+      return m;
+    });
+    if (s[0] === '~' && (s.length === 1 || s[1] === '/' || s[1] === '\\')) {
+      const h = valueWith('HOME', at, depth, pwd);
+      if (h) s = h + s.slice(1);
+    }
+    s = s.replace(/\$\{([A-Za-z_]\w*)(?:(:?[-?=])[^}]*)?\}|\$([A-Za-z_]\w*)/g, (m, br, op, bare) => {
+      const v = valueWith(br || bare, at, depth, pwd);
+      return v === null ? m : v;
+    });
+    s = s.replace(/\$\{?env:([A-Za-z_]\w*)\}?/gi, (m, name) => {
+      const v = /^(?:userprofile|home)$/i.test(name) ? valueWith(name.toUpperCase() === 'HOME' ? 'HOME' : 'USERPROFILE', at, depth, pwd) : null;
+      return v === null ? m : v;
+    });
+    s = s.replace(/%HOMEDRIVE%%HOMEPATH%|%(USERPROFILE|HOMEPATH)%/gi, () => valueWith('USERPROFILE', at, depth, pwd) || '%USERPROFILE%');
+    return s;
+  }
+  return {
+    expand: (word, at) => expandWith(word, at, 0, pwdAt),
+    valueOf: (name, at) => valueWith(name, at, 0, pwdAt),
+    pwdAt,
+  };
+}
+
+// ---- the whole-file print verbs: the ONE table (audit 2026-10-30 a0; HK-06, HK-19) --------------------------------
+// The commands that print a file's whole content under another name than `cat` - each was found printing a credential
+// file raw past the secret guard (`shuf .env`, `vis .env`, `join -t= -v1 .env /dev/null`, `gzip -c .env | gunzip`) or a
+// 700-line source past the read guard (`shuf big.ts`). Per verb: `values` - the one-letter flags that take a value (its
+// operand is no file), `long` the long ones, `needs` - flags without which it prints nothing (a compressor writes a
+// file unless told `-c`), `none` - flags with which it reads no file (`shuf -e` echoes its words), `bounded` - flags that
+// cap what it prints, `digits` - `-1` / `-2` are flags (join's fields), never operands. printedFiles(verb, argv) names
+// the files a call prints and whether it is bounded; null when the verb prints none. Both guards read this table.
+const LONG_VALUES = /^--(?:tabs|width|lines|key|output|separator|suffix|field-separator|head-count|input-range|random-source|read-bytes|bytes|skip-bytes|format|address-radix)$/;
+const COMPRESSOR = { values: 'S', needs: ['-c', '--stdout', '--to-stdout'] };
+const PRINT_VERBS = Object.freeze(Object.fromEntries(Object.entries({
+  cat: { values: '' }, tac: { values: 's' }, nl: { values: 'bdfhilnsvw' }, rev: { values: '' }, fmt: { values: 'wgpdlt' },
+  expand: { values: 't' }, unexpand: { values: 't' }, fold: { values: 'w' }, pr: { values: 'hlowWsSNe' },
+  od: { values: 'tjNAw', bounded: ['-N', '--read-bytes'] }, xxd: { values: 'lscgo', bounded: ['-l'] },
+  hexdump: { values: 'efns', bounded: ['-n'] }, base64: { values: 'w' }, strings: { values: 'not' }, paste: { values: 'd' },
+  column: { values: 'scNR' }, sort: { values: 'ktoST' }, uniq: { values: 'fsw' },
+  zcat: { values: 'S' }, gzcat: { values: 'S' }, zmore: { values: '' }, zless: { values: '' }, bzcat: { values: '' },
+  xzcat: { values: '' }, zstdcat: { values: '' }, lz4cat: { values: '' },
+  shuf: { values: 'nio', bounded: ['-n', '--head-count'], none: ['-e', '--echo', '-i', '--input-range'] },
+  vis: { values: 'Fe' },
+  join: { values: 'aejot12v', digits: true },
+  gzip: COMPRESSOR, gunzip: COMPRESSOR, bzip2: COMPRESSOR, bunzip2: COMPRESSOR, xz: COMPRESSOR, unxz: COMPRESSOR,
+  lzma: COMPRESSOR, unlzma: COMPRESSOR, zstd: COMPRESSOR, unzstd: COMPRESSOR, lz4: COMPRESSOR, brotli: COMPRESSOR,
+}).map(([k, v]) => [k, Object.freeze({ ...v })])));
+function printedFiles(verb, argv) {
+  const spec = Object.prototype.hasOwnProperty.call(PRINT_VERBS, verb) ? PRINT_VERBS[verb] : null;
+  if (!spec) return null;
+  const ops = [];
+  const flags = new Set();
+  const words = (argv || []).map(String);
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w === '--') { ops.push(...words.slice(i + 1)); break; }
+    if (w === '-' || !w.startsWith('-') || (/^-\d/.test(w) && !spec.digits)) { ops.push(w); continue; }
+    if (w.startsWith('--')) {
+      const eq = w.indexOf('=');
+      const n = eq < 0 ? w : w.slice(0, eq);
+      flags.add(n);
+      if (eq < 0 && LONG_VALUES.test(n)) i++;
+      continue;
+    }
+    for (let j = 1; j < w.length; j++) {
+      flags.add(`-${w[j]}`);
+      if (spec.values.includes(w[j])) { if (j + 1 === w.length) i++; break; }
+    }
+  }
+  if (spec.needs && !spec.needs.some((f) => flags.has(f))) return null;
+  if (spec.none && spec.none.some((f) => flags.has(f))) return null;
+  return { files: ops.filter((o) => o && o !== '-'), bounded: !!(spec.bounded && spec.bounded.some((f) => flags.has(f))) };
 }
 
 // ---- git aliases: the ONE home (2.1.6 review T20, re-verify N2, re-verify 2 R2-m1, re-verify 3 R3-m5) ------------
@@ -2143,9 +2517,11 @@ function gitText(raw, cwd) {
   const markUnread = (at) => { if (unreadAt < 0 || at < unreadAt) unreadAt = at; };
   // Where each piece of the final text runs from: the command from the shell's cwd, each carried script from the
   // directory it runs in - a cd inside one moves what follows it there. `base` is where `text` starts in the final text.
+  // `trail` is where each carrying word sits in the text around it, outermost first: a carried script is appended AFTER
+  // the command, so its calls run where its carrier stands, never at their place in the joined text (`orderOf`).
   const regions = [];
-  function withCarried(text, dir0, base, depth) {
-    regions.push({ from: base, to: base + text.length, cwd: dir0 });
+  function withCarried(text, dir0, base, depth, trail = []) {
+    regions.push({ from: base, to: base + text.length, cwd: dir0, trail });
     const u0 = run.unread.length;
     const scripts = carriedScripts(text, { cwd: dir0, files: true, run });
     for (const u of run.unread.slice(u0)) if (u.path ? namesGit(u.path) : NAMES_GIT.test(text.slice(u.at))) markUnread(base + u.at);
@@ -2156,7 +2532,7 @@ function gitText(raw, cwd) {
       const inner = expandGitAliases(sc.text, { cwd: dir, run });
       const at = base + out.length + 1;
       if (inner.unreadAt >= 0) markUnread(at + inner.unreadAt);
-      out += `\n${withCarried(inner.text, dir, at, depth + 1)}`;
+      out += `\n${withCarried(inner.text, dir, at, depth + 1, trail.concat(base + sc.at))}`;
     }
     return out;
   }
@@ -2187,9 +2563,21 @@ function gitText(raw, cwd) {
     copy[1] = out;
     return copy;
   };
-  function callDir(call) {
+  const regionAt = (at) => {
     let k = regions.length - 1;
-    while (k > 0 && regions[k].from > call.at) k--;
+    while (k > 0 && regions[k].from > at) k--;
+    return k;
+  };
+  // Run order of two positions in the joined text: < 0 when `a` runs first. A call in a carried script runs where its
+  // carrier stands (`bash -c 'git switch main' && git push -f` switches before the push), then in its own script's order.
+  function orderOf(a, b) {
+    const ka = regions[regionAt(a)].trail.concat(a);
+    const kb = regions[regionAt(b)].trail.concat(b);
+    for (let i = 0; i < Math.min(ka.length, kb.length); i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return ka.length - kb.length;
+  }
+  function callDir(call) {
+    const k = regionAt(call.at);
     const r = regions[k];
     if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to).map(resolveCd));
     let dir = anchorAt(regionCds.get(k), call.at, r.cwd, cdTarget) || r.cwd;
@@ -2197,7 +2585,10 @@ function gitText(raw, cwd) {
     try { dir = fs.realpathSync.native(dir); } catch { /* git reports the missing directory itself */ }
     return dir;
   }
-  return { command, parsed, calls, regions, unreadAt, callDir, literalAt };
+  // the one expander, each carried script starting from its own directory (audit 2026-10-30 a0)
+  let vars = null;
+  try { vars = parsed && !parsed.tooDeep ? shellVars(parsed, { cwd, regions }) : null; } catch { vars = null; }
+  return { command, parsed, calls, regions, unreadAt, callDir, literalAt, vars, orderOf };
 }
 
 // Read a command's writes. `opts` (all optional): `cwd` resolves a script file a shell runs (without one only an
@@ -2230,8 +2621,23 @@ function scanShell(rawCommand, opts = {}) {
   const P = parseShell(command);
   if (P.tooDeep) return empty(`subshells nested past ${MAX_NEST}`);
   const assigns = P.assigns;
-  const expandVars = (t) => t.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g,
-    (m, br, bare) => (assigns.has(br || bare) ? assigns.get(br || bare) : m));
+  // A target word as the shell expands it where it stands (`at`, its index; none reads the command's end): the one
+  // expander first - `$HOME` / `${HOME}` / `~` / `$USERPROFILE` / `$env:USERPROFILE`, `$PWD` after a followed cd,
+  // `$CLAUDE_PROJECT_DIR`, a name the command assigned, `$(echo ...)` (audit 2026-10-30 HK-13: every `$HOME` spelling was
+  // an unexpanded variable to the cross-project guard) - then any literal the command assigned the name, as before.
+  let vars;
+  const expandVars = (t, at) => {
+    let s = String(t);
+    if (/[$`~%]/.test(s)) {
+      if (vars === undefined) {
+        try {
+          vars = shellVars(P, { cwd: opts.cwd || null, home: opts.home, project: opts.project !== undefined ? opts.project : (process.env.CLAUDE_PROJECT_DIR || null) });
+        } catch { vars = null; }
+      }
+      if (vars) s = vars.expand(s, at === undefined ? Infinity : at);
+    }
+    return s.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, br, bare) => (assigns.has(br || bare) ? assigns.get(br || bare) : m));
+  };
   const targets = [];
   const gitWrites = [];
   for (let k = 0; k < P.cmds.length; k++) {
@@ -2250,6 +2656,13 @@ function scanShell(rawCommand, opts = {}) {
     }
   }
   targets.push(...interpreterTargets(raw, P, heredocs));
+  // the PowerShell tool's own command calling .NET's file API (a quoted one is text, or a runtime's script read above)
+  if (/IO\.(?:File|Directory)\]::/i.test(command)) {
+    for (const m of command.matchAll(PS_FILE_CALL)) {
+      if (P.inQuotes(m.index)) continue;
+      for (const p of psFilePaths(m)) targets.push({ raw: p, index: m.index, what: 'a .NET file write', verb: /^delete$/i.test(m[1]) ? 'rm' : 'interpreter' });
+    }
+  }
   const files = opts.files !== undefined ? !!opts.files : !!opts.cwd;
   const depth = opts.depth || 0;
   const carried = carriedOf(P, raw, heredocs, { cwd: opts.cwd || null, files }, run);
@@ -2287,4 +2700,5 @@ function enclosingEnd(P, at, closesOf) {
 }
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
-  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE };
+  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
+  shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings };

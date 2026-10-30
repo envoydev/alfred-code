@@ -124,16 +124,17 @@ const samePath = (a, b) => {
 // A live receipt's bare file-name line that names this executable's file: it opens only a call naming it bare, so the
 // denial names the line and the full path to write (audit 2026-10-20: a bare line once opened that name everywhere).
 let bareLine = '';
+// A security receipt (audit 2026-10-30 HK-03 / HK-16, hook-prelude.js securityReceipt): this session's own (`session:`),
+// under 8h, and only after the user answered this guard's last denial with one of its three allow labels, auto-run off.
+// No prelude, no reader: shut.
+let receipts = null;
+try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
+const ALLOW_LABELS = ['Allow the browser code runner this session', 'Allow the desktop Shell this session', 'Allow this executable this session'];
+const held = receipts && receipts.securityReceipt ? receipts.securityReceipt(receipt, payload, { marker: 'DESKTOP-EXEC-ALLOW', labels: ALLOW_LABELS }) : null;
 const allowed = (() => {
   try {
-    const st = fs.statSync(receipt);
-    let sessionStartMs = 0;
-    try {
-      const tr = fs.statSync(String(payload.transcript_path || ''));
-      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
-    const lines = fs.readFileSync(receipt, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+    if (!held || !held.live) return false;
+    const lines = held.lines;
     if (lines.includes('*')) return true;
     if (isShell) return lines.includes('Shell');
     if (isCode) return lines.includes(CODE_LINE);
@@ -146,6 +147,10 @@ const allowed = (() => {
 if (allowed) process.exit(0);
 
 const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', 'DESKTOP-EXEC-ALLOW') : receipt).split(path.sep).join('/');
+// The exact lines to write, the session line first (HK-16), the rule they count under, and why a receipt there is shut.
+const writeLines = (lines) => (receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, lines) : lines.map((l) => `  ${l}\n`).join(''));
+const COUNTS = `It counts only after the user's own answer to this denial - never one auto-run gave - for this session, under 8h.\n`;
+const shut = receipts && receipts.receiptShutText ? receipts.receiptShutText(held, receiptRel) : '';
 if (isCode) {
   // The ledger keeps where the code came from, never the code or the file's name: either can carry a credential.
   global.BLOCK_DETAIL = { tool: CODE_LINE, from: input.code === undefined && input.filename !== undefined ? 'file' : 'code' };
@@ -158,8 +163,9 @@ if (isCode) {
     `carrying, in this order -\n` +
     `  'Use the page tools instead (Recommended)' - nothing runs outside the page\n` +
     `  'Allow the browser code runner this session' - the code runs with the user's full rights\n` +
-    `On 'Allow', write the receipt ${receiptRel} with the line \`${CODE_LINE}\` and retry the SAME call. It is\n` +
-    `honoured for this session only, under 8h.\n`,
+    `On 'Allow', write the receipt ${receiptRel} with the line \`${CODE_LINE}\` - exactly these lines, the session\n` +
+    `line first - and retry the SAME call:\n` +
+    writeLines([CODE_LINE]) + COUNTS + shut,
   );
   process.exit(2);
 }
@@ -177,8 +183,9 @@ if (isShell) {
     `AskUserQuestion carrying, in this order -\n` +
     `  'Use the Bash tool instead (Recommended)' - the shell guards judge the command there\n` +
     `  'Allow the desktop Shell this session' - the command runs unjudged, with the user's full rights\n` +
-    `On 'Allow', write the receipt ${receiptRel} with the line \`Shell\` and retry the SAME call. It is\n` +
-    `honoured for this session only, under 8h.\n`,
+    `On 'Allow', write the receipt ${receiptRel} with the line \`Shell\` - exactly these lines, the session line\n` +
+    `first - and retry the SAME call:\n` +
+    writeLines(['Shell']) + COUNTS + shut,
   );
   process.exit(2);
 }
@@ -194,7 +201,8 @@ process.stderr.write(
   `  'Allow this executable this session' - it starts with the user's full rights\n` +
   // The full path, not its file name: a file-name line opens that name in every directory (audit 2026-10-08 row 40).
   `On 'Allow', write the receipt ${receiptRel} with the line \`${executable || 'App'}\` (or \`App\` for every launch this\n` +
-  `session) and retry the SAME call. It is honoured for this session only, under 8h.\n` +
+  `session) - exactly these lines, the session line first - and retry the SAME call:\n` +
+  writeLines([executable || 'App']) + COUNTS + shut +
   (bareLine ? `\nThe receipt's line \`${bareLine}\` is a bare file name: it opens only a call naming \`${bareLine}\` bare, never\n` +
     `\`${executable}\`. If the ask the user answered named this full path, replace that line with it and retry; otherwise ask.\n` : ''),
 );

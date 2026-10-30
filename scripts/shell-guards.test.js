@@ -975,3 +975,38 @@ test('audit 2026-10-21 H5: the zsh test scan stays linear when the openers have 
   assert.notEqual(r.status, null, 'the dispatcher finished');
   assert.equal(own(dir, '(( 1 == 1 )) && [[ $a == b ]] && echo y', ZSH).command, null, 'a closed test is still left as written');
 });
+
+// audit 2026-10-30 HK-01 (BLOCKER): the sanctioned runner `node <guard> --with-sensitive -- "<command line>"` ran its line
+// through a shell no guard read - `rm -rf ~`, a force push to main, `cat .env`, a write outside the project and an ungated
+// commit all passed. The line is a carried script now: every guard judges it, the masked legitimate use still runs.
+test('audit 2026-10-30 HK-01: the --with-sensitive runner carries its command line to every shell guard', () => {
+  const dir = project('hk01-');
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=sk-live-abcdef1234567890abcdef12\n');
+  const other = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'hk01-other-')));
+  const runner = (line) => `node "${path.join(HOOKS, 'guard-secret-value.js')}" --with-sensitive -- ${line}`;
+  const fire = (command) => run(DISPATCH, bashPayload(command, dir), { env: { CLAUDE_PROJECT_DIR: dir } });
+  const blocked = (command, why, re) => {
+    const r = fire(command);
+    let deny = false;
+    try { deny = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision === 'deny'; } catch { /* exit 2 */ }
+    assert.ok(r.status === 2 || deny, `${why}: ${command}\n${r.stderr}${r.stdout}`);
+    if (re) assert.match(`${r.stderr}${r.stdout}`, re, why);
+  };
+  blocked(runner('"rm -rf ~"'), 'a recursive rm of home', /recursive rm/);
+  blocked(runner('rm -rf ~'), 'the argv form: several words are one command line');
+  blocked(runner("'rm -rf ~'"), 'a single-quoted line');
+  blocked(runner('"git push --force origin main"'), 'a force push to main');
+  blocked(runner('"cat .env"'), 'a raw credential file read: the runner masks only the store values', /with-sensitive/);
+  blocked(runner(`"echo x > ${other}/f.txt"`), 'a write outside the project');
+  blocked(runner('"git commit -am x"'), 'an ungated commit');
+  blocked(`bash -c '${runner('"rm -rf ~"')}'`, 'a runner inside a carried script');
+  blocked(`node ${path.join(HOOKS, 'guard-secret-value.js')} --with-sensitive 'rm -rf ~'`, 'no `--` before the line');
+  // the legitimate, masked use still runs
+  for (const ok of ['"npm run deploy"', '\'curl -s -H "Authorization: Bearer $API_KEY" https://api.example.invalid/x\'', '"node scripts/deploy.js --env prod"', 'psql "$DATABASE_URL" -c "select 1"']) {
+    const r = fire(runner(ok));
+    assert.equal(r.status, 0, `${ok} runs: ${r.stderr}${r.stdout}`);
+    assert.ok(!/permissionDecision":"deny/.test(r.stdout), `${ok} is not denied`);
+  }
+  const rows = ledgerRows(dir).filter((r) => r.detail && r.detail.branch === 'sensitive-runner');
+  assert.ok(rows.length >= 1, 'the runner block writes its own ledger row');
+});

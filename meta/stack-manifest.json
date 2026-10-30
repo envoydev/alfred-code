@@ -713,7 +713,7 @@
       "file": "guard-read-whole-file.js",
       "matcher": "Read",
       "event": "",
-      "note": "block whole-file Read of a >400-line source file - locate via the navigation server first; caps cumulative half-split reconstruction"
+      "note": "block whole-file Read of a >400-line source file - locate via the navigation tools first (the LSP tool, then a scoped grep, or a server the tool order ranks); caps cumulative half-split reconstruction"
     },
     {
       "file": "guard-read-whole-file.js",

@@ -41,6 +41,10 @@ function transcript(rows = [], model = 'claude-opus-5-5', ctx = 30000)
     const p = path.join(TMP, `t-${++n}.jsonl`);
     const at = new Date(Date.now() - 60000).toISOString();
     const base = [
+        // The typed turns a live AUTO stamp is proven by (audit 2026-10-30 HK-03, hook-prelude.js autoStampVerified): the
+        // user's flag-only mode line, in the harness's tagged shape, and the hand-written waiver's words.
+        { type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: '<command-message>mode-auto-run</command-message>\n<command-name>/mode-auto-run</command-name>\n<command-args>--mode-auto-run-on</command-args>' } },
+        { type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: [{ type: 'text', text: 'take every recommendation' }] } },
         { type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: [{ type: 'text', text: 'go' }] } },
         { type: 'assistant', entrypoint: 'cli', timestamp: at, message: { id: `m${++n}`, model, role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { cache_creation_input_tokens: 20000 } } },
         { type: 'assistant', entrypoint: 'cli', timestamp: at, message: { id: `m${++n}`, model, role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: ctx } } },
@@ -54,7 +58,7 @@ const WINDOW_SEEDS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000', ALFRED_CODE_
 const run = (hook, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, hook)],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...WINDOW_SEEDS, ALFRED_CODE_HOOK_LOG_DIR: env.ALFRED_CODE_HOOK_LOG_DIR || fs.mkdtempSync(path.join(TMP, 'log-')), ...env } });
 const rows = (p, sid) => { try { return fs.readFileSync(path.join(p.blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
-const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/loop-code-quality --mode-auto-run-on"\nsession: ${sid}\nskill: loop-code-quality\n${extra}`);
+const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/loop-code-quality --mode-auto-run-on"\nsession: ${sid}\nskill: loop-code-quality\ntranscript-size: 0\n${extra}`);
 // The run marker (stack-modes spec section 2): open while a run in auto-run goes; the Stop hold and the dispatch guard read it.
 const marker = (p, sid) => path.join(p.root, '.alfred', 'state', 'sessions', `AUTO-RUN-${sid}`);
 const openRun = (p, sid, skill = 'loop-code-quality') => { fs.mkdirSync(path.dirname(marker(p, sid)), { recursive: true });
@@ -552,7 +556,7 @@ test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line ar
 test('auto-mode asks: the upgrade hard stop waits when put unmarked with its reason, as task-version-upgrade says', () =>
 {
     const p = project();
-    fs.writeFileSync(p.gate, 'AUTO - "/task-version-upgrade --mode-auto-run-on"\nsession: u1\nskill: task-version-upgrade\n');
+    fs.writeFileSync(p.gate, 'AUTO - "/task-version-upgrade --mode-auto-run-on"\nsession: u1\nskill: task-version-upgrade\ntranscript-size: 0\n');
     const labels = ['Re-plan from this stage', "Roll back to the last stage's rollback point", 'Stop here'];
     const marked = q('Stage 3 stays red after its resolver pass. How do we go on?', [`${labels[0]} (Recommended)`, ...labels.slice(1)]);
     assert.deepStrictEqual(answered(ask(p, 'u1', [marked])), { [marked.question]: 'Re-plan from this stage (Recommended)' },
@@ -1029,7 +1033,7 @@ test('mode-auto-run: the model never calls it, the flow\'s step calls ride its s
     assert.match(self.stderr, /mode-auto-run is marked disable-model-invocation/);
     assert.ok(!fs.existsSync(p.gate));
     // a step skill the flow calls with the flag behind a typed /mode-auto-run keeps the stamp; behind an empty one it is refused
-    const step = (tp) => { const pr = project(); fs.writeFileSync(pr.gate, `AUTO - "/mode-auto-run x"\nsession: tb2\nskill: mode-auto-run\nat: ${new Date().toISOString()}\n`);
+    const step = (tp) => { const pr = project(); fs.writeFileSync(pr.gate, `AUTO - "/mode-auto-run x"\nsession: tb2\nskill: mode-auto-run\nat: ${new Date().toISOString()}\ntranscript-size: 0\n`);
         const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: '--mode-auto-run-on x' },
             session_id: 'tb2', cwd: pr.root, transcript_path: tp }, { CLAUDE_PROJECT_DIR: pr.root }); return { pr, r }; };
     const { pr: kept, r: rk } = step(transcript([cmdRow('mode-auto-run', 'x')]));

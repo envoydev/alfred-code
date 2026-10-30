@@ -417,7 +417,8 @@ test('compact-state: the first change after an automatic compaction is held once
     after(tm, usageRow('b', { cache_read_input_tokens: 120000 }));
     assert.strictEqual(call(m, tm, 'Edit'), 0, 'a /compact the user typed is no hold');
     const a = project();
-    const ta = a.transcript(rows);
+    // audit 2026-10-30 HK-03: a hand-written waiver counts where the user typed its words
+    const ta = a.transcript([{ type: 'user', message: { role: 'user', content: 'run it overnight' } }, ...rows]);
     fs.mkdirSync(a.flow, { recursive: true });
     fs.writeFileSync(path.join(a.flow, 'APPROVAL'), 'AUTO - "run it overnight"\n');
     a.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: ta }, env);

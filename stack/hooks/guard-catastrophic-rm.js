@@ -189,6 +189,8 @@ function isCatastrophic(tok)
     if (/^[A-Za-z]:(?:\/\*)?$/.test(t)) return true;                             // C:\  C:/  C:\*
     if (/^\/(?:cygdrive\/|mnt\/)?[A-Za-z](?:\/\*)?$/.test(t)) return true;            // /c  /cygdrive/c  /mnt/c
     if (/^\$\{?env:(?:userprofile|home|homedrive|systemdrive|systemroot|windir)\}?(?:\/\*)?$/i.test(t)) return true;
+    // cmd's spellings of the same (audit 2026-10-30 HK-11: `cmd /c rd /s /q %USERPROFILE%` passed)
+    if (/^(?:%homedrive%%homepath%|%(?:userprofile|homepath|systemdrive|systemroot|windir|cd)%)(?:\/\*?)?$/i.test(t)) return true;
     if (isAnchorPath(t)) return true;
     return t === '/' || t === '/*' || t === '/.'
         || t === '~' || t === '~/*'
@@ -380,6 +382,159 @@ function isCatastrophicRm(command)
         }
     }
 
+    return false;
+}
+
+// ---- the targets as the shell runs them (audit 2026-10-30 HK-08, HK-09, HK-10) ------------------------------------
+// The segment test above reads each target as written, against the payload's cwd: `cd .. && rm -rf proj` deleted the
+// project, `H=$HOME; rm -rf "$H"` and `rm -rf $(echo ~)` the home directory, and `rm -rf .git/*` the history, all passing.
+// Here each recursive rm's operand is read from the parsed command: expanded through shell-writes.js's one expander (a
+// variable the command assigned, `$(echo <literal>)`, `$PWD`), resolved from where the shell stands after the command's
+// own `cd` / `pushd`, then judged as a path - the home directory, the project, the cwd or a folder holding one, or
+// anything at or under a repository's `.git` that is on disk (resolved, never the spelling: `my.git` and a missing repo
+// pass). A whole-dir glob (`.git/*`, `~/*`) is its directory. What a stuck operation leaves in `.git` - `rebase-merge`,
+// `rebase-apply`, `sequencer`, a `*.lock`, the `*_HEAD` markers - is no history, and removing it is the documented way out.
+const GIT_TRANSIENT = /^(?:rebase-merge|rebase-apply|sequencer|[^/]*\.lock|MERGE_[A-Z_]+|CHERRY_PICK_HEAD|REVERT_HEAD|BISECT_[A-Z_]+|AUTO_MERGE)(?:\/|$)/;
+function underGit(abs)
+{
+    const fold = (s) => (process.platform === 'darwin' || process.platform === 'win32' ? s.toLowerCase() : s);
+    const parts = abs.split(path.sep);
+    for (let i = 1; i < parts.length; i++)
+    {
+        if (fold(parts[i]) !== '.git') continue;
+        let st = null;
+        try { st = fs.statSync(parts.slice(0, i + 1).join(path.sep)); } catch { return false; }
+        const rest = parts.slice(i + 1).join('/');
+        if (!rest) return true;
+        return st.isDirectory() && !GIT_TRANSIENT.test(rest);
+    }
+    return false;
+}
+function targetWipes(t, dir)
+{
+    if (!t || /[$`]/.test(t)) return false;
+    let p = String(t).replace(/[\\/]+\*$/, '');
+    if (/[*?[\]{]/.test(p)) return false;
+    p = shellWrites.nativePath(p);
+    if (!path.isAbsolute(p) && !dir) return false;
+    const abs = path.resolve(dir || path.sep, p || '.');
+    return isAnchorPath(abs) || underGit(abs);
+}
+function parsedWipe(read)
+{
+    if (!read || !read.parsed || !read.vars) return false;
+    for (const cmd of read.parsed.cmds)
+    {
+        for (const c of cmd.cands)
+        {
+            if (c.name !== 'rm' || !hasRecursive(c.argv)) continue;
+            let options = true;
+            for (let i = 0; i < c.argv.length; i++)
+            {
+                const w = c.argv[i];
+                if (options && w === '--') { options = false; continue; }
+                if (options && w.startsWith('-') && w !== '-') continue;
+                const at = c.args[i].s;
+                if (targetWipes(read.vars.expand(w, at), read.vars.pwdAt(at))) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// ---- a recursive delete through a runtime or another shell API (audit 2026-10-30 HK-11) ----------------------------
+// `python3 -c "shutil.rmtree(os.path.expanduser('~'))"`, `node -e "fs.rmSync(os.homedir(), {recursive: true})"`, perl's
+// `rmtree($ENV{HOME})`, ruby's `FileUtils.rm_rf(Dir.home)` and .NET's `[IO.Directory]::Delete($HOME, $true)` all passed:
+// the runtime's script is read here the way shell-writes.js reads a runtime's write (`runtimeScripts`, the one reader of
+// them). A delete call that recurses, whose target the script names as the home directory, the cwd, the filesystem root
+// or a literal path judged like an rm operand above, is the rm case. A target the script computes is not judged; a call
+// inside a string literal is text.
+const RT_HOME = [
+    /^os\.path\.expanduser\(\s*(['"])~\1\s*\)$/, /^(?:pathlib\.)?Path\.home\(\s*\)$/, /^os\.environ\[\s*(['"])(?:HOME|USERPROFILE)\1\s*\]$/,
+    /^os\.(?:environ\.get|getenv)\(\s*(['"])(?:HOME|USERPROFILE)\1\s*\)$/, /^(?:require\(\s*(['"])(?:node:)?os\1\s*\)|os)\.homedir\(\s*\)$/,
+    /^process\.env(?:\.(?:HOME|USERPROFILE)|\[\s*(['"])(?:HOME|USERPROFILE)\1\s*\])$/, /^\$ENV\{\s*(['"]?)(?:HOME|USERPROFILE)\1\s*\}$/,
+    /^glob\(\s*(['"])~\1\s*\)$/, /^Dir\.home$/, /^ENV\[\s*(['"])(?:HOME|USERPROFILE)\1\s*\]$/, /^\$(?:HOME|env:(?:HOME|USERPROFILE))$/i,
+    /^\[(?:System\.)?Environment\]::GetFolderPath\(\s*(['"]?)UserProfile\1\s*\)$/i,
+];
+const RT_CWD = [/^os\.getcwd\(\s*\)$/, /^process\.cwd\(\s*\)$/, /^Dir\.pwd$/, /^\$PWD$/, /^\(?\s*Get-Location\s*\)?$/i, /^(?:pathlib\.)?Path\.cwd\(\s*\)$/];
+// The calls that delete a tree, each with whether it recurses on its own (`always`) or only when its options say so.
+// node's `rm` / `rmdir` on any receiver (`fs.`, `require('fs').`, `fsp.`): recursive only when its options say so.
+const RT_DELETE = /(?:\b(shutil\.rmtree|File::Path::rmtree|rmtree|remove_tree|rimraf(?:\.sync)?|(?:fse|fsExtra|fs)\.(?:removeSync|remove|emptyDirSync|emptyDir)|FileUtils\.(?:rm_rf|rm_r|remove_dir|remove_entry(?:_secure)?|rmtree))|((?<=[\w$)\]])\.(?:rmSync|rmdirSync|rm|rmdir))|(\[(?:System\.)?IO\.Directory\]::Delete|\bDirectory\.Delete))(\s*\(|[ \t]+(?=\S))/g;
+// The argument list after an opening paren (to its close), or a paren-less call's words to the end of its statement.
+function callArgs(body, from, paren)
+{
+    if (!paren)
+    {
+        const end = body.slice(from).search(/[;\n]/);
+        return [body.slice(from, end < 0 ? body.length : from + end).trim()];
+    }
+    const args = [];
+    let depth = 0;
+    let q = null;
+    let start = from;
+    for (let i = from; i < body.length; i++)
+    {
+        const ch = body[i];
+        if (q) { if (ch === '\\') i++; else if (ch === q) q = null; continue; }
+        if (ch === '"' || ch === "'" || ch === '`') { q = ch; continue; }
+        if ('([{'.includes(ch)) depth++;
+        else if (')]}'.includes(ch))
+        {
+            if (depth === 0) { args.push(body.slice(start, i).trim()); return args; }
+            depth--;
+        }
+        else if (ch === ',' && depth === 0) { args.push(body.slice(start, i).trim()); start = i + 1; }
+    }
+    return null; // unclosed: not a call this reader can judge
+}
+function runtimeTarget(expr, body, depth = 0)
+{
+    const e = String(expr || '').trim().replace(/;$/, '');
+    if (RT_HOME.some((re) => re.test(e))) return '~';
+    if (RT_CWD.some((re) => re.test(e))) return '.';
+    const lit = /^(['"])([^'"\n]*)\1$/.exec(e) || /^os\.path\.expanduser\(\s*(['"])([^'"\n]*)\1\s*\)$/.exec(e) || /^(?:pathlib\.)?Path\(\s*(['"])([^'"\n]*)\1\s*\)$/.exec(e);
+    if (lit) return lit[2];
+    // a name the script bound once to one of the above (`h = os.path.expanduser('~')` then `shutil.rmtree(h)`)
+    const name = /^\$?([A-Za-z_]\w*)$/.exec(e);
+    if (name && depth < 2)
+    {
+        const bind = new RegExp(`(?:^|[\\s;{(,])(?:(?:const|let|var|my)\\s+)?\\$?${name[1]}\\s*=\\s*([^;\\n]+)`, 'm').exec(body);
+        if (bind) return runtimeTarget(bind[1], body, depth + 1);
+    }
+    return null;
+}
+function runtimeWipe(rawCommand, read, payload, powershell)
+{
+    const scripts = [];
+    try { scripts.push(...shellWrites.runtimeScripts(read ? read.command : rawCommand)); } catch { /* unread: the segment test stands */ }
+    if (powershell) scripts.push({ body: rawCommand, index: 0, runtime: 'pwsh', shellExpands: false, P: null });
+    const cwd = path.resolve(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd());
+    for (const s of scripts)
+    {
+        const body = String(s.body || '');
+        if (!/rmtree|remove_tree|rimraf|rm_r|remove_dir|remove_entry|\brm(?:Sync|dir|dirSync)?\s*\(|remove(?:Sync)?\s*\(|emptyDir|Delete\s*\(/.test(body)) continue;
+        let inStr = () => false;
+        try { inStr = shellWrites.codeStrings(body); } catch { /* every match counts */ }
+        let vars = null;
+        let dir = cwd;
+        try
+        {
+            if (s.P) { vars = shellWrites.shellVars(s.P, { cwd }); dir = vars.pwdAt(s.index) || cwd; }
+        }
+        catch { vars = null; }
+        for (const m of body.matchAll(RT_DELETE))
+        {
+            if (inStr(m.index)) continue;
+            const args = callArgs(body, m.index + m[0].length, m[4].includes('('));
+            if (!args || !args.length) continue;
+            const recursive = m[1] ? true : m[2] ? args.slice(1).some((a) => /\brecursive\s*:\s*true\b/.test(a)) : args.slice(1).some((a) => /true/i.test(a));
+            if (!recursive) continue;
+            let t = runtimeTarget(args[0], body);
+            if (t === null) continue;
+            if (s.shellExpands && vars && /[$`]/.test(t)) t = vars.expand(t, s.index);
+            if (isCatastrophic(t) || targetWipes(t, dir)) return true;
+        }
+    }
     return false;
 }
 
@@ -892,25 +1047,17 @@ function main()
         // chosen through AskUserQuestion, and the chosen action was silently substituted with a
         // `git stash push -u` (measured: answer at 06:54:14, block at 06:54:22, 142,674 cache-read
         // on the retried turn). Same shape as CROSS-WRITE-ALLOW: one path (or stash entry) per line,
-        // or `*` for everything, this session's own, under 8h - and it must cover EVERY loss named.
+        // or `*` for everything - and it must cover EVERY loss named. A security receipt (audit 2026-10-30 HK-03 /
+        // HK-16, hook-prelude.js securityReceipt): this session's own (`session:`), under 8h, and only after the user
+        // answered this guard's last denial 'Discard it' with auto-run off. No prelude, no reader: shut.
+        const receiptFile = layout ? layout.findState(root, 'approvals', 'DISCARD-ALLOW') : path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW');
+        let receipts = null;
+        try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
+        const held = receipts && receipts.securityReceipt ? receipts.securityReceipt(receiptFile, payload, { marker: 'DISCARD-ALLOW', labels: ['Discard it'] }) : null;
         const allowed = (() => {
-            try
-            {
-                const receipt = layout ? layout.findState(root, 'approvals', 'DISCARD-ALLOW') : path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW');
-                const st = fs.statSync(receipt);
-                let sessionStartMs = 0;
-                try
-                {
-                    const tr = fs.statSync(String(payload.transcript_path || ''));
-                    sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
-                }
-                catch { sessionStartMs = 0; }
-                if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
-                const lines = fs.readFileSync(receipt, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-                if (lines.includes('*')) return true;
-                return targets.length > 0 && targets.every((f) => f !== '*' && lines.some((l) => l === f || f.startsWith(`${l}/`)));
-            }
-            catch { return false; } // absent or unreadable - no allowance recorded
+            if (!held || !held.live) return false;
+            if (held.lines.includes('*')) return true;
+            return targets.length > 0 && targets.every((f) => f !== '*' && held.lines.some((l) => l === f || f.startsWith(`${l}/`)));
         })();
 
         if (!allowed)
@@ -935,10 +1082,12 @@ function main()
                             : `'Keep it all (Recommended)' - run none of it; \`git stash -u\` or commit the work first`;
             const narrow = one === 'stash' ? `'Narrow it' - drop ONE named entry instead of every one`
                 : groups.has('tree') ? `'Narrow it' - name the ONE file to revert instead of the whole tree` : '';
-            const spell = one === 'stash' ? 'one entry per line as `stash@{N}`, or `*` for every one'
-                : one === 'reflog' || one === 'objects' ? 'the single line `*`'
-                    : one === 'tree' ? 'one path per line exactly as the\ncommand spells them, or `*` for everything'
-                        : 'one path or `stash@{N}` per line exactly as\nnamed above, or `*` for everything (a reflog or object loss takes `*`)';
+            // The exact lines to write (HK-16): the session line, then every target the discard must cover - `*` when a
+            // reflog or object loss is named, or past 30 targets.
+            const want = [...new Set(targets)];
+            const lines = want.includes('*') || want.length > 30 || !want.length ? ['*'] : want;
+            const write = receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, lines) : lines.map((l) => `  ${l}\n`).join('');
+            const shut = receipts && receipts.receiptShutText ? receipts.receiptShutText(held, receiptRel) : '';
             process.stderr.write(
                 body +
                 `\nA house rule enforced here, no prose copy to consult - same class as the recursive-rm gate in this file.` +
@@ -946,9 +1095,11 @@ function main()
                 `  ${keep}\n` +
                 `  'Discard it' - the loss is intended and the user says so\n` +
                 (narrow ? `  ${narrow}\n` : '') +
-                `On 'Discard it', write the receipt ${receiptRel} - ${spell} - then retry the SAME command, and delete\n` +
-                `the receipt once the discard ran (a \`*\` left in place opens every discard for 8h). It is honoured\n` +
-                `for this session only, under 8h. Nothing to lose passes this gate untouched.`,
+                `On 'Discard it', write the receipt ${receiptRel} with exactly these lines, then retry the SAME command,\n` +
+                `and delete the receipt once the discard ran (a \`*\` left in place opens every discard for 8h):\n` +
+                write +
+                `It counts only after the user's own 'Discard it' to this denial - never one auto-run gave - for this\n` +
+                `session, under 8h. Nothing to lose passes this gate untouched.\n` + shut,
             );
             process.exit(2);
         }
@@ -958,15 +1109,21 @@ function main()
     // every backslash read as the path separator it is there (its escape is the backtick): `.\`, `.\*` and `..\` kept
     // the backslash and named no catastrophic target, so `Remove-Item -Recurse -Force .\` passed (audit 2026-10-08).
     setAnchors(payload);
-    if (!isCatastrophicRm(shellWrites.blankHeredocs(powershell ? rawCommand.replace(/\\/g, '/') : read.command)))
+    const segmentWipe = isCatastrophicRm(shellWrites.blankHeredocs(powershell ? rawCommand.replace(/\\/g, '/') : read.command));
+    // the parsed operands (HK-08..HK-10; never a PowerShell text, whose words the segment test reads) and a runtime's delete (HK-11)
+    const parsed = !segmentWipe && !powershell && parsedWipe(read);
+    const runtime = !segmentWipe && !parsed && runtimeWipe(rawCommand, powershell ? null : read, payload, powershell);
+    if (!segmentWipe && !parsed && !runtime)
     {
         process.exit(0);
     }
+    if (parsed || runtime) global.BLOCK_DETAIL = { branch: parsed ? 'rm-resolved-target' : 'runtime-delete' };
 
     process.stderr.write(
-        'Blocked: a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd or its ' +
-        'parent, a bare *, a .git directory, or several top-level system dirs at once) - or an unfiltered find -delete / -exec rm, ' +
-        'or a piped Remove-Item, over one - the filesystem has no reflog. A house ' +
+        'Blocked: a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd, the project or a folder holding ' +
+        'it, a bare *, a .git directory or anything in it, or several top-level system dirs at once - read after the command\'s ' +
+        'own cd and the variables it sets) - or an unfiltered find -delete / -exec rm, a piped Remove-Item, or a runtime\'s ' +
+        'recursive delete (rmtree, rmSync recursive, rm_rf, Directory.Delete), over one - the filesystem has no reflog. A house ' +
         'rule enforced here, no prose copy to consult. ' +
         'Delete a specific subdirectory by name, or filter the find (-name, -path) BEFORE its -delete / -exec, ' +
         'in the same -o branch, instead. A .git directory holds the unpushed commits, stashes and reflog: if the user ' +
