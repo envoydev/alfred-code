@@ -99,7 +99,10 @@ test('turn-build: history-session\'s Stop runs the check with its own gates; eit
     const plugin = { CLAUDE_PLUGIN_ROOT: path.join(__dirname, '..') };
     p.write('src/a.ts');
     assert.strictEqual(viaHistory(plugin).status, 2, 'the plugin route runs it');
-    p.file('.claude/settings.json', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/history-session.js"' }] }] } }));
+    // HK-02: a twin is its file on disk, wired on every row the core wires it on (SessionStart and Stop)
+    const twin = { type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/history-session.js"' };
+    p.file('.claude/hooks/history-session.js', '// copied\n');
+    p.file('.claude/settings.json', JSON.stringify({ hooks: { SessionStart: [{ hooks: [twin] }], Stop: [{ hooks: [twin] }] } }));
     const copied = runs();
     p.write('src/a.ts');
     assert.deepStrictEqual([viaHistory(plugin).status, runs()], [0, copied], 'beside a copied history-session the plugin\'s stands down');

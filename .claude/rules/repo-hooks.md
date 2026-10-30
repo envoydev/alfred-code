@@ -24,7 +24,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `ALFRED_CODE_HOOKS_OFF`. The six gates live in `hook-prelude.js`, never inlined: the csv opt-out;
   the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret,
   force-push and desktop exec guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
-  the plugin copy standing down beside a still-wired copied twin; a repo never set up (no install
+  the plugin copy standing down beside a still-wired copied twin - only a REAL one (`yieldToCopiedTwin`, audit 2026-10-30
+  HK-02: an entry naming the twin under matcher `Nothing`, no file on disk, stood both dispatchers down): the copied file
+  on disk and entries covering every plugin row the run stands for (the event, a matcher firing on each of the row's
+  tools; the core entry's rows from the plugin root's `marketplace.json`, a guard run in-process by the plugin's
+  dispatcher that dispatcher's row, the file dispatcher per call); a repo never set up (no install
   record in it, any folder between it and its git top level (a monorepo package with its own install), the top itself -
   never a repo kept at the home directory, for the installer's `gitRoot` as much as the hooks, seam m3 - or - for a git
   worktree - its main checkout, so a worktree of an
@@ -198,8 +202,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   carries `onFailure: "block"` on both routes (`settings.js` `BLOCK_ON_FAILURE` / `onFailureFor`, read by
   `build-marketplace.js`; audit 2026-10-14 HK07, the user's ruling): on 2.1.295+ a dispatcher that cannot start, exits
   other than 0 / 2, prints invalid output or stalls past its budget blocks the call as an exit 2 would ('Block the action
-  when a hook fails'), the price being that a broken install blocks every shell call until fixed - the file dispatcher
-  and every other hook keep the default `continue`. An older Claude Code drops the key: its hook entry is a non-strict
+  when a hook fails'), the price being that a broken install blocks every shell call until fixed. The FILE dispatcher
+  carries it too (audit 2026-10-30 HK-21, the plan's ruling: a crashed `file-guards.js` let a Read of a credential file
+  through), so a broken install blocks every Read, Edit, Write and Grep as well; every other hook keeps the default
+  `continue`. Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
+  dispatcher still returns, and a cold dispatcher answers well inside its budget (`hooks-entry.test.js`, HK-21). The
+  rollback is dropping the dispatcher's `BLOCK_ON_FAILURE` row - an update then takes the key off the copy route's entry -
+  or `claude plugin disable` on the plugin route. An older Claude Code drops the key: its hook entry is a non-strict
   zod object, so the entry parses with the key stripped (the 2.1.100 and 2.1.294 bundles read 2026-10-14; the 2.1.294
   plugin validator says 'Claude Code ignores unrecognized fields at load time'). The copy route backfills the key onto
   an older entry.
@@ -435,7 +444,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + a Playwright server's `browser_file_upload` under any
     registration name (N6), whose
     `tool_input.paths` each take the Read judgement - a page asking for an upload got any workspace file, audit 2026-10-14
-    PL3) - credentials are read for PRESENCE, never
+    PL3 - + a filesystem server's `read_text_file` / `read_file` / `read_multiple_files` under any registration name, whose
+    `path` (a `head` judged as a window from line 1) or `paths` take it too - the user's own server returned a `.env` unjudged,
+    audit 2026-10-30 HK-26, one more node start on those calls only) - credentials are read for PRESENCE, never
     value. A leading `NAME=value` word and every `$(...)` / backtick body are judged as commands of their own, quote-
     and nesting-aware (audit 2026-10-20 C17: the source protocol's own `MARK="...$(printf ... | ...)"` read as a
     changing step); a count or a facts-only print (a length, a boolean, a type, a label) runs as written, never one routed
@@ -453,10 +464,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     PuTTY, GnuPG), a token file and a binary key store (`.p12`, `.jks`, `.kdbx`), judged by its kind; a file's key
     also reads `pass`, `client-key-data` and a camelCase `userPass` / `userPWD`, which a variable name does not.
     The redacted view and the git stream masker mask what the reader judged, where it stands; a stream with no header
-    naming the file (`git show <rev>:<path>`) reads the generic pairs only, never an HCL attribute. A UTF-16 file
+    naming the file (`git show <rev>:<path>`) reads the generic pairs only, never an HCL attribute. A file past 512KB
+    (`MAX_BYTES`) is judged by its first 512KB - a JSON cut there by its `"key": "value"` pairs - on every route, the
+    Grep walk included, and a Read naming `offset` / `limit` by the lines it asks for (64KB chunks, up to 64MB in; audit
+    2026-10-30 HK-07: a 600KB dotenv and a 910KB `terraform.tfstate` passed whole); a credential past the head of a file
+    printed whole is a stated ceiling, and its dump's view is a note naming `--presence`. A UTF-16 file
     (either byte order) is judged by its decoded content, and a file printed under another verb's name is a dump too
     (`dd if=`, `iconv`, curl `file://`, vim's print, a copy onto `/dev/stdout`, sqlite3's `readfile()`, php's
-    `file_get_contents` / `getenv`), a bare name after a `cd` resolved against the `cd` target. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
+    `file_get_contents` / `getenv`, and every verb of shell-writes.js's one print table - `shuf`, `vis`, `join`, a
+    compressor's `-c`, whose view goes through the same compressor so a decompressor after it reads text; audit 2026-10-30
+    HK-06), a bare name after a `cd` resolved against the `cd` target. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
     Read tool and a credential literal stay blocked - but a FETCH of a short-lived link passes the literal check (the
     user's ruling 2026-10-14, after a Jira image download's `?token=<JWT>` was refused in every session): a token in a
@@ -534,7 +551,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`"token: $env:X"`), cmd's `set` on either shell (`cmd /c set`, the masked listing) and .NET's file reads
     (`[IO.File]::ReadAllText('.env')`, the redacted view). An environment dump is replaced
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
-    and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
+    and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked) - env's and
+    printenv's printing options too (`-0`, `-u NAME`, `--unset=NAME`, `NAME=v` with no command; `envDumpOf`, audit
+    2026-10-30 HK-05), the view keeping `-0`'s NUL separator, and `${!v}` prints the variable v names (one bound to a
+    literal name is judged as that name, any other is the masked listing). A `ps` with BSD `e` or `-E`, a read of
+    `/proc/<pid>/environ` and `launchctl getenv <credential name>` have no masked form and block. A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A heredoc
     body is data (`shell-writes.js`'s blanker, its first line kept as shell) unless the command word of its stage, or
     of one piped from it, is a runtime or a shell - a `.sh` in the name of the file it writes is neither; a runtime
@@ -603,7 +624,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     no name test narrows it; a `-maxdepth` short of the store passes. The same day the dump half took `$(pwd)` / a backtick
     `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
     `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
-    path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged.
+    path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged. Audit 2026-10-30 HK-04: `$PWD`
+    itself is where the shell stands in every spelling - a quoted piece (`"$PWD"/.env`, the shell's quote removal), an
+    assignment (`f=$PWD/.env`, `D=$PWD`), a `for` list - after a followed `cd`, a relative one moving from the payload's
+    cwd; what VARS leaves (`${PWD:?}`, `${HOME:=x}`) goes through shell-writes.js `shellVars`, never inside a verbatim body.
     The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and
@@ -611,7 +635,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     against accidents, never a wall against a deliberate read (the session-start line says so and forbids the transform); the exit code is the command's. SessionStart (its own manifest row, silent with no store, an
     empty or an unparseable one) says the KEYS and that command line, plus a warning when `git check-ignore` exits 1 (not
     ignored, or tracked). No server gets a value: the stack ships none since 2.10.1 (the browser and mobile launchers that read the store
-    left with them); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
+    left with them, and the line's 'type a KEY name in the browser' sentence after them - audit 2026-10-30 HK-20); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
     through its own parser, `guard-sensitive-data.test.js` holding both to one fixture.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent|SendMessage`, `SubagentStart`, `SubagentStop`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without its plan's gate file (written on explicit approval or an AUTO waiver) -
@@ -1084,7 +1108,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `seal: sha256 <hex>` then the report as delivered, only into this session's scorer folder (both sides realpathed, so
     macOS's `/var` is `/private/var` and a symlinked parent leads nowhere), only a `.score.md` that does not exist yet
     (`wx` - a second delivery never rewrites it), one `scorer-seal` probe row either way; the hand-back is never delayed
-    or denied, and `scorecard.js grade` fails a card whose seal is missing or broken with exit 3 (AC18, AC22).
+    or denied, and `scorecard.js grade` fails a card whose seal is missing or broken with exit 3 (AC18, AC22). The seal
+    is written before a sibling hook's verdict on the same hand-back, so a deny of it would seal an undelivered report:
+    docs-session, the one sibling that denies a hand-back, asks only a seat whose own writes changed a watched file, and
+    the scorer seat holds no write tool (audit 2026-10-30 HK-28, ruled not reproduced; the replay is in
+    `docs-session.test.js`).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
     running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;

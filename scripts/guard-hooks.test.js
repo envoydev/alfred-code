@@ -5809,7 +5809,7 @@ test('audit 2026-10-30 HK-03: SECRET-READ-ALLOW opens only on the user\'s own al
   opens([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)], 'the user answered the denial with the allow label');
   opens([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer(`${SHOW} (Recommended)`)], 'a Recommended mark is the same label');
   opens([ask, rc.answer(SHOW)], 'a rewrite (no denial) asked first: any answer of the session');
-  assert.match(shut([ask, rc.denial('SECRET-READ-ALLOW')], 'a receipt the model wrote with no ask answered').stderr, /stale/, 'the denial says the receipt there is not honoured');
+  assert.match(shut([ask, rc.denial('SECRET-READ-ALLOW')], 'a receipt the model wrote with no ask answered').stderr, /does not count \(no ask answered with the allow label/, 'the denial says why the receipt there is not honoured');
   shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer('Presence only (Recommended)')], 'a declined ask');
   shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer('Drop it')], 'an ask answered with another label');
   shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer('Discard it')], 'another guard\'s allow label');

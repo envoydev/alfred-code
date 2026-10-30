@@ -168,12 +168,23 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js\"",
-                "timeout": 70
+                "timeout": 70,
+                "onFailure": "block"
               }
             ]
           },
           {
             "matcher": "^mcp__.+__browser_file_upload$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files)$",
             "hooks": [
               {
                 "type": "command",

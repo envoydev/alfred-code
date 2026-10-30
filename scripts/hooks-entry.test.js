@@ -283,13 +283,16 @@ test('the hooks audit\'s currency rows follow the hooks reference: DirectoryAdde
 test('the shell-guard dispatcher alone blocks the call when it fails - plugin and copy routes, backfilled once (HK07)', () => {
     const flagged = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.onFailure !== undefined)
         .map((h) => `${event} ${b.matcher} ${h.onFailure} ${h.command.replace(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\//, '').replace(/"$/, '')}`)));
-    assert.deepStrictEqual(flagged, [`PreToolUse ${dispatcher.MATCHER} block shell-guards.js`]);
+    // audit 2026-10-30 HK-21: the file dispatcher carries it too
+    assert.deepStrictEqual(flagged.sort(), [`PreToolUse ${dispatcher.MATCHER} block shell-guards.js`, `PreToolUse ${fileDispatcher.MATCHER} block file-guards.js`].sort());
     const core = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')));
-    assert.strictEqual((core.match(/"onFailure":"block"/g) || []).length, 1, 'the generated entry carries it once');
+    assert.strictEqual((core.match(/"onFailure":"block"/g) || []).length, 2, 'the generated entry carries it once per dispatcher');
     assert.match(core, /shell-guards\.js\\"","timeout":\d+,"onFailure":"block"/, 'on the dispatcher');
+    assert.match(core, /file-guards\.js\\"","timeout":\d+,"onFailure":"block"/, 'on the file dispatcher');
     const { onFailureFor, writeSettings, hookCommand } = require('./install/settings.js');
     assert.strictEqual(onFailureFor('shell-guards.js', 'PreToolUse'), 'block');
-    for (const [file, event] of [['file-guards.js', 'PreToolUse'], ['guard-stop-contract.js', 'Stop'], ['instrument-tool-usage.js', 'PreToolUse'], ['shell-guards.js', 'PostToolUse']])
+    assert.strictEqual(onFailureFor('file-guards.js', 'PreToolUse'), 'block');
+    for (const [file, event] of [['guard-stop-contract.js', 'Stop'], ['instrument-tool-usage.js', 'PreToolUse'], ['shell-guards.js', 'PostToolUse'], ['file-guards.js', 'PostToolUse']])
         assert.strictEqual(onFailureFor(file, event), undefined, `${file} ${event}`);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-entry-onfailure-'));
     try {
@@ -316,4 +319,85 @@ test('the shell-guard dispatcher alone blocks the call when it fails - plugin an
         writeSettings(opts);
         assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).hooks.PreToolUse.flatMap((e) => e.hooks).map((h) => h.onFailure), ['block']);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Audit 2026-10-30 HK-21 (the plan's ruling): the file dispatcher carries `onFailure: "block"` too, so a crashed or stalled
+// file-guards.js no longer lets a Read of a credential file through. Claude Code counts a failure as: cannot start, an exit
+// other than 0 / 2, unparseable JSON on stdout, or the timeout - plain text on exit 0 is no failure (code.claude.com/docs/en/
+// hooks, 'Block the action when a hook fails'). So a HEALTHY dispatcher must answer every call with 0 or 2 and an empty or
+// JSON stdout inside its budget, cold (no compile cache) included - a guard that throws inside it fails open alone and the
+// dispatcher still returns - while a dispatcher that cannot run is the failure the key turns into a block. The rollback is
+// dropping the table's row: an update then takes the key off an entry the table no longer flags.
+test('HK-21: the file dispatcher blocks on failure; a healthy cold one never fails, a throwing guard inside it does not either', () => {
+    const { onFailureFor, timeoutFor, writeSettings, hookCommand } = require('./install/settings.js');
+    assert.strictEqual(onFailureFor('file-guards.js', 'PreToolUse'), 'block');
+    const budget = timeoutFor('file-guards.js', 'PreToolUse') * 1000;
+    const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-entry-hk21-')));
+    try {
+        const proj = path.join(work, 'proj');
+        const cold = path.join(work, 'tmp'); // a fresh temp dir: no V8 code cache, the cold first call
+        for (const d of [path.join(proj, '.claude'), cold]) fs.mkdirSync(d, { recursive: true });
+        fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'stamp\n');
+        fs.writeFileSync(path.join(proj, 'README.md'), '# readme\n');
+        fs.writeFileSync(path.join(proj, 'note.ipynb'), '{"cells":[]}\n');
+        spawnSync('git', ['init', '-q'], { cwd: proj });
+        const copyOf = (name) => { const d = path.join(work, name); fs.cpSync(path.join(__dirname, '..', 'stack', 'hooks'), d, { recursive: true }); return d; };
+        const env = { ...process.env, CLAUDE_PROJECT_DIR: proj, TMPDIR: cold, TEMP: cold, TMP: cold, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
+        const call = (dir, stdin) => {
+            const t = Date.now();
+            const r = spawnSync(process.execPath, [path.join(dir, 'file-guards.js')], { input: stdin, cwd: proj, env, encoding: 'utf8', timeout: budget });
+            return { ...r, ms: Date.now() - t };
+        };
+        const healthy = (r, what) => {
+            assert.ok(r.status === 0 || r.status === 2, `${what}: exit ${r.status} ${r.signal || ''} ${String(r.stderr).slice(0, 300)}`);
+            if (r.stdout.trim()) assert.doesNotThrow(() => JSON.parse(r.stdout), `${what}: stdout is no JSON - ${r.stdout.slice(0, 200)}`);
+            assert.ok(r.ms < budget, `${what}: ${r.ms}ms past the ${budget}ms budget`);
+        };
+        const hooks = copyOf('hooks');
+        const payload = (tool_name, tool_input) => JSON.stringify({ session_id: 'hk21', cwd: proj, hook_event_name: 'PreToolUse', tool_name, tool_input });
+        const calls = [
+            ['Read', { file_path: path.join(proj, 'README.md') }],
+            ['Grep', { pattern: 'readme', path: proj, output_mode: 'content' }],
+            ['Write', { file_path: path.join(proj, 'new.md'), content: 'x\n' }],
+            ['Edit', { file_path: path.join(proj, 'README.md'), old_string: 'readme', new_string: 'README' }],
+            ['MultiEdit', { file_path: path.join(proj, 'README.md'), edits: [{ old_string: 'readme', new_string: 'README' }] }],
+            ['NotebookEdit', { notebook_path: path.join(proj, 'note.ipynb'), new_source: 'x' }],
+        ];
+        for (const [tool, input] of calls) healthy(call(hooks, payload(tool, input)), `cold ${tool}`);
+        assert.strictEqual(call(hooks, payload('Read', { file_path: path.join(proj, 'README.md') })).status, 0, 'a clean Read passes');
+        for (const stdin of ['', '{', 'null', '[]', '{"tool_name":"Read","tool_input":{"file_path":null}}', '{"tool_name":"Grep"}']) healthy(call(hooks, stdin), `malformed <${stdin}>`);
+        // a guard that throws inside the dispatcher fails open alone: the dispatcher returns, no failure, no block
+        const throwing = copyOf('throwing');
+        fs.writeFileSync(path.join(throwing, 'guard-read-whole-file.js'), "throw new Error('boom');\n");
+        const t = call(throwing, payload('Read', { file_path: path.join(proj, 'README.md') }));
+        healthy(t, 'a throwing guard inside');
+        assert.strictEqual(t.status, 0, 'a throwing guard is not a block');
+        // a dispatcher that cannot run exits other than 0 / 2 - the failure `onFailure: "block"` turns into a block
+        const broken = copyOf('broken');
+        fs.writeFileSync(path.join(broken, 'file-guards.js'), "throw new Error('broken install');\n");
+        const b = call(broken, payload('Read', { file_path: path.join(proj, 'README.md') }));
+        assert.ok(b.status !== 0 && b.status !== 2, `a broken dispatcher exits ${b.status}`);
+        // the rollback lever on the copy route: a key the table no longer names is taken off our entry, the user's own kept
+        const file = path.join(work, 'settings', '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const fileCmd = hookCommand('file-guards.js', '').command;
+        const dispatchCmd = hookCommand('guard-unapproved-dispatch.js', '').command;
+        const mine = { type: 'command', command: 'node my-own-read-hook.js', timeout: 5, onFailure: 'block' };
+        fs.writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [
+            { matcher: fileDispatcher.MATCHER, hooks: [{ type: 'command', command: fileCmd, timeout: 70 }] },
+            { matcher: 'Task|Agent|SendMessage', hooks: [{ type: 'command', command: dispatchCmd, timeout: 10, onFailure: 'block' }] },
+            { matcher: 'Read', hooks: [mine] }] } }));
+        const specs = [...fileDispatcher.GUARDS.map(([g, tools]) => ({ file: `${g}.js`, matcher: tools.join('|') })),
+            { file: 'guard-unapproved-dispatch.js', matcher: 'Task|Agent|SendMessage' }];
+        const opts = { file, catalog: require('../meta/environment.json').env, migrations: {}, log: () => {}, note: () => {}, hookSpecs: specs };
+        writeSettings(opts);
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const entries = data.hooks.PreToolUse.flatMap((e) => e.hooks);
+        assert.deepStrictEqual(entries.filter((h) => h.command === fileCmd).map((h) => h.onFailure), ['block'], 'backfilled onto the file dispatcher');
+        assert.deepStrictEqual(entries.filter((h) => h.command === dispatchCmd).map((h) => h.onFailure), [undefined], 'taken off an entry the table no longer names');
+        assert.deepStrictEqual(data.hooks.PreToolUse.find((e) => e.matcher === 'Read').hooks, [mine], 'the user\'s own hook keeps its key');
+        const before = fs.readFileSync(file, 'utf8');
+        writeSettings(opts);
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'a re-run changes nothing');
+    } finally { fs.rmSync(work, { recursive: true, force: true }); }
 });
