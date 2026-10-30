@@ -37,8 +37,8 @@ auth handshakes, message/event choreography, retry and timeout logic. Not for st
 - **autonumber** - add it right after the `sequenceDiagram` line for step-numbered walkthroughs
   the prose can reference; it renumbers on insert.
 - **Highlighting** - `rect rgb(200,220,255) ... end` for a background region (a transaction
-  boundary); `box <color> <label> ... end` groups participants (internal services). rgb() only,
-  never hex, in both.
+  boundary); `box <color> <label> ... end` groups participants (internal services). `rect`
+  takes rgb()/rgba(), `box` a color name, rgb()/rgba() or hsl()/hsla(); never hex, in both.
 
 ## Size discipline
 
@@ -79,4 +79,4 @@ sequenceDiagram
 - alt/opt/par/critical/break for control flow, nesting <= 2.
 - autonumber on referenced walkthroughs.
 - Not more than ~8 lifelines; one abstraction level; happy path separated from error paths.
-- rgb() not hex in rect/box.
+- Never hex in rect or box (`#` reads as a comment): rgb()/rgba(), or a color name in a box.

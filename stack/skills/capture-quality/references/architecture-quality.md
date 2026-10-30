@@ -26,8 +26,6 @@ The measurements behind these rules live in `references/architecture-quality-evi
   (the code-quality part), code style, or test coverage - the assessment keeps only structural testability
   blockers, never coverage gaps.
 
-**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
-
 ## Execution modes
 
 **Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces ARCHITECTURE-ASSESSMENT.md, and a conversational 'what are the risks here?' can match this skill. So unless a mode word follows the topic (a calling flow started this run) or capture-quality's chain ask already answered it, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.

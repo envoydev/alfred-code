@@ -7076,7 +7076,7 @@
       ]
     },
     "auto-mode-contract": {
-      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, and the stack-modes spec of 2026-10-27 section 7: four mode flags in the leading run right after the command, auto-run lasting the session through the hook's AUTO stamp, each run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line the flag holds for that run only, M2): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph, so a flag reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
+      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, and the stack-modes spec of 2026-10-27 section 7: four mode flags in the leading run right after the command, auto-run lasting the session through the hook's AUTO stamp, each run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line the flag holds for that run only, M2): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph (a capture part reached only through its router reads the router's, audit 2026-10-30 SKC-06), so a flag reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
       "owner": {
         "file": "stack/skills/loop-code-quality/SKILL.md",
         "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
@@ -7123,27 +7123,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/capture-quality/references/architecture-quality.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-awareness/references/architecture.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
           "file": "stack/skills/capture-awareness/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-quality/references/code-quality.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-awareness/references/project-code-style.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -8637,6 +8617,19 @@
         {
           "file": "stack/skills/capture-awareness/SKILL.md",
           "marker": "A mode word next, `DELEGATED` or `INLINE`"
+        }
+      ]
+    },
+    "format-check-source": {
+      "_note": "Where the project's format check comes from - its own `format:check` script, else the CI workflow's format step - stated by the commit gate and the done gate alike (audit 2026-10-30 SKC-19). Owned by the commit checkpoint, whose Format step runs it over every staged path; the done gate names the same source for its re-run.",
+      "owner": {
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+        "marker": "(a `format:check` script, the CI workflow's format step)"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-done-gate/SKILL.md",
+          "marker": "(a `format:check` script, the CI workflow's format step)"
         }
       ]
     }

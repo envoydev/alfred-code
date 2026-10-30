@@ -519,7 +519,7 @@ test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the use
 const MODE_FLAG_NAMES = ['--mode-auto-run-on', '--mode-auto-run-off', '--mode-output-scorer-on', '--mode-output-scorer-off'];
 test('every flow paragraph names the four mode flags and no old flag (AC10)', () => {
     const files = copiesOf(shared()['auto-mode-contract']);
-    assert.strictEqual(files.length, 19, 'the owner and its 18 sites (capture-quality\'s router joined its three parts, 2026-10-29)');
+    assert.strictEqual(files.length, 14, 'the owner and its 13 sites (the five capture parts read their router\'s paragraph, audit 2026-10-30 SKC-06)');
     for (const file of files) {
         const t = read(file);
         for (const flag of MODE_FLAG_NAMES) assert.ok(t.includes(flag), `${file} names ${flag}`);

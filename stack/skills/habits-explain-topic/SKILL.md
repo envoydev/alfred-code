@@ -91,6 +91,27 @@ A simple explanation is only good if it is true.
 - A contested topic gets its main positions fairly, and where the evidence is strongest.
 - A health, legal or financial topic: explain the concept, and point to a qualified professional for a decision about the reader's own case.
 
+## Last check before sending
+
+Where a `scorer: stacked` line is in context, the FIRST action before releasing the answer - after this check - is the `mode-output-scorer` Skill call with output `topic-explainer`.
+
+Fix any line that fails:
+
+```text
+- [ ] The first sentence answers the question
+- [ ] The depth matches the asker - basics skipped for an expert, extra care for a child
+- [ ] The analogy is mapped part by part, and its limit is stated
+- [ ] Steps are numbered, one idea each, each saying why
+- [ ] A worked example with concrete details (code track: quoted from the real files)
+- [ ] The most common misconception is named and corrected (topic track)
+- [ ] Every technical term is defined, and listed under Words to know (topic track)
+- [ ] Facts are right, uncertainty is labelled, nothing is invented
+- [ ] Recap plus 2-4 Check yourself questions, answers after (topic track)
+- [ ] Diagram, if any: one idea, title, caption, direct labels, contrast, dark mode, phone width, nothing external, checked
+- [ ] The walkthrough and its page saved under explanations/, the page checked: one right option per question, every label's input, rendered
+- [ ] The length is in proportion to the question
+```
+
 ## The diagram
 
 Make one when the topic has a shape the eye takes in faster than text - steps in order, a cycle, parts of a whole, a comparison, change over time, a hierarchy, actors trading messages. Skip it for a definition or a single fact, or when the user asked for text only. One diagram; two at most for a large topic, each showing one idea.
@@ -153,27 +174,6 @@ Honor an explicit depth request. If none is given, infer it from how the questio
 - Answer in the language the user asked in, whatever it is; if mixed, follow the dominant language.
 - Code, identifiers, file names, and quoted snippets always stay verbatim in their original form regardless of answer language - never translate code or symbol names.
 - Technical terms keep their standard English form even in an answer in another language (e.g. `dependency injection`, `observable`), introduced with a short gloss the first time.
-
-## Last check before sending
-
-Where a `scorer: stacked` line is in context, the FIRST action before releasing the answer - after this check - is the `mode-output-scorer` Skill call with output `topic-explainer`.
-
-Fix any line that fails:
-
-```text
-- [ ] The first sentence answers the question
-- [ ] The depth matches the asker - basics skipped for an expert, extra care for a child
-- [ ] The analogy is mapped part by part, and its limit is stated
-- [ ] Steps are numbered, one idea each, each saying why
-- [ ] A worked example with concrete details (code track: quoted from the real files)
-- [ ] The most common misconception is named and corrected (topic track)
-- [ ] Every technical term is defined, and listed under Words to know (topic track)
-- [ ] Facts are right, uncertainty is labelled, nothing is invented
-- [ ] Recap plus 2-4 Check yourself questions, answers after (topic track)
-- [ ] Diagram, if any: one idea, title, caption, direct labels, contrast, dark mode, phone width, nothing external, checked
-- [ ] The walkthrough and its page saved under explanations/, the page checked: one right option per question, every label's input, rendered
-- [ ] The length is in proportion to the question
-```
 
 ## What good looks like
 

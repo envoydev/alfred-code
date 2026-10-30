@@ -158,7 +158,13 @@ A wait of minutes runs in the background (the quality-gates rule).
 
 Beyond the always-on stops:
 
-- A plan needing more than about five seats, or a scope far past the request: ONE AskUserQuestion first, the trimmed plan recommended.
+- A plan needing more than about five seats, or a scope far past the request: ONE AskUserQuestion first, the trimmed plan recommended:
+
+  ```ask
+  The plan needs <N> seats / reaches <the scope past the request>. Run the trimmed plan?
+  - 'Run the trimmed plan (Recommended)' - <the seats or scope kept, and what is left out>
+  - 'Run the full plan' - <N> seats, queued at the agent cap
+  ```
 - A required secret or service is missing and no local stand-in exists: report it, do not work around it.
 
 ## The close

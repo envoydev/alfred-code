@@ -34,7 +34,7 @@ close all run on this one gate.
    run's saved log, found by its name (`grep -n '<test name>' <log>`); a claim about every failure
    counts and reads the whole list - a `head` of it proves the lines it printed and nothing past them.
 3. **Scoped while iterating, the full suite once.** While iterating on a failure, run the ONE
-   failing test, file or project - the SCOPED test command this project's AGENTS.md records beside
+   failing test, file or project - the SCOPED test command this project's instruction file (AGENTS.md or CLAUDE.md) records beside
    the full-suite one (a single project, a test filter, a spec path). The whole suite runs once, at
    the close gate (a seat's per-task gate runs the scope its brief names), and its output is the
    summary line.

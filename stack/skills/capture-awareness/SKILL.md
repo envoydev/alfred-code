@@ -202,8 +202,7 @@ The chain:
 
 - A calling flow hands `<topic> <DELEGATED|INLINE> <target>`: the mode word right after the topic skips the part's run
   gate and mode ask, and the part inherits the mode.
-- `loop-architecture-quality` hands `architecture <mode> <target>` before its assessment and again at its reconcile.
-- Init's capture rows each print `/capture-awareness <topic>`, the agents row last.
+- A person may type `/capture-awareness <topic>` (init's capture rows print that form) and gets the part's run gate.
 
 ## 5. The close
 

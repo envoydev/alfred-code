@@ -50,7 +50,7 @@ test('audit 2026-10-08: dev-log-convert carries its per-input-shape rules inline
     assert.doesNotMatch(raw, /edge-cases\.md/, 'nothing points at it');
     for (const rule of ['append `Testing. Merged changes.`', 'opens with `Investigated <brief topic>.`', 'never `Continued`', '`Off (<reason>).`', 'trust the bullets and recompute `Total time`', 'no weekend skip'])
         assert.ok(dl.includes(rule), `the body carries '${rule}'`);
-    assert.strictEqual((raw.match(/^[ \t]*```ask[ \t]*$/gm) || []).length, 2, 'the split and the granularity asks are templates');
+    assert.strictEqual((raw.match(/^[ \t]*```ask[ \t]*$/gm) || []).length, 3, 'the split, the granularity and the second-correction asks are templates (audit 2026-10-30 SKC-14)');
     assert.deepStrictEqual(lintAskTemplates([{ file: 'dev-log-convert', text: raw }]), []);
     assert.strictEqual((dl.match(/write `\(time not specified\)`/g) || []).length, 0, 'the placeholder rule is stated once');
     assert.ok(dl.includes('A request to log work read off the repo still starts from \'dev-log\'.'), 'the repo route says how it fires');

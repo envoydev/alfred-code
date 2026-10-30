@@ -287,6 +287,95 @@ test('SKC-04/05: the capture routers name each part\'s load-time references', ()
     assert.match(step5, /never a per-claim edit stream/);
 });
 
+test('SKC-06: a capture part reached only through its router carries no second Modes paragraph', () =>
+{
+    const parts = ['capture-awareness/references/architecture.md', 'capture-awareness/references/project-code-style.md',
+        'capture-quality/references/architecture-quality.md', 'capture-quality/references/code-quality.md', 'capture-quality/references/test-coverage-quality.md'];
+    const sites = [registry()['auto-mode-contract'].owner, ...registry()['auto-mode-contract'].sites].map((c) => c.file);
+    for (const p of parts)
+    {
+        assert.doesNotMatch(read(`stack/skills/${p}`), /\*\*Modes\.\*\*/, p);
+        assert.ok(!sites.includes(`stack/skills/${p}`), `${p}: off the auto-mode-contract sites`);
+    }
+    for (const router of ['capture-awareness', 'capture-quality']) assert.match(skill(router), /^\*\*Modes\.\*\* Mode flags right after the command/m, `${router} keeps it`);
+});
+
+test('SKC-07/08: the usage report names no dead six-seat limit and keeps headroom under its 19,000 cap', () =>
+{
+    const raw = skill('capture-usage-report');
+    assert.doesNotMatch(raw, /at most six at a time/);
+    assert.ok(raw.length <= 18700, `the body sits ${raw.length} chars, under 18,700`);
+    assert.match(flat(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md')), /The rows only you know, appended after the machine sections: OS, project stack\(s\), analyzer snapshot revision/);
+});
+
+test('SKC-09/10/11: no navigation server, the exclusion clause conditional, the instruction file named either way', () =>
+{
+    assert.doesNotMatch(flat(skill('habits-adjust-agents-md')), /navigation server/);
+    assert.match(flat(skill('habits-adjust-agents-md')), /the navigation tools' symbol lookup, `LSP` `workspaceSymbol`/);
+    const agents = flat(read('stack/skills/capture-awareness/references/agents.md'));
+    assert.doesNotMatch(agents, /stay excluded \(`--exclude-tools`\)/);
+    assert.match(agents, /are excluded where the registration passes `--exclude-tools` \(the add-back line does\)/);
+    for (const name of ['habits-done-gate', 'habits-commit-checkpoint', 'capture-preferences'])
+    {
+        const t = flat(skill(name));
+        assert.match(t, /instruction file \(`?AGENTS\.md`? or `?CLAUDE\.md`?\)/, name);
+        assert.doesNotMatch(t, /this project's AGENTS\.md records|named in the project's `AGENTS\.md`\.|and the project's AGENTS\.md\./, name);
+    }
+});
+
+test('SKC-14: the three habit stops are ask templates, the recommended option first', () =>
+{
+    const { lintAskTemplates } = require('./lint-skills.js');
+    for (const [name, first] of [['habits-root-cause', 'Redesign <the part> (Recommended)'], ['habits-execution-strategy', 'Run the trimmed plan (Recommended)'],
+        ['dev-log-convert', '<the shape the latest correction implies> (Recommended)']])
+    {
+        const text = skill(name);
+        assert.ok(text.includes(`- '${first}' - `), `${name}: ${first}`);
+        assert.deepStrictEqual(lintAskTemplates([{ file: name, text }]), [], `${name}: lint 61 holds`);
+    }
+});
+
+test('SKC-15: the preferences write paragraph is split into bullets', () =>
+{
+    const lines = skill('capture-preferences').split('\n');
+    const at = lines.findIndex((l) => l.startsWith('Write each touched doc whole:'));
+    assert.ok(at > -1 && lines[at].length < 700, 'the lead stands alone');
+    for (const [i, lead] of [[2, '- The personal code and architecture docs have no size cap'], [3, '- A `note:` that a `Scope:` glob reaches no file'], [4, '- Then `<script> reach --id <id>`']])
+        assert.ok(lines[at + i].startsWith(lead), lead);
+});
+
+test('SKC-16: explain-topic\'s closing checklist sits inside the re-attach window', () =>
+{
+    inside('habits-explain-topic', '- [ ] The length is in proportion to the question');
+    inside('habits-explain-topic', 'line is in context, the FIRST action before releasing the answer');
+});
+
+test('SKC-18: the Mermaid color rule matches the vendor page - box takes a name, neither takes hex', () =>
+{
+    const t = flat(skill('docs-as-code'));
+    assert.match(t, /A `rect` region takes rgb\(\)\/rgba\(\); a `box` a color name, rgb\(\)\/rgba\(\) or hsl\(\)\/hsla\(\) - never hex in either/);
+    assert.doesNotMatch(flat(read('stack/skills/docs-as-code/references/mermaid-sequence.md')), /rgb\(\) only|rgb\(\) not hex in rect\/box/);
+});
+
+test('SKC-19: where the format check comes from is one registered text in both gates', () =>
+{
+    const entry = registry()['format-check-source'];
+    assert.ok(entry, 'registered');
+    assert.deepStrictEqual([entry.owner, ...entry.sites].map((c) => c.file).sort(), ['stack/skills/habits-commit-checkpoint/SKILL.md', 'stack/skills/habits-done-gate/SKILL.md']);
+    for (const c of [entry.owner, ...entry.sites]) assert.ok(read(c.file).includes(c.marker), c.file);
+});
+
+test('SKC-20/21/23: no callee names its callers, no step cited by number, no bare fence', () =>
+{
+    assert.doesNotMatch(flat(section(skill('capture-quality'), '4\\. Callers')), /loop-/);
+    assert.doesNotMatch(flat(section(skill('capture-awareness'), '4\\. Callers')), /loop-/);
+    assert.match(flat(section(skill('capture-quality'), '4\\. Callers')), /A calling flow hands `<topic> <DELEGATED\|INLINE> <target>`/);
+    assert.doesNotMatch(skill('habits-test-first'), /`habits-root-cause`, step \d/);
+    assert.match(skill('habits-test-first'), /its 'Fix at the root, test first' step/);
+    assert.match(skill('habits-root-cause'), /\*\*Fix at the root, test first\.\*\*/, 'the named step exists');
+    assert.doesNotMatch(skill('dev-log-convert'), /^ {2}```\n {2}git status --short/m);
+});
+
 test('SKC-24: the four rule-forced or preloaded habits leave the / menu and keep their description', () =>
 {
     const html = read('docs/alfred-code.html');

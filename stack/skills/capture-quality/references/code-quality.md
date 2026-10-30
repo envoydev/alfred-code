@@ -18,8 +18,6 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 - Deliberate only, never mid-build; fixes nothing and never writes the decision log.
 - Not for fixing the findings (/loop-code-quality), the architecture (the architecture-quality part), test coverage (the test-coverage-quality part), recording the code style (/capture-awareness project-code-style), a security audit (the security-auditor seat; review-security covers one diff) or one diff (task-verify-code or review-code).
 
-**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
-
 ## Execution modes
 
 **Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces CODE-ASSESSMENT.md, and a description match must not start that unasked. So unless a mode word follows the topic (a calling flow started this run) or capture-quality's chain ask already answered it, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.

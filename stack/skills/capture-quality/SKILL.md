@@ -190,9 +190,6 @@ Run the chosen parts through their analyzer seats or in this session?
 - A calling flow hands `<topic> <DELEGATED|INLINE> <target>`. A mode word right after the topic marks a run a flow
   started: it skips the part's run gate and mode ask, and inherits the mode.
 - A person may type the same form, and has then chosen.
-- The calls: `loop-architecture-quality` hands `architecture-quality <mode> <target>` after its map capture,
-  `loop-code-quality` hands `code-quality <mode> <target>`, and `loop-test-coverage-quality` hands
-  `test-coverage-quality <mode> <target>`.
 
 ## 5. The close
 

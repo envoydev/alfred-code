@@ -155,7 +155,7 @@ and the work has to be read off the repository. Three rules:
 
 - **The opening survey is ONE capped pass, run as a single literal command block before any
   per-file diff** - prose order gets reordered, a command block does not:
-  ```
+  ```bash
   git status --short
   git stash list
   git branch --show-current
@@ -169,7 +169,13 @@ and the work has to be read off the repository. Three rules:
   the diff**, where an id on a REMOVED line can pass for the real one.
 - **A SECOND correction on the same axis is an ask, not a third redraft.** When two consecutive
   free-text corrections land on one axis - granularity, the time split, wording - stop regenerating
-  and put that axis through ONE AskUserQuestion carrying the options the two corrections imply.
+  and put that axis through ONE AskUserQuestion carrying the options the two corrections imply:
+
+  ```ask
+  Two corrections landed on <the axis>. Which should the log use?
+  - '<the shape the latest correction implies> (Recommended)' - the newer correction is the closer read
+  - '<the shape the first correction implies>' - <what it changes against the latest>
+  ```
 
 ## Style guidance
 

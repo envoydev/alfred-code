@@ -42,10 +42,7 @@ Hold the answer for the run. **The batch is BOUNDED - at 12 bundles, or at the f
 
 Default: DETECT - sweep the transcripts for the stack skills that actually RAN (a `<command-name>` slash block or a Skill-tool call against the installed roster; a name appearing only in injected AGENTS.md/CLAUDE.md/rules text is a mention, not a run) and audit those, stating the detected list in the report. The user can name specific skills instead to narrow the audit.
 
-Two run modes, opposite expectations:
-
-- A single-chat skill (the `task-design` / `task-implement` / `task-verify-plan` trio) runs in-session and dispatches NOTHING - its cost is all main-context, so the interesting numbers are tool-result sizes and cache behavior.
-- A dispatch-mode run (`task-solve-cross`, an agents build mode, a capture fan-out, a DELEGATED quality loop) is the reverse: subagents are EXPECTED, and the interesting split is main-session vs per-seat cost - the analyzer reads the session's `subagents/` files and emits both.
+Two run modes, opposite expectations: a single-chat skill (the `task-design` / `task-implement` / `task-verify-plan` trio) dispatches NOTHING, so its numbers are tool-result sizes and cache behavior; a dispatch-mode run (`task-solve-cross`, an agents build, a capture fan-out, a DELEGATED loop) EXPECTS subagents, split main-session vs per-seat - the analyzer emits both.
 
 ## The run
 
@@ -117,7 +114,7 @@ Raw transcripts would land in <data root>/statistics/usage-report/, a folder git
 
 Without the copy the bundle holds the report and the `--json` dumps only, and its Environment rows say `raw transcripts: not copied - <the check's exit>`.
 
-`report-usage.md` = the skeleton plus your judgment. The machine sections (whichever the run emits - listed in `references/run-mechanics.md`, with what `Inventory vs use` scores) stay as printed, and a non-use finding cites the `Inventory vs use` row, never the stack's full catalog; then fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict), insert ONE authored `## Per skill run` (one subsection per SKILLS entry found) between the machine tables and Waste analysis, and append the Environment rows only you know (OS, project stack(s), analyzer snapshot revision, which session file covers which skill run, the `Mechanics: read` and `Discipline: read` receipts) - the Models, wall-clock, Claude Code version and `## Session vintage` rows arrive machine-written. `references/diagnosis-discipline.md` defines each section and the checks every row passes before it is written - one section there per section here, in this order.
+`report-usage.md` = the skeleton plus your judgment. The machine sections (whichever the run emits - listed in `references/run-mechanics.md`, with what `Inventory vs use` scores) stay as printed, and a non-use finding cites the `Inventory vs use` row, never the stack's full catalog; then fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict), insert ONE authored `## Per skill run` (one subsection per SKILLS entry found) between the machine tables and Waste analysis, and append the Environment rows only you know (the discipline file lists them). `references/diagnosis-discipline.md` defines each section and the checks every row passes before it is written - one section there per section here, in this order.
 
 Then append the full-report analyzer outputs verbatim at the end of the doc (they contain only counts, tool names, and paths - no code).
 
