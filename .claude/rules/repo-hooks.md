@@ -457,7 +457,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     PuTTY, GnuPG), a token file and a binary key store (`.p12`, `.jks`, `.kdbx`), judged by its kind; a file's key
     also reads `pass`, `client-key-data` and a camelCase `userPass` / `userPWD`, which a variable name does not.
     The redacted view and the git stream masker mask what the reader judged, where it stands; a stream with no header
-    naming the file (`git show <rev>:<path>`) reads the generic pairs only, never an HCL attribute. A UTF-16 file
+    naming the file (`git show <rev>:<path>`) reads the generic pairs only, never an HCL attribute. A file past 512KB
+    (`MAX_BYTES`) is judged by its first 512KB - a JSON cut there by its `"key": "value"` pairs - on every route, the
+    Grep walk included, and a Read naming `offset` / `limit` by the lines it asks for (64KB chunks, up to 64MB in; audit
+    2026-10-30 HK-07: a 600KB dotenv and a 910KB `terraform.tfstate` passed whole); a credential past the head of a file
+    printed whole is a stated ceiling, and its dump's view is a note naming `--presence`. A UTF-16 file
     (either byte order) is judged by its decoded content, and a file printed under another verb's name is a dump too
     (`dd if=`, `iconv`, curl `file://`, vim's print, a copy onto `/dev/stdout`, sqlite3's `readfile()`, php's
     `file_get_contents` / `getenv`, and every verb of shell-writes.js's one print table - `shuf`, `vis`, `join`, a

@@ -2944,3 +2944,66 @@ test('HK-06: the one print-verb table (shuf, vis, join, a compressor to stdout) 
   for (const c of ['shuf notes.txt', 'vis notes.txt', 'join notes.txt notes.txt', 'gzip -c notes.txt | gunzip', 'gzip -k .env', 'shuf -e a b c', 'shuf -i 1-5', 'gzip -c .env > out.gz'])
     assert.strictEqual(verdict(raw(c)), 0, c);
 });
+
+test('HK-07: a credential file past 512KB is judged by its first 512KB, and a Read window by the lines it asks for', () => {
+  const MAX = 512 * 1024;
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk07-'));
+  const LINE = 'PLAIN_SETTING=value-value-value\n';
+  // a dotenv of exactly `bytes` bytes: `first` on line 1, filler lines, `last` as the final line
+  const sized = (name, bytes, first, last = '') => {
+    const parts = [first];
+    let n = first.length;
+    while (n + LINE.length + last.length + 64 < bytes) { parts.push(LINE); n += LINE.length; }
+    parts.push(last);
+    n += last.length;
+    parts.push(`#${'x'.repeat(bytes - n - 2)}\n`);
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, parts.join(''));
+    assert.strictEqual(fs.statSync(file).size, bytes, name);
+    return file;
+  };
+  const env = { CLAUDE_PROJECT_DIR: dir };
+  const readAt = (file, extra = {}) => run({ tool_name: 'Read', tool_input: { file_path: file, ...extra }, cwd: dir, session_id: 'suite' }, env).status;
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, env));
+  // the boundary: one byte under, exactly at, one byte over the cap - the key on line 1 is judged in all three
+  for (const [name, bytes] of [['under.env', MAX - 1], ['at.env', MAX], ['over.env', MAX + 1]]) {
+    const file = sized(name, bytes, 'API_KEY=abc123def456\n');
+    assert.strictEqual(readAt(file), 2, `Read ${name} (${bytes} bytes)`);
+    assert.strictEqual(at(`cat ${name}`), REWRITE, `cat ${name}`);
+    assert.strictEqual(at(`head -5 ${name}`), REWRITE, `head -5 ${name}`);
+  }
+  // the rewritten view of a big file prints no value, and says why there is no view
+  const big = run({ tool_name: 'Bash', tool_input: { command: 'cat over.env' }, cwd: dir, session_id: 'suite' }, env);
+  const shown = spawnSync('sh', ['-c', updatedCommand(big)], { cwd: dir, encoding: 'utf8' });
+  assert.ok(!(shown.stdout + shown.stderr).includes('abc123def456'), 'the view of a big file printed the value');
+  assert.match(shown.stdout + shown.stderr, /larger than 524288 bytes - no redacted view/, 'the big-file note');
+  // the Grep tool, named file and tree walk, judges a big file by the same head
+  const grepAt = (input) => run({ tool_name: 'Grep', tool_input: { output_mode: 'content', ...input }, cwd: dir, session_id: 'suite' }, env).status;
+  assert.strictEqual(grepAt({ pattern: 'API_KEY', path: path.join(dir, 'over.env') }), 2, 'Grep content of a big credential file');
+  const walk = path.join(dir, 'walk');
+  fs.mkdirSync(walk);
+  fs.renameSync(sized('w.env', MAX + 1, 'API_KEY=abc123def456\n'), path.join(walk, 'w.env'));
+  assert.strictEqual(grepAt({ pattern: 'API_KEY', path: walk }), 2, 'Grep content over a tree holding a big credential file');
+  // a key past the first 512KB: a Read window over its line is judged, a window elsewhere is not, the prefix is clean
+  const tail = sized('tail.env', MAX + 200 * 1024, '# settings\n', 'API_KEY=abc123def456\n');
+  const keyLine = fs.readFileSync(tail, 'utf8').split('\n').findIndex((l) => l.startsWith('API_KEY=')) + 1;
+  assert.strictEqual(readAt(tail, { offset: keyLine - 2, limit: 5 }), 2, 'a window over the key');
+  assert.strictEqual(readAt(tail, { offset: 1, limit: 50 }), 0, 'a window of the clean head');
+  assert.strictEqual(readAt(tail, { offset: keyLine + 1, limit: 50 }), 0, 'a window after the key');
+  assert.strictEqual(readAt(tail), 0, 'no window: the first 512KB are clean (the stated ceiling)');
+  // a big JSON state file is cut mid-document: its pairs are still read
+  const state = path.join(dir, 'terraform.tfstate');
+  const pad = Array.from({ length: 30000 }, (_, i) => `    { "name": "res${i}", "type": "null_resource" }`).join(',\n');
+  fs.writeFileSync(state, `{\n  "version": 4,\n  "outputs": { "db": { "value": { "password": "Zq9-live-db-pass-41x" } } },\n  "resources": [\n${pad}\n  ]\n}\n`);
+  assert.ok(fs.statSync(state).size > MAX, 'the state file is past the cap');
+  assert.strictEqual(readAt(state), 2, 'Read of a big terraform state holding a password');
+  // the legitimate twins: a big clean file, read whole or in a window, and printed
+  const clean = sized('clean.log', MAX + 4096, 'started\n');
+  assert.strictEqual(readAt(clean), 0, 'Read of a big clean file');
+  assert.strictEqual(readAt(clean, { offset: 100, limit: 20 }), 0, 'a window of a big clean file');
+  assert.strictEqual(at('head -5 clean.log'), 0, 'head of a big clean file');
+  const cleanTree = path.join(dir, 'clean-tree');
+  fs.mkdirSync(cleanTree);
+  fs.renameSync(clean, path.join(cleanTree, 'clean.log'));
+  assert.strictEqual(grepAt({ pattern: 'started', path: cleanTree }), 0, 'Grep content over a tree holding a big clean file');
+});

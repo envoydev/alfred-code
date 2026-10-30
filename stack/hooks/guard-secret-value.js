@@ -65,9 +65,11 @@ const SECRET_KEY_RE = new RegExp(SECRET_KEY_SOURCE, 'i');
 // The value shapes the stack's credentials take - copied from guard-stop-contract.js; keep identical.
 const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
 // A credential file is small - a settings.json is under 10 KB - so the cap costs this gate nothing
-// on the files it exists for. The trade it makes is deliberate and stated: a larger file holding a
-// credential passes unscanned, because it is a data dump, which guard-read-whole-file.js is the gate
-// for, and scanning megabytes on every Bash call would cost every session for that one shape.
+// on the files it exists for. Past it a file is judged by its FIRST MAX_BYTES, and a Read naming
+// `offset` / `limit` by the lines it asks for (audit 2026-10-30 HK-07: a 600KB dotenv and a 910KB
+// terraform state holding a DB password passed every route) - scanning megabytes on every Bash call
+// would cost every session for that one shape. The stated ceiling: a credential past the first
+// MAX_BYTES of a file printed whole (no window) is not seen.
 const MAX_BYTES = 512 * 1024;
 
 // A `${VAR}` placeholder or a blank is not a live value - .mcp.json carries `${SENTRY_ACCESS_TOKEN}`
@@ -511,30 +513,95 @@ const dotenvShaped = (text, file) => DOTENV_LINE.test(text.split(LINES).find((l)
 // every other position of the first 64 bytes and none on the rest decide it. Every route reads through here - the
 // content judgment, the presence read and the redacted view.
 function swap16(buf) { const b = Buffer.from(buf.subarray(0, buf.length - (buf.length % 2))); return b.swap16(); }
-function readText(file) {
-  const buf = fs.readFileSync(file);
-  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.subarray(2).toString('utf16le');
-  if (buf[0] === 0xfe && buf[1] === 0xff) return swap16(buf.subarray(2)).toString('utf16le');
+// The first `bytes` of a file (HK-07: past MAX_BYTES only the head is read).
+function headBytes(file, bytes) {
+  const fd = fs.openSync(file, 'r');
+  try { const buf = Buffer.alloc(bytes); return buf.subarray(0, fs.readSync(fd, buf, 0, bytes, 0)); } finally { fs.closeSync(fd); }
+}
+// UTF-16's byte order ('le-bom', 'be-bom', 'le', 'be'), or null for UTF-8.
+function wideOf(buf) {
+  if (buf[0] === 0xff && buf[1] === 0xfe) return 'le-bom';
+  if (buf[0] === 0xfe && buf[1] === 0xff) return 'be-bom';
   const head = buf.subarray(0, 64);
   if (head.length >= 4) {
     let even = 0; let odd = 0;
     for (let i = 0; i < head.length; i++) if (head[i] === 0) { if (i % 2) odd++; else even++; }
     const half = head.length >> 1;
-    if (even === 0 && odd >= half * 0.9) return buf.toString('utf16le');
-    if (odd === 0 && even >= half * 0.9) return swap16(buf).toString('utf16le');
+    if (even === 0 && odd >= half * 0.9) return 'le';
+    if (odd === 0 && even >= half * 0.9) return 'be';
   }
+  return null;
+}
+function decodeText(buf) {
+  const wide = wideOf(buf);
+  if (wide === 'le-bom') return buf.subarray(2).toString('utf16le');
+  if (wide === 'be-bom') return swap16(buf.subarray(2)).toString('utf16le');
+  if (wide === 'le') return buf.toString('utf16le');
+  if (wide === 'be') return swap16(buf).toString('utf16le');
   return buf.toString('utf8').replace(/^\uFEFF/, '');
 }
-function secretIn(file) {
+function readText(file, bytes = Infinity) { return decodeText(bytes === Infinity ? fs.readFileSync(file) : headBytes(file, bytes)); }
+// The lines a Read window asks for (1-based `offset`, `limit` lines; Claude Code's Read takes 2000 by default), read in
+// chunks up to MAX_BYTES of them; a window past WINDOW_SCAN bytes into the file is not reached (null). UTF-8 only: a
+// UTF-16 file is judged by its head.
+const WINDOW_SCAN = 64 * 1024 * 1024;
+function windowText(file, window) {
+  const from = Math.max(1, Math.floor(Number(window.offset) || 1));
+  const count = Math.max(1, Math.floor(Number(window.limit) || 2000));
+  const fd = fs.openSync(file, 'r');
+  try {
+    const chunk = Buffer.alloc(64 * 1024);
+    const out = [];
+    let kept = 0;
+    let line = 1;
+    let start = from === 1 ? 0 : -1; // where the window's bytes start in the current chunk
+    for (let pos = 0; pos < WINDOW_SCAN;) {
+      const n = fs.readSync(fd, chunk, 0, chunk.length, pos);
+      if (!n) break;
+      let i = 0;
+      for (; i < n; i++) {
+        if (chunk[i] !== 10) continue;
+        line++;
+        if (line === from) start = i + 1;
+        if (line === from + count) break;
+      }
+      if (start >= 0) {
+        const part = chunk.subarray(start, Math.min(i + 1, n));
+        out.push(Buffer.from(part));
+        kept += part.length;
+        start = 0;
+      }
+      if (line >= from + count || kept >= MAX_BYTES) return Buffer.concat(out).subarray(0, MAX_BYTES).toString('utf8');
+      pos += n;
+    }
+    return out.length ? Buffer.concat(out).subarray(0, MAX_BYTES).toString('utf8') : null;
+  } finally { fs.closeSync(fd); }
+}
+// A JSON document cut at MAX_BYTES (or a window inside one) no longer parses: its `"key": "value"` pairs are judged one by
+// one, the way the whole document's would be (HK-07: a 910KB terraform state's `"password"`).
+function jsonPairIn(text, labels) {
+  for (const m of text.matchAll(/"((?:[^"\\\n]|\\.){1,200})"\s*:\s*"((?:[^"\\\n]|\\.){0,4000})"/g)) {
+    const [, k, v] = m;
+    if (labels ? SECRET_SHAPE.test(v) : pairHoldsCredential(k, v)) return k;
+  }
+  return null;
+}
+// `window`: a Read's { offset, limit } - judged on its own lines when the file is past MAX_BYTES.
+function secretIn(file, window = null) {
   let text;
+  let cut = false;
   if (TEMPLATE_FILE.test(pathMod.basename(String(file)))) return null;
   try {
     const size = fs.statSync(file).size;
     if (size > 0 && isKeyStore(file)) return KEY_STORE;
-    if (size > MAX_BYTES) return null;
-    text = readText(file);
+    cut = size > MAX_BYTES;
+    const raw = cut ? headBytes(file, MAX_BYTES) : fs.readFileSync(file);
+    text = cut && window && !wideOf(raw) ? windowText(file, window) : decodeText(raw);
+    if (text == null) return null;
   } catch { return null; }
-  try { return secretKeyIn(JSON.parse(text), '', 0, TRANSLATION_PATH.test(String(file))); } catch { /* not JSON */ }
+  const labels = TRANSLATION_PATH.test(String(file));
+  try { return secretKeyIn(JSON.parse(text), '', 0, labels); } catch { /* not JSON, or cut */ }
+  if (cut) { const hit = jsonPairIn(text, labels); if (hit) return hit; }
   const other = otherPairs(text, file);
   if (other) for (const p of other.pairs) if (pairCounts(p)) return p[0];
   return dotenvShaped(text, file) ? secretLineIn(text) : null;
@@ -1236,8 +1303,13 @@ if (process.argv[2] === '--redacted') {
     if (size > 0 && isKeyStore(file)) {
       out = noteLine(`redacted view of ${file} - a binary key store, judged by its kind and never printed.` +
         ` Presence: node "${__filename}" --presence "${file}".`, receipt) + `\n<binary key store, ${size} bytes>\n`;
-    } else if (size > MAX_BYTES) out = `# ${fileArg}: larger than ${MAX_BYTES} bytes - not a credential file this guard judges; read it in ranges\n`;
-    else text = readText(file);
+    } else if (size > MAX_BYTES) {
+      // past the cap no view is built (HK-07: the guard judges such a file by its first MAX_BYTES, and a dump of
+      // one is rewritten here only when that head holds a credential)
+      out = `# ${fileArg}: larger than ${MAX_BYTES} bytes - no redacted view is built at this size. Presence of one key:`
+        + ` node "${__filename}" --presence "${file}" KEY; read the other lines with a Read window (offset / limit) or a`
+        + ` bounded grep that names no credential key.\n`;
+    } else text = readText(file);
   } catch { out = `# ${fileArg}: not found\n`; }
   if (text != null) {
     let masked = 0;
@@ -1568,7 +1640,7 @@ const receiptLive = receipt.live;
 const allowAll = receipt.all;
 const allowedNames = receipt.names;
 const fileAllowed = (file) => allowAll || receipt.files.has(realOf(file));
-const secretInUnlessAllowed = (file) => (fileAllowed(file) ? null : secretIn(file));
+const secretInUnlessAllowed = (file, window = null) => (fileAllowed(file) ? null : secretIn(file, window));
 // Every denial ends in the ask mandate: the block is the default, the user's answer is honoured.
 const askHint = () => '\nIf PRESENCE answers the question, take the presence route and do not ask. ' + askLine(receipt) + '\n';
 const block = (msg) => { process.stderr.write(msg + askHint()); process.exit(2); };
@@ -4295,7 +4367,9 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
 // holding a misplaced token, a dotenv, an appsettings.json.
 if (payload.tool_name === 'Read') {
   const file = resolveFile(String(input.file_path || ''));
-  const key = file && secretInUnlessAllowed(file);
+  // a window (`offset` / `limit`) of a file past MAX_BYTES is judged on its own lines (HK-07); a smaller file whole
+  const window = input.offset != null || input.limit != null ? { offset: input.offset, limit: input.limit } : null;
+  const key = file && secretInUnlessAllowed(file, window);
   if (key) block(`Blocked: Read of ${file}, which holds a credential under \`${key}\`.\n` + presenceHint(file));
 }
 // The FOURTH read route (audit 2026-10-14 PL3): Playwright MCP's `browser_file_upload` hands each file in
@@ -4367,11 +4441,11 @@ function walkCredentialFile(root, tool) {
       if (++files > WALK_FILES) return null;
       let size;
       try { size = fs.statSync(full).size; } catch { continue; }
-      if (size > MAX_BYTES) continue;
-      bytes += size;
+      // a file past MAX_BYTES is searched and judged by its first MAX_BYTES, as secretIn judges it (HK-07)
+      bytes += Math.min(size, MAX_BYTES);
       if (bytes > WALK_BYTES) return null;
       let text;
-      try { text = readText(full); } catch { continue; }
+      try { text = size > MAX_BYTES ? readText(full, MAX_BYTES) : readText(full); } catch { continue; }
       if (re.test(text) && secretInUnlessAllowed(full)) return full;
     }
   }
