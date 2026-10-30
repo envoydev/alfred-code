@@ -46,3 +46,17 @@ test('SKD-04: csharp keeps its opening line - the project-config clause is pinne
     assert.match(JSON.parse(read('meta/shared-rules.json')).rules['project-config-outranks-conventions']._note, /says so in its own opening so a seat that loaded only that skill still knows/);
 });
 
+// AG-15: the designers' opus/xhigh pin rests on 'design mistakes are the most expensive to unwind', an assertion; the
+// reasoners' owed A/B was on record and the designers' was not. The candidate records it beside theirs - no pin moves.
+test('AG-15: the designers\' owed sonnet/xhigh A/B is recorded beside the reasoners\'', () =>
+{
+    const routing = squash(read('stack/skills/task-solve-cross/references/model-routing.md'));
+    const para = routing.slice(routing.indexOf('The house pins land'), routing.indexOf('One caveat on the Escalate-when column'));
+    assert.match(para, /no A\/B against a sonnet pin/, 'the reasoners\' line stays');
+    assert.match(para, /The designers' opus\/xhigh pin is asserted the same way and owes the same A\/B: one sonnet\/xhigh designer arm against the opus\/xhigh pin on the same trio task/);
+    assert.match(para, /the verifier's punch-list findings traced to the design/, 'the arm names its metric');
+    const catalog = squash(read('.claude/rules/repo-catalog.md'));
+    assert.match(catalog, /the A\/B the designer and reasoner pins still lack/);
+    for (const seat of fs.readdirSync(path.join(ROOT, 'stack/agents')).filter((f) => f.endsWith('-solution-designer.md')))
+        assert.match(read(`stack/agents/${seat}`), /^model: opus$/m, `${seat}: the candidate moves no pin`);
+});

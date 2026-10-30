@@ -94,7 +94,7 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   body.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
   `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `issue-diagnoser-ci`
-  `high`, `issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in
+  `high`, `issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B the designer and reasoner pins still lack, in
   `stack/skills/task-solve-cross/references/model-routing.md`). Turn caps (`maxTurns`, 2.1.6 M59 - a runaway
   backstop at twice the most turns measured for the seat's kind over 802 local subagent transcripts, rounded up to
   the next 50; at the cap Claude Code returns the output marked partial (2.1.246+), with no closing status line, which
