@@ -547,7 +547,9 @@ function secretIn(file) {
 let nativePath = (p) => String(p);
 // homeDir: os.homedir() throws on Windows under an empty USERPROFILE, which crashed this guard at load (exit 1, open).
 const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return nativePath(process.env.HOME || ''); } };
-try { ({ nativePath } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
+// The module itself too: its one variable reader (`shellVars`, audit 2026-10-30 a0) expands what VARS does not bind.
+let shellWrites = null;
+try { shellWrites = require(pathMod.join(__dirname, 'shell-writes.js')); ({ nativePath } = shellWrites); } catch { /* an install without it */ }
 const HOME = homeDir();
 const accountDir = () => process.env.CLAUDE_CONFIG_DIR || pathMod.join(HOME, '.claude');
 // The variables a credential path is spelled with (`~`, $HOME, $CLAUDE_PROJECT_DIR,
@@ -569,17 +571,43 @@ const VARS = new Map([
 // The names a `for` loop binds: a dump of the loop variable becomes the view OF that variable, so every file the loop
 // walks gets its own view (judgeShell).
 const LOOP_VARS = new Set();
-const KNOWN_VARS = () => { const o = {}; for (const [k, v] of VARS) o[k] = v[0]; return o; };
-// The value a `NAME=<word>` assignment gives, as the shell builds it: a single-quoted word as written, any other with each
-// `$NAME` / `${NAME}` it holds replaced by that name's one known value - so a store name built in pieces resolves
-// (audit 2026-10-20 C17, fabea019: `f=".sensitive"; f="$f-data"; cat ".alfred/$f"` was neither masked nor refused).
+// `$PWD` is where the shell stands: the payload's cwd, moved by a `cd` this guard followed (HK-04, audit 2026-10-30: a
+// bare `$PWD` reached no pre-filter that reads VARS, so `cat "$PWD"/.env` and `f=$PWD/.env; cat $f` printed the file raw).
+// A command that assigns PWD itself binds it in VARS like any name. Declarations: the shell branch runs above the lets
+// they read, which are set by then.
+function pwdNow() { return cwdAnchor || (payload && typeof payload.cwd === 'string' && payload.cwd) || process.cwd(); }
+// What a relative `cd` moves from: the payload's cwd before the project dir, since that is where the Bash tool stands
+// (HK-04: from `sub`, `cd .. && cat $PWD/.env` resolved against the project's parent and printed the file raw).
+function cdBase() { return cwdAnchor || (payload && typeof payload.cwd === 'string' && payload.cwd) || anchorDirs()[0] || '.'; }
+function varOf(name) { return VARS.has(name) ? VARS.get(name) : name === 'PWD' ? [pwdNow()] : undefined; }
+const KNOWN_VARS = () => { const o = {}; for (const [k, v] of VARS) o[k] = v[0]; if (o.PWD == null) o.PWD = pwdNow(); return o; };
+// The shell's quote removal over one word: `"$PWD"/.env` is the word `$PWD/.env` (HK-04). A quote left open keeps the
+// word as written. Backslashes stay - a Windows path is spelled with them.
+function unquoteWord(word) {
+  let out = '';
+  let q = null;
+  for (const c of String(word)) {
+    if (q) { if (c === q) q = null; else out += c; continue; }
+    if (c === '"' || c === "'") { q = c; continue; }
+    out += c;
+  }
+  return q ? String(word) : out;
+}
+// One `NAME=<word>` step: the word is every quoted or bare piece up to the first blank (`f="$PWD"/.env` is one word).
+const ASSIGNMENT = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=((?:"[^"]*"|'[^']*'|\$\([^()]*\)|[^\s;|&"'])+|["'][^\s;|&]*|)/;
+// The value a `NAME=<word>` assignment gives, as the shell builds it: a single-quoted piece as written, any other with
+// each `$NAME` / `${NAME}` it holds replaced by that name's one known value and `$(pwd)` by where the shell stands - so a
+// store name built in pieces resolves (audit 2026-10-20 C17, fabea019: `f=".sensitive"; f="$f-data"; cat ".alfred/$f"`
+// was neither masked nor refused), and so does `D=$PWD` (HK-04).
 function assignedValue(word) {
   const w = String(word);
-  if (/^'[\s\S]*'$/.test(w)) return w.slice(1, -1);
-  return w.replace(/^"([\s\S]*)"$/, '$1').replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, a, b) => {
-    const v = expands(a || b) && VARS.get(a || b);
+  if (/^'[^']*'$/.test(w)) return w.slice(1, -1);
+  const sub = (s) => s.replace(PWD_SUBST, (m) => (expands('PWD') ? pwdNow() : m)).replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, a, b) => {
+    const v = expands(a || b) && varOf(a || b);
     return v && v.length === 1 && !String(v[0]).includes('$') ? v[0] : m;
   });
+  const parts = w.match(/'[^']*'|"[^"]*"|[^'"]+|['"]/g) || [];
+  return parts.map((p) => (p.length > 1 && p[0] === "'" ? p.slice(1, -1) : p.length > 1 && p[0] === '"' ? sub(p.slice(1, -1)) : sub(p))).join('');
 }
 // A runtime heredoc body under a QUOTED tag reaches the runtime verbatim, and node, python and ruby never expand
 // `$NAME` - it is the script's own text, not a path it opens (proven: `node <<'EOF'` reading
@@ -600,12 +628,19 @@ function gitTop(dir) {
     if (pathMod.dirname(d) === d) return null;
   }
 }
+// shellVars' input for one word: no command around it, so no assignment of its own and no cd - VARS and cwdAnchor carry those.
+const NO_COMMAND = { command: '', assignEvents: [], cds: [] };
 function expandPath(token) {
-  const known = KNOWN_VARS();
-  if (known.PWD == null) known.PWD = cwdAnchor || (payload && payload.cwd) || process.cwd(); // where the shell stands
-  let p = String(token).replace(/^["'`]|["'`]$/g, '').replace(/^~(?=\/|$)/, HOME);
-  p = p.replace(PWD_SUBST, () => known.PWD).replace(GIT_TOP_SUBST, (m) => gitTop(known.PWD) || m);
+  const known = KNOWN_VARS(); // PWD included: where the shell stands
+  // the substitutions first: a backtick `pwd` opening the word is no stray quote to strip
+  let p = unquoteWord(token).replace(PWD_SUBST, () => known.PWD).replace(GIT_TOP_SUBST, (m) => gitTop(known.PWD) || m);
+  p = p.replace(/^["'`]|["'`]$/g, '').replace(/^~(?=\/|$)/, HOME);
   p = p.replace(/\$\{(\w+)(?::-[^}]*)?\}|\$(\w+)/g, (m, a, b) => (expands(a || b) && known[a || b] != null ? known[a || b] : m));
+  // what is left goes through the one shared reader (`${PWD:?}`, `${HOME:=x}`, `$env:USERPROFILE`) - never inside a body
+  // whose variables reach the runtime verbatim
+  if (/\$/.test(p) && shellWrites && shellWrites.shellVars && !verbatimVars) {
+    try { p = shellWrites.shellVars(NO_COMMAND, { cwd: known.PWD, home: HOME, project: process.env.CLAUDE_PROJECT_DIR || null }).expand(p, 0); } catch { /* left as written */ }
+  }
   // `my\ dir/settings.json` is one token the shell hands over with the space intact.
   return /\$/.test(p) ? null : nativePath(p.replace(/\\ /g, ' '));
 }
@@ -1238,8 +1273,10 @@ if (process.argv[2] === '--redacted') {
 // credential shape) as `<set (N chars)>`. Accepted gap, stated: a credential under a name this
 // pattern does not match and with no known shape prints as env would print it.
 // `--note-to-stderr` is the filtered form (`--redacted-env --note-to-stderr | grep KEY`), as for a file.
+// `-0` keeps env's NUL separator (`env -0 | xargs -0 ...`, HK-05).
 if (process.argv[2] === '--redacted-env') {
-  const filtered = process.argv[3] === '--note-to-stderr';
+  const filtered = process.argv.slice(3).includes('--note-to-stderr');
+  const sep = process.argv.slice(3).includes('-0') ? '\0' : '\n';
   const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null, process.env.CLAUDE_CODE_SESSION_ID);
   const lines = [];
   let masked = 0;
@@ -1250,7 +1287,7 @@ if (process.argv[2] === '--redacted-env') {
   const note = noteLine(`the environment with ${masked} credential value(s) shown as <set (N chars)>, everything else as env prints it`
     + (filtered ? '; piped through the command\'s own filter.' : '.'), receipt);
   if (filtered) process.stderr.write(note + '\n');
-  process.stdout.write((filtered ? '' : note + '\n') + lines.join('\n') + '\n');
+  process.stdout.write((filtered ? '' : note + '\n') + lines.join(sep) + sep);
   process.exit(0);
 }
 
@@ -2428,7 +2465,7 @@ function printsFactsOnly(stage) {
 // CHANGING step is blocked - visibly, naming the step - and only a read-only one is rewritten; a splice drops only
 // the judged pipeline (refuseDroppedSteps). Allowlist, not denylist: a step this list does not know (a build, a
 // network call, a runtime that spawns or writes) counts as changing.
-const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|[gmn]?awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local|cygpath|uname|whoami|printenv)(?=\s|$)|^env\s*$|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files|check-ignore|rev-list|merge-base|cat-file|describe|ls-remote)\b|^claude(?:\.exe)?\s+(?:--version|-v|(?:plugins?|mcp)\s+list|plugins?\s+marketplace\s+list|mcp\s+get)(?=\s|$)|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
+const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|[gmn]?awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local|cygpath|uname|whoami|printenv|compgen)(?=\s|$)|^env\s*$|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files|check-ignore|rev-list|merge-base|cat-file|describe|ls-remote)\b|^claude(?:\.exe)?\s+(?:--version|-v|(?:plugins?|mcp)\s+list|plugins?\s+marketplace\s+list|mcp\s+get)(?=\s|$)|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
 // The verbs that read in one form and change something in another, each let through in its read form only - the Git
 // Bash sessions where every denial of `cat <settings>; git check-ignore -v .alfred` re-sent the whole context: a
 // `git branch` / `git tag` that lists, a `git config` that gets, a `git remote` that shows, `git hash-object` without
@@ -2962,7 +2999,7 @@ function namesCredentialStage(stage) {
   return false;
 }
 function namesCredentialFileIn(part) {
-  const asg = part.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]*)/);
+  const asg = part.match(ASSIGNMENT);
   if (asg) VARS.set(asg[1], [assignedValue(asg[2])]);
   const stages = splitPipes(part);
   if (stages.some(namesCredentialStage) && printsNoContent(part, stages)) return false;
@@ -3412,10 +3449,70 @@ function blockVariable(name) {
 // changes something needs no block. The benchmark pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was
 // blocked - the second `env` read as a changing step - and the old whole-command rewrite dropped both filters.
 // A quote-blind split (unbalanced quotes) changes nothing here; the stage-by-stage judge below takes it.
-// The shape is blockEnvDump's own, inline: a const here would be in its dead zone when the Bash branch runs.
+// The shape is envDumpOf's, which judgeShell's blockEnvDump test reads too.
+// One stage (its prefix words stripped) that lists the whole environment: the dump verb with only the options that still
+// print it, then only fd redirections that stay on the terminal or go nowhere (`2>&1`, `2>/dev/null`). Returns
+// `{ nul, trail }` - env's NUL separator asked for, the redirections as written - or null. HK-05 (audit 2026-10-30): `env
+// -0`, `env --null`, `env -u NAME` (every other variable), `env --unset=NAME`, `env NAME=value` with no command and
+// `printenv -0` all passed raw. `-i`, `-`, `-S` or a command word make env RUN something, which is no dump. A declaration
+// with its patterns inside: the shell branch runs above any module const that would follow it.
+function envDumpOf(stage) {
+  const s = String(stage).trim();
+  if (!/^(?:env|printenv|export|declare|typeset|set)(?=\s|$)/.test(s)) return null; // cheap: most stages stop here
+  const words = shellTokens(s);
+  const tail = [];
+  for (;;) {
+    const n = words.length;
+    if (n > 1 && /^\d*>(?:&\d+|\/dev\/null)$/.test(words[n - 1])) tail.unshift(words.pop());
+    else if (n > 2 && words[n - 1] === '/dev/null' && /^\d*>$/.test(words[n - 2])) tail.unshift(words.splice(n - 2, 2).join(' '));
+    else break;
+  }
+  const trail = tail.length ? ' ' + tail.join(' ') : '';
+  if (/^(?:export -p|export|declare -p|typeset -p|set)$/.test(words.join(' '))) return { nul: false, trail };
+  if (words[0] !== 'env' && words[0] !== 'printenv') return null;
+  let nul = false;
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    if (w === '-0' || w === '--null') { nul = true; continue; }
+    if (words[0] === 'printenv') return null; // a name: one variable, the print-verb branch's
+    if (w === '-v' || w === '--debug' || w === '--') continue;
+    if (w === '-u' || w === '--unset' || w === '-C' || w === '--chdir') { i++; if (i >= words.length) return null; continue; }
+    if (/^(?:-u\S|--unset=|-C\S|--chdir=)/.test(w)) continue;
+    if (/^-[0v]+$/.test(w)) { if (w.includes('0')) nul = true; continue; }
+    if (/^[A-Za-z_]\w*=/.test(w)) continue; // printed with the rest when no command follows
+    return null;
+  }
+  return { nul, trail };
+}
+// `ps` showing the environment (HK-05): a dashless BSD cluster holding `e` (`ps e`, `ps axe`, `ps eww $$`), or a dashed
+// one holding `E` (macOS). A letter that takes a value ends its cluster and, last in it, takes the next word - so `ps -o
+// pid,etime`, `ps U alice` and `ps -p $$` read no `e`; dashed `-e` is every process, never the environment.
+function psShowsEnv(stage) {
+  const w = shellTokens(stage);
+  if (!/^(?:\S*\/)?ps$/.test(w[0] || '')) return false;
+  for (let i = 1; i < w.length; i++) {
+    const t = w[i];
+    if (/^--(?:sort|format|pid|ppid|user|group|tty|cols|columns|rows|lines|width|sid)$/.test(t)) { i++; continue; }
+    if (t.startsWith('--')) continue;
+    const dashed = t[0] === '-';
+    if (!dashed && !/^[A-Za-z]+$/.test(t)) continue; // a pid, a list
+    const values = dashed ? 'CGgMNOopqstUuk' : 'OopqtUk';
+    for (let k = dashed ? 1 : 0; k < t.length; k++) {
+      if (values.includes(t[k])) { if (k === t.length - 1) i++; break; }
+      if (t[k] === (dashed ? 'E' : 'e')) return true;
+    }
+  }
+  return false;
+}
+// A stage reading `/proc/<pid>/environ` (HK-05), as an operand or a `<` input; one that only looks at it - a test, a
+// listing, a count, a print of its name - reads none of it.
+function readsProcEnviron(stage) {
+  if (!/\/proc\/[^\s'"]*\/environ(?![\w.-])/.test(stage)) return false;
+  const verb = (shellTokens(stage)[0] || '').replace(/^.*\//, '');
+  if (/^(?:ls|stat|test|\[\[?|file|realpath|readlink|basename|dirname|du|wc)$/.test(verb)) return false;
+  return !(/^(?:echo|printf)$/.test(verb) && !/\$\(|`/.test(stage));
+}
 function redactEnvStages(text) {
-  // The dump verb, then only fd redirections that stay on the terminal or go nowhere (`2>&1`, `2>/dev/null`).
-  const dump = /^(env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)((?:\s+\d*>&\d+|\s+\d*>\s*\/dev\/null)*)\s*$/;
   const seps = [];
   const segs = splitSegments(text, seps);
   if (seps.length !== segs.length - 1) return text;
@@ -3426,11 +3523,15 @@ function redactEnvStages(text) {
     // judgeShell's own passes: output into a file never reaches the context, and a names-only reducer
     // (`env | cut -d= -f1`) is the presence read - neither is a dump to replace.
     if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || countsOnly(stages))) return seg;
-    const hits = stages.map((st) => dump.exec(st.replace(PREFIX_WORDS, '').trim()));
+    const hits = stages.map((st) => envDumpOf(st.replace(PREFIX_WORDS, '')));
     if (!hits.some(Boolean)) return seg;
     changed = true;
     const view = `node "${shDouble(__filename)}" --redacted-env${stages.length > 1 ? ' --note-to-stderr' : ''}`;
-    return stages.map((st, i) => { if (!hits[i]) return st; const [lead, trail] = edgeSpace(st); return lead + view + hits[i][2] + trail; }).join('|');
+    return stages.map((st, i) => {
+      if (!hits[i]) return st;
+      const [lead, trail] = edgeSpace(st);
+      return lead + view + (hits[i].nul ? ' -0' : '') + hits[i].trail + trail;
+    }).join('|');
   });
   return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
 }
@@ -3902,14 +4003,15 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
     const seg = segments[si];
     // A `NAME=value` assignment, or a `for NAME in <list>`, binds the path the NEXT segment dumps.
     // an unquoted `$(...)` with no nested parens is ONE word, pipes and spaces inside it included (`G=$(ls -d ... | tail -1)`)
-    const asg = seg.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\$\([^()]*\)|[^\s;|&]*)/);
+    const asg = seg.match(ASSIGNMENT);
     if (asg) VARS.set(asg[1], [assignedValue(asg[2])]);
+    // each list word as the shell builds it, quotes removed and `$PWD` read where it stands (HK-04: `for f in "$PWD"/.env`)
     const loop = seg.match(/^\s*for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^\n;]+)/);
-    if (loop) { VARS.set(loop[1], shellTokens(loop[2]).filter((t) => t !== 'do').slice(0, 20)); LOOP_VARS.add(loop[1]); }
+    if (loop) { VARS.set(loop[1], shellTokens(loop[2]).filter((t) => t !== 'do').slice(0, 20).map(assignedValue)); LOOP_VARS.add(loop[1]); }
     const cd = seg.match(/^\s*(?:\(\s*)?(?:cd|pushd)\s+("[^"]*"|'[^']*'|[^\s;|&()]+)/); // a subshell's `(cd dir && ...)` too
     if (cd) {
       const d = expandPath(cd[1]);
-      if (d && d !== '-') cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(cwdAnchor || anchorDirs()[0] || '.', d);
+      if (d && d !== '-') cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(cdBase(), d);
     }
 
     const stages = splitPipes(seg);
@@ -3944,6 +4046,14 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
         if (verbs[i][1] === 'printenv') {
           names.push(...shellTokens(args).map((w) => w.replace(/[^A-Za-z0-9_]/g, '')).filter((w) => /^[A-Za-z_]\w*$/.test(w)));
         }
+        // `${!v}` prints the variable v NAMES (HK-05: `for v in $(compgen -e); do echo "$v=${!v}"; done` printed the
+        // environment): a name the command bound to one literal is that variable, any other is every variable.
+        // `${!prefix@}`, `${!prefix*}` and `${!arr[@]}` list names or keys, never a value.
+        for (const m of args.matchAll(/\$\{!([A-Za-z_]\w*)(?![\w@*[])/g)) {
+          const bound = varOf(m[1]);
+          if (bound && bound.length === 1 && /^[A-Za-z_]\w*$/.test(bound[0])) names.push(bound[0]);
+          else if (!feedsStdinLogin(stages[sj + 1])) blockEnvDump();
+        }
         const hit = names.find((n) => SECRET_KEY_RE.test(n));
         if (hit && !feedsStdinLogin(stages[sj + 1])) blockVariable(hit);
       }
@@ -3956,13 +4066,34 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       // `declare -p NAME` / `typeset -p NAME` print one variable's value, like printenv NAME.
       const dp = stage.replace(PREFIX_WORDS, '').match(/^(?:declare|typeset)\s+-p\s+([^\n|]+)/);
       if (dp) { const hit = shellTokens(dp[1]).find((n) => SECRET_KEY_RE.test(n)); if (hit) blockVariable(hit); }
+      // `launchctl getenv NAME` prints one variable of launchd's environment, as printenv prints the shell's (HK-05). Its
+      // presence line would read the wrong environment, so this one blocks with the count that answers instead.
+      const lg = stage.replace(PREFIX_WORDS, '').match(/^(?:\S*\/)?launchctl\s+getenv\s+["']?([A-Za-z_]\w*)/);
+      if (lg && SECRET_KEY_RE.test(lg[1]) && !allowAll && !allowedNames.has(lg[1]) && !feedsStdinLogin(stages[sj + 1])) {
+        block(`Blocked: \`launchctl getenv ${lg[1]}\` prints a credential-shaped variable's value.\n` +
+          `Check it for presence instead: \`launchctl getenv ${lg[1]} | wc -c\` (0 = unset).\n`);
+      }
 
       // A whole-environment dump prints every exported credential. `env` as a command PREFIX
       // (`env FOO=bar cmd`) runs a command; only a bare dump verb (or one piped onward) dumps - and a
       // prefix word of its own (`sudo env`, `command printenv`, `FOO=bar env`) changes nothing. The
       // shell's OWN listings (`set`, `export`, `declare -p`) print the same values and passed every
       // probe until the review; their argument-carrying forms (`set -e`, `export FOO=x`) do not match.
-      if (!forceRuntime && /^(?:env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)\s*(?:(?:\d*>&\d+|\d*>\s*\/dev\/null)\s*)*(?:\||$)/.test(stage.replace(PREFIX_WORDS, ''))) blockEnvDump();
+      // env's and printenv's printing options are still a dump (envDumpOf, HK-05).
+      if (!forceRuntime && envDumpOf(stage.replace(PREFIX_WORDS, ''))) blockEnvDump();
+      // A process's environment has no masked form, so these block (HK-05): `ps` with BSD `e` or `-E` lists each shown
+      // process's environment, and `/proc/<pid>/environ` is one process's whole environment.
+      if (!forceRuntime && !IS_PWSH && !allowAll) {
+        const bare = stage.replace(PREFIX_WORDS, '').trim();
+        if (psShowsEnv(bare)) {
+          block('Blocked: this `ps` prints each listed process\'s environment (the BSD `e` / the `-E` option) - every credential in it.\n' +
+            'Drop the `e` / `E` to list the processes; check one variable of this shell for presence with `[ -n "$NAME" ] && echo set`.\n');
+        }
+        if (readsProcEnviron(bare)) {
+          block('Blocked: `/proc/<pid>/environ` is a process\'s whole environment - every credential in it.\n' +
+            'For this shell\'s environment run `env`, which runs as the masked listing; a test or a listing of the file (`test -r`, `ls -l`) passes.\n');
+        }
+      }
       // cmd's own `set` - alone, or with the prefix it lists every variable under - is the same dump (audit 2026-10-20 H8)
       if (!forceRuntime && /^(?:\S*[\\/])?cmd(?:\.exe)?\s+(?:\/\/?[a-z]\s+)*?\/\/?[ck]\s+["']?set(?:\s+[^\s"'=|&<>]+)?["']?\s*(?:\||$)/i.test(stage.replace(PREFIX_WORDS, '').trim())) blockEnvDump();
 
@@ -4065,7 +4196,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       if (IS_PWSH) for (const m of candStage.matchAll(/::\s*ReadAll(?:Text|Lines|Bytes)\s*\(\s*(["'])([^"'\n]{1,300})\1/gi)) candidates.push(m[2]);
       if (!isRuntime) {
         const bare = bareOperands(shellTokens(candStage.replace(PREFIX_WORDS, '').replace(/^\s*\(+/, '')));
-        if (bare.dir) { const d = expandPath(bare.dir); if (d) cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(cwdAnchor || anchorDirs()[0] || '.', d); }
+        if (bare.dir) { const d = expandPath(bare.dir); if (d) cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(cdBase(), d); }
         candidates.push(...bare.names);
       }
       // A runtime spells the path inside its own code - single, double or backtick quoted. No runtime expands `~` on its

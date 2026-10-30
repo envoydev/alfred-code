@@ -2879,3 +2879,49 @@ test('both store names are all-secret; the project\'s own .secrets passes, the d
     assert.notStrictEqual(at(cmd), 2, cmd);
   assert.strictEqual(at('tar cf - .'), 2, 'a tree above the data-root store is still refused');
 });
+
+test('HK-04: $PWD names where the shell stands however it is spelled - quoted in pieces, assigned, after a cd', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk04-'));
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=abc123\n');
+  fs.writeFileSync(path.join(dir, 'README.md'), '# readme\n');
+  fs.mkdirSync(path.join(dir, 'sub'));
+  const at = (command, cwd = dir) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }));
+  for (const c of ['cat $PWD/.env', 'cat "$PWD/.env"', 'cat "$PWD"/.env', 'cat "${PWD}"/.env', 'grep KEY "$PWD"/.env', 'head -5 "$PWD"/.env',
+    'f=$PWD/.env; cat $f', 'f="$PWD"/.env; cat "$f"', 'D=$PWD; cat $D/.env', 'cat "$(pwd)"/.env', 'for f in "$PWD"/.env; do cat "$f"; done'])
+    assert.notStrictEqual(at(c), 0, c);
+  // a followed cd moves $PWD: from sub, `cd ..` lands on the folder holding the file
+  assert.notStrictEqual(at('cd .. && cat $PWD/.env', path.join(dir, 'sub')), 0, 'cd .. && cat $PWD/.env (from sub)');
+  assert.notStrictEqual(at('cd sub && cat "$PWD"/../.env'), 0, 'cd sub && cat "$PWD"/../.env');
+  // the legitimate twins: another file, a listing, a print of the path, and no file where the shell stands
+  for (const c of ['cat "$PWD"/README.md', 'ls "$PWD"', 'echo "$PWD"/.env', 'f="$PWD"/README.md; cat "$f"'])
+    assert.strictEqual(at(c), 0, c);
+  assert.strictEqual(at('cat "$PWD"/.env', path.join(dir, 'sub')), 0, 'no .env in sub');
+  assert.strictEqual(at('cd sub && cat "$PWD"/.env'), 0, 'cd sub moves $PWD off the file');
+});
+
+test('HK-05: env and printenv with their printing options, a ps that shows the environment and /proc/*/environ are dumps', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk05-'));
+  const raw = (command) => run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir });
+  const at = (command) => verdict(raw(command));
+  // the masked listing in place, its own options and filter kept
+  for (const c of ['env -0', 'env --null', 'env -u HOME', 'env --unset=HOME', 'env -uHOME', 'env -u HOME -0', 'printenv -0', 'printenv --null', 'env -v', 'sudo env -0'])
+    assert.strictEqual(at(c), REWRITE, c);
+  const nul = updatedCommand(raw("env -0 | tr '\\0' '\\n'"));
+  assert.ok(nul && /--redacted-env\b.*\| tr '\\0' '\\n'$/.test(nul), `env -0 | tr: the view, the filter kept (${nul})`);
+  // the view keeps env's NUL separator when it was asked for
+  const view = spawnSync(process.execPath, [HOOK, '--redacted-env', '-0'], { encoding: 'utf8', env: { PATH: process.env.PATH, HK05_PLAIN: 'one', HK05_API_TOKEN: FAKE_TOKEN } });
+  assert.ok(view.stdout.includes('HK05_PLAIN=one\0'), 'NUL-separated with -0');
+  assert.ok(!view.stdout.includes(FAKE_TOKEN), 'the credential masked');
+  // the process table with environments, and a process's environ file: no masked form, so refused
+  for (const c of ['ps eww $$', 'ps e', 'ps axe', 'ps -E -p $$', 'ps auxeww', 'cat /proc/self/environ', "tr '\\0' '\\n' < /proc/1/environ",
+    'strings /proc/$$/environ', 'xargs -0 -n1 < /proc/self/environ', 'cat /proc/*/environ', 'sort -z /proc/self/environ'])
+    assert.strictEqual(at(c), 2, c);
+  // ${!name} prints the value of the variable a name holds; launchctl getenv prints one variable like printenv
+  assert.strictEqual(at('for v in $(compgen -e); do echo "$v=${!v}"; done'), REWRITE, 'an indirect print of every variable');
+  assert.notStrictEqual(at('launchctl getenv API_TOKEN'), 0, 'launchctl getenv of a credential name');
+  // the legitimate twins: env running a command, printenv of one plain name, ps without the environment, a look at /proc
+  for (const c of ['env -u NODE_OPTIONS node --version', 'env -i PATH=/usr/bin ls', 'env -0 true', 'env FOO=1 make', 'printenv HOME',
+    'ps aux', 'ps -ef', 'ps -e', 'ps -o pid,comm -p $$', 'ps -o pid,etime -p $$', 'ps -p $$ -o command', 'ls /proc/self/fd', 'cat /proc/cpuinfo',
+    'test -r /proc/self/environ && echo yes', 'ls -l /proc/self/environ', 'launchctl getenv HOME', 'echo "${!prefix@}"'])
+    assert.strictEqual(at(c), 0, c);
+});

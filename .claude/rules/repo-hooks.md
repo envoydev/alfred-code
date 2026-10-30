@@ -538,7 +538,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`"token: $env:X"`), cmd's `set` on either shell (`cmd /c set`, the masked listing) and .NET's file reads
     (`[IO.File]::ReadAllText('.env')`, the redacted view). An environment dump is replaced
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
-    and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
+    and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked) - env's and
+    printenv's printing options too (`-0`, `-u NAME`, `--unset=NAME`, `NAME=v` with no command; `envDumpOf`, audit
+    2026-10-30 HK-05), the view keeping `-0`'s NUL separator, and `${!v}` prints the variable v names (one bound to a
+    literal name is judged as that name, any other is the masked listing). A `ps` with BSD `e` or `-E`, a read of
+    `/proc/<pid>/environ` and `launchctl getenv <credential name>` have no masked form and block. A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A heredoc
     body is data (`shell-writes.js`'s blanker, its first line kept as shell) unless the command word of its stage, or
     of one piped from it, is a runtime or a shell - a `.sh` in the name of the file it writes is neither; a runtime
@@ -607,7 +611,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     no name test narrows it; a `-maxdepth` short of the store passes. The same day the dump half took `$(pwd)` / a backtick
     `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
     `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
-    path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged.
+    path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged. Audit 2026-10-30 HK-04: `$PWD`
+    itself is where the shell stands in every spelling - a quoted piece (`"$PWD"/.env`, the shell's quote removal), an
+    assignment (`f=$PWD/.env`, `D=$PWD`), a `for` list - after a followed `cd`, a relative one moving from the payload's
+    cwd; what VARS leaves (`${PWD:?}`, `${HOME:=x}`) goes through shell-writes.js `shellVars`, never inside a verbatim body.
     The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and

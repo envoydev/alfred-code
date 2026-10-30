@@ -131,9 +131,20 @@ test(`sensitive data: a glob, a quoted split or an archive / add / copy of the f
     for (const command of [`source .alfred/${G}`, `set -a; . .alfred/${G}; set +a; npm run migrate`, `source .alfred/${G} && echo $DB_HOST`,
         'tar cf - .alfred | tar xOf -', 'tar cf - .alfred | tar tvf -', `docker compose --env-file .alfred/${G} up -d`, `docker compose --env-file=.alfred/${G} up`,
         `git add -f .alfred/${G}`, 'zip -r /tmp/a.zip .alfred && unzip -p /tmp/a.zip', 'cp -r .alfred /tmp/bk', 'rsync -a .alfred/ /tmp/bk/',
-        `cat .alfred/'${FILE}'`, `cat .alfred/${SPLIT}`, `cd .alfred && source ${G}`, 'cd .alfred && git add -f .',
+        `cd .alfred && source ${G}`, 'cd .alfred && git add -f .',
         `bash -c 'source .alfred/${G}'`, `ln -s .alfred/${G} env.local`, `mv .alfred/${BRACE} /tmp/`])
         assert.strictEqual(bash(dir, command), 2, command);
+    // a print of a quoted split is the literal path's print since HK-04 (the shell's quote removal): the masked view
+    for (const command of [`cat .alfred/'${FILE}'`, `cat .alfred/${SPLIT}`])
+    {
+        const r = run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' });
+        assert.notStrictEqual(verdict(r), 0, `${command}: rewritten or refused, never run as written`);
+        if (verdict(r) === 'rewrite')
+        {
+            const out = spawnSync('bash', ['-c', updated(r)], { cwd: dir, encoding: 'utf8' });
+            for (const v of STORE_VALUES) assert.ok(!(out.stdout + out.stderr).includes(v), `${command}: the masked view printed a value`);
+        }
+    }
     // a link to the store is the store, by its real path
     fs.symlinkSync(path.join(dir, '.alfred', FILE), path.join(dir, 'env.link'));
     assert.strictEqual(bash(dir, 'source env.link'), 2, 'a symlink resolves to the store');
@@ -258,7 +269,7 @@ test(`final review C1: the store behind a computed prefix, or found and fed to a
     // print through one is the literal path's print: rewritten to the masked view, which prints no value of the store.
     fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
     for (const command of [`cat "$(pwd)/.alfred/${FILE}"`, `cat "$(git rev-parse --show-toplevel)/.alfred/${FILE}"`,
-        `awk -F= '{print $2}' "$(pwd)/.alfred/${FILE}"`, `grep -h . "$(pwd)/.alfred/${FILE}"`])
+        `awk -F= '{print $2}' "$(pwd)/.alfred/${FILE}"`, `grep -h . "$(pwd)/.alfred/${FILE}"`, `R=$(pwd); cat "$R/.alfred/${FILE}"`])
     {
         const r = run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' });
         assert.notStrictEqual(verdict(r), 0, `${command}: rewritten or refused, never run as written`);
@@ -268,7 +279,7 @@ test(`final review C1: the store behind a computed prefix, or found and fed to a
             for (const v of STORE_VALUES) assert.ok(!(out.stdout + out.stderr).includes(v), `${command}: the masked view printed a value`);
         }
     }
-    for (const command of [`R=$(pwd); cat "$R/.alfred/${FILE}"`, `source "$(pwd)/.alfred/${FILE}"`,
+    for (const command of [`source "$(pwd)/.alfred/${FILE}"`,
         `python3 -c "import os; print(open(os.getcwd()+'/.alfred/${FILE}', 'r').read())"`,
         `find .alfred -name ${FILE} -exec cat {} +`, `find . -name '${FILE}' -exec cat {} \\;`, `find . -iname '${FILE.toUpperCase()}' -execdir cat {} +`,
         `find .alfred -name ${FILE} | xargs cat`, `cat $(find . -name ${FILE})`, `ls -a .alfred | grep ${FILE} | xargs -I{} cat .alfred/{}`,
