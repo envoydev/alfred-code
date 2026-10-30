@@ -2530,6 +2530,16 @@ function readOnlyStep(step) {
   const verb = unq(words[0] || '').replace(/^.*[\\/]/, '').replace(/\.exe$/i, '');
   if (verb === 'git') return gitReadForm(words[1] || '', words.slice(2));
   if (verb === 'hostname') return words.slice(1).every((w) => /^(?:-[sfdiIaA]|--(?:short|fqdn|long|domain|ip-address|all-ip-addresses|alias))$/.test(w));
+  // a compressor of the one print table writes nothing when it prints (`-c`) or filters stdin (`| gunzip`) - HK-06's
+  // `gzip -c .env | gunzip` keeps its decompressor behind the view
+  if (/^(?:z|gz|bz|xz|zstd|lz4)cat$|^z(?:more|less)$/i.test(verb)) return true; // they only ever print
+  const pv = shellWrites && shellWrites.PRINT_VERBS && shellWrites.PRINT_VERBS[verb.toLowerCase()];
+  if (pv && pv.needs && typeof shellWrites.printedFiles === 'function') {
+    const rest = levelFlagsOff(words.slice(1).map(unq));
+    if (shellWrites.printedFiles(verb.toLowerCase(), rest)) return true;
+    const asFilter = shellWrites.printedFiles(verb.toLowerCase(), ['-c', ...rest]);
+    if (asFilter && !asFilter.files.length) return true;
+  }
   return readOnlyInline(words, step);
 }
 // A stage that WRITES a file. The rewrite replaces the stage it judges too, so a writer naming the credential file
@@ -3952,6 +3962,8 @@ function bareOperands(words) {
   }
   const verb = String(words[k] || '').replace(/^["']|["']$/g, '').replace(/^.*[\\/]/, '').replace(/\.exe$/i, '');
   if (FILE_ROUTE.test(verb)) return { dir, names: routeFiles(verb, words.slice(k + 1)) };
+  const printed = printVerbFiles(verb, words.slice(k + 1));
+  if (printed) return { dir, names: printed.files, printed };
   const hit = DUMP_VERB.exec(verb);
   if (!hit || hit[0].length !== verb.length) return { dir, names: [] };
   const v = verb.toLowerCase();
@@ -3991,6 +4003,33 @@ function bareOperands(words) {
     if (!/[\/.~$]/.test(w)) names.push(w.replace(/^\(+/, '').replace(/(?<!\))\)+$/, ''));
   }
   return { dir, names };
+}
+// The files a print verb of shell-writes.js's ONE table prints (PRINT_VERBS / printedFiles, audit 2026-10-30 a0; HK-06:
+// `shuf .env`, `vis .env`, `join -t= -v1 .env /dev/null` and `gzip -c .env | gunzip` printed the file raw) - every one of
+// them, bounded or not, since one line of a credential file can be the credential. A verb the dump-verb rules above
+// already read is left to them; a redirection and its target are no operand. `compressor`: the verb streams a
+// compressed copy, so its view is piped through the same compressor and a decompressor after it still reads text.
+function printVerbFiles(verb, rest) {
+  if (!shellWrites || typeof shellWrites.printedFiles !== 'function') return null;
+  const v = String(verb).toLowerCase();
+  const hit = DUMP_VERB.exec(v);
+  if (hit && hit[0].length === v.length) return null;
+  const argv = [];
+  for (let i = 0; i < rest.length; i++) {
+    const w = rest[i];
+    if (/^(?:\d*[<>]+&?|&>+)$/.test(w)) { i++; continue; } // an operator alone: its target is the next word
+    if (/^(?:\d*[<>]|&>)/.test(w)) continue; // an operator joined to its target
+    argv.push(w);
+  }
+  const spec = (shellWrites.PRINT_VERBS || {})[v] || {};
+  const p = shellWrites.printedFiles(v, spec.needs ? levelFlagsOff(argv) : argv);
+  if (!p || !p.files.length) return null;
+  return { files: p.files, verb, argv, compressor: Boolean(spec.needs) };
+}
+// A compressor's level (`-9`, `-9c`) is a flag, which the table's operand rule (`-<digit>` is an operand where `digits`
+// is unset) reads as a file: the level is dropped, a cluster after it kept (`-9c` is `-c`).
+function levelFlagsOff(argv) {
+  return argv.map((w) => { const m = /^-\d+([A-Za-z]*)$/.exec(w); return m ? (m[1] ? `-${m[1]}` : null) : w; }).filter((w) => w !== null);
 }
 
 function judgeShell(text, forceRuntime, main, bodyLang) {
@@ -4194,10 +4233,12 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       const stageAnchor = cwdAnchor;
       // .NET's file reads take their path as a string argument (audit 2026-10-20 H8: `[IO.File]::ReadAllText('.env')` passed)
       if (IS_PWSH) for (const m of candStage.matchAll(/::\s*ReadAll(?:Text|Lines|Bytes)\s*\(\s*(["'])([^"'\n]{1,300})\1/gi)) candidates.push(m[2]);
+      let printed = null; // a verb of the one print table (printVerbFiles)
       if (!isRuntime) {
         const bare = bareOperands(shellTokens(candStage.replace(PREFIX_WORDS, '').replace(/^\s*\(+/, '')));
         if (bare.dir) { const d = expandPath(bare.dir); if (d) cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(cdBase(), d); }
         candidates.push(...bare.names);
+        printed = bare.printed || null;
       }
       // A runtime spells the path inside its own code - single, double or backtick quoted. No runtime expands `~` on its
       // own, so a `~/` string there is text (documentation between backticks, a message) unless the code expands the tilde
@@ -4226,10 +4267,15 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
           const loopVar = lv && LOOP_VARS.has(lv) ? lv : null;
           const view = IS_PWSH ? `node ${psSingle(__filename)} --redacted ${psSingle(file)}`
             : `node "${shDouble(__filename)}" --redacted ${loopVar ? `"$${loopVar}"` : `"${shDouble(file)}"`}`;
-          const narrow = !IS_PWSH && !isRuntime && sj === 0 && narrowFilter(stages, tok);
-          const shown = !narrow ? view : typeof narrow === 'string' ? `${view} --note-to-stderr | ${narrow}`
+          // a compressor streaming the file (`gzip -c .env | gunzip`) streams the view instead, its own flags and the stages
+          // after it kept (HK-06) - the splice replaces the whole pipeline
+          const squeezed = !IS_PWSH && sj === 0 && printed && printed.compressor && printed.files.includes(tok)
+            ? [`${view} --note-to-stderr `, ` ${[printed.verb, ...printed.argv.filter((w) => !printed.files.includes(w))].join(' ')} `, ...stages.slice(1)].join('|')
+            : null;
+          const narrow = !squeezed && !IS_PWSH && !isRuntime && sj === 0 && narrowFilter(stages, tok);
+          const shown = squeezed || (!narrow ? view : typeof narrow === 'string' ? `${view} --note-to-stderr | ${narrow}`
             : narrow.command ? narrow.command
-            : `{ ${stderrNote(`# credential guard: not searched - ${narrow.unsearched.map(dequoteWord).join(', ')} (the read beside a credential file shows its whole redacted view); search it on its own`)}; ${view}; }`;
+            : `{ ${stderrNote(`# credential guard: not searched - ${narrow.unsearched.map(dequoteWord).join(', ')} (the read beside a credential file shows its whole redacted view); search it on its own`)}; ${view}; }`);
           const spliced = spliceView(shown, loopVar);
           refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``, spliced != null);
           if (spliced != null) judgeKept(spliced);

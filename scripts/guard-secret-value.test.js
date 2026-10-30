@@ -2925,3 +2925,22 @@ test('HK-05: env and printenv with their printing options, a ps that shows the e
     'test -r /proc/self/environ && echo yes', 'ls -l /proc/self/environ', 'launchctl getenv HOME', 'echo "${!prefix@}"'])
     assert.strictEqual(at(c), 0, c);
 });
+
+test('HK-06: the one print-verb table (shuf, vis, join, a compressor to stdout) prints a credential file as its masked view', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk06-'));
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=abc123def456\nDB_HOST=localhost\n');
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'b\na\n');
+  const raw = (command) => run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir });
+  for (const c of ['shuf .env', 'shuf -n 1 .env', 'vis .env', 'join -t= -v1 .env /dev/null', 'gzip -c .env | gunzip', 'gzip -9c .env | zcat', 'xz -c .env | xz -dc', 'bzip2 -c .env | bunzip2']) {
+    const r = raw(c);
+    assert.strictEqual(verdict(r), REWRITE, c);
+    // gzip is on every runner (Git Bash too); the other pipelines are judged, not run
+    if (!/^gzip/.test(c)) continue;
+    const out = spawnSync('sh', ['-c', updatedCommand(r)], { cwd: dir, encoding: 'utf8' });
+    assert.ok(!(out.stdout + out.stderr).includes('abc123def456'), `${c}: the value printed`);
+    assert.match(out.stdout, /API_KEY=<set \(12 chars\)>/, `${c}: the masked view comes through the pipeline (${out.stdout} ${out.stderr})`);
+  }
+  // the legitimate twins: the same verbs on a clean file, a compressor writing a file, shuf's own words
+  for (const c of ['shuf notes.txt', 'vis notes.txt', 'join notes.txt notes.txt', 'gzip -c notes.txt | gunzip', 'gzip -k .env', 'shuf -e a b c', 'shuf -i 1-5', 'gzip -c .env > out.gz'])
+    assert.strictEqual(verdict(raw(c)), 0, c);
+});
