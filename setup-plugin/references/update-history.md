@@ -629,3 +629,18 @@ add its `watch.json` entries to `awareness/watch.json` with the `architecture: `
 `RUN-AND-DEBUG-AWARENESS.md` back to `PROJECT-AWARENESS.md`, respell the keys back, and run that release's
 architecture capture to write its marker rule again - which restores the orientation doc at session start and the
 known-ceilings register.
+
+## after 3.5.0 - old map refs a branch brings back, and session-inspector in the catalog
+
+A branch cut before the architecture move and merged after it brings the old map refs back with no `architecture/`
+left. Every update now re-spells them in the stack's own docs (`architecture/ARCHITECTURE#x`, `ARCHITECTURE#x`,
+`ORIENTATION#x`, `architecture/references/<file>#x`) and names each line of a file of your own with `!!`, on every update
+while it stands. A ref that a file of that name answers stays as written - one beside the doc, at the project or docs
+root, in a docs-root folder, or anywhere else in the project (`docs/ARCHITECTURE.md`, named in the stack's docs) - and so
+does a `references/` ref that a project folder of that name answers. A kept 3.3.0 marker rule `alfred-architecture.md`
+keeps its text (3.5.0 rewrote its description), and uninstall removes it in either spelling. The architecture
+`watch.json`'s move and removal are staged in git like the doc moves, so no unstaged delete is left. An old
+`skillOverrides` key with no key after the merge now says which value `capture-awareness` takes. Nothing to do by hand.
+
+The catalog also lists `session-inspector`, a standalone mod from `envoydev/alfred-mods` pinned to its release. The
+stack never installs, updates or removes it; install it from one marketplace only.
