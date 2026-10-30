@@ -1,6 +1,6 @@
 ---
 name: issue-signatures-runtime
-description: "Use when a local runtime failure needs a cause - stack trace, exception, hang, broken screen, NullReferenceException, NG0201. Not for red CI or production."
+description: "Use when a runtime failure needs a cause - a local or production stack trace, exception, hang, broken screen, NullReferenceException, NG0201. Not for red CI."
 ---
 
 # Failure Signatures - what the crash means and where the cause actually lives
@@ -9,11 +9,9 @@ Every runtime failure has a signature, and the signature names where to look - w
 
 ## When to use
 
-Use when something breaks at runtime on your own machine and you have the evidence - a stack trace, an exception, a hang, or a broken screen - and want to know where the real cause lives. A lookup of the common local-runtime failure signatures, each mapped to where to isolate it - usually not the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the root-cause method.
+Use when something breaks at runtime and you have the evidence - a stack trace, an exception, a hang or a broken screen, on your own machine or in a production event that carries the trace - and want to know where the real cause lives.
 
-Keywords: NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, 401/403, config drift.
-
-Not for a CI or build/test-gate failure (the resolvers and the CI diagnoser own those) or a production incident - local-runtime evidence only. When the evidence spans more than one source, the gatherer fan-out below handles it; a run with a gate between every step is the user's gated investigation command.
+Not for a CI or build/test-gate failure (the resolvers and the CI diagnoser own those). When the evidence spans more than one source, the gatherer fan-out below handles it; a run with a gate between every step is the user's gated investigation command.
 
 ## The signatures - and where each isolates
 

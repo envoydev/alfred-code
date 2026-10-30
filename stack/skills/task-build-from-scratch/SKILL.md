@@ -65,7 +65,7 @@ Before the first implementer fans out, stamp the approval gate, in four parts:
   ```ask
   Both write routes refused the approval stamp: <the refusal>.
   - 'Retry the stamp (Recommended)' - allow the write at the prompt
-  - 'Run this stage inline' - no dispatch, no stamp
+  - 'Run this slice inline' - no dispatch, no stamp
   ```
 
 Then: reds route to the matching resolver seat for that stack where one is installed, and are fixed in-session where none is. A multi-stack slice runs producer-first: the PRODUCER designer runs first and the interface section of its plan IS the contract, recorded before any consumer seat is briefed. Loop until the spec's first milestone is met.
@@ -93,7 +93,7 @@ The first milestone is green and the scaffold is uncommitted. Commit it on this 
 - 'Hold - review the diff first' - nothing is committed; the diff stays as it is
 ```
 
-Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the four paths, never list them by default. Those named go TO THE USER as their next commands, never invoked from here - all but the architecture one are slash-only and a Skill call on them is refused. They give the new repo its map, style doc, run book and generated awareness rules, and from there the standing flow machinery owns the project.
+Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the four paths, never list them by default. Those named are the user's next commands - named to the user, never invoked from here. They give the new repo its map, style doc, run book and generated awareness rules, and from there the standing flow machinery owns the project.
 
 ## Per-stack scaffolding
 

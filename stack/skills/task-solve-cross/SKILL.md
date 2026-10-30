@@ -122,7 +122,7 @@ This run started <what is still up>. Tear it down - nothing later in this run ne
 - 'Keep it up' - it stays running for you
 ```
 
-The close opens with a **pending sweep** - anything undecided or unlanded is named as its own line or ask option, never dropped at the session's end (what counts: `references/close-out.md`'s `pending:` field). A flagged-but-unfixed bug also goes into the ledger or task docs BEFORE any memory purge, so the purge cannot destroy its only record.
+The close opens with a **pending sweep** - anything undecided or unlanded is named as its own line or ask option, never dropped at the session's end (what counts: `references/close-out.md`'s `pending:` field). A flagged-but-unfixed bug also goes into the ledger or task docs BEFORE any note purge, so the purge cannot destroy its only record.
 
 Before the close report, Read `references/close-out.md` and run it: the doc-drift triggers, the filing of every `where | limit | revisit when` row a seat reported into the architecture map's Known ceilings, and the close report's fixed shape - one block, no re-pasted plans or ledgers, `notes purged: <names|none>` among its required fields.
 

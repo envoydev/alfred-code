@@ -261,6 +261,7 @@
       "fd543122dca05e7c"
     ],
     "dotnet-diagnostics": [
+      "00b130a34c9b3d7b",
       "29b791e2b89596a3",
       "5c42c1f6780e738e",
       "ae7ebb8ce2507f91",
@@ -546,6 +547,7 @@
       "7703cfb19f2a2bca"
     ],
     "issue-signatures-runtime": [
+      "1880a2b0f52a82bf",
       "654aadea6d3606fb"
     ],
     "javascript": [

@@ -72,7 +72,7 @@ Take the open weaknesses in leverage order (the assessment's top-few first) and 
        ```ask
        Both write routes refused the approval stamp: <the refusal>.
        - 'Retry the stamp (Recommended)' - allow the write at the prompt
-       - 'Run this stage inline' - no dispatch, no stamp
+       - 'Run this fix inline' - no dispatch, no stamp
        ```
   5. **Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back. This is the domain-trio vertical (this skill's own `references/domain-trio-protocol.md`), dispatched directly.
 

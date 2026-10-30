@@ -149,7 +149,7 @@ This round started <what is still up>.
 
 ## Example
 
-DELEGATED, one run over `src/Orders/`, with the 1.x starter prompts in `loops/`:
+DELEGATED, one run over `src/Orders/`, with the starter prompts in `loops/`:
 1. **ANALYZE** - green baseline; the capture fans code-quality-analyzer out per module and writes three Must-fix findings: a **small** BLOCKER (a swallowed refund exception, `loops/2.code-quality.md`), a **small** MINOR (a vague `data` parameter, `loops/3.naming.md`), a **substantial** MAJOR (one handler class carrying three unrelated jobs).
 2. **FIX by tier** - the two small findings go to the aspnet-implementer in one brief; the substantial one through the aspnet-solution-designer, the plan gate and the user's approval, then the implementers and the aspnet-verifier.
 3. **LOOP or STOP** - the round-2 capture returns no fixable finding -> **SATISFIED**; the sweep is clean, the capture reconciles the doc, then the report.

@@ -73,6 +73,8 @@ One table, most severe first - BLOCKER rows, then MATERIAL, then MINOR, CONFIRME
 file:line | summary | failure scenario | category | verdict
 ```
 
+A filled row: `src/orders/refund.ts:42 | the refund drops the line discount | a 10%-off order refunds the full price | dropped-guard | CONFIRMED`.
+
 `verdict` is CONFIRMED or PLAUSIBLE (REFUTED rows are gone). BLOCKER is a CONFIRMED wrong result, crash, data loss or broken contract; MATERIAL is any other correctness row, a PLAUSIBLE one of those shapes included; MINOR is convention and cleanup. There is no cap and no padding: list what the passes found, and 'no findings' - with the passes run and the files read named - is a valid result. Under the table, two lines: `Findings: <n> BLOCKER, <m> MATERIAL, <k> MINOR` (or `Findings: none`) - the field the commit checkpoint's receipt copies - and `Reviewed: <n> files, <m> changed lines, depth <level>`. This skill fixes nothing.
 
 ## Close

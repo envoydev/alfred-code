@@ -98,3 +98,151 @@ test('SKF-08: a findings-path hand-off reads as the diagnosed bug once the hered
     assert.notStrictEqual(shaped.sizeFloor, 'trivial');
     assert.match(flat(read('stack/skills/task-solve/references/full-spec.md')), /A request that is only a findings path [^.]*?put `Type: bug`, the file's `Observable:` line and each `## Tasks` card's title, owned files and acceptance criterion above the path/);
 });
+
+test('SKF-10: the diagnoser names the error-monitoring job, not a pre-2.10.1 MCP mechanism', () =>
+{
+    for (const f of ['stack/skills/issue-diagnoser/SKILL.md', 'stack/skills/issue-diagnoser/references/evidence-tiers.md'])
+    {
+        const t = flat(read(f));
+        assert.doesNotMatch(t, /monitoring MCP|comments out the MCPs/, `${f}: stale MCP wording`);
+        assert.match(t, /the error-monitoring tool,? when the start line's tool order ranks one/, f);
+    }
+});
+
+test('SKF-11: the greenfield close names the captures to the user without a false slash-only claim', () =>
+{
+    const t = flat(skill('task-build-from-scratch'));
+    assert.doesNotMatch(t, /slash-only/);
+    assert.match(t, /named to the user, never invoked from here/);
+});
+
+test('SKF-12: the refused-stamp ask offers the flow\'s own unit inline', () =>
+{
+    const want = {
+        'task-implement': 'Run the tasks inline',
+        'loop-architecture-quality': 'Run this fix inline',
+        'loop-code-quality': 'Run this fix inline',
+        'loop-test-coverage-quality': 'Run this fix inline',
+        'task-build-from-scratch': 'Run this slice inline',
+    };
+    for (const [name, label] of Object.entries(want))
+    {
+        const t = skill(name);
+        assert.doesNotMatch(t, /'Run this stage inline'/, `${name}: a flow with no stages offers a stage`);
+        assert.ok(t.includes(`- '${label}' - no dispatch, no stamp`), `${name}: '${label}'`);
+    }
+});
+
+// SKF-13 + SKF-14: a skill reads another skill's folder only at a registered exception. mode-auto-run follows the
+// installed task-solve SKILL.md (the user's ruling: the one sanctioned route around its manual-only wall); the other
+// sites run capture-preferences' checker, which keeps no shared home (the plan's ruling), and say what to do without it.
+const CROSS_READS = {
+    'mode-auto-run -> task-solve/SKILL.md': 'SKF-13',
+    'capture-quality -> capture-preferences/scripts/preferences.js': 'preferences-by-hand',
+    'review-code -> capture-preferences/scripts/preferences.js': 'SKF-14',
+    'task-verify-code -> capture-preferences/scripts/preferences.js': 'SKF-14',
+};
+test('SKF-13: every cross-folder skill read is a registered exception', () =>
+{
+    const dir = path.join(ROOT, 'stack/skills');
+    const names = new Set(fs.readdirSync(dir));
+    const re = /(?:\.claude\/skills\/|\.\.\/|(?<![\w.-])skills\/)([a-z0-9-]+)\/((?:references|scripts|assets)\/[A-Za-z0-9_./-]*[A-Za-z0-9_-]|SKILL\.md)/g;
+    const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(path.join(d, e.name)) : /\.(md|js)$/.test(e.name) ? [path.join(d, e.name)] : []);
+    const seen = new Set();
+    for (const f of walk(dir))
+    {
+        const own = path.relative(dir, f).split(path.sep)[0];
+        for (const m of fs.readFileSync(f, 'utf8').matchAll(re))
+        {
+            if (m[1] === own || !names.has(m[1])) continue;
+            const key = `${own} -> ${m[1]}/${m[2]}`;
+            assert.ok(CROSS_READS[key], `${path.relative(ROOT, f)}: unregistered cross-folder read ${key}`);
+            seen.add(key);
+        }
+    }
+    assert.ok(seen.has('mode-auto-run -> task-solve/SKILL.md'), 'the scan still finds the sanctioned read');
+});
+
+test('SKF-15/16: the runtime catalogue covers a production event\'s trace, and its When to use is one case and one boundary', () =>
+{
+    const t = skill('issue-signatures-runtime');
+    const desc = /^description: "(.*)"$/m.exec(t)[1];
+    assert.match(desc, /local or production stack trace/);
+    assert.match(desc, /Not for red CI\.$/);
+    const when = section(t, 'When to use');
+    assert.doesNotMatch(when, /Keywords:/);
+    assert.doesNotMatch(when, /production incident|local-runtime evidence only/);
+    assert.match(flat(when), /on your own machine or in a production event that carries the trace/);
+    assert.match(flat(skill('issue-diagnoser')), /for a failure on your own machine or a production event's trace/);
+});
+
+test('SKF-17: task-version-upgrade states the auto-run gate once, beside its Modes paragraph', () =>
+{
+    const t = flat(skill('task-version-upgrade'));
+    assert.doesNotMatch(t, /starts ONLY from the user/);
+    assert.doesNotMatch(t, /Auto-run is the user's to turn on/);
+    assert.strictEqual(t.split('Under auto-run the gate is answered, not skipped').length - 1, 1);
+});
+
+test('SKF-18: the handoff-note sites speak of notes, not memory', () =>
+{
+    for (const f of ['stack/skills/loop-test-coverage-quality/SKILL.md', 'stack/skills/loop-architecture-quality/references/loop-mechanics.md',
+        'stack/skills/loop-code-quality/references/loop-mechanics.md', 'stack/skills/task-solve-cross/SKILL.md'])
+        assert.doesNotMatch(flat(read(f)), /memory (hand-off|hygiene|store|purge)/, f);
+});
+
+test('SKF-19: both reviewers show one filled report row', () =>
+{
+    for (const name of ['review-code', 'review-security'])
+    {
+        const row = /A filled row: `([^`]+)`/.exec(section(skill(name), 'Report'));
+        assert.ok(row, `${name}: a filled row`);
+        assert.strictEqual(row[1].split(' | ').length, 5, `${name}: the row fills every column`);
+    }
+});
+
+test('SKF-20: the two long verify steps are split into one bullet per rule', () =>
+{
+    const subs = (name, head) =>
+    {
+        const lines = skill(name).split('\n');
+        const at = lines.findIndex((l) => l.startsWith(head));
+        assert.ok(at > -1, `${name}: ${head}`);
+        assert.ok(lines[at].length < 120, `${name}: the step head stands alone`);
+        const out = [];
+        for (let i = at + 1; /^ {3}- /.test(lines[i] || ''); i++) out.push(lines[i]);
+        return out;
+    };
+    assert.strictEqual(subs('task-verify-plan', '1. **Risk coverage - the highest-leverage pass.**').length, 7);
+    assert.strictEqual(subs('task-verify-code', '4. **Run it, and check nothing existing broke.**').length, 7);
+});
+
+test('SKF-21: task-implement marks its EF Core lines as the .NET example', () =>
+{
+    const t = flat(skill('task-implement'));
+    assert.match(t, /\(the \.NET example: EF Core's `PendingModelChangesWarning`\)/);
+    assert.match(t, /The \.NET example, an EF Core migration: `dotnet ef migrations add/);
+});
+
+test('SKF-22: the diagnoser\'s CI-seat offer dispatches the seat as the roster spells it', () =>
+{
+    assert.match(flat(skill('issue-diagnoser')), /offer that dispatch as the recommended option at this stop rather than re-deriving it here, the seat dispatched exactly as the roster spells it/);
+});
+
+test('SKF-23: no dated or opaque token in the code loop example or the scorer revise step', () =>
+{
+    assert.doesNotMatch(skill('loop-code-quality'), /1\.x starter/);
+    const scorer = flat(skill('mode-output-scorer'));
+    assert.doesNotMatch(scorer, /says why \(P11\)/);
+    assert.match(scorer, /\(the designer-plan rubric's scope item, P11\)/);
+});
+
+test('SKF-24: no skill names a shipped rule by its retired baseline name', () =>
+{
+    const dir = path.join(ROOT, 'stack/skills');
+    const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.md') ? [path.join(d, e.name)] : []);
+    for (const f of walk(dir))
+        assert.doesNotMatch(flat(fs.readFileSync(f, 'utf8')), /\b(interaction|quality-gates|security|navigation|preferences|docs-root) baseline\b/, path.relative(ROOT, f));
+});

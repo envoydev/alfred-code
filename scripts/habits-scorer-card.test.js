@@ -518,7 +518,7 @@ test('SKILL.md: the description, the session-id layout line, the roster clause, 
 // The final review: the line keeps P11's two exceptions and the producer's mark-with-a-reason, as habits-plan-writing words them.
 test('SKILL.md revise step: in a designer plan, a fix that a Decision on today\'s behaviour can meet adds no unasked card work, P11\'s exceptions kept', () => {
     const body = squash(split(read('stack/skills/mode-output-scorer/SKILL.md')).body);
-    assert.ok(body.includes("In a designer plan, a finding a Decision on today's behaviour can meet is met that way: a new guard or rule `Asked:` does not name becomes one `## Optional` line, marked Recommended or Not worth it with the reason - a card only when the user asked for it or the request cannot be met safely without it, and a Decision says why (P11)."));
+    assert.ok(body.includes("In a designer plan, a finding a Decision on today's behaviour can meet is met that way: a new guard or rule `Asked:` does not name becomes one `## Optional` line, marked Recommended or Not worth it with the reason - a card only when the user asked for it or the request cannot be met safely without it, and a Decision says why (the designer-plan rubric's scope item, P11)."));
     assert.ok(!body.includes('never card work, which fails P11'), 'the earlier wording dropped P11\'s exceptions');
     const producer = squash(read('stack/skills/habits-plan-writing/SKILL.md'));
     assert.ok(producer.includes('unless the user asked for it (a Decision carries `asked: <the answer>`) or the request cannot be met safely without it - then it is a card, and a Decision says why'), 'the producer\'s rule the line mirrors');
