@@ -1,6 +1,7 @@
 ---
 name: angular-material
 description: "Load when building UI with @angular/material or @angular/cdk - 'add a Material dialog', mat.theme, --mat-sys-* tokens, CDK overlay. Not for general Angular CSS."
+user-invocable: false
 ---
 
 # Angular Material and CDK

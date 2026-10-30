@@ -28,9 +28,10 @@ Use the database-specific module, not the generic `Testcontainers` builder - the
 <PackageReference Include="Testcontainers.PostgreSql" />
 <PackageReference Include="Npgsql" />
 <PackageReference Include="Respawn" />
-<PackageReference Include="xunit" />
-<PackageReference Include="xunit.runner.visualstudio" />
-<PackageReference Include="FluentAssertions" />   <!-- the hub's default assertion library - pin 7.x in Directory.Packages.props -->
+<PackageReference Include="xunit.v3" />
+<PackageReference Include="xunit.runner.visualstudio" />   <!-- with Microsoft.NET.Test.Sdk, the VSTest mode only - references/library-routing.md -->
+<PackageReference Include="Microsoft.NET.Test.Sdk" />
+<PackageReference Include="FluentAssertions" />   <!-- the hub's default assertion library - pin 7.x (7.1+) in Directory.Packages.props -->
 ```
 
 Versions live in `Directory.Packages.props` (central package management), never on the reference.
@@ -50,7 +51,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -58,7 +59,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         await RunMigrationsAsync(connection);   // EF MigrateAsync, DbUp, or raw DDL
     }
 
-    public Task DisposeAsync() => _container.StopAsync();
+    public ValueTask DisposeAsync() => _container.DisposeAsync();
 }
 ```
 
@@ -76,12 +77,13 @@ public sealed class OrderRepositoryTests(PostgresFixture fixture)
     [Fact]
     public async Task GetOrder_Returns_Persisted_Row()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(ct);
         await using (var seed = new NpgsqlCommand(
             "INSERT INTO orders (id, customer_id, total) VALUES (1, 'CUST1', 100.00)", connection))
         {
-            await seed.ExecuteNonQueryAsync();
+            await seed.ExecuteNonQueryAsync(ct);
         }
 
         var repo = new OrderRepository(connection);
@@ -123,8 +125,8 @@ Call it from the test class constructor (or its own `InitializeAsync`) for per-t
 [Collection("postgres")]
 public sealed class OrderTests(PostgresFixture fixture) : IAsyncLifetime
 {
-    public Task InitializeAsync() => fixture.ResetAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => new(fixture.ResetAsync());
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 ```
 

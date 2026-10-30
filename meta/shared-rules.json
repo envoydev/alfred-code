@@ -1648,6 +1648,19 @@
         }
       ]
     },
+    "dotnet11-runasync-rethrow": {
+      "_note": "The .NET 11 IHost.RunAsync / StopAsync rethrow of a failed BackgroundService's exception (learn.microsoft.com/dotnet/core/compatibility/extensions/11/ihost-runasync-stopasync-throw-backgroundservice-failure, an RC1 fact at the 2026-10-30 audit) - hosted-services owns the full note, windows-service the exit-code consequence. Version-coupled: .NET 11 GA, or the floor reaching .NET 11, rewrites both together (audit 2026-10-30 SKD-10).",
+      "owner": {
+        "file": "stack/skills/dotnet-hosted-services/references/newer-versions.md",
+        "marker": "`IHost.RunAsync`/`StopAsync` (and their synchronous forms) will *throw* the captured `BackgroundService` exception instead of completing quietly"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-windows-service/SKILL.md",
+          "marker": "from .NET 11 the host's `RunAsync` rethrows the worker's exception and the process exits non-zero - keep the explicit `Environment.Exit(1)` until the floor reaches .NET 11"
+        }
+      ]
+    },
     "review-target-read": {
       "_note": "The two own reviewers read their target the same way: the `## Target` section (the change set, a branch, a change request, paths, and where the code is read) is byte-identical in review-code and review-security, and their Dispatch paragraph counts the target with the same sentence. It drifted unregistered until the 2026-10-30 audit (SKF-04); the markers pin both ends of the Target section and the count, and scripts/own-reviewers.test.js fails a Target section that differs between the two.",
       "owner": {
@@ -6345,36 +6358,36 @@
       ]
     },
     "config-protection-gate-named": {
-      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig, a loosening of one in an existing MSBuild file (a pure MSBuild tightening passes - audit 2026-10-11 SD16), or any edit to an existing .editorconfig or lint / format config, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys, and nx plus the TypeScript and Angular style references name the lint / format half (audit 2026-10-14 SKS15). 2.1.4 audit I44.",
+      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig, a loosening of one in an existing MSBuild file (a pure MSBuild tightening passes - audit 2026-10-11 SD16), or any edit to an existing .editorconfig or lint / format config, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys, and nx plus the TypeScript and Angular style references name the lint / format half (audit 2026-10-14 SKS15). 2.1.4 audit I44. Since audit 2026-10-30 HK-16 no copy restates the receipt's lines: each says to write the lines the denial prints, its `session:` line included.",
       "owner": {
         "file": "stack/skills/typescript/SKILL.md",
-        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
       },
       "sites": [
         {
           "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         },
         {
           "file": "stack/skills/dotnet-code-quality/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         },
         {
           "file": "stack/skills/nx/SKILL.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         },
         {
           "file": "stack/skills/typescript/references/typescript-style.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         },
         {
           "file": "stack/skills/angular-conventions/references/angular-style.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
         }
       ]
     },
     "security-review-output-contract": {
-      "_note": "What a security review does with a finding it cannot route: it stays in the report, tagged with its surface and marked UNVERIFIED, rather than being dropped because the skill that owns it is not installed. Restated in each security skill because a project installs only its own stacks' - a .NET-only install never sees the Angular one, so a cross-cutting rule stated once would be absent there.",
+      "_note": "What a security review does with a finding it cannot route: it stays in the report, tagged with its surface and marked UNVERIFIED, rather than being dropped because the skill that owns it is not installed. Restated in each security skill because a project installs only its own stacks' - a .NET-only install never sees the Angular one, so a cross-cutting rule stated once would be absent there. database-security is a variant site with its own marker (audit 2026-10-30 SKS-08): its two routes are the .NET security skills, and an unrouted finding stays in its report with the fix stated in full.",
       "owner": {
         "file": "stack/skills/angular-security/SKILL.md",
         "marker": "when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED"
@@ -6391,6 +6404,10 @@
         {
           "file": "stack/skills/ionic-security/SKILL.md",
           "marker": "when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED"
+        },
+        {
+          "file": "stack/skills/database-security/SKILL.md",
+          "marker": "when neither is installed, keep the finding here with its fix stated in full"
         }
       ]
     },
@@ -7631,6 +7648,27 @@
         {
           "file": "stack/skills/dotnet-project-setup/SKILL.md",
           "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
+        }
+      ]
+    },
+    "config-protection-auto-run-loosening": {
+      "_note": "The auto-run half of the allowance ask (audit 2026-10-30 SKS-01, ruled skill-side): the ask keeps 'Allow this edit (Recommended)' for a tightening the guard still holds (the ESLint judge holds a new rule) or a key moving into a shared base, and auto-run - which answers with the Recommended option - never allows a held loosening. The guard's own deny text and labels are unchanged.",
+      "owner": {
+        "file": "stack/skills/typescript/SKILL.md",
+        "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+        },
+        {
+          "file": "stack/skills/nx/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
         }
       ]
     },

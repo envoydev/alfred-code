@@ -1,6 +1,7 @@
 ---
 name: angular-styling
 description: "Load when writing or editing CSS or SCSS in an Angular workspace - :host, ViewEncapsulation, ::ng-deep, design tokens. Not for non-Angular CSS."
+user-invocable: false
 ---
 
 # Angular styling

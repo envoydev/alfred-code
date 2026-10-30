@@ -1354,13 +1354,18 @@ test('check 19: the house rows\' "manual" and "model-only" flags match the front
     assert.strictEqual(lintInvocationFlags(skills, { houseManual: new Set(), houseModelOnly: new Set(['typescript']) }).length, 1, 'the manual half still holds');
 });
 
-test('check 19: the live HTML legend names the model-only state and the four flagged rows carry it', () => {
+test('check 19: the live HTML legend names the model-only state and every flagged skill\'s row carries it', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'docs', 'alfred-code.html'), 'utf8');
     assert.match(html, /model-only = fires on its description, no \/-command \(user-invocable: false\)/);
     const house = html.split('const house = {')[1].split('};')[0];
     const flagged = [...house.matchAll(/\["([a-z0-9-]+)",[^\n]*"model-only"\]/g)].map((m) => m[1]).sort();
+    // the rows follow the SKILL.md frontmatter (audit 2026-10-30 SKD-14 / S16 grew the set past the first four)
+    const skillsDir = path.join(__dirname, '..', 'stack', 'skills');
+    const fromSkills = fs.readdirSync(skillsDir).filter((d) => fs.existsSync(path.join(skillsDir, d, 'SKILL.md')))
+        .filter((d) => /^user-invocable:\s*false\s*$/m.test((/^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(skillsDir, d, 'SKILL.md'), 'utf8')) || [])[1] || '')).sort();
+    assert.deepStrictEqual(flagged, fromSkills);
     // + the four rule-forced or preloaded habits (audit 2026-10-30 SKC-24, the user's ruling on menu visibility).
-    assert.deepStrictEqual(flagged, ['dotnet-winforms', 'dotnet-wpf', 'habits-code-comments', 'habits-done-gate', 'habits-root-cause', 'habits-test-first', 'javascript', 'typescript']);
+    for (const name of ['dotnet-winforms', 'dotnet-wpf', 'habits-code-comments', 'habits-done-gate', 'habits-root-cause', 'habits-test-first', 'javascript', 'typescript']) assert.ok(flagged.includes(name), `${name} stays model-only`);
 });
 
 // 2.8.0 moved the hooks' state and ledgers into the data root and the flow docs under work/ and quality/

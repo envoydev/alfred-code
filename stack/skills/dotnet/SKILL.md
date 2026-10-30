@@ -35,7 +35,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | decide which layer something belongs in, define a cross-layer port, or draw a module/service boundary | `dotnet-architecture` (the style decision + load-one rule live in its hub) |
 | enforce layer / dependency / naming / isolation boundaries as automated tests (fitness functions) that fail the build | `dotnet-architecture-tests` |
 | register services, build an `Add*` extension, or reason about DI lifetimes | `csharp` (lifetimes in the hub; `Add*` / keyed / factory composition in its `references/dependency-injection.md`) |
-| bind or validate settings - `IOptions`, `IValidateOptions`, `ValidateOnStart` | `dotnet-web-backend` (its typed-options section) |
+| bind or validate settings - `IOptions`, `IValidateOptions`, `ValidateOnStart` | `dotnet-web-backend` (its typed-options section); a non-web app: `csharp` (its `references/dependency-injection.md`) |
 | set up a new solution - the layout, `.slnx`, `Directory.Build.props`, or `global.json` | `dotnet-project-setup` |
 | add a NuGet package, or set up central package management (`Directory.Packages.props`) | `dotnet-project-setup` (its `references/central-package-management.md`) |
 | set up or enforce C# formatting and analyzers - CSharpier, SDK analyzers, `.editorconfig` severity, `TreatWarningsAsErrors`, the CI quality gate | `dotnet-code-quality` |
@@ -103,9 +103,10 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | You are about to... | Load |
 |---|---|
 | add OpenTelemetry tracing / metrics instrumentation | `dotnet-web-backend` (wiring in the hub; manual spans / metrics in its `references/observability.md`) |
+| find where a slow or CPU-bound process spends its time - `dotnet-counters`, `dotnet-trace`, 'my app is slow' | `dotnet-diagnostics` (its `references/profiling.md`) |
 | write a microbenchmark (BenchmarkDotNet) | `dotnet-diagnostics` (its `references/microbenchmarking.md`) |
 | capture or analyze a crash / hang dump | `dotnet-diagnostics` (its `references/dumps.md`) |
-| inspect a compiled assembly's real API or behavior | `ilspy-decompile` |
+| inspect a compiled assembly's real implementation or behavior (an API signature is the documentation tools' question) | `ilspy-decompile` |
 | install or pin a .NET local tool (`dotnet tool` / manifest) | `dotnet-project-setup` (its `references/local-tools.md`) |
 
 ## Desktop

@@ -26,20 +26,18 @@ Not for a monorepo without Nx (pnpm or npm workspaces, Turborepo).
   (`nx show project <name>`) or the affected set (below). The full graph is large; pull only the slice
   the task needs.
 - What the cheap call buys, so you can decide before paying for it - `nx show project my-app --json`
-  returns the resolved configuration under `project.data` plus a `sourceMap` saying which file or
-  plugin contributed each key:
+  prints the project's resolved configuration itself, inferred targets included:
 
   ```json
-  { "project": { "name": "my-app", "type": "app", "data": {
-      "root": "apps/my-app", "sourceRoot": "apps/my-app/src", "projectType": "application",
-      "tags": [], "metadata": { "technologies": ["react"] },
-      "targets": { "build": { "executor": "nx:run-commands", "cache": true,
-                              "dependsOn": ["^build"], "outputs": ["{projectRoot}/dist"] } } } },
-    "sourceMap": { "targets.build": ["apps/my-app/vite.config.ts", "@nx/vite/plugin"] } }
+  { "name": "my-app", "root": "apps/my-app", "sourceRoot": "apps/my-app/src",
+    "projectType": "application", "tags": [], "implicitDependencies": [],
+    "targets": { "build": { "executor": "nx:run-commands", "cache": true,
+                            "dependsOn": ["^build"], "outputs": ["{projectRoot}/dist"] } } }
   ```
 
-  The `sourceMap` is the answer to 'where does this target come from' - read it instead of grepping
-  for a config file that may not exist, because an inferred target has no `project.json` entry.
+  An inferred target has no `project.json` entry - `nx show project <name> --web` shows each target's
+  source (the file or plugin that added it); verify the view at use instead of grepping for a config
+  file that may not exist.
 
 ## Scope every gate with `nx affected`
 - Run build, test, and lint over the affected set, not the whole tree: `nx affected -t build`,
@@ -73,8 +71,9 @@ or you pay for the wrong tool:
   `@nx/enforce-module-boundaries` ESLint rule so a forbidden cross-project import fails lint - the
   boundary is a build-failing rule, not a convention. Where the house config-protection guard runs, an
   edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) that does more than raise ESLint rule severities is blocked until the user
-  allows it - ask once, never route around the block, and on Allow the receipt
-  `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path.
+  allows it - ask once, never route around the block, and on Allow write the lines the denial
+  prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`. Adding the boundary rule or its
+  `depConstraints` is a tightening the guard still holds, so 'Allow' fits it. Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
 
 ## The CLI is the lever; the Nx MCP is optional
 - Prefer teaching the CLI (this skill) over the Nx MCP server - `nx show` / `nx affected` output is

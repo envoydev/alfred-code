@@ -1,6 +1,7 @@
 ---
 name: csharp
 description: "Load before creating or editing any .cs file - writing, reviewing or refactoring C#. Not instead of a .NET specialist area (EF queries, the ASP.NET pipeline)."
+user-invocable: false
 ---
 
 # C# Conventions

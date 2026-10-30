@@ -115,10 +115,13 @@ test('row 4: npm CI installs take --ignore-scripts on npm 11 only, and the basel
     const ops = read('stack/skills/npm/references/ci-and-operations.md');
     for (const line of ops.split('\n').filter((l) => /--ignore-scripts/.test(l)))
         assert.match(line, /on npm 11 only/, `an unconditional --ignore-scripts: ${line.slice(0, 120)}`);
+    // audit 2026-10-30 SKS-11: the npm 11 baseline (its ask included) moved to references/npm11-baseline.md
     const npm = read('stack/skills/npm/SKILL.md');
-    assert.strictEqual([...npm.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length, 2);
+    const npm11 = read('stack/skills/npm/references/npm11-baseline.md');
+    assert.strictEqual([...npm.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length, 1);
+    assert.strictEqual([...npm11.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length, 1);
     assert.match(npm, /'Add the baseline and approve the list \(Recommended\)'/);
-    assert.match(npm, /'Add the baseline \(Recommended\)'/);
+    assert.match(npm11, /'Add the baseline \(Recommended\)'/);
 });
 
 // Row 5 (DRIFTED): on the floor the built-in generator's source generator wires XML comments with no app code

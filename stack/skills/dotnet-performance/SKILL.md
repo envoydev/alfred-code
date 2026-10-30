@@ -16,7 +16,7 @@ Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas b
 ## When to use
 
 - Also fires on: high-throughput loop, allocations, MessagePack.
-- Not the starting point for 'my app is slow' - measure first with the diagnostics skill.
+- Not the starting point for 'my app is slow' - measure first with the diagnostics skill (its profiling route: dotnet-counters, then dotnet-trace).
 
 ## Measure first
 

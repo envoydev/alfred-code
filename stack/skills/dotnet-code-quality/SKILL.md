@@ -30,11 +30,11 @@ dotnet tool install csharpier
 dotnet csharpier check .          # CI: fails on unformatted code (use 'format' to write)
 ```
 
-Add a `.csharpierignore` for generated or vendored trees. Tool pinning in `.config/dotnet-tools.json` is `dotnet-project-setup`.
+Add a `.csharpierignore` for generated or vendored trees.
 
 ## First-party SDK analyzers before any third-party pack
 
-Turn on the analyzers that ship with the SDK first - they cost nothing and catch real defects. Set them once in `Directory.Build.props` (not per-project; layout is `dotnet-project-setup`):
+Turn on the analyzers that ship with the SDK first - they cost nothing and catch real defects. Set them once in `Directory.Build.props` (not per-project):
 
 ```xml
 <PropertyGroup>
@@ -75,13 +75,15 @@ If the fix is genuinely too large, put it to the user through ONE AskUserQuestio
 
 Flipping `TreatWarningsAsErrors=true` on an existing codebase floods the build - promote curated IDs in waves; the waves, their prerequisites and the per-wave proof are `references/legacy-backlog.md`.
 
-Where the house config-protection guard runs, it blocks a change that loosens `WarningsAsErrors`, `EnforceCodeStyleInBuild` or another warning key in a Directory.Build.props or csproj that already exists (a pure tightening - a `WarningsAsErrors` entry added, `EnforceCodeStyleInBuild`, `TreatWarningsAsErrors` or `EnableNETAnalyzers` set to true, a `NoWarn` entry removed - passes; an `AnalysisLevel` or `AnalysisMode` change, a raise included, is held), and any edit to an existing `.editorconfig` - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new file takes the settings from the start.
+Where the house config-protection guard runs, it blocks a change that loosens `WarningsAsErrors`, `EnforceCodeStyleInBuild` or another warning key in a Directory.Build.props or csproj that already exists (a pure tightening - a `WarningsAsErrors` entry added, `EnforceCodeStyleInBuild`, `TreatWarningsAsErrors` or `EnableNETAnalyzers` set to true, a `NoWarn` entry removed - passes; an `AnalysisLevel` or `AnalysisMode` change, a raise included, is held), and any edit to an existing `.editorconfig` - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` and retry the same edit; a new file takes the settings from the start.
 
 ```ask
 The config-protection guard holds this edit: <file> - <the change>, <N> new warnings.
 - 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
 - 'Keep the config as it is' - nothing changes in the file
 ```
+
+Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
 
 ## The gate is `dotnet build`
 

@@ -1,6 +1,7 @@
 ---
 name: angular-conventions
 description: "Load when creating or editing an Angular component, service, directive, pipe or template, refactoring to signals, or reviewing Angular code. Not for React."
+user-invocable: false
 ---
 
 # Angular conventions
@@ -13,8 +14,6 @@ Load with it:
 - Material and the CDK, and the Ionic/Capacitor layer, are each their own skill - match them from your skill list by what they cover, and skip any this project did not install.
 - Only your workspace's version delta (`references/v22.md`, `references/v21.md`, `references/v20.md`, `references/v19.md`: stable versus experimental, spellings and deprecations, the Node.js/TypeScript floor); on v17/v18 there is none and this file alone governs.
 - For any API surface not pinned down here, reach for the documentation tools rather than memory - and never by grepping `node_modules` bundles.
-
-The measurements behind these rules are `references/evidence.md` - an audit appendix, not a run-time load.
 
 **The enforceable config lives in `references/angular-style.md`** - the angular-eslint + Prettier flat config, the naming table, modern-vs-legacy examples. A project's own config (`eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` are higher priority - follow the project where it diverges. The user's own preferences docs there rank higher still: where an entry and this skill disagree, ask the user which wins, the entry's side marked (Recommended).
 
@@ -76,7 +75,10 @@ Read `references/http-routing-forms.md` before adding an HTTP call or intercepto
 - For custom widgets (accordion, listbox, combobox, menu, tabs, and more), build on the headless `@angular/aria` directives (developer preview in v21, stable from v22): they own the keyboard, focus, and ARIA state machine; you supply the markup and styles, hung off the aria-expanded / aria-selected / aria-current attributes they manage. Check `angular.dev/guide/aria` for the current roster and never reimplement that logic.
 - Text contrast meets WCAG AA - exact ratios are `angular-styling`'s to state.
 
+## Design quality
+
 On greenfield or visual work, load `references/design-quality.md` before the first screen goes in (type scale, spacing rhythm, color, motion, per-state rules), unless you are reproducing a fixed design or Figma handoff faithfully. It owns the *taste*; the mechanism is the styling skill's (CSS, tokens, responsive) and, where the project uses Material, the theming skill's.
+
 ## Feature boundaries
 - Features may depend on `shared/` and `core/` but never on one another. No import from `features/billing` reaches into `features/orders`.
 - Anything two features must share crosses through a service in `core/` or a state store, never a direct component reference.
@@ -92,7 +94,6 @@ Web/PWA target only: read `references/performance-budgets.md` before a productio
 ## Banned patterns
 - No `setTimeout` poked in to coax change detection into noticing a change - it only 'works' because zone.js patches timers to trigger a render, so it papers over a broken signal/input flow and silently stops working under zoneless. Fix the flow instead.
 - No direct DOM mutation outside a directive - the server has no browser DOM and a hand-mutated node is the classic hydration-mismatch error, and a raw `innerHTML` write skips Angular's sanitizer; go through `Renderer2`.
-- No method calls in template expressions - they re-run on every change-detection pass; bind a `computed` instead.
 - No `null` field defaults in forms - a `null` default widens the typed control to `T | null` and leaks null checks into every consumer.
 - No decorator queries or host bindings in new code - `viewChild()`/`contentChild()` return signals that compose with `computed` and `effect`, and the `host` object replaces `@HostBinding`/`@HostListener`, which Angular keeps only for backwards compatibility.
 

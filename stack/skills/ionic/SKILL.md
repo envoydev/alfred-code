@@ -1,6 +1,7 @@
 ---
 name: ionic
 description: "Load before building or editing an Ionic or Capacitor app - ionic.config.json, capacitor.config.*, IonRouterOutlet. Not for web Angular with no native shell."
+user-invocable: false
 ---
 
 # Ionic / Capacitor Conventions
@@ -57,7 +58,7 @@ Gate native calls on `Capacitor.isNativePlatform()`, branch the OS with `Capacit
 - Own pause/resume, hardware back, and deep links (`appUrlOpen`) in that one service, not scattered across pages. On resume, re-read any state that may have gone stale in the background (auth token, geolocation) rather than trusting the pre-pause snapshot.
 
 ## The Angular zone boundary - wrap every listener callback
-Capacitor plugin listener callbacks fire outside Angular's `NgZone`, so any state they mutate escapes change detection and the UI silently goes stale - the single most common Angular+Capacitor bug. Wrap the body of every listener callback that touches template-bound state - `appStateChange`, `backButton`, `appUrlOpen`, `networkStatusChange`, the push events - in `NgZone.run()`; inject `NgZone` rather than reaching for `setTimeout` or `ApplicationRef.tick()`. Under zoneless (Ionic 9 on Angular 21+) the zone is a no-op and the signal write alone repaints - the wrap is harmless there, but the state must be a signal either way. Registration and teardown follow the lifecycle rule above: register in the app-level service, capture the handle, remove on destroy.
+Capacitor plugin listener callbacks fire outside Angular's `NgZone`, so any state they mutate escapes change detection and the UI silently goes stale - the single most common Angular+Capacitor bug. Wrap the body of every listener callback that touches template-bound state - `appStateChange`, `backButton`, `appUrlOpen`, `networkStatusChange`, the push events - in `NgZone.run()`; inject `NgZone` rather than reaching for `setTimeout` or `ApplicationRef.tick()`. Under zoneless (Ionic 9 on Angular 21+) the zone is a no-op and the signal write alone repaints - the wrap is harmless there, but the state must be a signal either way.
 
 Broken - the template never updates:
 ```typescript

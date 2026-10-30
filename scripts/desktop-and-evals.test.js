@@ -44,14 +44,24 @@ test('I10: the skill and windows.md say what stays on and that a house guard den
     const skill = flat(read('stack/skills/desktop-automation/SKILL.md'));
     // stack audit 2026-10-20 row 14: Windows-MCP 0.8.8 enables every tool; since 2026-10-24 the user's registration excludes them
     assert.match(skill, /Windows-MCP enables every tool by default, so it is registered with PowerShell, Registry, Process and FileSystem excluded unless the user wants them/);
-    assert.match(skill, /a house guard denies App's `launch_executable` mode[^.]*and every MacOS-MCP `Shell` call unless the user allowed it in `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
+    // audit 2026-10-30 HK-16: the receipt's lines are the ones the denial prints (a `session:` line among them), never copied here
+    assert.match(skill, /a house guard denies App's `launch_executable` mode[^.]*and every MacOS-MCP `Shell` call unless the user allowed it and the lines the denial prints are written into `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
     const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
     assert.match(win, /--exclude-tools PowerShell,Registry,Process,FileSystem/);
     assert.match(win, /What stays on:/);
-    assert.match(win, /a house guard denies that mode unless the user allowed it in `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
+    assert.match(win, /a house guard denies that mode unless the user allowed it and the lines the denial prints are written into `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
     assert.doesNotMatch(win, /`Notification`, `FileSystem`, and - switched off/, 'FileSystem is no longer among the tools left on');
     const mac = flat(read('stack/skills/desktop-automation/references/macos.md'));
-    assert.match(mac, /A house guard denies every `Shell` call[^.]*unless the user allowed it in `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
+    assert.match(mac, /A house guard denies every `Shell` call[^.]*unless the user allowed it and the lines the denial prints are written into `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
+    // no T4 site restates a receipt's line shape (the config receipt's 'takes the file's path' included)
+    for (const rel of ['stack/skills/typescript/SKILL.md', 'stack/skills/typescript/references/typescript-style.md', 'stack/skills/nx/SKILL.md',
+        'stack/skills/dotnet-project-setup/SKILL.md', 'stack/skills/dotnet-code-quality/SKILL.md', 'stack/skills/angular-conventions/references/angular-style.md',
+        'stack/skills/desktop-automation/SKILL.md', 'stack/skills/desktop-automation/references/macos.md', 'stack/skills/desktop-automation/references/windows.md'])
+    {
+        const text = flat(read(rel));
+        assert.doesNotMatch(text, /takes the file's path|allowed it in `<data root>/, `${rel} restates a receipt shape`);
+        assert.match(text, /the lines the denial prints/, `${rel} points at the denial's lines`);
+    }
 });
 
 // ---------------------------------------------------------------- I9 - the plugin's own evals
