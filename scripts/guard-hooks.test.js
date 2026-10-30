@@ -5455,3 +5455,81 @@ test('audit 2026-10-30 HK-08..HK-11: .git insides, a followed cd, a variable tar
   ]) allows(c, 'HK-11 twin');
   allows('[IO.Directory]::Delete("C:\\\\scratch\\\\build", $true)', 'HK-11 twin on the PowerShell tool', { tool: 'PowerShell' });
 });
+
+test('audit 2026-10-30 HK-12, HK-15: a chained switch, a configured refspec, gh api, gh repo sync and send-pack are the force-push case', () => {
+  const { home, dir, git } = hkProject('hk-push');
+  const bare = path.join(home, 'remote.git');
+  spawnSync('git', ['init', '-q', '--bare', bare], { encoding: 'utf8' });
+  git('remote', 'add', 'origin', bare);
+  git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'); // the remote's default branch is `trunk`
+  for (const b of ['feature', 'trunk', 'other']) git('branch', b);
+  git('checkout', '-q', 'feature'); // `-` names main from here
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home };
+  const pushIn = (command, { cwd = dir, tool = 'Bash' } = {}) => runIn('guard-protected-force-push.js', { tool_name: tool, tool_input: { command }, cwd }, { cwd, env });
+  const blocks = (c, why, opts) => { const r = pushIn(c, opts); assert.equal(r.status, 2, `must block (${why}): ${c}\n${r.stderr}`); };
+  const allows = (c, why, opts) => { const r = pushIn(c, opts); assert.equal(r.status, 0, `must allow (${why}): ${c}\n${r.stderr}`); };
+  // HK-12: the branch a later bare or HEAD push names is the last one switched to, in that push's checkout
+  for (const c of [
+    'git switch main && git push --force',
+    'git checkout main; git push -f origin HEAD',
+    'git switch -C develop && git push -f',
+    'git checkout -B master && git push --force origin @',
+    'git switch trunk && git push -f',
+    'git checkout - && git push -f',
+    'git switch main\ngit push --force-with-lease',
+    'bash -c "git switch main" && git push -f',
+    'cd src && git switch main && cd .. && git push -f',
+    'git switch main && git switch other && git switch - && git push -f',
+  ]) blocks(c, 'HK-12');
+  blocks('git switch main; git push --force', 'HK-12 on the PowerShell tool', { tool: 'PowerShell' });
+  for (const c of [
+    'git switch main && git push',
+    'git checkout main -- a.txt && git push -f',
+    'git checkout main a.txt && git push -f',
+    'git checkout src/x.ts && git push --force',
+    'git push --force-with-lease origin feature',
+    'git push -f && git switch main',
+    'git switch main && git switch feature && git push -f',
+    'git switch -c topic && git push -f -u origin topic',
+    'git checkout -b hotfix main && git push -f origin HEAD',
+    'git checkout other && git push -f',
+    'echo "git switch main && git push -f"',
+  ]) allows(c, 'HK-12 twin');
+  // HK-15: a forced refspec from config, and the other force routes
+  for (const c of [
+    'git -c remote.origin.push=+HEAD:main push',
+    'git -c remote.origin.push=+refs/heads/feature:refs/heads/main push origin',
+    'git -c remote.origin.push=HEAD:main push -f',
+    'git -c remote.origin.push=:develop push origin',
+    'git -c remote.origin.mirror=true push origin',
+    'git config remote.origin.push +HEAD:refs/heads/main && git push',
+    'git config --add remote.origin.push "+refs/heads/*:refs/heads/*" && git push origin',
+    'git config set remote.origin.push +HEAD:master && git push',
+    'gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true',
+    'gh api --method PATCH /repos/o/r/git/refs/heads/master -f sha=abc -f force=true',
+    'gh api -X DELETE repos/{owner}/{repo}/git/refs/heads/develop',
+    'gh repo sync --force --branch main',
+    'gh repo sync o/r --force',
+    'git send-pack --force origin main',
+    'git send-pack origin +master',
+    'git send-pack --force origin',
+  ]) blocks(c, 'HK-15');
+  for (const c of [
+    'git -c remote.origin.push=+HEAD:feature push',
+    'git -c remote.upstream.push=+HEAD:main push origin',
+    'git config remote.origin.push +HEAD:refs/heads/main && git push origin feature',
+    'git push && git config remote.origin.push +HEAD:main',
+    'git config --get remote.origin.push && git push',
+    'gh api repos/o/r/git/refs/heads/main',
+    'gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc',
+    'gh api -X PATCH repos/o/r/git/refs/heads/feature -F force=true',
+    'gh repo sync --branch main',
+    'gh repo sync --force --branch feature',
+    'git send-pack origin feature',
+    'git send-pack --force origin feature',
+  ]) allows(c, 'HK-15 twin');
+  // from a checkout of main, switching away first leaves nothing protected
+  git('checkout', '-q', 'main');
+  allows('git switch feature && git push --force', 'HK-12 twin from main');
+  blocks('git push --force', 'control: a bare force on main');
+});

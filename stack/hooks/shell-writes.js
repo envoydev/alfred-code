@@ -2379,9 +2379,11 @@ function gitText(raw, cwd) {
   const markUnread = (at) => { if (unreadAt < 0 || at < unreadAt) unreadAt = at; };
   // Where each piece of the final text runs from: the command from the shell's cwd, each carried script from the
   // directory it runs in - a cd inside one moves what follows it there. `base` is where `text` starts in the final text.
+  // `trail` is where each carrying word sits in the text around it, outermost first: a carried script is appended AFTER
+  // the command, so its calls run where its carrier stands, never at their place in the joined text (`orderOf`).
   const regions = [];
-  function withCarried(text, dir0, base, depth) {
-    regions.push({ from: base, to: base + text.length, cwd: dir0 });
+  function withCarried(text, dir0, base, depth, trail = []) {
+    regions.push({ from: base, to: base + text.length, cwd: dir0, trail });
     const u0 = run.unread.length;
     const scripts = carriedScripts(text, { cwd: dir0, files: true, run });
     for (const u of run.unread.slice(u0)) if (u.path ? namesGit(u.path) : NAMES_GIT.test(text.slice(u.at))) markUnread(base + u.at);
@@ -2392,7 +2394,7 @@ function gitText(raw, cwd) {
       const inner = expandGitAliases(sc.text, { cwd: dir, run });
       const at = base + out.length + 1;
       if (inner.unreadAt >= 0) markUnread(at + inner.unreadAt);
-      out += `\n${withCarried(inner.text, dir, at, depth + 1)}`;
+      out += `\n${withCarried(inner.text, dir, at, depth + 1, trail.concat(base + sc.at))}`;
     }
     return out;
   }
@@ -2423,9 +2425,21 @@ function gitText(raw, cwd) {
     copy[1] = out;
     return copy;
   };
-  function callDir(call) {
+  const regionAt = (at) => {
     let k = regions.length - 1;
-    while (k > 0 && regions[k].from > call.at) k--;
+    while (k > 0 && regions[k].from > at) k--;
+    return k;
+  };
+  // Run order of two positions in the joined text: < 0 when `a` runs first. A call in a carried script runs where its
+  // carrier stands (`bash -c 'git switch main' && git push -f` switches before the push), then in its own script's order.
+  function orderOf(a, b) {
+    const ka = regions[regionAt(a)].trail.concat(a);
+    const kb = regions[regionAt(b)].trail.concat(b);
+    for (let i = 0; i < Math.min(ka.length, kb.length); i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return ka.length - kb.length;
+  }
+  function callDir(call) {
+    const k = regionAt(call.at);
     const r = regions[k];
     if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to).map(resolveCd));
     let dir = anchorAt(regionCds.get(k), call.at, r.cwd, cdTarget) || r.cwd;
@@ -2436,7 +2450,7 @@ function gitText(raw, cwd) {
   // the one expander, each carried script starting from its own directory (audit 2026-10-30 a0)
   let vars = null;
   try { vars = parsed && !parsed.tooDeep ? shellVars(parsed, { cwd, regions }) : null; } catch { vars = null; }
-  return { command, parsed, calls, regions, unreadAt, callDir, literalAt, vars };
+  return { command, parsed, calls, regions, unreadAt, callDir, literalAt, vars, orderOf };
 }
 
 // Read a command's writes. `opts` (all optional): `cwd` resolves a script file a shell runs (without one only an
