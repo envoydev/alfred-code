@@ -1,6 +1,7 @@
 ---
 name: ionic
 description: "Load before building or editing an Ionic or Capacitor app - ionic.config.json, capacitor.config.*, IonRouterOutlet. Not for web Angular with no native shell."
+user-invocable: false
 ---
 
 # Ionic / Capacitor Conventions

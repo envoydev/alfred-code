@@ -1,6 +1,7 @@
 ---
 name: angular-conventions
 description: "Load when creating or editing an Angular component, service, directive, pipe or template, refactoring to signals, or reviewing Angular code. Not for React."
+user-invocable: false
 ---
 
 # Angular conventions

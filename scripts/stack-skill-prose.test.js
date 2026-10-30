@@ -318,8 +318,8 @@ test('M128: the rule-forced convention layers and the S16 hubs are model-only, a
 {
     const flagged = fs.readdirSync(SKILLS).filter((d) => fs.existsSync(path.join(SKILLS, d, 'SKILL.md')))
         .filter((d) => /^user-invocable:\s*false\s*$/m.test((/^---\n([\s\S]*?)\n---/.exec(skill(d)) || [])[1] || '')).sort();
-    const FORCED = ['csharp', 'dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript'];
-    const HUBS = [];
+    const FORCED = ['angular-conventions', 'angular-styling', 'csharp', 'database-conventions', 'dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript'];
+    const HUBS = ['angular-material', 'ionic'];
     assert.doesNotMatch(skill('markdown-style'), /^user-invocable:/m, 'markdown-style keeps its / entry');
     assert.deepStrictEqual(flagged, [...FORCED, ...HUBS].sort());
     for (const name of HUBS) assert.doesNotMatch(skill(name), /^disable-model-invocation:/m, `${name} stays model-invocable`);

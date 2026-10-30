@@ -1,6 +1,7 @@
 ---
 name: database-conventions
 description: "Load before designing or changing a schema, writing SQL raw or via an ORM, or adding a migration, view, procedure or index. Not for a security review."
+user-invocable: false
 ---
 
 # Database conventions
