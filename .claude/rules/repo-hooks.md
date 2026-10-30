@@ -180,6 +180,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   A double-quoted carried word holding one of bash's double-quote escapes (`\"`, `\$`, `\\`, a backslashed backtick or
   newline) is read DEQUOTED, as bash hands it on - the runner's line and a `bash -c "..."` string alike (final review
   2026-10-30 FB: `-- "bash -c \"rm -rf ~\""` and `bash -c "rm -rf \"\$HOME\""` were judged with every escape kept).
+  A shell-run string that is one `$NAME` / `${NAME}` (bare or double-quoted; any quoting under `eval`) is carried as the newest literal the same command bound it to (`shellVars` `literalOf`; final review 2026-10-30 FC: `C='rm -rf ~'; bash -c "$C"`, `sh -c`, `eval` and the runner's `-- "$C"` passed) - a substitution, a prefix assignment or an unset name stays out of model.
   The runner's script is the word right before `--with-sensitive`, never matched by name (`node "$G"`, `node
   --disable-warning X <guard>` passed a basename test), and the dispatcher judges at most `RUNNER_LINES_MAX` (4) lines: a
   command handing it more, or naming the runner past the carried-script depth or the scan budget, blocks.
@@ -490,7 +491,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`dd if=`, `iconv`, curl `file://`, vim's print, a copy onto `/dev/stdout`, sqlite3's `readfile()`, php's
     `file_get_contents` / `getenv`, and every verb of shell-writes.js's one print table - `shuf`, `vis`, `join`, a
     compressor's `-c` (a level cluster such as `-9c` read as flags by the table's `levels`, final review FB), whose view goes through the same compressor so a decompressor after it reads text; audit 2026-10-30
-    HK-06), a bare name after a `cd` resolved against the `cd` target. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
+    HK-06), a bare name after a `cd` resolved against the `cd` target.
+    Every shell text is judged as bash hands each word on: an unquoted backslash before an ordinary character is dropped before the path and verb tests (`shellUnescape`; final review 2026-10-30 FC: `cat .e\nv`, `cat \.env`, `c\at .env` read the file raw, the runner's line too), one before a blank, an operator, a quote, `$`, a glob or `~` stays, quoted text is untouched, a bare Windows path on Windows keeps its backslashes, and a splice keeps the other steps as written. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
     Read tool and a credential literal stay blocked - but a FETCH of a short-lived link passes the literal check (the
     user's ruling 2026-10-14, after a Jira image download's `?token=<JWT>` was refused in every session): a token in a
@@ -591,6 +593,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     itself, and a wrapper the module lists - `doas`, `caffeinate`, `chronic`, `unbuffer`, `setsid`, `npx`, `uv run`, `xargs`, `find -exec`,
     a here-string into a shell), ONE walker, `shell-writes.js` `commandIndex` (it also passes a body keyword, `!`, `{`, `(`), that the
     read and rm guards walk too (2.1.6 seam review M2; a table test runs every wrapper of the module's own list through both guards).
+    A script FILE a shell runs is judged as commands too (`judgeCarried`; final review 2026-10-30 FC: `bash run.sh` with `cat .env`, or the runner's line, in run.sh passed): every text `carriedScripts` reads - `bash` / `sh` / `.` / `source` / `./x.sh` with a shell shebang or none, a file fed or piped into a shell, each text carried inside one, a line bound through a name - inside the shared scan budget and depth cap, judged where its shell starts; no view goes into a file, so a dump there BLOCKS naming `--presence` and `--redacted`, a presence test or the guard's own read runs, and the judging budget grows by 2 a carried character (real scripts measured at about 1, judged at about a second per MB, so the 8MB scan budget fits; a held `X=$(...)`'s later uses are read once per text, `heldUsesOf` - re-split per assignment, a 500KB script took 50s). Bash family only; a script the reader could not read is the cross-project guard's ask (a stated ceiling under `minimal`).
     The read and rm guards cut a command at a subshell's or group's parens too (`groupsAsCuts`, seam delta 1), and the read guard
     judges a here-string into a runtime (`python3 - <<<`, `deno run - <<<`) as a heredoc body, `pwsh -Command "Get-Content f"` included (delta 3). A credential path a runtime BUILDS from `os.homedir()`,
     `process.env.HOME` / `CLAUDE_CONFIG_DIR`, `Path.home()` or `Dir.home` is judged like the literal path, unless the
@@ -1221,6 +1224,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     56 probe rows over two weeks in three projects, none naming a collision; the per-call head reads cost 12-22ms).
     Its `interpreter-write` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16 (622 rows nobody
     read); the denial is cut to the ask and its three options (1,553 to ~600 fixed chars).
+    The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the answer rows every receipt reads could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is denied with no receipt or allowance route (`recordAt`, branch `transcript`); memory, `settings.json`, a Read, a grep and a copy OUT stay open.
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a
     check is never made green by weakening the check: a change to a lint / format / analyzer config that
     ALREADY exists (eslint, prettier, stylelint, biome, `.editorconfig`, a ruleset) is blocked, and in
