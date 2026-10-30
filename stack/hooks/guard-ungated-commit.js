@@ -167,10 +167,120 @@ function commitArgs(args) {
 // `git $(echo commit)` - cannot be judged at all, and reading it as 'not a commit' is what an obfuscation leans on, so it
 // gates like a commit; so does a call the reader left unread (above).
 const commitCall = calls.find((c) => c.sub === 'commit' && !commitArgs(c.argv).flags.has('--dry-run'));
-const opaqueCall = commitCall ? null : calls.find((c) => c.opaque);
+// ---- a commit no `git commit` call of the command spells (audit 2026-10-30 HK-17) ----
+// Three routes landed a commit with no receipt: a runtime spawning `git commit` (`node -e "execSync('git commit -m x')"`,
+// `subprocess.run(['git', 'commit', ...])`, ruby / perl `system`, a backtick), the plumbing pair - `commit-tree` read into
+// `update-ref refs/heads/<b>` (or HEAD), or into a reset / merge / branch / checkout / switch that moves a branch onto it -
+// and `rebase --exec 'git commit ...'`. Each gates as a commit whose set is unread (the whole tree, like `git $C`). Only
+// literal words count: a spawn whose command the script computes (`['git', sub]` with `sub` unbound), a runtime's `git
+// push`, and a commit-tree result carried through a variable into a reset are out of model; `update-ref --stdin` and a
+// ref the shell expands are read as a branch.
+const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix']);
+const isGitWord = (w) => /(?:^|[\\/])git(?:\.exe)?$/i.test(w);
+// does a word list run `git commit` (past git's own options, a dry run excepted)?
+function commitsIn(words) {
+  for (let i = 0; i < words.length; i++) {
+    if (!isGitWord(words[i])) continue;
+    for (let k = i + 1; k < words.length; k++) {
+      const w = words[k];
+      if (GIT_VALUE_OPTS.has(w)) { k++; continue; }
+      if (w.startsWith('-')) continue;
+      if (w === 'commit' && !words.slice(k + 1, k + 40).includes('--dry-run')) return true;
+      break;
+    }
+  }
+  return false;
+}
+function updatesBranch(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '-d') return false;
+    if (a === '--stdin') return true;
+    if (a === '-m') { i++; continue; }
+    if (a.startsWith('-')) continue;
+    return /^(?:HEAD|@)$/.test(a) || a.startsWith('refs/heads/') || a.includes('$');
+  }
+  return false;
+}
+function rebaseExecCommits(argv) {
+  const shellWords = (s) => String(s || '').split(/[\s;&|()'"]+/).filter(Boolean);
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    let cmd = null;
+    if (a === '--exec') cmd = argv[i + 1];
+    else if (a.startsWith('--exec=')) cmd = a.slice(7);
+    else if (/^-[A-Za-z]/.test(a) && !a.startsWith('--')) {
+      for (let k = 1; k < a.length; k++) {
+        if ('sXC'.includes(a[k])) break; // that option takes the rest as its value
+        if (a[k] === 'x') { cmd = k === a.length - 1 ? argv[i + 1] : a.slice(k + 1); break; }
+      }
+    }
+    if (cmd != null && commitsIn(shellWords(cmd))) return true;
+  }
+  return false;
+}
+const MOVES_BRANCH = new Set(['reset', 'merge', 'branch', 'checkout', 'switch']);
+const plumbingCall = commitCall ? null : calls.find((c) => (c.sub === 'update-ref' && updatesBranch(c.argv))
+  || (c.sub === 'rebase' && rebaseExecCommits(c.argv))
+  || (c.sub === 'commit-tree' && calls.some((o) => o !== c && MOVES_BRANCH.has(o.sub) && o.at < c.at && c.at < o.stop)));
+// A runtime's spawn: the call's argument text (a balanced paren, or a paren-less `system "..."` to its statement's end),
+// a backtick / `%x()` / `qx()` in ruby, perl and php, `` $`...` `` in node and bun, a PowerShell or osascript body's own
+// statements. Its words are the string literals' words, a bare name taking the literal the script bound it to.
+const SPAWN_CALL = /\b(?:subprocess\s*\.\s*(?:run|call|check_call|check_output|Popen|getoutput|getstatusoutput)|os\s*\.\s*(?:system|popen|exec\w*|spawn\w*)|Open3\s*\.\s*\w+|IO\s*\.\s*popen|Bun\s*\.\s*spawn(?:Sync)?|Deno\s*\.\s*Command|execSync|execFileSync|spawnSync|execFile|exec|spawn|system|shell_exec|passthru|proc_open|popen|do\s+shell\s+script)(?:\s*(\()|[ \t]+(?=["'[]))/g;
+function spanAfter(body, from, paren) {
+  if (!paren) { const end = body.slice(from).search(/[;\n]/); return body.slice(from, end < 0 ? body.length : from + end); }
+  let depth = 0;
+  let q = null;
+  for (let i = from; i < body.length; i++) {
+    const ch = body[i];
+    if (q) { if (ch === '\\') i++; else if (ch === q) q = null; continue; }
+    if (ch === '"' || ch === "'" || ch === '`') { q = ch; continue; }
+    if (ch === '(') depth++;
+    else if (ch === ')' && --depth === 0) return body.slice(from + 1, i);
+  }
+  return body.slice(from + 1);
+}
+function spanWords(span, body, depth = 0) {
+  const words = [];
+  for (const m of String(span).matchAll(/(["'`])((?:\\.|(?!\1)[^\\])*)\1|([A-Za-z_$][\w$]*)/g)) {
+    if (m[1]) { words.push(...m[2].split(/[\s;&|()]+/).filter(Boolean)); continue; }
+    const bind = depth < 2 && new RegExp(`(?:^|[\\s;{(,])(?:(?:const|let|var|my)\\s+)?\\$?${m[3].replace(/\$/g, '\\$')}\\s*=\\s*([^;\\n]+)`, 'm').exec(body);
+    words.push(...(bind ? spanWords(bind[1], body, depth + 1) : [`\u0000${m[3]}`]));
+  }
+  return words;
+}
+function runtimeCommitAt(text) {
+  let scripts = [];
+  try { scripts = sw.runtimeScripts(text); } catch { return -1; }
+  for (const s of scripts) {
+    const body = String(s.body || '');
+    if (!/\bgit\b/i.test(body) || !body.includes('commit')) continue;
+    if (/^(?:pwsh|powershell)$/.test(s.runtime)) {
+      const statements = body.split(/[;\n|{}]|&&/).map((st) => st.trim().replace(/^&\s*/, '').replace(/['"]/g, '').split(/\s+/));
+      if (statements.some((w) => isGitWord(w[0] || '') && commitsIn(w))) return s.index;
+      continue;
+    }
+    let inStr = () => false;
+    try { inStr = sw.codeStrings(body); } catch { /* every match counts */ }
+    const spans = [];
+    for (const m of body.matchAll(SPAWN_CALL)) if (!inStr(m.index)) spans.push(spanWords(spanAfter(body, m.index + m[0].length - (m[1] ? 1 : 0), !!m[1]), body));
+    if (/^(?:ruby|perl|php)$/.test(s.runtime)) {
+      for (const m of body.matchAll(/`([^`]*)`|%x\(([^)]*)\)|%x\{([^}]*)\}|\bqx\s*(?:\(([^)]*)\)|\{([^}]*)\}|\/([^/]*)\/)/g)) spans.push(String(m.slice(1).find((g) => g != null) || '').split(/\s+/));
+    }
+    if (/^(?:node|nodejs|bun|deno)$/.test(s.runtime)) {
+      for (const m of body.matchAll(/\$`([^`]*)`/g)) spans.push(m[1].split(/\s+/));
+    }
+    if (spans.some(commitsIn)) return s.index;
+  }
+  return -1;
+}
+const runtimeAt = commitCall || plumbingCall ? -1 : runtimeCommitAt(command);
+const opaqueCall = commitCall || plumbingCall ? null : calls.find((c) => c.opaque);
 const commitMatch = commitCall ? { index: commitCall.at, call: commitCall, opaque: false }
-  : opaqueCall ? { index: opaqueCall.at, call: opaqueCall, opaque: true }
-    : gitRead.unreadAt >= 0 ? { index: gitRead.unreadAt, call: null, opaque: true } : null;
+  : plumbingCall ? { index: plumbingCall.at, call: plumbingCall, opaque: true }
+    : opaqueCall ? { index: opaqueCall.at, call: opaqueCall, opaque: true }
+      : runtimeAt >= 0 ? { index: runtimeAt, call: null, opaque: true }
+        : gitRead.unreadAt >= 0 ? { index: gitRead.unreadAt, call: null, opaque: true } : null;
 // The publish half is on by default and switched off per install for a repo whose remote already
 // gates the branch (protection rules, a required review): `guard-ungated-commit:push` in ALFRED_CODE_HOOKS_OFF, or the old
 // ALFRED_CODE_PUSH_GATE=0 for the 2.x line (hook-prelude.js partOff).

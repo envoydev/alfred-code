@@ -5683,3 +5683,34 @@ test('audit 2026-10-30 HK-18: a runtime write, git restoring or removing verbs, 
   passed(edit('package.json', '"version": "1.0.0"', '"version": "1.0.1"'), 'a package.json edit away from its config keys');
   passed(edit('package.json', '"name": "x"', '"name": "x",\n  "eslintConfig": { "rules": {} }'), 'eslintConfig in package.json ranks below .eslintrc.json');
 });
+
+test('audit 2026-10-30 HK-17: a runtime spawning git commit, update-ref on a branch and rebase --exec commit are commits', () => {
+  const dir = cleanRepo();
+  for (const f of ['n1.txt', 'n2.txt', 'n3.txt']) fs.writeFileSync(path.join(dir, f), forty());
+  spawnSync('git', ['-C', dir, 'add', '-A'], { encoding: 'utf8' });
+  for (const c of [
+    `node -e "require('child_process').execSync('git commit -m x')"`,
+    `node -e "require('child_process').spawnSync('git', ['commit', '-m', 'x'])"`,
+    `python3 -c "import subprocess; subprocess.run(['git', 'commit', '-m', 'x'])"`,
+    `python3 - <<'EOF'\nimport os\nos.system('git -C . commit -am x')\nEOF`,
+    `ruby -e 'system("git commit -m x")'`,
+    `perl -e 'system("git", "commit", "-m", "x")'`,
+    'git update-ref refs/heads/main $(git commit-tree HEAD^{tree} -p HEAD -m x)',
+    'git update-ref HEAD abc1234',
+    "git rebase --exec 'git commit --amend --no-edit' HEAD~1",
+    'git rebase -x "git commit --amend -m y" main',
+    'git reset --soft $(git commit-tree HEAD^{tree} -p HEAD -m x)',
+    `node -e "const cp = require('child_process'); const cmd = 'git commit -qm x'; cp.execSync(cmd)"`,
+  ]) assert.equal(gateIn(dir, c), 2, `must gate as a commit: ${c}`);
+  for (const c of [
+    `node -e "console.log('git commit is a verb')"`,
+    `node -e "require('child_process').execSync('git status')"`,
+    `python3 -c "import subprocess; subprocess.run(['git', 'log', '--grep', 'commit'])"`,
+    'git commit-tree HEAD^{tree} -p HEAD -m x',
+    'git update-ref refs/notes/x abc1234',
+    'git update-ref -d refs/heads/old',
+    "git rebase --exec 'npm test' main",
+    `node -e "require('child_process').execSync('git commit --dry-run')"`,
+    `ruby -e 'puts "git commit"; system("git status")'`,
+  ]) assert.equal(gateIn(dir, c), 0, `must allow: ${c}`);
+});
