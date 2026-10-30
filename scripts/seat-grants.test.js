@@ -71,26 +71,32 @@ test('the handoff bus: every seat that stores or reads a note runs handoff.js th
         assert.match(body(s), /handoff\.js list <feature>\/<contract_version>\/<seat>`/, s);
 });
 
-// --- I14: the desktop observe seats --------------------------------------------------------------------------
-// The ruling ('Gate + observe grants'): the WPF and WinForms verifiers and the evidence gatherer observe a running
-// desktop app, they never drive it - now through the `desktop` tools their start line orders, which name none until a
-// seat may hold a server again; a check nothing observed is reported UNVERIFIED, never passed.
-const DESKTOP_SEATS = ['evidence-gatherer', 'winforms-verifier', 'wpf-verifier'];
+// --- audit 2026-10-30 AG-02 (the ruling): no seat names a browser, desktop or mobile tool --------------------------
+// Every meta/seat-tools.json row grants built-ins only, and the start line names a seat only the jobs its grant reaches
+// (capture-preferences tools.js seatReach), so a branch that drove or read those tools could never fire. The six seats
+// below keep only their fallback - the project's own suite or the app's output, else the check reported UNVERIFIED with
+// the reason, pinned under optional-mcp-absence - and devops-verifier lost its MCP pipeline read. A user-registered UI server for seats is the planned seat-tools phase 4.
+// (Replaces I14 / AG08 / I11, which held the job cites.)
+const UI_SEATS = ['evidence-gatherer', 'integration-reviewer', 'ionic-angular-verifier', 'web-angular-verifier', 'winforms-verifier', 'wpf-verifier'];
 
-test('I14: each observe seat describes the desktop tools by job, observes only, with the registered absence clause', () =>
+test('AG-02: no seat sends itself to a browser, desktop or mobile tool, or an MCP read', () =>
+{
+    const hits = seats.filter((s) => /the `(browser|desktop|mobile)` tools your start line orders|(browser|desktop|mobile) tools (above|below)|an MCP (job list|pipeline read)|`(windows|macos|mobile)-control`|browser_(wait_for|snapshot)|appium_|playwright-/
+        .test(squash(body(s))));
+    assert.deepStrictEqual(hits, []);
+});
+
+test('AG-02: each seat that had a UI branch says it holds no such tool and keeps its pinned absence clause', () =>
 {
     const pinned = copiesOf('optional-mcp-absence');
     const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-graph.json'), 'utf8'));
-    for (const seat of DESKTOP_SEATS)
+    for (const seat of UI_SEATS)
     {
-        const text = squash(body(seat));
-        assert.doesNotMatch(text, /`(windows|macos)-control`|desktop MCP|`(Snapshot|WaitFor|Wait|Screenshot)`/, `${seat}: described by job, never by server`);
-        assert.match(text, /the `desktop` tools your start line orders, read-only ones only/, `${seat}: the job cite`);
-        assert.match(text, /you never click or type/i, `${seat}: observe-only`);
-        const site = pinned.find((c) => c.file === `stack/agents/${seat}.md` && /desktop|view|form/.test(c.marker));
-        assert.ok(site, `${seat}: a desktop absence clause pinned under optional-mcp-absence`);
-        assert.ok(squash(read(seat)).includes(squash(site.marker)), `${seat}: the pinned marker is in the body`);
-        assert.deepStrictEqual((graph.agents[seat].mcps || []).filter((m) => /desktop|control/.test(m)), [], `${seat}: no graph edge to a desktop server`);
+        assert.match(squash(body(seat)), /This seat holds no (browser|desktop|mobile)/, `${seat}: says what it cannot hold`);
+        const sites = pinned.filter((c) => c.file === `stack/agents/${seat}.md`);
+        assert.ok(sites.length, `${seat}: an absence clause pinned under optional-mcp-absence`);
+        for (const site of sites) assert.ok(squash(read(seat)).includes(squash(site.marker)), `${seat}: the pinned marker '${site.marker}' is in the body`);
+        assert.deepStrictEqual(graph.agents[seat].mcps || [], [], `${seat}: no graph edge to a server`);
     }
 });
 
@@ -105,41 +111,6 @@ test('I14: winforms-verifier runs the app the way wpf-verifier does - bounded, a
     {
         assert.ok(files.includes(`stack/agents/${seat}.md`), `${seat}: a verifier-left-running-line site`);
         assert.match(squash(read(seat)), /a literal `left_running:` line/, `${seat}: the footer line`);
-    }
-});
-
-// --- audit 2026-10-14 AG08 (the user's ruling): the mobile observe seats ------------------------------------------
-const MOBILE_SEATS = ['evidence-gatherer', 'ionic-angular-verifier'];
-
-test('AG08: each mobile observe seat describes the mobile tools by job, observes only, with the absence clause', () =>
-{
-    const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-graph.json'), 'utf8'));
-    for (const seat of MOBILE_SEATS)
-    {
-        const text = squash(body(seat));
-        assert.doesNotMatch(text, /`mobile-control`|mobile MCP|appium_/, `${seat}: described by job, never by server`);
-        assert.match(text, /the `mobile` tools your start line orders, read-only ones only, against a device session already open/, `${seat}: the job cite`);
-        assert.match(text, /You observe, you never tap, type or open a session/, `${seat}: observe-only`);
-        assert.match(text, /A project may have no mobile tools/, `${seat}: the absence clause`);
-        assert.ok(!(graph.agents[seat].mcps || []).includes('mobile-control'), `${seat}: no graph edge to a mobile server`);
-    }
-    assert.match(squash(body('evidence-gatherer')), /say plainly that the device evidence was not obtainable here/);
-    assert.match(squash(body('ionic-angular-verifier')), /a native screen nothing observed is never a silent pass/);
-});
-
-// --- I11, re-read: the browser seats ---------------------------------------------------------------------------
-// The four seats that drive a browser name the `browser` tools their start line orders, never a hand-rolled script,
-// and report a path nothing drove as UNVERIFIED.
-const BROWSER_SEATS = ['evidence-gatherer', 'integration-reviewer', 'ionic-angular-verifier', 'web-angular-verifier'];
-
-test('I11: the four browser seats describe the browser tools by job, with the absence clause', () =>
-{
-    for (const seat of BROWSER_SEATS)
-    {
-        const text = squash(body(seat));
-        assert.doesNotMatch(text, /browser-automation MCP|MCP that drives a real browser|browser_(wait_for|snapshot)|playwright-/, seat);
-        assert.match(text, /the `browser` tools your start line orders/, seat);
-        assert.match(text, /A project may have no browser tools|has browser tools only where it wants them/, seat);
     }
 });
 

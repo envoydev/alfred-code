@@ -3712,7 +3712,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "A browser, desktop or mobile tool (the stack ships none since 2026-10-24; a seat names each by its job, the tools its start line orders) is simply absent from a seat's tools when the user registered none, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
+      "_note": "No seat holds a browser, desktop or mobile tool: the stack ships none since 2026-10-24, every meta/seat-tools.json row grants built-ins only, and the start line names a seat only the jobs its grant reaches - so since audit 2026-10-30 AG-02 a seat names no such tool at all (a user-registered UI server for seats is the planned seat-tools phase 4, which restores the drive branches), and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. When phase 4 brings a server back, the seat names it only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -3724,11 +3724,7 @@
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the browser evidence was not obtainable here"
-        },
-        {
-          "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the desktop evidence was not obtainable here"
+          "marker": "says plainly which of the browser, desktop or device evidence was not obtainable here"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
@@ -3750,10 +3746,7 @@
           "file": "stack/agents/wpf-verifier.md",
           "marker": "report the view checks as UNVERIFIED with the reason"
         },
-        {
-          "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the device evidence was not obtainable here"
-        },
+
         {
           "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "a native screen nothing observed is never a silent pass"
