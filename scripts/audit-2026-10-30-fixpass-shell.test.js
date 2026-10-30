@@ -80,3 +80,34 @@ test('FB 1: a double-quoted carried line is judged as bash hands it on - its \\"
   assert.strictEqual(fire(dir, runner('"npm test"')).v, 0, 'a safe line runs');
 });
 
+test('FB 2: every runner spelling is carried - a variable script, a node option with a value - and past the cap it blocks', () => {
+  const texts = (c) => shell.carriedScripts(c).filter((s) => s.runner).map((s) => s.text);
+  assert.deepStrictEqual(texts(`G="${GUARD}"; node "$G" --with-sensitive -- "rm -rf ~"`), ['rm -rf ~'], 'the script through a variable');
+  assert.deepStrictEqual(texts(`node "$(ls -d ${GUARD} | tail -1)" --with-sensitive -- "cat .env"`), ['cat .env'], 'the script through a substitution');
+  for (const opt of ['--disable-warning ExperimentalWarning', '--report-dir /tmp', '--openssl-config /dev/null', '--stack-size 900'])
+    assert.deepStrictEqual(texts(`node ${opt} "${GUARD}" --with-sensitive -- "rm -rf ~"`), ['rm -rf ~'], `a node option with a separate value: ${opt}`);
+  assert.deepStrictEqual(texts(`node -e "1" x --with-sensitive -- "y"`), [], 'an inline script is the runtime reader\'s');
+  assert.deepStrictEqual(texts('node --with-sensitive -- "y"'), [], 'no script word: node itself rejects the flag');
+  const dir = project('fb2-');
+  for (const [c, why] of [
+    [`G="${GUARD}"; node "$G" --with-sensitive -- "rm -rf ~"`, 'a variable script, an rm of home'],
+    [`G="${GUARD}"; node "$G" --with-sensitive -- "cat .env"`, 'a variable script, a raw credential read'],
+    [`node --disable-warning ExperimentalWarning "${GUARD}" --with-sensitive -- "rm -rf ~"`, '--disable-warning X'],
+    [`node --report-dir ${TMP} "${GUARD}" --with-sensitive -- "rm -rf ~"`, '--report-dir X'],
+    [`node --openssl-config /dev/null "${GUARD}" --with-sensitive -- "cat .env"`, '--openssl-config X'],
+  ]) assert.strictEqual(fire(dir, c).v, 2, `${why}: ${c}`);
+  // the cap: four lines are judged; a fifth is never let through unjudged
+  const calls = (n, last) => Array.from({ length: n }, (_, i) => runner(i === n - 1 && last ? last : '"true"')).join('; ');
+  assert.strictEqual(fire(dir, calls(5, '"cat .env"')).v, 2, 'four true lines then cat .env');
+  const over = fire(dir, calls(5));
+  assert.strictEqual(over.v, 2, 'five lines: one past the cap blocks');
+  assert.match(over.out, /more than 4/, 'the denial names the cap');
+  assert.strictEqual(fire(dir, calls(4)).v, 0, 'four lines: at the cap, judged and run');
+  assert.strictEqual(fire(dir, calls(3)).v, 0, 'three lines: under the cap');
+  // a runner nested past the carried-script depth is never let through unjudged
+  const wrap = (s) => `sh -c '${s.replace(/'/g, "'\\''")}'`;
+  assert.strictEqual(fire(dir, wrap(wrap(wrap(wrap(runner('"true"')))))).v, 2, 'a runner four shells deep');
+  assert.strictEqual(fire(dir, wrap(runner('"true"'))).v, 0, 'a runner one shell deep runs');
+  assert.strictEqual(fire(dir, runner('"npm test"')).v, 0, 'one legitimate call runs');
+});
+

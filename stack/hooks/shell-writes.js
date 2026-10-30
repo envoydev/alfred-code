@@ -1954,7 +1954,6 @@ function writtenScripts(P, raw, heredocs, anchor, run) {
 // the runner's own rule. The runner masks only the store's exact values in what the line prints; it never made the line
 // safe. Returns { text, at, end, mapped } for the call `c`, or null.
 const RUNNER_FILE = 'guard-secret-value.js';
-const NODE_VALUE_OPTS = new Set(['-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--input-type', '--title', '--conditions', '-C']);
 const runnerQuote = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`);
 // A word whose quoted text IS what the carried shell runs, so a position in it maps back to the command: a single-quoted
 // word, or a double-quoted one holding none of bash's double-quote escapes. Bash undoes `\"`, `\$`, `\\`, a backslashed
@@ -1964,17 +1963,20 @@ const runnerQuote = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g,
 const DQ_ESCAPE = /\\[$`"\\\n]/;
 const verbatimWord = (t, P) => Boolean(t) && (t.raw[0] === "'" || (t.raw[0] === '"' && !DQ_ESCAPE.test(t.raw)))
   && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
+// The script word is the one right before `--with-sensitive`, whatever its spelling: node's own options may take a
+// separate value (`--disable-warning X`, `--report-dir X`, `--openssl-config X` - no table of them stays complete), and
+// the script may be a variable or a substitution (`node "$G"`, `node "$(ls ... | tail -1)"`) - each passed unjudged
+// behind a basename test (final review 2026-10-30, FB). Another script given `--with-sensitive` is judged too: a line
+// judged that never ran through a shell costs a block, a runner missed ran its line unread.
 function runnerLine(c, P) {
   if (c.name !== 'node' && c.name !== 'nodejs') return null;
   const argv = c.argv;
-  let k = 0;
-  for (; k < argv.length && argv[k].startsWith('-'); k++) {
-    if (/^-(?:e|p|-eval|-print)$/.test(argv[k])) return null; // an inline script is the runtime reader's, never this runner
-    if (NODE_VALUE_OPTS.has(argv[k])) k++;
+  let k = -1;
+  for (let j = 0; j + 1 < argv.length; j++) {
+    if (/^-(?:e|p|pe|-eval|-print)$|^--(?:eval|print)=/.test(argv[j])) return null; // an inline script is the runtime reader's
+    if (argv[j + 1] === '--with-sensitive' && !/^-./.test(argv[j])) { k = j; break; }
   }
-  if (k >= argv.length || argv[k + 1] !== '--with-sensitive') return null;
-  const file = String(argv[k]).replace(/\\/g, '/');
-  if ((FOLDS_CASE ? file.toLowerCase() : file).split('/').pop() !== RUNNER_FILE) return null;
+  if (k < 0) return null;
   let from = k + 2;
   if (argv[from] === '--') from++;
   const words = argv.slice(from);
@@ -1986,13 +1988,17 @@ function runnerLine(c, P) {
   return verbatimWord(t, P) ? { text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true } : { text: words[0], mapped: false };
 }
 // sensitiveRuns(raw, opts) - the command lines a command hands the sensitive runner, through every carried script (3 deep):
-// [{ text, cwd }]. The shell dispatcher judges each one again with the guards that keep a reader of their own.
+// [{ text, cwd }]. The shell dispatcher judges each one again with the guards that keep a reader of their own. The array's
+// `unread` is true when a text naming the runner was left unwalked - past the depth or the scan budget - so the caller
+// judges conservatively (final review 2026-10-30, FB: nothing stops judging silently at a count).
 function sensitiveRuns(raw, opts = {}) {
   const run = opts.run || newRun(opts);
   const out = [];
+  out.unread = false;
   const walk = (text, cwd, depth) => {
     // a line read from no file names the runner in its own text; one reading script files is walked whole
-    if (depth > 3 || run.budget.over() || (!opts.files && !/with-sensitive/.test(text))) return;
+    if (!opts.files && !/with-sensitive/.test(text)) return;
+    if (depth > 3 || run.budget.over()) { if (/with-sensitive/.test(text)) out.unread = true; return; }
     for (const sc of carriedScripts(text, { cwd: cwd || undefined, files: opts.files, run })) {
       if (sc.runner) out.push({ text: sc.text, cwd: sc.cwd || cwd || null });
       walk(sc.text, sc.cwd || cwd, depth + 1);

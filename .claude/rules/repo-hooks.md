@@ -180,6 +180,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   A double-quoted carried word holding one of bash's double-quote escapes (`\"`, `\$`, `\\`, a backslashed backtick or
   newline) is read DEQUOTED, as bash hands it on - the runner's line and a `bash -c "..."` string alike (final review
   2026-10-30 FB: `-- "bash -c \"rm -rf ~\""` and `bash -c "rm -rf \"\$HOME\""` were judged with every escape kept).
+  The runner's script is the word right before `--with-sensitive`, never matched by name (`node "$G"`, `node
+  --disable-warning X <guard>` passed a basename test), and the dispatcher judges at most `RUNNER_LINES_MAX` (4) lines: a
+  command handing it more, or naming the runner past the carried-script depth or the scan budget, blocks.
   TWO SHARED CONTRACTS (audit 2026-10-30 a0, read by the rm, cross-project, read and secret guards): `shellVars`, the one
   `$NAME` / `${NAME}` / `$HOME` / `$PWD` / `~` expander - statement assignments followed within the command, a followed
   `cd` moving `$PWD`, prefix assignments and loop or read variables left unknown - and `PRINT_VERBS` / `printedFiles`,
