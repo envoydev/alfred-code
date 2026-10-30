@@ -194,8 +194,8 @@ test(`session start: the store's KEYS and the run that uses them, never a value;
     const said = context(started(dir));
     assert.match(said, new RegExp(`^Sensitive data: \\.alfred/${RE(FILE)} holds API_TOKEN, DB_HOST, PORT - `));
     assert.match(said, /--with-sensitive -- "<command line>"/);
-    // audit 2026-10-14 PL2: the browser takes the store as its --secrets file, so a login types the KEY name
-    assert.match(said, /In the browser, type a KEY name in browser_type \/ browser_fill_form: the browser server fills its value and shows it as <secret>KEY<\/secret>\./);
+    // audit 2026-10-30 HK-20: no server gets the store since 2.10.1, so the line no longer tells the model a browser fills a KEY
+    assert.doesNotMatch(said, /browser_type|browser_fill_form|browser server fills/, 'the stale browser sentence');
     for (const value of [TOKEN, 'db.internal']) assert.ok(!said.includes(value), said);
     for (const [name, text] of [['start-none', null], ['start-empty', ''], ['start-garbage', '\u0000\u0001 not a dotenv {"a":1}\n']])
     {

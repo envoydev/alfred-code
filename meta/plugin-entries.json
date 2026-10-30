@@ -147,6 +147,16 @@
             ]
           },
           {
+            "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files)$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "Task|Agent|SendMessage",
             "hooks": [
               {

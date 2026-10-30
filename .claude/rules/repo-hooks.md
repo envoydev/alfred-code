@@ -439,7 +439,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + a Playwright server's `browser_file_upload` under any
     registration name (N6), whose
     `tool_input.paths` each take the Read judgement - a page asking for an upload got any workspace file, audit 2026-10-14
-    PL3) - credentials are read for PRESENCE, never
+    PL3 - + a filesystem server's `read_text_file` / `read_file` / `read_multiple_files` under any registration name, whose
+    `path` (a `head` judged as a window from line 1) or `paths` take it too - the user's own server returned a `.env` unjudged,
+    audit 2026-10-30 HK-26, one more node start on those calls only) - credentials are read for PRESENCE, never
     value. A leading `NAME=value` word and every `$(...)` / backtick body are judged as commands of their own, quote-
     and nesting-aware (audit 2026-10-20 C17: the source protocol's own `MARK="...$(printf ... | ...)"` read as a
     changing step); a count or a facts-only print (a length, a boolean, a type, a label) runs as written, never one routed
@@ -628,7 +630,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     against accidents, never a wall against a deliberate read (the session-start line says so and forbids the transform); the exit code is the command's. SessionStart (its own manifest row, silent with no store, an
     empty or an unparseable one) says the KEYS and that command line, plus a warning when `git check-ignore` exits 1 (not
     ignored, or tracked). No server gets a value: the stack ships none since 2.10.1 (the browser and mobile launchers that read the store
-    left with them); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
+    left with them, and the line's 'type a KEY name in the browser' sentence after them - audit 2026-10-30 HK-20); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
     through its own parser, `guard-sensitive-data.test.js` holding both to one fixture.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent|SendMessage`, `SubagentStart`, `SubagentStop`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without its plan's gate file (written on explicit approval or an AUTO waiver) -

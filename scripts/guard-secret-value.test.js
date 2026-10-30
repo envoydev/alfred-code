@@ -3007,3 +3007,41 @@ test('HK-07: a credential file past 512KB is judged by its first 512KB, and a Re
   fs.renameSync(clean, path.join(cleanTree, 'clean.log'));
   assert.strictEqual(grepAt({ pattern: 'started', path: cleanTree }), 0, 'Grep content over a tree holding a big clean file');
 });
+
+// Audit 2026-10-30 HK-26: a filesystem server the user registers reads a file by `path` (read_text_file, the older
+// read_file) or `paths` (read_multiple_files) - the server's README, 2026-10-30 - and no guard judged it. Each path takes
+// the Read judgement, matched by the tool's name under any registration; a listing or a clean file passes.
+test('HK-26: a filesystem server read of a credential file is refused, a clean one passes, under any registration name', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'hk26-'));
+  const envFile = path.join(dir, '.env');
+  fs.writeFileSync(envFile, `API_TOKEN=${FAKE_TOKEN}\n`);
+  const readme = path.join(dir, 'README.md');
+  fs.writeFileSync(readme, '# readme\n');
+  fs.mkdirSync(path.join(dir, '.alfred'));
+  const store = path.join(dir, '.alfred', '.secrets');
+  fs.writeFileSync(store, 'DB_HOST=db.internal\n');
+  const call = (tool, input) => run({ tool_name: tool, tool_input: input, cwd: dir, session_id: 'fs' }, { CLAUDE_PROJECT_DIR: dir });
+  const names = ['mcp__filesystem__read_text_file', 'mcp__plugin_fs_fs__read_text_file', 'mcp__files__read_file']; // mcp-fixture
+  for (const tool of names) {
+    const r = call(tool, { path: envFile });
+    assert.strictEqual(r.status, 2, `${tool}: a credential .env`);
+    assert.match(r.stderr, /Blocked: read_(?:text_)?file of .*\.env, which holds a credential under `API_TOKEN`/);
+    assert.strictEqual(call(tool, { path: store }).status, 2, `${tool}: the sensitive-data store`);
+    assert.strictEqual(call(tool, { path: readme }).status, 0, `${tool}: a clean file`);
+    assert.strictEqual(call(tool, { path: '.env' }).status, 2, `${tool}: a relative path, resolved like a Read's`);
+    assert.strictEqual(call(tool, { path: envFile, head: 1 }).status, 2, `${tool}: head of a credential file`);
+  }
+  const many = 'mcp__filesystem__read_multiple_files'; // mcp-fixture
+  assert.strictEqual(call(many, { paths: [readme, envFile] }).status, 2, 'any one path in the list');
+  assert.strictEqual(call(many, { paths: [readme] }).status, 0, 'a clean list');
+  assert.strictEqual(call(many, {}).status, 0, 'paths omitted');
+  assert.strictEqual(call('mcp__filesystem__list_directory', { path: dir }).status, 0, 'a listing is not judged here'); // mcp-fixture
+  assert.strictEqual(call('mcp__filesystem__get_file_info', { path: envFile }).status, 0, 'file facts are not judged here'); // mcp-fixture
+  // the manifest wires the guard on those three tools, under any server name, and on no other
+  const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
+    .find((h) => h.file === 'guard-secret-value.js' && /read_text_file/.test(h.matcher));
+  assert.ok(row, 'a manifest row');
+  const re = new RegExp(row.matcher);
+  for (const tool of [...names, many]) assert.ok(re.test(tool), tool);
+  for (const tool of ['mcp__filesystem__list_directory', 'mcp__filesystem__read_text_file_x', 'read_text_file']) assert.ok(!re.test(tool), tool); // mcp-fixture
+});

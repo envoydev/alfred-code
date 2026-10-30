@@ -1562,7 +1562,7 @@ if (payload.hook_event_name === 'SessionStart') {
       }
     } catch { /* no git: nothing to commit it with */ }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
-      `Sensitive data: ${holds} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output. In the browser, type a KEY name in browser_type / browser_fill_form: the browser server fills its value and shows it as <secret>KEY</secret>.${exposed}` } }));
+      `Sensitive data: ${holds} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output.${exposed}` } }));
   }
   process.exit(0);
 }
@@ -4385,6 +4385,26 @@ if (/^mcp__.+__browser_file_upload$/.test(String(payload.tool_name || ''))) {
     if (key) {
       global.BLOCK_DETAIL = { branch: 'file-upload', matched: pathMod.basename(file).slice(0, 40) };
       block(`Blocked: upload of ${file} to a browser page - it holds a credential under \`${key}\`, and the page gets every byte.\n` + presenceHint(file));
+    }
+  }
+}
+// The FIFTH read route (audit 2026-10-30 HK-26): a filesystem server the user registers returns a file's text to the model
+// - `read_text_file` (and the older `read_file`) by `path`, with an optional `head` line count, and `read_multiple_files` by
+// `paths` (the server's README). Each path takes the Read judgement, a `head` as a window from line 1; matched by the tool's
+// name under any registration, since the stack ships no server. A listing or a file's facts print no content.
+const FS_READ_TOOL = /^mcp__.+__(?:read_file|read_text_file|read_multiple_files)$/;
+if (FS_READ_TOOL.test(String(payload.tool_name || ''))) {
+  const many = /__read_multiple_files$/.test(String(payload.tool_name));
+  const paths = many ? (Array.isArray(input.paths) ? input.paths : []) : [input.path];
+  const head = Number(input.head);
+  const window = !many && Number.isInteger(head) && head > 0 ? { offset: 1, limit: head } : null;
+  for (const p of paths.slice(0, 50)) {
+    const file = resolveFile(String(p || ''));
+    const key = file && secretInUnlessAllowed(file, window);
+    if (key) {
+      global.BLOCK_DETAIL = { branch: 'mcp-file-read', matched: pathMod.basename(file).slice(0, 40) };
+      block(`Blocked: ${String(payload.tool_name).replace(/^mcp__.+__/, '')} of ${file}, which holds a credential under \`${key}\` - a`
+        + ` filesystem server returns the file's text to the chat, the same value read a Read is refused.\n` + presenceHint(file));
     }
   }
 }
