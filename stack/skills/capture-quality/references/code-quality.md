@@ -22,7 +22,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 
 ## Execution modes
 
-**Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces CODE-ASSESSMENT.md, and a conversational 'is this code any good?' can match this skill. So unless a mode word follows the topic (a calling flow started this run) or capture-quality's chain ask already answered it, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
+**Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces CODE-ASSESSMENT.md, and a description match must not start that unasked. So unless a mode word follows the topic (a calling flow started this run) or capture-quality's chain ask already answered it, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
 
 ```ask
 Judge the code against its rules and replace CODE-ASSESSMENT.md?

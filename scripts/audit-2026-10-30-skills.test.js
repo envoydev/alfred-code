@@ -246,3 +246,43 @@ test('SKF-24: no skill names a shipped rule by its retired baseline name', () =>
     for (const f of walk(dir))
         assert.doesNotMatch(flat(fs.readFileSync(f, 'utf8')), /\b(interaction|quality-gates|security|navigation|preferences|docs-root) baseline\b/, path.relative(ROOT, f));
 });
+
+test('SKC-02: a lone architecture-quality run reads the state block its lighter path keys on', () =>
+{
+    const one = flat(section(skill('capture-quality'), '2\\. One part'));
+    assert.match(one, /architecture-quality: read `references\/architecture-quality\.md` and follow it\. Alone, it runs section 3 step 1's state block first/);
+    assert.match(flat(read('stack/skills/capture-quality/references/architecture-quality.md')), /when the state script \(capture-quality's chain block\) reports `architecture-quality: current`/);
+});
+
+test('SKC-03: capture-quality no longer promises the conversational code-quality route', () =>
+{
+    const t = flat(skill('capture-quality'));
+    assert.doesNotMatch(t, /description match on 'how good is this code\?'/);
+    assert.doesNotMatch(t, /'is this code any good\?' - can match|'is this code any good\?', 'what is our coverage\?'/);
+    assert.match(t, /A bare 'is this code any good\?' measured no load \(0 of 10\)/);
+    assert.doesNotMatch(flat(read('stack/skills/capture-quality/references/code-quality.md')), /'is this code any good\?' can match this skill/);
+});
+
+// SKC-04 + SKC-05: every reference a part reads at load time is named under its part line in the router, so a write
+// contract is one hop from the SKILL.md, never two.
+const PART_REFS = {
+    'capture-awareness': ['project-code-style-doc-shape', 'architecture-doc-shapes', 'architecture-hazards', 'architecture-vocabulary-roles', 'architecture-report-fields'],
+    'capture-quality': ['architecture-quality-doc-shape', 'code-quality-doc-shape', 'test-coverage-quality-weak-points'],
+};
+test('SKC-04/05: the capture routers name each part\'s load-time references', () =>
+{
+    for (const [name, refs] of Object.entries(PART_REFS))
+    {
+        const one = section(skill(name), '2\\. One part');
+        for (const r of refs)
+        {
+            assert.ok(fs.existsSync(path.join(ROOT, `stack/skills/${name}/references/${r}.md`)), `${name}/${r}.md exists`);
+            assert.match(one, new RegExp(`^  - \`references/${r}\\.md\` - .+, read (before|at) [A-Z]+\\.$`, 'm'), `${name}: ${r} under its part line`);
+        }
+    }
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md')), 'the 5-line coverage doc shape is folded into its part');
+    const step5 = flat(section(read('stack/skills/capture-quality/references/test-coverage-quality.md').replace(/^### /gm, '## '), '5\\. WRITE - reconcile both artifacts'));
+    assert.match(step5, /a first-line stamp `Captured: <branch>@<short-sha>, <YYYY-MM-DD>`/);
+    assert.match(step5, /Put a `## Resume` section right under the stamp/);
+    assert.match(step5, /never a per-claim edit stream/);
+});

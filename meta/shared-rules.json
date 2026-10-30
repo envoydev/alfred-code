@@ -1272,7 +1272,7 @@
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         },
         {
@@ -2334,7 +2334,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "never a per-claim edit stream"
         }
       ]

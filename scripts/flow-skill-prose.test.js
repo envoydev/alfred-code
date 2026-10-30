@@ -140,7 +140,7 @@ test('M89: the coverage capture, the coverage loop and the checkpoint keep their
     // The coverage capture is capture-quality's test-coverage-quality part: its run files and appendix carry the part's name.
     const cases = {
         'capture-quality': {
-            run: ['references/test-coverage-quality.md', 'references/test-coverage-quality-doc-shape.md'],
+            run: ['references/test-coverage-quality.md'],
             evidence: 'test-coverage-quality-evidence.md', pointer: 'references/test-coverage-quality.md',
             stories: [/half its cost idling/, /Docker-handling/, /41GB/, /951 lines/, /24 serial edits/],
         },

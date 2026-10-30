@@ -129,10 +129,15 @@ written there:
 - project: read `references/project.md` and follow it.
 - related-projects: read `references/related-projects.md` and follow it.
 - project-code-style: read `references/project-code-style.md` and follow it.
+  - `references/project-code-style-doc-shape.md` - the section format and write mechanics, read before MERGE.
 - architecture: read `references/architecture.md` and follow it.
+  - `references/architecture-doc-shapes.md` - the map's shape and write protocol, read before AGGREGATE.
+  - `references/architecture-hazards.md` - the stack-keyed hazard catalog, read before AGGREGATE.
+  - `references/architecture-vocabulary-roles.md` - what the vocabulary step loads, read at AGGREGATE.
+  - `references/architecture-report-fields.md` - what each close field means, read at REPORT.
 - agents: read `references/agents.md` and follow it.
 
-Then the close (section 5).
+Each part's contract file is read in full at its step, never from the part's mention alone. Then the close (section 5).
 
 ## 3. The chain
 
