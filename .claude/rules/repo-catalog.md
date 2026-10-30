@@ -101,7 +101,9 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   every orchestrator routes as a seat death - one scoped re-dispatch, then BLOCKED to the user, pinned as
   `seat-statusless-return`): implementers 250 (max seen 116), verifiers
   350 (152), `architecture-analyzer` 100 (30), and the four resolvers the implementers' 250 (one run seen) since an
-  until-green loop is the runaway the cap is for; every other seat had too few runs, so none. Lint check 15d fails a
+  until-green loop is the runaway the cap is for; `code-quality-analyzer` 150 (max 75 over 119 runs, re-measured
+  2026-10-30, audit AG-06) and `integration-reviewer` the verifiers' 350 by kind (no run yet, the widest gate); every
+  other seat had too few runs, so none. Lint check 15d fails a
   seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`capture-awareness`'s architecture part writes `awareness/ARCHITECTURE-AWARENESS.md` and its line in
   `alfred-awareness.md` - 3.5.0 took the map and code-style captures in as parts; the findings go to `capture-quality`'s architecture-quality part

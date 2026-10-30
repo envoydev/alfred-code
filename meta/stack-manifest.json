@@ -481,7 +481,7 @@
     },
     {
       "file": "issue-diagnoser-ci.md",
-      "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis through the forge tool the session line names (gh, glab, an MCP pipeline read) - categorize, local repro, route"
+      "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis through the forge tool the session line names (gh, glab) - categorize, local repro, route"
     },
     {
       "file": "issue-diagnoser-runtime.md",

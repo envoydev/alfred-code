@@ -133,3 +133,32 @@ test('RU-19: the AGENTS template names the awareness capture, no hand-filled rou
     assert.doesNotMatch(text, /hand-filled routing list/);
     assert.ok(JSON.parse(read('meta/recommendations.json')).always.skills.includes('capture-awareness'));
 });
+
+// AG-06 (integration, 2026-10-30): the M59 rule measured again over the local subagent transcripts - code-quality-analyzer
+// 119 runs, max 75 turns, so 150; integration-reviewer, the widest gate, had no run, so it takes the verifiers' 350 by
+// kind, as the resolvers took the implementers' 250 on one run.
+test('AG-06: code-quality-analyzer and integration-reviewer carry a runaway turn cap', () =>
+{
+    const cap = (seat) => Number((read(`stack/agents/${seat}.md`).match(/^maxTurns:\s*(\d+)\s*$/m) || [])[1]);
+    assert.strictEqual(cap('code-quality-analyzer'), 150);
+    assert.strictEqual(cap('integration-reviewer'), 350);
+    const html = read('docs/alfred-code.html');
+    for (const [seat, n] of [['code-quality-analyzer', 150], ['integration-reviewer', 350]])
+        assert.match(html, new RegExp(`\\["${seat}",[^\\n]*, max ${n} turns`), `${seat}'s inventory row names its cap`);
+});
+
+// AG-05 / RU-16 (integration): the inventory page and the manifest note follow the seat and rule files T5 changed.
+test('AG-05 / RU-16: the inventory page and the manifest follow the forge-neutral CI seats and the router globs', () =>
+{
+    const html = read('docs/alfred-code.html');
+    for (const name of ['issue-diagnoser-ci', 'issue-signatures-ci', 'evidence-gatherer'])
+    {
+        const row = html.split('\n').filter((l) => l.includes(`${name}<span`) || l.includes(`["${name}"`)).join('\n');
+        assert.ok(row, `${name} has a row`);
+        assert.doesNotMatch(row, /via gh\b/, `${name}'s row is forge-neutral`);
+    }
+    const note = JSON.parse(read('meta/stack-manifest.json')).agents.find((a) => a.file === 'issue-diagnoser-ci.md').note;
+    assert.doesNotMatch(note, /MCP pipeline read/, 'a seat reaches no server');
+    const globs = JSON.parse(/^paths:\s*(\[.*\])\s*$/m.exec(read('stack/rules/angular-repair-agents.md'))[1]);
+    assert.ok(html.includes(`["angular-repair-agents", "${globs.join(',')}"`), 'the rules table lists the router globs');
+});

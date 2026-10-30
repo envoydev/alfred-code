@@ -4,6 +4,7 @@ description: "Use as the mandatory final gate before commit on cross-domain work
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: sonnet
 effort: xhigh
+maxTurns: 350
 color: red
 ---
 
