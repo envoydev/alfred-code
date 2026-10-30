@@ -471,7 +471,8 @@ function autoStampLive(input, env)
 //   not older than the transcript (a birthtime equal to the ctime is a filesystem's fallback, unknown) and, where the call
 //   names its session, carrying a `session: <id>` line naming it (HK-16; the secret guard's rule since audit 2026-10-08).
 // - receiptAnswered: for the four SECURITY receipts (SECRET-READ, DISCARD, DESKTOP-EXEC, CROSS-WRITE) the transcript must
-//   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label, and
+//   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label - the
+//   result of an AskUserQuestion call in this transcript, never an `answers`-shaped result of another tool (FA-4) - and
 //   given while auto-run was off - judged at the answer's place: a typed family command whose leading run turns auto-run
 //   on (modeFlags) puts every later answer under auto-run until a typed off-flag, so deleting the stamp or typing the
 //   off-flag afterwards opens nothing. The stamp and the `auto-answer` ledger row never decide it. A denial raised in a
@@ -482,8 +483,9 @@ const RECEIPT_SESSION_RE = /^session:[ \t]*(\S+)[ \t]*$/;
 const SCAN_CHUNK = 4 * 1024 * 1024;
 const ROW_PARSE_MAX = 4 * 1024 * 1024;
 // Every line of `file` that holds one of `needles`, in file order: onLine(lineBuffer, byteOffset). A needle is searched in
-// the raw bytes and only a line it hits is handed on, so a long transcript costs its read and no per-line work.
-function linesWith(file, needles, onLine)
+// the raw bytes and only a line it hits is handed on, so a long transcript costs its read and no per-line work. `from`
+// starts the read at a line's first byte.
+function linesWith(file, needles, onLine, from = 0)
 {
     let fd;
     try
@@ -491,10 +493,10 @@ function linesWith(file, needles, onLine)
         fd = fs.openSync(file, 'r');
         const size = fs.fstatSync(fd).size;
         const keys = needles.map((n) => Buffer.from(n));
-        const chunk = Buffer.alloc(Math.min(SCAN_CHUNK, Math.max(1, size)));
+        const chunk = Buffer.alloc(Math.min(SCAN_CHUNK, Math.max(1, size - from)));
         let carry = Buffer.alloc(0);
-        let base = 0;
-        let pos = 0;
+        let base = from;
+        let pos = from;
         while (pos < size)
         {
             const n = fs.readSync(fd, chunk, 0, Math.min(chunk.length, size - pos), pos);
@@ -527,12 +529,13 @@ function linesWith(file, needles, onLine)
 }
 const rowOf = (line) => { if (line.length > ROW_PARSE_MAX) return null; try { return JSON.parse(line.toString('utf8')); } catch { return null; } };
 const contentText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && typeof p.text === 'string' ? p.text : typeof p === 'string' ? p : '')).join('\n') : '');
-// The text of a turn the user TYPED: a user row, never a meta row (a skill body, an expansion), a tool result (an ask's
-// answer is the harness's row) or a harness prompt (a task notice, a command's output, a seat's hand-back). The tagged
-// `<command-name>` / `<command-args>` row of a typed command is the user's.
+// The text of a turn the user TYPED: a user row, never a meta row (a skill body, an expansion), a compaction summary or a
+// sidechain row (both the model's words - the final review of 2026-10-30 FA-2: `AUTO - "Pending Tasks"` was proven by a
+// summary), a tool result (an ask's answer is the harness's row) or a harness prompt (a task notice, a command's output, a
+// seat's hand-back). The tagged `<command-name>` / `<command-args>` row of a typed command is the user's.
 function typedRowText(row)
 {
-    if (!row || row.type !== 'user' || row.isMeta) return '';
+    if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary || row.isSidechain) return '';
     const c = row.message && row.message.content;
     if (Array.isArray(c) && c.some((x) => x && x.type === 'tool_result')) return '';
     const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
@@ -560,7 +563,25 @@ function deniedIn(row, marker)
 }
 const ANSWER_NEEDLE = '"answers":';
 const AUTO_NEEDLE = 'mode-auto-run';
+// An AskUserQuestion call in an assistant row, as Claude Code serializes it (compact JSON, the needles above alike).
+const ASK_NEEDLE = '"name":"AskUserQuestion"';
 const isTypedCandidate = (line) => line.includes('"type":"user"') && !line.includes('"tool_result"');
+// 'on' / 'off' when a transcript line is a typed row switching auto-run, else null: the one typed-flag read every judge of
+// auto-run shares. With `session`, a row naming another session is none.
+function typedAutoEvent(line, session)
+{
+    if (!line.includes(AUTO_NEEDLE) || !isTypedCandidate(line)) return null;
+    const row = rowOf(line);
+    if (!row || (session && row.sessionId && row.sessionId !== session)) return null;
+    return autoEventOf(typedRowText(row));
+}
+// An answer is the user's only as the result of an AskUserQuestion call (the final review of 2026-10-30 FA-4: an
+// `answers`-shaped result under another tool's id opened a receipt). The ids of the AskUserQuestion calls an assistant row
+// makes, and the ids a user row's tool results answer.
+const askCallIds = (row) => { const c = row && row.type === 'assistant' && row.message && row.message.content;
+    return Array.isArray(c) ? c.filter((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && typeof b.id === 'string').map((b) => b.id) : []; };
+const resultIds = (row) => { const c = row && row.type === 'user' && row.message && row.message.content;
+    return Array.isArray(c) ? c.filter((b) => b && b.type === 'tool_result' && typeof b.tool_use_id === 'string').map((b) => b.tool_use_id) : []; };
 function readReceiptFile(file, input)
 {
     try
@@ -614,22 +635,21 @@ function receiptAnswered(input, spec)
     let auto = false;
     let lastDenial = -1;
     const answers = [];
-    linesWith(tp, [marker, ANSWER_NEEDLE, AUTO_NEEDLE], (line, at) =>
+    const asks = new Set();
+    linesWith(tp, [marker, ANSWER_NEEDLE, AUTO_NEEDLE, ASK_NEEDLE], (line, at) =>
     {
-        if (line.includes(AUTO_NEEDLE) && isTypedCandidate(line))
-        {
-            const ev = autoEventOf(typedRowText(rowOf(line)));
-            if (ev) auto = ev === 'on';
-        }
+        const ev = typedAutoEvent(line, '');
+        if (ev) auto = ev === 'on';
+        if (line.includes(ASK_NEEDLE)) for (const id of askCallIds(rowOf(line))) asks.add(id);
         if (line.includes(marker) && line.includes('"is_error":true') && deniedIn(rowOf(line), marker)) lastDenial = at;
         if (line.includes(ANSWER_NEEDLE) && line.includes('"toolUseResult"'))
         {
             const row = rowOf(line);
             const labels = answerLabelsOf(row);
-            if (labels) answers.push({ at, ts: tsOfRow(row), labels, auto });
+            if (labels) answers.push({ at, ts: tsOfRow(row), labels, auto, ids: resultIds(row) });
         }
     });
-    const hits = answers.filter((a) => (seatAt ? a.ts > seatAt : a.at > lastDenial) && carries(a.labels));
+    const hits = answers.filter((a) => a.ids.some((id) => asks.has(id)) && (seatAt ? a.ts > seatAt : a.at > lastDenial) && carries(a.labels));
     if (hits.some((a) => !a.auto)) return { ok: true, why: '' };
     return { ok: false, why: hits.length ? 'the allow answer was given while auto-run was on, which answers its own asks'
         : `no ask answered with the allow label after ${seatAt ? 'this seat\'s' : 'this guard\'s'} last denial in this session` };
@@ -661,18 +681,30 @@ function receiptShutText(r, rel)
 // The AUTO stamp's proof (HK-03). A stamp the start hook wrote names its session and records the transcript's size when
 // it was written (`transcript-size:`); it counts when a typed row turning auto-run on sits near that offset - the prompt
 // row lands just before the hook on some builds and just after it on others, and the model's Skill route writes it up to
-// lastTypedPrompt's 4MB tail after the row - read by position, so the cost is the window whatever the transcript's size.
+// lastTypedPrompt's 4MB tail after the row - read by position - AND no typed row turns auto-run off after the newest such
+// row (the final review of 2026-10-30 FA-1: a stamp the model rewrote over an old on-row, after the user typed the
+// off-flag, got the model's own SHOW ask answered and opened the secret receipt). The off read is receiptAnswered's
+// typed-flag read from that row to the end, and an off-row of any session in this file counts.
 // Its quoted words are the typed line's or, on the Skill route, the model's args, so they are never matched. A stamp with
 // no `session:` line is task-solve's hand-written waiver: its quoted words (the text after `AUTO -` when unquoted;
 // whitespace collapsed, double quotes single, the first 400 characters, at least 8 - a shorter quote matches any turn)
-// must appear in a turn the user typed in this session, letter case aside, or the user answered 'Start AUTO here' with
-// auto-run off - never a Skill call alone (the 2026-10-14 ruling 'narrow to a typed user turn'). No transcript: the time
-// rule alone, as before. 200MB measured: the positioned read 5ms, the hand-written scan 125ms, receiptAnswered 135ms.
+// must appear in a turn the user typed in this session, letter case aside, or the user answered 'Start AUTO here' to an
+// AskUserQuestion with auto-run off - never a Skill call alone (the 2026-10-14 ruling 'narrow to a typed user turn'). No
+// transcript: the time rule alone, as before. A proof is kept per stamp and transcript size within one process.
+// 200MB measured: the positioned read 5ms, the off read from an on-row at the start about 95ms (paid only while a
+// session-named stamp is live), the hand-written scan 125ms, receiptAnswered 135ms.
 const AUTO_NEAR = 64 * 1024;
 const AUTO_WINDOW = 5 * 1024 * 1024;
 const AUTO_WORDS_MIN = 8;
 const autoProofs = new Map();
 const normWords = (s) => String(s).replace(/\s+/g, ' ').trim().replace(/"/g, "'");
+// Whether a typed row turns auto-run off anywhere in `file` from byte `from` (a line's first byte) on.
+function typedAutoOffFrom(file, from)
+{
+    let off = false;
+    linesWith(file, [AUTO_NEEDLE], (line) => { if (!off && typedAutoEvent(line, '') === 'off') off = true; }, from);
+    return off;
+}
 function typedAutoOnNear(file, offset, session)
 {
     let fd;
@@ -680,6 +712,7 @@ function typedAutoOnNear(file, offset, session)
     {
         fd = fs.openSync(file, 'r');
         const size = fs.fstatSync(fd).size;
+        let judged = -1;
         for (const span of [AUTO_NEAR, AUTO_WINDOW])
         {
             const from = Math.max(0, offset - span);
@@ -688,6 +721,8 @@ function typedAutoOnNear(file, offset, session)
             const buf = Buffer.alloc(to - from);
             const n = fs.readSync(fd, buf, 0, buf.length, from);
             const view = buf.subarray(0, n);
+            // the newest whole typed on-row of this session in the span, as the byte just past it
+            let newest = -1;
             let at = view.indexOf(AUTO_NEEDLE);
             while (at !== -1)
             {
@@ -695,12 +730,13 @@ function typedAutoOnNear(file, offset, session)
                 const nl = view.indexOf(10, at);
                 const whole = (prev !== -1 || from === 0) && (nl !== -1 || from + n >= size);
                 const line = view.subarray(prev + 1, nl === -1 ? n : nl);
-                if (whole && isTypedCandidate(line))
-                {
-                    const row = rowOf(line);
-                    if (row && (!row.sessionId || !session || row.sessionId === session) && autoEventOf(typedRowText(row)) === 'on') return true;
-                }
+                if (whole && typedAutoEvent(line, session) === 'on') newest = nl === -1 ? from + n : from + nl + 1;
                 at = nl === -1 ? -1 : view.indexOf(AUTO_NEEDLE, nl + 1);
+            }
+            if (newest > judged)
+            {
+                judged = newest;
+                if (!typedAutoOffFrom(file, newest)) return true;
             }
         }
         return false;
@@ -713,9 +749,11 @@ function typedWordsOrStart(file, words)
     const want = words.toLowerCase();
     let auto = false;
     let found = false;
-    linesWith(file, ['"type":"user"', ANSWER_NEEDLE], (line) =>
+    const asks = new Set();
+    linesWith(file, ['"type":"user"', ANSWER_NEEDLE, ASK_NEEDLE], (line) =>
     {
         if (found) return;
+        if (line.includes(ASK_NEEDLE)) for (const id of askCallIds(rowOf(line))) asks.add(id);
         if (isTypedCandidate(line))
         {
             const text = typedRowText(rowOf(line));
@@ -729,8 +767,9 @@ function typedWordsOrStart(file, words)
         }
         if (line.includes('"toolUseResult"'))
         {
-            const labels = answerLabelsOf(rowOf(line));
-            if (labels && !auto && labels.some((l) => l.startsWith('start auto here'))) found = true;
+            const row = rowOf(line);
+            const labels = answerLabelsOf(row);
+            if (labels && !auto && labels.some((l) => l.startsWith('start auto here')) && resultIds(row).some((id) => asks.has(id))) found = true;
         }
     });
     return found;
@@ -738,10 +777,10 @@ function typedWordsOrStart(file, words)
 function autoStampVerified(stamp, payload)
 {
     const tp = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
-    let isFile = false;
-    try { isFile = tp !== '' && fs.statSync(tp).isFile(); } catch { isFile = false; }
-    if (!isFile) return true;
-    const key = `${stamp.file}|${stamp.mtimeMs}|${tp}`;
+    let size = -1;
+    try { const st = tp !== '' ? fs.statSync(tp) : null; size = st && st.isFile() ? st.size : -1; } catch { size = -1; }
+    if (size < 0) return true;
+    const key = `${stamp.file}|${stamp.mtimeMs}|${tp}|${size}`;
     if (autoProofs.has(key)) return autoProofs.get(key);
     let ok = false;
     if (stamp.session)
