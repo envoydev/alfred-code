@@ -3541,7 +3541,7 @@ function blockVariable(name) {
 // with its patterns inside: the shell branch runs above any module const that would follow it.
 function envDumpOf(stage) {
   const s = String(stage).trim();
-  if (!/^(?:env|printenv|export|declare|typeset|set)(?=\s|$)/.test(s)) return null; // cheap: most stages stop here
+  if (!/^(?:env|printenv|export|declare|typeset|readonly|set)(?=\s|$)/.test(s)) return null; // cheap: most stages stop here
   const words = shellTokens(s);
   const tail = [];
   for (;;) {
@@ -3551,7 +3551,12 @@ function envDumpOf(stage) {
     else break;
   }
   const trail = tail.length ? ' ' + tail.join(' ') : '';
-  if (/^(?:export -p|export|declare -p|typeset -p|set)$/.test(words.join(' '))) return { nul: false, trail };
+  if (/^(?:export -p|export|set)$/.test(words.join(' '))) return { nul: false, trail };
+  // A declaration builtin with only option words lists variables with their values: `declare -x` / `-px` / `-xp` / `-p -x`,
+  // `typeset -x`, `declare +x`, bare `declare` / `typeset` / `readonly` (final review 2026-10-30, FB: `declare -x` and
+  // `declare -px` printed every exported value raw beside a rewritten `declare -p`). A name or an assignment after the
+  // options (`declare -x FOO=bar`) declares; `-f` / `-F` list functions only.
+  if (/^(?:declare|typeset|readonly)$/.test(words[0]) && words.slice(1).every((w) => /^[-+][A-Za-z]+$/.test(w) && !/[fF]/.test(w))) return { nul: false, trail };
   if (words[0] !== 'env' && words[0] !== 'printenv') return null;
   let nul = false;
   for (let i = 1; i < words.length; i++) {
@@ -4175,9 +4180,10 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
           'login that reads stdin, and check it without printing it (`gh auth status`, `[ -n "$(...)" ] && echo set`).\n');
       }
       if (IS_PWSH) judgePwshStage(stage);
-      // `declare -p NAME` / `typeset -p NAME` print one variable's value, like printenv NAME.
-      const dp = stage.replace(PREFIX_WORDS, '').match(/^(?:declare|typeset)\s+-p\s+([^\n|]+)/);
-      if (dp) { const hit = shellTokens(dp[1]).find((n) => SECRET_KEY_RE.test(n)); if (hit) blockVariable(hit); }
+      // `declare -p NAME` / `typeset -p NAME` print one variable's value, like printenv NAME - `-px NAME`, `-xp NAME` and
+      // `-p -x NAME` too (final review FB): any option cluster holding `p` before the names.
+      const dp = stage.replace(PREFIX_WORDS, '').match(/^(?:declare|typeset)((?:\s+[-+][A-Za-z]+)+)\s+([^\n|]+)/);
+      if (dp && /(?:^|\s)-[A-Za-z]*p/.test(dp[1])) { const hit = shellTokens(dp[2]).find((n) => SECRET_KEY_RE.test(n)); if (hit) blockVariable(hit); }
       // `launchctl getenv NAME` prints one variable of launchd's environment, as printenv prints the shell's (HK-05). Its
       // presence line would read the wrong environment, so this one blocks with the count that answers instead.
       const lg = stage.replace(PREFIX_WORDS, '').match(/^(?:\S*\/)?launchctl\s+getenv\s+["']?([A-Za-z_]\w*)/);

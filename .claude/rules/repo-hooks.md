@@ -561,7 +561,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked) - env's and
     printenv's printing options too (`-0`, `-u NAME`, `--unset=NAME`, `NAME=v` with no command; `envDumpOf`, audit
-    2026-10-30 HK-05), the view keeping `-0`'s NUL separator, and `${!v}` prints the variable v names (one bound to a
+    2026-10-30 HK-05), a declaration builtin with only options (`declare -x`, `-px`, `+x`, `typeset -x`, bare `declare` /
+    `typeset` / `readonly`; final review FB - a name or an assignment declares, `-f` / `-F` list functions), the view keeping `-0`'s NUL separator, and `${!v}` prints the variable v names (one bound to a
     literal name is judged as that name, any other is the masked listing). A `ps` with BSD `e` or `-E`, a read of
     `/proc/<pid>/environ` and `launchctl getenv <credential name>` have no masked form and block. A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A heredoc

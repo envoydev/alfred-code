@@ -153,3 +153,16 @@ test('FB 3: an 8,000-pair assignment chain over 8,000 rm operands is judged in s
   assert.ok(ms < 5000, `judged in ${Math.round(ms)}ms`);
 });
 
+test('FB 4: declare / typeset listings with -x or -p (and bare) are environment dumps; a declaration is not', () => {
+  const dir = project('fb4-');
+  for (const c of ['declare -x', 'declare -px', 'declare -xp', 'declare -p -x', 'typeset -x', 'typeset -px', 'export -p', 'declare', 'typeset',
+    'declare +x', 'declare -x | grep TOKEN', 'readonly', 'readonly -p']) {
+    const r = fire(dir, c);
+    assert.strictEqual(r.v, 'rewrite', `${c}: ${r.out}`);
+    assert.match(JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command, /--redacted-env/, `${c} becomes the masked listing`);
+  }
+  assert.strictEqual(fire(dir, 'declare -px API_TOKEN').v, 'rewrite', 'one credential variable printed with -px');
+  for (const c of ['declare -x FOO=bar', 'declare -x FOO', 'typeset -x FOO=bar', 'declare -a arr', 'declare -f', 'declare -F', 'declare -px HOME'])
+    assert.strictEqual(fire(dir, c).v, 0, `${c} prints no credential`);
+});
+
