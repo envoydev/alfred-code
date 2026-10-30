@@ -6333,7 +6333,7 @@
       ]
     },
     "security-review-output-contract": {
-      "_note": "What a security review does with a finding it cannot route: it stays in the report, tagged with its surface and marked UNVERIFIED, rather than being dropped because the skill that owns it is not installed. Restated in each security skill because a project installs only its own stacks' - a .NET-only install never sees the Angular one, so a cross-cutting rule stated once would be absent there.",
+      "_note": "What a security review does with a finding it cannot route: it stays in the report, tagged with its surface and marked UNVERIFIED, rather than being dropped because the skill that owns it is not installed. Restated in each security skill because a project installs only its own stacks' - a .NET-only install never sees the Angular one, so a cross-cutting rule stated once would be absent there. database-security is a variant site with its own marker (audit 2026-10-30 SKS-08): its two routes are the .NET security skills, and an unrouted finding stays in its report with the fix stated in full.",
       "owner": {
         "file": "stack/skills/angular-security/SKILL.md",
         "marker": "when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED"
@@ -6350,6 +6350,10 @@
         {
           "file": "stack/skills/ionic-security/SKILL.md",
           "marker": "when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED"
+        },
+        {
+          "file": "stack/skills/database-security/SKILL.md",
+          "marker": "when neither is installed, keep the finding here with its fix stated in full"
         }
       ]
     },

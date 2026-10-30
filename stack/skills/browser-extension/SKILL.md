@@ -5,7 +5,7 @@ description: "Use when building or shipping a browser extension - 'build a chrom
 
 # Browser extensions - MV3 engineering that survives review and termination
 
-Build MV3-only: Chrome stopped running MV2 for ordinary users mid-2025 and the Web Store drops the stragglers in 2026. The platform's four structural facts drive everything below: the background context is an **ephemeral service worker** (not a persistent page), blocking webRequest is gone on Chromium (declarativeNetRequest instead - Firefox keeps blocking), **remotely hosted code is banned** (everything executable ships in the reviewable package), and host permissions are runtime-grantable. Timeline dates, the cross-browser matrix, and lifecycle detail: `references/platform-and-lifecycle.md`.
+Build MV3-only: Chrome stopped running MV2 for ordinary users mid-2025 and the Chrome Web Store removed the remaining MV2 listings on 2026-08-31. The platform's four structural facts drive everything below: the background context is an **ephemeral service worker** (not a persistent page), blocking webRequest is gone on Chromium (declarativeNetRequest instead - Firefox keeps blocking), **remotely hosted code is banned** (everything executable ships in the reviewable package), and host permissions are runtime-grantable. Timeline dates, the cross-browser matrix, and lifecycle detail: `references/platform-and-lifecycle.md`.
 
 ## When to use
 

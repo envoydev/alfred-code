@@ -17,11 +17,11 @@ Do NOT load for non-security work.
 
 ## Injection - close every sink
 
-- **Parameterize, always.** Never build SQL by string concatenation or interpolation (any driver: bound placeholders - `$1`, `?`, `@p` - never a formatted string). In EF Core, `FromSqlInterpolated` / `FromSql` parameterize the interpolated values; raw `FromSqlRaw` / `ExecuteSqlRaw` with a concatenated string does not - a `FromSqlRaw($"... {userInput}")` is injection. ADO.NET uses `SqlParameter` / `NpgsqlParameter`, never a formatted command text.
+- **Parameterize, always.** Never build SQL by string concatenation or interpolation (any driver: bound placeholders - `$1`, `?`, `@p` - never a formatted string). In EF Core, `FromSqlInterpolated` / `FromSql` / `SqlQuery` parameterize the interpolated values; raw `FromSqlRaw` / `SqlQueryRaw` / `ExecuteSqlRaw` with a concatenated string does not - a `FromSqlRaw($"... {userInput}")` is injection. ADO.NET uses `SqlParameter` / `NpgsqlParameter`, never a formatted command text.
 
 ```csharp
-var bad  = db.Users.FromSqlRaw("select * from users where name = '" + name + "'"); // injection - the string is built before the API sees it
-var safe = db.Users.FromSql($"select * from users where name = {name}");           // safe - each interpolated value becomes a DbParameter
+var bad  = db.Database.SqlQueryRaw<UserRow>("select id, name from users where name = '" + name + "'"); // injection - the string is built before the API sees it
+var safe = db.Database.SqlQuery<UserRow>($"select id, name from users where name = {name}");           // safe - each interpolated value becomes a DbParameter
 ```
 - **Dynamic SQL in a stored procedure** is still injectable: build it with `sp_executesql` (SQL Server) or `EXECUTE ... USING` (Postgres) passing parameters, never `EXEC(@sql)` on a concatenated string. A proc is not a safe boundary by virtue of being a proc.
 - **Identifiers can't be parameterized** - a table or column name chosen from user input must be validated against an allowlist, never interpolated.

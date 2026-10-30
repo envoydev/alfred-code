@@ -204,10 +204,12 @@ test('M119: the gRPC client sample says what the standard resilience handler doe
 
 test('M120: the npm baseline check expects key-prefixed output and names the too-old signal', () =>
 {
-    const text = squash(skill('npm'));
+    // audit 2026-10-30 SKS-11: the npm 11 check moved to references/npm11-baseline.md
+    const text = squash(read('stack/skills/npm/references/npm11-baseline.md'));
     assert.doesNotMatch(text, /must echo `true 7 none true`/);
-    assert.match(text, /`ignore-scripts=true`, `min-release-age=7`, `allow-git=none`, `engine-strict=true`/);
+    assert.match(text, /`ignore-scripts=true`, `min-release-age=7`, `allow-git=none`, `engine-strict=true` with no/);
     assert.match(text, /`npm warn Unknown project config`/);
+    assert.match(squash(skill('npm')), /`npm warn Unknown project config`/, 'the npm 12 check names the too-old signal too');
 });
 
 test('M121: webpack tilde-pins the minor verified at use, not an aged hard pin', () =>

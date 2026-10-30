@@ -195,11 +195,17 @@ test('I41: markdown-style skips the docs root and the generated rules, pinned to
 // `npm rebuild` under it runs nothing (measured on npm 11.6.1).
 test('I42: the npm baseline lists install-script dependencies and rebuilds the vetted ones', () =>
 {
+    // audit 2026-10-30 SKS-11: the npm 11 steps live in references/npm11-baseline.md, the body points there
     const text = squash(section(read('stack/skills/npm/SKILL.md'), 'Non-negotiables (any repo that has a package.json)'));
-    assert.match(text, /"hasInstallScript": true/);
-    assert.match(text, /npm rebuild <name> --ignore-scripts=false/);
-    assert.match(text, /build and test/);
-    assert.match(text, /propose it through ONE AskUserQuestion.*merged into an existing `\.npmrc`, never an overwrite/);
+    assert.match(text, /\*\*npm 11\.10 - 11\.x\*\*.*read `references\/npm11-baseline\.md` before writing `\.npmrc` there/);
+    const npm11 = squash(read('stack/skills/npm/references/npm11-baseline.md'));
+    assert.match(npm11, /"hasInstallScript": true/);
+    assert.match(npm11, /npm rebuild <name> --ignore-scripts=false/);
+    for (const t of [text, npm11])
+    {
+        assert.match(t, /build and test/);
+        assert.match(t, /propose it through ONE AskUserQuestion.*merged into an existing `\.npmrc`, never an overwrite/);
+    }
 });
 
 // I43 - PgBouncer 1.21+ tracks protocol-level prepared statements in transaction mode.
@@ -237,7 +243,8 @@ test('I44: dotnet-project-setup names the config-protection gate, pinned with ty
 
 // audit 2026-10-14 SKS01 - npm 12 blocks dependency install scripts behind the root `allowScripts` policy
 // (v12.0.0 release notes; docs.npmjs.com/cli/v12/commands/npm-install-scripts), and `ignore-scripts=true`
-// overrides it (measured on npm 12.2.0); the npm 11 steps stay verbatim so I42 and M120 still hold.
+// overrides it (measured on npm 12.2.0); the npm 11 steps stay verbatim in references/npm11-baseline.md (audit
+// 2026-10-30 SKS-11) so I42 and M120 still hold.
 test('SKS01: the npm baseline branches on npm -v, npm 12 approving through allowScripts', () =>
 {
     const text = squash(section(read('stack/skills/npm/SKILL.md'), 'Non-negotiables (any repo that has a package.json)'));

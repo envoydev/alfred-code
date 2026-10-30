@@ -39,8 +39,8 @@ exact quantities are `decimal` / `NUMERIC(p,s)`, never `float` or `double` - bin
 drift silently on sums. Each bullet below closes with the trap worth repeating because the obvious choice is the wrong one; the
 full per-engine data-type tables (text, numbers, boolean, date/time, UUID) are in `references/sql-style.md`.
 
-- **PostgreSQL** - the Postgres engine skill (index-type selection, JSONB/full-text, SARGable rewrites, the planner - EXPLAIN / pg_stat_statements / autovacuum - and connection pooling), installed on Npgsql / pg evidence; without it, the rules here plus `references/sql-style.md`'s PostgreSQL columns are the whole guidance. Trap: `SERIAL` is legacy (`GENERATED ALWAYS AS IDENTITY` for new tables), and `TEXT` beats `VARCHAR(n)` without a hard length cap.
-- **SQLite** - the SQLite engine skill (the WAL / single-writer concurrency model, PRAGMAs, type affinity, limited ALTER TABLE, connection-per-thread), installed on SQLite provider evidence; without it, `references/sql-style.md`'s SQLite columns are the whole guidance. Trap: foreign keys are OFF by default - `PRAGMA foreign_keys = ON` on every connection.
+- **PostgreSQL** - the Postgres engine skill (index-type selection, JSONB/full-text, SARGable rewrites, the planner - EXPLAIN / pg_stat_statements / autovacuum - and connection pooling); without it, the rules here plus `references/sql-style.md`'s PostgreSQL columns are the whole guidance. Trap: `SERIAL` is legacy (`GENERATED ALWAYS AS IDENTITY` for new tables), and `TEXT` beats `VARCHAR(n)` without a hard length cap.
+- **SQLite** - the SQLite engine skill (the WAL / single-writer concurrency model, PRAGMAs, type affinity, limited ALTER TABLE, connection-per-thread); without it, `references/sql-style.md`'s SQLite columns are the whole guidance. Trap: foreign keys are OFF by default - `PRAGMA foreign_keys = ON` on every connection.
 - **SQL Server / T-SQL** - no dedicated engine skill; the engine-neutral rules here, plus `references/sql-style.md`'s T-SQL style and dialect gotchas (`TOP`/`OFFSET-FETCH`, `MERGE`, `THROW`, `IDENTITY`, `TRY/CATCH`), plus its SARGability section, cover most of it. Traps: `NVARCHAR` over `VARCHAR` for any user-facing text so Unicode survives, and `DATETIME2` (or `DATETIMEOFFSET` when the value is timezone-aware) over `DATETIME`.
 - **MongoDB / document stores** - no dedicated skill; the document-modeling rules and traps are `references/stores-procedures-views.md`.
 
@@ -101,3 +101,7 @@ Read `references/transactions-and-connections.md` before opening a transaction, 
 ## Secrets
 
 A connection string is a credential. It comes from configuration or a secret store, never from a source-controlled file, and production credentials stay separate from local and staging so a leaked dev secret cannot reach production data. If a credential is even suspected of exposure, rotate it - and never commit a connection string carrying a password to git history, where it survives every later 'deletion'.
+
+## Prove it
+
+Close a schema or index change with `script: <the tool's preview command> -> <result line>` and, for a new index, `plan: <EXPLAIN of the query it serves> -> <the node that uses it>`.
