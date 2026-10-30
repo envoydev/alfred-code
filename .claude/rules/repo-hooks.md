@@ -491,7 +491,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`dd if=`, `iconv`, curl `file://`, vim's print, a copy onto `/dev/stdout`, sqlite3's `readfile()`, php's
     `file_get_contents` / `getenv`, and every verb of shell-writes.js's one print table - `shuf`, `vis`, `join`, a
     compressor's `-c` (a level cluster such as `-9c` read as flags by the table's `levels`, final review FB), whose view goes through the same compressor so a decompressor after it reads text; audit 2026-10-30
-    HK-06), a bare name after a `cd` resolved against the `cd` target. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
+    HK-06), a bare name after a `cd` resolved against the `cd` target.
+    Every shell text is judged as bash hands each word on: an unquoted backslash before an ordinary character is dropped before the path and verb tests (`shellUnescape`; final review 2026-10-30 FC: `cat .e\nv`, `cat \.env`, `c\at .env` read the file raw, the runner's line too), one before a blank, an operator, a quote, `$`, a glob or `~` stays, quoted text is untouched, a bare Windows path on Windows keeps its backslashes, and a splice keeps the other steps as written. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
     Read tool and a credential literal stay blocked - but a FETCH of a short-lived link passes the literal check (the
     user's ruling 2026-10-14, after a Jira image download's `?token=<JWT>` was refused in every session): a token in a

@@ -1985,6 +1985,46 @@ function stripComments(text) {
   }
   return quote ? text : out; // an unbalanced quote: judge the raw text rather than guess where it ends
 }
+// Bash drops a backslash before an ordinary character outside quotes as it hands the word on: `.e\nv` is `.env`, `\.env`
+// is `.env` and `c\at` is `cat` (final review 2026-10-30, FC: each read the credential file raw past the path and verb
+// tests, at the top level and inside the runner's line). Each such backslash goes before a shell text is judged; one
+// before a character the shell reads specially (a blank, an operator, a quote, `$`, a glob, `~`, a backslash, a newline)
+// stays, so the words and separators are the ones the shell sees, and quoted text is never touched. A Windows path
+// written bare on Windows keeps its backslashes, the rule shell-writes.js `dequote` keeps. PowerShell's backslash is a
+// path separator, so its texts never come here.
+const ESCAPED_PLAIN = /[A-Za-z0-9._/@%+=:,-]/;
+const WORD_BREAK = /[\s;&|()<>]/;
+const WIN_BARE_WORD = /^(?:[\w.-]*=)?(?:[A-Za-z]:\\|\\\\)[^"'$`\s;&|()<>]*/;
+function shellUnescape(text) {
+  const s = String(text);
+  if (!s.includes('\\')) return s;
+  let out = '';
+  let quote = null;
+  let wordStart = true;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote) {
+      out += ch;
+      if (ch === '\\' && quote === '"' && i + 1 < s.length) out += s[++i];
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (wordStart && process.platform === 'win32') {
+      const m = WIN_BARE_WORD.exec(s.slice(i, i + 4096));
+      if (m && m[0]) { out += m[0]; i += m[0].length - 1; wordStart = false; continue; }
+    }
+    if (ch === '\\' && i + 1 < s.length) {
+      const next = s[++i];
+      out += ESCAPED_PLAIN.test(next) ? next : ch + next;
+      wordStart = false;
+      continue;
+    }
+    if (ch === '"' || ch === '\'') quote = ch;
+    wordStart = WORD_BREAK.test(ch);
+    out += ch;
+  }
+  return out;
+}
 // A stage that REDUCES its input to presence - a count, a length, a key list, names without values.
 // Scoped to the stage's own command word: `\bwc\b` matched inside `grep -v wc`, and `jq keys`
 // matched `jq 'keys, .'`, which prints the whole document beside the keys (review findings).
@@ -3111,6 +3151,14 @@ function spliceView(view, loopVar) {
   const seps = [];
   const parts = splitSegments(stripComments(judging.text), seps);
   if (seps.length !== parts.length - 1 || judging.seg >= parts.length) return null;
+  // the steps a splice keeps are the ones the model wrote, every backslash in place (the judged text dropped the ones
+  // bash drops, which never moves a separator - shellUnescape)
+  let kept = parts;
+  if (judging.orig !== undefined && judging.orig !== judging.text) {
+    const oseps = [];
+    kept = splitSegments(stripComments(judging.orig), oseps);
+    if (kept.length !== parts.length || oseps.join('\u0000') !== seps.join('\u0000')) return null;
+  }
   // the header of the loop whose variable the view reads names the files the view masks
   const header = loopVar ? new RegExp(`^\\s*for\\s+${loopVar}\\s+in\\b`) : null;
   if (parts.some((p, i) => i !== judging.seg && !(header && header.test(p)) && namesCredentialFileIn(p))) return null;
@@ -3120,7 +3168,7 @@ function spliceView(view, loopVar) {
   const pad = edgeSpace(parts[judging.seg]);
   const lead = (parts[judging.seg].trim().match(/^(?:(?:do|then|else|elif|if|while|until|!|\{)\s+|\(\s*)+/) || [''])[0];
   let out = '';
-  for (let i = 0; i < parts.length; i++) out += (i === judging.seg ? pad[0] + lead + view + pad[1] : parts[i]) + (seps[i] || '');
+  for (let i = 0; i < parts.length; i++) out += (i === judging.seg ? pad[0] + lead + view + pad[1] : kept[i]) + (seps[i] || '');
   return out.trim();
 }
 // The segments a splice keeps run as written, so they are judged as written before the rewrite stands: a runtime or a
@@ -3137,7 +3185,11 @@ function wholeView(view, file) {
   // NAMED. The silence was the cost (a 4-part command came back as 1 part and nothing said so), not
   // the replacement. The judged text is the base where it is the command; otherwise (a heredoc in
   // the command, a heredoc body) the command's own segments are, minus the one naming the file.
-  const parts = judging && judging.main ? splitSegments(stripComments(judging.text)) : null;
+  let parts = judging && judging.main ? splitSegments(stripComments(judging.text)) : null;
+  if (parts && judging.orig !== undefined && judging.orig !== judging.text) {
+    const asWritten = splitSegments(stripComments(judging.orig)); // the steps named as the model wrote them
+    if (asWritten.length === parts.length) parts = asWritten;
+  }
   // a heredoc body is no step: the blanked command keeps each opener line and blanks the body, which listed 161 body
   // lines as 'dropped steps' in an 8k-character note (audit 2026-10-11 SD01, session ae38c08f)
   const base = parts || splitSegments(stripComments(blankHeredocs(String(input.command || ''))));
@@ -3236,12 +3288,14 @@ if (isShellTool(payload.tool_name)) {
   // result is judged like any command, so a credential printed elsewhere still takes its own form.
   // A git command that prints file content gets the stream redactor piped in the same way (redactGitStages).
   const staged = !IS_PWSH && command === raw && !allowAll;
-  const envStaged = staged ? redactEnvStages(raw) : raw;
+  // the stages are found as bash hands each word on (shellUnescape: `e\nv`, `g\it d\iff` - final review FC)
+  const seen = staged ? shellUnescape(raw) : raw;
+  const envStaged = staged ? redactEnvStages(seen) : raw;
   const inPlace = staged ? redactGitStages(envStaged) : raw;
   // The branch names what was piped: a recursive search is `walk-stage`, never `git-stage` - 12 of 17 'git-stage' rows in
   // one session were greps with no git word (audit 2026-10-10: f6c591fa, 81264f0d, b35afe70, a3d497f8).
   const stagedKind = () => (redactGitStages.kinds && !redactGitStages.kinds.has('git') ? 'walk-stage' : 'git-stage');
-  if (inPlace !== raw) { judgeShell(inPlace, false, true); rewrite(inPlace, { branch: envStaged !== raw ? 'env-stage' : stagedKind() }); }
+  if (inPlace !== seen) { judgeShell(inPlace, false, true); rewrite(inPlace, { branch: envStaged !== seen ? 'env-stage' : stagedKind() }); }
   // `main` says this text IS the command the tool will run - the one text a segment splice may
   // rebuild. A heredoc-blanked command is not (the bodies are spaces by then), and neither is a body.
   judgeShell(command, false, command === raw);
@@ -4108,6 +4162,9 @@ function printVerbFiles(verb, rest) {
 
 function judgeShell(text, forceRuntime, main, bodyLang) {
   cwdAnchor = null;
+  // a shell text is judged as bash hands each word on (shellUnescape); `orig` keeps it as written for a splice
+  const orig = text;
+  if (!forceRuntime && !IS_PWSH) text = shellUnescape(text);
   // a heredoc body binds a path statements before it reads it, so its built paths come from the whole body
   const builtInBody = forceRuntime ? builtPaths([text]) : null;
   if (forceRuntime) spawnedShell.push(...shellStrings(text, bodyLang));
@@ -4139,7 +4196,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
     for (let sj = 0; sj < stages.length; sj++) {
       const stage = stages[sj];
       judgeTick(1 + stage.length);
-      judging = { text, seg: si, stage: sj, runtime: forceRuntime, main };
+      judging = { text, orig, seg: si, stage: sj, runtime: forceRuntime, main };
       // The sanctioned read is exempt by name - it is this file - and only in its OWN stage: the
       // exemption used to cover the whole segment, so `--presence <file> | cat <file>` passed.
       if (selfRun(stage, /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?|redact-stdin)\b/)) continue;

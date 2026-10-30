@@ -3,6 +3,8 @@
 // its legitimate twins:
 // 1. a shell-run string from a variable - `C='rm -rf ~'; bash -c "$C"` (and `sh -c`, `eval`, the runner's line) passed
 //    the rm guard: the carried text was the word `$C`, never the literal the command bound it to;
+// 2. an unquoted backslash in a word - `cat .e\nv`, `cat \.env`, `c\at .env` - passed the secret guard's path and verb
+//    tests, at the top level and inside the runner's line: bash drops the backslash, the guard kept it;
 // Nothing here runs a dangerous command: each is stdin text to a hook, in mkdtemp folders removed after.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
@@ -81,6 +83,28 @@ test('FC 1: a shell-run string that is a name bound to a literal is carried as t
   }
   // the twins keep today's verdict
   for (const c of ['C=\'ls -la\'; bash -c "$C"', 'C=\'rm -rf ~\'; C=ls; bash -c "$C"', 'C=$(date); bash -c "$C"', 'bash -c "$NEVER_SET"']) {
+    const r = bash(dir, c);
+    assert.strictEqual(r.v, 0, `${c}\n${r.out}`);
+  }
+});
+
+test('FC 2: an unquoted backslash is judged as bash hands the word on - dropped before the path and verb tests', () => {
+  const dir = project('fc2-');
+  for (const c of ['cat .e\\nv', 'cat \\.env', 'c\\at .env', 'ca\\t ./.e\\nv', 'e\\nv']) {
+    const r = bash(dir, c);
+    assert.ok(r.v === 'rewrite' || r.v === 2, `${c}: read raw\n${r.out}`);
+    if (r.v === 'rewrite') assert.match(r.out, /--redacted/, c);
+  }
+  for (const line of ["'cat .e\\nv'", "'c\\at .env'", "'cat \\.env'"]) {
+    const r = bash(dir, runner(line));
+    assert.strictEqual(r.v, 2, `${line} inside the runner\n${r.out}`);
+  }
+  // the steps a rewrite keeps are the ones the model wrote, every backslash in place
+  const kept = bash(dir, 'cat .e\\nv; echo a\\-b');
+  assert.strictEqual(kept.v, 'rewrite', kept.out);
+  assert.match(JSON.parse(kept.stdout).hookSpecificOutput.updatedInput.command, /; echo a\\-b$/);
+  // the twins: a backslash inside quotes is the program's, never the shell's; one before a blank or an operator stays
+  for (const c of ["printf 'a\\nb'", "grep 'x\\.y' README.md", 'echo "a\\nb"', 'echo a\\;b', 'ls my\\ dir']) {
     const r = bash(dir, c);
     assert.strictEqual(r.v, 0, `${c}\n${r.out}`);
   }
