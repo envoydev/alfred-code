@@ -1,6 +1,19 @@
 {
   "_comment": "Shared-rules registry - the sanctioned exceptions to one-home-per-piece: rules whose text deliberately lives in more than one stack file (one canonical owner + inline restatements, no prose cross-mentions). Each copy is pinned by a marker - a distinctive phrase from that file's own wording, matched whitespace-normalized so md line wrapping never breaks it. Lint check 24 fails the moment any copy's marker no longer matches, and the finding lists every other copy - the multi-home sync is forced by the lint, not remembered. Repo-internal, never shipped.",
   "rules": {
+    "repair-router-ask-first": {
+      "_note": "Audit 2026-10-30 RU-02: on a red .NET or Angular build two first steps met - the always-on interaction rule's 'Code fails - the FIRST action is the habits-root-cause Skill call' and the routers' resolver ask. The routers state the one order (the ask, then the root-cause load on an in-session pick), so the more specific rule says outright that it goes first; both routers carry it word for word.",
+      "owner": {
+        "file": "stack/rules/dotnet-repair-agents.md",
+        "marker": "that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/angular-repair-agents.md",
+          "marker": "that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call"
+        }
+      ]
+    },
     "repair-router-delegation-protocol": {
       "_note": "The repair routers' shared delegation protocol (BLOCKED_CONTRACT_CHANGE routing, the no-Agent-tool seat carve-out, the read-only seat's report-and-name action - verifiers, designers, reviewers and analyzers hold no Edit, audit M62 - the diagnoser's gatherer-only dispatch) - verbatim in both routers because either may be absent per project.",
       "owner": {
@@ -3779,7 +3792,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "A browser, desktop or mobile tool (the stack ships none since 2026-10-24; a seat names each by its job, the tools its start line orders) is simply absent from a seat's tools when the user registered none, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
+      "_note": "No seat holds a browser, desktop or mobile tool: the stack ships none since 2026-10-24, every meta/seat-tools.json row grants built-ins only, and the start line names a seat only the jobs its grant reaches - so since audit 2026-10-30 AG-02 a seat names no such tool at all (a user-registered UI server for seats is the planned seat-tools phase 4, which restores the drive branches), and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. When phase 4 brings a server back, the seat names it only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -3791,11 +3804,7 @@
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the browser evidence was not obtainable here"
-        },
-        {
-          "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the desktop evidence was not obtainable here"
+          "marker": "says plainly which of the browser, desktop or device evidence was not obtainable here"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
@@ -3817,10 +3826,7 @@
           "file": "stack/agents/wpf-verifier.md",
           "marker": "report the view checks as UNVERIFIED with the reason"
         },
-        {
-          "file": "stack/agents/evidence-gatherer.md",
-          "marker": "say plainly that the device evidence was not obtainable here"
-        },
+
         {
           "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "a native screen nothing observed is never a silent pass"
