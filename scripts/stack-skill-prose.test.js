@@ -318,8 +318,11 @@ test('M128: the rule-forced convention layers are model-only, and no other skill
     const flagged = fs.readdirSync(SKILLS).filter((d) => fs.existsSync(path.join(SKILLS, d, 'SKILL.md')))
         .filter((d) => /^user-invocable:\s*false\s*$/m.test((/^---\n([\s\S]*?)\n---/.exec(skill(d)) || [])[1] || '')).sort();
     const FORCED = ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript'];
+    // The audit of 2026-10-30 (SKC-24, the user's ruling): the habits a rule forces or a seat preloads leave the / menu too.
+    const HABITS = ['habits-code-comments', 'habits-done-gate', 'habits-root-cause', 'habits-test-first'];
     assert.doesNotMatch(skill('markdown-style'), /^user-invocable:/m, 'markdown-style keeps its / entry');
-    assert.deepStrictEqual(flagged, FORCED);
+    assert.deepStrictEqual(flagged, [...FORCED, ...HABITS].sort());
+    for (const name of HABITS) assert.doesNotMatch(skill(name), /^disable-model-invocation:/m, `${name} stays model-invocable`);
     const pathRules = fs.readdirSync(path.join(ROOT, 'stack', 'rules')).map((f) => read(`stack/rules/${f}`)).filter((t) => /^---\n(?:(?!---\n)[^\n]*\n)*?paths:/.test(t));
     for (const name of FORCED)
     {

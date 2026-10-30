@@ -76,7 +76,9 @@ test('audit 2026-10-08: the three model-invocable captures gate an unrequested r
         const block = text.match(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/m);
         assert.ok(block && block[1].includes(doc), `${name}: the gate is an ask template naming ${doc}`);
         assert.deepStrictEqual(lintAskTemplates([{ file: name, text }]), [], `${name}: lint 61 holds`);
-        assert.ok(!squash(read(part(`${name}-doc-shape`))).includes('No write gate, no diff check'), `${name}: the reference no longer says 'no write gate'`);
+        // The coverage doc shape was folded into its part's step 5 (audit 2026-10-30 SKC-05).
+        const shape = name === 'test-coverage-quality' ? part(name) : part(`${name}-doc-shape`);
+        assert.ok(!squash(read(shape)).includes('No write gate, no diff check'), `${name}: the reference no longer says 'no write gate'`);
     }
     for (const name of ['architecture-quality', 'code-quality'])
         assert.ok(squash(read(part(name))).includes('`Run gate:`'), `${name}: the receipt records the gate`);
@@ -179,7 +181,6 @@ test('audit 2026-10-14 SKC01: no capture loads markdown-style for its docs-root 
         'stack/skills/capture-awareness/references/architecture.md',
         'stack/skills/capture-awareness/references/architecture-doc-shapes.md',
         part('test-coverage-quality'),
-        part('test-coverage-quality-doc-shape'),
     ];
     for (const rel of files)
         assert.doesNotMatch(read(rel), /markdown-style/, `${rel}: names markdown-style for a docs-root doc`);

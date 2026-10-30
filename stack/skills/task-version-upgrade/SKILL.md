@@ -16,7 +16,6 @@ Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing 
 
 - The deliberate version-upgrade flow for any BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major: plan in-session (the published breaking-change surface crossed against located usage - applicable changes only), present the staged plan at an approval gate, then drive the execution stage by stage with a green gate after every stage.
 - Triggers also on 'plan the framework upgrade'. Routine non-breaking bumps need no skill: just bump.
-- auto-run - the run unattended - starts ONLY from the user: `--mode-auto-run-on` typed after the command, or auto-run already on for the session; its hard stops still wait for the user.
 - Not for a feature that merely needs a newer package (the feature's own flow), or a red CI pipeline (issue-diagnoser-ci, or its single-chat CI-triage twin).
 
 ## Approval gate - and auto-run
@@ -102,4 +101,4 @@ Then the commit decision, ONE AskUserQuestion once the report prints (an early s
 ```
 
 ## Don't game it
-Enumerate the real breaking changes from the framework's own docs, not recall - recall catches the compile break and ships the runtime break. Keep the plan to located usage. Never wave a deprecation off as 'probably fine' - unclear impact is marked to verify. Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green - that is a new break, not progress. Auto-run is the user's to turn on (`--mode-auto-run-on`) only - proceeding past the gate without it is a protocol violation, not initiative.
+Enumerate the real breaking changes from the framework's own docs, not recall - recall catches the compile break and ships the runtime break. Keep the plan to located usage. Never wave a deprecation off as 'probably fine' - unclear impact is marked to verify. Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green - that is a new break, not progress.

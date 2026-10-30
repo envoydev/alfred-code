@@ -1,6 +1,6 @@
 # Evidence appendix - the runs these coverage rules were written from
 
-An audit appendix, not a run-time load: read it when a rule in `test-coverage-quality.md` or `test-coverage-quality-doc-shape.md` looks like
+An audit appendix, not a run-time load: read it when a rule in `test-coverage-quality.md` looks like
 ceremony, never while capturing.
 
 - **Coverage stays outside the build flows (`test-coverage-quality.md`, the opening).** A seat babysitting an
@@ -9,8 +9,8 @@ ceremony, never while capturing.
   capture asked Docker-handling and the bar in one call and never asked the mode.
 - **Long-running categories stay out unless asked (3. MEASURE).** An unasked replay run consumed 41GB
   of disk before being killed, and the user had to add a hand-written rule to stop it recurring.
-- **The narrative is capped while reconciling (`test-coverage-quality-doc-shape.md`).** One coverage doc reached 951 lines,
+- **The narrative is capped while reconciling (`test-coverage-quality.md` step 5).** One coverage doc reached 951 lines,
   31% never-pruned narrative, ~15-16k tokens per round-start read of which ~24% was operationally
   needed.
-- **One write per doc, never a per-claim edit stream (`test-coverage-quality-doc-shape.md`).** 24 serial edits to one
+- **One write per doc, never a per-claim edit stream (`test-coverage-quality.md` step 5).** 24 serial edits to one
   coverage doc in a single session - the worst doc churn of a 15-session audit.

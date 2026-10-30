@@ -131,7 +131,7 @@ Either way the report names every file written with its line count.
      stack's rules or repeat the template's rules text go, and the heading with them when nothing of
      the project's own is left under it - fact, not heuristic;
    - **a fix per check row** - only the flagged token changes: the path it moved to (the navigation
-     server's symbol lookup, or `git log --follow --name-status -- <old path>`), the command the
+     tools' symbol lookup, `LSP` `workspaceSymbol`, or `git log --follow --name-status -- <old path>`), the command the
      manifest or CI now runs. A path that is simply gone comes out of its line, the rule around it
      kept - the whole line only when the path was all it said. A TODO or placeholder in the
      project's own text is the user's to fill: named in the report, never invented;

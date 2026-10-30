@@ -25,7 +25,7 @@ Run a lens sweep instead of re-capturing when the Must-fix list is empty, or whe
 
 ## Seat brief shapes - step 2
 
-- **small-tier implementer brief** - the file/symbol, the smallest correct change, the check that proves it, the line `plan: loop-architecture-quality` (the small-tier stamp's own id - the dispatch hook passes a brief only on its own plan's stamp), and `note: none`: a scoped fix has no memory hand-off. A brief that does hand a note names it literally, read side included (memory hygiene: `references/domain-trio-protocol.md`) - an un-briefed seat writes unrequested notes and fans out over the whole memory store.
+- **small-tier implementer brief** - the file/symbol, the smallest correct change, the check that proves it, the line `plan: loop-architecture-quality` (the small-tier stamp's own id - the dispatch hook passes a brief only on its own plan's stamp), and `note: none`: a scoped fix has no note hand-off. A brief that does hand a note names it literally, read side included (handoff hygiene: `references/domain-trio-protocol.md`) - an un-briefed seat writes unrequested notes and lists every note on the handoff bus.
 - **substantial-tier designer brief** - the weakness, its assessment entry (strength tensions included) and the remediation as the requirement; the designer returns the decomposition, the body's step 2 gates and approves it before any implementer runs.
 - **lens-sweep analyzer brief** - ONE lens, the areas to read, the RELEVANT map sections pasted (see above).
 
@@ -38,13 +38,14 @@ RESUME - loop-architecture-quality
 Invocation: /loop-architecture-quality <scope> - resumed round <N of 3> (rounds consumed: <list>)
 Mode: <DELEGATED | INLINE> - "<the mode answer, verbatim>"
 Read first: <docs-path>/awareness/ARCHITECTURE-AWARENESS.md - step 1 recomputes <docs-path>/quality/ARCHITECTURE-ASSESSMENT.md fresh, so there is nothing to resume from in that file
+Sweep baseline: <sha recorded at round 1> - the final anti-gaming sweep diffs against it
 Baseline: build <green | red: what>, tests <green | red: what>, last commit <sha | none>, pushed <yes | no>
 Remaining weaknesses, leverage order (titles, not W-numbers - a fresh capture may re-rank):
   1. <weakness title> - <tier> - <remediation, one line>
 Deferred: <structural items declined or undecided | none>
 ```
 
-The invocation names the rounds already consumed so the 3-round cap survives the resume. On a RESUMED session no mode ask fires: the `Mode:` line is what the body's Rules have the small-tier stamp quote, so it carries the answer verbatim. The declined set does NOT carry across the resume - it lives in context only, never written to a file, so the new session starts with a clean one (an item declined last session may surface again; that is the accepted cost, not a defect).
+The invocation names the rounds already consumed so the 3-round cap survives the resume. On a RESUMED session no mode ask fires: the `Mode:` line is what the body's Execution modes have the small-tier stamp quote, so it carries the answer verbatim. The declined set does NOT carry across the resume - it lives in context only, never written to a file, so the new session starts with a clean one (an item declined last session may surface again; that is the accepted cost, not a defect).
 
 ## Final report - field rules, step 3 on STOP
 
@@ -56,6 +57,7 @@ One line per field, a table where a field lists several items - the close is an 
 - **Proposed decisions** - each declined-but-recurring finding or accepted-tradeoff-shaped call this round surfaced, in the shape `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md`'s Proposed decisions carries: the claim, the reason, what it costs. This loop never writes the decision log - a person accepts one by writing it themselves.
 - **Docs** - which of the two captures ran at stop (`ARCHITECTURE-AWARENESS.md: UPDATE`, `quality/ARCHITECTURE-ASSESSMENT.md: recomputed`) or `skipped - nothing shipped`. Neither doc is EDITED by this loop, so there is no touch count to report here - a touch count on either doc in a loop-authored diff is a defect this rule exists to catch, not a stream to count. The assessment is a recomputed docs domain: the docs hook asks no loop seat about the assessment, and the session's close skips an entry the stop's recompute already rewrote - only a change made after that recompute is asked.
 - **Baseline** - build + tests green at stop (or the red that blocked it), plus the push state when commits exist - unpushed rounds accumulate silently otherwise.
+- **Anti-gaming** - the sweep over the cumulative diff against the sweep baseline (`references/anti-gaming-sweep.md`): clean, or what was reverted and which weakness's fix gamed it; `not run - nothing shipped` when the run changed nothing.
 - **Notes** - `notes purged: <names|none>`, fold-first per `references/domain-trio-protocol.md` - the trio reference's receipt, restated in the report because the rule goes unread otherwise.
 - **Next actions** - when Deferred items are blocked on the operator (a live walk, a log grab, a replay), a ranked what-to-do list ships IN this report, not on request.
 - **Mechanics** - `loop-mechanics.md: read` - the receipt that this file was read this step.

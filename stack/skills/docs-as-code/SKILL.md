@@ -47,8 +47,9 @@ the ADR names the why, the diagram shows the outcome, each links the other.
   Prefer YAML frontmatter (`title:` + `config:`) over the deprecated init directive.
 - Accessibility: `accTitle:` + `accDescr:` inside the diagram, plus one plain-text sentence in
   the surrounding Markdown - screen readers do not get node relationships from the SVG.
-- Comments are `%%` on their own line. Colors in rect/box regions take rgb()/rgba() only - hex
-  breaks there (hex is fine in theme variables, which accept ONLY hex).
+- Comments are `%%` on their own line. A `rect` region takes rgb()/rgba(); a `box` a color name,
+  rgb()/rgba() or hsl()/hsla() - never hex in either, where `#` reads as a comment (hex is fine in
+  theme variables, which accept ONLY hex).
 - Mermaid ignores misspelled config keys silently but breaks on malformed syntax; the word end
   unquoted breaks flow/sequence diagrams - wrap it as "end".
 - One diagram per concern, sized to one screen. A diagram that needs scrolling is two diagrams.

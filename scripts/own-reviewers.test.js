@@ -294,9 +294,19 @@ test('built-in review: the checkpoint runs ours', () =>
     for (const s of ['`review-security`', 'test-only diff', 'integration-reviewer']) assert.ok(sec.includes(s), `the security half keeps ${s}`);
 });
 
-test('built-in review: task-verify-code takes its passes from review-code', () =>
+test('built-in review: task-verify-code takes its passes from its own vendored copy of review-code\'s', () =>
 {
-    assert.ok(read('stack/skills/task-verify-code/SKILL.md').includes('review-code/references/passes.md'));
+    // 2026-10-30 audit SKF-01: the pointer into review-code's folder named a Claude-only path and broke wherever
+    // that folder is absent, so the file is vendored whole and the pair kept byte-equal (review-passes-vendored)
+    const verify = read('stack/skills/task-verify-code/SKILL.md');
+    assert.ok(!verify.includes('review-code/references/passes.md'), 'no read from another skill\'s folder');
+    assert.ok(verify.includes('`references/passes.md`'), 'the own copy is named');
+    assert.strictEqual(read('stack/skills/task-verify-code/references/passes.md'), read('stack/skills/review-code/references/passes.md'), 'the vendored copy is byte-equal');
+    // SKF-14: both sites that run the preferences script say what to do where it is absent
+    for (const rel of ['stack/skills/task-verify-code/SKILL.md', 'stack/skills/review-code/references/passes.md'])
+    {
+        assert.match(squash(read(rel)), /no script there: judge each entry by hand|With no script there, judge every entry by hand/, `${rel}: the absent-script path`);
+    }
 });
 
 test('built-in review: security-auditor scores and refutes like review-security', () =>

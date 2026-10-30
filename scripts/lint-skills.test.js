@@ -1359,7 +1359,8 @@ test('check 19: the live HTML legend names the model-only state and the four fla
     assert.match(html, /model-only = fires on its description, no \/-command \(user-invocable: false\)/);
     const house = html.split('const house = {')[1].split('};')[0];
     const flagged = [...house.matchAll(/\["([a-z0-9-]+)",[^\n]*"model-only"\]/g)].map((m) => m[1]).sort();
-    assert.deepStrictEqual(flagged, ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript']);
+    // + the four rule-forced or preloaded habits (audit 2026-10-30 SKC-24, the user's ruling on menu visibility).
+    assert.deepStrictEqual(flagged, ['dotnet-winforms', 'dotnet-wpf', 'habits-code-comments', 'habits-done-gate', 'habits-root-cause', 'habits-test-first', 'javascript', 'typescript']);
 });
 
 // 2.8.0 moved the hooks' state and ledgers into the data root and the flow docs under work/ and quality/

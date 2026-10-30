@@ -42,10 +42,7 @@ Hold the answer for the run. **The batch is BOUNDED - at 12 bundles, or at the f
 
 Default: DETECT - sweep the transcripts for the stack skills that actually RAN (a `<command-name>` slash block or a Skill-tool call against the installed roster; a name appearing only in injected AGENTS.md/CLAUDE.md/rules text is a mention, not a run) and audit those, stating the detected list in the report. The user can name specific skills instead to narrow the audit.
 
-Two run modes, opposite expectations:
-
-- A single-chat skill (the `task-design` / `task-implement` / `task-verify-plan` trio) runs in-session and dispatches NOTHING - its cost is all main-context, so the interesting numbers are tool-result sizes and cache behavior.
-- A dispatch-mode run (`task-solve-cross`, an agents build mode, a capture fan-out, a DELEGATED quality loop) is the reverse: subagents are EXPECTED, and the interesting split is main-session vs per-seat cost - the analyzer reads the session's `subagents/` files and emits both.
+Two run modes, opposite expectations: a single-chat skill (the `task-design` / `task-implement` / `task-verify-plan` trio) dispatches NOTHING, so its numbers are tool-result sizes and cache behavior; a dispatch-mode run (`task-solve-cross`, an agents build, a capture fan-out, a DELEGATED loop) EXPECTS subagents, split main-session vs per-seat - the analyzer emits both.
 
 ## The run
 
@@ -95,7 +92,7 @@ The directory rollup once, to confirm which sessions matter; then per audited se
 ### 4. WRITE - one folder per session
 Read `references/diagnosis-discipline.md` now, before the first authored row of the first bundle - its checks are this step's gate, not homework: every authored section below is written against them, and the report's Environment rows carry the receipt `Discipline: read`. The discipline is READ this run, never remembered: a bundle with no `Discipline: read` receipt was authored without the checks, and hand-written analysis is the failure mode they exist to replace. When a check and your recollection of the transcript disagree, re-open the transcript; the check wins.
 
-**Who writes each bundle.** One session to audit, or no subagent dispatch: write it here. Two or more: one AUTHOR subagent per bundle, at most six at a time, and never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS`, each on a mid-tier model named in the dispatch (`model: 'sonnet'` on Claude Code's Agent call) - never a default seat, which takes this session's model (cost in `references/evidence.md`). Each gets `references/bundle-brief.md` filled in and returns one line; this session keeps step 5 and its spot check.
+**Who writes each bundle.** One session to audit, or no subagent dispatch: write it here. Two or more: one AUTHOR subagent per bundle, never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once, each on a mid-tier model named in the dispatch (`model: 'sonnet'` on Claude Code's Agent call) - never a default seat, which takes this session's model (cost in `references/evidence.md`). Each gets `references/bundle-brief.md` filled in and returns one line; this session keeps step 5 and its spot check.
 
 **Gather with the reader, never a helper script.** Each bundle starts with `node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js pack <transcript> <usage json> --out <tmp>/<sid>-evidence.md`: the typed prompts, every ask with its answer, the skill, command and dispatch runs, the errored tool results (the seats' too), and each moment the analyzer flagged with the rows before it - every line an `L<n>` locator. It quotes the transcript, so it stays in `<tmp>`, out of the bundle. A row it does not hold comes from the same script - `timeline`, `show <L>`, `grep <regex>` - never one written for the occasion.
 
@@ -117,7 +114,7 @@ Raw transcripts would land in <data root>/statistics/usage-report/, a folder git
 
 Without the copy the bundle holds the report and the `--json` dumps only, and its Environment rows say `raw transcripts: not copied - <the check's exit>`.
 
-`report-usage.md` = the skeleton plus your judgment. The machine sections (whichever the run emits - listed in `references/run-mechanics.md`, with what `Inventory vs use` scores) stay as printed, and a non-use finding cites the `Inventory vs use` row, never the stack's full catalog; then fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict), insert ONE authored `## Per skill run` (one subsection per SKILLS entry found) between the machine tables and Waste analysis, and append the Environment rows only you know (OS, project stack(s), analyzer snapshot revision, which session file covers which skill run, the `Mechanics: read` and `Discipline: read` receipts) - the Models, wall-clock, Claude Code version and `## Session vintage` rows arrive machine-written. `references/diagnosis-discipline.md` defines each section and the checks every row passes before it is written - one section there per section here, in this order.
+`report-usage.md` = the skeleton plus your judgment. The machine sections (whichever the run emits - listed in `references/run-mechanics.md`, with what `Inventory vs use` scores) stay as printed, and a non-use finding cites the `Inventory vs use` row, never the stack's full catalog; then fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict), insert ONE authored `## Per skill run` (one subsection per SKILLS entry found) between the machine tables and Waste analysis, and append the Environment rows only you know (the discipline file lists them). `references/diagnosis-discipline.md` defines each section and the checks every row passes before it is written - one section there per section here, in this order.
 
 Then append the full-report analyzer outputs verbatim at the end of the doc (they contain only counts, tool names, and paths - no code).
 

@@ -1166,9 +1166,10 @@ function awarenessDocs(projectRoot, docs)
 }
 
 // The map is never imported - it is read by section, and an import loads it whole at every start (spec 1.7): the rule
-// carries one pointer line to it whenever it exists.
-const mapLineOf = (projectRoot, docs) => (statOf(path.resolve(projectRoot, String(docs), AWARENESS_DIR, MAP_DOC))
-    ? `Architecture map: \`<docs-path>/${AWARENESS_DIR}/${MAP_DOC}\` - read it by section before a structural change.` : null);
+// carries one pointer line to it whenever it exists, and only that line says the map is not imported, so a project with
+// no map is told nothing about one (audit 2026-10-30 RU-17). Exported for lint 33's measure of the generated rule.
+const MAP_LINE = `Architecture map: \`<docs-path>/${AWARENESS_DIR}/${MAP_DOC}\` - only pointed at, never imported: read it by section before a structural change.`;
+const mapLineOf = (projectRoot, docs) => (statOf(path.resolve(projectRoot, String(docs), AWARENESS_DIR, MAP_DOC)) ? MAP_LINE : null);
 
 // The rule from SKILL.md's copy target: the docs root stamped in, one import line per doc, the map's line after them.
 // Neither an import nor the map, no rule. An empty slot leaves no blank lines behind it.
@@ -1398,4 +1399,4 @@ if (require.main === module)
     process.exitCode = main();
 }
 
-module.exports = { RUN_BOOK_NAMES, runBookOf, composeAwarenessRule, writeAwarenessRule, awarenessImport, ensureNotOwned, docsRoot, dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor, parsePluginList, projectKey, crossCheckPlugins, settingsPluginState, pluginEntries };
+module.exports = { RUN_BOOK_NAMES, MAP_LINE, runBookOf, composeAwarenessRule, writeAwarenessRule, awarenessImport, ensureNotOwned, docsRoot, dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor, parsePluginList, projectKey, crossCheckPlugins, settingsPluginState, pluginEntries };

@@ -12,8 +12,6 @@ This is capture only: it maps the structure, it does not judge it. The pros/cons
 
 Read `architecture-doc-shapes.md` (the map's required shape and the write protocol) and `architecture-hazards.md` (the stack-keyed hazard catalog) before AGGREGATE - they are this part's contract, not suggestions. `architecture-vocabulary-roles.md` and `architecture-report-fields.md` are read at their step; the report's `References:` line records every one of them.
 
-**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
-
 **An install not yet updated.** When the map still sits at the legacy home, `architecture/ARCHITECTURE.md` under the docs root, write nothing: report `the map is at the old home - /alfred-code:update moves it` and stop. A write at the new home beside it would leave two maps.
 
 ## Execution modes

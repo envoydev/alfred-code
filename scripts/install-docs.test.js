@@ -1352,7 +1352,7 @@ test('migrateArchitecture moves the map: the files, the watch merge, the overlay
     assert.strictEqual(out.removed, true);
     // step 6: the rule ends on the map's line, and the 3.3.0 marker is gone
     const rule = awarenessRuleOf(root).trimEnd().split('\n');
-    assert.match(rule[rule.length - 1], /^Architecture map: `[^`]*awareness\/ARCHITECTURE-AWARENESS\.md` - read it by section before a structural change\.$/, rule.join('\n'));
+    assert.match(rule[rule.length - 1], /^Architecture map: `[^`]*awareness\/ARCHITECTURE-AWARENESS\.md` - only pointed at, never imported: read it by section before a structural change\.$/, rule.join('\n'));
     assert.ok(!rule.some((l) => l.startsWith('@') && l.includes('ARCHITECTURE-AWARENESS')), 'the map is pointed at, never imported');
     assert.ok(!hasAt(root, '.claude/rules/alfred-architecture.md'), 'the superseded marker goes');
     assert.ok(!hasAt(root, PENDING), 'the pending marker goes last');

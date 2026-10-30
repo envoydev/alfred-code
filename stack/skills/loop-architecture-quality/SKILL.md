@@ -6,13 +6,13 @@ disable-model-invocation: true
 
 # Architecture Quality Loop - Analyze, Assess, Improve (Deliberate)
 
-You drive a deliberate loop that improves a project's architecture: analyze it, get a reasoned assessment, work the fixable weaknesses by tier, reconcile the map, and loop until the fixable ones are resolved or the loop plateaus. The assessment itself is never yours to write or prune - a separate deliberate capture recomputes it fresh every round. It runs only when a user invokes it (`/loop-architecture-quality`), never automatically - architecture analysis is expensive and its changes are consequential. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
+You drive a deliberate loop that improves a project's architecture: analyze it, get a reasoned assessment, work the fixable weaknesses by tier, reconcile the map, and loop until the fixable ones are resolved or the loop plateaus. The assessment itself is never yours to write or prune - a separate deliberate capture recomputes it fresh every round. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
-Best run in Claude Code, where you can dispatch the analysis and build seats and edit files across rounds. On a large codebase, scope it - point it at one bounded context or module subtree per run. This skill carries NO `model` pin and asks for no model switch: the judgment runs in-session, on the session's model, per the capture (a skill-level pin lasts only for the turn it activates in; measured: Sonnet at xhigh matched Opus on a capture at the same cost).
+On a large codebase, scope it - point it at one bounded context or module subtree per run. This skill carries NO `model` pin and asks for no model switch: the judgment runs in-session, on the session's model, per the capture (a skill-level pin lasts only for the turn it activates in; measured: Sonnet at xhigh matched Opus on a capture at the same cost).
 
 ## When to use
 
-- The deliberate architecture analyze-assess-improve loop: it recaptures the structure map and the pros/cons findings every round, works the Must-fix weaknesses by tier - structural ones flagged for a user decision, never auto-applied - proposes but never writes any decision the run turns up, and loops until the fixable cons resolve or plateau.
+- The deliberate architecture loop, run only by its slash command: structural weaknesses are flagged for a user decision, never auto-applied, and a decision the run turns up is proposed, never written.
 - Not for a code-quality polish (loop-code-quality), a single feature build (task-solve-cross), a capture-only run with no fixes (/capture-awareness architecture alone), or test-suite and coverage weaknesses - the deliberate coverage analyze-and-improve loop covers those.
 
 **Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line.
@@ -29,6 +29,8 @@ No dispatch capability is INLINE without asking - never offer seats that cannot 
 
 - **DELEGATED** (the user chose agents) - the main session dispatches every seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - architecture-analyzer for the capture's gathering, then the domain designer / implementers / verifier for a substantial fix, or an implementer for a small one - never doing their work itself. This skill stays the orchestrator - a substantial fix dispatches that stack's seats directly, never a re-entry into the full router.
 - **INLINE** (the user chose the current session - or forced, no question asked: no dispatch, a non-stack project, a scope too small to fan out) - the same steps in-session: map and assess against the house architecture skills yourself, then apply the fixable cons directly, smallest blast radius first.
+
+Substantial and structural changes are gated on user approval before building; small localized fixes proceed. In DELEGATED mode, the mode ask's answer IS the dispatch consent for small-tier fixes: write the `<data root>/state/approvals/loop-architecture-quality/APPROVAL` stamp (`APPROVED small-tier - "<the answer, verbatim>"`) the moment that answer lands (under auto-run the hook's `AUTO` stamp already stands - leave it), and rewrite it as substantial-tier approvals arrive - the dispatch guard is deliberately tier-blind, so an unstamped small-tier dispatch just bounces. On a RESUMED session no mode ask fires - the small-tier stamp then quotes the RESUME BLOCK's own dispatch line (`APPROVED small-tier - resumed round <N>, "<the block's mode line, verbatim>"`), never repurposed task framing. The mode answer covers the WHOLE round - a DELEGATED round's fixes go to the seats, its lens sweeps to analyzer seats; working a fix inline under a DELEGATED answer, or scoping the ask to just the analyze step, leaves the round's real work with no mode decision at all.
 
 ## The loop
 
@@ -48,7 +50,7 @@ The findings capture's output is this loop's work list: `<docs-path>/quality/ARC
 When the work list is drained (or a later round wants findings the last run missed), run a **lens sweep** instead of re-running the findings capture - Read the lens-sweep section of `references/loop-mechanics.md` first: it owns the lens choice, the one-lens-per-seat brief and the map-orientation rule. Findings triage into the same tier routing as the capture's own weaknesses.
 
 ### 2. TRIAGE + FIX by tier
-Take the open weaknesses in leverage order (the assessment's top-few first) and confirm the green baseline (build + tests) before you start, so a regression is visible. A user preference's breach (its rule `ARCHITECTURE-PREFERENCES.md#a<n>`) is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round. Hold every fix against the assessment's Strengths list: a remediation whose entry names a strength tension is applied the way the entry preserves the strength, and a fix that turns out mid-round to erode a listed strength stops - a genuine strength-vs-weakness tradeoff is a structural-tier user decision, never an auto-fix. Route each by its tier:
+Take the open weaknesses in leverage order (the assessment's top-few first) and confirm the green baseline (build + tests) before you start, so a regression is visible - round 1 also records the sweep baseline (HEAD, or the `git stash create` sha on a dirty tree). A user preference's breach (its rule `ARCHITECTURE-PREFERENCES.md#a<n>`) is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round. Hold every fix against the assessment's Strengths list: a remediation whose entry names a strength tension is applied the way the entry preserves the strength, and a fix that turns out mid-round to erode a listed strength stops - a genuine strength-vs-weakness tradeoff is a structural-tier user decision, never an auto-fix. Route each by its tier:
 
 - **small** (a localized edit) - dispatch the matching domain implementer with the remediation as a scoped brief - shape in `references/loop-mechanics.md`; it states `note: none` unless it hands a note, which it then names literally, read side included. Re-run build + tests.
 - **substantial** (a designer-led multi-task change) - five steps in order, none of them optional:
@@ -70,7 +72,7 @@ Take the open weaknesses in leverage order (the assessment's top-few first) and 
        ```ask
        Both write routes refused the approval stamp: <the refusal>.
        - 'Retry the stamp (Recommended)' - allow the write at the prompt
-       - 'Run this stage inline' - no dispatch, no stamp
+       - 'Run this fix inline' - no dispatch, no stamp
        ```
   5. **Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back. This is the domain-trio vertical (this skill's own `references/domain-trio-protocol.md`), dispatched directly.
 
@@ -102,7 +104,7 @@ Read `references/loop-mechanics.md` now - the RESUME BLOCK shape and the final r
 - **CAPPED** - you reached the improve-round cap (see Bounded and honest).
 - **BLOCKED** - only structural weaknesses remain and the user has not approved a rework - report and stop.
 
-On STOP, when any fix shipped, reconcile ONCE: run `capture-awareness` with `architecture <mode> <target>` (its UPDATE path - the diff since the Captured stamp) so the map picks up the shipped boundaries, then `capture-quality` with `architecture-quality <mode> <target>` again so `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` reflects the code as it now stands (this run's declined set still applies - it does not re-ask about what was already declined this run). When this session is already past the fresh-session trigger, the same fresh-session choice above applies before either capture runs. This reconcile is the step, not a suggestion: substituting anything lighter (a 'targeted reconcile', a hand edit) goes through this ask first - a substitution offered back in prose is a skipped mandatory step wearing a courtesy:
+On STOP, when any fix shipped: after the final build + tests, Read `references/anti-gaming-sweep.md` and run its sweep - a gamed bar is a BLOCKER, reverted and fixed. Then reconcile ONCE: run `capture-awareness` with `architecture <mode> <target>` (its UPDATE path - the diff since the Captured stamp) so the map picks up the shipped boundaries, then `capture-quality` with `architecture-quality <mode> <target>` again so `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` reflects the code as it now stands (this run's declined set still applies - it does not re-ask about what was already declined this run). When this session is already past the fresh-session trigger, the same fresh-session choice above applies before either capture runs. This reconcile is the step, not a suggestion: substituting anything lighter (a 'targeted reconcile', a hand edit) goes through this ask first - a substitution offered back in prose is a skipped mandatory step wearing a courtesy:
 
 ```ask
 The reconcile reruns both captures; <the substitute> covers <what>.
@@ -110,7 +112,7 @@ The reconcile reruns both captures; <the substitute> covers <what>.
 - '<the substitute>' - <what it leaves stale>
 ```
 
-A run that shipped nothing skips the reconcile - there is no drift to pick up. Then emit the final report - one line per field, a table where a field lists several items - with the fields `references/loop-mechanics.md` defines: **Outcome** (verdict + round), **Resolved**, **Deferred**, **Proposed decisions**, **Docs** (which captures ran at stop, or `skipped - nothing shipped`), **Baseline**, **Notes** (`notes purged: <names|none>`, fold-first), **Next actions**, **Mechanics** (`loop-mechanics.md: read` - the receipt for this step's Read; a report without it skipped the file).
+A run that shipped nothing skips the sweep and the reconcile - there is no drift to pick up. Then emit the final report - one line per field, a table where a field lists several items - with the fields `references/loop-mechanics.md` defines: **Outcome** (verdict + round), **Resolved**, **Deferred**, **Proposed decisions**, **Docs** (which captures ran at stop, or `skipped - nothing shipped`), **Baseline**, **Anti-gaming**, **Notes** (`notes purged: <names|none>`, fold-first), **Next actions**, **Mechanics** (`loop-mechanics.md: read` - the receipt for this step's Read; a report without it skipped the file).
 
 When the report closes with uncommitted work and no next round queued, delete the round's APPROVED stamp first - every implementer and verifier has returned, and the checkpoint's generic security seat bounces off a live one (an AUTO stamp stays with its owner, and the checkpoint runs that half inline) - then the commit decision is the ask below, never a prose 'your call' bullet. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (started-nothing is said plainly, and what the round did not start is never touched):
 
@@ -126,13 +128,6 @@ This round started <what is still up>.
 - 'Keep it running' - named in the report
 ```
 
-## Example
-
-DELEGATED, one run over the Orders module:
-1. **ANALYZE + ASSESS** - the map capture runs, then the findings capture lands tiered weaknesses; top two: a **small** con (a repository leaks an EF type across the boundary), a **substantial** con (queries and handlers share one grab-bag namespace).
-2. **FIX by tier** - green baseline confirmed. Small: aspnet-implementer on a scoped brief. Substantial: aspnet-solution-designer decomposes, plan gated and approved, implementers fan out, aspnet-verifier gates. A **structural** con (invert the persistence dependency) is flagged for the user, declined, and added to this run's declined set.
-3. **LOOP or STOP** - only the declined structural item and accepted tradeoffs remain -> **SATISFIED**; the map capture's UPDATE path and a fresh findings capture reconcile both docs, then the report.
-
 ## Bounded and honest
 - **Hard cap: 3 improve rounds.** Architecture changes are expensive and consequential; do not loop indefinitely chasing the last debatable con.
 - **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the map plus a fresh findings capture is the handoff (there is no pruned doc to hand off - the next session's step 1 recomputes the findings). A step, not advice: at each LOOP decision, ask - the fresh-session option is ALWAYS one of its options (a continue-ask without it is the measured failure step 3's receipt exists to catch), and when the hook refuses the ask because a fresh session does not pay back, start the next round here (its receipt `next: continue - "refused: a fresh session does not pay back"`). Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names. On 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else - the new session must be able to start from it alone.
@@ -142,11 +137,17 @@ DELEGATED, one run over the Orders module:
   - 'Continue here (Recommended)' - the next round in this chat
   - 'Resume in a fresh session' - the RESUME BLOCK, then this turn ends
   ```
-- Never weaken a test or delete an assertion to make a con look resolved - that is a new weakness, not a fix.
+- Never weaken a test or delete an assertion to make a con look resolved - that is a new weakness, not a fix, and the anti-gaming sweep exists to catch it.
 - Make the smallest change that resolves each weakness; a rewrite that introduces new coupling makes the loop diverge.
 - The tier is the routing authority - do not silently upgrade a small con into a rewrite, or downgrade a structural one to sneak it past the approval gate.
 
 ## Rules
 - The main session is the only orchestrator: every seat it dispatches - the domain designer / implementers / verifier / resolvers, and the capture's architecture-analyzers - carries no Agent tool, so the fan-out stays flat; analysis and fix are separate dispatches from here, never one nested one.
-- Substantial and structural changes are gated on user approval before building; small localized fixes proceed. In DELEGATED mode, the mode ask's answer IS the dispatch consent for small-tier fixes: write the `<data root>/state/approvals/loop-architecture-quality/APPROVAL` stamp (`APPROVED small-tier - "<the answer, verbatim>"`) the moment that answer lands (under auto-run the hook's `AUTO` stamp already stands - leave it), and rewrite it as substantial-tier approvals arrive - the dispatch guard is deliberately tier-blind, so an unstamped small-tier dispatch just bounces. On a RESUMED session no mode ask fires - the small-tier stamp then quotes the RESUME BLOCK's own dispatch line (`APPROVED small-tier - resumed round <N>, "<the block's mode line, verbatim>"`), never repurposed task framing. The mode answer covers the WHOLE round - a DELEGATED round's fixes go to the seats, its lens sweeps to analyzer seats; working a fix inline under a DELEGATED answer, or scoping the ask to just the analyze step, leaves the round's real work with no mode decision at all.
 - Keep this skill orchestration only. The map lives in `capture-awareness`'s architecture part, the judgement in `capture-quality`'s architecture-quality part it hands off to (plus whichever house architecture skills either one loads); the build knowledge lives in the domain seats.
+
+## Example
+
+DELEGATED, one run over the Orders module:
+1. **ANALYZE + ASSESS** - the map, then the findings: a **small** con (a repository leaks an EF type across the boundary), a **substantial** one (queries and handlers share one namespace).
+2. **FIX by tier** - baselines recorded. Small: aspnet-implementer, scoped brief. Substantial: designer, plan gated and approved, implementers, verifier. A **structural** con (invert the persistence dependency) is declined into the declined set.
+3. **LOOP or STOP** - only the declined item and accepted tradeoffs remain -> **SATISFIED**; the sweep is clean, both captures reconcile, then the report.

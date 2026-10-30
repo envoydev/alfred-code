@@ -131,7 +131,7 @@ Never ask for a credential's VALUE, and the doc never holds one - not in an ask,
 report. The doc records the login steps and WHERE it lives - an environment variable, a key in a gitignored local
 file (the project's sensitive data, `<data root>/.secrets`, first), a vault item - and the user puts the
 value there by hand. A value the user pastes anyway is never written anywhere: redact it as `<redacted>`, record
-only where it should live, and follow the security baseline's credential rule (the rotation ask). A seat that needs
+only where it should live, and follow the security rule's credential line (the rotation ask). A seat that needs
 the value to log in checks the file for presence (the secret guard's `--presence`) and goes through that guard's
 one ask before it types it; a command that needs it runs through the guard's `--with-sensitive`.
 

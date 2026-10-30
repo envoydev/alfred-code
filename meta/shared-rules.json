@@ -1272,7 +1272,7 @@
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         },
         {
@@ -1648,6 +1648,48 @@
         }
       ]
     },
+    "review-target-read": {
+      "_note": "The two own reviewers read their target the same way: the `## Target` section (the change set, a branch, a change request, paths, and where the code is read) is byte-identical in review-code and review-security, and their Dispatch paragraph counts the target with the same sentence. It drifted unregistered until the 2026-10-30 audit (SKF-04); the markers pin both ends of the Target section and the count, and scripts/own-reviewers.test.js fails a Target section that differs between the two.",
+      "owner": {
+        "file": "stack/skills/review-code/SKILL.md",
+        "marker": "the secret guard masks only a `git diff` whose path it can read"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "the secret guard masks only a `git diff` whose path it can read"
+        },
+        {
+          "file": "stack/skills/review-code/SKILL.md",
+          "marker": "Code is read where the target lives"
+        },
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "Code is read where the target lives"
+        },
+        {
+          "file": "stack/skills/review-code/SKILL.md",
+          "marker": "Run inline. First count the target from its own diff: changed lines (the change set `git diff HEAD --shortstat` plus each untracked file's lines, a path the same under `-- <path>`, a branch `git diff --shortstat <base>...<branch>`, a change request `git diff --shortstat <base>...<head>` over its fetched head, the forge tool's own counts - `gh pr view <n> --json additions,deletions` - only when no ref exists) and touched stacks (the convention rules the changed files attach"
+        },
+        {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "Run inline. First count the target from its own diff: changed lines (the change set `git diff HEAD --shortstat` plus each untracked file's lines, a path the same under `-- <path>`, a branch `git diff --shortstat <base>...<branch>`, a change request `git diff --shortstat <base>...<head>` over its fetched head, the forge tool's own counts - `gh pr view <n> --json additions,deletions` - only when no ref exists) and touched stacks (the convention rules the changed files attach"
+        }
+      ]
+    },
+    "review-passes-vendored": {
+      "_note": "review-code's eight review passes and refute pass, vendored VERBATIM (whole file) into task-verify-code, which runs passes 1, 2, 3, 5 and 6 from its own copy - a pointer into another skill's folder breaks wherever that folder is absent (a Cursor twin, a trimmed install) and named a Claude-only path (2026-10-30 audit SKF-01). An edit to the owner is a copy of the whole file over the site; scripts/own-reviewers.test.js fails the pair when they differ.",
+      "owner": {
+        "file": "stack/skills/review-code/references/passes.md",
+        "marker": "The method `review-code` runs, and `task-verify-code` uses for its code checks."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-verify-code/references/passes.md",
+          "marker": "The method `review-code` runs, and `task-verify-code` uses for its code checks."
+        }
+      ]
+    },
     "domain-trio-protocol-vendored": {
       "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, so each loop and the greenfield build reads its own copy. An edit to the owner file is a copy of the whole file over each site. Its deep-dive pointers into the owner's references/ are a sanctioned cross-folder read, like every sibling pointer check 34 resolves (2.1.5 audit M98): the owner is always installed (a locked always skill), and every such pointer names its inline fallback ('where installed', or what to do absent it), so a copy still runs where the owner's folder is missing (a Cursor twin, a trimmed install) - vendoring those references too would put five more files in four more folders.",
       "owner": {
@@ -1766,7 +1808,19 @@
         },
         {
           "file": "stack/skills/capture-usage-report/SKILL.md",
-          "marker": "at most six at a time, and never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS`"
+          "marker": "one AUTHOR subagent per bundle, never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/SKILL.md",
+          "marker": "the `ALFRED_CODE_MAXIMUM_RUN_AGENTS` fan-out cap (default 5)"
+        },
+        {
+          "file": "stack/skills/habits-execution-strategy/SKILL.md",
+          "marker": "Up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (the start line's 'Agents at once', else 5), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md",
+          "marker": "(parallel, one per source, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once"
         }
       ]
     },
@@ -2280,7 +2334,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality-doc-shape.md",
+          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "never a per-claim edit stream"
         }
       ]
@@ -7022,7 +7076,7 @@
       ]
     },
     "auto-mode-contract": {
-      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, and the stack-modes spec of 2026-10-27 section 7: four mode flags in the leading run right after the command, auto-run lasting the session through the hook's AUTO stamp, each run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line the flag holds for that run only, M2): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph, so a flag reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
+      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, and the stack-modes spec of 2026-10-27 section 7: four mode flags in the leading run right after the command, auto-run lasting the session through the hook's AUTO stamp, each run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line the flag holds for that run only, M2): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph (a capture part reached only through its router reads the router's, audit 2026-10-30 SKC-06), so a flag reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
       "owner": {
         "file": "stack/skills/loop-code-quality/SKILL.md",
         "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
@@ -7057,7 +7111,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "file": "stack/skills/task-solve/references/full-spec.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -7069,27 +7123,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/capture-quality/references/architecture-quality.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-awareness/references/architecture.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
           "file": "stack/skills/capture-awareness/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-quality/references/code-quality.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-awareness/references/project-code-style.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
-        },
-        {
-          "file": "stack/skills/capture-quality/references/test-coverage-quality.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -7140,12 +7174,16 @@
       ]
     },
     "anti-gaming-sweep-commands": {
-      "_note": "The final-gate anti-gaming sweep's four commands (audit 2026-10-14 SKF-16): the code-quality loop owns them, and the coverage loop vendors the same list, since either loop may be installed alone and its never-weaken rule needs a mechanical check behind it. Each copy keeps its own intro (where the baseline is recorded) and report line; the commands are the shared rule.",
+      "_note": "The final-gate anti-gaming sweep's four commands (audit 2026-10-14 SKF-16): the code-quality loop owns them, and the coverage and architecture loops vendor the same list (the architecture loop since the 2026-10-30 audit SKF-05 ruling - its implementers edit code and tests too), since each loop may be installed alone and its never-weaken rule needs a mechanical check behind it. Each copy keeps its own intro (where the baseline is recorded) and report line; the commands are the shared rule.",
       "owner": {
         "file": "stack/skills/loop-code-quality/references/anti-gaming-sweep.md",
         "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
       },
       "sites": [
+        {
+          "file": "stack/skills/loop-architecture-quality/references/anti-gaming-sweep.md",
+          "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
+        },
         {
           "file": "stack/skills/loop-test-coverage-quality/references/anti-gaming-sweep.md",
           "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
@@ -8579,6 +8617,19 @@
         {
           "file": "stack/skills/capture-awareness/SKILL.md",
           "marker": "A mode word next, `DELEGATED` or `INLINE`"
+        }
+      ]
+    },
+    "format-check-source": {
+      "_note": "Where the project's format check comes from - its own `format:check` script, else the CI workflow's format step - stated by the commit gate and the done gate alike (audit 2026-10-30 SKC-19). Owned by the commit checkpoint, whose Format step runs it over every staged path; the done gate names the same source for its re-run.",
+      "owner": {
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+        "marker": "(a `format:check` script, the CI workflow's format step)"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-done-gate/SKILL.md",
+          "marker": "(a `format:check` script, the CI workflow's format step)"
         }
       ]
     }

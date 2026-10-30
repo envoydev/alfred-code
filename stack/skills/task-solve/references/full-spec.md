@@ -24,9 +24,16 @@ check nothing to read - fetch the ticket first and put its title and type line a
 connector (audit 2026-10-20 C20: three sessions retried a connector the token route had replaced); a route that worked
 where the line is absent or wrong is saved to memory and named in the close as the line to fill.
 
+A request that is only a findings path (a diagnosis's `/task-solve <findings path>` hand-off) gives the check
+nothing to read either: put `Type: bug`, the file's `Observable:` line and each `## Tasks` card's title, owned
+files and acceptance criterion above the path in the heredoc - the bare path reads `bug: no` and `size floor:
+trivial` on a diagnosed bug.
+
 Two stop rules every size carries, since this file is the one read on every size: a bug's `Result:` adds
 `Repro: <the reported error matched | differs: <what it showed> | not reproduced>`, and a question in the
 arguments (is it built, is it still needed) is answered in the stop's first sentence, before the fields.
+
+**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
 
 A request whose named files exist only in a related project (the awareness doc lists its siblings) is settled
 before the check - the check, the `Size:` line and every stop run in the repo that owns the task:

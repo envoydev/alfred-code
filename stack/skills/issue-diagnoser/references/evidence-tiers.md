@@ -24,9 +24,9 @@ reproduce - and the verdict says plainly which tier it rests on.
 
 - **In reach, always:** files and logs on disk, the repo's own history, anything the user pastes
   into the chat, and the app itself when it can be run locally.
-- **In reach when the project has it:** the `gh` CLI for a red pipeline; an error-monitoring MCP
-  where the project registered one (the baseline comments out the MCPs a project does not need,
-  so it can simply be absent from your tool list here).
+- **In reach when the project has it:** the `gh` CLI for a red pipeline; the error-monitoring tool
+  when the start line's tool order ranks one (the stack ships none, so it is often absent from your
+  tool list here).
 - **Never in reach:** a LINK. A monitoring-issue URL, a private dashboard, a ticket - if no tool
   in this session can fetch it, say so in one line and put it through the step-1 stop: 'Paste the event
   (Recommended)' / 'Proceed at tier 4 from the code', rather than guessing what it contained.

@@ -188,7 +188,7 @@ const checkpoint = () => read('stack/skills/habits-commit-checkpoint/SKILL.md');
 test('C18 e6a68237#1 (skill half): the format CHECK runs over every staged path and its verdict is the receipt\'s format: line', () => {
     const t = flat(checkpoint());
     assert.match(t, /The formatter half is never skipped, and it must be FRESH/, 'the skill-comply quote stays');
-    assert.match(t, /run the project's own format CHECK - the command CI runs \(a `format:check` script, the workflow's format step\), else the formatter's check mode - over EVERY staged path, inherited files included/);
+    assert.match(t, /run the project's own format CHECK - the command CI runs \(a `format:check` script, the CI workflow's format step\), else the formatter's check mode - over EVERY staged path, inherited files included/);
     // The pinned cross-track contract: T3's guard refuses a COMMIT receipt with no format: line or one without `clean`.
     const block = (checkpoint().match(/```\nVERIFIED <what was reviewed, one phrase>\n([\s\S]*?)```/) || [])[1] || '';
     assert.match(block, /^format: <the format CHECK command run> - clean over <N> staged files$/m);
