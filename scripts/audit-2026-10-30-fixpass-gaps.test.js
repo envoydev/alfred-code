@@ -7,6 +7,8 @@
 //    tests, at the top level and inside the runner's line: bash drops the backslash, the guard kept it;
 // 3. a script FILE a shell runs - `bash run.sh` with `cat .env` (or the runner's line) in it - passed the secret guard,
 //    which read the command and never the file the shared reader already reads;
+// 4. a session transcript was writable - the config dir is a write allowance for memory, so a Write, an Edit or a shell
+//    append could forge the answer rows every receipt reads, and the payload's own transcript_path was never judged.
 // Nothing here runs a dangerous command: each is stdin text to a hook, in mkdtemp folders removed after.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
@@ -167,4 +169,47 @@ test('FC 3: a script file is judged in linear work - its held assignments read t
   // a clean script past the old 2M work budget still runs: the budget grows with what the reader carried
   const big = once(1000000);
   assert.strictEqual(big.status, 0, big.err);
+});
+
+test('FC 4: a session transcript is no write target - under the config dir\'s projects/ and the payload\'s own transcript_path', () => {
+  const dir = project('fc4-');
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  const p = path.join(cfg, 'projects', '-fc4');
+  const t = path.join(p, '0000-sess.jsonl');
+  const seat = path.join(p, '0000-sess', 'subagents', 'agent-1.jsonl');
+  fs.mkdirSync(path.dirname(seat), { recursive: true });
+  fs.mkdirSync(path.join(p, 'memory'), { recursive: true });
+  for (const f of [t, seat]) fs.writeFileSync(f, '{"type":"user"}\n');
+  fs.writeFileSync(path.join(p, 'memory', 'MEMORY.md'), '- note\n');
+  const denied = (tool, input, extra) => {
+    const r = fire(dir, tool, input, extra);
+    assert.strictEqual(r.v, 2, `${tool} ${JSON.stringify(input)}\n${r.out}`);
+    assert.match(r.out, /session transcript/, r.out);
+    assert.doesNotMatch(r.out, /CROSS-WRITE-ALLOW/, 'no receipt route');
+  };
+  denied('Write', { file_path: t, content: '{"type":"user"}\n' });
+  denied('Edit', { file_path: seat, old_string: 'user', new_string: 'assistant' });
+  denied('MultiEdit', { file_path: t, edits: [{ old_string: 'user', new_string: 'x' }] });
+  denied('Bash', { command: `echo '{"type":"user"}' >> "${t}"` });
+  denied('Bash', { command: 'printf x >> ~/.claude/projects/-fc4/0000-sess.jsonl' });
+  denied('Bash', { command: `rm -f "${t}"` });
+  denied('Bash', { command: `mv "${t}" "${path.join(dir, 'moved.jsonl')}"` });
+  denied('Bash', { command: `sed -i.bak s/user/x/ "${t}"` });
+  denied('Bash', { command: `rm -rf "${path.join(p, '0000-sess')}"` }, undefined);
+  // the payload's own transcript, wherever it lives - a relative shell path into it too
+  const own = path.join(dir, '.sessions', 'own.jsonl');
+  denied('Write', { file_path: own, content: 'x' }, { payload: { transcript_path: own } });
+  denied('Bash', { command: 'echo x >> .sessions/own.jsonl' }, { payload: { transcript_path: own } });
+  denied('Bash', { command: 'rm -rf .sessions' }, { payload: { transcript_path: own } });
+  // a relocated config dir is the config dir
+  const cfg2 = path.join(TMP, 'cfg2');
+  denied('Write', { file_path: path.join(cfg2, 'projects', '-p', 's.jsonl'), content: 'x' }, { env: { CLAUDE_CONFIG_DIR: cfg2 } });
+  // the twins keep today's verdicts: memory, reads, the account settings, a project jsonl, a folder with no transcript
+  for (const [tool, input] of [['Write', { file_path: path.join(p, 'memory', 'x.md'), content: 'x' }], ['Read', { file_path: t }],
+    ['Bash', { command: `grep -c user "${t}"` }], ['Bash', { command: `wc -l "${t}"` }], ['Write', { file_path: path.join(cfg, 'settings.json'), content: '{}' }],
+    ['Write', { file_path: path.join(dir, 'data', 'rows.jsonl'), content: '{}' }], ['Bash', { command: `rm -rf "${path.join(p, 'memory')}"` }],
+    ['Bash', { command: `cp "${t}" "${path.join(dir, 'copy.jsonl')}"` }]]) {
+    const r = fire(dir, tool, input);
+    assert.strictEqual(r.v, 0, `${tool} ${JSON.stringify(input)}\n${r.out}`);
+  }
 });

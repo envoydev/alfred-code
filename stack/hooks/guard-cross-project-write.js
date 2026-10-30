@@ -382,6 +382,68 @@ function allowed(target) {
 
   return false;
 }
+// THE TRANSCRIPT IS THE RECORD (final review 2026-10-30, FC): every receipt and hook reads the session's transcript for
+// the user's own answers, and the config dir is a write allowance (memory lands there) - so a Write, an Edit or a shell
+// append could forge an answer row. Inside the config dir (`CLAUDE_CONFIG_DIR`, else `~/.claude`) a write to or removal
+// of a `*.jsonl` under `projects/` - and of the payload's own `transcript_path`, wherever it lives - is denied, and so is
+// removing a folder that holds one or copying into a folder that holds one directly. No receipt or allowance opens it:
+// the record is what every receipt reads. Reading it stays open (Read, grep, a copy out of it).
+const CONFIG_DIR = (() => {
+  const d = process.env.CLAUDE_CONFIG_DIR || (HOME ? path.join(HOME, '.claude') : '');
+  return d ? realish(expandTilde(d)) : null;
+})();
+const PROJECTS_DIR = CONFIG_DIR ? realish(path.join(CONFIG_DIR, 'projects')) : null;
+const TRANSCRIPT = typeof payload.transcript_path === 'string' && payload.transcript_path ? realish(expandTilde(payload.transcript_path)) : null;
+const RECORD_FILE = /\.jsonl$/i;
+const RECORDS_NEAR_ROOT = !!((TRANSCRIPT && inside(TRANSCRIPT, ROOT)) || (PROJECTS_DIR && (inside(PROJECTS_DIR, ROOT) || inside(ROOT, PROJECTS_DIR))));
+// Whether removing a folder removes a record: the payload's own transcript under it, or a `.jsonl` under projects/ - a
+// bounded walk (5,000 entries), past which it is taken to hold one.
+function holdsRecord(dir) {
+  if (TRANSCRIPT && inside(TRANSCRIPT, dir)) return true;
+  if (!PROJECTS_DIR) return false;
+  const start = inside(dir, PROJECTS_DIR) ? dir : inside(PROJECTS_DIR, dir) ? PROJECTS_DIR : null;
+  if (!start) return false;
+  const stack = [start];
+  let seen = 0;
+  while (stack.length) {
+    const d = stack.pop();
+    let entries = [];
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (++seen > 5000) return true;
+      if (e.isDirectory()) stack.push(path.join(d, e.name));
+      else if (RECORD_FILE.test(e.name)) return true;
+    }
+  }
+  return false;
+}
+// A copy or move INTO a folder lands on `<folder>/<name>`: a record when the folder holds one directly.
+function intoRecords(dir) {
+  if (TRANSCRIPT && fold(path.dirname(TRANSCRIPT)) === fold(dir)) return true;
+  if (!PROJECTS_DIR || !inside(dir, PROJECTS_DIR)) return false;
+  try { return fs.readdirSync(dir).some((n) => RECORD_FILE.test(n)); } catch { return false; }
+}
+// What a target does to a record: `remove` (rm, rmdir, a move's source, PowerShell's remove and move), `into` (a copy or
+// move destination) or a plain write.
+const recordKind = (what, verb) => (what === 'a copy/move destination' ? 'into'
+  : what === 'a move OUT of another project' || /^(?:rm|rmdir|rimraf|move-item|mi|move)$/i.test(String(verb || '')) ? 'remove' : null);
+function recordAt(target, kind) {
+  const t = realish(target);
+  if (TRANSCRIPT && fold(t) === fold(TRANSCRIPT)) return t;
+  if (PROJECTS_DIR && RECORD_FILE.test(t) && inside(t, PROJECTS_DIR)) return t;
+  if (kind === 'remove' && holdsRecord(t)) return t;
+  if (kind === 'into' && intoRecords(t)) return t;
+  return null;
+}
+function recordBlock(what, shown) {
+  global.BLOCK_DETAIL = { branch: 'transcript' };
+  process.stderr.write(
+    `Blocked: ${what} targets '${shown}', which is or holds a session transcript - the record every receipt and hook\n` +
+    `reads for the user's own answers. Nothing in a session writes, edits or removes one, and no receipt or allowance\n` +
+    `opens it. Reading it stays open (Read, grep). Drop this step; a note to keep goes in the project's memory folder.\n`,
+  );
+  process.exit(2);
+}
 // Resolve the way the session sees it: the hook subprocess's cwd is not the Bash tool's persisted cwd, which the payload
 // carries as `cwd` - so a shell path is anchored there (SHELL_CWD, the anchor the rm and config guards use), and a
 // file-tool path, which the tools take absolute, at the project root. From `proj/sub`, `echo hi > ../x.txt` lands in
@@ -478,6 +540,7 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'Not
   const target = input.file_path || input.notebook_path;
   if (!target) process.exit(0);
   const abs = resolveTarget(String(target));
+  if (recordAt(abs, null)) recordBlock(`${tool} of a file`, String(target));
   if (!allowed(abs)) block(`${tool} of a file`, String(target), abs);
   process.exit(0);
 }
@@ -518,7 +581,11 @@ function judge(rawIn, index, what, verb) {
   const WIN_ABS = /^(?:[A-Za-z]:[\\/]|\\\\)/;
   const explicit = /^([~/]|\.\.[/\\])/.test(raw) || (process.platform === 'win32' && WIN_ABS.test(raw))
     || raw.includes('/../') || raw === '..';
-  if (!explicit && base === ROOT) return;
+  if (!explicit && base === ROOT) {
+    // this project's own file - unless a transcript sits in the project, or the project in the config dir's records
+    if (RECORDS_NEAR_ROOT && recordAt(resolveTarget(nativePath(raw), ROOT), recordKind(what, verb))) recordBlock(what, raw);
+    return;
+  }
   const expanded = nativePath(expandTilde(raw));
   if (!path.isAbsolute(expanded) && base === null) return; // relative from an unknown anchor
   const abs = resolveTarget(expanded, base);
@@ -540,6 +607,7 @@ function judge(rawIn, index, what, verb) {
   // Nothing can be handed off to a repo that cannot be named, so this passes rather than blocks. Asked only of a write
   // that is not allowed: the name climbs to the filesystem root for a .git, and asked of every write it cost a 245KB
   // chain of cd steps most of its time on Windows (2.1.7).
+  if (recordAt(abs, recordKind(what, verb))) recordBlock(what, explicit ? raw : abs);
   if (allowed(abs)) return;
   if (/[*?\[]/.test(otherProjectName(abs))) return;
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands

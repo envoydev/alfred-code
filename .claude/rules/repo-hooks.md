@@ -1224,6 +1224,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     56 probe rows over two weeks in three projects, none naming a collision; the per-call head reads cost 12-22ms).
     Its `interpreter-write` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16 (622 rows nobody
     read); the denial is cut to the ask and its three options (1,553 to ~600 fixed chars).
+    The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the answer rows every receipt reads could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is denied with no receipt or allowance route (`recordAt`, branch `transcript`); memory, `settings.json`, a Read, a grep and a copy OUT stay open.
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a
     check is never made green by weakening the check: a change to a lint / format / analyzer config that
     ALREADY exists (eslint, prettier, stylelint, biome, `.editorconfig`, a ruleset) is blocked, and in
