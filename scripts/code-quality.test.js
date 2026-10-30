@@ -93,7 +93,7 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
 
     // The loop invokes the capture as a Skill call, so it carries no disable-model-invocation - and the
     // generated usage policy lists it with the orchestration skills, marked as the by-design exception.
-    const inventory = read('stack/skills/capture-awareness/scripts/capabilities-inventory.js');
+    const inventory = read('stack/skills/capture-awareness/scripts/awareness-state.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
     assert.ok(set && set[1].includes("'capture-quality'"), 'the capture is model-invocable by design');
 });
@@ -182,7 +182,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /\*\*Reads decisions, never writes them - hard rule\.\*\*/);
     // No rule source at all: stop, write nothing - a doc judged against nothing reads as clean code.
     assert.match(b, /\*\*No rule source at all - stop\.\*\*[^*]*writing nothing/);
-    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-preferences`[^*]*`\/capture-project-code-style`[^*]*`\/loop-code-quality`/, 'and names the three ways to get rules, all slash-typed');
+    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-preferences`[^*]*`\/capture-awareness project-code-style`[^*]*`\/loop-code-quality`/, 'and names the three ways to get rules, all slash-typed');
     // A remediation is checked against the OTHER handed rules, or the loop oscillates between them.
     const judge = squash(raw.slice(raw.indexOf('### 3. JUDGE'), raw.indexOf('### 4. RE-GATHER')));
     assert.match(judge, /Cross-check every Must-fix remediation against the other rules/);
@@ -190,7 +190,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     // The neighbours with their destinations live in the body's When to use (the 160-char description cannot hold them).
     const whenToUse = raw.slice(raw.indexOf('## When to use'), raw.indexOf('## Execution modes'));
     assert.ok(whenToUse.length > 0, 'the body has a When to use section before Execution modes');
-    for (const dest of ['/loop-code-quality', 'the architecture-quality part', 'capture-project-code-style', 'review-security', 'task-verify-code'])
+    for (const dest of ['/loop-code-quality', 'the architecture-quality part', '/capture-awareness project-code-style', 'review-security', 'task-verify-code'])
         assert.ok(whenToUse.includes(dest), `Not for ... (${dest})`);
     assert.match(squash(read(ARCH_CAPTURE).slice(read(ARCH_CAPTURE).indexOf('## When to use'))), /the code-quality part/,
         'the architecture-quality part sends code quality to its neighbour');
@@ -389,7 +389,7 @@ function orchestration()
 
 test('every skill the inventory calls orchestration is on the fresh-session guard\'s roster', () =>
 {
-    const inventory = read('stack/skills/capture-awareness/scripts/capabilities-inventory.js');
+    const inventory = read('stack/skills/capture-awareness/scripts/awareness-state.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
     assert.ok(set, 'the inventory names its model-invocable orchestration skills');
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);

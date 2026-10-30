@@ -68,7 +68,7 @@ The stores and what each holds, where the docs root and the data root live, and 
   who wants it elsewhere changes the data root (the user's answer of 2026-10-20); unattended takes the recommended move
   all; no answer (an installer run outside the walk) moves nothing yet, a `!!` line, and the next update asks.
   A kept key carries its ledger row as recorded. Only the stack's own top-level entries move (`STACK_DOCS`: the domains and work folders, every older home a
-  migration still moves, `ORIENTATION.md`, `.branches`, any folder holding a `watch.json`): a hand-set root may be a
+  migration still moves, the loose legacy `ORIENTATION.md`, `.branches`, any folder holding a `watch.json`): a hand-set root may be a
   folder the project uses too (`docs/`), so its other files stay and are named. One step: `git mv` for tracked files
   (history kept, staged as renames), a rename for the rest, every file put back on any failure, the rule re-stamped -
   with every generated pointer rule (`selection.js` GENERATED_RULES, and an older install's `project-code-style`) that names the old root,
@@ -137,11 +137,11 @@ The stores and what each holds, where the docs root and the data root live, and 
   folder matches, or when it is one of the child's own. The install opens the docs roots and denies their edit
   (`repo-installer.md`); the hooks read them and guard the memory (`repo-hooks.md`).
 - **Two stores, split by durability** (hard rule). The committed architecture docs
-  (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
-  `capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
-  deliberately (that skill or `loop-architecture-quality`), never after each change. The
+  (`<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` + `references/`, owned by
+  `capture-awareness`'s architecture part; `architecture/` before 3.5.0, moved by `docs.migrateArchitecture`) are the DURABLE truth every seat reads to orient, refreshed
+  deliberately (that part or `loop-architecture-quality`), never after each change. The
   preferences live in `<docs-path>/preferences/`: the code style in `PROJECT-CODE-PREFERENCES.md` (owned by
-  `capture-project-code-style`), the user's own `PERSONAL-`, `PERSONAL-CODE-`, `ARCHITECTURE-` and `GIT-PREFERENCES.md`
+  `capture-awareness`'s project-code-style part), the user's own `PERSONAL-`, `PERSONAL-CODE-`, `ARCHITECTURE-` and `GIT-PREFERENCES.md`
   (owned by `capture-preferences`; the install seeds the git doc from `git-seed.md`, its consent, checkpoint, safety, attribution and
   checks entries `locked`, and an update restores an edited locked entry from the seed; nothing seeds the personal doc). The
   two personal docs (`PERSONAL-` and `PERSONAL-CODE-PREFERENCES.md`) are the user's own, never the team's: under git
@@ -152,7 +152,8 @@ The stores and what each holds, where the docs root and the data root live, and 
   first edit and first git write (the user's rulings of
   2026-10-21; `code-style/CODE-STYLE.md`, `CODE-PREFERENCES.md`, the generated `project-code-style.md` and the retired
   `alfred-git.md` are moved, seeded or removed by `docs.migratePreferences` on update). The run book lives in
-  `<docs-path>/awareness/PROJECT-AWARENESS.md` (owned by `capture-awareness`, repo facts first, the user's answers for
+  `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` (`PROJECT-AWARENESS.md`, its legacy name, until 3.5.0 split it into
+  project info, run and debug, resources and the user's own `USER-AWARENESS.md`; owned by `capture-awareness`, repo facts first, the user's answers for
   the gaps; `project-capabilities/PROJECT-CAPABILITIES.md` through 2.5.0, moved by `docs.migrateDocsDomains` with its
   `watch.json`, then `docs.migrateAwareness` re-spells its section ids and moves its branch versions; the generated
   `alfred-awareness.md` `@`-imports it so every session loads it at its start): a

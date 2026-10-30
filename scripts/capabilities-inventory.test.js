@@ -11,13 +11,13 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const SKILL_DIR = path.join(__dirname, '..', 'stack', 'skills', 'capture-awareness');
-const SCRIPT = path.join(SKILL_DIR, 'scripts', 'capabilities-inventory.js');
+const SCRIPT = path.join(SKILL_DIR, 'scripts', 'awareness-state.js');
 const SKILL_MD = path.join(SKILL_DIR, 'SKILL.md');
 // The doc's copy target and the stamped usage policy live in the agents reference.
 const AGENTS_REF = path.join(SKILL_DIR, 'references', 'agents.md');
 // The script writes the inventory doc under the docs root - the default one unless a case sets its own.
 const DOC = (root, docs = '.alfred/docs') => path.join(root, docs, 'awareness', 'AGENTS-AWARENESS.md');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'capabilities-inventory-'));
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'awareness-state-'));
 // The CLI stubs are POSIX shell: a Windows run has no way to put a fake `claude` on PATH that
 // `spawnSync(..., {shell:true})` would resolve, so those cases say so instead of passing blind.
 const posixOnly = process.platform === 'win32' ? 'the CLI stub is a POSIX shell script' : false;
@@ -135,8 +135,8 @@ test('inventory: every layer prints its own count, including the .claude/rules l
 {
     const root = project('inventory', {
         skills: {
-            'capture-awareness': { slashOnly: true, description: 'The deliberate capabilities capture. Use when the user asks to capture the project capabilities.' },
-            'capture-architecture': { description: 'Captures the architecture. A long second sentence.' },
+            'capture-awareness': { description: 'The deliberate capabilities capture. Use when the user asks to capture the project capabilities.' },
+            'capture-usage-report': { slashOnly: true, description: 'The usage report. A long second sentence.' },
             'markdown-author': {},
         },
     });
@@ -147,8 +147,8 @@ test('inventory: every layer prints its own count, including the .claude/rules l
     const { out } = run([], { cwd: root, bin });
 
     assert.match(out, /SKILLS:\s+3 total, 2 orchestration \(1 model-invocable-by-design\)/);
-    assert.match(out, /\/capture-awareness - The deliberate capabilities capture$/m);
-    assert.match(out, /\/capture-architecture - .*\(model-invocable-by-design\)/);
+    assert.match(out, /\/capture-awareness - The deliberate capabilities capture \(model-invocable-by-design\)$/m);
+    assert.match(out, /\/capture-usage-report - The usage report$/m);
     assert.match(out, /SEATS:\s+3 total/);
     assert.match(out, /seat families \(1\): aspnet/);
     assert.match(out, /RULES:\s+2 total, 1 pathless, 1 path-scoped/);
@@ -613,7 +613,8 @@ test('report: the plain inventory writes nothing and points at --write; the skil
     const before = fs.readFileSync(DOC(root), 'utf8');
     assert.match(run([], { cwd: root }).out, /COMPARE:\s+no verdict yet - `--write` composes the doc from these lines/);
     assert.strictEqual(fs.readFileSync(DOC(root), 'utf8'), before, 'the plain run writes nothing');
-    const skill = fs.readFileSync(SKILL_MD, 'utf8');
+    // The inventory step is the agents part's reference, the rule step the router's close (the merge of 2026-10-29).
+    const skill = [SKILL_MD, AGENTS_REF].map((f) => fs.readFileSync(f, 'utf8')).join('\n').replace(/\s+/g, ' ');
     assert.match(skill, /run `node "<caps>" --write`/, 'the inventory step runs the whole capture');
     assert.match(skill, /`node "<caps>" --rule` composes `\.claude\/rules\/alfred-awareness\.md`/, 'and the rule step the rule');
     assert.doesNotMatch(skill, /compose the\s+WHOLE body in-session/, 'no in-session compose');
@@ -636,7 +637,7 @@ test('--write: a first capture composes the rule from the copy target, verifies 
     assert.doesNotMatch(rule, /<the script's|<docs-path>|<data root>/, 'every slot filled');
     assert.match(rule, /^Captured: \d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1$/m);
     assert.ok(rule.includes(policyFrom(fs.readFileSync(AGENTS_REF, 'utf8'), '.alfred/docs')), 'the policy block, stamp included, verbatim');
-    assert.match(rule, /^## Orchestration skills.*\n\/capture-awareness - Does a thing$/m, 'the printed orchestration row');
+    assert.match(rule, /^## Orchestration skills.*\n\/capture-awareness - Does a thing \(model-invocable-by-design\)$/m, 'the printed orchestration row');
     assert.match(rule, /^## Subagent seats\naspnet-implementer, aspnet-verifier, security-auditor$/m, 'the printed SEATS line');
     for (const row of routingRows(plain)) assert.ok(rule.includes(row), `the printed routing row: ${row.slice(0, 60)}`);
     assert.doesNotMatch(rule, /^## Plugins/m, 'the CLI is absent, so no Plugins section');
@@ -729,7 +730,7 @@ test('--write: a copy target with a slot the script does not fill writes nothing
     const md = path.join(dir, 'references', 'agents.md');
     fs.writeFileSync(md, fs.readFileSync(md, 'utf8').replace('## MCP routing\n', '## MCP routing\n<the script\'s NEW slot>\n'));
     const root = project('write-broken', { rule: false });
-    const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'capabilities-inventory.js'), '--write'], { cwd: root, encoding: 'utf8', env: { PATH: path.join(TMP, 'empty-bin'), HOME: TMP } });
+    const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'awareness-state.js'), '--write'], { cwd: root, encoding: 'utf8', env: { PATH: path.join(TMP, 'empty-bin'), HOME: TMP } });
     assert.strictEqual(r.status, 1);
     assert.match(r.stdout, /COMPOSE:\s+FAIL - the copy target holds a slot this script does not fill: <the script's NEW slot>/);
     assert.ok(!fs.existsSync(RULE(root)), 'nothing written');

@@ -52,7 +52,11 @@ const ID_RE = '[0-9a-f]{8}';
 // people, held equal by scripts/habits-scorer-card.test.js.
 const PREFERENCE_DOCS = ['preferences/PERSONAL-CODE-PREFERENCES.md', 'preferences/ARCHITECTURE-PREFERENCES.md', 'preferences/PROJECT-CODE-PREFERENCES.md'];
 const ASSESSMENTS = ['quality/CODE-ASSESSMENT.md', 'quality/ARCHITECTURE-ASSESSMENT.md'];
-const DESIGN_DOCS = ['architecture/ARCHITECTURE.md', 'architecture/references/', ...PREFERENCE_DOCS, 'decisions/', ...ASSESSMENTS];
+// The map under awareness/ since 2026-10-29, at its legacy home in an install not yet updated; the run book under its new
+// name, or its legacy one - inputsOf hands the one layout.js runBookKey picks, so a hand copy left at the old name is not.
+const DESIGN_DOCS = ['awareness/ARCHITECTURE-AWARENESS.md', 'awareness/references/', 'architecture/ARCHITECTURE.md', 'architecture/references/',
+  ...PREFERENCE_DOCS, 'decisions/', ...ASSESSMENTS];
+const RUN_BOOK_DOCS = ['awareness/RUN-AND-DEBUG-AWARENESS.md', 'awareness/PROJECT-AWARENESS.md'];
 // Each output: its rubric in ../references/ (R1, R10), its runs per attempt ('rounds' = the run cap, inline-plan one),
 // whether it is graded without a typed stack, its producers (spec section 6) and its docs.
 const OUTPUTS = {
@@ -63,7 +67,7 @@ const OUTPUTS = {
   },
   'root-cause': {
     rubric: 'rubric-root-cause.md', runs: 'rounds', automatic: true,
-    skills: ['issue-diagnoser'], seats: ['issue-diagnoser-ci', 'issue-diagnoser-runtime'], docs: [...DESIGN_DOCS, 'awareness/PROJECT-AWARENESS.md', 'work/diagnoses/'],
+    skills: ['issue-diagnoser'], seats: ['issue-diagnoser-ci', 'issue-diagnoser-runtime'], docs: [...DESIGN_DOCS, ...RUN_BOOK_DOCS, 'work/diagnoses/'],
   },
   'inline-plan': { rubric: 'rubric-inline-plan.md', runs: 1, automatic: true, skills: ['habits-execution-strategy'], seats: [], docs: ['target'] },
   'topic-explainer': { rubric: 'rubric-topic-explainer.md', runs: 'rounds', automatic: false, skills: ['habits-explain-topic'], seats: [], docs: PREFERENCE_DOCS },
@@ -406,7 +410,8 @@ function inputsOf(ctx, output, target, env = process.env) {
       if (isDir(abs)) lines.push(`${shown(abs)}/`);
     } else {
       const abs = path.join(docsAbs, entry);
-      if (isFile(abs)) lines.push(shown(abs));
+      const otherRunBook = RUN_BOOK_DOCS.includes(entry) && loader?.runBookKey && entry !== `awareness/${loader.runBookKey(docsAbs)}.md`;
+      if (isFile(abs) && !otherRunBook) lines.push(shown(abs));
     }
   }
   return lines.length ? lines : ['none present'];

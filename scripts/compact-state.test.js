@@ -603,7 +603,7 @@ test('compact-state: the chained, hold and idle routes offer only where a fresh 
     const result = () => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
     const call = (id, usage) => ({ type: 'assistant', message: { id, model: 'claude-opus-5-5', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }], ...(usage ? { usage } : {}) } });
     const said = (id, text, usage) => ({ type: 'assistant', message: { id, model: 'claude-opus-5-5', content: [{ type: 'text', text }], ...(usage ? { usage } : {}) } });
-    const chain = (ctx, head) => [...(head ? [user('x'.repeat(600 * 1024))] : []), user('<command-name>/capture-architecture</command-name>'),
+    const chain = (ctx, head) => [...(head ? [user('x'.repeat(600 * 1024))] : []), user('<command-name>/capture-awareness</command-name>'),
         call('c1', ctx ? H1 : null), result(), call('c2', ctx ? read(F) : null), result(), said('c3', 'captured', ctx ? read(F) : null),
         user('now the quality loop'), said('c4', 'ok', ctx ? read(ctx) : null), user('<command-name>/loop-code-quality</command-name>')];
     const slash = (ctx, head) => {

@@ -14,7 +14,7 @@ folder, never read them into the run:
 
 - `fix-discipline.md` - standing guidance, not a stage: the FIX-step rules every stage holds.
 - `structure.md` - moves files and folders only.
-- `code-quality.md` - reads `<docs-path>/architecture/ARCHITECTURE.md` and audits TARGET for both
+- `code-quality.md` - reads `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` and audits TARGET for both
   quality and conformance to the recorded structure.
 - `naming.md` - the naming audit.
 - `logging.md` - audits whether a failure can be detected and reconstructed from the log points -

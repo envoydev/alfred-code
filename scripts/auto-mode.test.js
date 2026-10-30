@@ -182,8 +182,8 @@ test('auto-mode start: a task, capture, loop, issue or mode command, only --mode
     const p = project();
     assert.match(context(expand(p, 'sy', '/alfred-code:loop-test-coverage-quality --mode-output-scorer-on --mode-auto-run-on', t)), /auto-run is ON/, 'a scoped name, any order in the run');
     const cap = project();
-    assert.match(context(expand(cap, 'sc', '/capture-architecture --mode-auto-run-on', t)), /auto-run is ON for this \/capture-architecture run/);
-    assert.match(fs.readFileSync(cap.gate, 'utf8'), /^AUTO - "\/capture-architecture --mode-auto-run-on"\nsession: sc\nskill: capture-architecture\n/);
+    assert.match(context(expand(cap, 'sc', '/capture-awareness --mode-auto-run-on', t)), /auto-run is ON for this \/capture-awareness run/);
+    assert.match(fs.readFileSync(cap.gate, 'utf8'), /^AUTO - "\/capture-awareness --mode-auto-run-on"\nsession: sc\nskill: capture-awareness\n/);
     // an issue command, the flag on its own line as typed in a real session
     const iss = project();
     assert.match(context(expand(iss, 'si', '/issue-diagnoser --mode-auto-run-on\n\nthe login 500', t)), /auto-run is ON for this \/issue-diagnoser run/);
@@ -228,7 +228,7 @@ test('auto-mode start: a task, capture, loop, issue or mode command, only --mode
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
     const row = manifest.hooks.find((h) => String(h.matcher || '').startsWith('@UserPromptExpansion:'));
     const matcher = new RegExp(row.matcher.slice('@UserPromptExpansion:'.length));
-    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-architecture', 'issue-diagnoser', 'issue-signatures-ci', 'mode-auto-run', 'mode-output-scorer'])
+    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-awareness', 'issue-diagnoser', 'issue-signatures-ci', 'mode-auto-run', 'mode-output-scorer'])
         assert.ok(matcher.test(name), `expansion spawns for ${name}`);
     for (const name of ['review', 'commit', 'tasks', 'my-task-x'])
         assert.ok(!matcher.test(name), `and not for ${name}`);
@@ -248,12 +248,12 @@ test('mode start: --mode-auto-run-on writes the stamp and a run marker; a later 
         assert.match(stamp, /^AUTO - "\/task-solve --mode-auto-run-on fix A"\nsession: m1\nskill: task-solve\n/);
         const first = fs.readFileSync(marker(p, 'm1'), 'utf8');
         assert.match(first, /^skill: task-solve\nprompt: [0-9a-f]{12}\n/);
-        const b = both('/capture-architecture');
-        assert.match(context(b), /^auto-run is ON for this \/capture-architecture run/, 'a flagless family command under the mode gets the contract');
-        assert.match(bannerOf(b)[0], /^\*\*Auto-run: ON\*\* for \/capture-architecture /);
+        const b = both('/capture-awareness');
+        assert.match(context(b), /^auto-run is ON for this \/capture-awareness run/, 'a flagless family command under the mode gets the contract');
+        assert.match(bannerOf(b)[0], /^\*\*Auto-run: ON\*\* for \/capture-awareness /);
         assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), stamp, 'the stamp is kept');
         const second = fs.readFileSync(marker(p, 'm1'), 'utf8');
-        assert.match(second, /^skill: capture-architecture\n/, 'a new marker');
+        assert.match(second, /^skill: capture-awareness\n/, 'a new marker');
         assert.notStrictEqual(second.split('\n')[1], first.split('\n')[1], 'for the new prompt');
         ends.push([stamp, second].map((s) => s.replace(/\nat: [^\n]*/, '')));
     }
@@ -382,7 +382,7 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
         '**Context:** session refresh - past ~400k tokens of its 1M context window (claude-sonnet-5-5), the run offers to resume in a fresh session from its state file instead of compacting.',
     ]);
     // a 200k model takes its own tier's trigger
-    assert.match(bannerOf(typedRun(p, 'c2', '/capture-architecture', transcript([], 'claude-haiku-4-5')))[1], /past ~180k tokens of its 200k context window \(claude-haiku-4-5\)/);
+    assert.match(bannerOf(typedRun(p, 'c2', '/capture-awareness', transcript([], 'claude-haiku-4-5')))[1], /past ~180k tokens of its 200k context window \(claude-haiku-4-5\)/);
     assert.strictEqual(bannerOf(typedRun(p, 'c3', '/loop-test-coverage-quality', t, { ALFRED_CODE_AUTO_COMPACT: '1' }))[1],
         "**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5) instead of offering a fresh session.");
     assert.strictEqual(bannerOf(typedRun(p, 'c4', '/issue-diagnoser the login 500', t, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }))[1],
@@ -392,9 +392,9 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
     assert.strictEqual(bannerOf(typedRun(p, 'c8', '/task-solve fix the cache --mode-auto-run-on', t))[0],
         `**Auto-run: OFF** for /task-solve - each question waits for your answer.${HINT}`);
     // the bare word of 2.4.0-2.5.0 and the old flag are no mode-like token past the run: plain OFF (the old flag's pointer comes at submit)
-    assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-project-code-style auto-mode', t))[0], '**Auto-run: OFF** for /capture-project-code-style - each question waits for your answer.');
+    assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-awareness auto-mode', t))[0], '**Auto-run: OFF** for /capture-awareness - each question waits for your answer.');
     assert.strictEqual(bannerOf(typedRun(p, 'c11', '/task-solve fix the auto-mode banner', t))[0], '**Auto-run: OFF** for /task-solve - each question waits for your answer.');
-    assert.match(bannerOf(typedRun(project(), 'c12', '/capture-project-code-style --mode-auto-run-on', t))[0], /^\*\*Auto-run: ON\*\* for \/capture-project-code-style - /);
+    assert.match(bannerOf(typedRun(project(), 'c12', '/capture-awareness --mode-auto-run-on', t))[0], /^\*\*Auto-run: ON\*\* for \/capture-awareness - /);
     assert.strictEqual(bannerOf(typedRun(p, 'c9', '/issue-diagnoser the login 500', t))[0], '**Auto-run: OFF** for /issue-diagnoser - each question waits for your answer.');
     assert.match(bannerOf(typedRun(project(), 'c10', '/issue-diagnoser --mode-auto-run-on the login 500', t))[0], /^\*\*Auto-run: ON\*\* for \/issue-diagnoser - /);
     // an unknown model and no window: no number is invented for the window, and the default is said as the trigger it is
@@ -1148,7 +1148,7 @@ test('mode non-family: /habits-explain-topic --mode-output-scorer-on X gets the 
     assert.strictEqual(context(sub(p, 'nf', 'what does --mode-auto-run-on do?', t)), '', 'prose names a flag and says nothing');
 });
 
-test('mode flag-only: /mode-auto-run --mode-auto-run-on writes the stamp and no AUTO-RUN- file; /mode-auto-run --mode-auto-run-off and /mode-output-scorer --mode-output-scorer-on switch and start nothing; /loop-code-quality --mode-auto-run-on and /capture-architecture --mode-auto-run-on run over the whole project with a marker and the contract (spec section 6, AC2)', () =>
+test('mode flag-only: /mode-auto-run --mode-auto-run-on writes the stamp and no AUTO-RUN- file; /mode-auto-run --mode-auto-run-off and /mode-output-scorer --mode-output-scorer-on switch and start nothing; /loop-code-quality --mode-auto-run-on and /capture-awareness --mode-auto-run-on run over the whole project with a marker and the contract (spec section 6, AC2)', () =>
 {
     const t = transcript();
     const p = project();
@@ -1162,7 +1162,7 @@ test('mode flag-only: /mode-auto-run --mode-auto-run-on writes the stamp and no 
     sub(p, 'fo', '/mode-auto-run --mode-auto-run-off', t);
     expand(p, 'fo', '/mode-auto-run --mode-auto-run-off', t);
     assert.ok(!fs.existsSync(p.gate), 'switched off');
-    for (const cmd of ['loop-code-quality', 'capture-architecture'])
+    for (const cmd of ['loop-code-quality', 'capture-awareness'])
     {
         const pr = project();
         const r = expand(pr, 'fw', `/${cmd} --mode-auto-run-on`, t);
@@ -1324,7 +1324,8 @@ test('mode-auto-run names every other user-typed flow, so a new one fails until 
     const flagged = fs.readdirSync(SKILLS).filter((n) => !['mode-auto-run', 'task-solve'].includes(n)).filter((n) => {
         try { return /^disable-model-invocation:\s*true\s*$/m.test(fs.readFileSync(path.join(SKILLS, n, 'SKILL.md'), 'utf8').split(/^---\s*$/m)[1] || ''); } catch { return false; }
     });
-    assert.strictEqual(flagged.length, 11);
+    // 9 since the capture-awareness merge (2026-10-29): the two manual-only captures it absorbed are gone, and it is model-invocable
+    assert.strictEqual(flagged.length, 9);
     for (const n of flagged) assert.ok(body.includes(`/${n}`), n);
 });
 

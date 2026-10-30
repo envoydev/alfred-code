@@ -41,15 +41,16 @@ test('M77: signatures-ci names four dispatch triggers, the count its fan-out ref
 });
 
 // ---- M78 + M79: the code-style capture's seat mention and the generated rules' survival -------------------------
+const STYLE_PART = 'stack/skills/capture-awareness/references/project-code-style.md';
 test('M78: code-style names its plugin seat the way a typed mention resolves it', () => {
-    const text = skill('capture-project-code-style');
+    const text = read(STYLE_PART);
     assert.doesNotMatch(text, /@agent-code-style-analyzer/, 'a bare @-mention of a plugin seat resolves nothing');
     assert.match(flat(text), /the code-style-analyzer seat alone, picked from the @ typeahead/);
 });
 
 test('M79: a generated rule survives update because no ledger records it, not because nothing prunes rules', () => {
     // 2026-10-21: the code-style capture writes no rule any more - only its doc, which update moves.
-    const style = flat(skill('capture-project-code-style'));
+    const style = flat(read(STYLE_PART));
     assert.doesNotMatch(style, /stack update/, 'the 1.x command name is gone');
     assert.match(style, /No rule is written\./);
     assert.match(style, /`\/alfred-code:update` moves an older `code-style\/CODE-STYLE\.md` and removes its generated `project-code-style\.md` rule/);
@@ -76,17 +77,17 @@ test('M80: the newest cache entry is not claimed to be the release these copies 
 test('M81: the awareness capture names the 1.x rule it supersedes, and the current plugin route', () => {
     const text = flat(skill('capture-awareness'));
     assert.doesNotMatch(text, /This skill was renamed from project-capabilities/);
-    assert.match(text, /the 1\.x `baseline-project-capabilities\.md`\) once their content is imported/);
+    assert.match(text, /the 1\.x `baseline-project-capabilities\.md`, and the legacy architecture marker once the map's line is written\) once their content is imported/);
     const agents = flat(read('stack/skills/capture-awareness/references/agents.md'));
     assert.doesNotMatch(agents, /which on that route is only the items no plugin holds/, 'every skill is a copy since 2.1.0');
     assert.match(agents, /the core carries the seats/);
 });
 
 // ---- M82: a manual-only capture is the user's to type ---------------------------------------------------------
-test('M82: code-quality hands the manual-only style capture to the user by its slash', () => {
+test('M82: code-quality hands the style capture to the user by its slash and part word', () => {
     const text = flat(part('code-quality'));
-    assert.doesNotMatch(text, /record the code style with `capture-project-code-style`/);
-    assert.match(text, /`\/capture-project-code-style`/);
+    assert.doesNotMatch(text, /record the code style with `capture-awareness`/);
+    assert.match(text, /`\/capture-awareness project-code-style`/);
     assert.match(text, /all the user's to run: `\/capture-preferences`/);
 });
 
@@ -187,9 +188,9 @@ test('M91: adjust-agents-md is titled as the habit it is, and explain-topic open
 });
 
 // ---- M92: the greenfield close names every missing capture in the template's order -------------------------------
-test('M92: build-from-scratch Next run names the awareness capture, last', () => {
+test('M92: build-from-scratch Next run names each awareness part, the whole capture last', () => {
     const line = (skill('task-build-from-scratch').match(/^Next run: .*$/m) || [''])[0];
-    const order = ['/capture-architecture', '/capture-project-code-style', '/capture-awareness LAST'];
+    const order = ['/capture-awareness architecture', '/capture-awareness project-code-style', '/capture-awareness LAST'];
     const at = order.map((c) => line.indexOf(c));
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, the awareness capture last');
@@ -247,7 +248,7 @@ test('M97: alfred-docs-root names diagnoses/ and awareness/ (the run book\'s hom
     assert.match(line, /`diagnoses\/`/);
     assert.match(line, /`awareness\/`/);
     assert.match(flat(skill('issue-diagnoser')), /diagnoses\//, 'the folder the diagnoser writes');
-    assert.match(flat(skill('capture-awareness')), /<docs-path>\/awareness\/PROJECT-AWARENESS\.md/);
+    assert.match(flat(skill('capture-awareness')), /`<docs-path>\/awareness\/RUN-AND-DEBUG-AWARENESS\.md` \| the run book/);
 });
 
 // ---- M98: the vendored trio protocol's pointers into the owner's folder are the pinned exception ----------------
@@ -278,7 +279,7 @@ test('M99: task-solve-cross\'s body is under 18,000 chars with its stops, ledger
     // Nothing was deleted: the close-out detail and the lookup moved to references the body names at their step.
     assert.match(flat(b), /Before the close report, Read `references\/close-out\.md`/);
     const close = flat(read('stack/skills/task-solve-cross/references/close-out.md'));
-    for (const piece of [/## Doc-drift/, /`\/capture-architecture` named in the close report/, /docs\.js set architecture\/ARCHITECTURE\.md#known-ceilings/, /notes purged: <names\|none>/])
+    for (const piece of [/## Doc-drift/, /`\/capture-awareness architecture` named in the close report/, /docs\.js set awareness\/ARCHITECTURE-AWARENESS\.md#known-ceilings/, /notes purged: <names\|none>/])
         assert.match(close, piece);
     assert.match(read('stack/skills/task-solve-cross/references/full-spec.md'), /node "\$SPEC" <<'REQUEST'/);
 });
@@ -399,20 +400,21 @@ test('solve resumes by the feature and closes on the counted purge', () =>
 // Real architecture captures: one wrote ORIENTATION.md to .claude/docs/ and spent 8 messages on lint, a docs.js
 // diagnosis, a delete and a rewrite; one met another domain's lint row on all 6 runs and could never clear it; one
 // skipped the write gate on an earlier session's `ruled:` line from a run that wrote nothing.
-test('capture-architecture names where ORIENTATION.md and watch.json go, lints its own domain, and re-asks the write gate', () =>
+test('the architecture part names where its orientation block and watch entries go, lints its own map, and re-asks the write gate', () =>
 {
-    const text = flat(skill('capture-architecture'));
-    assert.match(text, /writes `<docs-path>\/architecture\/ORIENTATION\.md` and `<docs-path>\/architecture\/watch\.json` to their shapes there - the only paths the docs hook reads them from/);
-    assert.match(text, /run `node \.claude\/hooks\/docs\.js lint architecture`: fix every architecture PROBLEM row before the report\. Another domain's row \(a plain `lint` prints every domain\) is named in the report, never fixed here\./);
+    const text = flat(read('stack/skills/capture-awareness/references/architecture.md'));
+    assert.match(text, /writes `<docs-path>\/awareness\/ARCHITECTURE-ORIENTATION-AWARENESS\.md` to its shape there - the path the docs hook pushes it from - merges its own `architecture: ` entries into `<docs-path>\/awareness\/watch\.json`/);
+    assert.match(text, /run `node \.claude\/hooks\/docs\.js lint awareness --map`: fix every PROBLEM row before the report\. Another part's row \(a plain `lint` prints every part and domain\) is named in the report, never fixed here\./);
     assert.doesNotMatch(text, /docs\.js lint` after the write - a PROBLEM line is fixed before the report/, 'the unscoped lint the run could never clear is gone');
     assert.match(text, /An earlier session's answer is not consent for this run - a `ruled:` line in the injected session history included - so ask again: the ruling it would rely on came from a capture that never landed\./);
-    const shapes = flat(read('stack/skills/capture-architecture/references/doc-shapes.md'));
-    assert.match(shapes, /### ORIENTATION\.md Written to `<docs-path>\/architecture\/ORIENTATION\.md` - the only path the docs hook pushes/);
-    assert.match(shapes, /### watch\.json Written to `<docs-path>\/architecture\/watch\.json`/);
-    // The paths the skill names are the ones the engine reads.
+    const shapes = flat(read('stack/skills/capture-awareness/references/architecture-doc-shapes.md'));
+    assert.match(shapes, /### The orientation block Written to `<docs-path>\/awareness\/ARCHITECTURE-ORIENTATION-AWARENESS\.md` - the only path the docs hook pushes/);
+    assert.match(shapes, /### watch\.json The map's entries live in the awareness domain's one `<docs-path>\/awareness\/watch\.json`/);
+    // The paths the skill names are the ones the engine reads: the awareness domain, the legacy home only while it alone holds the map.
     const engine = read('stack/hooks/docs.js');
-    assert.match(engine, /const DOCS = path\.join\(DOCS_ROOT, 'architecture'\);/);
-    assert.match(engine, /const BLOCK_FILE = path\.join\(DOCS, 'ORIENTATION\.md'\);/);
+    assert.match(engine, /const DOCS = path\.join\(DOCS_ROOT, mapDomain\(\)\);/);
+    assert.match(engine, /return holds\('architecture'\) && !holds\('awareness'\) \? 'architecture' : 'awareness';/);
+    assert.match(engine, /const BLOCK_FILE = path\.join\(DOCS, mapNames\(mapDomain\(\)\)\.block\);/);
     assert.match(engine, /path\.join\(domainDir\(domain\), 'watch\.json'\)/);
 });
 

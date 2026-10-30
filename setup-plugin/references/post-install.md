@@ -76,24 +76,23 @@ touches no committed file). The lines, minus anything the project already covers
 
 ## 3. Run the captures - in this order
 
-The deliberate captures turn a fresh install into an oriented one. Init runs each whose skill AND
-seat are installed, in this order, by following its SKILL.md (`/alfred-code:configure` adds a
-missing one); do not shuffle it. A later re-run is yours to type: all but the two analyzers
-(`capture-architecture`, `capture-quality`) are manual-only
-(`disable-model-invocation`), so the assistant cannot invoke one on your behalf:
+The deliberate captures turn a fresh install into an oriented one. Init runs each awareness part whose seat is
+installed (a part with no seat always), in this order, by following the `capture-awareness` SKILL.md with the
+part's topic (`/alfred-code:configure` adds a missing seat); do not shuffle it. A later re-run is yours to type, or
+the assistant's when you ask for it in words: `capture-awareness` and `capture-quality` run only deliberately, and
+the other captures are manual-only (`disable-model-invocation`), so the assistant cannot invoke one on your behalf:
 
-1. `/capture-architecture` - writes the durable architecture docs every seat reads to
-   orient, so it runs first.
-2. `/capture-project-code-style` - captures how the codebase really writes each language into
+1. `/capture-awareness architecture` - writes the architecture map every seat reads to orient, so it runs first.
+2. `/capture-awareness project-code-style` - captures how the codebase really writes each language into
    `preferences/PROJECT-CODE-PREFERENCES.md`, read before every code change.
-3. `/capture-awareness` - LAST, so its generated inventory reflects the final install, including
-   anything the captures above added. One run writes the three awareness docs and the rule that loads
-   them into every session: what this install carries and how to use it; the run book - how to build,
-   start, reach and log into the app, the flows and edge cases a manual check exercises, where
-   debugging starts (it reads the repo first and asks only for the gaps; credentials are recorded by
-   where they live, never by value); and the sibling repos, asked as typed paths or git URLs (e.g.
-   `../client`), never scanned for. The `related-project-analyzer` seat that characterizes a sibling
-   is an opt-in add via `/alfred-code:configure`.
+3. `/capture-awareness project` - the run book: how to build, start, reach and log into the app, the flows and edge
+   cases a manual check exercises, where debugging starts (it reads the repo first and asks only for the gaps;
+   credentials are recorded by where they live, never by value).
+4. `/capture-awareness related-projects` - the sibling repos, asked as typed paths or git URLs (e.g. `../client`),
+   never scanned for. The `related-project-analyzer` seat that characterizes a sibling is an opt-in add via
+   `/alfred-code:configure`.
+5. `/capture-awareness agents` - LAST, so its generated inventory reflects the final install, including anything the
+   parts above added. The rule that loads the awareness docs into every session is rewritten after each part.
 
 Optional, whenever you want the coverage picture: `/capture-quality test-coverage-quality` - it
 measures the suite and asks for YOUR coverage bar on first capture, recording it for every later

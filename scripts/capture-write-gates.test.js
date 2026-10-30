@@ -16,7 +16,7 @@ const squash = (s) => s.replace(/\s+/g, ' ');
 
 const ROUTE_FILES = [
     'stack/skills/capture-awareness/references/project.md',
-    'stack/skills/capture-project-code-style/references/doc-shape.md',
+    'stack/skills/capture-awareness/references/project-code-style-doc-shape.md',
     'stack/skills/capture-awareness/references/related-projects.md',
 ];
 
@@ -106,13 +106,15 @@ test('audit 2026-10-08: each capture close is a literal template with its post-w
     for (const field of ['Doc:', 'Raw:', 'Verdicts:', 'Weak points:', 'Unmeasured:', 'Leftovers:'])
         assert.match(cov, new RegExp(`^${field} +\\S`, 'm'), `coverage close carries ${field}`);
     assert.ok(squash(cov).includes('`wc -l` COVERAGE-QUALITY.md after the write; a missing `## Resume` section is fixed before the report'), 'coverage measures its write');
-    const aware = read('stack/skills/capture-awareness/SKILL.md');
+    // Each part's fields live in its reference, the close's own in the router (the capture-awareness merge, 2026-10-29).
+    const aware = ['SKILL.md', 'references/agents.md', 'references/project.md', 'references/related-projects.md']
+        .map((f) => read(`stack/skills/capture-awareness/${f}`)).join('\n');
     for (const field of ['Agents:', 'Inventory:', 'Project:', 'Asked:', 'Unknown:', 'Credentials:', 'Value check:', 'Watch:', 'Related:', 'Landed:', 'Rule:'])
         assert.match(aware, new RegExp(`^${field} +<`, 'm'), `awareness close carries ${field}`);
     for (const ref of ['project', 'related-projects'])
         assert.ok(squash(read(`stack/skills/capture-awareness/references/${ref}.md`)).includes('node .claude/hooks/docs.js lint awareness'), `${ref} lints the awareness domain`);
     assert.ok(!aware.includes('Verify before reporting:'), 'the prose close is gone');
-    const style = read('stack/skills/capture-project-code-style/SKILL.md');
+    const style = read('stack/skills/capture-awareness/references/project-code-style.md');
     assert.match(style, /^Verify: +</m, 'code-style close carries Verify:');
     assert.ok(squash(style).includes('`node .claude/hooks/docs.js lint preferences`'), 'code-style lints its domain');
     const aq = read(part('architecture-quality'));
@@ -144,27 +146,27 @@ test('audit 2026-10-08: the usage audit quotes the fresh-session seeds the env c
 });
 
 test('audit 2026-10-08: the inventory marks every capture a loop invokes as model-invocable by design', () => {
-    const inv = read('stack/skills/capture-awareness/scripts/capabilities-inventory.js');
+    const inv = read('stack/skills/capture-awareness/scripts/awareness-state.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inv);
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
     for (const loop of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality'])
     {
         const body = read(`stack/skills/${loop}/SKILL.md`);
-        for (const cap of ['capture-architecture', 'capture-quality'])
+        for (const cap of ['capture-awareness', 'capture-quality'])
             if (body.includes(`\`${cap}\``) && !/^disable-model-invocation:/m.test(read(`stack/skills/${cap}/SKILL.md`).split('---')[1]))
                 assert.ok(names.includes(cap), `${loop} names ${cap}, so the generated rule lists it as orchestration`);
     }
-    assert.ok(names.includes('capture-quality'), 'the quality loops\' capture is in the set');
+    assert.ok(names.includes('capture-quality') && names.includes('capture-awareness'), 'the loops\' captures are in the set');
 });
 
-test('audit 2026-10-08: capture-architecture keeps its anecdotes in the evidence appendix', () => {
-    const body = read('stack/skills/capture-architecture/SKILL.md');
+test('audit 2026-10-08: the architecture part keeps its anecdotes in the evidence appendix', () => {
+    const body = read('stack/skills/capture-awareness/references/architecture.md');
     assert.doesNotMatch(body, /\(measured/, 'no measured parenthetical in the run-time body');
-    const ev = squash(read('stack/skills/capture-architecture/references/evidence.md'));
+    const ev = squash(read('stack/skills/capture-awareness/references/architecture-evidence.md'));
     assert.ok(ev.includes('preload is 51% of seat input tokens') && ev.includes('a line-number grep re-verified a code claim'), 'both anecdotes moved');
-    assert.ok(squash(read('stack/skills/capture-architecture/references/doc-shapes.md')).includes("('1 (overlay, 12 sections)')"), 'the overlay count rule moved to Branches');
+    assert.ok(squash(read('stack/skills/capture-awareness/references/architecture-doc-shapes.md')).includes("('1 (overlay, 12 sections)')"), 'the overlay count rule moved to Branches');
     const flat = squash(body);
-    assert.ok(flat.indexOf('- Write the map to its required shape') < flat.indexOf('- After the write, run `node .claude/hooks/docs.js lint architecture`'), 'the write precedes its lint');
+    assert.ok(flat.indexOf('- Write the map to its required shape') < flat.indexOf('- After the write, run `node .claude/hooks/docs.js lint awareness --map`'), 'the write precedes its lint');
 });
 
 // Audit 2026-10-14 SKC01: three captures told the run to apply markdown-style to their doc under the docs root,
@@ -172,24 +174,24 @@ test('audit 2026-10-08: capture-architecture keeps its anecdotes in the evidence
 // e1b790fe fixed the related-projects capture; the same wording now covers the other three.
 test('audit 2026-10-14 SKC01: no capture loads markdown-style for its docs-root doc', () => {
     const files = [
-        'stack/skills/capture-project-code-style/SKILL.md',
-        'stack/skills/capture-project-code-style/references/doc-shape.md',
-        'stack/skills/capture-architecture/SKILL.md',
-        'stack/skills/capture-architecture/references/doc-shapes.md',
+        'stack/skills/capture-awareness/references/project-code-style.md',
+        'stack/skills/capture-awareness/references/project-code-style-doc-shape.md',
+        'stack/skills/capture-awareness/references/architecture.md',
+        'stack/skills/capture-awareness/references/architecture-doc-shapes.md',
         part('test-coverage-quality'),
         part('test-coverage-quality-doc-shape'),
     ];
     for (const rel of files)
         assert.doesNotMatch(read(rel), /markdown-style/, `${rel}: names markdown-style for a docs-root doc`);
-    assert.ok(squash(read('stack/skills/capture-project-code-style/SKILL.md')).includes('no formatting skill loads for it (the docs root belongs to the skill that writes it)'),
-        'capture-project-code-style states why no formatting skill loads');
-    assert.ok(read('stack/skills/capture-architecture/references/doc-shapes.md').includes('Load `docs-as-code` before writing'), 'the diagram load stays');
+    assert.ok(squash(read('stack/skills/capture-awareness/references/project-code-style.md')).includes('no formatting skill loads for it (the docs root belongs to the skill that writes it)'),
+        'the code-style part states why no formatting skill loads');
+    assert.ok(read('stack/skills/capture-awareness/references/architecture-doc-shapes.md').includes('Load `docs-as-code` before writing'), 'the diagram load stays');
 });
 
 // Audit 2026-10-14 SKC05: the login ask's recommended option promised to add the account's keys to the sensitive
 // data, but every install writes that file and the run may never append to it - the report hands KEY= lines instead.
 test('audit 2026-10-14 SKC05: the login ask names the KEY= handoff, never a write to an existing sensitive-data file', () => {
-    const raw = read('stack/skills/capture-awareness/SKILL.md');
+    const raw = read('stack/skills/capture-awareness/references/project.md');
     const ask = (raw.match(/```ask\nHow does an agent log in\?[\s\S]*?```/) || [''])[0];
     assert.ok(ask, 'the login ask is a template');
     const first = ask.split('\n').find((l) => l.startsWith('- '));

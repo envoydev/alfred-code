@@ -129,7 +129,7 @@ test('42951e5b#10: a command the cycle proved wrong is doc drift, named against 
 {
     const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
     assert.match(mech, /A build, test or run command this cycle proved wrong[^.]*is doc drift too/);
-    assert.match(mech, /names the AGENTS\.md line or the run-book section \(`<docs-path>\/awareness\/PROJECT-AWARENESS\.md`\)/);
+    assert.match(mech, /names the AGENTS\.md line or the run-book section \(`<docs-path>\/awareness\/RUN-AND-DEBUG-AWARENESS\.md`\)/);
 });
 
 // ------------------------------------------------------------------ SD15 - the upgrade gate and the execution verdict
@@ -209,33 +209,15 @@ test('d9035363#4: the awareness docs load no formatting skill - each shape is fi
 // ------------------------------------------------------------------ SD09 - the architecture capture's zero-drift exit
 
 // d9035363#1 (residual of 19a0571f): an older release's rule named `.alfred/docs/architecture/ASSESSMENT.md`, a doc
-// that had moved, and survived two capture runs that exited at zero drift with 'no rule regeneration'. The exit's own
-// grep is RUN here over that rule and over the current template: the old rule hits, the template does not.
-test('d9035363#1: the zero-drift exit greps its generated rule for a path and rewrites that rule alone', { skip: process.platform === 'win32' && 'runs the check through sh' }, () =>
+// that had moved, and survived two capture runs that exited at zero drift with 'no rule regeneration'. The part's own rule
+// left with the capture-awareness merge (2026-10-29): its zero-drift exit writes nothing, and the router's close recomposes
+// the awareness rule from disk after every part, so no path a run did not write can outlive it.
+test('d9035363#1: the zero-drift exit writes nothing, and the router close recomposes the awareness rule after it', () =>
 {
-    const skill = read('stack/skills/capture-architecture/SKILL.md');
-    const cmd = (/check the one file the docs' own drift cannot show, the generated rule: `([^`]+)`/.exec(skill) || [])[1];
-    assert.ok(cmd, 'the exit names its check command');
-    assert.match(flat(skill), /rewrite that rule alone to its template in `references\/doc-shapes\.md` \(the one load this exit takes\) and add `rule regenerated - <the hit, or absent>`/);
-    assert.doesNotMatch(skill, /no write, no rule regeneration/);
-    const template = (/## \.claude\/rules\/alfred-architecture\.md[\s\S]*?```markdown\n([\s\S]*?)```/.exec(read('stack/skills/capture-architecture/references/doc-shapes.md')) || [])[1];
-    assert.ok(template, 'doc-shapes carries the rule template');
-    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'sd-arch-rule-'));
-    try
-    {
-        fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-        const rule = path.join(repo, '.claude', 'rules', 'alfred-architecture.md');
-        const runCheck = () => require('node:child_process').spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8' });
-        fs.writeFileSync(rule, '# Architecture\r\n\r\nRead `.alfred/docs/architecture/ARCHITECTURE.md`; the findings are in `.alfred/docs/architecture/ASSESSMENT.md`.\r\n');
-        const old = runCheck();
-        assert.strictEqual(old.status, 0, 'an older, path-bearing rule is a hit');
-        assert.match(old.stdout, /ASSESSMENT\.md/);
-        fs.writeFileSync(rule, template);
-        assert.strictEqual(runCheck().status, 1, 'the current template names no path - no hit');
-        fs.rmSync(rule);
-        assert.strictEqual(runCheck().status, 2, 'an absent rule is its own signal');
-    }
-    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+    const part = flat(read('stack/skills/capture-awareness/references/architecture.md'));
+    assert.match(part, /report `docs current at <branch>@<short-sha>, captured <date> - no drift, nothing rewritten` and stop - no other reference loads/);
+    assert.doesNotMatch(part, /alfred-architecture/);
+    assert.match(flat(read('stack/skills/capture-awareness/SKILL.md')), /After the last part of any run but a lone code-style one, `node "<caps>" --rule` composes `\.claude\/rules\/alfred-awareness\.md`/);
 });
 
 // 177c5743#4: 29 fork seats spent ~61.6M of ~69.2M input tokens re-reading the parent; seats $20.44 against main $17.73.

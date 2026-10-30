@@ -55,7 +55,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 75, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), the two mode skills task-auto and habits-output-scorer became (2026-10-27), and the three quality captures capture-quality merged plus the coverage loop, now loop-test-coverage-quality (2026-10-29)');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 77, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), the two mode skills task-auto and habits-output-scorer became (2026-10-27), and the three quality captures capture-quality merged plus the coverage loop, now loop-test-coverage-quality (2026-10-29), and the code-style and architecture captures capture-awareness merged (2026-10-29)');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -167,9 +167,9 @@ const V13_CLAUDE_MD = [
     '',
 ].join('\n');
 const V13_CLAUDE_MD_NOW = [
-    '   /capture-architecture, /capture-project-code-style, /capture-awareness ONLY',
+    '   /capture-awareness architecture, /capture-awareness project-code-style, /capture-awareness ONLY',
     '   /capture-awareness LAST, so its generated inventory reflects the final install. All but',
-    '   /capture-architecture are slash-only: the user types them - a model Skill call is refused.',
+    '   /capture-awareness architecture are slash-only: the user types them - a model Skill call is refused.',
     '   .claude/rules/alfred-awareness.md (user-run /capture-awareness; if',
     '| `.claude/rules/alfred-preferences.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `habits-commit-checkpoint` skill |',
     '| `.claude/rules/alfred-awareness.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /capture-awareness with their paths/URLs) | sibling-repo awareness |',
@@ -187,7 +187,7 @@ test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a g
             'CLAUDE.md': LONGER,
             '.claude/CLAUDE.md': V13_CLAUDE_MD,
             '.claude/rules/alfred-agent-awareness.md': CAPABILITIES_RULE,
-            '.claude/rules/alfred-architecture.md': 'Nothing old here - capture-architecture writes it.\n',
+            '.claude/rules/alfred-architecture.md': 'Nothing old here - capture-awareness writes it.\n',
             '.claude/rules/my-own-rule.md': 'My notes on /project-solve-task stay mine.\n',
             '.claude/rules/project-code-style.md': '---\npaths: ["**/*.ts"]\n---\nthe project-code-style-analyzer skill owns this rule\n',
         };
@@ -203,7 +203,7 @@ test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a g
         assert.strictEqual(read('CLAUDE.md'), LONGER, 'an old name inside a longer name is never touched');
         assert.strictEqual(read('.claude/rules/my-own-rule.md'), files['.claude/rules/my-own-rule.md'], 'a rule the stack did not generate is not the stack\'s to re-spell');
         assert.strictEqual(read('.claude/rules/alfred-architecture.md'), files['.claude/rules/alfred-architecture.md']);
-        assert.match(read('.claude/rules/project-code-style.md'), /the capture-project-code-style skill owns this rule/, 'the generated code-style rule is the stack\'s too');
+        assert.match(read('.claude/rules/project-code-style.md'), /the capture-awareness skill owns this rule/, 'the generated code-style rule is the stack\'s too');
         assert.deepStrictEqual(logs, [
             '  renamed: .claude/CLAUDE.md - 11 old skill or seat name(s) re-spelled to the new names',
             '  renamed: .claude/rules/alfred-agent-awareness.md - 4 old skill or seat name(s) re-spelled to the new names',
@@ -972,7 +972,7 @@ test('seed install --selection and update --add: a line naming an old item insta
 // dispatch of an old seat finds no agent. The old names are allowed only where they are the record
 // of the rename - the manifest's retired lists, renamed map and renamedTopics, this migration test, the history
 // docs, the byte-for-byte shipped texts the rule-rename prune is tested on (scripts/fixtures/retired-rules.js),
-// and the update's upgrade table (setup-plugin/references/update-history.md since audit 2026-10-20 C15), each row of which must be the map's own pair. The names come
+// a code line marked `// legacy`, and the update's upgrade table (setup-plugin/references/update-history.md since audit 2026-10-20 C15), each row of which must be the map's own pair. The names come
 // from the map, so this scan cannot drift from it; the manifest itself is the positive control.
 test('no surface names an old skill or seat outside the rename\'s own homes', () =>
 {
@@ -1003,6 +1003,9 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
             const found = line.match(old);
             if (!found) return;
             if (recorded && found.every((n) => n === 'habits-output-scorer' || (rel === 'meta/conformance.json' && pairs[n] === 'capture-quality'))) return;
+            // the skew window (the capture-awareness merge, spec 2.3): a code line that must still spell an old name - a
+            // retired text kept byte for byte, an older copy a reader still meets - says so with a `// legacy` comment
+            if (/\.js$/.test(rel) && /\/\/ legacy\b/.test(line)) return;
             const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)` \|$/.exec(line);
             if (rel === 'setup-plugin/references/update-history.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
             hits.push(`${rel}:${i + 1}: ${found.join(', ')}`);
@@ -1165,6 +1168,103 @@ test('skillOverrides merge: the local inherited path takes the same test', () =>
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// 2026-10-29 (capture-awareness, spec 5.2): an umbrella's parts are the manifest's umbrellaParts, so an umbrella with a
+// part no old name had can never carry; a spelling with no topic row is an older name of the umbrella itself and keeps
+// the plain re-key. Invented names: `u` with parts a, b, c, two part spellings and one plain one.
+const UMB = { skills: { 'old-a': 'u', 'old-b': 'u' }, agents: {}, rules: {}, mcps: {}, hooks: {}, topics: { 'old-a': 'a', 'old-b': 'b' }, parts: { u: ['a', 'b', 'c'] } };
+const UMB2 = { ...UMB, parts: { u: ['a', 'b'] } };
+const PLAIN = { ...UMB, skills: { ...UMB.skills, 'old-plain': 'u' } };
+const NO_SWITCH = (old, value, stays) => `  !! settings.json: skillOverrides ${old}: '${value}' has no key after the merge - u has no per-part switch; it stays ${stays}`;
+function overridesWith(renamed, overrides)
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-umbrella-'));
+    try
+    {
+        const file = path.join(dir, 'settings.json');
+        fs.writeFileSync(file, JSON.stringify({ skillOverrides: overrides }));
+        const logs = [];
+        writeSettings({ file, renamed, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        return { overrides: JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, logs };
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+function localWith(renamed, shared)
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-umbrella-local-'));
+    try
+    {
+        const sharedFile = path.join(dir, 'settings.json');
+        const localFile = path.join(dir, 'settings.local.json');
+        fs.writeFileSync(sharedFile, JSON.stringify({ skillOverrides: shared }));
+        fs.writeFileSync(localFile, JSON.stringify({ env: {} }));
+        const before = fs.readFileSync(sharedFile, 'utf8');
+        const logs = [];
+        writeSettings({ file: localFile, renamed, inheritedOverrides: shared, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        assert.strictEqual(fs.readFileSync(sharedFile, 'utf8'), before, 'settings.json is never written at local scope');
+        return { overrides: JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, logs };
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+const naming = (logs, old) => logs.filter((l) => new RegExp(`skillOverrides ${old}\\b`).test(l));
+
+test('mergedOverride reads the umbrella\'s parts', () =>
+{
+    const { mergedOverride } = require('./install/settings.js');
+    const both = { 'old-a': 'off', 'old-b': 'off' };
+    assert.strictEqual(mergedOverride(both, 'u', UMB).carry, false, 'part c has no spelling');
+    assert.deepStrictEqual(mergedOverride(both, 'u', UMB2), { carry: true, value: 'off', olds: ['old-a', 'old-b'] });
+    assert.deepStrictEqual(mergedOverride({ ...both, 'old-plain': 'off' }, 'u', { ...PLAIN, parts: UMB2.parts }).olds, ['old-a', 'old-b'], 'a plain spelling is no part\'s old name');
+});
+
+test('an older plain spelling keeps the plain re-key beside a topic row', () =>
+{
+    const alone = overridesWith(PLAIN, { 'old-plain': 'off' });
+    assert.deepStrictEqual(alone.overrides, { u: 'off' });
+    assert.ok(alone.logs.some((l) => /skillOverrides old-plain re-keyed u/.test(l)), alone.logs.join('\n'));
+    const beside = overridesWith(PLAIN, { 'old-plain': 'off', 'old-a': 'on' });
+    assert.deepStrictEqual(beside.overrides, { u: 'off' }, 'the merge loop first, then the plain value carries');
+    assert.deepStrictEqual(beside.logs.filter((l) => l.includes('!!')), [NO_SWITCH('old-a', 'on', 'unset')]);
+});
+
+test('an umbrella that cannot carry names each old key once', () =>
+{
+    const r = overridesWith(UMB, { 'old-a': 'off' });
+    assert.deepStrictEqual(r.overrides, {}, 'no old-a and no u');
+    assert.deepStrictEqual(naming(r.logs, 'old-a'), [NO_SWITCH('old-a', 'off', 'unset')]);
+    const set = overridesWith(UMB, { u: 'on', 'old-a': 'off' });
+    assert.deepStrictEqual(set.overrides, { u: 'on' }, 'u untouched');
+    assert.deepStrictEqual(naming(set.logs, 'old-a'), [NO_SWITCH('old-a', 'off', '\'on\'')]);
+});
+
+test('capture-quality\'s carry is unchanged', () =>
+{
+    const { renamed } = loadManifest(ROOT);
+    assert.deepStrictEqual(overridesWith(renamed, { ...CURRENT_THREE }).overrides, { 'capture-quality': 'off' });
+    const alone = overridesWith(renamed, { 'capture-test-coverage': 'off' });
+    assert.deepStrictEqual(alone.overrides, {});
+    assert.ok(alone.logs.some((l) => /skillOverrides capture-test-coverage \('off'\) not carried - capture-quality holds three captures; set capture-quality yourself to switch them all/.test(l)), alone.logs.join('\n'));
+});
+
+test('the umbrella rule holds on the local inherited path', () =>
+{
+    const none = localWith(UMB, { 'old-a': 'off', 'old-b': 'off' });
+    assert.strictEqual(none.overrides, undefined, 'nothing set in settings.local.json');
+    for (const old of ['old-a', 'old-b'])
+    {
+        const lines = naming(none.logs, old);
+        assert.strictEqual(lines.length, 1, `${old} named once: ${none.logs.join('\n')}`);
+        assert.match(lines[0], /!! settings\.local\.json: .*u has no per-part switch; nothing set in settings\.local\.json/);
+    }
+    assert.deepStrictEqual(localWith(UMB2, { 'old-a': 'off', 'old-b': 'off' }).overrides, { u: 'off' });
+    assert.deepStrictEqual(localWith(PLAIN, { 'old-plain': 'off' }).overrides, { u: 'off' });
+    const beside = localWith(PLAIN, { 'old-plain': 'off', 'old-a': 'on' });
+    assert.deepStrictEqual(beside.overrides, { u: 'off' });
+    assert.strictEqual(naming(beside.logs, 'old-a').length, 1);
+    const { renamed } = loadManifest(ROOT);
+    assert.deepStrictEqual(localWith(renamed, { ...CURRENT_THREE }).overrides, { 'capture-quality': 'off' });
+    assert.ok(localWith(renamed, { 'capture-test-coverage': 'off' }).logs.some((l) => /capture-test-coverage.* - a project-scope update applies the rule there/.test(l)));
+});
+
 // Spec A4: beside an older skill copy the hooks read an old capture name by its words, never from a list - this file is
 // the test home allowed to spell the names.
 test('qualityPart reads every old capture spelling by its words, and agrees with the manifest\'s renamedTopics', () =>
@@ -1175,8 +1275,11 @@ test('qualityPart reads every old capture spelling by its words, and agrees with
         assert.strictEqual(qualityPart(old, 'anything'), part, old);
         assert.strictEqual(qualityPart(`alfred-code:${old}`, ''), part, `${old} namespaced`);
     }
-    for (const [old, part] of Object.entries(RENAMED.topics)) assert.strictEqual(qualityPart(old, ''), part, `${old} (renamedTopics)`);
-    for (const other of ['capture-architecture', 'capture-project-code-style', 'capture-awareness', 'loop-code-quality', 'loop-architecture-quality', 'code-quality-analyzer', 'test-coverage-analyzer', 'task-solve'])
+    for (const [old, part] of Object.entries(RENAMED.topics))
+        if (RENAMED.skills[old] === 'capture-quality') assert.strictEqual(qualityPart(old, ''), part, `${old} (renamedTopics)`);
+    // qualityPart is capture-quality's alone: no capture-architecture spelling reads as its architecture-quality part, the
+    // longer name never matched inside the shorter (spec section 4's boundary).
+    for (const other of ['capture-architecture', 'alfred-capture-architecture', 'project-architecture-analyzer', 'capture-project-code-style', 'capture-awareness', 'loop-code-quality', 'loop-architecture-quality', 'code-quality-analyzer', 'test-coverage-analyzer', 'task-solve'])
         assert.strictEqual(qualityPart(other, 'code'), '', other);
 });
 
@@ -1216,6 +1319,31 @@ test('respell: the command form takes the topic', () =>
         '/capture-quality test-coverage-quality at a line start', 'Run /capture-quality test-coverage-quality src next.',
         'Or `/capture-quality test-coverage-quality`.', 'Or "/capture-quality code-quality".', 'Or (/capture-quality architecture-quality).', '',
     ].join('\n'));
+});
+
+// 2026-10-29 (capture-awareness, spec section 4): the code-style and architecture captures merged into capture-awareness, so
+// each old command takes its part's topic word, never a bare `/capture-awareness src` the router reads as a sibling; and
+// `capture-architecture` inside `capture-architecture-quality` is never re-spelled on its own.
+test('respell: the seven old names respell to their part', () =>
+{
+    const awareness = Object.entries(RENAMED.topics).filter(([old]) => RENAMED.skills[old] === 'capture-awareness');
+    assert.strictEqual(awareness.length, 7, 'the two captures and their five older spellings');
+    const renamed = { ...MERGED, skills: { ...MERGED.skills, ...Object.fromEntries(awareness.map(([old]) => [old, 'capture-awareness'])) },
+        topics: { ...MERGED.topics, ...Object.fromEntries(awareness) } };
+    const respell = (text) =>
+    {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-aware-'));
+        try
+        {
+            write(dir, '.claude/AGENTS.md', text);
+            selection.respellRenamed({ projectRoot: dir, renamed, owned: () => true, log: () => {}, note: (m) => assert.fail(m) });
+            return fs.readFileSync(path.join(dir, '.claude', 'AGENTS.md'), 'utf8');
+        }
+        finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    };
+    for (const [old, part] of awareness) assert.strictEqual(respell(`Run /${old} src next.\n`), `Run /capture-awareness ${part} src next.\n`, old);
+    assert.strictEqual(respell('Run /capture-architecture-quality src, then /capture-architecture src.\n'),
+        'Run /capture-quality architecture-quality src, then /capture-awareness architecture src.\n');
 });
 
 test('respell: a path and a plain mention take the bare name', () =>

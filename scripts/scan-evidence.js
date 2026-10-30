@@ -201,7 +201,7 @@ function findVersionConflicts(root, judgment)
 
 // ---- The first-look scan (--orientation) ----
 // The same manifests, read for what a newcomer needs first: the stack, the modules, the build / test / run commands
-// and the entry points - printed as a PROVISIONAL ORIENTATION.md, so a project with no architecture capture still
+// and the entry points - printed as a PROVISIONAL orientation block, so a project with no architecture capture still
 // starts every session with a map, for the price of one script run instead of the capture's. Every row is read from
 // a manifest or from a file a manifest names that exists on disk; a convention nothing declares is never guessed.
 // The marker below is what the docs engine (stack/hooks/docs.js) keys on to treat the file as stale by definition.
@@ -437,15 +437,19 @@ function orientation(root)
 function orientationMain(argv, arg)
 {
     const root = arg('--root');
-    if (!root) { console.error('usage: scan-evidence.js --orientation --root <project> [--out <docs>/architecture/ORIENTATION.md]'); process.exit(2); }
+    if (!root) { console.error('usage: scan-evidence.js --orientation --root <project> [--out <docs>/awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md]'); process.exit(2); }
     if (!fs.existsSync(root)) { console.error(`scan-evidence: no such root ${root}`); process.exit(1); }
     const out = arg('--out');
     if (out)
     {
         const existing = fs.existsSync(out) ? readCapped(out) : null;
         if (existing !== null && !existing.includes(PROVISIONAL)) { console.error(`scan-evidence: ${out} is not provisional - the architecture capture wrote it; nothing replaced`); process.exit(1); }
-        const map = path.join(path.dirname(out), 'ARCHITECTURE.md');
-        if (fs.existsSync(map)) { console.error(`scan-evidence: ${map} exists - the architecture capture already ran here; nothing written`); process.exit(1); }
+        // the map at either home - awareness/ now, architecture/ before the move - means the capture ran
+        const docs = path.dirname(path.dirname(out));
+        const maps = [path.join(path.dirname(out), 'ARCHITECTURE.md'), path.join(path.dirname(out), 'ARCHITECTURE-AWARENESS.md'),
+            path.join(docs, 'awareness', 'ARCHITECTURE-AWARENESS.md'), path.join(docs, 'architecture', 'ARCHITECTURE.md')];
+        const map = maps.find(m => fs.existsSync(m));
+        if (map) { console.error(`scan-evidence: ${map} exists - the architecture capture already ran here; nothing written`); process.exit(1); }
     }
     const doc = orientation(root);
     if (doc === null) { console.error(`scan-evidence: no manifest recognized under ${root} - nothing to orient from`); process.exit(1); }

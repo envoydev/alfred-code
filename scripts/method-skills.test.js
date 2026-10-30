@@ -393,20 +393,20 @@ test('the inline task skills load their method skill through the Skill tool at t
 });
 
 test('skills S5: the judging captures and their loops run on the session model and ask for no switch to Opus (A/B 2026-10-09)', () => {
-    // capture-quality's parts are references beside its router (2026-10-29)
+    // capture-quality's parts and capture-awareness's architecture part are references beside their routers (2026-10-29)
     const body = (n) => squash(read(`stack/skills/${n.includes('/') ? n : `${n}/SKILL.md`}`));
     const PARTS = ['capture-quality/references/architecture-quality.md', 'capture-quality/references/code-quality.md'];
-    for (const n of ['capture-architecture', ...PARTS, 'loop-architecture-quality', 'loop-code-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
+    for (const n of ['capture-awareness/references/architecture.md', ...PARTS, 'loop-architecture-quality', 'loop-code-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
         const text = body(n);
         assert.doesNotMatch(text, /Opus with `\/model`|not on Opus|switch to `\/model` Opus|on Opus \(checked|in-session, on Opus/, `${n} still asks for Opus`);
         assert.match(text, /no `model` pin/i, `${n} keeps the no-pin reason`);
     }
     for (const n of PARTS)
         assert.match(body(n), /`<model> - the judgment above ran on it`, or `raised for this run - run \/model <prior model> to drop back`/, `${n}: the Model: row`);
-    const fields = squash(read('stack/skills/capture-architecture/references/report-fields.md'));
+    const fields = squash(read('stack/skills/capture-awareness/references/architecture-report-fields.md'));
     assert.match(fields, /Two shapes, pick the true one: - `<model> - the judgment above ran on it`/);
     assert.doesNotMatch(fields, /already on Opus|not on Opus/);
-    assert.match(squash(read('stack/skills/capture-architecture/references/evidence.md')), /\*\*no switch to Opus is asked for\*\* - measured 2026-10-09/);
+    assert.match(squash(read('stack/skills/capture-awareness/references/architecture-evidence.md')), /\*\*no switch to Opus is asked for\*\* - measured 2026-10-09/);
 });
 
 // Audit 2026-10-14 SKC15: measured stories sat in always-loaded bodies; each rule keeps a one-clause reason and the
@@ -431,5 +431,5 @@ test('audit 2026-10-14 SKC15: the stories live in the evidence appendices, the b
             assert.match(ev, s, `${name}: ${s} kept in the appendix`);
         }
     }
-    assert.doesNotMatch(squash(read('stack/skills/capture-architecture/SKILL.md')), /Measured \(2026-10-09 A\/B/, 'the A/B figure lives in the appendix');
+    assert.doesNotMatch(squash(read('stack/skills/capture-awareness/references/architecture.md')), /Measured \(2026-10-09 A\/B/, 'the A/B figure lives in the appendix');
 });

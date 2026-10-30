@@ -225,7 +225,7 @@
       ]
     },
     "seat-start-docs-anchors": {
-      "_note": "A seat's START orientation reads the docs sections its brief names as the card's anchors (task-solve's brief carries each card's `docs.js where` ids), and the whole ARCHITECTURE.md / PROJECT-CODE-PREFERENCES.md (CODE-STYLE.md before 2026-10-21) only without them - measured (usage audit 2026-10-10, e499fc94): 0 docs reads in 18 of 18 seat transcripts under the unconditional clause. Byte-identical across the 24 seats that carry it.",
+      "_note": "A seat's START orientation reads the docs sections its brief names as the card's anchors (task-solve's brief carries each card's `docs.js where` ids), and the whole ARCHITECTURE-AWARENESS.md (ARCHITECTURE.md, its legacy name, before 3.5.0) / PROJECT-CODE-PREFERENCES.md (CODE-STYLE.md before 2026-10-21) only without them - measured (usage audit 2026-10-10, e499fc94): 0 docs reads in 18 of 18 seat transcripts under the unconditional clause. Byte-identical across the 24 seats that carry it.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
         "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
@@ -912,12 +912,12 @@
       "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone. Both live in a close-time reference the body reads at its finish (the implementer's moved out of SKILL.md in the 2026-10-08 audit).",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/close-out.md",
-        "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
+        "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set awareness/ARCHITECTURE-AWARENESS.md#known-ceilings --expect <that hash>`"
       },
       "sites": [
         {
           "file": "stack/skills/task-implement/references/known-ceilings.md",
-          "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
+          "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set awareness/ARCHITECTURE-AWARENESS.md#known-ceilings --expect <that hash>`"
         }
       ]
     },
@@ -1255,7 +1255,7 @@
     "capture-doc-stamp": {
       "_note": "The capture-doc lifecycle stamp format - the docs-root rule owns reader semantics; each capture skill restates the format it writes.",
       "owner": {
-        "file": "stack/skills/capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-awareness/references/architecture.md",
         "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
       },
       "sites": [
@@ -1264,7 +1264,7 @@
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/capture-project-code-style/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/project-code-style.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
@@ -1717,7 +1717,7 @@
           "marker": "up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), routes a red build/test"
         },
         {
-          "file": "stack/skills/capture-project-code-style/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/project-code-style.md",
           "marker": "Dispatch up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` seats in one message (default 5), the next as each hands back"
         },
         {
@@ -1729,7 +1729,7 @@
           "marker": "in a single message where the modules are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
         },
         {
-          "file": "stack/skills/capture-architecture/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/architecture.md",
           "marker": "batched into a single message where the areas are independent, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5)"
         },
         {
@@ -1804,19 +1804,6 @@
         }
       ]
     },
-    "generated-rule-lifecycle": {
-      "_note": "The generated-rule survival invariant: a per-project GENERATED rule is never listed in the installer's catalog (a copy would overwrite the capture) and no install ledger records it, so /alfred-code:update never touches it - library rule copies ARE pruned when dropped or retired, so 'nothing prunes .claude/rules/' is no longer the reason (2.1.5 audit M79). Every generating skill restates it.",
-      "owner": {
-        "file": "stack/skills/capture-architecture/SKILL.md",
-        "marker": "the installer's catalog must not list this rule"
-      },
-      "sites": [
-        {
-          "file": "stack/skills/capture-awareness/SKILL.md",
-          "marker": "stays out of the installer's catalog"
-        }
-      ]
-    },
     "mode-ask-at-start": {
       "_note": "The session-or-agents run-start question: when dispatch is available every entry-point orchestration skill and capture asks ONE question up front, holds the answer for the run, inherits inside a composed flow, and skips the ask where INLINE is forced. Canonical in execution-modes.md; each asking skill carries the sentence.",
       "owner": {
@@ -1857,11 +1844,11 @@
           "marker": "ask ONE question before auditing"
         },
         {
-          "file": "stack/skills/capture-architecture/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/architecture.md",
           "marker": "ask ONE question before gathering"
         },
         {
-          "file": "stack/skills/capture-project-code-style/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/project-code-style.md",
           "marker": "ask ONE question before a first capture's fan-out"
         },
         {
@@ -2139,7 +2126,7 @@
       ]
     },
     "assessment-coverage-carve-out": {
-      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-quality's coverage part and its COVERAGE-QUALITY.md, never ARCHITECTURE-ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved out of capture-architecture when the findings judgment split out of the map capture; capture-quality's architecture-quality part since 2026-10-29.",
+      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-quality's coverage part and its COVERAGE-QUALITY.md, never ARCHITECTURE-ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved out of the architecture map capture (now capture-awareness's architecture part) when the findings judgment split out of it; capture-quality's architecture-quality part since 2026-10-29.",
       "owner": {
         "file": "stack/skills/capture-quality/references/architecture-quality-doc-shape.md",
         "marker": "Test-suite weaknesses are OUT OF SCOPE"
@@ -2156,15 +2143,15 @@
       ]
     },
     "capabilities-refresh-user-run": {
-      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-awareness' usage policy.",
+      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-awareness and capture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The two exceptions are model-invocable, so no guard stops a call of either: the commands name them as the user's line all the same, and update-close and validate state the instruction without the mechanism. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-awareness' usage policy.",
       "owner": {
         "file": "setup-plugin/references/update-close.md",
-        "marker": "Never invoke it from this run - the skill is manual-only"
+        "marker": "Never invoke it from this run - the line is the user's to run, and no guard stops a Skill call of it"
       },
       "sites": [
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "a Skill call from this run is denied by `guard-fresh-session-start.js`"
+          "marker": "the line is the user's to run: never attempt it"
         },
         {
           "file": "setup-plugin/commands/configure.md",
@@ -2288,7 +2275,7 @@
     "capture-doc-batched-write": {
       "_note": "Capture docs reconcile in one write / one batched edit pass per doc, never a per-claim edit stream; measured numbers are per-capture by design.",
       "owner": {
-        "file": "stack/skills/capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-awareness/references/architecture.md",
         "marker": "never a per-claim edit stream"
       },
       "sites": [
@@ -2306,7 +2293,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-project-code-style/references/doc-shape.md",
+          "file": "stack/skills/capture-awareness/references/project-code-style-doc-shape.md",
           "marker": "and into this branch's overlay otherwise - the capture never decides which"
         },
         {
@@ -3165,7 +3152,7 @@
       ]
     },
     "assessment-strength-check": {
-      "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shape.md; restated at the capture's JUDGE step. Moved out of capture-architecture when the findings judgment split out of the map capture; capture-quality's architecture-quality part since 2026-10-29.",
+      "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shape.md; restated at the capture's JUDGE step. Moved out of the architecture map capture (now capture-awareness's architecture part) when the findings judgment split out of it; capture-quality's architecture-quality part since 2026-10-29.",
       "owner": {
         "file": "stack/skills/capture-quality/references/architecture-quality-doc-shape.md",
         "marker": "erode a listed strength"
@@ -3178,7 +3165,7 @@
       ]
     },
     "finding-count-is-output": {
-      "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shape.md's count rule; restated in the capture's REPORT step (Don't game it). Moved out of capture-architecture when the findings judgment split out of the map capture; capture-quality's architecture-quality part since 2026-10-29.",
+      "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shape.md's count rule; restated in the capture's REPORT step (Don't game it). Moved out of the architecture map capture (now capture-awareness's architecture part) when the findings judgment split out of it; capture-quality's architecture-quality part since 2026-10-29.",
       "owner": {
         "file": "stack/skills/capture-quality/references/architecture-quality-doc-shape.md",
         "marker": "an output, never a target"
@@ -3195,7 +3182,7 @@
       ]
     },
     "findings-gate-four-questions": {
-      "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the pros/cons capture's doc-shape.md; the coverage capture carries an adapted binding for weak-point candidates. Moved out of capture-architecture when the findings judgment split out of the map capture; capture-quality's architecture-quality part since 2026-10-29.",
+      "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the pros/cons capture's doc-shape.md; the coverage capture carries an adapted binding for weak-point candidates. Moved out of the architecture map capture (now capture-awareness's architecture part) when the findings judgment split out of it; capture-quality's architecture-quality part since 2026-10-29.",
       "owner": {
         "file": "stack/skills/capture-quality/references/architecture-quality-doc-shape.md",
         "marker": "pass all four questions or it is not a finding"
@@ -5357,7 +5344,7 @@
     "skill-model-pin-turn-scoped": {
       "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, and the pins live only on agents, where they cover the whole subagent run. Since 2026-10-09 the three judging captures, their two loops and the version-upgrade and greenfield flows run on the session model and ask for no switch - measured in docs/model-ab-evidence.md: Sonnet at xhigh matched Opus at the same cost or less.",
       "owner": {
-        "file": "stack/skills/capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-awareness/references/architecture.md",
         "marker": "a skill-level pin lasts only for the turn it activates in"
       },
       "sites": [
@@ -5620,19 +5607,6 @@
         }
       ]
     },
-    "generated-rule-write-protocol": {
-      "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): the code-style capture previously mandated delete-first.",
-      "owner": {
-        "file": "stack/skills/capture-architecture/SKILL.md",
-        "marker": "READ the existing rule first so the Write is legal"
-      },
-      "sites": [
-        {
-          "file": "stack/skills/capture-awareness/references/agents.md",
-          "marker": "Do NOT `rm` it first"
-        }
-      ]
-    },
     "push-gate-receipt": {
       "_note": "The publish half of the commit ceremony: <data root>/state/approvals/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before a git push or a change-request merge and cleared after. the git preferences seed names it (its locked checkpoint entry; alfred-git.md before 2026-10-21), habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
       "owner": {
@@ -5705,7 +5679,7 @@
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/capture-project-code-style/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/project-code-style.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -6572,7 +6546,7 @@
     "capture-expensive-seat-reads": {
       "_note": "The three deliberate captures that judge in-session (architecture map, architecture pros/cons, code quality) all tell the in-session judge it never reads the codebase wholesale - the analyzer seats absorb the reads. Owned by the architecture capture; restated in the two quality captures because each runs alone.",
       "owner": {
-        "file": "stack/skills/capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-awareness/references/architecture.md",
         "marker": "You are the expensive seat: never read the codebase wholesale yourself"
       },
       "sites": [
@@ -6589,7 +6563,7 @@
     "capture-regather-cap": {
       "_note": "A contradiction between two analyzer digests on a CHECKABLE fact is settled by the cheapest deterministic probe in-session before any re-dispatch, and gathering is capped at 3 rounds. Owned by the architecture capture; restated in the two quality captures.",
       "owner": {
-        "file": "stack/skills/capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-awareness/references/architecture.md",
         "marker": "settle it with the cheapest deterministic probe in-session first"
       },
       "sites": [
@@ -6615,7 +6589,7 @@
           "marker": "the judgment above ran on it"
         },
         {
-          "file": "stack/skills/capture-architecture/references/report-fields.md",
+          "file": "stack/skills/capture-awareness/references/architecture-report-fields.md",
           "marker": "the judgment above ran on it"
         }
       ]
@@ -6809,55 +6783,55 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md` exists - `PROJECT-AWARENESS.md`, its legacy name, in an install not yet updated - follow it before you start, log into or hand-check the app"
         }
       ]
     },
@@ -6889,7 +6863,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/capture-architecture/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/architecture.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6897,7 +6871,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/capture-project-code-style/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/project-code-style.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -7018,7 +6992,7 @@
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         },
         {
-          "file": "stack/skills/capture-awareness/scripts/capabilities-inventory.js",
+          "file": "stack/skills/capture-awareness/scripts/awareness-state.js",
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         },
         {
@@ -7099,7 +7073,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/capture-architecture/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/architecture.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -7111,7 +7085,7 @@
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
-          "file": "stack/skills/capture-project-code-style/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/project-code-style.md",
           "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
         },
         {
@@ -8161,7 +8135,7 @@
           "marker": "the entry's side marked (Recommended)"
         },
         {
-          "file": "stack/skills/capture-project-code-style/references/doc-shape.md",
+          "file": "stack/skills/capture-awareness/references/project-code-style-doc-shape.md",
           "marker": "the entry's side marked (Recommended)"
         },
         {
@@ -8577,8 +8551,34 @@
           "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
         },
         {
-          "file": "stack/skills/capture-architecture/references/report-fields.md",
+          "file": "stack/skills/capture-awareness/references/architecture-report-fields.md",
           "marker": "Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names."
+        }
+      ]
+    },
+    "umbrella-load-starter": {
+      "_note": "The umbrella routers' load rule (phase 1 of 2026-10-29 for capture-quality, phase 3 for capture-awareness): who started the load decides what a run with no topic word does - the typed command (or a request in words for the whole set) runs the chain, a description match runs the one part the request names and never the chain. Copied into each router, never pointed at.",
+      "owner": {
+        "file": "stack/skills/capture-quality/SKILL.md",
+        "marker": "The chain never runs on a description match"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-awareness/SKILL.md",
+          "marker": "The chain never runs on a description match"
+        }
+      ]
+    },
+    "umbrella-mode-word": {
+      "_note": "The umbrella routers' calling-flow mark: a mode word (DELEGATED or INLINE) right after the topic word marks a run a flow started - the part skips its run gate and its seats-or-inline ask and inherits the mode; a person may type the same form. Copied into each router.",
+      "owner": {
+        "file": "stack/skills/capture-quality/SKILL.md",
+        "marker": "A mode word next (section 4) marks a calling flow"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-awareness/SKILL.md",
+          "marker": "A mode word next, `DELEGATED` or `INLINE`"
         }
       ]
     }

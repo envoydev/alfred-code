@@ -430,7 +430,7 @@ test('the capabilities script resolves to the NEWEST cached entry', () => {
             {
                 const skills = path.join(home, 'acct', 'plugins', 'cache', 'envoydev', 'alfred-code', v, 'stack', 'skills');
                 fs.mkdirSync(path.join(skills, 'capture-awareness', 'scripts'), { recursive: true });
-                fs.writeFileSync(path.join(skills, 'capture-awareness', 'scripts', 'capabilities-inventory.js'), '');
+                fs.writeFileSync(path.join(skills, 'capture-awareness', 'scripts', 'awareness-state.js'), '');
                 fs.mkdirSync(path.join(skills, 'task-solve-cross', 'references'), { recursive: true });
                 fs.writeFileSync(path.join(skills, 'task-solve-cross', 'references', 'contract-protocol.md'), '');
             }
@@ -439,7 +439,7 @@ test('the capabilities script resolves to the NEWEST cached entry', () => {
             // The capabilities block with its last line - the run - swapped for a print.
             const caps = bodySnippet('stack/skills/capture-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)echo "caps: \$\{CAPS:-absent\}"\n```/);
             assert.match(execFileSync('bash', ['-c', `${caps}printf %s "$CAPS"`], { cwd: home, env, encoding: 'utf8' }),
-                new RegExp(`/${newest}/stack/skills/capture-awareness/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
+                new RegExp(`/${newest}/stack/skills/capture-awareness/scripts/awareness-state\\.js$`), `capabilities: not the newest of ${versions}`);
         }
         finally { fs.rmSync(home, { recursive: true, force: true }); }
     }
@@ -458,7 +458,7 @@ function plantBare(cfg, marketplace, plugin, version, { orphaned = false, file }
     for (const sub of ['stack/skills', 'stack/agents', 'scripts', 'stack/skills/capture-awareness/scripts', 'stack/skills/task-solve-cross/references'])
         fs.mkdirSync(path.join(dir, sub), { recursive: true });
     plantVersion(dir, version);   // a real cache entry: the version in plugin.json, no RELEASE-SOURCE
-    for (const f of ['scripts/scan-evidence.js', 'stack/skills/capture-awareness/scripts/capabilities-inventory.js', 'stack/skills/task-solve-cross/references/contract-protocol.md'])
+    for (const f of ['scripts/scan-evidence.js', 'stack/skills/capture-awareness/scripts/awareness-state.js', 'stack/skills/task-solve-cross/references/contract-protocol.md'])
         fs.writeFileSync(path.join(dir, f), file || '');
     if (orphaned) fs.writeFileSync(path.join(dir, '.orphaned_at'), '1790246851942');
     return dir;
@@ -608,7 +608,7 @@ test('the aligned lookups (run book, AGENTS.md check, both spec checks) read a c
 
 test('the three body snippets read a core cached under any key, and never an orphaned one', () => {
     const snippets = {
-        capabilities: [bodySnippet('stack/skills/capture-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)echo "caps: \$\{CAPS:-absent\}"\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-awareness/scripts/capabilities-inventory.js'],
+        capabilities: [bodySnippet('stack/skills/capture-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)echo "caps: \$\{CAPS:-absent\}"\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-awareness/scripts/awareness-state.js'],
         usage: [bodySnippet('stack/skills/capture-usage-report/SKILL.md', /```bash\n(TMP=\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/alfred-code\.XXXXXX"\)[^\n]*\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
     };
     for (const [plant, want] of [

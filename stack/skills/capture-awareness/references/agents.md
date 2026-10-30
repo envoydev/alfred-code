@@ -1,8 +1,11 @@
 # Agents awareness - the inventory, the stamped usage policy, the routing map
 
-Read at step 1. `AGENTS-AWARENESS.md` is the one awareness file no person writes: `node "<caps>" --write`
-composes it from the copy target below and the inventory it prints, compares it, writes it on differs and
-verifies what it wrote. The run adds no row, count or sentence of its own. The measurements behind these rules
+Read when the agents part runs, then run `node "<caps>" --write` - `--write --refresh` when the arguments say
+`refresh` - with `<caps>` the path the router's step 0 printed. Its printed block is the whole inventory and its
+verdict lines say what happened; this reference says how to read each one. No questions.
+
+`AGENTS-AWARENESS.md` is the one awareness file no person writes: `node "<caps>" --write` composes it from the copy
+target below and the inventory it prints, compares it, writes it on differs and verifies what it wrote. The run adds no row, count or sentence of its own. The measurements behind these rules
 are the stack repo's `docs/capture-awareness-evidence.md` - an audit appendix, never a run-time load.
 
 ## Contents
@@ -40,7 +43,7 @@ neither a local nor a plugin source.
 - `PRECHECK: FIRST` - no doc yet; the run writes it.
 - `PRECHECK: empty` - nothing under the inventory sources changed since the doc was written. The script still
   composes and compares, and writes only under `--refresh`. `COMPARE: identical` is the answer: one report line
-  naming the `Captured:` date PRECHECK quotes, and on to step 2. A `differs ... NOT WRITTEN` line names the sections
+  naming the `Captured:` date PRECHECK quotes, and the part is done. A `differs ... NOT WRITTEN` line names the sections
   that moved - two things the precheck cannot see: the PLUGIN list is machine-global (an enable or disable changes
   no file in this tree), and the USER may ask for a refresh outright. Either one is the only reason to re-run as
   `node "<caps>" --write --refresh` - say which one you are acting on.
@@ -161,6 +164,14 @@ unknown-server row):
 - an issue-tracker connector - tracker read-write; ticket skills write the content, the connector files it - confirm before filing. It reaches the session from the account or the harness, so it has no `.mcp.json` row and no row here: the script prints it under the live list, and it earns a row only when the project registered it. first call: `ToolSearch select:` plus that connector's own `mcp__*` names the session's listing shows.
 
 ## The report's agents lines
+
+The part's field template, one line per field (a table where a field lists several items):
+
+```text
+Agents:      <the script's Doc: line>; Verify: <its Verify: line>
+Inventory:   <the script's Inventory: line>; Drift: <its Drift: line>
+Flags:       <one row each, or none>
+```
 
 The script's `REPORT` block prints the `Doc:`, `Verify:`, `Inventory:` and `Drift:` lines filled - copy them as
 they stand, the `Inventory:` figures included (never re-add or re-pick a count). Then, each its own line so none

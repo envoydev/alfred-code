@@ -514,7 +514,7 @@ test('guard-stop-contract: only a close that OFFERS the fresh session skips the 
   assert.equal(stop(at('fx-resume', 500000,
     'Task 4 landed. Resume in a fresh session with the block below and I pick up at task 5.')), 0,
     'the mandated resume wording is an offer');
-  assert.equal(stop(at('fx-run', 500000, 'Run `/alfred-code:capture-architecture` in a new session - answer refresh there.')), 0,
+  assert.equal(stop(at('fx-run', 500000, 'Run `/alfred-code:capture-awareness` in a new session - answer refresh there.')), 0,
     "the imperative 'Run ... in a new session' hands the work over (8b5dcb1a)");
   assert.equal(stop(at('fx-run-noun', 500000, 'The audit is written. A separate run from a fresh session would be worth it later.')), 2,
     "'run' as a noun only recommends");
@@ -1185,7 +1185,7 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
 
   // ... and the measured chain the trigger exists for still fires: a run, an ANSWER, then a second run.
   assert.match(slash(transcript('ab-real', [
-    cmd('capture-architecture'),
+    cmd('capture-awareness'),
     ...worked('r1', FLOOR),
     assistantRow('r1', 'Captured the architecture doc.', FLOOR),
     userRow('now run the task cycle'),
@@ -1197,7 +1197,7 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   // is a multi-phase run too - both take the offer.
   for (const walk of ['alfred-code:init', 'alfred-code:update'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
-      cmd('capture-architecture'),
+      cmd('capture-awareness'),
       ...worked('i1', FLOOR),
       assistantRow('i1', 'Captured the architecture doc.', FLOOR),
       userRow('now install the stack'),

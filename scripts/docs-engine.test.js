@@ -1313,7 +1313,7 @@ test('an empty ref or one ending in a slash is refused rather than composed into
 });
 
 // The compatibility proof itself: a bare id straight out of a shipped watch.json's sections array
-// (capture-architecture/references/doc-shapes.md's own example uses this shape, e.g.
+// (capture-awareness/references/architecture-doc-shapes.md's own example uses this shape, e.g.
 // 'modules#module-map') and the 'references/<topic>#<id>' spelling docs-session.js documents as an
 // equivalent way to write the same ref (stack/hooks/docs-session.js:220) - both must resolve to the one
 // file that actually holds the section, architecture/references/patterns.md, not to a nonexistent
@@ -1506,6 +1506,32 @@ test('promote migrates a pre-domain overlay with no domain segment into the gran
     assert.match(out.stdout, /patterns#paging: added/);
     assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Twelve rows\./, 'folded into the real file, not left invisible');
     assert.ok(!r.exists('.claude/docs/.branches/feat-pre-domain'), 'the overlay is gone once its only entry folded');
+  } finally { r.rm(); }
+});
+
+// The capture-awareness merge (spec 2026-10-29 2.2): the map's files may have moved to awareness/ while a pre-domain
+// overlay still names the old relKey - the rescue folds it into whichever map home holds the file, the map's own first.
+test('promote folds a pre-domain overlay into the awareness map home once the file moved there', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' } });
+  try {
+    r.write('.claude/docs/awareness/watch.json', '{}');
+    r.write('.claude/docs/awareness/ARCHITECTURE-AWARENESS.md', section('modules', 'src/**', 'Api -> Domain.'));
+    r.write('.claude/docs/awareness/references/patterns.md', PATTERNS);
+    r.git('switch', '-qc', 'feat/pre-domain');
+    const base = r.git('rev-parse', 'HEAD');
+    r.write('src/marker.txt', 'x\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'work');
+    const head = r.git('rev-parse', 'HEAD');
+    r.write('.claude/docs/.branches/feat-pre-domain/references/patterns/paging.md', '### paging\n<!-- id: paging -->\nTwelve rows.\n');
+    r.write('.claude/docs/.branches/feat-pre-domain/.base/references/patterns/paging.md', '');
+    writeBaseMeta(r, '.claude/docs/.branches/feat-pre-domain', 'feat/pre-domain', base, head);
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/pre-domain');
+    const out = r.cli(['promote', '--merged']);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(out.stdout, /patterns#paging: added/);
+    assert.match(r.read('.claude/docs/awareness/references/patterns.md'), /Twelve rows\./);
+    assert.ok(!r.exists('.claude/docs/architecture'), 'nothing is written at the old home');
   } finally { r.rm(); }
 });
 
@@ -2669,5 +2695,136 @@ test('watch-merge writes atomically: no temp file is left beside watch.json', ()
     r.write('.claude/docs/awareness/PROJECT-AWARENESS.md', '# Run book\n');
     assert.strictEqual(merge(r, 'awareness', ['--kinds', 'run book: '], [entry('run book: build', ['PROJECT-AWARENESS#build'])]).status, 0);
     assert.deepStrictEqual(fs.readdirSync(path.join(r.root, '.claude/docs/awareness')).sort(), ['PROJECT-AWARENESS.md', 'watch.json']);
+  } finally { r.rm(); }
+});
+
+// ---- The map's new home (the capture-awareness merge, spec 2026-10-29 2.2): awareness/ now, architecture/ until the
+// update moves it. Every reader takes mapDomain(); both spellings stay readable for the skew window.
+const AWD = '.claude/docs/awareness';
+const CEIL_TABLE = ['| where | limit | revisit when |', '| --- | --- | --- |', '| `src/Api/Program.cs:Main` | one host | a second host |', '| `src/Api/Orders/Refund.cs:Run` | sync only | **Lifted** in 3e881be |'].join('\n');
+const MAP = `# Architecture\n\n${section('modules', 'src/**', 'Api -> Domain. Orders own refunds.')}\n${section('known-ceilings', 'src/**', CEIL_TABLE)}`;
+const moved = () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Api/Program.cs': 'app.Run();\n' } });
+  r.write(`${AWD}/watch.json`, '{}');
+  r.write(`${AWD}/ARCHITECTURE-AWARENESS.md`, MAP);
+  r.write(`${AWD}/references/api.md`, section('routes', 'src/Api/Orders/**', 'Routes return the envelope.'));
+  r.write(`${AWD}/history/h.md`, section('round-1', 'src/Api/Orders/**', 'Round notes.'));
+  r.write(`${AWD}/ARCHITECTURE-ORIENTATION-AWARENESS.md`, '## block\n<!-- id: block -->\nOrders own refunds.\n');
+  r.write(`${AWD}/USER-AWARENESS.md`, '## mine\n<!-- id: mine -->\nMy own notes.\n');
+  return r;
+};
+
+test('mapDomain in its six states', () => {
+  const r = repo();
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'map-domain-'));
+  try {
+    const docs = requireEngine(r.root);
+    const states = [
+      [['architecture/ARCHITECTURE.md'], 'architecture'],
+      [['architecture/ORIENTATION.md'], 'architecture'],
+      [['awareness/ARCHITECTURE-AWARENESS.md'], 'awareness'],
+      [['awareness/ARCHITECTURE-ORIENTATION-AWARENESS.md'], 'awareness'],
+      [['architecture/ARCHITECTURE.md', 'awareness/ARCHITECTURE-AWARENESS.md'], 'awareness'],
+      [[], 'awareness'],
+    ];
+    states.forEach(([files, want], i) => {
+      const root = path.join(base, String(i));
+      fs.mkdirSync(root, { recursive: true });
+      for (const f of files) { fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true }); fs.writeFileSync(path.join(root, f), 'x\n'); }
+      assert.strictEqual(docs.mapDomain(root), want, `with ${files.join(' + ') || 'neither'}`);
+    });
+    assert.deepStrictEqual(docs.mapNames('architecture'), { map: 'ARCHITECTURE.md', block: 'ORIENTATION.md' });
+    assert.deepStrictEqual(docs.mapNames('awareness'), { map: 'ARCHITECTURE-AWARENESS.md', block: 'ARCHITECTURE-ORIENTATION-AWARENESS.md' });
+  } finally { delete require.cache[ENGINE_PATH]; fs.rmSync(base, { recursive: true, force: true }); r.rm(); }
+});
+
+test('the moved layout is sectioned and read', () => {
+  const r = moved();
+  try {
+    assert.match(r.cli(['show', 'ARCHITECTURE-AWARENESS#modules']).stdout, /Orders own refunds/);
+    const where = r.cli(['where', 'src/Api/Orders/Refund.cs']).stdout;
+    assert.match(where, /^api#routes /m);
+    assert.doesNotMatch(where, /round-1/, 'history is never a pointer');
+    assert.match(r.cli(['toc', 'ARCHITECTURE-AWARENESS']).stdout, /ARCHITECTURE-AWARENESS#modules[\s\S]*ARCHITECTURE-AWARENESS#known-ceilings/);
+    const files = r.cli(['files']).stdout;
+    assert.match(files, /ARCHITECTURE-AWARENESS {2}\.claude\/docs\/awareness\/ARCHITECTURE-AWARENESS\.md/);
+    assert.doesNotMatch(files, /USER-AWARENESS|ARCHITECTURE-ORIENTATION-AWARENESS/, 'the user\'s file and the block are never sectioned');
+    assert.match(r.cli(['toc', 'USER-AWARENESS']).stdout, /^no such doc file: USER-AWARENESS/);
+    const stale = r.cli(['stale']);
+    assert.strictEqual(stale.status, 0);
+    assert.match(stale.stdout, /no section has been outgrown/);
+    r.write(`${AWD}/ARCHITECTURE-ORIENTATION-AWARENESS.md`, '> provisional - replaced by the architecture capture\n');
+    assert.match(r.cli(['stale']).stdout, /^awareness\/ARCHITECTURE-ORIENTATION-AWARENESS\.md - provisional/m);
+
+    assert.match(r.cli(['ceilings']).stdout, /1 of 2 rows closed/);
+    const pruned = r.cli(['ceilings', '--prune']);
+    assert.strictEqual(pruned.status, 0, pruned.stdout);
+    assert.match(pruned.stdout, /moved 1 of 2 rows to \.claude\/docs\/awareness\/history\/known-ceilings-closed\.md; awareness\/ARCHITECTURE-AWARENESS\.md#known-ceilings rewritten/);
+    assert.ok(!r.read(`${AWD}/ARCHITECTURE-AWARENESS.md`).includes('Lifted'));
+    assert.match(r.read(`${AWD}/history/known-ceilings-closed.md`), /moved out of ARCHITECTURE-AWARENESS\.md#known-ceilings/);
+    assert.ok(!r.exists('.claude/docs/architecture'), 'nothing is written at the old home');
+  } finally { r.rm(); }
+
+  const old = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'ARCHITECTURE.md': MAP, 'references/api.md': section('routes', 'src/Api/Orders/**', 'Routes return the envelope.') } });
+  try {
+    assert.match(old.cli(['show', 'ARCHITECTURE#modules']).stdout, /Orders own refunds/);
+    assert.match(old.cli(['where', 'src/Api/Orders/Refund.cs']).stdout, /^api#routes /m);
+    const pruned = old.cli(['ceilings', '--prune']);
+    assert.match(pruned.stdout, /moved 1 of 2 rows to \.claude\/docs\/architecture\/history\/known-ceilings-closed\.md; architecture\/ARCHITECTURE\.md#known-ceilings rewritten/);
+    assert.match(old.read('.claude/docs/architecture/history/known-ceilings-closed.md'), /moved out of ARCHITECTURE\.md#known-ceilings/);
+    assert.ok(!old.exists(AWD), 'an unmoved install gets no awareness folder from a read');
+  } finally { old.rm(); }
+});
+
+// Review Focus 1: a half-moved install holds references/<x> at both homes; the bare ref names both, never picks one.
+test('a ref both homes hold is refused with both named', () => {
+  const r = moved();
+  try {
+    r.write('.claude/docs/architecture/references/api.md', section('routes', 'src/**', 'The old copy.'));
+    const out = r.cli(['show', 'references/api#routes']).stdout;
+    assert.match(out, /references\/api is in architecture and awareness - name one/);
+    assert.doesNotMatch(out, /Routes return the envelope|The old copy/, 'neither copy is served');
+    assert.match(r.cli(['show', 'awareness/references/api#routes']).stdout, /Routes return the envelope/, 'the qualified spelling resolves');
+  } finally { r.rm(); }
+});
+
+test('isMapFile and the part filter', () => {
+  const r = moved();
+  try {
+    r.write('.claude/docs/architecture/references/old.md', section('x', 'src/**', 'x'));
+    const docs = requireEngine(r.root);
+    const at = (d, rel) => path.join(r.root, '.claude/docs', d, rel);
+    for (const d of ['awareness', 'architecture']) {
+      for (const rel of ['ARCHITECTURE.md', 'ARCHITECTURE-AWARENESS.md', 'ORIENTATION.md', 'ARCHITECTURE-ORIENTATION-AWARENESS.md', 'BRANCH-DELTA.md', 'references/x.md', 'history/x.md']) {
+        assert.ok(docs.isMapFile(at(d, rel)), `${d}/${rel} is the map's`);
+      }
+    }
+    for (const rel of ['RUN-AND-DEBUG-AWARENESS.md', 'RELATED-PROJECTS-AWARENESS.md', 'AGENTS-AWARENESS.md', 'PROJECT-INFO-AWARENESS.md']) {
+      assert.ok(!docs.isMapFile(at('awareness', rel)), `${rel} is not the map's`);
+    }
+  } finally { delete require.cache[ENGINE_PATH]; }
+  try {
+    const big = 'x'.repeat(6100);
+    r.write(`${AWD}/ARCHITECTURE-AWARENESS.md`, `${MAP}\n${section('huge', 'src/**', big)}`);
+    r.write(`${AWD}/ARCHITECTURE-ORIENTATION-AWARENESS.md`, 'o'.repeat(4097));
+    r.write(`${AWD}/RUN-AND-DEBUG-AWARENESS.md`, '## build\nnpm run build\n');
+    r.write(`${AWD}/watch.json`, JSON.stringify({ watch: [{ kind: 'architecture: root', globs: ['src/*/Program.cs'], sections: ['ARCHITECTURE-AWARENESS#nope'] }] }));
+    // a related doc stamped in the map's write pass with no covers stays a note: only the map's files owe them
+    r.write(`${AWD}/RELATED-PROJECTS-AWARENESS.md`, `Captured: 2026-10-29@abcdef12\n\n## api\n<!-- id: api -->\nThe API sibling.\n`);
+    const mapRows = [/oversized section \(\d+ chars, cap 6000\): ARCHITECTURE-AWARENESS#huge/, /ARCHITECTURE-ORIENTATION-AWARENESS\.md is 4097 bytes, cap 4096/, /awareness\/watch\.json 'architecture: root' names a section that does not exist: ARCHITECTURE-AWARENESS#nope/];
+    const runRow = /section without an id: RUN-AND-DEBUG-AWARENESS 'build'/;
+    const onMap = r.cli(['lint', 'awareness', '--map']).stdout;
+    for (const row of mapRows) assert.match(onMap, row);
+    assert.doesNotMatch(onMap, runRow);
+    const offMap = r.cli(['lint', 'awareness', '--no-map']).stdout;
+    for (const row of mapRows) assert.doesNotMatch(offMap, row);
+    assert.match(offMap, runRow);
+    assert.match(offMap, /note {4}no section declares covers: RELATED-PROJECTS-AWARENESS/);
+    assert.doesNotMatch(offMap, /PROBLEM no section declares covers: RELATED-PROJECTS-AWARENESS/);
+    const all = r.cli(['lint', 'awareness']).stdout;
+    for (const row of [...mapRows, runRow]) assert.match(all, row);
+    assert.match(r.cli(['lint', '--map']).stdout, /^lint: --map splits one domain/);
+    r.write(`${AWD}/watch.json`, '{ not json');
+    for (const flag of ['--map', '--no-map']) assert.match(r.cli(['lint', 'awareness', flag]).stdout, /watch\.json is not valid JSON/, flag);
   } finally { r.rm(); }
 });

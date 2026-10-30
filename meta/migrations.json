@@ -12,7 +12,7 @@
    ],
    "unwire_settings_hook": "inject-code-style.js",
    "why": "style delivery moved to the generated path-scoped project-code-style rule - the hook's injected context never reached subagent tool calls",
-   "then": "re-run /capture-project-code-style so the style doc it reads from now is captured"
+   "then": "re-run /capture-awareness project-code-style so the style doc it reads from now is captured"
   },
   {
    "id": "fresh-session-pct-retired",

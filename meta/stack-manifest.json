@@ -24,17 +24,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "loop-architecture-quality",
-      "note": "deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ARCHITECTURE-ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "capture-project-code-style",
-      "note": "deliberate code-style capture - fans out code-style-analyzer per language, merges docs/preferences/PROJECT-CODE-PREFERENCES.md and its preferences/watch.json entries; no generated rule, alfred-preferences.md says when the doc is read; manual /-only"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "capture-architecture",
-      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-architecture.md; model-invocable, and the architecture-quality loop invokes it"
+      "note": "deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE-AWARENESS.md, the pros/cons capture writes ARCHITECTURE-ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -59,7 +49,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-awareness",
-      "note": "deliberate awareness capture (the user's ruling of 2026-10-16: three captures in one) - inventories installed skills/agents/MCPs/plugins into docs/awareness/AGENTS-AWARENESS.md (script-written, out of git), writes the run book docs/awareness/PROJECT-AWARENESS.md from the repo plus the asked gaps (credentials by location, never by value), maps the sibling repos the user names into docs/awareness/RELATED-PROJECTS-AWARENESS.md (fanning out related-project-analyzer where it is picked), and generates the one rule alfred-awareness.md whose @ imports load all three at every session start; manual /-only"
+      "note": "deliberate awareness capture (the user's ruling of 2026-10-16: three captures in one; 2026-10-29: the code-style and architecture captures joined as parts) - five parts read as references, a topic word picks one and the typed command with none runs the chain behind one ask that scripts/awareness-state.js --state feeds: project (docs/awareness/PROJECT-INFO-, RUN-AND-DEBUG- and RESOURCES-AWARENESS.md from the repo plus the asked gaps, credentials by location never by value, and the user's own USER-AWARENESS.md created once), related-projects (docs/awareness/RELATED-PROJECTS-AWARENESS.md, fanning out related-project-analyzer where it is picked), project-code-style (code-style-analyzer per language into docs/preferences/PROJECT-CODE-PREFERENCES.md), architecture (architecture-analyzer per module, reasoned in the main session into docs/awareness/ARCHITECTURE-AWARENESS.md, its references/ and history/ and the ARCHITECTURE-ORIENTATION-AWARENESS.md block) and agents (the script-written docs/awareness/AGENTS-AWARENESS.md, out of git); the close generates the one rule alfred-awareness.md whose @ imports load the awareness docs at every session start and whose one line points at the map; model-invocable, and the architecture-quality loop invokes it as `architecture <DELEGATED|INLINE> <target>`"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -483,7 +473,7 @@
     },
     {
       "file": "code-style-analyzer.md",
-      "note": "analysis phase (sonnet/medium): read-only per-language style characterizer - the capture-project-code-style skill fans it out per language and merges docs/preferences/PROJECT-CODE-PREFERENCES.md from its structured reports"
+      "note": "analysis phase (sonnet/medium): read-only per-language style characterizer - capture-awareness' project-code-style part fans it out per language and merges docs/preferences/PROJECT-CODE-PREFERENCES.md from its structured reports"
     },
     {
       "file": "related-project-analyzer.md",
@@ -921,7 +911,7 @@
       "file": "docs-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "the architecture docs as the session's starting point: merged branches' doc versions folded into mainline, then ORIENTATION.md, this branch's overrides and how to read by section"
+      "note": "the architecture docs as the session's starting point: merged branches' doc versions folded into mainline, then the map's orientation block, this branch's overrides and how to read by section"
     },
     {
       "file": "docs-session.js",
@@ -1176,7 +1166,9 @@
       "capture-architecture-quality",
       "capture-code-quality",
       "capture-test-coverage",
-      "loop-test-coverage"
+      "loop-test-coverage",
+      "capture-architecture",
+      "capture-project-code-style"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1262,9 +1254,9 @@
       "project-diagnose-failure": "issue-diagnoser",
       "project-ci-failure-signatures": "issue-signatures-ci",
       "project-runtime-failure-signatures": "issue-signatures-runtime",
-      "project-architecture-analyzer": "capture-architecture",
+      "project-architecture-analyzer": "capture-awareness",
       "project-architecture-quality-analyzer": "capture-quality",
-      "project-code-style-analyzer": "capture-project-code-style",
+      "project-code-style-analyzer": "capture-awareness",
       "project-test-coverage-analyzer": "capture-quality",
       "project-related-context": "capture-awareness",
       "project-agent-capabilities": "capture-awareness",
@@ -1282,11 +1274,11 @@
       "habits-output-scorer": "mode-output-scorer",
       "alfred-capture-agent-capabilities": "capture-awareness",
       "capture-agent-capabilities": "capture-awareness",
-      "alfred-capture-architecture": "capture-architecture",
+      "alfred-capture-architecture": "capture-awareness",
       "alfred-capture-architecture-quality": "capture-quality",
       "alfred-capture-code-quality": "capture-quality",
-      "alfred-capture-code-style": "capture-project-code-style",
-      "capture-code-style": "capture-project-code-style",
+      "alfred-capture-code-style": "capture-awareness",
+      "capture-code-style": "capture-awareness",
       "alfred-capture-project-capabilities": "capture-awareness",
       "capture-project-capabilities": "capture-awareness",
       "alfred-capture-related-projects": "capture-awareness",
@@ -1325,7 +1317,9 @@
       "capture-architecture-quality": "capture-quality",
       "capture-code-quality": "capture-quality",
       "capture-test-coverage": "capture-quality",
-      "loop-test-coverage": "loop-test-coverage-quality"
+      "loop-test-coverage": "loop-test-coverage-quality",
+      "capture-architecture": "capture-awareness",
+      "capture-project-code-style": "capture-awareness"
     },
     "agents": {
       "ci-failure-diagnoser": "issue-diagnoser-ci",
@@ -1373,6 +1367,27 @@
     "alfred-capture-code-quality": "code-quality",
     "capture-test-coverage": "test-coverage-quality",
     "alfred-capture-test-coverage": "test-coverage-quality",
-    "project-test-coverage-analyzer": "test-coverage-quality"
+    "project-test-coverage-analyzer": "test-coverage-quality",
+    "capture-architecture": "architecture",
+    "alfred-capture-architecture": "architecture",
+    "project-architecture-analyzer": "architecture",
+    "capture-project-code-style": "project-code-style",
+    "alfred-capture-code-style": "project-code-style",
+    "capture-code-style": "project-code-style",
+    "project-code-style-analyzer": "project-code-style"
+  },
+  "umbrellaParts": {
+    "capture-quality": [
+      "architecture-quality",
+      "code-quality",
+      "test-coverage-quality"
+    ],
+    "capture-awareness": [
+      "agents",
+      "project",
+      "related-projects",
+      "project-code-style",
+      "architecture"
+    ]
   }
 }

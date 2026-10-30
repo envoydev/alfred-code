@@ -66,7 +66,7 @@ test('AC9: each sibling merges its own seam entry; the run book merges by its pr
     assert.doesNotMatch(rel, /No `watch` entry belongs to this doc/);
 
     const run = read(`${AW}/project.md`);
-    assert.ok(run.includes("--kinds 'run book: ' --doc PROJECT-AWARENESS"));
+    assert.ok(run.includes("--kinds 'run book: ' --doc RUN-AND-DEBUG-AWARENESS"));
     const kinds = [...run.matchAll(/"kind":\s*"([^"]*)"/g)].map((m) => m[1]);
     assert.ok(kinds.length >= 2, 'project.md carries example kinds');
     for (const k of kinds) assert.ok(k.startsWith('run book: '), `example kind '${k}' carries the run book prefix`);
@@ -176,4 +176,37 @@ test('an assessment entry with no located file gets no covers line and no watch 
     assert.ok(shape.includes('An entry with no located file has no covers line and no watch entry'), 'doc-shape says it');
     const skill = fs.readFileSync(path.join(ROOT, AQ_PART), 'utf8');
     assert.ok(skill.includes('one entry per located Strength and Must-fix section'), 'the merge step pipes located entries only');
+});
+
+// The architecture part shares awareness/watch.json with the run book and the siblings (spec 2026-10-29 2.2): its merge
+// replaces its own entries and the two keys it owns, every other entry and key as it stands.
+test('watch-merge --own', () =>
+{
+    const r = repo();
+    try
+    {
+        const file = '.claude/docs/awareness/watch.json';
+        const runBook = { kind: 'run book: build', globs: ['package.json'], sections: ['RUN-AND-DEBUG-AWARENESS#build'] };
+        const seam = { kind: 'seam with ../api', globs: ['src/client/**'], sections: ['RELATED-PROJECTS-AWARENESS#api'] };
+        const arch = (id) => ({ kind: `architecture: ${id}`, globs: [`src/${id}/**`], sections: [`ARCHITECTURE-AWARENESS#${id}`] });
+        r.write(file, JSON.stringify({ watch: [runBook, arch('old'), seam], notOwned: ['NOTES.md'], sourceRoots: ['lib'], newModule: { globs: ['lib/*'] }, kept: 1 }, null, 2));
+        const seed = JSON.stringify({ sourceRoots: ['src'], newModule: { globs: ['src/*'], sections: ['ARCHITECTURE-AWARENESS#modules'] }, kept: 2, fresh: 3 });
+        const merged = r.cli(['watch-merge', 'awareness', '--seed', seed, '--own', 'sourceRoots', '--own', 'newModule', '--kinds', 'architecture: '], JSON.stringify([arch('api')]));
+        assert.strictEqual(merged.status, 0, merged.stdout);
+        const j = JSON.parse(r.read(file));
+        assert.deepStrictEqual(j.watch, [runBook, arch('api'), seam], 'only the architecture: entries are replaced');
+        assert.deepStrictEqual(j.notOwned, ['NOTES.md']);
+        assert.deepStrictEqual(j.sourceRoots, ['src'], 'an owned key is replaced');
+        assert.deepStrictEqual(j.newModule, { globs: ['src/*'], sections: ['ARCHITECTURE-AWARENESS#modules'] });
+        assert.strictEqual(j.kept, 1, 'an unnamed seed key never replaces the file\'s value');
+        assert.strictEqual(j.fresh, 3, 'an unnamed seed key fills an absent one');
+        for (const bad of ['watch', '__proto__'])
+        {
+            const out = r.cli(['watch-merge', 'awareness', '--own', bad, '--kinds', 'architecture: '], '[]');
+            assert.strictEqual(out.status, 1, bad);
+            assert.match(out.stdout, /--own may not name watch/);
+        }
+        assert.match(r.cli(['watch-merge', 'awareness', '--bogus'], '[]').stdout, /\[--own <key>\.\.\.\]/, 'the usage line names --own');
+    }
+    finally { r.rm(); }
 });

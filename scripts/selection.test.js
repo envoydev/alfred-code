@@ -122,3 +122,21 @@ test('environment catalog: a renamed key is declared on both sides', () =>
     for (const row of cat.env.filter(r => r.renamed_from))
         assert.ok(renames.some(m => m.rename_settings_env.to === row.key && m.rename_settings_env.from === row.renamed_from), `${row.key} names renamed_from with no rename entry`);
 });
+
+// The project split (spec 2026-10-29 section 3): an update re-spells every awareness doc the capture wrote - the run book
+// under its new name and its old one, and the two new docs beside it; never the user's own file.
+test('awarenessDocs: the split docs and the run book under either name', () =>
+{
+    const os = require('node:os');
+    const { awarenessDocs } = require('./install/selection.js');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'selection-aware-'));
+    try
+    {
+        const names = ['AGENTS-AWARENESS.md', 'PROJECT-INFO-AWARENESS.md', 'RUN-AND-DEBUG-AWARENESS.md', 'PROJECT-AWARENESS.md', 'RESOURCES-AWARENESS.md', 'RELATED-PROJECTS-AWARENESS.md', 'USER-AWARENESS.md'];
+        fs.mkdirSync(path.join(root, 'docs', 'awareness'), { recursive: true });
+        for (const n of names) fs.writeFileSync(path.join(root, 'docs', 'awareness', n), 'x\n');
+        assert.deepStrictEqual(awarenessDocs(root, 'docs').map((f) => path.basename(f)), names.filter((n) => n !== 'USER-AWARENESS.md'));
+        assert.deepStrictEqual(awarenessDocs(root, 'docs', { agentsOnly: true }).map((f) => path.basename(f)), ['AGENTS-AWARENESS.md']);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

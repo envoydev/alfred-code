@@ -91,7 +91,7 @@ function tree(sb, { src = EXPORT, childArgs = [] } = {})
     sb.mk('.', false); sb.mk('api'); sb.mk('api/tool');
     const root = sb.install('.', ROOT_SEL, [], { src });
     sb.ws('.', 'role', ['--answer', 'root'], src);
-    sb.put(path.join(sb.docsOf('.'), 'architecture', 'ARCHITECTURE.md'), '# Ws\n\nThe workspace root.\n');
+    sb.put(path.join(sb.docsOf('.'), 'awareness', 'ARCHITECTURE-AWARENESS.md'), '# Ws\n\nThe workspace root.\n');
     sb.put(path.join(sb.docsOf('.'), 'preferences', 'PERSONAL-PREFERENCES.md'), PERSONAL);
     sb.put(path.join(sb.memOf('.'), 'MEMORY.md'), '- [Root note](root-note.md) - the root keeps this\n');
     sb.put(path.join(sb.memOf('.'), 'root-note.md'), 'a root memory\n');
@@ -115,7 +115,7 @@ run('R3-1', (sb) =>
         `${JSON.stringify(pt)}\n${JSON.stringify(sb.perms('.'))}`);
     const docs = sb.start('api', 'docs-session.js');
     check('R3-1c the child\'s start names the root\'s docs root and its areas, read-only',
-        docs.includes(`Workspace root docs (read-only): ${wsDocs} - `) && /Workspace root docs \(read-only\): .* - [a-z, -]*architecture/.test(docs), docs.slice(0, 1200));
+        docs.includes(`Workspace root docs (read-only): ${wsDocs} - `) && /Workspace root docs \(read-only\): .* - [a-z, -]*awareness/.test(docs), docs.slice(0, 1200));
     const prefs = sb.start('api', 'preferences-session.js');
     check('R3-1d the child\'s start pushes the root\'s personal doc and the root\'s memory index',
         prefs.includes('ROOT-PERSONAL') && prefs.includes(`Workspace root memory (read-only): ${path.join(wsMem, 'MEMORY.md')}\n- [Root note](root-note.md)`), prefs.slice(-1500));

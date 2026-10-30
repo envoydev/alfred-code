@@ -54,12 +54,14 @@ test('R3: a code, architecture or git preference is stored and routed to /captur
 
 // R4: the markdown carve-out lists the generated rules by name, and 2.8.0 added alfred-preferences.md (written by the
 // capture's script) without adding it there or in the skill's restatement. Since 2026-10-21 the preferences rule ships
-// fixed and project-code-style.md is gone, so the list is the two rules a capture still writes.
+// fixed and project-code-style.md is gone; since the 2026-10-29 merge alfred-architecture.md is retired into the map line
+// of alfred-awareness.md, so the list is the one rule a capture still writes - the installer still treats the old one as generated.
 test('R4: the markdown carve-out names every generated rule and no shipped one', () =>
 {
-    const names = '`alfred-architecture.md` or `alfred-awareness.md`';
+    const names = '(`alfred-awareness.md`)';
     assert.ok(injected('markdown-docs').includes(names), 'the rule');
     assert.ok(flat(read('stack/skills/markdown-style/SKILL.md')).includes(names), 'the skill restatement');
+    assert.ok(!/alfred-architecture/.test(injected('markdown-docs')), 'the retired marker is no generated rule a capture writes');
     const { RULE_EXCLUDE } = require('./install/selection.js');
     assert.ok(RULE_EXCLUDE.test('alfred-architecture') && RULE_EXCLUDE.test('alfred-awareness'), 'the installer treats them as generated');
     assert.ok(!RULE_EXCLUDE.test('alfred-preferences'), 'the preferences rule is shipped');
@@ -70,6 +72,7 @@ test('R4: the markdown carve-out names every generated rule and no shipped one',
 test('R5: the sibling orientation doc stays in awareness/, any other sibling doc goes to work/cross-project-tasks/', () =>
 {
     const rule = injected('alfred-docs-root');
-    assert.ok(rule.includes('the awareness docs (`awareness/` - the install\'s inventory, the run book, the sibling repos)'));
+    // the 2026-10-29 merge widened the awareness entry (the project's facts, its resources, the map); the sibling repos stay in it
+    assert.match(rule, /the awareness docs \(`awareness\/` - the install's inventory, [^)]*the run book, [^)]*the sibling repos[^)]*\)/);
     assert.ok(rule.includes('by default any other doc about it, and a change it must make (a task card), lives in `work/cross-project-tasks/`'));
 });

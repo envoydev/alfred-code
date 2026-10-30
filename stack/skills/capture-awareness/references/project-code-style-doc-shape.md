@@ -21,7 +21,7 @@ narrow `covers:` glob - that glob already routes a change in that language to it
 axis of separation (one file per language) would only cost a reader who wants to compare two languages
 side by side. `<docs-path>/preferences/references/` holds anything too long for a section (a long
 enforcement-map appendix, a deep per-framework idiom list) - the same hub-and-spoke shape as
-`architecture/references/`, created only when actually needed.
+the architecture map's `awareness/references/`, created only when actually needed.
 
 ## Section format
 

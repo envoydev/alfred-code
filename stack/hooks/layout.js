@@ -94,6 +94,20 @@ function approvalStamps(root, env = process.env)
 
 // The move map, `from` relative to the docs root; `to` relative to `base` - the data root or the docs root.
 const COVERAGE_RENAME = Object.freeze({ 'COVERAGE.md': 'COVERAGE-QUALITY.md', raw: 'coverage-raw' });
+// The architecture map's home since the capture-awareness merge (2026-10-29): the map and its ORIENTATION take awareness
+// names, the rest keep theirs; watch.json is no entry, so the mover merges it into awareness's on its own.
+const ARCH_RENAME = Object.freeze({
+    'ARCHITECTURE.md': 'ARCHITECTURE-AWARENESS.md', 'ORIENTATION.md': 'ARCHITECTURE-ORIENTATION-AWARENESS.md', 'BRANCH-DELTA.md': 'BRANCH-DELTA.md',
+    references: 'references', history: 'history',
+});
+// Which file is the project's run book (the project split, 2026-10-29): the new name, else the old one an install not
+// yet updated holds, else the new name (nothing captured yet). One home for the code's readers; docs.js re-exports it,
+// and awareness-state.js keeps its own two-name list, held to this one by a test.
+function runBookKey(docsDir)
+{
+    const has = (key) => exists(path.join(docsDir, 'awareness', `${key}.md`));
+    return has('RUN-AND-DEBUG-AWARENESS') || !has('PROJECT-AWARENESS') ? 'RUN-AND-DEBUG-AWARENESS' : 'PROJECT-AWARENESS';
+}
 const LAYOUT_MOVES = Object.freeze([
     { from: 'flow', base: 'data', split: 'flow' },
     { from: 'history', base: 'data', to: 'state/history' },
@@ -113,6 +127,10 @@ const LAYOUT_MOVES = Object.freeze([
     { from: 'test-coverage', base: 'docs', to: 'quality', rename: COVERAGE_RENAME },
     { from: 'loops', base: 'docs', to: 'quality/loops' },
     { from: 'tutorial', base: 'docs', to: 'explanations' },   // the explainer's folder (item 6, 2026-10-25)
+    // The architecture map's home since the capture-awareness merge (2026-10-29). LINT ONLY: lint 65 names the old home
+    // with its renames, migrateLayout skips the row, and docs.migrateArchitecture moves the folder with its watch merge,
+    // overlays and refs - one mover.
+    { from: 'architecture', base: 'docs', to: 'awareness', rename: ARCH_RENAME, lintOnly: true },
     { from: '.branches', removeIfEmpty: true },
 ].map(Object.freeze));
 
@@ -791,7 +809,7 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
 }
 
 module.exports = {
-    dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
+    dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
     memoryDirsOf, trustedMemoryDir, localSettingsFile, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,

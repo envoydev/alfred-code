@@ -164,6 +164,22 @@ test('loadBundle: a --hook-blocks folder reads hook-blocks-<sid>.jsonl or <sid>.
         fs.rmSync(docs, { recursive: true, force: true });
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+// The project split (spec 2026-10-29 section 3): the run book is RUN-AND-DEBUG-AWARENESS.md now. A1 and A2 read it beside
+// PROJECT-AWARENESS.md, which past transcripts carry (the held fixtures above still hold under the old name).
+test('A1 / A2: a session reading the run book under its new name holds too', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'conformance-runbook-'));
+    try {
+        for (const id of ['A1', 'A2']) {
+            const from = path.join(__dirname, 'fixtures', 'conformance', id, 'held');
+            const to = path.join(dir, id);
+            fs.cpSync(from, to, { recursive: true });
+            const files = fs.readdirSync(to, { recursive: true }).map((f) => path.join(to, f)).filter((f) => fs.statSync(f).isFile());
+            for (const f of files) fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split('PROJECT-AWARENESS').join('RUN-AND-DEBUG-AWARENESS'));
+            assert.ok(files.some((f) => fs.readFileSync(f, 'utf8').includes('RUN-AND-DEBUG-AWARENESS')), `${id}: the fixture names the run book`);
+            assert.strictEqual(cf.gradeClaims(cf.loadBundle(path.join(to, 's.jsonl')), [claimOf(id)])[0].held, 1, id);
+        }
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 test('lint: a claim whose marker left its file fails, naming the claim id (A7.5)', () => {
     assert.match(cf.lintConformance([{ id: 'N1', source: { file: 'scripts/skill-comply.js', marker: 'no such line' } }]).join('\n'), /N1/);
     assert.deepStrictEqual(cf.lintConformance(cf.loadClaims()), []);

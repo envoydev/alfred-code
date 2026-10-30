@@ -60,6 +60,9 @@ function loadManifest(sourceDir)
             // A MERGE's old names by the part each became (2026-10-29: the three quality captures in capture-quality) -
             // the top-level `renamedTopics` block; a skillOverrides value and a command re-spelling read it.
             topics: { ...(raw.renamedTopics || {}) },
+            // Each MERGE's parts, by the skill they merged into (2026-10-29: the top-level `umbrellaParts` block) - a part
+            // no old name had keeps the merge from carrying a skillOverrides value; check 70 reads its targets here.
+            parts: { ...(raw.umbrellaParts || {}) },
         },
         rows: raw,
     };

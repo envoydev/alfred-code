@@ -326,3 +326,33 @@ test('a rename row: a failing move puts every file back', () =>
     finally { fs.renameSync = real; }
     assert.deepStrictEqual(tree(root), before);
 });
+
+// The architecture map's row (spec 2026-10-29 2.1): lint 65 reads it, the general move skips it, and
+// docs.migrateArchitecture runs it on its own with `leave` and `tail: false`.
+const ARCH_ROW = { from: 'architecture', base: 'docs', to: 'awareness', rename: require('../stack/hooks/layout.js').ARCH_RENAME };
+
+test('a lintOnly row is skipped by migrateLayout', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/architecture/ARCHITECTURE.md', 'map\n');
+    const before = tree(root);
+    const r = migrate(root, { moves: [{ ...ARCH_ROW, lintOnly: true }] });
+    assert.deepStrictEqual(tree(root), before);
+    assert.deepStrictEqual(r.logs, ['  layout: current']);
+    assert.ok(require('../stack/hooks/layout.js').LAYOUT_MOVES.some((m) => m.from === 'architecture' && m.lintOnly === true && m.to === 'awareness'), 'the shipped table carries it lint-only');
+});
+
+test('leave and tail: false keep the log to the moves', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/architecture/ARCHITECTURE.md', 'map\n');
+    put(root, '.alfred/docs/architecture/watch.json', '{}\n');
+    put(root, '.alfred/docs/.branches/b/preferences/X/y.md', 'y\n');
+    const r = migrate(root, { moves: [ARCH_ROW], leave: ['watch.json'], tail: false });
+    assert.strictEqual(text(root, '.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md'), 'map\n');
+    assert.strictEqual(text(root, '.alfred/docs/architecture/watch.json'), '{}\n', 'a left file stays');
+    assert.deepStrictEqual(r.logs, ['  layout: .alfred/docs/architecture -> .alfred/docs/awareness (1 file)'], 'no kept line for watch.json, no .branches line');
+    assert.deepStrictEqual(r.kept, []);
+    const again = migrate(root, { moves: [ARCH_ROW], leave: ['watch.json'], tail: false });
+    assert.deepStrictEqual(again.logs, [], 'an all-current call prints no layout: current');
+});

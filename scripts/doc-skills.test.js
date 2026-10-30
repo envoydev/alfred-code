@@ -40,7 +40,7 @@ test('audit 2026-10-08: docs-as-code has a parse step the run can perform, spell
     assert.ok(dac.includes('`npx -p @mermaid-js/mermaid-cli mmdc -i <file>.mmd -o <tmp>/out.svg`'), 'the local parse');
     assert.ok(dac.includes('confirm the package and flags through the documentation tools first'), 'the flags are confirmed at use');
     assert.doesNotMatch(dac, /preview on mermaid\.live/, 'the browser preview is no longer the only proof');
-    assert.doesNotMatch(squash(read('stack/skills/docs-as-code/references/adr.md')), /is `capture-architecture`'s protocol/, 'no ownership breadcrumb');
+    assert.doesNotMatch(squash(read('stack/skills/docs-as-code/references/adr.md')), /is `capture-(?:architecture|awareness)`'s protocol/, 'no ownership breadcrumb');
 });
 
 test('audit 2026-10-08: dev-log-convert carries its per-input-shape rules inline and asks through templates', () => {

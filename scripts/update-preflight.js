@@ -482,17 +482,24 @@ function dataMoveLine({ root, claudeDir, stampFile })
 
 // The docs-move ask (docs.docsMovePlan `handSet`, the user's answer of 2026-10-20): only a hand-set root holding the
 // stack's docs is offered - every other leftover root moves unasked, and a clash is the installer's to name.
-function docsMoveLine({ root, claudeDir, stampFile })
+// The data root this run reads: the settings' value, else the stamp's `data-root:` line, else the default.
+function dataRootOf({ claudeDir, stampFile })
 {
     const docs = require('./install/docs.js');
-    const stampLib = require('./install/stamp.js');
     const dataRoot = require('../stack/mcp/data-root.js');
     let stampText = '';
     try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
     const views = docs.docsMoveViews({ claudeDir });
     const checked = dataRoot.checkDataPath({ ...views.shared, ...views.personal }.ALFRED_CODE_DATA_PATH || '');
     const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
-    const now = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
+    return { views, recorded, now: checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT };
+}
+
+function docsMoveLine({ root, claudeDir, stampFile })
+{
+    const docs = require('./install/docs.js');
+    const stampLib = require('./install/stamp.js');
+    const { views, recorded, now } = dataRootOf({ claudeDir, stampFile });
     const ledger = stampLib.readLedger(stampFile);
     const ledgered = Object.values((ledger && ledger.env) || {}).map((m) => m && m.ALFRED_CODE_DOCS_PATH).filter(Boolean);
     const p = docs.docsMovePlan({
@@ -516,7 +523,12 @@ function runRespellMode()
     const manifest = readJson(path.join(snapshot, 'meta', 'stack-manifest.json')) || {};
     const renamed = { ...(manifest.renamed || {}), topics: { ...(manifest.renamedTopics || {}) } };
     const selection = require('./install/selection.js');
-    const plan = selection.respellOwnPlan({ projectRoot: root, renamed });
+    const docs = require('./install/docs.js');
+    // The section keys this release renamed, each only once its doc sits at the new home alone (the update's own gate)
+    const claudeDir = path.join(root, '.claude');
+    const docsBase = path.resolve(root, dataRootOf({ claudeDir, stampFile: path.join(claudeDir, 'alfred-code.stamp') }).now, 'docs');
+    const keys = docs.completedKeys(docsBase, 'awareness', docs.KEY_RENAMES);
+    const plan = selection.respellOwnPlan({ projectRoot: root, renamed, keys, keyFiles: selection.foreignRefFiles(root, docsBase) });
     if (!plan.length) { console.log('respell: none'); return; }
     for (const row of plan)
     {

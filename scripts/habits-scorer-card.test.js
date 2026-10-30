@@ -207,6 +207,19 @@ test('start: inputs.md lists the row\'s docs that exist, a folder, the target an
     assert.strictEqual(fs.readFileSync(start('n3', ['--target', '.alfred/docs/work/plans/q.md'], 'inline-plan').inputs, 'utf8').trim(), '.alfred/docs/work/plans/q.md');
     assert.match(fs.readFileSync(start('n4', [], 'upgrade-plan').inputs, 'utf8'), /task-version-upgrade\/references\/upgrade-playbooks\.md$/m);
 });
+// The project split and the map's move (spec 2026-10-29 sections 2-3): the root-cause grader is handed the run book
+// layout.runBookKey names - RUN-AND-DEBUG-AWARENESS.md, or PROJECT-AWARENESS.md in an install not yet updated - and the
+// map at its new home beside the old.
+test('start: the root-cause inputs take the run book by its new name, the old one only while it is alone', () => {
+    const root = fs.mkdtempSync(path.join(ROOT, 'runbook-'));
+    const put = (rel) => { const f = path.join(root, '.alfred', 'docs', rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, 'x\n'); };
+    const inputs = (slug) => fs.readFileSync(kv(cli(['start', '--root', root, '--session', 'S', '--slug', slug, '--output', 'root-cause'], {}, root)).inputs, 'utf8').trim().split('\n');
+    put('awareness/PROJECT-AWARENESS.md');
+    assert.deepStrictEqual(inputs('rb1'), ['.alfred/docs/awareness/PROJECT-AWARENESS.md'], 'an install not yet updated');
+    put('awareness/RUN-AND-DEBUG-AWARENESS.md'); put('awareness/ARCHITECTURE-AWARENESS.md');
+    assert.deepStrictEqual(inputs('rb2'), ['.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md', '.alfred/docs/awareness/RUN-AND-DEBUG-AWARENESS.md'],
+        'the new name wins over a hand copy left at the old one; the moved map is handed');
+});
 test('start: one slug, one output; a released or final slug takes no new start (R30, Review Focus)', () => {
     start('o1');
     assert.strictEqual(cli(['start', ...at('o1'), '--output', 'ticket']).status, 2);
@@ -441,7 +454,8 @@ function tableOf(md) {
     return out;
 }
 const pickFields = (row) => ({ skills: row.skills, seats: row.seats, rubric: row.rubric, runs: row.runs === '`ALFRED_CODE_SCORER_ROUNDS`' ? 'rounds' : Number(row.runs), automatic: row.automatic === 'yes', docs: row.docs });
-const SIX_DOCS = ['ARCHITECTURE.md', 'PERSONAL-CODE-PREFERENCES.md', 'ARCHITECTURE-PREFERENCES.md', 'PROJECT-CODE-PREFERENCES.md', 'CODE-ASSESSMENT.md', 'ARCHITECTURE-ASSESSMENT.md'];
+// the map's name since the capture-awareness merge (2026-10-29); scorecard.js reads the legacy name beside it
+const SIX_DOCS = ['ARCHITECTURE-AWARENESS.md', 'PERSONAL-CODE-PREFERENCES.md', 'ARCHITECTURE-PREFERENCES.md', 'PROJECT-CODE-PREFERENCES.md', 'CODE-ASSESSMENT.md', 'ARCHITECTURE-ASSESSMENT.md'];
 
 test('the topic-explainer rubric grades the child level under A2 (item 6)', () => {
     assert.match(read('stack/skills/mode-output-scorer/references/rubric-topic-explainer.md'), /child level/);

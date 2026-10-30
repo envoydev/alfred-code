@@ -29,19 +29,11 @@
       "mcps": [],
       "plugins": []
     },
-    "capture-architecture": {
-      "mcps": [],
-      "plugins": []
-    },
     "capture-awareness": {
       "mcps": [],
       "plugins": []
     },
     "capture-preferences": {
-      "mcps": [],
-      "plugins": []
-    },
-    "capture-project-code-style": {
       "mcps": [],
       "plugins": []
     },

@@ -1226,10 +1226,10 @@ test('architecture-analyzer is handed the architecture entries alone in an archi
             assert.ok(!denied(big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s, who))), `${label}: no held read`);
         };
         quiet(sid(), 'no run');
-        let m = sid(); big.hook(typed('capture-architecture', m)); quiet(m, 'the typed map capture');
-        m = qualityRun(big); big.hook(pre('Skill', { skill: 'capture-architecture' }, m)); quiet(m, 'the map capture called after a quality run');
+        let m = sid(); big.hook({ ...typed('capture-awareness', m), command_args: 'architecture', prompt: '/capture-awareness architecture' }); quiet(m, 'the typed map capture');
+        m = qualityRun(big); big.hook(pre('Skill', { skill: 'capture-awareness', args: 'architecture' }, m)); quiet(m, 'the map capture called after a quality run');
         m = qualityRun(big); big.hook(typed('task-solve-cross', m)); quiet(m, 'a solve run');
-        m = sid(); big.hook(pre('Skill', { skill: 'capture-architecture' }, m)); big.hook(pre('Skill', { skill: 'javascript' }, m));
+        m = sid(); big.hook(pre('Skill', { skill: 'capture-awareness', args: 'architecture' }, m)); big.hook(pre('Skill', { skill: 'javascript' }, m));
         quiet(m, 'a skill that is no run leaves the map run on');
         m = sid(); big.hook(pre('Skill', { skill: 'loop-architecture-quality' }, m));
         assert.match(String(out(start(m)).additionalContext || ''), /arch rule number 1 /, 'the loop called is a quality run');
@@ -1260,7 +1260,7 @@ test('a typed review is handed the code docs at its expansion; past one room the
             assert.ok(!denied(small.hook(pre('Read', { file_path: path.join(small.root, 'src/app.ts') }, s))), `${command}: all of it fit, so no read waits`);
             assert.strictEqual(small.hook(typed(command, s)).stdout, '', `${command}: typed again, nothing more`);
         }
-        for (const command of ['capture-architecture', 'task-solve', 'javascript', 'superpowers:requesting-code-review', 'other:code-review', 'other:review-code'])
+        for (const command of ['capture-awareness', 'task-solve', 'javascript', 'superpowers:requesting-code-review', 'other:code-review', 'other:review-code'])
             assert.strictEqual(small.hook(typed(command, sid())).stdout, '', `${command}: no review`);
         assert.strictEqual(small.hook({ ...typed('code-review', sid()), agent_id: 'v1', agent_type: 'alfred-code:aspnet-verifier' }).stdout, '', 'never inside a seat');
         const s = sid();
@@ -1273,7 +1273,7 @@ test('a typed review is handed the code docs at its expansion; past one room the
         const seen = texts.flatMap((t) => [...t.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
         assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every entry once');
         const other = sid();
-        big.hook(typed('capture-architecture', other));
+        big.hook(typed('capture-awareness', other));
         assert.ok(!denied(big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, other))), 'outside a review run the main session reads freely');
         assert.strictEqual(small.hook(typed('code-review', sid()), { ALFRED_CODE_HOOKS_OFF: 'preferences-session' }).stdout, '', 'the off-list stands it down');
     }

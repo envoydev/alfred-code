@@ -102,7 +102,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
 1. **TRIAGE** - read the evidence in whatever form it arrived (`Read` opens a screenshot as
    readily as a log), restate the failure as an OBSERVABLE - what happened, where, what should
    have happened instead - and name the tier, per `references/evidence-tiers.md`. Read the project's
-   docs for the area too, scoped, never whole: `<docs-path>/architecture/ARCHITECTURE.md` for the area,
+   docs for the area too, scoped, never whole: `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` for the area,
    `PERSONAL-CODE-PREFERENCES.md`, `ARCHITECTURE-PREFERENCES.md` and `PROJECT-CODE-PREFERENCES.md` under
    `<docs-path>/preferences/`, and both assessments, `<docs-path>/quality/CODE-ASSESSMENT.md` and
    `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` - an assessment entry is a lead, never proof. Then load the signature

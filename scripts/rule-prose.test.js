@@ -132,15 +132,14 @@ test('M71: several FIRST actions due at once load together', () =>
 
 // ------------------------------------------------------------------ M72
 
-test('M72: the generated architecture rule carries only its trigger - where the docs live is the baselines\'', () =>
+// The capture-awareness merge (2026-10-29) retired the architecture marker rule: the map reaches a session through the
+// awareness rule's one pointer line, which the script writes - no part hand-writes a rule or bakes a path into one.
+test('M72: the architecture part writes no rule of its own - the awareness script carries the map\'s pointer line', () =>
 {
-    const shapes = read('stack/skills/capture-architecture/references/doc-shapes.md');
-    const at = shapes.indexOf('## .claude/rules/alfred-architecture.md');
-    const block = /```markdown\n([\s\S]*?)```/.exec(shapes.slice(at))[1];
-    const body = squash(injectedRuleText(block)).trim();
-    assert.ok(!body.includes('<docs-path>'), `the body restates the root the navigation baseline names: ${body}`);
-    assert.ok(body.includes('before a structural change'), body);
-    assert.ok(!squash(read('stack/skills/capture-architecture/SKILL.md')).includes('with `<docs-path>` baked to the LITERAL resolved root'), 'step 6 no longer bakes a path');
+    const shapes = read('stack/skills/capture-awareness/references/architecture-doc-shapes.md');
+    assert.ok(!shapes.includes('## .claude/rules/alfred-architecture.md'), 'no marker rule template is left');
+    assert.ok(!squash(read('stack/skills/capture-awareness/references/architecture.md')).includes('with `<docs-path>` baked to the LITERAL resolved root'), 'no step bakes a path');
+    assert.match(read('stack/skills/capture-awareness/scripts/awareness-state.js'), /`Architecture map: \\`<docs-path>\/\$\{AWARENESS_DIR\}\/\$\{MAP_DOC\}\\` - read it by section before a structural change\.`/);
 });
 
 // ------------------------------------------------------------------ M73
@@ -264,6 +263,17 @@ test('rules F11: the docs root exempts instruction files and drops capture-inter
     assert.ok(!line.includes('watch.json'));
 });
 
+// 2026-10-29 merge: the map lives in awareness/, so the domain list names no architecture/ folder - the billed probe
+// saw three 'document the module boundaries' sessions and 'document the architecture of src' write a free-form
+// .alfred/docs/architecture/<NAME>.md, citing this list, instead of loading /capture-awareness.
+test('rules F11b: the domain list puts the architecture map under awareness/, with no architecture/ domain', () =>
+{
+    const line = read('stack/rules/alfred-docs-root.md').split('\n').find((l) => /EVERY doc the assistant creates/.test(l)) || '';
+    assert.ok(!/`architecture\/`/.test(line), 'no architecture/ domain folder');
+    assert.match(line, /the awareness docs \(`awareness\/` - [^)]*the architecture map[^)]*\/capture-awareness architecture[^)]*\)/);
+    assert.match(line, /the awareness docs \(`awareness\/` - [^)]*the run book[^)]*the sibling repos/);
+});
+
 test('rules F12: the git seed states no commit header shape', () =>
 {
     // 2026-10-21: the seed keeps only the crucial git lines - the commit message shape is the user's to capture.
@@ -331,7 +341,7 @@ test('C22: Angular specs route to angular-testing, EF migrations attach the SQL 
     const md = injected('markdown-docs');
     const carve = md.indexOf('The generated docs root is NOT governed here');
     assert.ok(carve >= 0 && carve < md.indexOf('the FIRST action after this rule attaches'), 'the carve-out comes before the first action');
-    assert.match(md, /A plan, flow note or capture anywhere under `<data root>` \(the docs root `<docs-path>` and the hooks' `state\/` and `statistics\/` beside it\)[^:]*`alfred-architecture\.md` or `alfred-awareness\.md`[^:]*a `\.md` you only READ take no load/);
+    assert.match(md, /A plan, flow note or capture anywhere under `<data root>` \(the docs root `<docs-path>` and the hooks' `state\/` and `statistics\/` beside it\)[^:]*a generated rule under `\.claude\/rules\/` \(`alfred-awareness\.md`\)[^:]*a `\.md` you only READ take no load/);
 });
 
 // ------------------------------------------------------------------ audit 2026-10-10 C23

@@ -370,7 +370,7 @@ turn polling for it. Four inputs, four gates:
    propose JUDGMENT-DROP with the trail as the citation: the greps run, their zero results, the
    matching exclusion.
 2. **The rest vs the project's stated conventions - version pins included.** Review the remaining
-   scope against the project's OWN docs - the project's AGENTS.md or CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
+   scope against the project's OWN docs - the project's AGENTS.md or CLAUDE.md, `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` /
    `quality/ARCHITECTURE-ASSESSMENT.md`, `preferences/PROJECT-CODE-PREFERENCES.md`, where they exist - and propose a drop on a cited
    conflict: quote the conflicting rule verbatim and name its source. Version pins count as
    conventions, and the scan PRECOMPUTES the known cases: the `judgment.versionConflicts` rows in
@@ -494,8 +494,7 @@ output to `$TMP/select.out` - then:
   the stamp existed). `none` is not a finding here; it is the capture never having run.
 - Then name `/capture-awareness` (when installed) in the post-check report as the
   USER's next step, so the generated inventory reflects the reconciled install - the
-  skill is manual-only (`disable-model-invocation`), a Skill call from this run is denied by `guard-fresh-session-start.js`;
-  never attempt it. `alfred-code.stamp` is rewritten ONLY by an installer invocation - the apply step's
+  line is the user's to run: never attempt it. `alfred-code.stamp` is rewritten ONLY by an installer invocation - the apply step's
   own run writes it. A validate run that added nothing leaves the stamp exactly as it found it and never
   hand-edits it: the file's own header says the installers write it, and a hand-written one carries a
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).

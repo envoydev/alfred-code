@@ -112,10 +112,10 @@ test('I25: no shipped skill says the docs root is machine-local by default', () 
 
 test('I25: the four captures say where the docs land by the docs engine\'s own status line', () =>
 {
-    for (const rel of ['stack/skills/capture-awareness/SKILL.md', 'stack/skills/capture-architecture/references/report-fields.md',
-        'stack/skills/capture-project-code-style/SKILL.md', 'stack/skills/capture-quality/references/test-coverage-quality.md'])
+    for (const rel of ['stack/skills/capture-awareness/SKILL.md', 'stack/skills/capture-awareness/references/architecture-report-fields.md',
+        'stack/skills/capture-awareness/references/project-code-style.md', 'stack/skills/capture-quality/references/test-coverage-quality.md'])
         assert.match(flat(read(rel)), /docs\.js status/, `${rel}: names the observable`);
-    const landed = read('stack/skills/capture-project-code-style/SKILL.md').match(/^Landed:.*$/m);
+    const landed = read('stack/skills/capture-awareness/references/project-code-style.md').match(/^Landed:.*$/m);
     assert.ok(landed, 'the Landed field is still there');
     assert.match(landed[0], /mode: git/);
     assert.match(landed[0], /mode: overlay/);
@@ -198,7 +198,7 @@ test('I27: the usage audit\'s temp dir is made under $TMPDIR, where a sandboxed 
 test('I28: the three deliberate skills drop their question-shaped triggers', () =>
 {
     const cases = {
-        'capture-architecture': /what the structure or module boundaries are/,
+        'capture-awareness': /what the structure or module boundaries are/,
         'capture-quality': /how covered the project is/,
         'task-design': /where does this belong/,
     };

@@ -679,14 +679,20 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
 // already set under the new name wins, and the old key goes either way.
 // A MERGE (spec 5.2, 2026-10-29): several old skills became the parts of one, so first-wins would let one part's 'off'
 // switch off all of them. The value crosses only when every part has a spelling present in `o` and every present
-// spelling holds the same value; `olds` are the present spellings, removed either way.
+// spelling holds the same value; `olds` are the present spellings, removed either way. Only a spelling with a topic row
+// is a part's old name: one with none is an older name of the merged skill itself and keeps the plain re-key.
 const mergedNames = (renamed) => new Set(Object.keys((renamed && renamed.topics) || {}).map((old) => ((renamed && renamed.skills) || {})[old]).filter(Boolean));
+// The parts an old name had, by topic row - and the merged skill's own list (`umbrellaParts`), which may name more.
+const topicParts = (newName, renamed) => new Set(Object.entries((renamed && renamed.topics) || {}).filter(([old]) => ((renamed && renamed.skills) || {})[old] === newName).map(([, part]) => part));
+const partsOf = (newName, renamed) => { const listed = renamed && renamed.parts && renamed.parts[newName]; return Array.isArray(listed) ? new Set(listed) : topicParts(newName, renamed); };
+// A part no old name had: no set of old values can ever cover it, so nothing carries.
+const noPartSwitch = (newName, renamed) => { const had = topicParts(newName, renamed); return [...partsOf(newName, renamed)].some((part) => !had.has(part)); };
 function mergedOverride(o, newName, renamed)
 {
     const skills = (renamed && renamed.skills) || {};
     const topics = (renamed && renamed.topics) || {};
-    const olds = Object.keys(skills).filter((old) => skills[old] === newName && Object.hasOwn(o, old));
-    const parts = new Set(Object.keys(skills).filter((old) => skills[old] === newName && Object.hasOwn(topics, old)).map((old) => topics[old]));
+    const olds = Object.keys(skills).filter((old) => skills[old] === newName && Object.hasOwn(topics, old) && Object.hasOwn(o, old));
+    const parts = partsOf(newName, renamed);
     const present = new Set(olds.map((old) => topics[old]));
     const same = olds.every((old) => isDeepStrictEqual(o[old], o[olds[0]]));
     const carry = olds.length > 0 && same && [...parts].every((part) => present.has(part));
@@ -695,7 +701,7 @@ function mergedOverride(o, newName, renamed)
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 const partsWord = (newName, renamed) =>
 {
-    const n = new Set(Object.entries((renamed && renamed.topics) || {}).filter(([old]) => ((renamed && renamed.skills) || {})[old] === newName).map(([, part]) => part)).size;
+    const n = partsOf(newName, renamed).size;
     return NUMBER_WORDS[n] || String(n);
 };
 const quoted = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
@@ -705,24 +711,27 @@ function rekeyOverrides(data, renamed, log, label)
     const o = data && data.skillOverrides;
     if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
     let changed = false;
-    const merged = mergedNames(renamed);
-    for (const to of merged)
+    const topics = (renamed && renamed.topics) || {};
+    for (const to of mergedNames(renamed))
     {
         const m = mergedOverride(o, to, renamed);
         if (!m.olds.length) continue;
         const kept = Object.hasOwn(o, to);
+        const never = noPartSwitch(to, renamed);
         if (!kept && m.carry) o[to] = m.value;
         for (const from of m.olds)
         {
-            if (kept || m.carry) log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
+            if (never) log(`  !! ${label}: skillOverrides ${from}: ${quoted(o[from])} has no key after the merge - ${to} has no per-part switch; it stays ${kept ? quoted(o[to]) : 'unset'}`);
+            else if (kept || m.carry) log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
             else log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) not carried - ${to} holds ${partsWord(to, renamed)} captures; set ${to} yourself to switch them all`);
             delete o[from];
         }
         changed = true;
     }
+    // the merge loop ran first: an older plain spelling of a merged skill carries now, unless a part's value got there
     for (const [from, to] of Object.entries((renamed && renamed.skills) || {}))
     {
-        if (merged.has(to) || !Object.hasOwn(o, from)) continue;
+        if (Object.hasOwn(topics, from) || !Object.hasOwn(o, from)) continue;
         if (!Object.hasOwn(o, to)) o[to] = o[from];
         delete o[from];
         changed = true;
@@ -1279,21 +1288,27 @@ function writeSettings(opts)
     // its value is set under the new name in THIS file - the deny half's shape - and the entry is named.
     if (inheritedOverrides && typeof inheritedOverrides === 'object' && !Array.isArray(inheritedOverrides))
     {
-        // A merged name (spec 5.2) takes the same both-hold test over the old keys settings.json holds, all at once.
-        const merged = mergedNames(renamed);
+        // A part's old name (spec 5.2: a topic row) takes the same both-hold test over the old keys settings.json holds,
+        // all at once, before any older plain spelling of the merged skill - the order the project-scope pass keeps.
+        const topics = (renamed && renamed.topics) || {};
+        const entries = Object.entries((renamed && renamed.skills) || {});
         const said = new Set();
-        for (const [from, to] of Object.entries((renamed && renamed.skills) || {}))
+        for (const [from, to] of [...entries.filter(([old]) => Object.hasOwn(topics, old)), ...entries.filter(([old]) => !Object.hasOwn(topics, old))])
         {
-            if (!Object.hasOwn(inheritedOverrides, from) || Object.hasOwn(inheritedOverrides, to) || said.has(to)) continue;
+            const part = Object.hasOwn(topics, from);
+            if (!Object.hasOwn(inheritedOverrides, from) || Object.hasOwn(inheritedOverrides, to) || (part && said.has(to))) continue;
             const mine = (data.skillOverrides && typeof data.skillOverrides === 'object' && !Array.isArray(data.skillOverrides)) ? data.skillOverrides : null;
             if (mine && Object.hasOwn(mine, to)) continue;
             if (data.skillOverrides !== undefined && !mine) break;
-            const m = merged.has(to) ? mergedOverride(inheritedOverrides, to, renamed) : { carry: true, value: inheritedOverrides[from], olds: [from] };
-            if (merged.has(to)) said.add(to);
+            const m = part ? mergedOverride(inheritedOverrides, to, renamed) : { carry: true, value: inheritedOverrides[from], olds: [from] };
+            if (part) said.add(to);
             if (!m.carry)
             {
+                const never = noPartSwitch(to, renamed);
                 for (const old of m.olds)
-                    log(`  ${label}: settings.json still names skillOverrides ${old} (${quoted(inheritedOverrides[old])}) - not carried, ${to} holds ${partsWord(to, renamed)} captures; nothing set in ${label} - a project-scope update applies the rule there`);
+                    log(never
+                        ? `  !! ${label}: settings.json still names skillOverrides ${old} (${quoted(inheritedOverrides[old])}) - it has no key after the merge, ${to} has no per-part switch; nothing set in ${label}`
+                        : `  ${label}: settings.json still names skillOverrides ${old} (${quoted(inheritedOverrides[old])}) - not carried, ${to} holds ${partsWord(to, renamed)} captures; nothing set in ${label} - a project-scope update applies the rule there`);
                 continue;
             }
             (data.skillOverrides ??= {})[to] = m.value;

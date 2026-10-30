@@ -195,7 +195,7 @@ test('row 13: the named prose stops are ask templates, each marking one option f
         'task-solve/SKILL.md': /Audit judgment: <the item>\. Keep or apply\?/,
         'task-version-upgrade/SKILL.md': /Stage <N> hit a hard stop:/,
         'issue-diagnoser/SKILL.md': /<The report is written \| The log points are in> - <findings path>/,
-        'capture-project-code-style/SKILL.md': /First style capture across <the languages>/,
+        'capture-awareness/references/project-code-style.md': /First style capture across <the languages>/,
         'capture-quality/references/architecture-quality.md': /- 'Verify and rewrite at this HEAD \(Recommended\)'/,
         'capture-quality/references/code-quality.md': /Judge <the modules> through the code-quality-analyzer seats or in this session\?/,
         'dotnet-windows-service/SKILL.md': /- 'Hand the script over \(Recommended\)'/,
@@ -238,7 +238,7 @@ test('row 15: the small wording fixes hold', () =>
     const cov = flat(read('stack/skills/loop-test-coverage-quality/SKILL.md'));
     assert.doesNotMatch(cov, /Read its `SKILL\.md` from the installed skills directory|its SKILL\.md from the installed skills directory/);
     assert.match(cov, /say the coverage capture cannot run here and stop - a hand-rolled measurement is not comparable across rounds/);
-    assert.doesNotMatch(flat(read('stack/skills/capture-architecture/references/doc-shapes.md')), /navigation baseline's \(the docs-root/);
+    assert.doesNotMatch(flat(read('stack/skills/capture-awareness/references/architecture-doc-shapes.md')), /navigation baseline's \(the docs-root/);
 });
 
 // Row 14: version / API drift, each against its official page (cited in the commit).

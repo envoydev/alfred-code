@@ -35,7 +35,7 @@ const { stackNames } = require('./manifest.js');
 // to-do: the alfred-project-* rules to alfred-*, the run book to alfred-project-awareness, agent capabilities to
 // alfred-agent-awareness - three of which alfred-awareness replaced on 2026-10-16) left them beside the shipped alfred-*.md baseline, so a pattern would take one for the
 // other. Keyed by the name the stack generated first (`baseline-project-<key>`, then `alfred-project-<key>`), which
-// moveGeneratedRules carries forward; project-code-style is capture-project-code-style's and never moved.
+// moveGeneratedRules carries forward; project-code-style is the code-style capture's (now /capture-awareness project-code-style) and never moved.
 const GENERATED_RULES = { 'agent-capabilities': 'alfred-agent-awareness', 'related-context': 'alfred-related-context', architecture: 'alfred-architecture', 'run-book': 'alfred-project-awareness' };
 const GENERATED_RULE_NAMES = Object.keys(GENERATED_RULES);
 // Newest legacy spelling first: a project holding both moves the newer file, and the older one is judged against it.
@@ -51,12 +51,15 @@ const AWARENESS_SUCCEEDS = { 'alfred-agent-awareness': AWARENESS_RULE, 'alfred-p
 // docs.js migratePreferences moves), but a copy the update kept as the project's own stays out of the read-back's picks.
 const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), AWARENESS_RULE, 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
 // The awareness docs an update re-spells beside the generated rules: the capture writes them, so they name the stack's
-// own skills and docs root too. `agentsOnly`: the inventory alone, which names the seats.
+// own skills and docs root too - the run book under either name (the 2026-10-29 split renamed it), never the user's own
+// USER-AWARENESS.md, which the stack never writes. `agentsOnly`: the inventory alone, which names the seats.
+const AWARENESS_DOCS = ['AGENTS-AWARENESS.md', 'PROJECT-INFO-AWARENESS.md', 'RUN-AND-DEBUG-AWARENESS.md', 'PROJECT-AWARENESS.md', // the run book's legacy name
+    'RESOURCES-AWARENESS.md', 'RELATED-PROJECTS-AWARENESS.md'];
 function awarenessDocs(projectRoot, docsPath, { agentsOnly = false } = {})
 {
     if (!docsPath) return [];
     const dir = path.resolve(projectRoot, String(docsPath), 'awareness');
-    return (agentsOnly ? ['AGENTS-AWARENESS.md'] : ['AGENTS-AWARENESS.md', 'PROJECT-AWARENESS.md', 'RELATED-PROJECTS-AWARENESS.md'])
+    return (agentsOnly ? ['AGENTS-AWARENESS.md'] : AWARENESS_DOCS)
         .map((n) => path.join(dir, n)).filter((p) => fs.existsSync(p));
 }
 // A generated, project-owned file is not a stack item: the captures rewrite those.
@@ -601,12 +604,17 @@ function respellPatterns(renamed)
 // plan: every line the narrow patterns hit, before and after, so the ask quotes it as its diff and `apply` writes
 // exactly those lines - the same hits the `!!` line counted, nothing else. A line ending (`\r`) and every other
 // line are kept byte for byte.
-function respellOwnPlan({ projectRoot, renamed, files = null })
+// `keys` (docs.js KEY_RENAMES rows whose move is complete) plan the section refs in `keyFiles` too - a file the stack does not
+// own that names a renamed doc's section, read the way the update's !! line read it (a folder-qualified spelling or a bare
+// key after a `/` is another file's path, never a hit). Name and key changes on one line make one row.
+function respellOwnPlan({ projectRoot, renamed, files = null, keys = [], keyFiles = null })
 {
     const p = respellPatterns(renamed);
     const plan = [];
-    if (!p) return plan;
-    for (const file of files || instructionFiles(projectRoot))
+    const nameFiles = p ? files || instructionFiles(projectRoot) : [];
+    const keyed = keys.length ? keyFiles || instructionFiles(projectRoot) : [];
+    const docs = keyed.length ? require('./docs.js') : null;
+    for (const file of [...new Set([...nameFiles, ...keyed])])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
@@ -615,11 +623,39 @@ function respellOwnPlan({ projectRoot, renamed, files = null })
         lines.forEach((before, i) =>
         {
             const names = [];
-            const after = before.replace(p.nameRe, (old, name, at, text) => { const to = p.swap(old, name, at, text); names.push([old, to]); return to; });
+            let after = nameFiles.includes(file) ? before.replace(p.nameRe, (old, name, at, text) => { const to = p.swap(old, name, at, text); names.push([old, to]); return to; }) : before;
+            if (keyed.includes(file))
+                for (const [key, homes] of keys)
+                {
+                    const next = docs.respellKeys(after, [[key, homes]], 'awareness', { strict: true, refsOnly: true, keep: docs.ownFileRef(projectRoot, file) });
+                    if (next !== after) { names.push([homes[0][1], key]); after = next; }
+                }
             if (after !== before) plan.push({ file: rel, line: i + 1, before, after, names });
         });
     }
     return plan;
+}
+
+// The files a section-key respell names and never rewrites: the project's AGENTS.md / CLAUDE.md and every .md under the
+// docs root that is no domain doc, generated rule or branch version the update rewrites itself (docs.js respellTargets) -
+// a plan, the work folders, the user's own USER-AWARENESS.md.
+function foreignRefFiles(projectRoot, docsBase)
+{
+    const own = new Set(require('./docs.js').respellTargets(docsBase));
+    const out = [];
+    const walk = (dir) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)))
+        {
+            const at = path.join(dir, e.name);
+            if (e.isDirectory()) { if (!(dir === docsBase && e.name === '.branches')) walk(at); }
+            else if (e.isFile() && e.name.endsWith('.md') && !own.has(at)) out.push(at);
+        }
+    };
+    walk(docsBase);
+    return [...instructionFiles(projectRoot), ...out];
 }
 
 function respellOwnApply({ projectRoot, plan })
@@ -895,6 +931,6 @@ function lockedLines(always)
 }
 
 module.exports = {
-    lockedLines, addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    lockedLines, addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, foreignRefFiles, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, GENERATED_FILES, FORMER_PLUGINS,
 };

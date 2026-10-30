@@ -65,7 +65,7 @@ test('modeFlags: the leading run after a family command group, and nothing else 
 });
 
 test('FLOW_FAMILY_RE: the five families with the plugin and old prefixes, nothing else', () => {
-    for (const name of ['task-solve', 'capture-architecture', 'loop-code-quality', 'issue-diagnoser', 'mode-auto-run', 'alfred-code:task-solve', OLD_FLOW])
+    for (const name of ['task-solve', 'capture-awareness', 'loop-code-quality', 'issue-diagnoser', 'mode-auto-run', 'alfred-code:task-solve', OLD_FLOW])
         assert.ok(FLOW_FAMILY_RE.test(name), name);
     for (const name of ['review-code', 'habits-explain-topic', 'task-', 'mode', 'compact']) assert.ok(!FLOW_FAMILY_RE.test(name), name);
 });

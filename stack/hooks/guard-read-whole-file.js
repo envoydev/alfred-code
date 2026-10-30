@@ -1921,7 +1921,7 @@ const ruleInstalled = (rule) => {
 // rule's once-per-session announcement on a docs note.
 // The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with a docs root of
 // `docs` (a pre-2.8.0 ALFRED_CODE_DOCS_PATH an update has not drained yet) a write to
-// `docs/architecture/ARCHITECTURE.md` still drew the announcement the rule says does not apply.
+// a doc under `docs/` still drew the announcement the rule says does not apply.
 const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const UNGOVERNED_MD = new RegExp(
   `(?:^|[\\s"'=])(?:\\./)?(?:\\.claude|${escapeRe(docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, ''))})/`);

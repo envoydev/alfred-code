@@ -2,7 +2,7 @@
 // The usage audit of 2026-10-11 (31 Windows sessions of one consuming project) - apply seat T5: the rules, the AGENTS.md
 // template and check, and the capabilities, usage-report and adjust-agents-md skills. Each block names its cluster and
 // the finding ids it holds (`<session8>#<n>`), so a later edit that brings the defect back goes red here. The scripts'
-// own behaviour is pinned by their own tests (agents-md-check, capabilities-inventory).
+// own behaviour is pinned by their own tests (agents-md-check, awareness-state).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');

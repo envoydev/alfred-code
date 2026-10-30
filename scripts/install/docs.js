@@ -192,20 +192,26 @@ const DOCS_MIGRATIONS = [
     ['project-awareness/PROJECT-AWARENESS.md', 'awareness/PROJECT-AWARENESS.md', 'awareness'],
     ['project-awareness/watch.json', 'awareness/watch.json', 'awareness'],
     ['related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md', 'awareness'],
+    // The project split (2026-10-29): the run book says how to run and debug the app, and the project info and resources
+    // docs the capture writes beside it take the rest - after the rows above, so a 2.5.0 run book arrives in one run.
+    ['awareness/PROJECT-AWARENESS.md', 'awareness/RUN-AND-DEBUG-AWARENESS.md', 'awareness'],
 ];
 const DOCS_SWITCH_ON = [['preferences', ['GIT-PREFERENCES.md', 'PROJECT-CODE-PREFERENCES.md', 'PERSONAL-CODE-PREFERENCES.md', 'ARCHITECTURE-PREFERENCES.md']]];
-// A doc can move twice in one run (loose, then related-projects/, then awareness/): its last home, by the rows above.
-function lastHome(to)
+// A doc can move several times in one run (loose, then related-projects/, then awareness/): every home after `to`, by
+// the rows above, and the last of them.
+function laterHomes(to)
 {
-    let at = to;
-    for (let hop = 0; hop < DOCS_MIGRATIONS.length; hop++)
+    const out = [];
+    for (let at = to, hop = 0; hop < DOCS_MIGRATIONS.length; hop++)
     {
         const next = DOCS_MIGRATIONS.find(([from]) => from === at);
         if (!next) break;
-        at = next[1];
+        out.push(at = next[1]);
     }
-    return at;
+    return out;
 }
+const lastHome = (to) => laterHomes(to).at(-1) ?? to;
+const RUN_BOOK_MOVED = 'awareness/RUN-AND-DEBUG-AWARENESS.md';
 
 // `rules` are the generated rules (selection.generatedRules), `instructions` the project's own AGENTS.md /
 // CLAUDE.md files to name - see repointDocs.
@@ -216,22 +222,23 @@ function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = []
     const moved = [];
     for (const [from, to, label] of DOCS_MIGRATIONS)
     {
-        // A copy at the LAST home already wins: the doc stays where it is, never one hop on per run.
-        const last = lastHome(to);
-        if (last !== to && fs.existsSync(path.join(base, from)) && fs.existsSync(path.join(base, last)))
+        // A copy at ANY later home already wins: the doc stays where it is, never one hop on per run.
+        const later = laterHomes(to).find((home) => fs.existsSync(path.join(base, home)));
+        if (later && fs.existsSync(path.join(base, from)))
         {
-            log(`  docs migration (${label}): ${path.join(base, last)} already exists - ${path.join(base, from)} left in place, nothing overwritten`);
+            log(`  docs migration (${label}): ${path.join(base, later)} already exists - ${path.join(base, from)} left in place, nothing overwritten`);
             continue;
         }
         if (migrateDocsFile(path.join(base, from), path.join(base, to), label, { log })) moved.push(to);
     }
+    if (moved.includes(RUN_BOOK_MOVED)) log('  docs migration (awareness): the run book is RUN-AND-DEBUG-AWARENESS.md - run /capture-awareness project to write the project info and the resources docs');
     // Before the switch-on: the git doc it seeds, and code-style/watch.json it carries over, decide what is switched on.
     const preferences = migratePreferences({ projectRoot, base, dataPath, log, spawn });
     const switched = [];
     for (const [dir, doc] of DOCS_SWITCH_ON)
         if (switchOnDomain(path.join(base, dir), doc, { log })) switched.push(dir);
     const repointed = repointDocs({ projectRoot, docsPath, base, rules, instructions, log });
-    const awareness = migrateAwareness({ projectRoot, base, docsPath, rules, log });
+    const awareness = migrateAwareness({ projectRoot, base, docsPath, rules, renamed: moved.includes(RUN_BOOK_MOVED), log });
     revertRecomputed({ projectRoot, docsPath, engineText, log });
     assessmentWatchLine({ projectRoot, docsPath, log });
     return { moved, switched, repointed, awareness, preferences };
@@ -307,20 +314,74 @@ function ensureQualityNotOwned({ projectRoot, docsPath, log = () => {} })
 
 // A section ref is spelled `KEY#id`, `KEY.md#id` or with its folder in front; a key inside a longer one is no ref
 // (`PROJECT-CODE-PREFERENCES` holds `CODE-PREFERENCES`). `keys` are `[new key, [[old folder, old key], ...]]`.
+// `strict`: a bare key right after a `/` is a path into another folder (`docs/ARCHITECTURE.md#deploy`), never a ref -
+// the map's keys are words a project uses for its own files. `refsOnly`: a folder-qualified spelling counts only with a
+// `#id` after it too, as a bare one always does - the reading for a file the stack does not own.
 const escapeRe = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-function respellKeys(text, keys, domain)
+// `sub`: `old` is a sub-folder (references/, history/) - only its domain-qualified section ref moves, `<folder>/<old>/<file>#`,
+// never after a `/` (a path inside a project folder) and never bare (a bare `references/x#y` resolves after the move).
+function keyPatterns(folder, old, { strict = false, refsOnly = false, sub = false } = {})
 {
-    return keys.reduce((acc, [key, homes]) => homes.reduce((s, [folder, old]) => s
-        .replace(new RegExp(`(?<![\\w-])${escapeRe(folder)}/${escapeRe(old)}\\b(?!-)`, 'g'), `${domain}/${key}`)
-        .replace(new RegExp(`(?<![\\w-])${escapeRe(old)}(?=(?:\\.md)?#)`, 'g'), key), acc), text);
+    if (sub) return [new RegExp(`(?<![\\w/.-])${escapeRe(folder)}/${escapeRe(old)}(?=/[\\w.-]+(?:\\.md)?#)`, 'g'), /(?!)/g];
+    const ref = '(?=(?:\\.md)?#)';
+    return [new RegExp(`(?<![\\w-])${escapeRe(folder)}/${escapeRe(old)}\\b(?!-)${refsOnly ? ref : ''}`, 'g'),
+        new RegExp(`${strict ? '(?<![\\w/-])' : '(?<![\\w-])'}${escapeRe(old)}${ref}`, 'g')];
+}
+// `opts.keep(spelled)`: a hit it answers true for stays as written - a ref to a file the project holds under that name.
+function respellKeys(text, keys, domain, opts = {})
+{
+    const to = (rep) => (opts.keep ? (m) => (opts.keep(m) ? m : rep) : rep);
+    return keys.reduce((acc, [key, homes]) => homes.reduce((s, [folder, old]) =>
+    {
+        const [qualified, bare] = keyPatterns(folder, old, opts);
+        return s.replace(qualified, to(`${domain}/${key}`)).replace(bare, to(key));
+    }, acc), text);
+}
+// The old refs one line holds, each with its `#id` - the spelling a `!!` line names; `opts.keep` as respellKeys reads it.
+function keyHits(line, keys, opts = {})
+{
+    const hits = [];
+    for (const [, homes] of keys)
+        for (const [folder, old] of homes)
+            for (const re of keyPatterns(folder, old, opts))
+                for (const m of line.matchAll(re)) if (!(opts.keep && opts.keep(m[0]))) hits.push(m[0] + (/^(?:\.md)?#[\w-]*/.exec(line.slice(m.index + m[0].length)) || [''])[0]);
+    return [...new Set(hits)];
 }
 
 // Only a doc at its new home, with no copy left at an old one, takes the new key: the move is then complete.
 const completedKeys = (base, domain, homes) => Object.entries(homes).filter(([key, olds]) => fs.existsSync(path.join(base, domain, `${key}.md`))
     && olds.every(([folder, old]) => !fs.existsSync(path.join(base, folder, `${old}.md`))));
 
-// Each file the ids live in, re-spelled in place; the files rewritten, project-relative.
-function respellFiles(files, keys, domain, { projectRoot, label, fix, log })
+// The section keys this release renamed (the 2026-10-29 split): the map's two root files and the run book. What the update
+// re-spells in the files the stack owns, and what update-preflight.js --respell plans for the ones it does not.
+const KEY_RENAMES = {
+    'ARCHITECTURE-AWARENESS': [['architecture', 'ARCHITECTURE']],
+    'ARCHITECTURE-ORIENTATION-AWARENESS': [['architecture', 'ORIENTATION']],
+    'RUN-AND-DEBUG-AWARENESS': [['awareness', 'PROJECT-AWARENESS']],
+};
+const ARCH_KEYS = Object.fromEntries(Object.entries(KEY_RENAMES).filter(([, [[folder]]]) => folder === 'architecture'));
+
+// A sibling's `first_read:` line in the related-projects doc is a path in THAT repo (D10), never one of this project's
+// refs, so a respell leaves it as it is; `heldLines` lists the ones it would have changed, by section.
+const SIBLING_DOC = /(?:^|[\\/])RELATED-PROJECTS-AWARENESS(?:\.md$|[\\/])/;
+const FIRST_READ = /^\s*first_read:/;
+function respellText(text, keys, domain, opts, held)
+{
+    let section = '';
+    return text.split('\n').map((line, i) =>
+    {
+        const heading = /^## +(.+?)\s*$/.exec(line);
+        if (heading) section = heading[1];
+        const next = respellKeys(line, keys, domain, opts);
+        if (next === line || !FIRST_READ.test(line)) return next;
+        held.push([i + 1, section]);
+        return line;
+    }).join('\n');
+}
+
+// Each file the ids live in, re-spelled in place; the files rewritten, project-relative. `nameHeld`: name each
+// first_read: line left as it was (only on the run that moved the docs, so a later run says nothing).
+function respellFiles(files, keys, domain, { projectRoot, label, fix, log, strict = false, sub = false, nameHeld = false })
 {
     const out = [];
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
@@ -328,12 +389,68 @@ function respellFiles(files, keys, domain, { projectRoot, label, fix, log })
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
-        const next = respellKeys(text, keys, domain);
+        const held = [];
+        const next = SIBLING_DOC.test(file) ? respellText(text, keys, domain, { strict, sub }, held) : respellKeys(text, keys, domain, { strict, sub });
+        if (nameHeld)
+            for (const [n, sibling] of held)
+                log(`  !! docs migration (${label}): ${rel(file)}:${n} first_read: is a path in ${sibling || 'the sibling repo'} - left as it is; re-run /capture-awareness related-projects once ${sibling || 'it'} updates`);
         if (next === text) continue;
         try { fs.writeFileSync(file, next); out.push(rel(file)); log(`  docs migration (${label}): ${rel(file)} - section ids re-spelled to the ${domain}/ file keys`); }
         catch (err) { log(`  !! docs migration (${label}): ${rel(file)} still names the old section ids (${err.code || err.message}) - ${fix}`); }
     }
     return out;
+}
+
+// What the respell rewrites: the domains' watch.json and docs (root, references/, history/) - the awareness domain's
+// included even before its watch.json exists - and the generated rules, but never USER-AWARENESS.md (the user's own
+// notes, D10), the awareness rule (awarenessRule composes it whole right after) or the retired architecture marker it
+// removes; plus every branch version's lane
+// file under `.branches/<branch>/{,.base/,.conflict/}<domain>/<file key>/`.
+function respellTargets(base, rules = [])
+{
+    const files = [];
+    const list = (dir, test = (n) => n.endsWith('.md')) => { try { return fs.readdirSync(dir).filter(test).sort().map((n) => path.join(dir, n)); } catch { return []; } };
+    const names = [...new Set([...domains(base), ...(fs.existsSync(path.join(base, AWARENESS)) ? [AWARENESS] : [])])].sort();
+    for (const name of names)
+    {
+        const dir = path.join(base, name);
+        files.push(...list(dir, (n) => n === 'watch.json'), ...list(dir).filter((f) => !(name === AWARENESS && path.basename(f) === USER_DOC)),
+            ...list(path.join(dir, 'references')), ...list(path.join(dir, 'history')));
+    }
+    files.push(...rules.filter((f) => !['alfred-architecture.md', 'alfred-awareness.md'].includes(path.basename(f))));
+    const branches = path.join(base, '.branches');
+    const dirsOf = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name)); } catch { return []; } };
+    const walk = (dir) => [...list(dir), ...dirsOf(dir).flatMap(walk)];
+    for (const branch of dirsOf(branches))
+        for (const lane of [branch, path.join(branch, '.base'), path.join(branch, '.conflict')])
+            for (const domain of dirsOf(lane).filter((d) => !path.basename(d).startsWith('.')))
+                files.push(...walk(domain));
+    return files;
+}
+
+// A file the stack does not own (the project's AGENTS.md / CLAUDE.md, a plan, the user's notes) is never rewritten: each
+// line naming a renamed key is named once, for update-preflight.js --respell to plan (D5). Returns the lines named.
+// A ref in a file the stack does not own whose spelled name is a file beside that file or at the project root - a team's
+// own root ARCHITECTURE.md or ORIENTATION.md - names THAT file, never the moved map (final review C1).
+const ownFileRef = (projectRoot, file) => (spelled) => [path.dirname(file), projectRoot].some((dir) => fs.existsSync(path.join(dir, ...`${spelled}.md`.split('/'))));
+function nameForeignRefs({ projectRoot, base, keys, label = 'awareness', log = () => {} })
+{
+    if (!keys.length) return [];
+    const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
+    const named = [];
+    for (const file of require('./selection.js').foreignRefFiles(projectRoot, base))
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        text.split('\n').forEach((line, i) =>
+        {
+            const hits = keyHits(line, keys, { strict: true, refsOnly: true, keep: ownFileRef(projectRoot, file) });
+            if (!hits.length) return;
+            named.push(`${rel(file)}:${i + 1}`);
+            log(`  !! docs migration (${label}): ${rel(file)}:${i + 1} names ${hits.join(', ')} - plan it with update-preflight.js --respell`);
+        });
+    }
+    return named;
 }
 
 // THE PREFERENCES LAYOUT (the user's ruling of 2026-10-21): every doc under `preferences/` binds, and the shipped
@@ -362,7 +479,7 @@ function migratePreferences({ projectRoot, base, dataPath = null, log = () => {}
     if (!fs.existsSync(projectRoot)) return out;
     const dir = path.join(base, PREFERENCES);
     const keys = completedKeys(base, PREFERENCES, PREFERENCES_HOMES);
-    const fix = 're-run /capture-preferences or /capture-project-code-style';
+    const fix = 're-run /capture-preferences or /capture-awareness project-code-style';
     out.respelled = respellFiles(['watch.json', ...keys.map(([key]) => `${key}.md`)].map((n) => path.join(dir, n)), keys, PREFERENCES, { projectRoot, label: 'preferences', fix, log });
     out.overlays = moveOverlays(base, keys, PREFERENCES, 'preferences', log);
     const style = keys.find(([key]) => key === 'PROJECT-CODE-PREFERENCES');
@@ -728,21 +845,26 @@ function seedGitPreferences(projectRoot, file, log)
 // still holds the capture's own text - one the user changed is named and kept.
 const AWARENESS = 'awareness';
 const AGENTS_DOC = 'AGENTS-AWARENESS.md';
-const AWARENESS_SCRIPT = path.join(__dirname, '..', '..', 'stack', 'skills', 'capture-awareness', 'scripts', 'capabilities-inventory.js');
+const USER_DOC = 'USER-AWARENESS.md';
+const AWARENESS_SCRIPT = path.join(__dirname, '..', '..', 'stack', 'skills', 'capture-awareness', 'scripts', 'awareness-state.js');
 // Each awareness doc's earlier homes, as `[folder, file key]` - newest last, the order the moves above ran.
 const AWARENESS_HOMES = {
-    'PROJECT-AWARENESS': [['project-capabilities', 'PROJECT-CAPABILITIES'], ['project-awareness', 'PROJECT-AWARENESS']],
+    'RUN-AND-DEBUG-AWARENESS': [['project-capabilities', 'PROJECT-CAPABILITIES'], ['project-awareness', 'PROJECT-AWARENESS'], ['awareness', 'PROJECT-AWARENESS']],
     'RELATED-PROJECTS-AWARENESS': [['related-projects', 'RELATED-PROJECTS']],
 };
 const INVENTORY_RULE = 'alfred-agent-awareness.md';
 
-function migrateAwareness({ projectRoot, base, docsPath, rules = [], log = () => {} })
+// `renamed`: this run gave the run book its new name, so the lines a respell leaves (a sibling's first_read:, a file the
+// stack does not own) are named now, once.
+function migrateAwareness({ projectRoot, base, docsPath, rules = [], renamed = false, log = () => {} })
 {
     const out = { respelled: [], overlays: [], agents: 'none', rule: 'none' };
     const dir = path.join(base, AWARENESS);
     const keys = completedKeys(base, AWARENESS, AWARENESS_HOMES);
-    out.respelled = respellFiles(['watch.json', ...keys.map(([key]) => `${key}.md`)].map((n) => path.join(dir, n)), keys, AWARENESS, { projectRoot, label: 'awareness', fix: 're-run /capture-awareness', log });
+    // The branch versions first, so the respell below reaches them at their new key.
     out.overlays = moveOverlays(base, keys, AWARENESS, 'awareness', log);
+    out.respelled = respellFiles(respellTargets(base, rules), keys, AWARENESS, { projectRoot, label: 'awareness', fix: 're-run /capture-awareness', log, nameHeld: renamed });
+    if (renamed) nameForeignRefs({ projectRoot, base, keys: completedKeys(base, AWARENESS, { 'RUN-AND-DEBUG-AWARENESS': KEY_RENAMES['RUN-AND-DEBUG-AWARENESS'] }), log });
     for (const folder of ['project-capabilities', 'project-awareness', 'related-projects'])
         removeOldDomain(path.join(base, folder), log, { label: 'awareness', docs: OLD_DOMAIN_DOCS, others: OLD_DOMAIN_OTHERS });
     out.agents = inventoryToDoc({ projectRoot, dir, rules, log });
@@ -812,14 +934,15 @@ function removeOldDomain(folder, log, { label, docs = new Set(), others = new Se
 {
     const watch = path.join(folder, 'watch.json');
     try { if (/^\s*\{\s*\}\s*$/.test(fs.readFileSync(watch, 'utf8'))) fs.rmSync(watch); } catch { /* none, or not the stack's */ }
-    try { fs.rmdirSync(path.join(folder, 'references')); } catch { /* none, or not empty */ }
-    if (removeIfEmpty(folder, log, label)) return;
+    for (const sub of ['references', 'history']) { try { fs.rmdirSync(path.join(folder, sub)); } catch { /* none, or not empty */ } }
+    if (removeIfEmpty(folder, log, label)) return true;
     let left;
     try { left = fs.readdirSync(folder).filter((n) => !OS_LITTER.has(n)).sort(); }
-    catch { return; }
-    if (left.some((n) => docs.has(n))) return;
+    catch { return false; }
+    if (left.some((n) => docs.has(n))) return false;
     const theirs = left.filter((n) => !others.has(n));
     if (theirs.length) log(`  !! docs migration (${label}): ${path.basename(folder)}/ kept - it still holds ${theirs.join(', ')}, which the move does not take; compare with ${label}/ and remove it by hand`);
+    return false;
 }
 
 // 'none' (no inventory rule), 'present' (the doc is there already), 'moved', 'yours' (named), 'failed'. The body moves
@@ -854,14 +977,146 @@ function awarenessRule({ projectRoot, docsPath, log = () => {} })
     const said = [];
     const docs = String(docsPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
     const result = script.writeAwarenessRule(projectRoot, { docs, print: false, say: (label, value) => said.push([label, value]) });
+    // The size lines go with a rule this run wrote; an unchanged rule says nothing, but a doc over its budget, every run.
+    const wrote = said.some(([label, value]) => label === 'RULE' && /^(?:created|refreshed)\b/.test(value));
     for (const [label, value] of said)
     {
         // A quiet update says nothing: no doc, nothing to import, or the rule already current.
-        if (label === 'IMPORTS' || (label === 'RULE' && /^(?:not written - (?:no awareness doc|nothing to import)|unchanged)/.test(value))) continue;
-        const warn = /^(?:FAIL|kept)/.test(value) || (label === 'WATCH' && /not valid|not a JSON|could not/.test(value));
+        if (label === 'IMPORTS' || (label === 'size' && !wrote) || (label === 'RULE' && /^(?:not written - (?:no awareness doc|nothing to import)|unchanged)/.test(value))) continue;
+        const warn = label === 'over budget' || /^(?:FAIL|kept)/.test(value) || (label === 'WATCH' && /not valid|not a JSON|could not/.test(value));
         log(`  ${warn ? '!! ' : ''}awareness: ${label.toLowerCase()} - ${value}`);
     }
     return result.code ? 'failed' : result.rule;
+}
+
+// THE ARCHITECTURE MOVE (spec 2026-10-29 2.1): the map leaves architecture/ for the ONE awareness domain, flat -
+// ARCHITECTURE.md and ORIENTATION.md take the domain's -AWARENESS names (layout.js ARCH_RENAME), references/ and history/
+// keep theirs. Six steps, the first undone whole on a failure: (1) the files, through migrateLayout's own move; (2) the
+// watch merge; (3) the branch versions; (4) the respell of every ref the stack wrote, and a `!!` line for each file it
+// does not own; (5) the emptied architecture/; (6) the awareness rule, which points at the map and removes the 3.3.0
+// marker rule. A marker under <data root>/state/migrations/ holds open a run that threw past step 1, and the next update
+// finishes it from what is on disk (D9); with neither the folder nor the marker nothing runs, so a project's own
+// `ARCHITECTURE.md#x` is never respelled on a later update. Returns { moved, kept, merged, overlays, respelled, removed }.
+const ARCH = 'architecture';
+const ARCH_PENDING = ['state', 'migrations', 'architecture-move.pending'];
+function migrateArchitecture({ projectRoot, docsPath, dataPath, rules = [], log = () => {} })
+{
+    const base = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''));
+    const marker = path.resolve(projectRoot, String(dataPath || '.alfred'), ...ARCH_PENDING);
+    const old = path.join(base, ARCH);
+    const out = { moved: [], kept: [], merged: 'none', overlays: [], respelled: [], removed: false };
+    let isDir = false;
+    try { isDir = fs.statSync(old).isDirectory(); } catch { isDir = false; }
+    const resumed = fs.existsSync(marker);
+    if (!isDir && !resumed) return out;
+
+    const made = [];
+    for (let at = path.dirname(marker); !fs.existsSync(at) && path.dirname(at) !== at; at = path.dirname(at)) made.unshift(at);
+    const row = LAYOUT.LAYOUT_MOVES.find((m) => m.from === ARCH);
+    try
+    {
+        fs.mkdirSync(path.dirname(marker), { recursive: true });
+        fs.writeFileSync(marker, `${new Date().toISOString()}\n`);
+        const layout = migrateLayout({ projectRoot, docsPath, dataPath, log, moves: [{ ...row, lintOnly: false }], leave: ['watch.json'], tail: false });
+        out.moved = layout.moved;
+        out.kept = layout.kept;
+    }
+    catch (err)
+    {
+        // migrateLayout put every file back; the marker and the folders made for it go too, so nothing is left half done
+        try { fs.rmSync(marker, { force: true }); } catch { /* the error below names the move */ }
+        for (const dir of [...made].reverse()) { try { fs.rmdirSync(dir); } catch { /* not empty */ } }
+        throw Object.assign(err, { step: 1 });
+    }
+    const step = (n, fn) =>
+    {
+        try { return fn(); }
+        catch (err) { throw Object.assign(new Error(`step ${n} of the architecture move did not finish after the map moved under awareness/: ${err.message}`, { cause: err }), { step: n }); }
+    };
+    // A first_read: line and a file the stack does not own are named on the run that moved the map, or finishes one.
+    const naming = out.moved.length > 0 || resumed;
+    out.merged = step(2, () => mergeArchWatch({ base, log }));
+    step(3, () =>
+    {
+        const keys = [...completedKeys(base, AWARENESS, ARCH_KEYS),
+            ...['references', 'history'].filter((sub) => !fs.existsSync(path.join(old, sub))).map((sub) => [sub, [[ARCH, sub]]])];
+        out.overlays = moveOverlays(base, keys, AWARENESS, 'awareness', log);
+    });
+    step(4, () =>
+    {
+        const keys = completedKeys(base, AWARENESS, ARCH_KEYS);
+        out.respelled = respellFiles(respellTargets(base, rules), keys, AWARENESS, { projectRoot, label: 'awareness', fix: 're-run /alfred-code:update', log, strict: true, nameHeld: naming });
+        // the moved sub-folders' domain-qualified refs, with step 3's pairs (final review I1)
+        const subs = ['references', 'history'].filter((sub) => !fs.existsSync(path.join(old, sub))).map((sub) => [sub, [[ARCH, sub]]]);
+        const more = respellFiles(respellTargets(base, rules), subs, AWARENESS, { projectRoot, label: 'awareness', fix: 're-run /alfred-code:update', log, sub: true });
+        out.respelled = [...new Set([...out.respelled, ...more])];
+        if (naming) nameForeignRefs({ projectRoot, base, keys, log });
+    });
+    out.removed = step(5, () => removeOldDomain(old, log, { label: 'awareness' }) || !fs.existsSync(old));
+    step(6, () => awarenessRule({ projectRoot, docsPath, log }));
+    fs.rmSync(marker, { force: true });
+    for (const dir of [path.dirname(marker), ...[...made].reverse()]) { try { fs.rmdirSync(dir); } catch { /* not empty, or gone */ } }
+    return out;
+}
+
+// STEP 2: architecture/watch.json joins awareness/watch.json - each entry's sections take the new keys and its kind the
+// `architecture: ` prefix the part writes; the awareness file's own keys win, the entries are appended and the notOwned
+// lists joined; the file keeps the awareness file's BOM, line ending, indent and final newline (the architecture file's
+// indent when it shows none). An awareness watch.json of `{}` is written absent-only, even with nothing to merge (D8), so
+// the moved map sits in a domain the engine reads. Returns 'none' | 'moved' | 'merged' | 'kept'.
+function mergeArchWatch({ base, log })
+{
+    const archFile = path.join(base, ARCH, 'watch.json');
+    const awFile = path.join(base, AWARENESS, 'watch.json');
+    const exists = (f) => { try { fs.lstatSync(f); return true; } catch { return false; } };
+    const absentOnly = () => { if (!exists(awFile)) { fs.mkdirSync(path.dirname(awFile), { recursive: true }); fs.writeFileSync(awFile, '{}\n'); } };
+    const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
+    const parse = (text) => { try { const d = parseJson(text); return d && typeof d === 'object' && !Array.isArray(d) ? d : 'not a JSON object'; } catch (err) { return `not valid JSON (${err.message})`; } };
+    const archText = read(archFile);
+    const arch = archText === null ? null : parse(archText);
+    if (arch === null || (typeof arch === 'object' && !Object.keys(arch).length)) { absentOnly(); return 'none'; }
+    if (typeof arch === 'string')
+    {
+        log(`  !! docs migration (awareness): architecture/watch.json is left in place - it is ${arch}; merge its entries into awareness/watch.json by hand`);
+        absentOnly();
+        return 'kept';
+    }
+    const keys = Object.entries(ARCH_KEYS);
+    const entries = (Array.isArray(arch.watch) ? arch.watch : []).map((e) => (e && typeof e === 'object' && !Array.isArray(e)
+        ? { ...e,
+            ...(typeof e.kind === 'string' ? { kind: e.kind.startsWith('architecture: ') ? e.kind : `architecture: ${e.kind}` } : {}),
+            ...(Array.isArray(e.sections) ? { sections: e.sections.map((x) => (typeof x === 'string' ? respellKeys(x, keys, AWARENESS, { strict: true }) : x)) } : {}) }
+        : e));
+    const moved = { ...arch, ...(Array.isArray(arch.watch) ? { watch: entries } : {}) };
+    const formatOf = (text) => ({ bom: text.startsWith('\uFEFF'), eol: text.includes('\r\n') ? '\r\n' : '\n', final: /\r?\n$/.test(text),
+        indent: (/^[ \t]+(?=\S)/.exec(text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l)) || '') || [''])[0] });
+    const write = (data, f) => fs.writeFileSync(awFile, `${f.bom ? '\uFEFF' : ''}${JSON.stringify(data, null, f.indent || '  ').split('\n').join(f.eol)}${f.final ? f.eol : ''}`);
+    const awText = read(awFile);
+    if (awText === null && !exists(awFile))
+    {
+        write(moved, formatOf(archText));
+        fs.rmSync(archFile);
+        log('  docs migration (awareness): architecture/watch.json -> awareness/watch.json, each kind prefixed \'architecture: \'');
+        return 'moved';
+    }
+    const aw = awText === null ? 'not readable' : parse(awText);
+    if (typeof aw === 'string')
+    {
+        log(`  !! docs migration (awareness): awareness/watch.json is ${aw} - architecture/watch.json is left in place; fix it, then re-run /alfred-code:update`);
+        return 'kept';
+    }
+    const merged = { ...aw };
+    for (const [k, v] of Object.entries(moved))
+    {
+        if (k === 'watch') merged.watch = [...(Array.isArray(aw.watch) ? aw.watch : []), ...(Array.isArray(v) ? v : [])];
+        else if (k === 'notOwned') merged.notOwned = [...new Set([...(Array.isArray(aw.notOwned) ? aw.notOwned : []), ...(Array.isArray(v) ? v : [])])];
+        else if (!Object.hasOwn(aw, k)) merged[k] = v;
+    }
+    const f = formatOf(awText);
+    write(merged, { ...f, indent: f.indent || formatOf(archText).indent });
+    fs.rmSync(archFile);
+    log(`  docs migration (awareness): architecture/watch.json merged into awareness/watch.json - ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}, each kind prefixed 'architecture: '`);
+    return 'merged';
 }
 
 // A pointer rule names its doc by the literal path (a rule cannot resolve one at load), so a moved doc left the
@@ -923,8 +1178,16 @@ const DOCS_IGNORE = {
 // Texts an earlier release wrote, still the stack's own: an update replaces them instead of keeping them as
 // the project's. 2.1.3's git text had no usage-report line; up to 2.1.6 the folder was `alfred-code-usage-report/`;
 // up to 2.4.0 there was no credentials line; up to 2.5.0 no awareness line; up to 2.7.0 a header naming the hooks' state,
-// `/.branches/` and the whole `/history/` (the second row); up to 2.8.0 no personal preferences lines (the first).
+// `/.branches/` and the whole `/history/` (the third row); up to 2.8.0 no personal preferences lines (the second); up to
+// 3.4.1 no USER-AWARENESS.md line (the first - final review I2: without it a 3.4.1 file read as the project's own).
 const DOCS_IGNORE_FORMER = [
+    '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n'
+        + '# the hooks\' state before 2.8.0, which a session started before the update still writes\n'
+        + '/flow/\n/hook-blocks/\n/history/*.json\n/tools-usage/\n/docs-log.jsonl\n/usage-report/**/*.jsonl\n'
+        + '# the run book\'s credentials file before 2026-10-13, which an older capture still writes\n/project-capabilities/credentials.local.env\n'
+        + '# the awareness capture\'s inventory names this machine\'s plugins\n/awareness/AGENTS-AWARENESS.md\n'
+        + '# the user\'s own preferences - how they want the assistant to work, and their code taste\n'
+        + '/preferences/PERSONAL-PREFERENCES.md\n/preferences/PERSONAL-CODE-PREFERENCES.md\n',
     '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n'
         + '# the hooks\' state before 2.8.0, which a session started before the update still writes\n'
         + '/flow/\n/hook-blocks/\n/history/*.json\n/tools-usage/\n/docs-log.jsonl\n/usage-report/**/*.jsonl\n'
@@ -1136,7 +1399,10 @@ function repointSuperpowers({ projectRoot, docsPath, base, rules = [], instructi
 // while empty - a doc version is never deleted (the session-start line asks the user to re-apply and prune it). A second
 // run moves nothing and says `layout: current`. Returns { moved, kept, removed }, project-relative.
 const LAYOUT = require('../../stack/hooks/layout.js');
-function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves = LAYOUT.LAYOUT_MOVES })
+// `leave`: base names in a row's own folder this call neither moves nor names (migrateArchitecture merges watch.json
+// itself); `tail: false` drops the .branches/ line and the `layout: current` fallback, which the update's own general call
+// prints once.
+function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves = LAYOUT.LAYOUT_MOVES, leave = [], tail = true })
 {
     const docsBase = path.resolve(projectRoot, String(docsPath || ''));
     const dataBase = path.resolve(projectRoot, String(dataPath || '.alfred'));
@@ -1157,7 +1423,7 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves 
     const notMapped = [];
     for (const m of moves)
     {
-        if (m.removeIfEmpty) continue;
+        if (m.removeIfEmpty || m.lintOnly) continue;
         const from = path.join(docsBase, ...m.from.split('/'));
         if (m.file)
         {
@@ -1192,6 +1458,7 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves 
         for (const file of filesUnder(from))
         {
             const inner = path.relative(from, file);
+            if (leave.includes(inner)) continue;
             if (!m.rename) { g.pairs.push([file, path.join(to, inner)]); continue; }
             // a renaming row (the coverage doc, 2026-10-29) maps each file's first segment; one it does not map stays
             const [first, ...rest] = inner.split(path.sep);
@@ -1305,7 +1572,7 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves 
     };
     for (const dir of sources) prune(dir);
     const branches = path.join(docsBase, '.branches');
-    if (isDir(branches))
+    if (tail && isDir(branches))
     {
         if (fs.readdirSync(branches).every((name) => OS_LITTER.has(name)))
         {
@@ -1319,7 +1586,7 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves 
             lines.push('  layout: kept .branches/ - it holds doc versions, prune them first');
         }
     }
-    for (const line of lines.length ? lines : ['  layout: current']) log(line);
+    for (const line of lines.length || !tail ? lines : ['  layout: current']) log(line);
     return out;
 }
 
@@ -1723,6 +1990,7 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
+    migrateArchitecture, KEY_RENAMES, respellTargets, nameForeignRefs, ownFileRef, completedKeys, respellKeys,
     docsVersioningAdvice,
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, ensureQualityNotOwned, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
