@@ -163,7 +163,8 @@ card under `<docs-path>/work/cross-project-tasks/`, printed as the docs-root rul
 
 ## Publishing - push and change-request merge
 
-The same ceremony: a `git push` and a change-request merge - `gh pr merge`, `glab mr merge`, an MCP merge tool, any route - leave this machine, so they carry their own
+The same ceremony: a `git push` and a change-request merge - `gh pr merge`, `glab mr merge`, an MCP merge tool, any route - leave this machine,
+and so does opening a change request from a CLI (`gh pr create`, `glab mr create`) where it would push the branch, so they carry their own
 receipt, `<data root>/state/approvals/PUSH-GATE`, in the SAME five-line shape - `VERIFIED <what is being
 published, one phrase>`, `authorized: "<the user's words asking for THIS publish, verbatim>"`,
 `head:`, `spec: <the commit set going out>` and `live-probe:` - or `WAIVED - "<their words>"`; no

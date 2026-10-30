@@ -430,3 +430,13 @@ test('SKC-24: the four rule-forced or preloaded habits leave the / menu and keep
         assert.match(html, new RegExp(`\\["${name}",[^\\n]*"model-only"\\]`), `${name}: the inventory row says model-only`);
     }
 });
+
+// Audit 2026-10-30, the hooks report's low row (T1 ac7ea27f): the commit guard now gates opening a change request from a
+// CLI where it would push, so the checkpoint's Publishing section names that act beside the push and the merge.
+test('hooks low row: the checkpoint names opening a change request that pushes as a publish', () =>
+{
+    const publishing = skill('habits-commit-checkpoint').replace(/\s+/g, ' ').split('## Publishing')[1].split('**A no-fast-forward publish')[0];
+    assert.match(publishing, /`gh pr create`/);
+    assert.match(publishing, /`glab mr create`/);
+    assert.match(publishing, /would push/);
+});
