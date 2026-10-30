@@ -1630,8 +1630,9 @@ function integrity() {
 // A domain (a top-level folder under the docs root) limits every row to that domain: a capture told to fix its PROBLEM
 // lines before its report could never meet that while another domain's row printed on every run. No domain keeps the
 // whole-root answer. `part` splits the domain the map shares with the run book for the same reason: 'map' keeps the map's
-// files (isMapFile), the ORIENTATION rows and the watch rows of 'architecture: ' entries, 'no-map' every other row; a
-// watch row naming no entry (a file that is not JSON, a top-level key) prints under both.
+// files (isMapFile), the ORIENTATION rows and the watch rows of 'architecture: ' entries - and the map's domain's newModule,
+// which only the architecture part writes - 'no-map' every other row; a watch row naming no entry (a file that is not
+// JSON, a top-level key) prints under both.
 function lint(domain, { part = null } = {}) {
   const problems = [];
   const notes = [];
@@ -1705,7 +1706,7 @@ function lint(domain, { part = null } = {}) {
   //     which is ordinary, since every domain owns a references/ folder. The entry's own domain is what
   //     disambiguates it, exactly as it does at the hook.
   for (const e of [...w.watch, ...w.newModule.map((nm) => ({ kind: 'newModule', sections: nm.sections, domain: nm.domain }))]) {
-    if (!inScope(e.domain) || (part && e.kind !== 'newModule' && !side(archKind(e.kind)))) continue;
+    if (!inScope(e.domain) || !side(e.kind === 'newModule' ? e.domain === mapDomain() : archKind(e.kind))) continue;
     for (const id of e.sections) {
       if (protectedRef(e.domain, id) || askRef(id) || askRef(`${e.domain}/${id}`)) continue;
       problems.push(`${e.domain}/watch.json '${e.kind}' names a section that does not exist: ${id}`);

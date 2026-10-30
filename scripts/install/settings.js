@@ -705,6 +705,10 @@ const partsWord = (newName, renamed) =>
     return NUMBER_WORDS[n] || String(n);
 };
 const quoted = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
+// An older plain spelling of `to` that `o` holds - the plain-spelling loop's own condition, so a merge line names the value
+// that loop is about to set instead of 'unset' (the 3.5.0 review, M1).
+const plainSpelling = (o, to, renamed) => Object.keys((renamed && renamed.skills) || {})
+    .find((from) => renamed.skills[from] === to && !Object.hasOwn((renamed && renamed.topics) || {}, from) && Object.hasOwn(o, from));
 
 function rekeyOverrides(data, renamed, log, label)
 {
@@ -719,11 +723,13 @@ function rekeyOverrides(data, renamed, log, label)
         const kept = Object.hasOwn(o, to);
         const never = noPartSwitch(to, renamed);
         if (!kept && m.carry) o[to] = m.value;
+        const plain = kept ? undefined : plainSpelling(o, to, renamed);
+        const takes = plain && `it takes ${quoted(o[plain])} from ${plain}`;
         for (const from of m.olds)
         {
-            if (never) log(`  !! ${label}: skillOverrides ${from}: ${quoted(o[from])} has no key after the merge - ${to} has no per-part switch; it stays ${kept ? quoted(o[to]) : 'unset'}`);
+            if (never) log(`  !! ${label}: skillOverrides ${from}: ${quoted(o[from])} has no key after the merge - ${to} has no per-part switch; ${kept ? `it stays ${quoted(o[to])}` : takes || 'it stays unset'}`);
             else if (kept || m.carry) log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
-            else log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) not carried - ${to} holds ${partsWord(to, renamed)} captures; set ${to} yourself to switch them all`);
+            else log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) not carried - ${to} holds ${partsWord(to, renamed)} captures; ${takes || `set ${to} yourself to switch them all`}`);
             delete o[from];
         }
         changed = true;
@@ -1305,10 +1311,13 @@ function writeSettings(opts)
             if (!m.carry)
             {
                 const never = noPartSwitch(to, renamed);
+                // an older plain spelling settings.json holds is set below, in this file, by the same loop
+                const plain = plainSpelling(inheritedOverrides, to, renamed);
+                const takes = plain && `${to} takes ${quoted(inheritedOverrides[plain])} from ${plain} in ${label}`;
                 for (const old of m.olds)
                     log(never
-                        ? `  !! ${label}: settings.json still names skillOverrides ${old} (${quoted(inheritedOverrides[old])}) - it has no key after the merge, ${to} has no per-part switch; nothing set in ${label}`
-                        : `  ${label}: settings.json still names skillOverrides ${old} (${quoted(inheritedOverrides[old])}) - not carried, ${to} holds ${partsWord(to, renamed)} captures; nothing set in ${label} - a project-scope update applies the rule there`);
+                        ? `  !! ${label}: settings.json still names skillOverrides ${old} (${quoted(inheritedOverrides[old])}) - it has no key after the merge, ${to} has no per-part switch; ${takes || `nothing set in ${label}`}`
+                        : `  ${label}: settings.json still names skillOverrides ${old} (${quoted(inheritedOverrides[old])}) - not carried, ${to} holds ${partsWord(to, renamed)} captures; ${takes || `nothing set in ${label} - a project-scope update applies the rule there`}`);
                 continue;
             }
             (data.skillOverrides ??= {})[to] = m.value;

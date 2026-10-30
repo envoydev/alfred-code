@@ -41,7 +41,7 @@ WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, an
 MKT=""        # the marketplace key the core is listed under
 if command -v claude >/dev/null 2>&1; then
   claude plugin marketplace update envoydev >/dev/null 2>&1
-  # the core installed for THIS project or the account, at each scope, this project's rows first: "<scope> <id> <version>" - another plugin the catalog lists (preferred-tools) updates on its own
+  # the core installed for THIS project or the account, at each scope, this project's rows first: "<scope> <id> <version>" - another plugin the catalog lists (preferred-tools, session-inspector) updates on its own
   ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/^alfred-code@envoydev$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')
   WAS=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{print $3;exit}')
   MKT=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);print $2;exit}')

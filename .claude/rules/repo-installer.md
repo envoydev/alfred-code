@@ -281,8 +281,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   core first so its cache serves the same run. Every run takes the LATEST: the seed (no `--source`)
   and both protocol snippets refresh the catalog and `plugin update` the installed CORE at each of
   its scopes BEFORE the cache is read - a refreshed catalog alone never moves the cache. Only the core:
-  every other entry the stack shipped is retired, and another plugin the catalog lists (preferred-tools)
-  is the user's, never updated by the stack (the user's ruling of 2026-10-27). `--print-plan` changes no
+  every other entry the stack shipped is retired, and another plugin the catalog lists (preferred-tools,
+  session-inspector) is the user's, never updated by the stack (the user's ruling of 2026-10-27). `--print-plan` changes no
   plugin.
 - **One download per RUN.** The plugin commands resolve the snapshot themselves and pass it with
   `--source`; the script never deletes a borrowed source (`owned` in `scripts/install/source.js` is

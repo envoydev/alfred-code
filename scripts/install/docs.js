@@ -320,10 +320,13 @@ function ensureQualityNotOwned({ projectRoot, docsPath, log = () => {} })
 const escapeRe = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // `sub`: `old` is a sub-folder (references/, history/) - only its domain-qualified section ref moves, `<folder>/<old>/<file>#`,
 // never after a `/` (a path inside a project folder) and never bare (a bare `references/x#y` resolves after the move).
-function keyPatterns(folder, old, { strict = false, refsOnly = false, sub = false } = {})
+// `late`: the pass after the move takes the engine's two ref spellings alone - `<folder>/<old>#` with nothing path-like
+// before it and the bare `<old>#` - never a path (`.alfred/docs/architecture/ARCHITECTURE.md`), never `<dir>/<old>#`.
+function keyPatterns(folder, old, { strict = false, refsOnly = false, sub = false, late = false } = {})
 {
     if (sub) return [new RegExp(`(?<![\\w/.-])${escapeRe(folder)}/${escapeRe(old)}(?=/[\\w.-]+(?:\\.md)?#)`, 'g'), /(?!)/g];
     const ref = '(?=(?:\\.md)?#)';
+    if (late) return [new RegExp(`(?<![\\w/.-])${escapeRe(folder)}/${escapeRe(old)}${ref}`, 'g'), new RegExp(`(?<![\\w/-])${escapeRe(old)}${ref}`, 'g')];
     return [new RegExp(`(?<![\\w-])${escapeRe(folder)}/${escapeRe(old)}\\b(?!-)${refsOnly ? ref : ''}`, 'g'),
         new RegExp(`${strict ? '(?<![\\w/-])' : '(?<![\\w-])'}${escapeRe(old)}${ref}`, 'g')];
 }
@@ -380,8 +383,9 @@ function respellText(text, keys, domain, opts, held)
 }
 
 // Each file the ids live in, re-spelled in place; the files rewritten, project-relative. `nameHeld`: name each
-// first_read: line left as it was (only on the run that moved the docs, so a later run says nothing).
-function respellFiles(files, keys, domain, { projectRoot, label, fix, log, strict = false, sub = false, nameHeld = false })
+// first_read: line left as it was (only on the run that moved the docs, so a later run says nothing). `late` and
+// `keep(file)` - a hit the file's own keep answers stays - are the pass after the move's (migrateArchitecture).
+function respellFiles(files, keys, domain, { projectRoot, label, fix, log, strict = false, sub = false, late = false, keep = null, nameHeld = false })
 {
     const out = [];
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
@@ -390,7 +394,8 @@ function respellFiles(files, keys, domain, { projectRoot, label, fix, log, stric
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
         const held = [];
-        const next = SIBLING_DOC.test(file) ? respellText(text, keys, domain, { strict, sub }, held) : respellKeys(text, keys, domain, { strict, sub });
+        const opts = { strict, sub, late, ...(keep ? { keep: keep(file) } : {}) };
+        const next = SIBLING_DOC.test(file) ? respellText(text, keys, domain, opts, held) : respellKeys(text, keys, domain, opts);
         if (nameHeld)
             for (const [n, sibling] of held)
                 log(`  !! docs migration (${label}): ${rel(file)}:${n} first_read: is a path in ${sibling || 'the sibling repo'} - left as it is; re-run /capture-awareness related-projects once ${sibling || 'it'} updates`);
@@ -433,7 +438,47 @@ function respellTargets(base, rules = [])
 // A ref in a file the stack does not own whose spelled name is a file beside that file or at the project root - a team's
 // own root ARCHITECTURE.md or ORIENTATION.md - names THAT file, never the moved map (final review C1).
 const ownFileRef = (projectRoot, file) => (spelled) => [path.dirname(file), projectRoot].some((dir) => fs.existsSync(path.join(dir, ...`${spelled}.md`.split('/'))));
-function nameForeignRefs({ projectRoot, base, keys, label = 'awareness', log = () => {} })
+// The pass after the move keeps a hit a file of that name answers - beside the citer, at the project root, at the docs root
+// or in one of its folders (a team's own `ops/ARCHITECTURE.md`): only a ref no file answers is the old map's.
+const lateKeep = (projectRoot, base) => (file) => (spelled) =>
+{
+    const rel = `${spelled}.md`.split('/');
+    let dirs = [];
+    try { dirs = fs.readdirSync(base, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => path.join(base, e.name)); } catch { /* no docs root */ }
+    return ownFileRef(projectRoot, file)(spelled) || [base, ...dirs].some((dir) => fs.existsSync(path.join(dir, ...rel)));
+};
+// The project's own files named like an old key's file (`docs/ARCHITECTURE.md`), outside the docs root, project-relative:
+// a late hit one of them answers may be the team's link, so it is kept (the 3.5.1 review, I2). Git's list where there is
+// one (tracked and untracked, ignores applied), else a walk of at most 20,000 entries past .git and node_modules.
+function sameNamedFiles(projectRoot, base, olds)
+{
+    const names = new Set(olds.map((old) => `${old}.md`));
+    const outside = (rel) => { const abs = path.join(projectRoot, ...rel.split('/')); return abs !== base && !abs.startsWith(base + path.sep); };
+    try
+    {
+        const out = rt.execCommand('git', ['-C', projectRoot, 'ls-files', '-z', '-co', '--exclude-standard', '--', ...[...names].map((n) => `:(glob)**/${n}`)],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        return String(out).split('\0').filter((rel) => rel && names.has(rel.split('/').pop()) && outside(rel)).sort();
+    }
+    catch { /* no git work tree here: walk it */ }
+    const found = [];
+    let budget = 20000;
+    const walk = (dir) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries)
+        {
+            if (--budget < 0) return;
+            const at = path.join(dir, e.name);
+            if (e.isDirectory()) { if (!['.git', 'node_modules'].includes(e.name) && at !== base) walk(at); }
+            else if (e.isFile() && names.has(e.name)) found.push(path.relative(projectRoot, at).split(path.sep).join('/'));
+        }
+    };
+    walk(projectRoot);
+    return found.sort();
+}
+function nameForeignRefs({ projectRoot, base, keys, label = 'awareness', late = false, keep = null, log = () => {} })
 {
     if (!keys.length) return [];
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
@@ -444,7 +489,7 @@ function nameForeignRefs({ projectRoot, base, keys, label = 'awareness', log = (
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
         text.split('\n').forEach((line, i) =>
         {
-            const hits = keyHits(line, keys, { strict: true, refsOnly: true, keep: ownFileRef(projectRoot, file) });
+            const hits = keyHits(line, keys, late ? { late: true, keep: (keep || lateKeep(projectRoot, base))(file) } : { strict: true, refsOnly: true, keep: ownFileRef(projectRoot, file) });
             if (!hits.length) return;
             named.push(`${rel(file)}:${i + 1}`);
             log(`  !! docs migration (${label}): ${rel(file)}:${i + 1} names ${hits.join(', ')} - plan it with update-preflight.js --respell`);
@@ -933,7 +978,7 @@ const OLD_DOMAIN_DOCS = new Set(['PROJECT-CAPABILITIES.md', 'PROJECT-AWARENESS.m
 function removeOldDomain(folder, log, { label, docs = new Set(), others = new Set() })
 {
     const watch = path.join(folder, 'watch.json');
-    try { if (/^\s*\{\s*\}\s*$/.test(fs.readFileSync(watch, 'utf8'))) fs.rmSync(watch); } catch { /* none, or not the stack's */ }
+    try { if (/^\s*\{\s*\}\s*$/.test(fs.readFileSync(watch, 'utf8'))) removeKeepingHistory(watch); } catch { /* none, or not the stack's */ }
     for (const sub of ['references', 'history']) { try { fs.rmdirSync(path.join(folder, sub)); } catch { /* none, or not empty */ } }
     if (removeIfEmpty(folder, log, label)) return true;
     let left;
@@ -995,8 +1040,13 @@ function awarenessRule({ projectRoot, docsPath, log = () => {} })
 // watch merge; (3) the branch versions; (4) the respell of every ref the stack wrote, and a `!!` line for each file it
 // does not own; (5) the emptied architecture/; (6) the awareness rule, which points at the map and removes the 3.3.0
 // marker rule. A marker under <data root>/state/migrations/ holds open a run that threw past step 1, and the next update
-// finishes it from what is on disk (D9); with neither the folder nor the marker nothing runs, so a project's own
-// `ARCHITECTURE.md#x` is never respelled on a later update. Returns { moved, kept, merged, overlays, respelled, removed }.
+// finishes it from what is on disk (D9). With neither the folder nor the marker, a later update runs the LATE pass alone
+// (the 3.5.0 review, M7: a teammate's branch merged after the move brings old-key refs back): for each map file at its new
+// home it re-spells only the engine's two ref spellings in the files the stack owns and names them in the others, keeping
+// every hit a file of that name answers - beside the citer, at the project or docs root, in a docs-root folder (`lateKeep`),
+// or anywhere else in the project (`sameNamedFiles`, named in the stack's own files) - and every sub-folder ref a project
+// folder answers, so a project's own `ARCHITECTURE.md#x` still survives (the 3.5.1 review, I1 / I2). No marker, watch
+// merge or rule write. Returns { moved, kept, merged, overlays, respelled, removed }.
 const ARCH = 'architecture';
 const ARCH_PENDING = ['state', 'migrations', 'architecture-move.pending'];
 function migrateArchitecture({ projectRoot, docsPath, dataPath, rules = [], log = () => {} })
@@ -1008,7 +1058,38 @@ function migrateArchitecture({ projectRoot, docsPath, dataPath, rules = [], log 
     let isDir = false;
     try { isDir = fs.statSync(old).isDirectory(); } catch { isDir = false; }
     const resumed = fs.existsSync(marker);
-    if (!isDir && !resumed) return out;
+    if (!isDir && !resumed)
+    {
+        const keys = completedKeys(base, AWARENESS, ARCH_KEYS);
+        if (!keys.length) return out;
+        const opts = { projectRoot, label: 'awareness', fix: 're-run /alfred-code:update', log };
+        const targets = respellTargets(base, rules);
+        const subs = ['references', 'history'].map((sub) => [sub, [[ARCH, sub]]]);
+        // a hit a file answers stays; one a team file of that name elsewhere answers stays too, named below in the stack's files
+        const answered = lateKeep(projectRoot, base);
+        const elsewhere = sameNamedFiles(projectRoot, base, [...new Set(keys.flatMap(([, homes]) => homes.map(([, old]) => old)))]);
+        const teamFile = (spelled) => elsewhere.find((rel) => rel === `${spelled}.md` || rel.endsWith(`/${spelled}.md`));
+        const keep = (file) => (spelled) => answered(file)(spelled) || Boolean(teamFile(spelled));
+        // a sub-folder ref a project folder of that name answers (`architecture/references/`) stays as written
+        const subKeep = (file) => (spelled) => [path.dirname(file), projectRoot].some((dir) => fs.existsSync(path.join(dir, ...spelled.split('/'))));
+        out.respelled = [...new Set([...respellFiles(targets, keys, AWARENESS, { ...opts, late: true, keep }),
+            ...respellFiles(targets, subs, AWARENESS, { ...opts, sub: true, keep: subKeep })])];
+        const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
+        for (const file of targets)
+        {
+            let text;
+            try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+            text.split('\n').forEach((line, i) =>
+            {
+                const hits = keyHits(line, keys, { late: true, keep: (spelled) => answered(file)(spelled) || !teamFile(spelled) });
+                if (!hits.length) return;
+                const owners = [...new Set(hits.map((h) => teamFile(h.replace(/(?:\.md)?#.*$/, ''))))];
+                log(`  !! docs migration (awareness): ${rel(file)}:${i + 1} names ${hits.join(', ')} - left as written: ${owners.join(', ')} carr${owners.length === 1 ? 'ies that name' : 'y those names'}; re-spell it to the awareness key by hand if it means the map`);
+            });
+        }
+        nameForeignRefs({ projectRoot, base, keys, late: true, keep, log });
+        return out;
+    }
 
     const made = [];
     for (let at = path.dirname(marker); !fs.existsSync(at) && path.dirname(at) !== at; at = path.dirname(at)) made.unshift(at);
@@ -1094,8 +1175,10 @@ function mergeArchWatch({ base, log })
     const awText = read(awFile);
     if (awText === null && !exists(awFile))
     {
+        // a staged rename where git tracks it, its new content left unstaged like every respelled doc the move took
+        fs.mkdirSync(path.dirname(awFile), { recursive: true });
+        moveKeepingHistory(base, archFile, awFile);
         write(moved, formatOf(archText));
-        fs.rmSync(archFile);
         log('  docs migration (awareness): architecture/watch.json -> awareness/watch.json, each kind prefixed \'architecture: \'');
         return 'moved';
     }
@@ -1114,7 +1197,7 @@ function mergeArchWatch({ base, log })
     }
     const f = formatOf(awText);
     write(merged, { ...f, indent: f.indent || formatOf(archText).indent });
-    fs.rmSync(archFile);
+    removeKeepingHistory(archFile);
     log(`  docs migration (awareness): architecture/watch.json merged into awareness/watch.json - ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}, each kind prefixed 'architecture: '`);
     return 'merged';
 }
@@ -1255,6 +1338,23 @@ function moveKeepingHistory(base, src, dst)
         catch { /* git refused (a conflicted index): the plain rename below still moves it */ }
     }
     fs.renameSync(src, dst);
+}
+
+// The same for a file a move takes away: a tracked one goes through `git rm`, so the index records the delete beside the
+// staged renames instead of one left unstaged (the 3.5.0 review, M5); anything else, or a refusal, is a plain remove.
+function removeKeepingHistory(file)
+{
+    const name = path.basename(file);
+    const git = (args) => rt.execCommand('git', ['-C', path.dirname(file), ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    let tracked = false;
+    try { tracked = String(git(['ls-files', '--', name])).trim() !== ''; }
+    catch { tracked = false; }
+    if (tracked)
+    {
+        try { git(['rm', '-q', '--', name]); return; }
+        catch { /* git refused (a locked index, local edits): the plain remove below */ }
+    }
+    fs.rmSync(file);
 }
 
 // One folder under the docs root renamed: absent at the new name, the whole folder moves; present there, each entry

@@ -1560,3 +1560,135 @@ test('migrateArchitecture: domain-qualified references/ and history/ refs follow
     assert.strictEqual(readAt(root, '.alfred/docs/quality/ARCHITECTURE-ASSESSMENT.md'),
         quality.replace('architecture/references/api#routes', 'awareness/references/api#routes').replace('architecture/history/2026-01#x', 'awareness/history/2026-01#x'));
 });
+
+// The 3.5.0 review, M5: in a docs root git tracks, the moved docs are staged renames, so the watch.json the move takes
+// away leaves through git as well - a staged rename or delete, never a delete left unstaged beside them.
+const ARCH_WATCH = '{\n  "watch": [{ "kind": "map", "globs": ["src/**"], "sections": ["ARCHITECTURE#modules"] }]\n}\n';
+const porcelain = (root) => execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean);
+const unstagedDeletes = (root) => porcelain(root).filter((l) => l.startsWith(' D'));
+
+test('migrateArchitecture: a tracked architecture/watch.json moves as a staged rename', () =>
+{
+    const root = project({ files: { [`${ARCH}/ARCHITECTURE.md`]: MAP_TEXT, [`${ARCH}/watch.json`]: ARCH_WATCH }, commit: ['.alfred'] });
+    assert.strictEqual(migrateArch(root).merged, 'moved');
+    assert.ok(porcelain(root).some((l) => /^R. \.alfred\/docs\/architecture\/watch\.json -> \.alfred\/docs\/awareness\/watch\.json$/.test(l)), porcelain(root).join('\n'));
+    assert.deepStrictEqual(unstagedDeletes(root), []);
+    assert.deepStrictEqual(JSON.parse(readAt(root, `${AW}/watch.json`)).watch[0].kind, 'architecture: map');
+});
+
+test('migrateArchitecture: a tracked architecture/watch.json merged into awareness/watch.json is a staged delete', () =>
+{
+    const root = project({ files: { [`${ARCH}/ARCHITECTURE.md`]: MAP_TEXT, [`${ARCH}/watch.json`]: ARCH_WATCH, [`${AW}/watch.json`]: '{\n  "watch": []\n}\n' }, commit: ['.alfred'] });
+    assert.strictEqual(migrateArch(root).merged, 'merged');
+    assert.ok(porcelain(root).includes('D  .alfred/docs/architecture/watch.json'), porcelain(root).join('\n'));
+    assert.deepStrictEqual(unstagedDeletes(root), []);
+});
+
+test('migrateArchitecture: a tracked {} architecture/watch.json is a staged delete', () =>
+{
+    const root = project({ files: { [`${ARCH}/ARCHITECTURE.md`]: MAP_TEXT, [`${ARCH}/watch.json`]: '{}\n', [`${AW}/watch.json`]: '{}\n' }, commit: ['.alfred'] });
+    migrateArch(root);
+    assert.ok(porcelain(root).includes('D  .alfred/docs/architecture/watch.json'), porcelain(root).join('\n'));
+    assert.deepStrictEqual(unstagedDeletes(root), []);
+    assert.ok(!hasAt(root, ARCH));
+});
+
+test('migrateArchitecture: a locked index still finishes the move, by plain rename and remove', () =>
+{
+    const root = project({ files: { [`${ARCH}/ARCHITECTURE.md`]: MAP_TEXT, [`${ARCH}/watch.json`]: ARCH_WATCH }, commit: ['.alfred'] });
+    const lock = path.join(root, '.git', 'index.lock');
+    fs.writeFileSync(lock, '');
+    try { migrateArch(root); }
+    finally { fs.rmSync(lock, { force: true }); }
+    assert.strictEqual(JSON.parse(readAt(root, `${AW}/watch.json`)).watch[0].kind, 'architecture: map');
+    assert.ok(!hasAt(root, ARCH), 'no architecture/ left');
+});
+
+// The 3.5.0 review, M7: a teammate's branch cut before the move and merged after it brings the old keys back with no
+// architecture/ left. A later update re-spells the engine's own ref spellings in the files the stack owns and names them
+// in the others; a hit a file of that name answers - beside the citer, at the root, in a docs-root folder - stays.
+const LATE_DOC = '# Assessment\n\n- a: architecture/ARCHITECTURE#layers\n- b: ARCHITECTURE#layers\n- c: ORIENTATION#start\n- d: architecture/references/patterns#orders\n- e: .alfred/docs/architecture/ARCHITECTURE.md\n';
+const LATE_MAP = { [`${AW}/ARCHITECTURE-AWARENESS.md`]: MAP_TEXT.replace('ORIENTATION#', 'ARCHITECTURE-ORIENTATION-AWARENESS#'),
+    [`${AW}/ARCHITECTURE-ORIENTATION-AWARENESS.md`]: ORIENT_TEXT.replace('ARCHITECTURE#', 'ARCHITECTURE-AWARENESS#'), [`${AW}/watch.json`]: '{}\n',
+    [`${AW}/references/patterns.md`]: '# Patterns\n', '.alfred/docs/quality/watch.json': '{\n  "recomputed": true\n}\n' };
+
+test('migrateArchitecture after the move: merged-in old-key refs are re-spelled', () =>
+{
+    const root = project({ files: { ...LATE_MAP, '.alfred/docs/quality/Q.md': LATE_DOC } });
+    const logs = [];
+    const out = migrateArch(root, logs);
+    assert.strictEqual(readAt(root, '.alfred/docs/quality/Q.md'), '# Assessment\n\n- a: awareness/ARCHITECTURE-AWARENESS#layers\n- b: ARCHITECTURE-AWARENESS#layers\n'
+        + '- c: ARCHITECTURE-ORIENTATION-AWARENESS#start\n- d: awareness/references/patterns#orders\n- e: .alfred/docs/architecture/ARCHITECTURE.md\n');
+    assert.deepStrictEqual(out.respelled, ['.alfred/docs/quality/Q.md']);
+    assert.ok(!hasAt(root, PENDING) && !hasAt(root, '.claude/rules/alfred-awareness.md'), 'no marker and no rule write');
+    const before = treeOf(root);
+    const again = [];
+    migrateArch(root, again);
+    assert.deepStrictEqual(treeOf(root), before, 'a second call writes nothing');
+    assert.deepStrictEqual(again, []);
+});
+
+test('the late pass keeps a project\'s own ARCHITECTURE.md', () =>
+{
+    const doc = '# Q\n\n- ours: ARCHITECTURE#x\n';
+    for (const own of ['.alfred/docs/quality/ARCHITECTURE.md', 'ARCHITECTURE.md', '.alfred/docs/ops/ARCHITECTURE.md'])
+    {
+        const root = project({ files: { ...LATE_MAP, '.alfred/docs/quality/Q.md': doc, [own]: '# Ours\n', '.alfred/docs/ops/watch.json': '{}\n' } });
+        migrateArch(root);
+        assert.strictEqual(readAt(root, '.alfred/docs/quality/Q.md'), doc, own);
+    }
+});
+
+// The 3.5.1 review: a project folder of the old sub-folder's name, and a team file of the map's name anywhere outside the
+// docs root (`docs/ARCHITECTURE.md`), answer the ref - kept as written; in the stack's own files the second is named.
+test('the late pass keeps a ref a project\'s own architecture/references/ folder answers', () =>
+{
+    const doc = '# Q\n\n- ours: architecture/references/patterns.md#orders\n';
+    const root = project({ files: { ...LATE_MAP, '.alfred/docs/quality/Q.md': doc, 'architecture/references/patterns.md': '# Ours\n' } });
+    migrateArch(root);
+    assert.strictEqual(readAt(root, '.alfred/docs/quality/Q.md'), doc);
+});
+
+test('the late pass names, never rewrites, a ref a team file elsewhere answers', () =>
+{
+    const doc = '# Q\n\n- deploy: ARCHITECTURE.md#deploy\n- map: architecture/ARCHITECTURE#layers\n';
+    const root = project({ files: { ...LATE_MAP, '.alfred/docs/quality/Q.md': doc, 'docs/ARCHITECTURE.md': '# Ours\n', 'AGENTS.md': '- see ARCHITECTURE.md#deploy\n' } });
+    const logs = [];
+    migrateArch(root, logs);
+    assert.strictEqual(readAt(root, '.alfred/docs/quality/Q.md'), '# Q\n\n- deploy: ARCHITECTURE.md#deploy\n- map: awareness/ARCHITECTURE-AWARENESS#layers\n');
+    assert.deepStrictEqual(logs.filter((m) => m.includes('ARCHITECTURE.md#deploy') || m.includes('AGENTS.md')),
+        ['  !! docs migration (awareness): .alfred/docs/quality/Q.md:3 names ARCHITECTURE.md#deploy - left as written: docs/ARCHITECTURE.md carries that name; re-spell it to the awareness key by hand if it means the map'],
+        'the foreign AGENTS.md ref a team file answers is not named');
+    const again = [];
+    migrateArch(root, again);
+    assert.strictEqual(readAt(root, '.alfred/docs/quality/Q.md'), '# Q\n\n- deploy: ARCHITECTURE.md#deploy\n- map: awareness/ARCHITECTURE-AWARENESS#layers\n');
+    assert.strictEqual(again.filter((m) => m.includes('Q.md:3 names')).length, 1, 'named on every update while it stands');
+});
+
+test('the late pass names a foreign file\'s old-key ref, never rewrites it', () =>
+{
+    const agents = '# Agents\n- the map: architecture/ARCHITECTURE#layers\n- refs: architecture/references/patterns#orders\n';
+    const root = project({ files: { ...LATE_MAP, 'AGENTS.md': agents } });
+    const logs = [];
+    migrateArch(root, logs);
+    assert.strictEqual(readAt(root, 'AGENTS.md'), agents);
+    assert.deepStrictEqual(logs.filter((m) => m.includes('AGENTS.md')), ['  !! docs migration (awareness): AGENTS.md:2 names architecture/ARCHITECTURE#layers - plan it with update-preflight.js --respell'], 'the references ref is not named (the I1 ruling)');
+    const own = project({ files: { ...LATE_MAP, 'AGENTS.md': agents, 'architecture/ARCHITECTURE.md': '# Ours\n' } });
+    const quiet = [];
+    migrateArch(own, quiet);
+    assert.strictEqual(readAt(own, 'AGENTS.md'), agents);
+    assert.deepStrictEqual(quiet.filter((m) => m.includes('AGENTS.md')), [], 'a ref to the project\'s own architecture/ARCHITECTURE.md');
+});
+
+test('the late pass: no map file, no pass; ORIENTATION alone takes its one key', () =>
+{
+    const none = project({ files: { [`${AW}/RUN-AND-DEBUG-AWARENESS.md`]: '- ARCHITECTURE#layers\n', 'AGENTS.md': '- architecture/ARCHITECTURE#layers\n' } });
+    const before = treeOf(none);
+    const logs = [];
+    migrateArch(none, logs);
+    assert.deepStrictEqual(treeOf(none), before);
+    assert.deepStrictEqual(logs, []);
+    const orient = project({ files: { [`${AW}/ARCHITECTURE-ORIENTATION-AWARENESS.md`]: ORIENT_TEXT, [`${AW}/watch.json`]: '{}\n', [`${AW}/RUN-AND-DEBUG-AWARENESS.md`]: '- ARCHITECTURE#layers\n- ORIENTATION#start\n' } });
+    migrateArch(orient);
+    assert.strictEqual(readAt(orient, `${AW}/RUN-AND-DEBUG-AWARENESS.md`), '- ARCHITECTURE#layers\n- ARCHITECTURE-ORIENTATION-AWARENESS#start\n');
+});
