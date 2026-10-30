@@ -410,6 +410,15 @@ test('RU-17: the map clause is written only with the map, and the always-on meas
     assert.ok(measured.includes(aw.MAP_LINE), 'the map line is counted in its slot');
 });
 
+// HK-16 (the plan's contract for every track): a skill that restates a receipt says to write the lines the guard's
+// denial prints - its `session:` line included - never a receipt shape copied from the skill.
+test('HK-16: the desktop server rows send the receipt to the denial\'s own lines', () =>
+{
+    const t = flat(read('stack/skills/capture-awareness/references/agents.md'));
+    assert.doesNotMatch(t, /DESKTOP-EXEC-ALLOW/, 'no receipt path to write from memory');
+    assert.strictEqual(t.split('until the user allows it - write the lines the denial prints, never a receipt from memory').length - 1, 2, 'both desktop rows');
+});
+
 test('SKC-24: the four rule-forced or preloaded habits leave the / menu and keep their description', () =>
 {
     const html = read('docs/alfred-code.html');
