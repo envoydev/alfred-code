@@ -395,6 +395,11 @@ function isCatastrophicRm(command)
 // pass). A whole-dir glob (`.git/*`, `~/*`) is its directory. What a stuck operation leaves in `.git` - `rebase-merge`,
 // `rebase-apply`, `sequencer`, a `*.lock`, the `*_HEAD` markers - is no history, and removing it is the documented way out.
 const GIT_TRANSIENT = /^(?:rebase-merge|rebase-apply|sequencer|[^/]*\.lock|MERGE_[A-Z_]+|CHERRY_PICK_HEAD|REVERT_HEAD|BISECT_[A-Z_]+|AUTO_MERGE)(?:\/|$)/;
+// What git regenerates or keeps only as a leftover is no history either (final review 2026-10-30, FB - the lead's ruling):
+// `refs/original` (filter-branch's backup refs, removed by hand by its own docs), one linked worktree's admin dir
+// `worktrees/<name>` (what `git worktree prune` removes) and `lfs/tmp`. A submodule's repository `modules/<path>` (its
+// unpushed commits) and `hooks` stay blocked; the denial names the submodule's safe route.
+const GIT_REGENERABLE = /^(?:refs\/original|worktrees\/[^/]+|lfs\/tmp)(?:\/|$)/;
 function underGit(abs)
 {
     const fold = (s) => (process.platform === 'darwin' || process.platform === 'win32' ? s.toLowerCase() : s);
@@ -406,7 +411,7 @@ function underGit(abs)
         try { st = fs.statSync(parts.slice(0, i + 1).join(path.sep)); } catch { return false; }
         const rest = parts.slice(i + 1).join('/');
         if (!rest) return true;
-        return st.isDirectory() && !GIT_TRANSIENT.test(rest);
+        return st.isDirectory() && !GIT_TRANSIENT.test(rest) && !GIT_REGENERABLE.test(rest);
     }
     return false;
 }
@@ -418,7 +423,7 @@ function targetWipes(t, dir)
     p = shellWrites.nativePath(p);
     if (!path.isAbsolute(p) && !dir) return false;
     const abs = path.resolve(dir || path.sep, p || '.');
-    return isAnchorPath(abs) || underGit(abs);
+    return isAnchorPath(abs) || underGit(abs) ? abs : false;
 }
 function parsedWipe(read)
 {
@@ -435,11 +440,30 @@ function parsedWipe(read)
                 if (options && w === '--') { options = false; continue; }
                 if (options && w.startsWith('-') && w !== '-') continue;
                 const at = c.args[i].s;
-                if (targetWipes(read.vars.expand(w, at), read.vars.pwdAt(at))) return true;
+                const hit = targetWipes(read.vars.expand(w, at), read.vars.pwdAt(at));
+                if (hit) return hit;
             }
         }
     }
     return false;
+}
+
+// The safe route out of a submodule, for a denial whose target is its repository under `.git/modules/` (final review
+// 2026-10-30, FB): that repository holds the submodule's own unpushed commits, so it goes last, by the user's hand.
+function submoduleRoute(target)
+{
+    const m = typeof target === 'string' ? /[\\/]\.git[\\/]modules[\\/](.+)$/i.exec(target) : null;
+    if (!m) return '';
+    const dir = m[1].replace(/\\/g, '/');
+    // a nested submodule's repository sits under its parent's (`modules/a/modules/b`): its commands run in the parent
+    const names = dir.split(/\/+modules\/+/);
+    const leaf = names.pop();
+    const parent = names.join('/');
+    const inParent = parent ? `git -C ${parent} ` : 'git ';
+    const work = parent ? `${parent}/${leaf}` : leaf;
+    return `To remove the submodule '${work}': check nothing in it is unpushed (\`git -C ${work} log --branches --not --remotes\` ` +
+        `prints nothing), then \`${inParent}submodule deinit -f ${leaf}\` and \`${inParent}rm ${leaf}\`; .git/modules/${dir} is the ` +
+        'user\'s to delete after that.\n';
 }
 
 // ---- a recursive delete through a runtime or another shell API (audit 2026-10-30 HK-11) ----------------------------
@@ -1127,7 +1151,7 @@ function main()
         'rule enforced here, no prose copy to consult. ' +
         'Delete a specific subdirectory by name, or filter the find (-name, -path) BEFORE its -delete / -exec, ' +
         'in the same -o branch, instead. A .git directory holds the unpushed commits, stashes and reflog: if the user ' +
-        'wants it gone, they run that themselves.\n');
+        'wants it gone, they run that themselves.\n' + submoduleRoute(parsed));
     process.exit(2);
 }
 

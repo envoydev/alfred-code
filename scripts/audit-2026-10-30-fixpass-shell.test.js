@@ -166,3 +166,19 @@ test('FB 4: declare / typeset listings with -x or -p (and bare) are environment 
     assert.strictEqual(fire(dir, c).v, 0, `${c} prints no credential`);
 });
 
+test('FB 5: git\'s own regenerable leftovers may go; a submodule\'s repo, the hooks and the history still block', () => {
+  const dir = project('fb5-');
+  for (const d of ['refs/original/refs/heads', 'worktrees/old', 'lfs/tmp/x', 'lfs/objects', 'modules/sub', 'hooks'])
+    fs.mkdirSync(path.join(dir, '.git', d), { recursive: true });
+  for (const c of ['rm -rf .git/refs/original', 'rm -rf .git/refs/original/refs/heads', 'rm -rf .git/worktrees/old', 'rm -rf .git/lfs/tmp',
+    'rm -rf .git/lfs/tmp/x', `rm -rf "${dir}/.git/worktrees/old"`])
+    assert.strictEqual(fire(dir, c).v, 0, `${c}: git regenerates it`);
+  for (const c of ['rm -rf .git', 'rm -rf .git/objects', 'rm -rf .git/hooks', 'rm -rf .git/worktrees', 'rm -rf .git/lfs', 'rm -rf .git/lfs/objects',
+    'rm -rf .git/refs', 'rm -rf .git/lfs/tmp/..', 'rm -rf .git/refs/original/../heads'])
+    assert.strictEqual(fire(dir, c).v, 2, `${c} still blocks`);
+  const sub = fire(dir, 'rm -rf .git/modules/sub');
+  assert.strictEqual(sub.v, 2, 'a submodule\'s own repo holds its unpushed commits');
+  assert.match(sub.out, /git submodule deinit -f/, 'the denial names the safe route');
+  assert.match(sub.out, /git rm/, 'then git rm');
+});
+

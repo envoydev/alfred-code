@@ -363,7 +363,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     is denied (2.1.7): the CLI then removes the
     declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row.
     Audit 2026-10-30 HK-08..HK-11: a recursive rm of `.git`'s contents (objects, refs, a `.git/*` glob) blocks while git's
-    transient state (`rebase-merge`, `*.lock`, `MERGE_HEAD`) stays removable; each target resolves against the directory a
+    transient state (`rebase-merge`, `*.lock`, `MERGE_HEAD`) stays removable, and so do git's regenerable leftovers
+    `refs/original`, one `worktrees/<name>` and `lfs/tmp` (final review FB, the lead's ruling; `modules/<path>` and `hooks`
+    still block, the submodule denial naming `git submodule deinit -f` then `git rm`); each target resolves against the directory a
     leading `cd` moved the shell to and through `shellVars` (`$H` after `H=$HOME`, `$(echo ~)`, `%USERPROFILE%`); and a
     runtime's recursive delete (`shutil.rmtree`, `fs.rmSync` recursive, `File::Path` rmtree, `rimraf`,
     `[IO.Directory]::Delete` with `true`) of the home, project or cwd blocks - of a build folder it passes. A 'discard it' answer
