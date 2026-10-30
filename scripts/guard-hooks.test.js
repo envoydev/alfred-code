@@ -5392,3 +5392,66 @@ test('guard-cross-project-write: a root with its own autoMemoryDirectory under a
     assert.equal(run(proj, write(path.join(BASE, 'sid1', 'scratchpad', 'x.txt'))), 2, 'no session id, no scratchpad');
   });
 }
+
+// ---- audit 2026-10-30 (T1) ------------------------------------------------------------------------------------------
+// A project under a home of its own, so the anchors (home, project, cwd) and a `.git` on disk are real.
+function hkProject(name) {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(TMP, `${name}-home-`)));
+  const dir = path.join(home, 'code', 'proj');
+  fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q', '-b', 'main'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n'); git('add', '-A'); git('commit', '-qm', 'seed');
+  fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'version: 3.5.1\n');
+  return { home, dir, git };
+}
+
+test('audit 2026-10-30 HK-08..HK-11: .git insides, a followed cd, a variable target and a runtime delete are the rm case', () => {
+  const { home, dir } = hkProject('hk-rm');
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home };
+  const rmIn = (command, { cwd = dir, tool = 'Bash' } = {}) => runIn('guard-catastrophic-rm.js', { tool_name: tool, tool_input: { command }, cwd }, { cwd, env });
+  const blocks = (c, why, opts) => { const r = rmIn(c, opts); assert.equal(r.status, 2, `must block (${why}): ${c}\n${r.stderr}`); };
+  const allows = (c, why, opts) => { const r = rmIn(c, opts); assert.equal(r.status, 0, `must allow (${why}): ${c}\n${r.stderr}`); };
+  const base = path.basename(dir);
+  // HK-08: anything at or under a repository's .git - resolved, not literal
+  for (const c of ['rm -rf .git/*', 'rm -rf .git/objects .git/refs', 'rm -rf ./.git/refs/heads', `rm -rf ${dir}/.git/objects`, 'rm -rf .git/logs']) blocks(c, 'HK-08');
+  blocks('cd src && rm -rf ../.git/logs', 'HK-08 through a cd');
+  for (const c of ['rm -rf .git/rebase-merge', 'rm -rf .git/rebase-apply', 'rm -rf .git/index.lock', 'rm -rf .github/workflows', 'rm -rf nothere/.git/objects'])
+    allows(c, 'HK-08 twin: a stuck-operation state dir, a lock, a lookalike, no such repository');
+  // HK-09: a leading cd is followed
+  for (const c of [`cd .. && rm -rf ${base}`, `cd .. && rm -rf ./${base}/`, `pushd .. && rm -rf ${base}`, `cd ${path.dirname(dir)}; rm -rf ${base}`, 'cd src && rm -rf ..'])
+    blocks(c, 'HK-09');
+  for (const c of [`cd .. && rm -rf ${base}/build`, 'cd /tmp && rm -rf hk09-x', `(cd ..); rm -rf build`, 'cd src && rm -rf ./gen'])
+    allows(c, 'HK-09 twin');
+  // HK-10: a target bound through a variable the command assigns, or an echo of a literal
+  for (const c of ['H=$HOME; rm -rf "$H"', 'rm -rf $(echo ~)', 'D=~; rm -rf $D', 'P=$PWD; rm -rf "$P"', 'rm -rf "$(echo $HOME)"', 'X=$HOME; Y=$X; rm -rf $Y'])
+    blocks(c, 'HK-10');
+  for (const c of ['B=./build; rm -rf "$B"', 'H=$HOME/scratch-hk10; rm -rf "$H"', 'for d in a b; do rm -rf $d; done', 'H=/x rm -rf "$H"', "H='$HOME'; rm -rf \"$H\""])
+    allows(c, 'HK-10 twin');
+  // HK-11: a recursive delete through a runtime or another shell API
+  for (const c of [
+    `python3 -c "import shutil, os; shutil.rmtree(os.path.expanduser('~'))"`,
+    `node -e "require('fs').rmSync(require('os').homedir(), { recursive: true })"`,
+    `perl -MFile::Path -e 'rmtree($ENV{HOME})'`,
+    `perl -MFile::Path=remove_tree -e 'remove_tree($ENV{"HOME"})'`,
+    `ruby -e 'require "fileutils"; FileUtils.rm_rf(Dir.home)'`,
+    `python3 -c "import shutil; shutil.rmtree('.git')"`,
+    `python3 - <<'EOF'\nimport shutil, os\nh = os.path.expanduser('~')\nshutil.rmtree(h)\nEOF`,
+    `node -e "const fs = require('fs'); fs.rmSync(process.cwd(), { recursive: true, force: true })"`,
+    `pwsh -Command "[IO.Directory]::Delete($HOME, $true)"`,
+    'cmd /c rd /s /q %USERPROFILE%',
+  ]) blocks(c, 'HK-11');
+  blocks('[IO.Directory]::Delete($HOME, $true)', 'HK-11 on the PowerShell tool', { tool: 'PowerShell' });
+  blocks('[System.IO.Directory]::Delete($env:USERPROFILE, $true)', 'HK-11 on the PowerShell tool', { tool: 'PowerShell' });
+  for (const c of [
+    `python3 -c "import shutil; shutil.rmtree('build')"`,
+    `node -e "require('fs').rmSync('dist', { recursive: true, force: true })"`,
+    `node -e "require('fs').rmSync(require('os').homedir())"`,
+    `node -e "require('fs').rmSync(require('os').homedir() + '/scratch', { recursive: true })"`,
+    `python3 -c "print('shutil.rmtree(os.path.expanduser(\\'~\\'))')"`,
+    `echo "shutil.rmtree(os.path.expanduser('~'))"`,
+    'cmd /c rd /s /q build',
+  ]) allows(c, 'HK-11 twin');
+  allows('[IO.Directory]::Delete("C:\\\\scratch\\\\build", $true)', 'HK-11 twin on the PowerShell tool', { tool: 'PowerShell' });
+});

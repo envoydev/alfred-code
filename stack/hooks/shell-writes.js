@@ -1196,18 +1196,21 @@ function codeStrings(body) {
   }
   return (at) => mark[at] === 1;
 }
-function interpreterTargets(raw, P, heredocs) {
+// The scripts a command hands a runtime (the ONE reader of them - the write targets below, the rm guard's runtime delete
+// and the commit guard's runtime commit, audit 2026-10-30 HK-11 / HK-17): a heredoc fed to a pipeline holding a runtime,
+// and the script argument after a runtime's `-e` / `-c` / `-Command`. Each: { body, index, runtime, shellExpands, argv }.
+function runtimeScriptsOf(raw, P, heredocs) {
   const scripts = [];
   const runtimes = [];
   for (const cmd of P.cmds) for (const c of cmd.cands) if (INTERP.test(c.name)) runtimes.push({ cmd, c, at: cmd.words[c.at].s });
-  if (!runtimes.length) return [];
-  const runElems = new Set(runtimes.map((r) => r.cmd.elem));
+  if (!runtimes.length) return scripts;
+  const runElems = new Map(runtimes.map((r) => [r.cmd.elem, r.c.name]));
   // a heredoc fed to a pipeline one of whose stages is a runtime: the heredoc's own command is in that element
   const heredocCmd = heredocOwners(P, heredocs);
   for (const h of heredocs) {
     const owner = heredocCmd.get(h.index);
     // an unquoted tag's body is expanded by the shell; `<<'EOF'` / `<<\EOF` hands it over verbatim
-    if (owner && runElems.has(owner.elem)) scripts.push({ body: bodyOf(raw, h), index: h.index, shellExpands: !/['"\\]/.test(raw.slice(h.index, h.openEnd)) });
+    if (owner && runElems.has(owner.elem)) scripts.push({ body: bodyOf(raw, h), index: h.index, runtime: runElems.get(owner.elem), shellExpands: !/['"\\]/.test(raw.slice(h.index, h.openEnd)) });
   }
   // `node -e "…"` / `python3 -c '…'` - the whole script argument after its flag
   for (const r of runtimes) {
@@ -1215,9 +1218,21 @@ function interpreterTargets(raw, P, heredocs) {
     const words = wordsFrom(raw, r.cmd.words[r.c.at].e, expands);
     for (let i = 0; i < words.length - 1; i++) {
       // the words after the script are its argv: node's process.argv[1] and python's sys.argv[1] are the first of them
-      if (SCRIPT_FLAG.test(words[i]) && !words[i + 1].startsWith('-')) scripts.push({ body: words[i + 1], index: r.at, shellExpands: expands[i + 1], argv: words.slice(i + 2) });
+      if (SCRIPT_FLAG.test(words[i]) && !words[i + 1].startsWith('-')) scripts.push({ body: words[i + 1], index: r.at, runtime: r.c.name, shellExpands: expands[i + 1], argv: words.slice(i + 2) });
     }
   }
+  return scripts;
+}
+// runtimeScripts(raw): the same, read from a command's text (heredocs, comments and continuations as scanShell reads them).
+function runtimeScripts(raw) {
+  const text = String(raw || '');
+  const heredocs = heredocsOf(text);
+  const P = parseShell(joinContinuations(blankComments(blankHeredocs(text, heredocs))));
+  return P.tooDeep ? [] : runtimeScriptsOf(text, P, heredocs).map((s) => ({ ...s, P }));
+}
+function interpreterTargets(raw, P, heredocs) {
+  const scripts = runtimeScriptsOf(raw, P, heredocs);
+  if (!scripts.length) return [];
   // A `$NAME` the SHELL expands in the script (a double-quoted `-e "..."`, an unquoted heredoc) takes the newest literal
   // the same command assigned it before the runtime (audit 2026-10-20 C25, 4d71a1b3: `D=<docs>/x; node -e "...
   // writeFileSync('$D/SUMMARY.md', ...)"` was an unknown write, held by the docs gate as a source edit). Anything else
@@ -2418,7 +2433,10 @@ function gitText(raw, cwd) {
     try { dir = fs.realpathSync.native(dir); } catch { /* git reports the missing directory itself */ }
     return dir;
   }
-  return { command, parsed, calls, regions, unreadAt, callDir, literalAt };
+  // the one expander, each carried script starting from its own directory (audit 2026-10-30 a0)
+  let vars = null;
+  try { vars = parsed && !parsed.tooDeep ? shellVars(parsed, { cwd, regions }) : null; } catch { vars = null; }
+  return { command, parsed, calls, regions, unreadAt, callDir, literalAt, vars };
 }
 
 // Read a command's writes. `opts` (all optional): `cwd` resolves a script file a shell runs (without one only an
@@ -2509,4 +2527,4 @@ function enclosingEnd(P, at, closesOf) {
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
-  shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE };
+  shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings };
