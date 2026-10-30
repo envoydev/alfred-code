@@ -7609,6 +7609,27 @@
         }
       ]
     },
+    "config-protection-auto-run-loosening": {
+      "_note": "The auto-run half of the allowance ask (audit 2026-10-30 SKS-01, ruled skill-side): the ask keeps 'Allow this edit (Recommended)' for a tightening the guard still holds (the ESLint judge holds a new rule) or a key moving into a shared base, and auto-run - which answers with the Recommended option - never allows a held loosening. The guard's own deny text and labels are unchanged.",
+      "owner": {
+        "file": "stack/skills/typescript/SKILL.md",
+        "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+        },
+        {
+          "file": "stack/skills/nx/SKILL.md",
+          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
+        }
+      ]
+    },
     "loop-substantial-steps": {
       "_note": "The two quality loops' substantial-tier path - decompose, gate the plan, approve, (stamp,) build and verify - verbatim twins (stack audit 2026-10-20 SKF2-04). The stamp step between them is held by the approval-stamp-* entries. The coverage loop carries the same plan-gate step in its own substantial path (skill audit 2026-10-20b FFL-16).",
       "owner": {

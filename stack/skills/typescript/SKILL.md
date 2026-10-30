@@ -41,6 +41,8 @@ The config-protection guard holds this edit: <file> - <the change>, <N> new erro
 - 'Keep the config as it is' - nothing changes in the file
 ```
 
+Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
+
 ## Don't lie to the compiler
 
 The whole value proposition collapses the moment you suppress a check. The rules:

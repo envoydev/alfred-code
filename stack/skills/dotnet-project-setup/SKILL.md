@@ -133,7 +133,7 @@ The config-protection guard holds this edit: <file> - <the change>, <N> new warn
 - 'Keep the config as it is' - nothing changes in the file
 ```
 
-In an MSBuild file the guard holds only what is not a pure tightening - most often a key moving from each csproj into the root `Directory.Build.props`, the case this ask is for. A loosening that would only turn a red build green is no case for it: fix the code.
+In an MSBuild file the guard holds only what is not a pure tightening - most often a key moving from each csproj into the root `Directory.Build.props`, the case this ask is for. A loosening that would only turn a red build green is no case for it: fix the code. Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
 
 ## global.json - pin the SDK
 

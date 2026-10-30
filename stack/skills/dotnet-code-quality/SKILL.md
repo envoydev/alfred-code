@@ -83,6 +83,8 @@ The config-protection guard holds this edit: <file> - <the change>, <N> new warn
 - 'Keep the config as it is' - nothing changes in the file
 ```
 
+Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
+
 ## The gate is `dotnet build`
 
 Analyzer enforcement is not a separate CI step - `dotnet build` runs the analyzers and, with warnings-as-errors, fails on a violation. So the same gate developers run locally is the CI gate. Add the formatter check and the build to CI; both must be reproducible from a clean checkout with no machine-global state.
