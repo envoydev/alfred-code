@@ -796,23 +796,19 @@ if (rel.startsWith('..') || path.isAbsolute(rel)) process.exit(0); // outside th
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 const receipt = layout ? layout.findState(ROOT, 'approvals', 'CONFIG-EDIT-ALLOW') : path.resolve(ROOT, docsRootEnv(), 'flow', 'CONFIG-EDIT-ALLOW');
-const allowed = (() => {
-  try {
-    const st = fs.statSync(receipt);
-    let sessionStartMs = 0;
-    try {
-      const tr = fs.statSync(String(payload.transcript_path || ''));
-      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
-    const lines = fs.readFileSync(receipt, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-    return lines.includes('*') || lines.some((l) => l === rel || l === path.basename(rel));
-  } catch { return false; }
-})();
+// A workflow receipt, not a security one (the plan's HK-03 ruling): no answer binding, but this session's own (HK-16,
+// hook-prelude.js readReceiptFile) - a `session:` line naming the call's session, under 8h, not older than the transcript.
+// No prelude, no reader: shut.
+let receipts = null;
+try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
+const held = receipts && receipts.readReceiptFile ? receipts.readReceiptFile(receipt, payload) : null;
+const allowed = Boolean(held && held.live) && (held.lines.includes('*') || held.lines.some((l) => l === rel || l === path.basename(rel)));
 if (allowed) process.exit(0);
 
 global.BLOCK_DETAIL = { file: rel, why: hit.why };
 const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', 'CONFIG-EDIT-ALLOW') : receipt).split(path.sep).join('/');
+const writeLines = (lines) => (receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, lines) : lines.map((l) => `  ${l}\n`).join(''));
+const shut = held && !held.live ? `The receipt at ${receiptRel} is not honoured: ${held.why}. Rewrite it only on a fresh answer.\n` : '';
 process.stderr.write(
   (hit.shadow
     ? `Blocked: a new ${rel} counts as an edit of ${hit.shadow} - ${hit.why}, so it changes that check.\nWeakening a check to get a green result is not a fix -\n`
@@ -823,7 +819,9 @@ process.stderr.write(
   `with ONE AskUserQuestion carrying, in this order -\n` +
   `  'Fix the code instead (Recommended)' - leave the check as it is\n` +
   `  'Allow this config change' - the user wants the check itself changed\n` +
-  `On 'Allow', write the receipt ${receiptRel} with the line \`${rel}\` and retry the SAME call. It is\n` +
-  `honoured for this session only, under 8h. Creating a config passes untouched unless it shadows one that exists.\n`,
+  `On 'Allow', write the receipt ${receiptRel} with exactly these lines and retry the SAME call:\n` +
+  writeLines([rel]) +
+  `It is honoured for this session only, under 8h. Creating a config passes untouched unless it shadows one that exists.\n` +
+  shut,
 );
 process.exit(2);

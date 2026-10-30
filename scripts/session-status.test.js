@@ -232,16 +232,18 @@ test('auto-run reads compact without the fresh engine', () =>
 // pointer and the session compacts - though autoRunFor, which needs the session's own stamp, reads false there.
 test('nobody at the terminal reads compact, autoRun false', () =>
 {
-    const handWritten = (root) =>
+    const handWritten = (root, tp) =>
     {
         const file = require(path.join(HOOKS, 'layout.js')).statePath(root, 'approvals', 'APPROVAL', {});
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, 'AUTO - the user is away\n');
+        // the user TYPED the words the stamp quotes (audit 2026-10-30 HK-03, hook-prelude.js autoStampVerified)
+        fs.appendFileSync(tp, JSON.stringify({ type: 'user', message: { role: 'user', content: 'the user is away' } }) + '\n');
     };
     for (const [label, env, setUp] of [['UNATTENDED', { ALFRED_CODE_UNATTENDED: '1' }], ['print mode', { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }], ['a hand-written AUTO stamp', {}, handWritten]])
     {
-        const { root, P } = sonnetSession();
-        if (setUp) setUp(root);
+        const { root, p, P } = sonnetSession();
+        if (setUp) setUp(root, p.transcript_path);
         const build = (more) => inChild({ CLAUDE_PROJECT_DIR: root, ...env, ...more }, `return S.buildStatus(${P}, { entry: null });`);
         const s = build({});
         assert.deepStrictEqual([s.autoRun, s.fullContext], [false, 'compact'], label);

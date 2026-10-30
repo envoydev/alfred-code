@@ -272,6 +272,26 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   trivial ledger (`<data root>/state/sessions/trivial-*`).
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
   honoured through a `<data root>/state/approvals/*-ALLOW` receipt (this session's own, under 8h).
+  THE RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings): every one is read by ONE reader,
+  `hook-prelude.js readReceiptFile` - under 8h, written after the session began, and, where the call names its session,
+  holding a `session: <id>` line naming it - and each denial prints the exact lines to write, the session line first
+  (`receiptLinesText`). The four SECURITY receipts (`SECRET-READ-ALLOW`, `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`,
+  `DESKTOP-EXEC-ALLOW`) count only through `securityReceipt` / `receiptAnswered`: this session's transcript must hold an
+  AskUserQuestion answered after that guard's last denial (an `is_error` tool result naming the receipt) with the
+  guard's own allow label ('Show or use the value this session ...', 'Discard it', 'Allow ... for this session', 'Allow
+  the browser code runner / the desktop Shell / this executable this session'), and given while auto-run was off,
+  judged at the answer's position by the typed `modeFlags` rows - deleting the stamp or typing the off flag afterwards
+  opens nothing, and no file the model can write decides it. A seat's denial is anchored at its time in the seat
+  transcript (the payload's `agent_transcript_path`, else `<session>/subagents/agent-<agent_id>.jsonl`), the answer read
+  in the main one after it. A timed-out ask is no answer. With no transcript on disk (a CLI run) the old time rule
+  stands; with no prelude the four and `CONFIG-EDIT-ALLOW` read shut. `CONFIG-EDIT-ALLOW` is a workflow gate: session
+  and time only. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
+  when a whole typed row turning auto-run on (`modeFlags` family + on, or the tagged `/mode-auto-run` row) of this
+  session sits within 5MB either side of that offset, read by position (64KB first; 5ms on a 200MB transcript) - so a
+  Skill-route start more than 5MB of work after its typed prompt runs attended; a stamp missing the line, or over
+  another session's row, is dead. A HAND-WRITTEN one (no `session:`) is live only when its quoted words (8 characters or more,
+  case-insensitive) appear in a turn the user typed, or the user answered 'Start AUTO here' with auto-run off - never a
+  Skill call alone (125ms on 200MB; memoised per stamp mtime).
   - `guard-protected-force-push.js` - blocks force-push to protected branches. It reads the command through
     `shell-writes.js`'s `gitText` (below), so a push counts past a wrapper (`timeout 60`, `env A=1`, `nohup`), in an
     `if` / `for` body, `bash -c '...'`, a heredoc or here-string into a shell, `eval`, a script file and a git alias
@@ -312,7 +332,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     first two (audit 2026-10-20 H6: each spelling passed). A `claude plugin marketplace remove|rm` with no `--scope` - the binary by its path or inside `bash -c` too -
     is denied (2.1.7): the CLI then removes the
     declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
-    is honoured via `<data root>/state/approvals/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`).
+    is honoured via `<data root>/state/approvals/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`), a security receipt (THE RECEIPTS above).
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). THRESHOLD is 400 lines, and the range cap and every shell span
     rule bind only above it (200 before the deep hooks review 2026-10-16, the user's ruling: 485 of 590 sized blocks in
@@ -520,7 +540,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     an unbound `$G` or any other binding stays one. `--presence <file> [KEY ...]` is the sanctioned
     one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key; with no KEY it lists at
     most 200 string leaves plus a count, a credential-shaped key name masked); the guard ships only
-    in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<data root>/state/approvals/SECRET-READ-ALLOW` receipt - where the call names its session, only with a `session: <id>` line naming it, the stop contract's rotation read included (audit 2026-10-08: time alone opened it to a second session on the project). The
+    in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<data root>/state/approvals/SECRET-READ-ALLOW` receipt - where the call names its session, only with a `session: <id>` line naming it, the stop contract's rotation read included (audit 2026-10-08: time alone opened it to a second session on the project), and only after the user's own answer to its denial (THE RECEIPTS above). The
     name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
     so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key
     is `MKT`; as `KEY` it was blocked twice in pilot 2). A rewrite is no block but is counted: one `mode: rewrite` row
@@ -1108,7 +1128,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     letter case (the native realpath, and on win32 a case-folded compare as well - M9); a Git Bash mount path (`/c/...`,
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the
-    `<data root>/state/approvals/CROSS-WRITE-ALLOW` receipt; `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
+    `<data root>/state/approvals/CROSS-WRITE-ALLOW` receipt, a security one (THE RECEIPTS above); `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
     tree permanently. A removal (`rm`, PowerShell's remove) of a symbolic link is judged where the link lives - its folder
     resolved, its name kept - unless a trailing slash follows it (audit 2026-10-10 C31, session 0d070bcc: `rm -f` of the
     session's own link to a sibling repo was blocked as a write into it). A PowerShell command's backslashes read as `/`
@@ -1132,7 +1152,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`Condition="false"`); an Edit is judged on the whole file it leaves; a shell write that replaces or removes a keyed
     file holding a strictness key blocks; PowerShell's backslash is a separator; and paths compare as real paths.
     'Allow' is honoured through `<data root>/state/approvals/CONFIG-EDIT-ALLOW` (a
-    file, its basename or `*`); `guard-config-protection` in `ALFRED_CODE_HOOKS_OFF` turns it off (the old `ALFRED_CODE_CONFIG_PROTECT=0` folds in). Audit 2026-10-20 (the hooks track's minor
+    file, its basename or `*`; this session's, under 8h); `guard-config-protection` in `ALFRED_CODE_HOOKS_OFF` turns it off (the old `ALFRED_CODE_CONFIG_PROTECT=0` folds in). Audit 2026-10-20 (the hooks track's minor
     list): `RunAnalyzers` / `RunAnalyzersDuringBuild` / `EnableNETAnalyzers` are keyed (true is the strict value); a
     tsconfig `extends` (the base the strictness comes from) and `exclude` (the files no check reads) are judged like a
     key, an array compared without its whitespace; and an in-place edit naming no key (`sed -i '3s/true/false/'`) is
@@ -1161,7 +1181,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. 'Allow' is honoured through
     `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
     a Windows path - or `*`; a bare file name opens only a call naming it bare, never that name in every directory - audit
-    2026-10-20, the hooks track's minor list); the denial suggests the full path - and names a live bare line that
+    2026-10-20, the hooks track's minor list; a security receipt, THE RECEIPTS above); the denial suggests the full path - and names a live bare line that
     missed it, with the full path to write in its place - and a Shell block row keeps
     the command's verb only, never the command (audit 2026-10-08). PROTECTIVE
     (final review IM2, the user's ruling): it holds under `minimal`, a Cursor payload and a repo never set up, where
