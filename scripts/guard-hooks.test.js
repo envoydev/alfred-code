@@ -5714,3 +5714,55 @@ test('audit 2026-10-30 HK-17: a runtime spawning git commit, update-ref on a bra
     `ruby -e 'puts "git commit"; system("git status")'`,
   ]) assert.equal(gateIn(dir, c), 0, `must allow: ${c}`);
 });
+
+test('audit 2026-10-30 HK-19: shuf, git show <rev>:<path>, an added file\'s diff and a copy then cat are sized like cat', () => {
+  const { dir, git } = hkProject('hk-read');
+  const lines = (n, tag) => Array.from({ length: n }, (_, i) => `export const ${tag}${i} = ${i};`).join('\n') + '\n';
+  fs.writeFileSync(path.join(dir, 'src', 'big.ts'), lines(700, 'b'));
+  fs.writeFileSync(path.join(dir, 'src', 'old.ts'), lines(700, 'o'));
+  fs.writeFileSync(path.join(dir, 'src', 'small.ts'), lines(20, 's'));
+  git('add', '-A'); git('commit', '-qm', 'sources');
+  git('rm', '-q', 'src/old.ts'); git('commit', '-qm', 'drop old');
+  fs.writeFileSync(path.join(dir, 'src', 'new.ts'), lines(700, 'n'));
+  git('add', 'src/new.ts');
+  fs.appendFileSync(path.join(dir, 'src', 'big.ts'), 'export const extra = 1;\n');
+  git('add', 'src/big.ts');
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  const readIn = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: `hk19-${Math.random().toString(36).slice(2)}` }, { cwd: dir, env });
+  for (const c of [
+    'shuf src/big.ts',
+    'shuf < src/big.ts',
+    'git show HEAD:src/big.ts',
+    'git show :src/big.ts',
+    'git show HEAD~1:src/old.ts',
+    'git --no-pager show HEAD:./src/big.ts',
+    'git diff --cached -- src/new.ts',
+    'git diff --staged src/new.ts',
+    'cp src/big.ts ../b.txt && cat ../b.txt',
+  ]) { const r = readIn(c); assert.equal(r.status, 2, `must block: ${c}\n${r.stderr}`); }
+  for (const c of [
+    'shuf -n 5 src/big.ts',
+    'shuf -e a b c',
+    'git show HEAD:src/small.ts',
+    'git show HEAD:src/big.ts | head -50',
+    'git show HEAD --stat',
+    'git diff --cached --stat -- src/new.ts',
+    'git diff --cached -- src/big.ts',
+    'cp src/big.ts ../b.txt',
+    'cp src/small.ts ../s.txt && cat ../s.txt',
+  ]) { const r = readIn(c); assert.equal(r.status, 0, `must allow: ${c}\n${r.stderr}`); }
+});
+
+test('audit 2026-10-30 RU-03: the Angular rows of the convention notice are the twins of the two rules\' paths', () => {
+  const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command }, session_id: `ru03-${Math.random().toString(36).slice(2)}` }, { cwd: RULES_PROJECT });
+  const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
+  const edit = (p) => ctxOf(call(`sed -i '' 's/a/b/' ${p}`));
+  for (const p of ['src/app/x/x.component.html', 'src/app/home/home.page.html', 'angular.json', 'projects/ui/src/lib/a/b.html'])
+    assert.match(edit(p), /angular-conventions\.md/, `${p} names the Angular rule`);
+  for (const p of ['src/global.scss', 'src/theme/variables.scss', 'src/app/home/home.page.scss', 'src/lib/a/b.css', 'src/styles.css'])
+    assert.match(edit(p), /angular-styling-conventions\.md/, `${p} names the Angular styling rule`);
+  for (const p of ['tools/page.html', 'docs/angular.json.md'])
+    assert.doesNotMatch(edit(p), /angular-conventions\.md/, `${p} is not under the Angular rule's paths`);
+  for (const p of ['tools/theme/variables.scss', 'site/global.scss'])
+    assert.doesNotMatch(edit(p), /angular-styling-conventions\.md/, `${p} is not under the styling rule's paths`);
+});

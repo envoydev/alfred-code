@@ -154,8 +154,12 @@ const expandWith = (assigns, s) => String(s).replace(/\$\{([A-Za-z_]\w*)\}|\$([A
 // The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
 let nativePath = (p) => String(p);
 try { ({ nativePath } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
+// A git object a command prints whole (`git show HEAD:src/a.ts`, `:src/a.ts`), read once and sized as the file it is
+// (audit 2026-10-30 HK-19): its spelling is the key the size and line checks below look up before the disk.
+const VIRTUAL = new Map();
 // The byte size of a possibly-relative path, anchored like the line count; 0 when it is no regular file.
 const sizeOf = (raw) => {
+  if (VIRTUAL.has(raw)) return VIRTUAL.get(raw).bytes;
   const p = nativePath(raw);
   for (const abs of pathMod.isAbsolute(p) ? [p] : anchorDirs.map((d) => pathMod.join(d, p))) {
     try { const st = fs.statSync(abs); return st.isFile() ? st.size : 0; } catch { /* next anchor */ }
@@ -163,6 +167,7 @@ const sizeOf = (raw) => {
   return 0;
 };
 const resolveLineCount = (raw) => {
+  if (VIRTUAL.has(raw)) return { lc: VIRTUAL.get(raw).lc, resolved: true };
   const p = nativePath(raw);
   if (pathMod.isAbsolute(p)) return { lc: lineCountOf(p), resolved: true };
   for (const d of anchorDirs) {
@@ -1835,8 +1840,11 @@ const CONVENTION_RULES = [
   // the current one - the Angular style guide now recommends suffix-less names, and the rule matches
   // `**/src/app/**/*.ts` for exactly that reason, so a write to `src/app/user-profile.ts` was being
   // announced as typescript-conventions.md alone.
-  [/\.(component|service|directive|pipe|guard|resolver|module|routes)\.ts\b|(?:^|[\s"'=\/])src\/(?:app|lib)\/[^\s"';|&]*\.tsx?\b/i, 'angular-conventions.md'],
-  [/\.(component|global)\.(scss|css)\b|\bstyles\.(scss|css)\b/i, 'angular-styling-conventions.md'],
+  // Audit 2026-10-30 RU-03: both rows widened to every glob of the two rules - a template (`*.component.html`, an Ionic
+  // `home.page.html` under src/app), `angular.json`, `src/global.scss`, `src/theme/**/*.scss` and the src/app / src/lib
+  // stylesheets were never named on the shell route.
+  [/\.(component|service|directive|pipe|guard|resolver|module|routes)\.ts\b|\.component\.html\b|(?:^|[\s"'=\/])angular\.json$|(?:^|[\s"'=\/])src\/(?:app|lib)\/[^\s"';|&]*\.(?:tsx?|html)\b/i, 'angular-conventions.md'],
+  [/\.(component|global)\.(scss|css)\b|\bstyles\.(scss|css)\b|(?:^|[\s"'=\/])src\/(?:global\.scss|theme\/[^\s"';|&]*\.scss|(?:app|lib)\/[^\s"';|&]*\.(?:scss|css))\b/i, 'angular-styling-conventions.md'],
   [/\.tsx?\b/i, 'typescript-conventions.md'],
   [/\.(jsx?|mjs|cjs)\b/i, 'javascript-conventions.md'],
   [/\.sql\b/i, 'sql-conventions.md'],
@@ -2127,6 +2135,11 @@ function wholeFiles(seg, command, hseg = seg) {
     const files = (list) => out.push(...list.filter((x) => x && x !== '-'));
     if (verb === 'cat' || verb === 'tee') { files(stdin); continue; }
     if (verb === 'done') { if (readLoopEchoes(command)) files(stdin); continue; }
+    if (verb === 'git') { files(gitPrinted(args.map(unq))); continue; }
+    // the one print-verb table (shell-writes.js PRINT_VERBS, audit 2026-10-30 a0 / HK-19: `shuf big.ts` passed); the
+    // table below stays for a shell-writes.js older than it
+    const printed = verb !== 'cat' && shellWrites && typeof shellWrites.printedFiles === 'function' ? shellWrites.printedFiles(verb, args.map(unq)) : null;
+    if (printed) { if (!printed.bounded) files([...printed.files, ...stdin]); continue; }
     if (Object.prototype.hasOwnProperty.call(SIMPLE, verb)) { files([...parse(args, SIMPLE[verb], /^--(?:tabs|width|lines|key|output|separator|suffix)$/).ops, ...stdin]); continue; }
     if (verb === 'bat' || verb === 'batcat') { const o = parse(args, 'lrHmp', /^--(?:line-range|language|highlight-line|map-syntax|paging|style|theme)$/); if (!o.has('-r', '--line-range')) files(o.ops); continue; }
     if (verb === 'cut') {
@@ -2219,6 +2232,85 @@ function wholeFiles(seg, command, hseg = seg) {
     }
   }
   return out;
+}
+// ---- a git read that prints a file whole (audit 2026-10-30 HK-19) ---------------------------------------------------
+// `git show HEAD:src/big.ts` (or `:src/big.ts`, the index) prints the blob, and a diff of a file the diff ADDS prints all
+// of it: each passed while `cat` of the same file was blocked. The blob is read where git runs (cwd, `-C`) with
+// `cat-file`, which runs no filter, and sized like the file; a diff naming paths lists the ones it adds
+// (`--name-only --diff-filter=A`, no external diff or textconv) and each is sized from the work tree. A diff naming no
+// path is the review route and stays unjudged, and so does a summary form (`--stat`, `--name-only`, `-s`).
+const GIT_GLOBAL_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env']);
+const DIFF_SUMMARY = /^--(?:stat|numstat|shortstat|dirstat[\w-]*|compact-summary|summary|name-only|name-status|raw|check|quiet|no-patch)(?:=|$)|^-s$/;
+function gitOut(argv, dir) {
+  const opts = { cwd: dir, timeout: 3000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] };
+  let spawn;
+  try { spawn = require('./hook-prelude.js').gitSafe(argv, opts); } catch { spawn = ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }]; }
+  try { return require('child_process').execFileSync(...spawn); } catch (e) { return e && e.code === 'ENOBUFS' && e.stdout ? e.stdout : null; }
+}
+function blobToken(spec, dir) {
+  if (!VIRTUAL.has(spec)) {
+    const out = gitOut(['cat-file', 'blob', spec], dir);
+    if (!out) return null;
+    const text = out.toString('utf8');
+    VIRTUAL.set(spec, { lc: text ? text.replace(/\n$/, '').split('\n').length : 0, bytes: out.length });
+  }
+  return spec;
+}
+function gitPrinted(words) {
+  let dir = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  let i = 0;
+  for (; i < words.length; i++) {
+    const w = words[i];
+    if (w === '-C') { dir = pathMod.resolve(dir, nativePath(words[++i] || '')); continue; }
+    if (GIT_GLOBAL_VALUE.has(w)) { i++; continue; }
+    if (!w.startsWith('-')) break;
+  }
+  const sub = words[i];
+  const rest = words.slice(i + 1);
+  if (rest.some(isVar)) return [];
+  // `<rev>:<path>`, `:<path>`, `:<stage>:<path>`, `<rev>:./<path>` - never `:/<text>`, a search of commit messages
+  if (sub === 'show') return rest.filter((w) => !w.startsWith('-') && /^[^:\s]*:[^\s/]\S*$/.test(w)).map((w) => blobToken(w, dir)).filter(Boolean);
+  if (sub !== 'diff') return [];
+  let cached = false; let noIndex = false; let dashdash = false;
+  const revs = []; const paths = [];
+  for (const w of rest) {
+    if (dashdash) { paths.push(w); continue; }
+    if (w === '--') { dashdash = true; continue; }
+    if (DIFF_SUMMARY.test(w)) return [];
+    if (w === '--cached' || w === '--staged') { cached = true; continue; }
+    if (w === '--no-index') { noIndex = true; continue; }
+    if (w.startsWith('-')) continue;
+    (fs.existsSync(pathMod.resolve(dir, nativePath(w))) ? paths : revs).push(w);
+  }
+  if (noIndex) { const ops = [...revs, ...paths]; return ops.length === 2 && ops.includes('/dev/null') ? ops.filter((o) => o !== '/dev/null') : []; }
+  if (!paths.length || revs.some((r) => !/^[\w./~^@{}+:-]+$/.test(r))) return [];
+  const listed = gitOut(['diff', '--no-ext-diff', '--no-textconv', '-z', '--name-only', '--diff-filter=A', ...(cached ? ['--cached'] : []), ...revs, '--', ...paths], dir);
+  const top = listed && listed.length ? gitOut(['rev-parse', '--show-toplevel'], dir) : null;
+  if (!top) return [];
+  return listed.toString('utf8').split('\0').filter(Boolean).map((p) => pathMod.join(top.toString('utf8').trim(), p));
+}
+// `cp src/big.ts /tmp/b.txt && cat /tmp/b.txt`: the copy is not on disk when the hook runs (or holds something else),
+// so a later print of a copy's destination is sized as its source (audit 2026-10-30, found beside HK-19). cp / mv / ln /
+// install and `cat <src> > <dest>`; a destination folder takes the source's name.
+function copiesOf(command, filled) {
+  const map = new Map();
+  const base = anchorDirs[0] || process.cwd();
+  const put = (dest, src, at) => { for (const k of [dest, pathMod.resolve(base, nativePath(dest))]) map.set(k, { src, at }); };
+  const unq = (w) => w.replace(/^["']|["']$/g, '');
+  for (const m of command.matchAll(/(?:^|[;&|\n(])\s*(cp|mv|ln|install)[ \t]+([^;&|\n]*)/g)) {
+    if (filled[m.index + m[0].indexOf(m[1])] === '\x01') continue;
+    const ops = (m[2].match(/"[^"]*"|'[^']*'|\S+/g) || []).map(unq).filter((w) => !w.startsWith('-') && !/^\d*[<>]/.test(w));
+    if (ops.length < 2) continue;
+    const dest = ops[ops.length - 1];
+    const srcs = ops.slice(0, -1);
+    let isDir = dest.endsWith('/') || srcs.length > 1;
+    if (!isDir) { try { isDir = fs.statSync(pathMod.resolve(base, nativePath(dest))).isDirectory(); } catch { isDir = false; } }
+    for (const s of srcs) put(isDir ? pathMod.join(dest, pathMod.basename(s)) : dest, s, m.index);
+  }
+  for (const m of command.matchAll(/(?:^|[;&|\n(])\s*cat[ \t]+("[^"]+"|'[^']+'|[^\s;&|<>]+)[ \t]*>[ \t]*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g)) {
+    if (filled[m.index + m[0].indexOf('cat')] !== '\x01') put(unq(m[2]), unq(m[1]), m.index);
+  }
+  return map;
 }
 // ---- how many of a file's lines a pipeline segment prints (audit 2026-10-08) --------------------------------------------
 // A pipe into a filter verb exempted the whole segment, so a filter that bounds nothing let the dump through: `cat big.ts
@@ -2372,7 +2464,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // Get-Content / gc / type are the PowerShell route's cat - wired on that tool, and unjudged until now.
   // ... and on the RAW command too: a script fed to a runtime through a heredoc reads inside the blanked body.
   // ... and the verbs that print a whole file under another name (wholeFiles), perl's handle reads and php's (2.1.6).
-  const DUMP_VERBS = /\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|\breadTextFile(?:Sync)?\b|File\.read|\bget-content\b|\bgc\b|\btype\b|\b(?:nl|tac|rev|fmt|expand|unexpand|fold|pr|od|xxd|hexdump|base64|strings|paste|column|sort|uniq|bat|batcat|cut|iconv|zcat|gzcat|zmore|zless|dd|cp|curl|vim?|nvim|gvim|ex|view|look|tee|done|split|diff|comm|sqlite3|[ef]?grep|rg|perl|ruby|php|open|readline|read_file|slurp|file_get_contents|readfile)\b/i;
+  const DUMP_VERBS = /\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|\breadTextFile(?:Sync)?\b|File\.read|\bget-content\b|\bgc\b|\btype\b|\b(?:nl|tac|rev|fmt|expand|unexpand|fold|pr|od|xxd|hexdump|base64|strings|paste|column|sort|uniq|bat|batcat|cut|iconv|zcat|gzcat|zmore|zless|dd|cp|curl|vim?|nvim|gvim|ex|view|look|tee|done|split|diff|comm|sqlite3|[ef]?grep|rg|perl|ruby|php|open|readline|read_file|slurp|file_get_contents|readfile)\b|\b(?:shuf|vis|join|bzcat|xzcat|zstdcat|lz4cat|gzip|gunzip|bzip2|bunzip2|xz|unxz|lzma|unlzma|zstd|unzstd|lz4|brotli)\b|\bgit\b(?=[^\n;&|]*\b(?:show|diff)\b)/i;
   if (!DUMP_VERBS.test(command) && !DUMP_VERBS.test(String(input.command || ''))) process.exit(0);
   // EVERY test below is PER SEGMENT, and the extension is tested against the PATH the verb names -
   // never against the whole command. Testing `GATED_EXT_ANY` against the whole compound command
@@ -2542,6 +2634,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // The segments, stages, verbs, pipes and redirects below are read on `filled` (quoteFilled): a quoted `;`, `|`, `>` or
   // verb is text. A segment piped into a shell runs its strings, so it is read as written.
   const filled = quoteFilled(command);
+  const copies = copiesOf(command, filled);
   const cuts = [0];
   for (const s of groupsAsCuts(filled).matchAll(/&&|\|\||;|\n/g)) cuts.push(s.index, s.index + s[0].length); // a subshell or group's parens are cuts
   cuts.push(command.length);
@@ -2623,7 +2716,9 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     // cap - judged after the file's other checks, so a span they block never counts as read (audit 2026-10-10 C11).
     const capSpans = [];
     for (const { f: rawF, printed, range } of entries) {
-    const f = expandWith(assigns, rawF);
+    const named = expandWith(assigns, rawF);
+    const copy = copies.get(named) || copies.get(pathMod.resolve(anchorDirs[0] || process.cwd(), nativePath(named)));
+    const f = copy && copy.at < at ? expandWith(assigns, copy.src) : named;
     const shown = (lc) => pipeSpan.printed(printed(lc));
     if (range && !isVar(f) && !/[*?[]/.test(f) && GATED_EXT.test(f) && shown(1e9) === printed(1e9)) capSpans.push({ f, range });
     if (shown(1e9) <= THRESHOLD) continue; // a span that never prints past the threshold is the targeted read
@@ -2683,7 +2778,11 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       process.stderr.write(
         `Blocked: ${n === lc ? 'whole-file dump' : `a ${n}-line span`} of ${f} (${lc} lines) via ${payload.tool_name}.\n` +
         `Per alfred-navigation.md, a bare cat/sed of a large source file is the same\n` +
-        `whole-file read the Read gate blocks - routed through the shell.\n` + navHint(f),
+        `whole-file read the Read gate blocks - routed through the shell.\n` +
+        (VIRTUAL.has(f)
+          ? `It is a git object, so bound the print: git show '${f}' | grep -n '<pattern>', then\n` +
+            `git show '${f}' | sed -n '<start>,<end>p' on the lines it names (git diff <rev> -- <path> for what changed).\n`
+          : navHint(f)),
       );
       process.exit(2);
     }
