@@ -1792,6 +1792,56 @@ function writtenScripts(P, raw, heredocs, anchor, run) {
   return out;
 }
 
+// THE SENSITIVE RUNNER (audit 2026-10-30 HK-01, the BLOCKER): `node <path>/guard-secret-value.js --with-sensitive --
+// "<command line>"` - the route alfred-security.md mandates and every session's `Sensitive data:` line prints - runs its line
+// through a shell (`spawn(line, { shell: true })`: sh, cmd.exe on Windows) with the store's values in its environment, and
+// no guard read that line: `rm -rf ~`, a force push to main, `cat .env`, a write outside the project and an ungated commit
+// all ran through it. It is a carried script here, like `sh -c`, so every guard reading this module judges the line: one
+// word after `--` (or after the flag) is the line itself, several words are one command line, each quoted for the shell -
+// the runner's own rule. The runner masks only the store's exact values in what the line prints; it never made the line
+// safe. Returns { text, at, end, mapped } for the call `c`, or null.
+const RUNNER_FILE = 'guard-secret-value.js';
+const NODE_VALUE_OPTS = new Set(['-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--input-type', '--title', '--conditions', '-C']);
+const runnerQuote = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`);
+function runnerLine(c, P) {
+  if (c.name !== 'node' && c.name !== 'nodejs') return null;
+  const argv = c.argv;
+  let k = 0;
+  for (; k < argv.length && argv[k].startsWith('-'); k++) {
+    if (/^-(?:e|p|-eval|-print)$/.test(argv[k])) return null; // an inline script is the runtime reader's, never this runner
+    if (NODE_VALUE_OPTS.has(argv[k])) k++;
+  }
+  if (k >= argv.length || argv[k + 1] !== '--with-sensitive') return null;
+  const file = String(argv[k]).replace(/\\/g, '/');
+  if ((FOLDS_CASE ? file.toLowerCase() : file).split('/').pop() !== RUNNER_FILE) return null;
+  let from = k + 2;
+  if (argv[from] === '--') from++;
+  const words = argv.slice(from);
+  if (!words.length) return null;
+  // an unquoted word is passed as the outer shell expands it (`~`, `$HOME`), which the line's own shell expands alike;
+  // a quoted one reaches the runner as text and is quoted again for its shell
+  if (words.length > 1) return { text: c.args.slice(from).map((t, i) => (/^[^'"\\]*$/.test(t.raw) ? t.raw : runnerQuote(words[i]))).join(' '), mapped: false };
+  const t = c.args[from];
+  const single = t && (t.raw[0] === "'" || t.raw[0] === '"') && P.spans.some((s) => s[0] === t.s && s[1] === t.e);
+  return single ? { text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true } : { text: words[0], mapped: false };
+}
+// sensitiveRuns(raw, opts) - the command lines a command hands the sensitive runner, through every carried script (3 deep):
+// [{ text, cwd }]. The shell dispatcher judges each one again with the guards that keep a reader of their own.
+function sensitiveRuns(raw, opts = {}) {
+  const run = opts.run || newRun(opts);
+  const out = [];
+  const walk = (text, cwd, depth) => {
+    // a line read from no file names the runner in its own text; one reading script files is walked whole
+    if (depth > 3 || run.budget.over() || (!opts.files && !/with-sensitive/.test(text))) return;
+    for (const sc of carriedScripts(text, { cwd: cwd || undefined, files: opts.files, run })) {
+      if (sc.runner) out.push({ text: sc.text, cwd: sc.cwd || cwd || null });
+      walk(sc.text, sc.cwd || cwd, depth + 1);
+    }
+  };
+  walk(String(raw || ''), opts.cwd || null, 0);
+  return out;
+}
+
 function carriedOf(P, raw, heredocs, opts, run) {
   const cwd = opts.cwd || null;
   const files = opts.files !== undefined ? !!opts.files : !!cwd;
@@ -1905,6 +1955,12 @@ function carriedOf(P, raw, heredocs, opts, run) {
         const got = name === 'make' || name === 'gmake' ? makeRun(run, c.argv, base) : packageRun(run, name, c.argv, base);
         if (!Array.isArray(got)) { unread(at, got.why, got.path); continue; }
         for (const g of got) push({ text: g.text, cwd: g.cwd, at, end: el.to, mapped: false });
+        continue;
+      }
+      // the sensitive runner: its command line runs through a shell (audit 2026-10-30 HK-01)
+      const sr = runnerLine(c, P);
+      if (sr) {
+        push({ ...sr, at: sr.mapped ? sr.at : at, end: sr.mapped ? sr.end : el.to, cwd: anchor(at), runner: true });
         continue;
       }
       // a file run by its path: a word holding a `/`, no expansion
@@ -2453,4 +2509,4 @@ function enclosingEnd(P, at, closesOf) {
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
-  shellVars, PRINT_VERBS, printedFiles };
+  shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE };

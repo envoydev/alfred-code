@@ -440,3 +440,22 @@ test('audit 2026-10-30 a0: printedFiles - the ONE whole-file print verb table (H
   assert.strictEqual(pf('grep x f'), null, 'grep is no whole-file print');
   assert.ok(Object.isFrozen(shell.PRINT_VERBS), 'the table is frozen: one home, read-only for every guard');
 });
+
+test('audit 2026-10-30 HK-01: the --with-sensitive runner is a carrier - its line is shell text like sh -c', () => {
+  const g = '/x/stack/hooks/guard-secret-value.js';
+  const texts = (c) => shell.carriedScripts(c).filter((s) => s.runner).map((s) => s.text);
+  assert.deepStrictEqual(texts(`node "${g}" --with-sensitive -- "rm -rf ~"`), ['rm -rf ~'], 'one word after -- is the line');
+  assert.deepStrictEqual(texts(`node ${g} --with-sensitive -- 'cat .env'`), ['cat .env']);
+  assert.deepStrictEqual(texts(`node ${g} --with-sensitive -- rm -rf "a b"`), ["rm -rf 'a b'"], 'several words are one argv line, quoted');
+  assert.deepStrictEqual(texts(`node ${g} --with-sensitive "git push -f"`), ['git push -f'], 'no -- before the line');
+  assert.deepStrictEqual(texts(`/usr/local/bin/node --no-warnings ${g} --with-sensitive -- x`), ['x'], 'node by path, its own options first');
+  assert.deepStrictEqual(texts(`env A=1 nodejs ${g} --with-sensitive -- y`), ['y'], 'past a wrapper');
+  assert.deepStrictEqual(texts(`node ${g} --presence .env KEY`), [], 'the presence view carries nothing');
+  assert.deepStrictEqual(texts(`node ${g} --with-sensitive --`), [], 'an empty runner carries nothing');
+  assert.deepStrictEqual(texts(`node other.js --with-sensitive -- "rm -rf ~"`), [], 'another script is not the runner');
+  assert.deepStrictEqual(texts(`echo node ${g} --with-sensitive -- "rm -rf ~"`), [], 'a printed runner runs nothing');
+  // the shared readers see the line
+  assert.match(shell.gitText(`node ${g} --with-sensitive -- "git push --force origin main"`, TMP).command, /git push --force origin main/);
+  assert.deepStrictEqual(shell.scanShell(`node ${g} --with-sensitive -- "echo x > /elsewhere/f"`, {}).targets.map((t) => t.raw), ['/elsewhere/f']);
+  assert.deepStrictEqual(shell.sensitiveRuns(`bash -c 'node ${g} --with-sensitive -- "cat .env"'`).map((s) => s.text), ['cat .env'], 'nested in a carried script');
+});
