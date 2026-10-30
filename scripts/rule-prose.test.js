@@ -139,7 +139,7 @@ test('M72: the architecture part writes no rule of its own - the awareness scrip
     const shapes = read('stack/skills/capture-awareness/references/architecture-doc-shapes.md');
     assert.ok(!shapes.includes('## .claude/rules/alfred-architecture.md'), 'no marker rule template is left');
     assert.ok(!squash(read('stack/skills/capture-awareness/references/architecture.md')).includes('with `<docs-path>` baked to the LITERAL resolved root'), 'no step bakes a path');
-    assert.match(read('stack/skills/capture-awareness/scripts/awareness-state.js'), /`Architecture map: \\`<docs-path>\/\$\{AWARENESS_DIR\}\/\$\{MAP_DOC\}\\` - read it by section before a structural change\.`/);
+    assert.match(read('stack/skills/capture-awareness/scripts/awareness-state.js'), /`Architecture map: \\`<docs-path>\/\$\{AWARENESS_DIR\}\/\$\{MAP_DOC\}\\` - only pointed at, never imported: read it by section before a structural change\.`/);
 });
 
 // ------------------------------------------------------------------ M73

@@ -80,7 +80,7 @@ carry the placeholder it exists to resolve), and the Plugins section dropped whe
 Captured: <the script's CAPTURED line>
 
 ## Usage policy (fixed - stamped verbatim, every run)
-<!-- policy-rev: 508df73f -->
+<!-- policy-rev: 8785d031 -->
 - Load a skill for the work at hand - a file you are about to edit, a command you are about to
   run, a diff you are about to show - never to answer a question the code or the conversation
   already answers.
@@ -96,9 +96,10 @@ Captured: <the script's CAPTURED line>
   (`guard-fresh-session-start.js` denies the call).
 - A skill the user names that is not installed here (`Unknown skill`): say so and offer
   `/alfred-code:configure` to add it - never load another project's or a plugin cache's copy.
-- A deliberate orchestration skill (a capture, a quality loop, a build flow) starts in a fresh
-  session when this one already carries another run's history; `guard-fresh-session-start.js` blocks
-  the call past the window trigger, answered with one AskUserQuestion (fresh session recommended).
+- A deliberate orchestration skill (a capture, a quality loop, a build flow) may be offered a fresh
+  session when this one already carries another run's history; recommend it only where a hook's
+  fresh-session text in this session says it pays back - `guard-fresh-session-start.js` then holds
+  the call past the window trigger, answered with one AskUserQuestion.
 
 ## Orchestration skills (slash-only - invisible until invoked)
 <the script's `/name - clause` rows, one per row>

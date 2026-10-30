@@ -376,6 +376,40 @@ test('SKC-20/21/23: no callee names its callers, no step cited by number, no bar
     assert.doesNotMatch(skill('dev-log-convert'), /^ {2}```\n {2}git status --short/m);
 });
 
+test('RU-01: the imported usage policy recommends a fresh session only where a hook says it pays back', () =>
+{
+    const t = flat(read('stack/skills/capture-awareness/references/agents.md'));
+    assert.doesNotMatch(t, /\(fresh session recommended\)/);
+    assert.match(t, /may be offered a fresh session when this one already carries another run's history; recommend it only where a hook's fresh-session text in this session says it pays back/);
+    assert.match(flat(skill('task-solve')), /Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back/, 'the flow it now agrees with');
+});
+
+// RU-17: the copy target's fixed sentence named the map even when no map exists; the clause now rides the script's map
+// line, which the rule carries only when the map does, and lint 33 measures the line in place of its slot.
+test('RU-17: the map clause is written only with the map, and the always-on measure counts the line, not its slot', () =>
+{
+    const os = require('node:os');
+    const aw = require('../stack/skills/capture-awareness/scripts/awareness-state.js');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ru17-'));
+    try
+    {
+        const dir = path.join(tmp, '.alfred', 'docs', 'awareness');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'AGENTS-AWARENESS.md'), '# This project\'s capabilities\n');
+        const none = aw.composeAwarenessRule({ projectRoot: tmp, docs: '.alfred/docs' });
+        assert.ok(none.text && !none.mapLine, 'a rule with imports and no map');
+        assert.doesNotMatch(none.text, /architecture map/i, 'no map, no word of one');
+        fs.writeFileSync(path.join(dir, 'ARCHITECTURE-AWARENESS.md'), '# Map\n');
+        const withMap = aw.composeAwarenessRule({ projectRoot: tmp, docs: '.alfred/docs' });
+        assert.match(withMap.text, /^Architecture map: `\.alfred\/docs\/awareness\/ARCHITECTURE-AWARENESS\.md` - only pointed at, never imported: read it by section before a structural change\.$/m);
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+    const { awarenessRuleText } = require('./always-on-surface.js');
+    const measured = awarenessRuleText(skill('capture-awareness'));
+    assert.doesNotMatch(measured, /<the script's/, 'no slot placeholder is counted');
+    assert.ok(measured.includes(aw.MAP_LINE), 'the map line is counted in its slot');
+});
+
 test('SKC-24: the four rule-forced or preloaded habits leave the / menu and keep their description', () =>
 {
     const html = read('docs/alfred-code.html');
