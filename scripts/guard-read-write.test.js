@@ -351,7 +351,10 @@ test('the Git Bash mount-path translation has ONE home, shell-writes.js, which e
   for (const f of ['guard-config-protection', 'guard-cross-project-write', 'guard-secret-value', 'guard-read-whole-file', 'guard-ungated-commit']) {
     const src = fs.readFileSync(path.join(HOOKS, `${f}.js`), 'utf8');
     assert.doesNotMatch(src, /const MOUNT_RE =/, `${f} keeps no inline copy`);
-    assert.match(src, /nativePath \} = require\([^)]*shell-writes\.js'\)\)/, `${f} requires it`);
+    // Destructured straight from the require, or from the module it binds first (guard-secret-value since audit
+    // 2026-10-30 T2 takes shellVars and printedFiles from the same require).
+    assert.match(src, /nativePath \} = (?:require\([^)]*shell-writes\.js'\)\)|shellWrites\))/, `${f} requires it`);
+    if (/nativePath \} = shellWrites\)/.test(src)) assert.match(src, /shellWrites = require\([^)]*shell-writes\.js'\)\)/, `${f} binds shellWrites to shell-writes.js`);
   }
   const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'shared-rules.json'), 'utf8'));
   assert.ok(!JSON.stringify(rules).includes('"gitbash-mount-path"'), 'the pin that held the copies together is retired');
