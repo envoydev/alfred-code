@@ -282,7 +282,8 @@ test('audit 2026-10-08: the execution verdict stays out of plan files, small tas
     assert.match(strategy, /on the direct route the seats are read-only ones/, 'direct-route seats are read-only');
     assert.match(strategy, /Edit seats are the house `<stack>-implementer`, inside a flow/, 'edit seats live inside a flow');
     assert.match(strategy, /```ask This task fits <the flow>/, 'the route offer is an ask template');
-    assert.match(strategy, /Up to 3 at once by default, more only on the user's ask/, 'the fan-out cap matches the flows');
+    assert.match(strategy, /Up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once \(the start line's 'Agents at once', else 5\)/, 'the fan-out cap matches the flows');
+    assert.doesNotMatch(strategy, /more only on the user's ask/, 'no wording on lifting the cap');
     // C1: the 10+ file mechanical change is a small task with no plan, not a second rule beside the trigger
     const rule = read('stack/rules/alfred-interaction.md');
     assert.doesNotMatch(rule, /^- A mechanical change across 10\+ files: confirm the scope list, no plan\./m, 'the separate no-plan line is folded in');

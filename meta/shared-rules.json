@@ -1779,7 +1779,19 @@
         },
         {
           "file": "stack/skills/capture-usage-report/SKILL.md",
-          "marker": "at most six at a time, and never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS`"
+          "marker": "one AUTHOR subagent per bundle, never past `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/SKILL.md",
+          "marker": "the `ALFRED_CODE_MAXIMUM_RUN_AGENTS` fan-out cap (default 5)"
+        },
+        {
+          "file": "stack/skills/habits-execution-strategy/SKILL.md",
+          "marker": "Up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (the start line's 'Agents at once', else 5), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md",
+          "marker": "(parallel, one per source, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once"
         }
       ]
     },
