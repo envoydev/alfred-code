@@ -1648,6 +1648,19 @@
         }
       ]
     },
+    "review-passes-vendored": {
+      "_note": "review-code's eight review passes and refute pass, vendored VERBATIM (whole file) into task-verify-code, which runs passes 1, 2, 3, 5 and 6 from its own copy - a pointer into another skill's folder breaks wherever that folder is absent (a Cursor twin, a trimmed install) and named a Claude-only path (2026-10-30 audit SKF-01). An edit to the owner is a copy of the whole file over the site; scripts/own-reviewers.test.js fails the pair when they differ.",
+      "owner": {
+        "file": "stack/skills/review-code/references/passes.md",
+        "marker": "The method `review-code` runs, and `task-verify-code` uses for its code checks."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-verify-code/references/passes.md",
+          "marker": "The method `review-code` runs, and `task-verify-code` uses for its code checks."
+        }
+      ]
+    },
     "domain-trio-protocol-vendored": {
       "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, so each loop and the greenfield build reads its own copy. An edit to the owner file is a copy of the whole file over each site. Its deep-dive pointers into the owner's references/ are a sanctioned cross-folder read, like every sibling pointer check 34 resolves (2.1.5 audit M98): the owner is always installed (a locked always skill), and every such pointer names its inline fallback ('where installed', or what to do absent it), so a copy still runs where the owner's folder is missing (a Cursor twin, a trimmed install) - vendoring those references too would put five more files in four more folders.",
       "owner": {
