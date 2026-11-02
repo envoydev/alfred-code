@@ -1,24 +1,25 @@
 # __PROJECT_NAME__
 
 <!-- Fill-in block - delete once done. The installer seeds this file as .claude/AGENTS.md when the project has
-     no AGENTS.md or CLAUDE.md (Claude Code 2.1.277 or later loads it; keeps the
-     repo root tidy), or as the root AGENTS.md on init's place answer - named CLAUDE.md instead on init's name
-     answer - copy it there by hand only when that seed step was skipped. To keep a .claude/ one committed, the
-     project's .gitignore must ignore the .claude contents but track this file:
+     no AGENTS.md or CLAUDE.md (Claude Code 2.1.277 or later loads it - 2.1.281 on Bedrock or with telemetry
+     off; keeps the repo root tidy), or as the root AGENTS.md on init's place answer - named CLAUDE.md instead on
+     init's name answer - copy it there by hand only when that seed step was skipped. To keep a .claude/ one
+     committed, the project's .gitignore must ignore the .claude contents but track this file:
      `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include (`!.claude/CLAUDE.md` for that name).
 The habits-adjust-agents-md skill fills it (create) or brings an existing one up to date (improve), and
 ends on the deterministic check; by hand, the steps are:
-1. Write the sections from the authoring outline in the comment below - replace the
-   `__PROJECT_NAME__` H1 with the project's own name - then delete that comment.
+1. Write the sections from the authoring outline in the comment below - the H1 carries the folder name the
+   seed stamped (`__PROJECT_NAME__` in a hand copy): make it the project's own name - then delete that comment.
 2. List no rules here: every file in .claude/rules/ loads itself (the `alfred-*` set each session, a
    path-scoped rule on its own `paths:`), so a list only repeats them in every session.
 If the repo already has a root AGENTS.md (for other agent tooling), it IS the project's file: the
 installer seeds nothing beside it, and it is improved in place, never replaced by this template. Claude
 Code reads an AGENTS.md on its own only while no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md sits in
-the working directory or above it - one of those makes it ignore this file (a CLAUDE.md that starts with
-`@AGENTS.md` on a live, unbackticked line keeps both loading, or set Project instructions to
-claude-md-and-agents-md in /config). Never `@import` anything under .claude/rules/: those files
-auto-load, so an import pays for them twice.
+the working directory or above it - one of those makes it ignore this file (an `@` import of this file on a
+live, unbackticked line of that CLAUDE.md keeps both loading - it resolves from the importing file, so
+`@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside this file - or set Project
+instructions to claude-md-and-agents-md in /config). Never `@import` anything under .claude/rules/: those
+files auto-load, so an import pays for them twice.
 In a repo with separate parts (a `web/` beside the service, packages in a monorepo) this is the ROOT
 file - shared conventions only; each part gets its own thin <part>/AGENTS.md (<part>/CLAUDE.md when this file is a CLAUDE.md) carrying just what is
 specific to that subtree (Claude loads it when it reads a file there, or at launch from that
@@ -26,13 +27,21 @@ folder, where no CLAUDE.md sits - never a sibling's), so anything two parts shar
 settings.json keeps another team's ancestor file out.
 This file auto-injects every session and into every custom subagent (the built-in Explore / Plan
 seats load none of it) - keep it lean (target: under 200 live lines) and route work by an
-observable trigger (an artifact, a command, a checkpoint). The test for every line you add: would removing it make Claude make a mistake? If not, cut it - what Claude can read from the code ('the UserService handles users'), standard language conventions, generic advice ('write clean code', 'test new features'), file-by-file tours, rules the formatter already owns (.editorconfig, ESLint, Prettier, dotnet format), a one-off fix that will not recur, and a paragraph where one line says it never earn their tokens; Bash commands it cannot guess, conventions that differ from defaults, gotchas and repository etiquette do.
+observable trigger (an artifact, a command, a checkpoint). The test for every line you add: would removing it
+make Claude make a mistake? If not, cut it - what Claude can read from the code ('the UserService handles
+users'), standard language conventions, generic advice ('write clean code', 'test new features'), file-by-file
+tours, rules the formatter already owns (.editorconfig, ESLint, Prettier, dotnet format), a one-off fix that
+will not recur, and a paragraph where one line says it never earn their tokens. Bash commands it cannot guess,
+conventions that differ from defaults, gotchas and the places the code misleads (a legacy pattern new code must
+not copy, a folder that looks dead but is live) do. Branch, commit and PR conventions live in the git
+preferences doc (`/capture-preferences`), not here.
 Five shapes to keep out, whatever they cost: the aspiration document (vague wishes), the wishlist
 (conventions the author wants instead of the ones the code enforces - an inherited codebase's own
-conventions win; a working rule, code, architecture or git convention the USER wants is a preference,
-which /capture-preferences records and whose docs outrank this file, so it never lands here), the
-freeze (never touched while the repo moved on), the TODO ledger (scratch notes), and the single
-source (everything here, nothing routed to a scoped rule or a skill).
+conventions win, except a legacy pattern the team ruled out for new code, which is item 7's forbid-list; a
+working rule, code, architecture or git convention the USER wants is a preference, which /capture-preferences
+records and whose docs outrank this file, so it never lands here), the freeze (never touched while the repo
+moved on), the TODO ledger (scratch notes), and the single source (everything here, nothing routed to a
+scoped rule or a skill).
 Prune it when things go wrong, and test a change by watching whether behaviour shifts. The cross-project working conventions
 are NOT here: they load from the always-on baseline rules in .claude/rules/ (installer-managed,
 refreshed on update) - never restate or list them in this file. (HTML comment: stripped from injection,
@@ -42,10 +51,14 @@ so an unfilled template pays nothing for this block.) -->
 numbered order below: a fixed order means every filled file keeps the same
 fact in the same place, and the two highest-traffic facts (stack, commands) sit at the top. Keep
 each section lean, then delete this comment block. Comments are stripped from injection, so this
-outline costs nothing even while it sits here. Where the architecture capture ran, the docs hook
-already pushes its ARCHITECTURE-ORIENTATION-AWARENESS.md (the project shape, the module map, the contracts a newcomer
-breaks first) into every session: items 1 and 6 then keep only what it lacks - the domain-terms
-map, a dependency rule's why - plus a pointer to its sections, never a second copy.
+outline costs nothing even while it sits here. Where the awareness capture ran, its docs already reach every
+session: the docs hook pushes ARCHITECTURE-ORIENTATION-AWARENESS.md (the project shape, the module map, the
+contracts a newcomer breaks first), and .claude/rules/alfred-awareness.md imports PROJECT-INFO-AWARENESS.md
+(what the project is, its stack and modules) and RUN-AND-DEBUG-AWARENESS.md (the services, env var names, SDK
+versions, build and test commands). Items 1-4 and 6 then keep only what those lack - the domain-terms map,
+exact versions, the scoped test command, a commit's extra gates, a dependency rule's why - plus a pointer to
+the doc's sections, never a second copy. With the docs kept out of git (ALFRED_CODE_DOCS_VERSIONING=local) a
+teammate never gets them, so those items are written here in full.
 
 1. What this project is - one paragraph: domain, shape (binary / service / library), persistence,
    surfaces - plus a domain-terms map (business term -> code entity) wherever the two vocabularies
@@ -57,8 +70,8 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 3. Setup - what a machine needs before build and test work: the SDK / runtime versions (a
    global.json or .nvmrc pin), Docker for the integration tests, the services a test run starts, and
    the env vars a test reads (names only - where the values live is item 10). One line each.
-4. Commands - copy-pasteable build / test / format / run / migrate / publish, with any environment
-   quirks - and beside the full-suite test command the SCOPED one (a single project, a test filter, a
+4. Commands - copy-pasteable build / test / lint / typecheck / format / run / migrate / publish, with any
+   environment quirks - and beside the full-suite test command the SCOPED one (a single project, a test filter, a
    spec path) that iteration uses, so the whole suite runs once at the gate. Name any extra diff gate a
    commit must pass here too: the pre-commit checkpoint runs the formatter and the gates this file names.
 5. Key files - the entry points and the main configs (Program.cs, main.ts, appsettings.json, a
@@ -66,8 +79,8 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 6. Architecture - the layers / modules and the dependency rules between them, with the why. Not the
    folder tour: a directory map is the derivable class /doctor cuts, and Claude reads the tree itself.
 7. Key patterns - the non-obvious in-house patterns a newcomer would trip on, and the forbid-list
-   beside them: what this project does NOT use (a pattern, a library, a language feature), which no
-   amount of reading the code makes obvious.
+   beside them: what this project does NOT use, or no longer uses in new code (a pattern, a library, a language
+   feature - a legacy one still all over the code included), which no amount of reading the code makes obvious.
 8. Operational notes - runtime constraints and gotchas that shape code decisions.
 9. Cross-cutting checklists - for each change that must move several files in lockstep, the full touch-point list.
 10. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
