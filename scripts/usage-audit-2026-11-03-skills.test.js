@@ -47,3 +47,14 @@ test('U29: an effect on a surface or device class the plan did not name is at le
     const rubric = flat(t.slice(t.indexOf('Then the body: a ranked punch-list'), t.indexOf('## Example')));
     assert.match(rubric, /An effect on a surface or device class the plan did not name - another page or screen, a browser, a phone, a platform the changed code also serves - is at least MATERIAL, under auto-run too/);
 });
+
+// U30: a design ask put an unmeasured side effect to the user as a premise; the build disproved it, and the task written
+// for it was built, then reverted.
+test('U30: a design ask states only measured facts; an unmeasured behaviour becomes a plan check, never a premise', () => {
+    const t = flat(read('stack/skills/task-design/SKILL.md'));
+    assert.match(t, /A design ask - or a seat's `user_decisions:` row - states only measured facts, each with how it was measured \(a run, a test, a located `file:symbol`\)/);
+    assert.match(t, /an unmeasured behaviour is never a premise the user is asked to accept: it becomes a plan check, a first step that measures it before any task builds on it/);
+    const a = asks(read('stack/skills/task-design/SKILL.md'))[0];
+    assert.match(a.question, /today: <what runs now> \(measured: <the run or `file:symbol`>\)/, 'the template carries the measurement slot');
+    assert.match(read('stack/skills/task-design/references/evidence.md'), /\*\*A design ask states measured facts/);
+});
