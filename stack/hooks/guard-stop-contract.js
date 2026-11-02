@@ -1241,19 +1241,91 @@ const APPROVAL_ASK_RE = /\b(?:approve|as shown|shown above|(?:is|are) ready|(?:p
 // literal on one line): the stack's own templates taught 'say what changes in Other' and every flow paid one denied round
 // trip per run (audit 2026-10-20 C01, fabea019, 7c1af769).
 const OTHER_RE = /\b(?:in|into|via|through|using) (?:the )?['‘’]?Other\b|\btype (?:it|them|\w+) (?:in|into)\b[^.]{0,20}\bOther\b/;
-const SUBJECT_RE = /\b(?:this|these|the|that)\s+(?:[\w-]+\s+){0,3}?(plan|comment|draft|message|reply|description|summary|ticket|issue|changes?|diff|patch|stages?|spec|design|report|wording|version|email|note|edits?|post)\b/i;
+// The things an approval names, plurals included (audit 2026-11-03 U04, 1e53bc45: 'the 2 drafts' named none, so the noun
+// came from a later clause - 'the proposed ... description' - and an ask over drafts the chat showed was denied twice;
+// 75b9108a: 'groups' named none, so 'Commit the five groups above' passed over a chat that showed no group).
+const SUBJECT_NOUN = String.raw`(?:plan|comment|draft|message|description|ticket|issue|change|diff|stage|spec|design|report|wording|version|email|note|edit|post|group|commit)s?|patch(?:es)?|repl(?:y|ies)|summar(?:y|ies)`;
+const SUBJECT_PHRASE = String.raw`\b(?:this|these|the|that|those|all|both|each|my|your|our)\s+(?:[\w.-]+\s+){0,3}?(${SUBJECT_NOUN})\b`;
 const SHOWN_MIN = 200;
+// 'above' as a pointer at earlier text - never 'above 5' or 'above the line' - and the words that may sit between it and
+// the thing it points at ('the drafts shown above').
+const POINTER_ABOVE_RE = /\babove\b(?!\s+(?:the|a|an|this|that|these|those|it|its|them|their|our|your|my|\d))/i;
+const POINTER_VERB_RE = /\s+(?:shown|listed|printed|written|quoted|described|drafted|proposed)\s*$/i;
+// Text the ask QUOTES - a fenced block, a code span, double or curly quotes, or single quotes whose opening one follows no
+// letter (an apostrophe inside 'it's' stays in the span).
+const QUOTED_RE = /```[\s\S]*?```|`[^`\n]+`|"[^"\n]+"|“[^”\n]+”|‘[^’\n]+’|(?<![\w'])'(?:[^'\n]|'(?=\w))+'(?!\w)/g;
+const stemOf = (w) => String(w).toLowerCase().replace(/ies$/, 'y').replace(/(?<=(?:s|x|ch|sh))es$/, '').replace(/s$/, '');
+// The nearest phrase a pronoun or 'as shown' points back at - never one after a preposition ('sub-tasks of the parent
+// ticket' places the drafts, it is not what is approved).
+const lastPhrase = (t) => {
+  let noun = null;
+  const s = String(t);
+  for (const m of s.matchAll(new RegExp(SUBJECT_PHRASE, 'gi')))
+    if (!/\b(?:of|in|into|to|for|from|on|onto|with|under|at|by|about|after|before|than|under)\s+$/i.test(s.slice(0, m.index))) noun = m[1];
+  return noun;
+};
+const clauseStart = (t, at, commas) => { let s = 0; for (const m of t.slice(0, at).matchAll(commas ? /[.?!;:\n,(]|\s-\s/g : /[.?!;:\n]|\s-\s/g)) s = m.index + m[0].length; return s; };
+// A verb addressed to the user or said by the assistant - an imperative opening its clause, or one after 'I' / 'we' /
+// 'you', a modal asking it, 'please', 'then', 'to' - is an approval; 'the page may send it differently' is a symptom (b2aa04d4).
+function addressed(t, at) {
+  const lead = t.slice(clauseStart(t, at, true), at).trim().toLowerCase();
+  return lead === '' || /\b(?:please|then|and|or|now|so|i|i'll|i'd|we|we'll|let's|you|to)$/.test(lead)
+    || /\b(?:i|we|you)\s+(?:will|can|could|should|would|shall|may|might)$/.test(lead) || /\b(?:shall|should|can|could|may|do)\s+(?:i|we)$/.test(lead);
+}
+// The thing an approval names, from the approval verb's OWN object (U04): after 'approve' / 'post ...', or before 'as
+// shown' / 'shown above' / 'is ready' / '<the thing> above' in the same clause; a pronoun object ('posting them as
+// shown') takes the nearest thing named before it. { noun } or null when the text holds no addressed approval.
+function approvalSubject(t) {
+  for (const m of t.matchAll(new RegExp(APPROVAL_ASK_RE.source, 'gi'))) {
+    const word = m[0].toLowerCase();
+    if (/^(?:approve|post|file|publish|send)\b/.test(word)) {
+      if (!addressed(t, m.index)) continue;
+      const after = t.slice(m.index + /^\w+/.exec(m[0])[0].length);
+      const end = after.search(/[.?!;:\n]/);
+      const rest = end < 0 ? after : after.slice(0, end);
+      const obj = new RegExp(`^\\s+${SUBJECT_PHRASE}`, 'i').exec(rest);
+      if (obj) return { noun: obj[1] };
+      return { noun: /^\s+(?:it|them|this|these|that|those)\b/i.test(rest) || !rest.trim() ? lastPhrase(t.slice(0, m.index)) : null };
+    }
+    if (/^(?:as shown|shown above|(?:is|are) ready)$/.test(word)) {
+      const start = clauseStart(t, m.index);
+      return { noun: lastPhrase(t.slice(start, m.index)) || lastPhrase(t.slice(0, start)) };
+    }
+    const head = /([\w-]+)\s+above$/i.exec(m[0]);
+    return { noun: head && new RegExp(`^(?:${SUBJECT_NOUN})$`, 'i').test(head[1]) ? head[1] : null };
+  }
+  return null;
+}
+// A question pointing at something 'above' needs the chat to show it (U04, 75b9108a): the thing named right before the
+// pointer, when it is one the list knows, else only the length. The resume-block pointer is check 14's.
+function pointerSubject(t) {
+  const s = String(t).replace(ASK_ABOVE_RE, (x) => ' '.repeat(x.length));
+  const m = POINTER_ABOVE_RE.exec(s);
+  if (!m) return null;
+  const head = /([\w-]+)$/.exec(s.slice(0, m.index).replace(POINTER_VERB_RE, '').trimEnd());
+  return { noun: head && new RegExp(`^(?:${SUBJECT_NOUN})$`, 'i').test(head[1]) ? head[1] : null, pointer: true };
+}
 // Read on the QUESTION only: an 'Approve' option label is the solve-task approval stop, whose own contract prints the
-// audited plan before it (and whose receipts are notes).
+// audited plan before it (and whose receipts are notes). A quote of three words or more that is no option's label and no
+// pointer is the subject shown in the ask itself (U04, ce0b76e6: the comment line quoted whole was denied as unseen).
+// Known ceiling (U04, measured on 1e53bc45 and b2aa04d4): the transcript is written asynchronously and lags the message in
+// flight (code.claude.com/docs/en/hooks, transcript_path), so text the SAME message prints before its ask is not on disk
+// here - the denial says to re-send the ask unchanged, which the once-per-text marker passes.
 function approvalOverNothingShown(questions) {
-  const text = questions.map((q) => String((q && q.question) || '')).join('\n');
-  if (!APPROVAL_ASK_RE.test(text)) return null;
+  const raw = questions.map((q) => String((q && q.question) || '')).join('\n');
+  const labels = new Set(questions.flatMap((q) => (q && Array.isArray(q.options) ? q.options : [])
+    .map((o) => String((o && o.label) || '').replace(/\s*\(Recommended\)/i, '').trim().toLowerCase())));
+  const quotes = [...raw.matchAll(QUOTED_RE)];
+  const text = quotes.reduce((s, m) => s.slice(0, m.index) + ' '.repeat(m[0].length) + s.slice(m.index + m[0].length), raw);
+  const subject = approvalSubject(text) || pointerSubject(text);
+  if (!subject) return null;
+  const shows = (q) => { const s = q.replace(/^(?:```[^\n]*\n?|[`"“‘'])|(?:```|[`"”’'])$/g, '').trim(); return s.length >= 12 && s.split(/\s+/).length >= 3 && !/\b(?:above|below|shown|listed)\b/i.test(s) && !labels.has(s.toLowerCase()); };
+  if (quotes.some((m) => shows(m[0]))) return null;
   const shown = shownSinceTyped();
   if (shown === null) return null; // no typed turn to read back to: unknown, never a denial
-  const noun = (SUBJECT_RE.exec(text) || [])[1];
-  const stem = noun ? noun.toLowerCase().replace(/(?:es|s)$/, '') : null;
-  const carries = shown.trim().length >= SHOWN_MIN && (!stem || new RegExp(`\\b${stem.replace(/\s+/g, '\\s+')}`, 'i').test(shown));
-  return carries ? null : { noun: noun || null, shown: shown.trim().length };
+  const verdict = { noun: subject.noun || null, shown: shown.trim().length, pointer: !!subject.pointer };
+  if (verdict.shown < SHOWN_MIN) return verdict;
+  return !subject.noun || new RegExp(`\\b${stemOf(subject.noun)}`, 'i').test(shown) ? null : verdict;
 }
 
 function deferAnsweredThisTurn() {
@@ -2867,7 +2939,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         if (compactFresh) reasons.push('a fresh-session option, while this project compacts instead (ALFRED_CODE_AUTO_COMPACT=1)');
         if (noReview) reasons.push(noReview.from === 'text' ? 'a small solve-task close whose `Result:` line has no `review:` field'
           : `a solve-task close that states no \`Size:\` (this cycle's ${noReview.from === 'floor' ? `spec-check \`size floor:\` is ${noReview.size}` : `\`Size:\` was ${noReview.size}`}) and whose \`Result:\` line has no \`review:\` field`);
-        if (blind) reasons.push(`an approval of ${blind.noun ? `the ${blind.noun}` : 'something'} the chat has not shown since the user's last message`);
+        if (blind) reasons.push(`${blind.pointer ? 'a pointer at' : 'an approval of'} ${blind.noun ? `the ${blind.noun}` : 'something'} ${blind.pointer ? 'above that ' : ''}the chat has not shown since the user's last message`);
         if (numbers) reasons.push(`a fresh-session option with no measured number (this session carries ${k(numbers.ctx)} per message now)`);
         if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
         if (unmarked) reasons.push(`${unmarked} question(s) without exactly one option marked '(Recommended)', listed first`);
@@ -2882,7 +2954,7 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
           + (misMarked ? ` Put the mark on the option the question recommends, or reword the question so both say the same pick.` : '')
           + (noReview ? `${noReview.from === 'text' ? '' : ' State the cycle\'s `Size:` on the close - a trivial run has no stop, so a run that stops here is small at least.'} The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
-          + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
+          + (blind ? ` The user answers on what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask names'} in your reply text first (the stages, the draft as it will be posted, the edit made), then re-send this same ask unchanged - a reworded ask is judged again. If your reply already shows it (this hook reads a transcript that can lag the message in flight) or it sits in a file the user has open, re-send the ask unchanged now.` : '')
           + (newCycle ? ` A finished cycle closed in this chat, so add a fresh-session option to this first ask of a new cycle - ${fresh.payText(newCycle.ctx, fresh.freshVerdict(newCycle.ctx))} Also state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
           + (dropHandoff ? ` ${notPay}${leftAlone ? ` A question left with one option is no question: take that option${leftAlone.options[0] ? ` - '${String(leftAlone.options[0].label || '')}' -` : ''} and drop the question.` : ''}` : '')
@@ -3073,6 +3145,10 @@ function flowFieldNotes(questions, askText, turnText) {
   const notes = [];
   const flow = flowState();
   if (!flow.flow) return notes;
+  // Past the cycle: the plan is stamped `Completed:` and the user typed since, so an ask now is no stop of the flow until a
+  // new cycle's marker - a typed /task-solve or the flow's Skill call - re-arms the notes (usage audit 2026-11-03 U08:
+  // 6 of 6 post-cycle asks in one session carried the three-field note).
+  if (flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed)) return notes;
   if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
     notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
       + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '

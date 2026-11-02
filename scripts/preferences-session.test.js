@@ -208,6 +208,32 @@ test('a shell write to a source file is an edit; one outside the project is not'
     finally { p.rm(); }
 });
 
+// Usage audit 2026-11-03 U17: a relative target was resolved at the payload's cwd, past the command's own `cd`, so scratch
+// work in the session scratchpad was held as the project's code (three sessions, ~7.9k each).
+test('U17: a shell target is resolved where the command\'s cd left the shell; temp and the session scratch are no code', () =>
+{
+    const p = project();
+    const away = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-away-')));
+    try
+    {
+        assert.ok(!denied(p.hook(bash(`cd ${away} && cat > f.ts <<'EOF'\nexport const y = 2;\nEOF`, sid()))), 'a cd out to a temp folder: the file is not the project\'s');
+        assert.ok(!denied(p.hook(bash(`cd ${away} && mkdir check && echo x > check/run.ts`, sid()))), 'nor a folder made there');
+        const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+        assert.ok(!denied(p.hook(bash(`cd /tmp/claude-${uid}/-proj/sess-1/scratchpad && echo x > f.ts`, 'sess-1'))), 'the harness scratch root');
+        p.write('src/sub/.keep', '');
+        assert.ok(denied(p.hook(bash('cd src/sub && cat > f.ts <<\'EOF\'\nexport const z = 3;\nEOF', sid()))), 'a cd into the project keeps the file the project\'s');
+        assert.ok(denied(p.hook(bash(`cd ${away} && cd ${p.root} && echo x > f.ts`, sid()))), 'a cd back into the project is followed too');
+        assert.ok(denied(p.hook(bash('echo y > src/g.ts && cd "$SOMEWHERE" && echo x > f.ts', sid()))), 'a target before an unknown cd is still judged');
+        assert.ok(!denied(p.hook(bash('cd "$SOMEWHERE" && echo x > f.ts', sid()))), 'a relative target after a cd the reader cannot follow is never guessed');
+        // the payload's scratchpad_dir: a scratch folder the project's checkout holds is no code - unless it holds the project
+        const scratch = path.join(p.root, 'scratch-pad');
+        assert.ok(denied(p.hook(bash(`cd ${scratch} && echo x > f.ts`, sid()))), 'without the payload field the folder is the project\'s');
+        assert.ok(!denied(p.hook(bash(`cd ${scratch} && echo x > f.ts`, sid(), { scratchpad_dir: scratch }))), 'named by the payload, it is scratch');
+        assert.ok(denied(p.hook(bash('echo x > src/h.ts', sid(), { scratchpad_dir: path.dirname(p.root) }))), 'a scratchpad that holds the project exempts none of it');
+    }
+    finally { p.rm(); fs.rmSync(away, { recursive: true, force: true }); }
+});
+
 test('reading a doc first marks it: a Read, a cat and a docs.js show each count, for that doc alone', () =>
 {
     const p = project();
@@ -823,6 +849,46 @@ test('H-Q1: only a whole read marks a doc - a ranged Read, head, grep -c, a name
             p.hook({ ...whole, session_id: s });
             assert.ok(!denied(p.hook(bash('git commit -m x', s))), JSON.stringify(whole.tool_input));
         }
+    }
+    finally { p.rm(); }
+});
+
+// Usage audit 2026-11-03 U18: `sed -n 32,112p` and `238,294p` of two project-doc sections marked nothing, and a 21.4k plan
+// Write was held to hand them over again. The PROJECT fixture's spans: Project type 5-7, TypeScript 9-12, C# 14-17.
+test('U18: a sed, head or tail range covering a section marks it; a partial, piped or redirected range does not; the Read route is unchanged', () =>
+{
+    const p = project();
+    try
+    {
+        const doc = `${PREFS}/PROJECT-CODE-PREFERENCES.md`;
+        const others = (s) => { for (const f of ['PERSONAL-CODE-PREFERENCES.md', 'ARCHITECTURE-PREFERENCES.md']) p.hook(pre('Read', { file_path: `${PREFS}/${f}` }, s)); };
+        const after = (peeks) => { const s = sid(); others(s); for (const peek of peeks) p.hook({ ...peek, session_id: s }); return p.hook(edit('src/app.ts', s)); };
+        // covering: the two sections an src/*.ts edit needs (the cover-less Project type and the TypeScript section)
+        for (const covering of [[bash(`sed -n 5,12p ${doc}`)], [bash(`sed -n 5,7p ${doc}; sed -n '9,12p' ${doc}`)], [bash(`sed -n -e 5,7p -e 9,12p ${doc}`)],
+            [bash(`sed -n '5,7p;9,12p' ${doc} 2>/dev/null`)], [bash(`head -n 12 ${doc}`)], [bash(`head -12 ${doc}`)], [bash(`sed -n '5,$p' ${doc}`)],
+            [bash(`cd ${PREFS} && sed -n 5,12p PROJECT-CODE-PREFERENCES.md`)], [bash(`sed -n 5,12p ${doc}`), bash(`tail -n 4 ${doc}`)]])
+            assert.ok(!denied(after(covering)), JSON.stringify(covering.map((c) => c.tool_input.command)));
+        // partial: one line short of the TypeScript section, or printed where the model does not read it
+        for (const partial of [bash(`sed -n 5,11p ${doc}`), bash(`head -n 11 ${doc}`), bash(`sed -n 5,12p ${doc} | grep quotes`), bash(`sed -n 5,12p ${doc} > /tmp/u18-out.txt`),
+            bash(`sed 5,12p ${doc}`), bash(`sed -n '5,12p;s/a/b/p' ${doc}`), bash(`sed -n -i 5,12p ${doc}`), bash(`head -c 400 ${doc}`), bash(`cat ${doc} | sed -n 5,12p`)])
+        {
+            const held = reason(after([partial]));
+            assert.match(held, /Single quotes, two-space indent/, partial.tool_input.command);
+        }
+        // tail counts from the end: the last 9 lines are 9-17, the TypeScript and C# sections - Project type is still owed
+        const tail = reason(after([bash(`tail -n 9 ${doc}`)]));
+        assert.doesNotMatch(tail, /Single quotes/, 'tail -n 9 covers TypeScript');
+        assert.match(tail, /An Angular front end/, '... and not Project type');
+        assert.ok(!denied(after([bash(`tail -n +5 ${doc}`)])), 'tail -n +5 prints lines 5 to the end');
+        // a range reaching every line marks the whole doc: the git hold reads the git doc as read
+        const g = sid();
+        p.hook(bash(`sed -n '1,$p' ${PREFS}/GIT-PREFERENCES.md`, g));
+        assert.ok(!denied(p.hook(bash('git commit -m x', g))), 'the whole git doc printed');
+        const g2 = sid();
+        p.hook(bash(`head -n 8 ${PREFS}/GIT-PREFERENCES.md`, g2));
+        assert.ok(denied(p.hook(bash('git commit -m x', g2))), 'only its first section printed');
+        // the Read route is unchanged: a ranged Read marks no section
+        assert.match(reason(after([pre('Read', { file_path: doc, offset: 5, limit: 8 }, null)])), /Single quotes/, 'a ranged Read still marks nothing');
     }
     finally { p.rm(); }
 });
