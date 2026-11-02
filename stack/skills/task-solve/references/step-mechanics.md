@@ -55,6 +55,9 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
+- **The hand-written stamp goes LAST.** Step 6 deletes it only after the close stop's ask is answered, or after
+  the close printed when nothing is pending - never before the ask. With the stamp gone the hooks read the session
+  as attended, so the ask waits for a user who is away (usage audit 2026-11-03: deleted first, a close ask sat 3.8 hours).
 - **Under auto-run an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
   the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
 - **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run

@@ -31,3 +31,11 @@ test('U28: the step-5 findings stop is an ask template, Fix now marked while an 
     assert.match(conf, /The mark moves to 'Close now' only when every open finding is MINOR or outside that area/);
     assert.doesNotMatch(flat(solve), /apply any fixes the step-5 review handed back/, 'step 6 no longer applies fixes the step-5 ask routed to step 4');
 });
+
+// U32: a hand-written AUTO waiver had no order rule at the close; one run deleted it before the close ask, which then
+// waited 3.8 hours for a user who was away.
+test('U32: the hand-written AUTO stamp is deleted last - after the close ask is answered or the close printed', () => {
+    const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
+    const sec = mech.split('## The APPROVAL stamp - writing it, and its lifetime')[1].split('## Agents-mode dispatch - step 4')[0];
+    assert.match(sec, /\*\*The hand-written stamp goes LAST\.\*\* Step 6 deletes it only after the close stop's ask is answered, or after the close printed when nothing is pending - never before the ask/);
+});
