@@ -259,6 +259,26 @@
             ]
           },
           {
+            "matcher": "^mcp__.+__(write_file|edit_file|move_file)$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-config-protection.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__.+__(write_file|edit_file|move_file|create_directory)$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$",
             "hooks": [
               {

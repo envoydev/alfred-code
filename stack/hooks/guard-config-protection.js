@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// guard-config-protection.js - PreToolUse (Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Monitor).
+// guard-config-protection.js - PreToolUse (Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Monitor, and a filesystem
+// server's write_file / edit_file / move_file under any registration name - SYS-02, below).
 // The cheapest way to 'pass' a lint or a build is to weaken the check, so a change to an EXISTING
 // check config is blocked and the model is sent back to the code. Creating one is allowed - there
 // is nothing to weaken yet. Two kinds of file: a WHOLE-FILE config (the file IS the check - an
@@ -152,8 +153,8 @@ const ROOT = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 const CWD = payload.cwd || ROOT;
 const resolveIn = (p) => path.resolve(CWD, nativePath(p));
 
-function judgeFileTool() {
-  const ti = payload.tool_input || {};
+function judgeFileTool(given) {
+  const ti = given || payload.tool_input || {};
   const target = ti.file_path || ti.notebook_path || '';
   if (!target) return null;
   const abs = resolveIn(target);
@@ -781,9 +782,54 @@ function judgeSegments(command) {
   return null;
 }
 
+// A filesystem server the user registers (audit 2026-11-03 SYS-02; HK-26 gave the secret guard its read route): the
+// reference server's schemas (@modelcontextprotocol/server-filesystem, src/filesystem/server.ts in
+// github.com/modelcontextprotocol/servers, read 2026-11-03) - `write_file` { path, content } is judged as a Write,
+// `edit_file` { path, edits: [{ oldText, newText }], dryRun } as an edit (each first exact match replaced, lib.ts
+// applyFileEdits; a dry run writes nothing, and an oldText the file does not hold falls back to the fragments, the file
+// tool's rule), and `move_file` { source, destination } as a removal of the source - a folder's configs directly inside
+// it too - and of a config the destination would replace, `git mv`'s rule, and a destination that does not exist as a
+// new config that may shadow one. Matched by the tool's name under any registration; a relative path is read at the
+// project root and a leading `~` expanded, as the server does (lib.ts validatePath). A field that is no string names no file.
+const FS_WRITE_TOOL = /^mcp__.+__(?:write_file|edit_file|move_file)$/;
+const fsPath = (p) => {
+  if (typeof p !== 'string' || !p.trim()) return null;
+  const home = require('os').homedir();
+  const n = nativePath(p === '~' || /^~[\\/]/.test(p) ? (home ? path.join(home, p.slice(1)) : p) : p);
+  return path.resolve(ROOT, n);
+};
+function judgeFsServer() {
+  const ti = payload.tool_input || {};
+  const verb = String(payload.tool_name).replace(/^mcp__.+__/, '');
+  if (verb === 'move_file') {
+    const source = fsPath(ti.source);
+    const dest = fsPath(ti.destination);
+    for (const abs of source ? configsAt(source) : []) {
+      const hit = removedHit(abs);
+      if (hit) return { abs, why: hit.why.replace(/^the command removes/, 'the move removes') };
+    }
+    if (!dest) return null;
+    let st = null;
+    try { st = fs.statSync(dest); } catch { st = null; }
+    if (!st) return shadowHit(dest);
+    if (!st.isDirectory() && isConfigBase(path.basename(dest))) {
+      const hit = removedHit(dest);
+      if (hit) return { abs: dest, why: hit.why.replace(/^the command removes it/, 'the move replaces it').replace(/^the command removes/, 'the move replaces') };
+    }
+    return null;
+  }
+  const abs = fsPath(ti.path);
+  if (!abs) return null;
+  if (verb === 'write_file') return typeof ti.content === 'string' ? judgeFileTool({ file_path: abs, content: ti.content }) : null;
+  if (ti.dryRun === true || !Array.isArray(ti.edits) || !ti.edits.length) return null;
+  const edits = ti.edits.map((e) => ({ old_string: e && typeof e.oldText === 'string' ? e.oldText : '', new_string: e && typeof e.newText === 'string' ? e.newText : '' }));
+  return judgeFileTool({ file_path: abs, edits });
+}
+
 // SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list; a
 // copy that runs before that module lands judges the file tools alone.
-const hit = shell && shell.isShellTool(payload.tool_name) ? judgeShell() : judgeFileTool();
+const hit = FS_WRITE_TOOL.test(String(payload.tool_name || '')) ? judgeFsServer()
+  : shell && shell.isShellTool(payload.tool_name) ? judgeShell() : judgeFileTool();
 if (!hit) process.exit(0);
 
 // Both sides as REAL paths: the same file spelled through a symlinked root read as outside and passed (audit 2026-10-08).
