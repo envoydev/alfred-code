@@ -13,6 +13,11 @@ const hud = require('./hud-statusline.js');
 const { SHAPES, LAUNCHER, fill, planHud, applyHud, resolveConfigDir, nodeOnPath } = hud;
 
 const SCRIPT = path.join(__dirname, 'hud-statusline.js');
+// This machine's own plugins root, read before the delete below: the PL7 version check reads its cache.
+const { pluginsRoot } = require('../stack/skills/capture-preferences/scripts/plugins-root.js');
+const MACHINE_PLUGINS = pluginsRoot(process.env);
+// A moved plugins root in the developer's shell would move every throwaway account's cache; the cases that test it set it.
+delete process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
@@ -66,14 +71,19 @@ const SORT_V_FOR = (rt) => 'cols=${COLUMNS:-}; case "$cols" in ""|*[!0-9]*) cols
     + 'case "$cols" in ""|*[!0-9]*) cols=120;; esac; export COLUMNS=$(( cols > 4 ? cols - 4 : 1 )); '
     + 'plugin_dir=$(ls -1d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-hud/*/ 2>/dev/null | sort -V | tail -1); '
     + `exec "${rt}" "\${plugin_dir}dist/index.js"`;
+// What this script writes (audit 2026-11-03 PL-05): the same line, its cache glob under the plugins root Claude Code uses -
+// CLAUDE_CODE_PLUGIN_CACHE_DIR, else <account>/plugins.
+const SORT_V_ROOT_FOR = (rt) => SORT_V_FOR(rt).replace('"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/',
+    '"${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"/cache/');
 
-test('macOS / Linux: no statusLine - the 0.8.0 Node shape is written (sort -V glob, COLUMNS exported, exec, no bash -c), then the hud row', () =>
+test('macOS / Linux: no statusLine - the 0.8.0 Node shape is written (sort -V glob under the plugins root, COLUMNS exported, exec, no bash -c), then the hud row', () =>
 {
     const dir = account({ settings: { model: 'opus' } });
     const res = run(dir);
     const s = read(dir, 'settings.json');
     assert.strictEqual(s.statusLine.type, 'command');
-    assert.strictEqual(s.statusLine.command, SORT_V_FOR(NODE), 'byte for byte the setup.md:199 shape, node absolute');
+    assert.strictEqual(s.statusLine.command, SORT_V_ROOT_FOR(NODE), 'the setup.md:199 shape, node absolute, the root resolved');
+    assert.notStrictEqual(SORT_V_ROOT_FOR(NODE), SORT_V_FOR(NODE));
     assert.ok(!/^bash -c/.test(s.statusLine.command) && !/bun|powershell/i.test(s.statusLine.command));
     assert.strictEqual(s.statusLine.refreshInterval, 5, 'the row\'s settings.json target lands once the block exists');
     assert.strictEqual(s.model, 'opus', 'the rest of the account settings is untouched');
@@ -84,6 +94,7 @@ test('macOS / Linux: no statusLine - the 0.8.0 Node shape is written (sort -V gl
     assert.ok(res.lines.includes('hud: statusLine written - claude-hud\'s own shape for this platform'), res.lines.join('\n'));
     assert.match(res.lines[res.lines.length - 1], /^hud-statusline: \d+ change\(s\)$/);
     assert.strictEqual(fill(SHAPES.sortV, { RUNTIME_PATH: NODE, SOURCE: 'dist/index.js' }), SORT_V_FOR(NODE));
+    assert.strictEqual(fill(SHAPES.sortVRoot, { RUNTIME_PATH: NODE, SOURCE: 'dist/index.js' }), SORT_V_ROOT_FOR(NODE));
 });
 
 test('a re-run changes nothing: both files byte-identical, the plan reports no change', () =>
@@ -144,7 +155,7 @@ test('Windows: a claude-hud line of another shape is stale - the old PowerShell 
     assert.strictEqual(planHud({ configDir: gone, ...opts }).statusLine.state, 'stale');
 });
 
-test('a statusLine that is not claude-hud\'s is kept, reported with the /claude-hud:setup line, and given no refresh interval', () =>
+test('a statusLine that is not claude-hud\'s is kept, reported with claude-hud\'s own setup route, and given no refresh interval', () =>
 {
     const mine = { type: 'command', command: '~/.claude/statusline.sh', padding: 1 };
     const dir = account({ settings: { statusLine: mine } });
@@ -162,6 +173,18 @@ test('a statusLine that is not claude-hud\'s is kept, reported with the /claude-
     assert.strictEqual(label('npx ccstatusline'), 'cc-statusline');
     assert.strictEqual(label('claude-pace --x'), 'claude-pace');
     assert.strictEqual(label('echo hi'), 'custom');
+    // Audit 2026-11-03 PL-02: claude-hud 0.15.0 drops /claude-hud:setup and /claude-hud:configure for one skill, `hud`
+    // (CHANGELOG 0.15.0), a plugin skill namespaced /claude-hud:hud (code.claude.com/docs/en/skills) - the route named
+    // follows the newest cached version, /claude-hud:setup before it.
+    // The row already applied, so the plan's item is the skip that names the route.
+    const config = { lineLayout: 'compact', showSeparators: false, gitStatus: { showAheadBehind: true, showFileStats: true },
+        display: { showConfigCounts: true, showSkills: true, showMcp: true, showAgents: true, showTools: true, showCost: true, showEffortLevel: true, showPromptCache: true } };
+    const now = account({ versions: ['0.12.1', '0.15.0'], settings: { statusLine: mine }, config });
+    const p15 = planHud({ configDir: now, platform: 'darwin', runtime: NODE });
+    assert.strictEqual(p15.item.detail, 'the account statusLine is not claude-hud\'s (source: statusline script) - kept; /claude-hud:hud replaces it');
+    assert.ok(applyHud(p15).lines.includes('hud: statusLine kept - it is not claude-hud\'s (source: statusline script); /claude-hud:hud replaces it, backing yours up first'));
+    const p12 = planHud({ configDir: account({ versions: ['0.12.1'], settings: { statusLine: mine }, config }), platform: 'darwin', runtime: NODE });
+    assert.match(p12.item.detail, /- kept; \/claude-hud:setup replaces it$/);
 });
 
 test('a stale claude-hud line is refreshed, its other keys kept; claude-hud\'s own current shapes are left as they are', () =>
@@ -171,7 +194,7 @@ test('a stale claude-hud line is refreshed, its other keys kept; claude-hud\'s o
     assert.strictEqual(plan.statusLine.state, 'stale');
     const res = applyHud(plan);
     const s = read(pinned, 'settings.json').statusLine;
-    assert.strictEqual(s.command, SORT_V_FOR(NODE));
+    assert.strictEqual(s.command, SORT_V_ROOT_FOR(NODE));
     assert.strictEqual(s.refreshInterval, 10, 'add-only: the user\'s interval stays');
     assert.strictEqual(s.padding, 2);
     assert.ok(res.lines.includes('hud: statusLine refreshed - the claude-hud line had a stale shape; its other keys kept'));
@@ -290,10 +313,10 @@ test('Windows + Git Bash (MSYSTEM): the setup.md:199 sort -V line, node in forwa
     const dir = account();
     const opts = { platform: 'win32', runtime: WIN_NODE, env: { ...WIN_ENV, MSYSTEM: 'MINGW64' }, exists: winDisk(WIN_NODE, CMD_EXE) };
     const plan = planHud({ configDir: dir, ...opts });
-    assert.strictEqual(plan.statusLine.command, SORT_V_FOR('C:/Program Files/nodejs/node.exe'));
+    assert.strictEqual(plan.statusLine.command, SORT_V_ROOT_FOR('C:/Program Files/nodejs/node.exe'));
     assert.strictEqual(plan.statusLine.launcher, null);
     applyHud(plan);
-    assert.strictEqual(read(dir, 'settings.json').statusLine.command, SORT_V_FOR('C:/Program Files/nodejs/node.exe'));
+    assert.strictEqual(read(dir, 'settings.json').statusLine.command, SORT_V_ROOT_FOR('C:/Program Files/nodejs/node.exe'));
     assert.ok(!fs.existsSync(path.join(dir, 'plugins', 'claude-hud', 'statusline.mjs')), 'no launcher under Git Bash');
     const again = planHud({ configDir: dir, ...opts });
     assert.strictEqual(again.statusLine.state, 'current');
@@ -303,7 +326,7 @@ test('Windows + Git Bash (MSYSTEM): the setup.md:199 sort -V line, node in forwa
 test('Windows: Git Bash is found as Claude Code finds it - OSTYPE, CLAUDE_CODE_GIT_BASH_PATH (bash / sh names only), Program Files, the git on PATH', () =>
 {
     const line = (env, present) => planHud({ configDir: account(), platform: 'win32', runtime: WIN_NODE, env: { ...WIN_ENV, ...env }, exists: winDisk(WIN_NODE, CMD_EXE, ...present) }).statusLine;
-    const bash = SORT_V_FOR('C:/Program Files/nodejs/node.exe');
+    const bash = SORT_V_ROOT_FOR('C:/Program Files/nodejs/node.exe');
     const CMD_FORM = /^C:\\Windows\\System32\\cmd\.exe \/d \/s \/c ""/;
     const none = line({}, []);
     assert.match(none.command, CMD_FORM, 'no Git Bash: the cmd.exe line');
@@ -328,7 +351,7 @@ test('Windows: the git on PATH is skipped as Claude Code skips it - in the launc
     // launched Claude Code from, or below it in a path that contains node_modules or a virtual-environment
     // folder such as .venv or env, for example C:\dev\env\myproject\Git when you launched from C:\dev\env\myproject'.
     const line = (cwd, PATH, present) => planHud({ configDir: account(), platform: 'win32', runtime: WIN_NODE, env: { ...WIN_ENV, PATH }, exists: winDisk(WIN_NODE, CMD_EXE, ...present), cwd }).statusLine.command;
-    const bash = SORT_V_FOR('C:/Program Files/nodejs/node.exe');
+    const bash = SORT_V_ROOT_FOR('C:/Program Files/nodejs/node.exe');
     const CMD_FORM = /^C:\\Windows\\System32\\cmd\.exe \/d \/s \/c ""/;
     assert.match(line('D:\\proj', 'D:\\proj', ['D:\\proj\\git.exe', 'D:\\bin\\bash.exe']), CMD_FORM, 'a git in the launch folder itself');
     assert.match(line('d:\\PROJ\\', 'D:\\proj', ['D:\\proj\\git.exe', 'D:\\bin\\bash.exe']), CMD_FORM, 'paths compare without case');
@@ -364,7 +387,7 @@ test('Windows: only the detected shell\'s form is current - claude-hud\'s own Gi
     const under = planHud({ configDir: dir, platform: 'win32', runtime: WIN_NODE, env: bashEnv, exists: winDisk(WIN_NODE, CMD_EXE) });
     assert.strictEqual(under.statusLine.state, 'stale');
     applyHud(under);
-    assert.strictEqual(read(dir, 'settings.json').statusLine.command, SORT_V_FOR('C:/Program Files/nodejs/node.exe'));
+    assert.strictEqual(read(dir, 'settings.json').statusLine.command, SORT_V_ROOT_FOR('C:/Program Files/nodejs/node.exe'));
     assert.strictEqual(planHud({ configDir: dir, platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE, CMD_EXE) }).statusLine.state, 'stale',
         'a bash line cannot run where there is no Git Bash');
 });
@@ -407,7 +430,7 @@ test('the runtime is the first node on PATH as found (command -v), never symlink
     assert.strictEqual(nodeOnPath({ Path: 'C:\\Windows;C:\\Program Files\\nodejs' }, 'win32', (p) => p === WIN_NODE), WIN_NODE);
     // planHud writes that node by default.
     const plan = planHud({ configDir: account(), platform: 'darwin', env: { PATH } });
-    assert.strictEqual(plan.statusLine.command, SORT_V_FOR(path.join(brew, 'node')));
+    assert.strictEqual(plan.statusLine.command, SORT_V_ROOT_FOR(path.join(brew, 'node')));
 });
 
 test('the account settings.json is backed up once per run before its first write (setup.md:487-505), never when nothing changes', () =>
@@ -570,15 +593,16 @@ test('PL7 claude-hud 0.11\'s own launcher lines read as current on darwin, linux
 });
 
 // PL7: the claude-hud row of meta/plugin-settings.json names the version its keys were read from, and the stack's update
-// is what moves claude-hud. A cached claude-hud newer than that version goes red here: re-read its dist/config.js and
-// scripts/setup.mjs, re-stamp `verified`, and teach classify() any new launcher line. Reads this machine's account cache;
-// with none (CI), nothing to compare.
+// is what moves claude-hud. A cached claude-hud newer than that version goes red here: re-read its src/config.ts and
+// src/schema.ts (the keys), install.mjs and scripts/statusline.mjs (the lines and the launcher) and package.json
+// engines, re-stamp `verified`, and teach classify() any new launcher line. Reads this machine's plugins root (a moved
+// one included); with no claude-hud cached there (CI), nothing to compare.
 test('PL7 the claude-hud row was verified on a version no older than the newest claude-hud cached in this account', (t) =>
 {
     const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-settings.json'), 'utf8')).plugins['claude-hud'];
     const verified = (/^claude-hud (\d+\.\d+\.\d+)\b/.exec(row.verified) || [])[1];
     assert.ok(verified, `the row's verified line names no version: ${row.verified}`);
-    const cache = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'cache');
+    const cache = path.join(MACHINE_PLUGINS, 'cache');
     const parts = (v) => v.split('.').map(Number);
     const newer = (a, b) => { const [x, y] = [parts(a), parts(b)]; for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
     let markets = [];
@@ -610,4 +634,120 @@ test('a project-scope apply writes no .bak in the project; the account case stil
     const acct = account({ settings: { model: 'opus' } });
     applyHud(planHud({ configDir: acct, platform: 'darwin', runtime: NODE }), { now: new Date(2026, 9, 28, 9, 0, 0) });
     assert.strictEqual(baks(acct).length, 1);
+});
+
+// Audit 2026-11-03 PL-05: CLAUDE_CODE_PLUGIN_CACHE_DIR moves the plugins root - the registry and the cache, never claude-hud's
+// own config under <account>/plugins/claude-hud (0.15.0 collector.mjs claudePaths). The written line resolves the root the
+// same way when it runs; a line whose glob ignores the variable finds no claude-hud while it is set, so it reads stale then.
+test('a moved plugins root: claude-hud is found there, the written line reads it at run time, a root-blind line goes stale', { skip: process.platform === 'win32' && 'posix shells' }, () =>
+{
+    const dir = account({ versions: ['0.9.0', '0.10.0'], settings: { model: 'opus' } });
+    const moved = path.join(TMP, `moved-${seq++}`);
+    fs.renameSync(path.join(dir, 'plugins'), moved);
+    const env = { CLAUDE_CODE_PLUGIN_CACHE_DIR: moved };
+    const plan = (e) => planHud({ configDir: dir, platform: 'darwin', runtime: NODE, env: e });
+    assert.strictEqual(plan({}).item.state, 'skip', 'unset: <account>/plugins holds nothing now');
+    assert.strictEqual(plan({ CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(TMP, 'nowhere') }).item.state, 'skip', 'a missing folder');
+    const res = applyHud(plan(env));
+    const { command } = read(dir, 'settings.json').statusLine;
+    assert.ok(command.includes('"${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"/cache/*/claude-hud/*/'), command);
+    assert.strictEqual(hudConfig(dir).lineLayout, 'compact', 'claude-hud\'s config stays under the account: ' + res.lines.join('\n'));
+    assert.ok(!fs.existsSync(path.join(moved, 'claude-hud')), 'nothing written under the moved root');
+    for (const shell of ['/bin/sh', '/bin/bash'].filter((s) => fs.existsSync(s)))
+    {
+        const r = spawnSync(shell, ['-c', command], { encoding: 'utf8', input: '{}', env: { PATH: process.env.PATH, HOME: TMP, CLAUDE_CONFIG_DIR: dir, CLAUDE_CODE_PLUGIN_CACHE_DIR: moved, COLUMNS: '100' } });
+        assert.strictEqual(r.stdout.trim(), 'hud 0.10.0 cols=96', `${shell}: ${r.stderr}`);
+    }
+    assert.strictEqual(plan(env).statusLine.state, 'current', 'a re-run');
+    assert.strictEqual(plan(env).changes, 0);
+    // The root-blind shapes (claude-hud 0.8.0's own and this script's before) are current only while the root is where they look.
+    for (const blind of [SORT_V_FOR(NODE), fill(SHAPES.awkNode, { RUNTIME_PATH: NODE, SOURCE: 'dist/index.js' })])
+    {
+        const acct = account({ settings: { statusLine: { type: 'command', command: blind } } });
+        assert.strictEqual(planHud({ configDir: acct, platform: 'darwin', runtime: NODE, env: {} }).statusLine.state, 'current');
+        const at = path.join(TMP, `moved-${seq++}`);
+        fs.cpSync(path.join(acct, 'plugins'), at, { recursive: true });
+        assert.strictEqual(planHud({ configDir: acct, platform: 'darwin', runtime: NODE, env: { CLAUDE_CODE_PLUGIN_CACHE_DIR: at } }).statusLine.state, 'stale', blind.slice(0, 40));
+    }
+    // The launcher honours it too.
+    const file = path.join(TMP, `launcher-${seq++}.mjs`);
+    fs.writeFileSync(file, LAUNCHER);
+    const r = spawnSync(process.execPath, [file], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: TMP, CLAUDE_CONFIG_DIR: dir, CLAUDE_CODE_PLUGIN_CACHE_DIR: moved, COLUMNS: '80', HUD_AS_MODULE: '1' } });
+    assert.strictEqual(r.stdout.trim(), 'hud 0.10.0 cols=76', r.stderr);
+});
+
+// Audit 2026-11-03 PL-10: `hud install` (claude-hud 0.15.0 install.mjs) copies its own scripts/statusline.mjs to the
+// launcher path this script's cmd route uses. One writer per file: a launcher already there is left as it is, whoever
+// wrote it - 0.15.0's hud.mjs reads no launcher's text, and every launcher imports the newest cached dist/index.js.
+test('Windows cmd route: a launcher already at <account>/plugins/claude-hud/statusline.mjs is left as it is; a missing one is written', () =>
+{
+    const opts = { platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE, CMD_EXE) };
+    const theirs = '// claude-hud 0.15.0 scripts/statusline.mjs, as `hud install` copies it\n';
+    const dir = account();
+    const launcher = path.join(dir, 'plugins', 'claude-hud', 'statusline.mjs');
+    // claude-hud's own PowerShell line (install.mjs buildCommand), its node uninstalled since: stale.
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: cmdLine('C:\\gone\\node.exe', path.win32.join(dir, 'plugins', 'claude-hud', 'statusline.mjs')), refreshInterval: 7 } }));
+    fs.mkdirSync(path.dirname(launcher), { recursive: true });
+    fs.writeFileSync(launcher, theirs);
+    const plan = planHud({ configDir: dir, ...opts });
+    assert.strictEqual(plan.statusLine.state, 'stale');
+    assert.strictEqual(plan.changes, 1 + 12, 'the line and the row\'s 12 config keys - no launcher write counted');
+    const res = applyHud(plan);
+    assert.strictEqual(fs.readFileSync(launcher, 'utf8'), theirs, 'claude-hud\'s own launcher left byte for byte');
+    assert.ok(res.lines.includes(`hud: launcher kept - ${launcher} is there already`), res.lines.join('\n'));
+    assert.ok(!res.lines.some((l) => l.startsWith('hud: launcher written')), res.lines.join('\n'));
+    const s = read(dir, 'settings.json').statusLine;
+    assert.strictEqual(s.command, cmdLine(WIN_NODE, path.win32.join(dir, 'plugins', 'claude-hud', 'statusline.mjs')));
+    assert.strictEqual(s.refreshInterval, 7);
+    assert.strictEqual(planHud({ configDir: dir, ...opts }).changes, 0, 'a re-run');
+    // None there: written, and counted.
+    const fresh = account();
+    const p2 = planHud({ configDir: fresh, ...opts });
+    assert.strictEqual(p2.changes, 2 + 13);
+    applyHud(p2);
+    assert.strictEqual(fs.readFileSync(path.join(fresh, 'plugins', 'claude-hud', 'statusline.mjs'), 'utf8'), LAUNCHER);
+});
+
+// Audit 2026-11-03 PL-11: claude-hud 0.15.0 needs node >=22.18.0 (package.json engines); on an older node its status line
+// prints the upgrade line instead of the HUD. The node this script writes is checked against the newest cached version's
+// floor, and a miss is said - never silently written.
+test('the runtime written is checked against the cached claude-hud\'s engines.node: at and over pass quietly, under is said', () =>
+{
+    const at = (version, engines, opts = {}) =>
+    {
+        const dir = account({ versions: ['0.12.1', '0.15.0'] });
+        const pkg = path.join(dir, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.15.0', 'package.json');
+        fs.writeFileSync(pkg, JSON.stringify({ type: 'module', ...(engines === undefined ? {} : { engines: { node: engines } }) }));
+        const plan = planHud({ configDir: dir, platform: 'darwin', runtime: '/opt/node/bin/node', exists: () => true, runtimeVersion: () => version, ...opts });
+        return { plan, lines: applyHud(plan).lines };
+    };
+    const miss = (l) => l.startsWith('hud: runtime ');
+    for (const v of ['22.18.0', '22.19.0', '24.0.0', '23.0.0'])
+        assert.ok(!at(v, '>=22.18.0').lines.some(miss), v);
+    const under = at('22.17.1', '>=22.18.0');
+    assert.ok(under.lines.includes('hud: runtime too old - /opt/node/bin/node is node 22.17.1; claude-hud 0.15.0 needs node >=22.18.0 (its package.json engines), so its status line prints an upgrade line instead of the HUD - put a newer node first on PATH and run this again, or let /claude-hud:hud point the line at one'), under.lines.join('\n'));
+    assert.match(under.plan.item.note, /; node 22\.17\.1 is under claude-hud 0\.15\.0's >=22\.18\.0$/, 'the init plan says it before the ask');
+    assert.ok(JSON.parse(fs.readFileSync(under.plan.settingsFile, 'utf8')).statusLine, 'the line is still written');
+    assert.ok(at('20.11.0', '>=22.18.0').lines.some((l) => l.startsWith('hud: runtime too old - /opt/node/bin/node is node 20.11.0;')));
+    assert.ok(!at('20.11.0', undefined).lines.some(miss), 'no engines field, nothing to check');
+    assert.ok(at('22.17.1', '^22.18.0 || >=24').lines.includes('hud: runtime not checked - claude-hud 0.15.0 asks for node \'^22.18.0 || >=24\', a range this script does not read'));
+    assert.ok(at(null, '>=22.18.0').lines.includes('hud: runtime not checked - /opt/node/bin/node --version printed no version; claude-hud 0.15.0 needs node >=22.18.0'));
+    // A line left as it is gets no check: this run writes no runtime.
+    const dir = account({ versions: ['0.15.0'] });
+    fs.writeFileSync(path.join(dir, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.15.0', 'package.json'), JSON.stringify({ type: 'module', engines: { node: '>=22.18.0' } }));
+    run(dir);
+    const again = applyHud(planHud({ configDir: dir, platform: 'darwin', runtime: NODE, runtimeVersion: () => '18.0.0' })).lines;
+    assert.ok(!again.some(miss), again.join('\n'));
+});
+
+test('the runtime\'s version is asked of the runtime itself (a node on PATH), process.execPath read in-process', { skip: process.platform === 'win32' && 'posix shell stub' }, () =>
+{
+    const bin = path.join(TMP, `bin-old-${seq++}`);
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\necho v22.17.0\n', { mode: 0o755 });
+    const dir = account({ versions: ['0.15.0'] });
+    fs.writeFileSync(path.join(dir, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.15.0', 'package.json'), JSON.stringify({ type: 'module', engines: { node: '>=22.18.0' } }));
+    const lines = applyHud(planHud({ configDir: dir, platform: 'darwin', env: { PATH: bin } })).lines;
+    assert.ok(lines.some((l) => l.startsWith(`hud: runtime too old - ${path.join(bin, 'node')} is node 22.17.0;`)), lines.join('\n'));
+    assert.strictEqual(hud.versionOf(process.execPath), process.versions.node);
 });

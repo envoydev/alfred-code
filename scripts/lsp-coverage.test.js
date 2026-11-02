@@ -11,6 +11,8 @@ const { spawnSync } = require('node:child_process');
 const lsp = require(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'lsp-coverage.js'));
 
 delete process.env.ALFRED_CODE_DATA_PATH;
+// A moved plugins root in the developer's shell would move every sandbox's records; the cases that test it set it themselves.
+delete process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
 
 const writeJson = (file, value) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(value)); };
 const writeText = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
@@ -417,6 +419,37 @@ test('in git the untracked files are read beside the tracked ones, whatever the 
         s.commit(['z.z']);
         for (const f of ['a.a', 'b.b']) writeText(path.join(s.root, f), 'x\n');
         assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root, walkCap: 1 })].sort(), ['.a', '.b', '.z']);
+    }
+    finally { s.done(); }
+});
+
+// Audit 2026-11-03 PL-05: CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root - installed_plugins.json and
+// known_marketplaces.json with the cache (code.claude.com/docs/en/plugins/loading, 'Find plugins on disk').
+test('pluginsRoot: CLAUDE_CODE_PLUGIN_CACHE_DIR when set, else <config dir>/plugins', () =>
+{
+    const { pluginsRoot } = require(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'plugins-root.js'));
+    const config = path.resolve('acct');
+    assert.strictEqual(pluginsRoot({ CLAUDE_CONFIG_DIR: config }), path.join(config, 'plugins'));
+    assert.strictEqual(pluginsRoot({}, config), path.join(config, 'plugins'), 'the caller\'s own account dir');
+    assert.strictEqual(pluginsRoot({ CLAUDE_CONFIG_DIR: config, CLAUDE_CODE_PLUGIN_CACHE_DIR: path.resolve('moved') }), path.resolve('moved'));
+    assert.strictEqual(pluginsRoot({ CLAUDE_CODE_PLUGIN_CACHE_DIR: `  ${path.resolve('moved')}  ` }, config), path.resolve('moved'), 'trimmed');
+    assert.strictEqual(pluginsRoot({ CLAUDE_CODE_PLUGIN_CACHE_DIR: '   ' }, config), path.join(config, 'plugins'), 'blank is unset');
+    assert.strictEqual(pluginsRoot({}), path.join(os.homedir(), '.claude', 'plugins'));
+});
+
+test('a moved plugins root: the records are read there - unset reads the config dir, a missing folder covers nothing', () =>
+{
+    const s = sandbox({ plugins: [{ ...TS, decl: 'manifest' }] });
+    try
+    {
+        s.stub('tsls');
+        s.commit(['a.ts']);
+        const moved = path.join(s.work, 'moved-plugins');
+        fs.renameSync(path.join(s.config, 'plugins'), moved);
+        const at = (env) => lsp.computeCoverage({ projectRoot: s.root, env, enabled: s.enabled }).covered;
+        assert.deepStrictEqual(at({ ...s.env, CLAUDE_CODE_PLUGIN_CACHE_DIR: moved }), ['.ts']);
+        assert.deepStrictEqual(at(s.env), [], 'unset: the config dir holds no records now');
+        assert.deepStrictEqual(at({ ...s.env, CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(s.work, 'nowhere') }), []);
     }
     finally { s.done(); }
 });
