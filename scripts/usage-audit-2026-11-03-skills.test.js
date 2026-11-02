@@ -40,6 +40,12 @@ test('U32: the hand-written AUTO stamp is deleted last - after the close ask is 
     assert.match(sec, /\*\*The hand-written stamp goes LAST\.\*\* Step 6 deletes it only after the close stop's ask is answered, or after the close printed when nothing is pending - never before the ask/);
 });
 
+// U32's twin: task-solve-cross deleted its stamp 'when the run completes', with no order against the close ask either.
+test('U32: task-solve-cross deletes a hand-written AUTO stamp last too', () => {
+    const t = flat(read('stack/skills/task-solve-cross/references/execution-modes.md'));
+    assert.match(t, /delete the file when the run completes - a hand-written AUTO stamp LAST, only after the close's ask is answered or the close printed when nothing is pending/);
+});
+
 // U29: a side effect on a surface the plan did not name was filed MINOR (14% of its run went to rework), and a change
 // served to every device was tested on one device class.
 test('U29: an effect on a surface or device class the plan did not name is at least MATERIAL', () => {
