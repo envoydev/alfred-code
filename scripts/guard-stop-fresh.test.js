@@ -1292,6 +1292,77 @@ test('guard-stop-contract (C45): a referent approval is judged on what was shown
   assert.equal(askIn(tp, [{ ...mis[0], question: 'Where do we verify? Recommended: a quick look first.' }]).status, 0, 'a question naming no option decides nothing');
 });
 
+// Usage audit 2026-11-03 U04: the noun came from any clause of the ask, so four asks over a shown subject were denied
+// and one pointer at nothing shown passed. Each measured shape, paraphrased, both ways.
+test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own object, a quote counts as shown, a pointer above needs shown text', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const toolRow = (id) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `tu-${id}`, name: 'Read', input: { file_path: 'a.md' } }] } });
+  const ask = (question, labels) => [{ question, options: (labels || ['Post both (Recommended)', 'Change them first']).map((label, i) => ({ label, description: `option ${i + 1}` })) }];
+  const over = (name, rows, questions, env) => askIn(transcript(`u04-${name}`, [typed('draft the two sub-tasks'), ...rows]), questions, env);
+  const drafts = 'Draft 1 - Upgrade the import service to the new parser.\nScope: the reader, the mapper and the two tests that cover them.\n\n'
+    + 'Draft 2 - Filter the loaded fields by the role of the signed-in user.\nScope: the query builder and its unit test, nothing in the page itself.\n';
+  assert.ok(drafts.length >= 200 && !/description/i.test(drafts), 'the fixture shows the drafts and never the side clause noun');
+  const status = 'Both are saved in the work folder, nothing posted.';
+
+  // shape 1: the verb's object is 'the 2 drafts'; a side clause names a description the chat never showed
+  const side = ask('Post the 2 drafts as sub-tasks of the parent ticket, in order? I recommend posting them as shown; after that comes the proposed parent description, also not posted.');
+  assert.equal(over('side-shown', [toolRow('a1'), assistantRow('a2', drafts)], side).status, 0, 'the drafts are shown - the side clause noun is not the subject');
+  const sideBlind = over('side-blind', [toolRow('a3'), assistantRow('a4', status)], side);
+  assert.equal(sideBlind.status, 2, 'a status line shows no draft');
+  assert.match(sideBlind.stderr, /an approval of the drafts the chat has not shown since the user's last message/);
+  assert.match(sideBlind.stderr, /re-send this same ask unchanged/, 'the denial says the fix is a re-send of the same ask');
+
+  // shape 2: 'shown above' over the shown drafts
+  const above = ask('Post the 2 drafts shown above as sub-tasks, in order? I recommend posting them as shown, because every note is settled.');
+  assert.equal(over('above-shown', [toolRow('b1'), assistantRow('b2', drafts)], above).status, 0, "'shown above' over shown drafts");
+
+  // shape 3: the drafts ride the ask's own message, which the transcript has not written yet when the hook fires
+  const env = logEnv();
+  const lag = over('above-lag', [toolRow('c1')], above, env);
+  assert.equal(lag.status, 2, 'the hook cannot see the message in flight');
+  assert.match(lag.stderr, /can lag the message in flight[\s\S]*re-send the ask unchanged now/, 'the denial names the lag and the re-send');
+  assert.equal(over('above-lag', [toolRow('c1')], above, env).status, 0, 're-sent unchanged, it passes - once per ask text');
+  assert.equal(over('above-lag-ondisk', [toolRow('c2'), assistantRow('c3', drafts)], above).status, 0, 'the same ask with the text on disk passes');
+
+  // shape 4: 'send it' inside a clause about something else is no approval; one addressed to the user still is
+  const symptom = [{ question: 'What goes wrong with capitals while typing on the phone? The phone capitalises a sentence start itself, and the page may send it differently than a typed Shift.',
+    options: [{ label: 'A capital comes out lowercase (Recommended)', description: 'x' }, { label: 'A lowercase letter comes out capital', description: 'y' }] }];
+  assert.equal(over('symptom', [toolRow('d1')], symptom).status, 0, "the page's 'send it' approves nothing");
+  for (const q of ['Send it to the customer?', 'Shall I send it to the customer now?', 'Please approve the plan so I can start?'])
+    assert.equal(over(`send-${q.length}`, [toolRow('d2')], ask(q, ['Yes (Recommended)', 'Hold'])).status, 2, `still an approval over nothing: ${q}`);
+
+  // shape 5: the comment the write adds is quoted in the ask itself
+  const allow = ['Allow the write (Recommended)', 'I will add it myself'];
+  const quoted = ask("Adding the comment above the reload function edits a file outside this project, so the guard needs your OK. Allow this one write? The line: '# Reset the agent to the configured keys only, passphrases from the keychain'.", allow);
+  assert.equal(over('quoted', [toolRow('e1')], quoted).status, 0, 'a quoted line is shown');
+  for (const [name, text] of [['backtick', 'Allow this one write? The line: `# Reset the agent to the configured keys only`.'], ['double', 'Allow this one write? The line: "# Reset the agent to the configured keys only".']])
+    assert.equal(over(`quoted-${name}`, [toolRow('e2')], ask(`Adding the comment above the reload function edits a file outside this project. ${text}`, allow)).status, 0, `a ${name} quote is shown too`);
+  assert.equal(over('reworded', [toolRow('e3')], ask('Adding the comment above the reload function edits a file outside this project, so the guard needs your OK for this one write. Allow it?', allow)).status, 2,
+    'reworded with no quote, the comment is unshown');
+  assert.equal(over('label-quote', [toolRow('e4')], ask("Adding the comment above the reload function edits a file outside this project. Pick 'Allow the write' to go on?", allow)).status, 2,
+    'a quoted option label shows nothing');
+
+  // shape 6 (the wrong pass): a pointer at 'the five groups above' when the chat shows no group
+  const groups = ask('Commit the five groups above locally in ticket order, or hold while you read the diffs? Nothing leaves this machine either way.', ['Hold - I read them first (Recommended)', 'Commit now']);
+  const pointer = over('groups-blind', [toolRow('f1'), assistantRow('f2', status)], groups);
+  assert.equal(pointer.status, 2, 'a pointer at groups nobody was shown');
+  assert.match(pointer.stderr, /a pointer at the groups above that the chat has not shown since the user's last message/);
+  const listed = 'Group 1 - the parser upgrade, three files.\nGroup 2 - the role filter, two files.\nGroup 3 - the retry policy, one file.\nGroup 4 - the page copy, four files.\nGroup 5 - the test fixtures, six files, all under the shared folder.\n';
+  assert.ok(listed.length >= 200);
+  assert.equal(over('groups-shown', [toolRow('f3'), assistantRow('f4', listed)], groups).status, 0, 'the groups are listed in the chat');
+  // its neighbour, 'are ready' over groups kept in files the chat never showed, stays denied
+  assert.equal(over('ready', [toolRow('f5')], ask('All five groups are ready for your review in the patch files. Commit them locally in ticket order now, or hold?', ['Hold (Recommended)', 'Commit now'])).status, 2,
+    "'are ready' over unshown groups");
+
+  // 'above' as a preposition points at nothing; a pointer naming no known noun needs SHOWN_MIN of chat text
+  assert.equal(over('preposition', [toolRow('g1')], ask('Raise the limit above 5 retries for the import job?', ['Raise it (Recommended)', 'Keep it'])).status, 0, "'above 5' is a preposition");
+  const values = ask('Use the values above for the next run, or change them first?', ['Use them (Recommended)', 'Change them']);
+  const short = over('values-short', [toolRow('g2'), assistantRow('g3', status)], values);
+  assert.equal(short.status, 2, 'under SHOWN_MIN nothing is shown');
+  assert.match(short.stderr, /a pointer at something above that the chat has not shown/);
+  assert.equal(over('values-long', [toolRow('g4'), assistantRow('g5', listed)], values).status, 0, 'over SHOWN_MIN the pointer has text to point at');
+});
+
 test('guard-stop-contract: a /mode-auto-run run that reads the installed solve flow owes its receipts; nothing else marks one (2026-10-25)', () => {
   const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
   const auto = typed('<command-message>mode-auto-run</command-message>\n<command-name>/mode-auto-run</command-name>\n<command-args>add a status route</command-args>');
