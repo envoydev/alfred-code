@@ -5,7 +5,7 @@
     "url": "https://github.com/envoydev"
   },
   "metadata": {
-    "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
+    "description": "Claude Code agent stack - skills, agents, rules and hooks, installed and updated via the alfred-code plugin.",
     "version": "3.6.0"
   },
   "plugins": [
