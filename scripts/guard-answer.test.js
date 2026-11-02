@@ -47,7 +47,9 @@ test('UserPromptSubmit injects the answer budget as additionalContext', () => {
     assert.match(ctx, /900 characters/, 'the budget names the character cap');
     assert.match(ctx, /Code, tables and command output are exempt/, 'the exemption travels with the budget');
     // Ruling S9 (the user's, 2026-10-20): 'step by step' lifts the budget like the other depth words.
-    assert.match(ctx, /\(in detail \/ walk me through \/ step by step \/ teach me \/ ELI5 \/ write a plan\)/, 'the lift list names step by step');
+    assert.match(ctx, /\(in detail \/ walk me through \/ step by step \/ teach me \/ ELI5 \/ write a plan, or the same ask in any language\)/, 'the lift list names step by step');
+    // Audit 2026-11-03 SYS-05: the per-turn copy carries the rule's 'the same ask in any language' (alfred-interaction.md).
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8'), /'write a plan', the same ask in any language\)/, 'the rule it copies');
 });
 
 // The user's ruling 2026-10-20: the answer budget is the interaction rule's and is injected, never enforced - the

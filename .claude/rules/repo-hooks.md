@@ -1302,8 +1302,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     generators fold its Stop row into history-session's (`history-session.js wiringRows`, `RIDERS`), which takes its 60s;
     with history-session not picked its own row stays.
   - `guard-answer.js` (`guard-answer-length.js` before 2026-10-20 - the user's ruling; `renamed.hooks` carries it) (`UserPromptSubmit` + `SessionStart:compact` + `PostToolUse` `AskUserQuestion`; never blocks) - injects the answer budget every turn (a
-    341-char delta of the rule's section - its lift list names 'step by step' beside in detail / walk me through / write a
-    plan since ruling S9 (the user's, 2026-10-20), which stays its home - audit 2026-10-14 RU06; it was 751 on every prompt), and
+    453-char delta of the rule's section, measured 2026-11-03 - its lift list names 'step by step' beside in detail / walk me
+    through / write a plan since ruling S9 (the user's, 2026-10-20), and the rule's 'or the same ask in any language' since
+    audit 2026-11-03 SYS-05, the rule staying its home - audit 2026-10-14 RU06; it was 751 on every prompt), and
     again after a compaction, which drops that injection - only then since the deep hooks review 2026-10-16 (startup,
     resume and clear get it from the first prompt; 256 starts paid a second copy). Its Stop half - the 1800-char prose
     block and the em-dash block - is gone (the user's ruling of 2026-10-20: a hard cap held mandated closes and depth
