@@ -1,6 +1,6 @@
 ---
 name: habits-adjust-agents-md
-description: "Use when an AGENTS.md or CLAUDE.md is written or updated - an unfilled seeded one, a stale one, a part needing its own. Not for skills or rules."
+description: "Use when asked to fill in or update AGENTS.md or CLAUDE.md, or one is written - an unfilled seed, a stale one, a part needing its own. Not for skills or rules."
 ---
 
 # Adjust AGENTS.md - create or improve a project's instruction file

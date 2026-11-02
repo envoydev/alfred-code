@@ -1,6 +1,6 @@
 ---
 name: ts-js-testing
-description: "Load before writing or reviewing plain TS/JS tests or configuring coverage - libraries, Node CLIs, Vitest, fake timers. Not for Angular or .NET tests."
+description: "Load before writing or reviewing plain TS/JS tests (*.test.ts, Vitest/Jest) or coverage - libraries, Node CLIs, fake timers. Not for Angular or .NET tests."
 ---
 
 # TypeScript Testing
