@@ -1236,7 +1236,8 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // ask only when it marks one option, and their prose stops carried no mark on four of them, so the run waited. The
 // AGENTS.md create-mode write ask (audit 2026-10-14 SKC14) and task-build-from-scratch's commit ask (SKF-11) followed.
 const ASK_FLOW_TEMPLATES = {
-    'task-solve': 10, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
+    // +1 task-solve: the step-5 findings stop (usage audit 2026-11-03 U28: improvised, it marked 'Close now' over an in-area MATERIAL).
+    'task-solve': 11, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
     'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
     // capture-quality's chain (2026-10-29): one template per part state, the mode question and the description match's part pick.
     'capture-quality': 7,

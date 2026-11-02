@@ -138,6 +138,12 @@ Deviations and findings become a punch list routed back to step 4 - and the fix 
 reviewer again before anything is stamped: a punch-list fix is unreviewed code. Then the body's
 `Conformance:` stamp.
 
+**The findings ask's mark.** 'Fix now' keeps the mark while a BLOCKER or MATERIAL is open in the
+request's area - the code this diff changed, or a behaviour the `Asked:` line names - under AUTO too:
+deferring it ships the defect the user came to have fixed (usage audit 2026-11-03: a run marked 'Close
+now' over an in-area MATERIAL, and the user had to push back). The mark moves to 'Close now' only when
+every open finding is MINOR or outside that area. With nothing open, the stop is the step-done ask.
+
 ## The step-6 notes purge
 
 **The purge is counted, not claimed.** At close, from the project root: `node .claude/hooks/handoff.js left <feature>` with the feature's slug - its first line counts what is left of the feature's handoff notes, each listed `note <name>` below it, read from the bus, so no recollection decides it; an unreadable store prints no number and exits 1. Above zero the close is not done - purge the rest, then count again.
