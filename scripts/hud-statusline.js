@@ -36,6 +36,7 @@
 // the `main` the launcher below calls; 0.12.1 leaves both scripts byte for byte.
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const { accountDir } = require('./install/stamp.js');
 const { parseJson } = require('./install/json-file.js');
@@ -329,12 +330,46 @@ function hudInstall(configDir, settings, project, env = process.env)
             try { names = fs.readdirSync(path.join(cache, market, HUD)); }
             catch { continue; }
             for (const v of names)
-                if (/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(v) && fs.existsSync(path.join(cache, market, HUD, v, 'dist', 'index.js'))) versions.push(v);
+                if (/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(v) && fs.existsSync(path.join(cache, market, HUD, v, 'dist', 'index.js'))) versions.push({ version: v, dir: path.join(cache, market, HUD, v) });
         }
     }
     catch { versions = []; }
     if (!versions.length) return { ok: false, why: `${none} (registered, but its plugin cache holds no version to run)` };
-    return { ok: true, scope };
+    // The newest, as every launcher picks it: the one whose package.json the runtime check reads.
+    const newest = versions.reduce((a, b) => (below(parts(a.version), parts(b.version)) ? b : a));
+    return { ok: true, scope, newest };
+}
+
+const parts = (v) => String(v).split(/[.+-]/).slice(0, 3).map(Number);
+const below = (a, b) => { for (let i = 0; i < 3; i += 1) if (a[i] !== b[i]) return a[i] < b[i]; return false; };
+
+// The version a runtime answers: this process's own in-process, any other asked with `--version`.
+function versionOf(runtime)
+{
+    if (runtime === process.execPath) return process.versions.node;
+    const r = spawnSync(runtime, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    const m = /^v?(\d+\.\d+\.\d+)/.exec(String((r && r.stdout) || '').trim());
+    return m ? m[1] : null;
+}
+
+// The node the run writes against the floor the newest cached claude-hud states - package.json `engines.node`, '>=22.18.0'
+// since 0.15.0, whose status line prints an upgrade line on an older node. null when it holds or no floor is stated; a
+// miss, or a floor this script cannot read, as the line applyHud prints and the note init's plan carries.
+function runtimeCheck({ runtime, newest, runtimeVersion })
+{
+    const pkg = newest && readJsonFile(path.join(newest.dir, 'package.json'));
+    const range = pkg && pkg.engines && typeof pkg.engines.node === 'string' ? pkg.engines.node.trim() : '';
+    if (!range) return null;
+    const who = `claude-hud ${newest.version}`;
+    const floor = /^>=\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(range);
+    if (!floor) return { line: `hud: runtime not checked - ${who} asks for node '${range}', a range this script does not read`, note: `${who}'s node range '${range}' not checked` };
+    const version = runtimeVersion(runtime);
+    if (!version) return { line: `hud: runtime not checked - ${runtime} --version printed no version; ${who} needs node ${range}`, note: `node version unknown; ${who} needs ${range}` };
+    if (!below(parts(version), floor.slice(1, 4).map((n) => Number(n || 0)))) return null;
+    return {
+        line: `hud: runtime too old - ${runtime} is node ${version}; ${who} needs node ${range} (its package.json engines), so its status line prints an upgrade line instead of the HUD - put a newer node first on PATH and run this again`,
+        note: `node ${version} is under ${who}'s ${range}`,
+    };
 }
 
 function resolveConfigDir({ flag, env = process.env })
@@ -369,7 +404,7 @@ function addsNote(targets)
 
 // Everything the run would do, nothing written. `item` is init-plan's machine line state: skip,
 // blocked, missing, refresh (a claude-hud line of a stale shape will be replaced) or present.
-function planHud({ configDir, project, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog })
+function planHud({ configDir, project, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog, runtimeVersion = versionOf })
 {
     const accountFile = path.join(configDir, 'settings.json');
     const account = readDoc(accountFile);
@@ -390,11 +425,17 @@ function planHud({ configDir, project, platform = process.platform, env = proces
     plan.statusLine = { ...classify(statusLine, { platform, want, exists }), command: want.command, launcher: want.launcher };
     plan.entry = (catalog || readJsonFile(CATALOG) || { plugins: {} }).plugins[HUD] || { targets: [] };
     plan.writesLine = ['absent', 'stale'].includes(plan.statusLine.state);
+    // One writer per file (audit 2026-11-03 PL-10): claude-hud's own `hud install` (0.15.0 install.mjs) copies its
+    // scripts/statusline.mjs to this same path, and its hud.mjs reads no launcher's text - so a launcher already there,
+    // whoever wrote it, is left as it is, and only a missing one is written.
+    plan.writesLauncher = plan.writesLine && Boolean(want.launcher) && !exists(want.launcher.file);
+    // Only a runtime this run writes is checked; a line left as it is names its own.
+    plan.runtimeMiss = plan.writesLine ? runtimeCheck({ runtime, newest: install.newest, runtimeVersion }) : null;
     // The row as it lands AFTER the statusLine write, which its refresh interval is gated on.
     plan.targets = rowTargets(plan, plan.writesLine ? { [path.basename(settingsFile)]: { ...(settings.doc || {}), statusLine: lineAfter(settings.doc, want.command) } } : {});
-    plan.changes = (plan.writesLine ? 1 : 0) + (plan.writesLine && want.launcher ? 1 : 0)
+    plan.changes = (plan.writesLine ? 1 : 0) + (plan.writesLauncher ? 1 : 0)
         + plan.targets.reduce((n, t) => n + (t.skipped ? 0 : t.rows.filter((r) => r.status === 'missing').length), 0);
-    const note = addsNote(plan.targets);
+    const note = [addsNote(plan.targets), plan.runtimeMiss && plan.runtimeMiss.note].filter(Boolean).join('; ');
     if (plan.changes) plan.item = { state: plan.statusLine.state === 'stale' ? 'refresh' : 'missing', detail: null, note };
     else if (plan.statusLine.state === 'foreign')
         plan.item = { state: 'skip', detail: `the ${plan.where} statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; /claude-hud:setup replaces it` };
@@ -444,13 +485,14 @@ function applyHud(plan, run = {})
     }
     if (plan.writesLine)
     {
-        if (sl.launcher)
+        if (plan.writesLauncher)
         {
             fs.mkdirSync(path.dirname(sl.launcher.file), { recursive: true });
             fs.writeFileSync(sl.launcher.file, LAUNCHER);
             lines.push(`hud: launcher written - ${sl.launcher.file}`);
             changes += 1;
         }
+        else if (sl.launcher) lines.push(`hud: launcher kept - ${sl.launcher.file} is there already`);
         const doc = plan.settings.doc || {};
         doc.statusLine = lineAfter(doc, sl.command);
         fs.mkdirSync(path.dirname(plan.settingsFile), { recursive: true });
@@ -459,6 +501,7 @@ function applyHud(plan, run = {})
             ? `hud: statusLine written - claude-hud's own shape for this platform${plan.where === 'account' ? '' : `, in the ${plan.where} - claude-hud is installed for this project`}`
             : 'hud: statusLine refreshed - the claude-hud line had a stale shape; its other keys kept');
         changes += 1;
+        if (plan.runtimeMiss) lines.push(plan.runtimeMiss.line);
     }
     else if (sl.state === 'current') lines.push('hud: statusLine current - left as it is');
     else lines.push(`hud: statusLine kept - it is not claude-hud's (source: ${sl.label}); /claude-hud:setup replaces it, backing yours up first`);
@@ -511,7 +554,7 @@ function main(argv, { env = process.env, out = (s) => process.stdout.write(s) } 
     return res.code;
 }
 
-module.exports = { SHAPES, LAUNCHER, fill, classify, expected, sourceLabel, gitBash, nodeOnPath, hudInstall, resolveConfigDir, planHud, applyHud, parseArgs, main };
+module.exports = { SHAPES, LAUNCHER, fill, classify, expected, sourceLabel, gitBash, nodeOnPath, versionOf, hudInstall, resolveConfigDir, planHud, applyHud, parseArgs, main };
 
 if (require.main === module)
 {

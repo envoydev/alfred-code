@@ -662,3 +662,79 @@ test('a moved plugins root: claude-hud is found there, the written line reads it
     const r = spawnSync(process.execPath, [file], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: TMP, CLAUDE_CONFIG_DIR: dir, CLAUDE_CODE_PLUGIN_CACHE_DIR: moved, COLUMNS: '80', HUD_AS_MODULE: '1' } });
     assert.strictEqual(r.stdout.trim(), 'hud 0.10.0 cols=76', r.stderr);
 });
+
+// Audit 2026-11-03 PL-10: `hud install` (claude-hud 0.15.0 install.mjs) copies its own scripts/statusline.mjs to the
+// launcher path this script's cmd route uses. One writer per file: a launcher already there is left as it is, whoever
+// wrote it - 0.15.0's hud.mjs reads no launcher's text, and every launcher imports the newest cached dist/index.js.
+test('Windows cmd route: a launcher already at <account>/plugins/claude-hud/statusline.mjs is left as it is; a missing one is written', () =>
+{
+    const opts = { platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE, CMD_EXE) };
+    const theirs = '// claude-hud 0.15.0 scripts/statusline.mjs, as `hud install` copies it\n';
+    const dir = account();
+    const launcher = path.join(dir, 'plugins', 'claude-hud', 'statusline.mjs');
+    // claude-hud's own PowerShell line (install.mjs buildCommand), its node uninstalled since: stale.
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: cmdLine('C:\\gone\\node.exe', path.win32.join(dir, 'plugins', 'claude-hud', 'statusline.mjs')), refreshInterval: 7 } }));
+    fs.mkdirSync(path.dirname(launcher), { recursive: true });
+    fs.writeFileSync(launcher, theirs);
+    const plan = planHud({ configDir: dir, ...opts });
+    assert.strictEqual(plan.statusLine.state, 'stale');
+    assert.strictEqual(plan.changes, 1 + 12, 'the line and the row\'s 12 config keys - no launcher write counted');
+    const res = applyHud(plan);
+    assert.strictEqual(fs.readFileSync(launcher, 'utf8'), theirs, 'claude-hud\'s own launcher left byte for byte');
+    assert.ok(res.lines.includes(`hud: launcher kept - ${launcher} is there already`), res.lines.join('\n'));
+    assert.ok(!res.lines.some((l) => l.startsWith('hud: launcher written')), res.lines.join('\n'));
+    const s = read(dir, 'settings.json').statusLine;
+    assert.strictEqual(s.command, cmdLine(WIN_NODE, path.win32.join(dir, 'plugins', 'claude-hud', 'statusline.mjs')));
+    assert.strictEqual(s.refreshInterval, 7);
+    assert.strictEqual(planHud({ configDir: dir, ...opts }).changes, 0, 'a re-run');
+    // None there: written, and counted.
+    const fresh = account();
+    const p2 = planHud({ configDir: fresh, ...opts });
+    assert.strictEqual(p2.changes, 2 + 13);
+    applyHud(p2);
+    assert.strictEqual(fs.readFileSync(path.join(fresh, 'plugins', 'claude-hud', 'statusline.mjs'), 'utf8'), LAUNCHER);
+});
+
+// Audit 2026-11-03 PL-11: claude-hud 0.15.0 needs node >=22.18.0 (package.json engines); on an older node its status line
+// prints the upgrade line instead of the HUD. The node this script writes is checked against the newest cached version's
+// floor, and a miss is said - never silently written.
+test('the runtime written is checked against the cached claude-hud\'s engines.node: at and over pass quietly, under is said', () =>
+{
+    const at = (version, engines, opts = {}) =>
+    {
+        const dir = account({ versions: ['0.12.1', '0.15.0'] });
+        const pkg = path.join(dir, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.15.0', 'package.json');
+        fs.writeFileSync(pkg, JSON.stringify({ type: 'module', ...(engines === undefined ? {} : { engines: { node: engines } }) }));
+        const plan = planHud({ configDir: dir, platform: 'darwin', runtime: '/opt/node/bin/node', exists: () => true, runtimeVersion: () => version, ...opts });
+        return { plan, lines: applyHud(plan).lines };
+    };
+    const miss = (l) => l.startsWith('hud: runtime ');
+    for (const v of ['22.18.0', '22.19.0', '24.0.0', '23.0.0'])
+        assert.ok(!at(v, '>=22.18.0').lines.some(miss), v);
+    const under = at('22.17.1', '>=22.18.0');
+    assert.ok(under.lines.includes('hud: runtime too old - /opt/node/bin/node is node 22.17.1; claude-hud 0.15.0 needs node >=22.18.0 (its package.json engines), so its status line prints an upgrade line instead of the HUD - put a newer node first on PATH and run this again'), under.lines.join('\n'));
+    assert.match(under.plan.item.note, /; node 22\.17\.1 is under claude-hud 0\.15\.0's >=22\.18\.0$/, 'the init plan says it before the ask');
+    assert.ok(JSON.parse(fs.readFileSync(under.plan.settingsFile, 'utf8')).statusLine, 'the line is still written');
+    assert.ok(at('20.11.0', '>=22.18.0').lines.some((l) => l.startsWith('hud: runtime too old - /opt/node/bin/node is node 20.11.0;')));
+    assert.ok(!at('20.11.0', undefined).lines.some(miss), 'no engines field, nothing to check');
+    assert.ok(at('22.17.1', '^22.18.0 || >=24').lines.includes('hud: runtime not checked - claude-hud 0.15.0 asks for node \'^22.18.0 || >=24\', a range this script does not read'));
+    assert.ok(at(null, '>=22.18.0').lines.includes('hud: runtime not checked - /opt/node/bin/node --version printed no version; claude-hud 0.15.0 needs node >=22.18.0'));
+    // A line left as it is gets no check: this run writes no runtime.
+    const dir = account({ versions: ['0.15.0'] });
+    fs.writeFileSync(path.join(dir, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.15.0', 'package.json'), JSON.stringify({ type: 'module', engines: { node: '>=22.18.0' } }));
+    run(dir);
+    const again = applyHud(planHud({ configDir: dir, platform: 'darwin', runtime: NODE, runtimeVersion: () => '18.0.0' })).lines;
+    assert.ok(!again.some(miss), again.join('\n'));
+});
+
+test('the runtime\'s version is asked of the runtime itself (a node on PATH), process.execPath read in-process', { skip: process.platform === 'win32' && 'posix shell stub' }, () =>
+{
+    const bin = path.join(TMP, `bin-old-${seq++}`);
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\necho v22.17.0\n', { mode: 0o755 });
+    const dir = account({ versions: ['0.15.0'] });
+    fs.writeFileSync(path.join(dir, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.15.0', 'package.json'), JSON.stringify({ type: 'module', engines: { node: '>=22.18.0' } }));
+    const lines = applyHud(planHud({ configDir: dir, platform: 'darwin', env: { PATH: bin } })).lines;
+    assert.ok(lines.some((l) => l.startsWith(`hud: runtime too old - ${path.join(bin, 'node')} is node 22.17.0;`)), lines.join('\n'));
+    assert.strictEqual(hud.versionOf(process.execPath), process.versions.node);
+});
