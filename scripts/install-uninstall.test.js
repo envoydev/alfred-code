@@ -262,6 +262,37 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
     assert.match(outs[1], /stamp removed/);
 });
 
+// Audit 2026-11-03 SYS-03: the session status file and its exclude line are written in every install (session-status.js),
+// so uninstall takes both back - the status files and their emptied folders, and only the exclude pair the stack added:
+// the user's own exclude lines and a file of session-inspector's own beside status/ stay.
+test('uninstall: the session status files and the exclude line the stack added go, the user\'s own lines and session-inspector\'s files stay', POSIX_ONLY, () =>
+{
+    const status = require('../stack/hooks/session-status.js');
+    const { result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+        plugins: LISTING,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            fs.appendFileSync(path.join(repo, '.git', 'info', 'exclude'), '*.mine\n');
+            const env = { CLAUDE_PROJECT_DIR: repo };
+            assert.strictEqual(status.writeStatus({ session_id: 's1', cwd: repo }, {}, { when: 'always', deps: { env } }), 'written');
+            put(path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
+            return fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8');
+        },
+        inspect: (repo) => ({
+            status: fs.existsSync(path.join(repo, '.claude', 'session-inspector', 'status')),
+            handoff: fs.existsSync(path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md')),
+            exclude: fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8'),
+        }),
+    });
+    assert.strictEqual(result.status, false, outs[1]);
+    assert.strictEqual(result.handoff, true, 'session-inspector\'s own file stays');
+    assert.ok(result.exclude.endsWith('*.mine\n'), `the user's own line stays: ${result.exclude}`);
+    assert.doesNotMatch(result.exclude, /session-inspector/, 'the pair the stack added goes');
+    assert.match(outs[1], /session status: 1 file removed/);
+    assert.match(outs[1], /info\/exclude: 1 line the stack added removed/);
+});
+
 // The preview and the answer through the real installer: `uninstall.js seed` names the unedited seed, and an uninstall
 // given no answer keeps it while everything else goes (the user's ask of 2026-10-23).
 test('uninstall: the seed preview names the unedited seed, and with no answer the seed alone stays', POSIX_ONLY, () =>

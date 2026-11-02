@@ -1533,6 +1533,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `/<rel>/.claude/session-inspector/status/` line under `# alfred-code: session-inspector status files` into the common
     dir's `info/exclude` - one `gitSafe` spawn per common dir, none past 8s of the process (section 6). Each write leaves a
     `status-write` probe row (`ok`, `slow` past 200ms, `failed`), an exclude that failed or came late a `status-exclude` one.
+    Uninstall takes both back through the module's own `removeStatus` (audit 2026-11-03 SYS-03; `uninstall.js
+    removeSessionStatus`): under the root and each listed base the files a status write names and the folders they leave
+    empty, then each exclude pair it added for those bases - session-inspector's own files beside `status/`, a line of the
+    user's own and another project's pair stay; a pair for a base the list already dropped stays too (a stated ceiling).
+    `docs/install-footprint.md` lists both writes.
   - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
     stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
     `<data root>/forge-lexicon.json`) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,
