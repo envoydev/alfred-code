@@ -3140,6 +3140,10 @@ function flowFieldNotes(questions, askText, turnText) {
   const notes = [];
   const flow = flowState();
   if (!flow.flow) return notes;
+  // Past the cycle: the plan is stamped `Completed:` and the user typed since, so an ask now is no stop of the flow until a
+  // new cycle's marker - a typed /task-solve or the flow's Skill call - re-arms the notes (usage audit 2026-11-03 U08:
+  // 6 of 6 post-cycle asks in one session carried the three-field note).
+  if (flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed)) return notes;
   if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
     notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
       + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '

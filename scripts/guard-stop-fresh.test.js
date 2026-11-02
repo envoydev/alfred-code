@@ -1117,6 +1117,27 @@ test('guard-stop-contract: a solve-task stop MBs after its slash marker is still
   assert.equal(ctxOf(askIn(far, inline)), '', 'inline fields after a sentence boundary count');
 });
 
+// Usage audit 2026-11-03 U08: every ask after the cycle closed and the user typed on carried the three-field note (6 of 6
+// in one session). Past the cycle no ask is a flow stop until a new cycle's marker.
+test('guard-stop-contract (U08): no flow field notes past a completed cycle and a typed turn, until a new cycle\'s marker', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-11-03-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-11-03' } }] } };
+  const cycle = [marker, assistantRow('d', 'Design done.', { cache_read_input_tokens: 900 }), completed];
+  const after = typed('what does the retry setting do now?');
+  const reply = assistantRow('r', 'It retries three times, then fails the job.', { cache_read_input_tokens: 900 });
+  assert.equal(ctxOf(askIn(transcript('u08-past', [...cycle, after, reply]), oneQ)), '', 'an ask past the cycle is no stop - no fields, no receipts');
+  // the cycle's own close, before any typed turn, is still a stop and still told
+  assert.match(ctxOf(askIn(transcript('u08-close', [...cycle, reply]), oneQ)), /THREE named fields[\s\S]*notes purged/, 'the close ask before a typed turn keeps its notes');
+  // a new cycle's marker re-arms them - typed, or the flow's Skill call
+  assert.match(ctxOf(askIn(transcript('u08-typed-marker', [...cycle, after, reply, marker, assistantRow('d2', 'Design done.', { cache_read_input_tokens: 900 })]), oneQ)),
+    /THREE named fields/, 'a typed /task-solve after the stamp opens a new cycle');
+  const skill = { type: 'assistant', message: { id: 'sk', content: [{ type: 'tool_use', id: 'sk1', name: 'Skill', input: { skill: 'alfred-code:task-solve' } }] } };
+  assert.match(ctxOf(askIn(transcript('u08-skill-marker', [...cycle, after, skill, assistantRow('d3', 'Design done.', { cache_read_input_tokens: 900 })]), oneQ)),
+    /THREE named fields/, "the flow's Skill call after the stamp opens a new cycle");
+});
+
 test('guard-stop-contract: an answer a few calls back is still just answered, in either wording (audit 2026-10-10 C01)', () => {
   const answer = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
   const ask = (id) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: oneQ } }], usage: { cache_read_input_tokens: 900 } } });
