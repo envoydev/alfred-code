@@ -192,7 +192,7 @@ test('row 13: the named prose stops are ask templates, each marking one option f
 {
     const { lintAskTemplates, ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
     assert.strictEqual(ASK_FLOW_TEMPLATES['task-version-upgrade'], 5);
-    assert.strictEqual(ASK_FLOW_TEMPLATES['task-solve'], 10);
+    assert.strictEqual(ASK_FLOW_TEMPLATES['task-solve'], 11, 'row 13 raised it to 10; usage audit 2026-11-03 U28 to 11');
     assert.strictEqual(ASK_FLOW_TEMPLATES['issue-diagnoser'], 5);
     const want = {
         'task-solve/SKILL.md': /Audit judgment: <the item>\. Keep or apply\?/,

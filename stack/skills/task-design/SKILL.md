@@ -5,7 +5,7 @@ description: "Use to settle how a feature fits the existing code before writing 
 
 # Solution Design - how a change fits, then decomposed, in one chat
 
-The design carries the quality: a build handles the traps its plan named and ships the ones it missed. This is the single-chat form of the solution-designer seat - it works out where a feature belongs in the code you already have and breaks it into an ordered plan, all in the current context so you can inspect and correct each step instead of reading a dispatched agent's final report. It plans; it does not write the code (that is the build step under the stack skill) and it does not audit its own plan (that is `task-verify-plan`). The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
+The design carries the quality: a build handles the traps its plan named and ships the ones it missed. This is the single-chat form of the solution-designer seat - it works out where a feature belongs in the code you already have and breaks it into an ordered plan in this chat. It plans; the build step writes the code. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
 ## Design mode - this chat, a read fan-out, or the designer seat
 
@@ -13,7 +13,6 @@ In this chat, ask the mode per `references/design-mode.md` - read it before desi
 
 ## When to use / not
 
-- Use to settle how a feature or change fits the existing code before writing any, in this chat: orient, judge the fit, split into an ordered minimal plan.
 - Not for a change with an obvious single home - just make it.
 - Not plan *audit* (`task-verify-plan`) or built-code review (`task-verify-code`) - those come after.
 
@@ -67,10 +66,13 @@ build or bounced to the user. One call is never the design's: a change to a beha
 that the `Asked:` line does not name (a value now always shown, a default flipped, an exit path
 changed) gets its own ask before the gate, its ledger line carrying `asked: <the answer>`; under
 AUTO the behaviour stays as it was, `not asked - kept as is (AUTO)`; inside a designer seat it is a
-`user_decisions:` row, `asked: pending`. An option description is not an ask.
+`user_decisions:` row, `asked: pending`. An option description is not an ask. A design ask - or a seat's
+`user_decisions:` row - states only measured facts, each with how it was measured (a run, a test, a located
+`file:symbol`); an unmeasured behaviour is never a premise the user is asked to accept: it becomes a plan
+check, a first step that measures it before any task builds on it.
 
 ```ask
-<the behaviour change, one line>: keep today's behaviour or change it as designed?
+<the behaviour change, one line> - today: <what runs now> (measured: <the run or `file:symbol`>). Keep today's behaviour or change it as designed?
 - 'Keep today's behaviour (Recommended)' - the `Asked:` line does not name this change, so the plan works around it
 - 'Change it as designed' - the plan builds the change; the ledger line records this answer
 ```

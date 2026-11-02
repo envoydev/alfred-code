@@ -1176,6 +1176,39 @@ test('scorecard: test runs split scoped from whole-suite, and a commit is checke
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Usage audit 2026-11-03 U02: a consuming project ran its own suites as `node <suite>.test.cjs` (66 runs), and with no
+// arm for them the scorecard read 0 test runs and 7 backed green claims as unverified.
+test('U02: node <suite>.test.[cm]?js and node --test forms score as test runs; a plain script or a syntax check does not', () => {
+  const { classifyChecks, maskQuotedShell } = require('./analyze-usage.js');
+  const checks = (cmd) => classifyChecks(maskQuotedShell(cmd), cmd, new Map()).kinds;
+  for (const cmd of ['node mobile.test.cjs', 'PAGE=stage-ui node mobile.test.cjs', 'timeout 300 node tests/guide-access.test.cjs 2>&1 | tail -5',
+    'cd tests && node ./typing.test.mjs', 'node --unhandled-rejections=strict scripts/a.test.js', 'node --test-concurrency=1 --test scripts/a.test.js']) {
+    assert.deepStrictEqual(checks(cmd), [{ kind: 'test', scoped: true }], cmd);
+  }
+  for (const cmd of ['node --test', 'node --experimental-test-coverage --test']) {
+    assert.deepStrictEqual(checks(cmd), [{ kind: 'test', scoped: false }], cmd);
+  }
+  for (const cmd of ['node server.js', 'node scripts/test.js', 'node -c mobile.test.cjs', 'node --check a.test.js', 'node -e "require(1)" a.test.cjs',
+    'node mobile.test.cjs.bak', 'cat mobile.test.cjs', 'grep -n x mobile.test.cjs']) {
+    assert.deepStrictEqual(checks(cmd), [], cmd);
+  }
+});
+
+test('U02: a green claim after a node <suite>.test.cjs run in the same turn is backed', () => {
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  let body = scHuman(scT(0), 'run the mobile suite');
+  body += scAsst('m1', scT(1), usage(1, 0, 100, 5), [scBash('c1', 'PAGE=stage-ui node mobile.test.cjs')]) + toolRes(scT(2), 'c1', 'ALL PASSED');
+  body += scAsst('m2', scT(3), usage(1, 0, 100, 5), [{ type: 'text', text: 'The staged mobile suite passed on all 10 devices.' }], { stop_reason: 'end_turn' });
+  fs.writeFileSync(file, body);
+  const e = run([file]).main.efficiency;
+  assert.strictEqual(e.checks.test.calls, 1);
+  assert.strictEqual(e.checks.test.scoped, 1);
+  assert.strictEqual(e.greenClaims, 1);
+  assert.deepStrictEqual(e.unverifiedGreenClaims, [], 'the claim rests on the suite run the classifier now sees');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('scorecard: a green claim with no check in its turn is listed, a checked or negated one is not; long answers and correction streaks count as the hook would', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const file = path.join(dir, 'session.jsonl');
