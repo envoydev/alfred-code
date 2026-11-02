@@ -581,3 +581,63 @@ test('one spawn per common dir, none past the deadline', () =>
     }
     finally { for (const wt of wts) { try { g(root, 'worktree', 'remove', '--force', wt); } catch { /* gone */ } fs.rmSync(wt, { recursive: true, force: true }); } }
 });
+
+// Audit 2026-11-03 SYS-03: uninstall takes back what this module wrote - the status files and their emptied folders under
+// the project root and each listed base, and the exclude lines it added for them - and nothing else: a file
+// session-inspector keeps beside status/, a file no status write names, the user's own exclude lines, a pair another
+// project in the same repository added, a linked status folder.
+test('removeStatus takes back the status files and the exclude lines this project added, and nothing else', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const gitEnv = { ...scrubbed(process.env), HOME, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(ACCOUNT, 'gitconfig') };
+    fs.writeFileSync(gitEnv.GIT_CONFIG_GLOBAL, '');
+    const top = project();
+    execFileSync('git', ['init', '-q'], { cwd: top, env: gitEnv, stdio: 'pipe' });
+    const root = path.join(top, 'app');
+    const sub = path.join(root, 'sub');
+    const other = path.join(top, 'other');
+    for (const d of [sub, other]) fs.mkdirSync(d, { recursive: true });
+    const env = { CLAUDE_PROJECT_DIR: root };
+    const exclude = path.join(top, '.git', 'info', 'exclude');
+    // the line the user typed for root is there before any session: nothing is added for root, so it stays theirs
+    fs.writeFileSync(exclude, '# git ls-files --others --exclude-from=.git/info/exclude\n*.log\n/app/.claude/session-inspector/status/\n');
+    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env } }), 'written', base);
+    // a write outside SessionStart that made the folder added sub's pair itself
+    assert.deepStrictEqual(S().ensureExcluded([root, sub, other], { env: {} }), ['present', 'present', 'added']);
+    fs.writeFileSync(path.join(root, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
+    fs.mkdirSync(path.join(root, '.claude', 'session-inspector', 'plans'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'session-inspector', 'status', 'notes.txt'), 'mine\n');
+    fs.writeFileSync(path.join(root, '.claude', 'session-inspector', 'status', 's2.json.123.tmp'), '{');
+    const before = fs.readFileSync(exclude, 'utf8');
+    const got = S().removeStatus(root, { env });
+    assert.strictEqual(got.files, 3, 'two status files and a crashed write\'s tmp');
+    assert.ok(!fs.existsSync(statusOf(root, 's1')) && !fs.existsSync(statusOf(sub, 's1')));
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'session-inspector', 'status', 'notes.txt'), 'utf8'), 'mine\n', 'a file no status write names stays');
+    assert.ok(fs.existsSync(path.join(root, '.claude', 'session-inspector', 'HANDOFF.md')), 'session-inspector\'s own files stay');
+    assert.ok(!fs.existsSync(path.join(sub, '.claude')), 'a base\'s emptied folders go, up to and with its .claude');
+    const after = fs.readFileSync(exclude, 'utf8');
+    assert.strictEqual(got.lines, 1, 'the one pair this project added');
+    assert.strictEqual(before.replace(`${S().EXCLUDE_COMMENT}\n/app/sub/.claude/session-inspector/status/\n`, ''), after, 'only that pair left the file');
+    assert.ok(after.includes('*.log\n/app/.claude/session-inspector/status/\n'), 'the user\'s own lines stay');
+    assert.ok(after.includes(`${S().EXCLUDE_COMMENT}\n/other/.claude/session-inspector/status/\n`), 'another project\'s pair stays');
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json')), 'the list of bases goes with them');
+    // a re-run changes nothing
+    assert.deepStrictEqual(S().removeStatus(root, { env }), { files: 0, folders: [], lines: 0 });
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), after);
+    // nothing there, no git, a garbage list, no root: no throw, nothing done
+    const bare = project();
+    const list = path.join(bare, '.alfred', 'state', 'sessions', 'status-folders.json');
+    fs.mkdirSync(path.dirname(list), { recursive: true });
+    fs.writeFileSync(list, '{ not json');
+    assert.deepStrictEqual(S().removeStatus(bare, { env: { CLAUDE_PROJECT_DIR: bare } }), { files: 0, folders: [], lines: 0 });
+    assert.deepStrictEqual(S().removeStatus('', {}), { files: 0, folders: [], lines: 0 });
+    assert.deepStrictEqual(S().removeStatus('relative/path', {}), { files: 0, folders: [], lines: 0 });
+    // a linked status folder is never followed
+    const linked = project();
+    const outside = project();
+    fs.writeFileSync(path.join(outside, 'aaaa.json'), '{}');
+    fs.mkdirSync(path.join(linked, '.claude', 'session-inspector'), { recursive: true });
+    link(outside, path.join(linked, '.claude', 'session-inspector', 'status'));
+    assert.strictEqual(S().removeStatus(linked, { env: { CLAUDE_PROJECT_DIR: linked } }).files, 0);
+    assert.ok(fs.existsSync(path.join(outside, 'aaaa.json')), 'nothing removed through the link');
+});

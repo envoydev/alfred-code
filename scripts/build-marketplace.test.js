@@ -353,3 +353,11 @@ test('no userConfig field of the core declares options, so an older CLI still lo
     assert.strictEqual(profile.default, 'standard');
     for (const name of ['minimal', 'standard', 'strict']) assert.match(profile.description, new RegExp(`\\b${name}\\b`), `the description names ${name}`);
 });
+
+// Audit 2026-11-03 SYS-06: the marketplace's hand-written metadata (the generator leaves it alone) names what the stack
+// ships - no MCP server since 2.10.1.
+test('the marketplace metadata description names no MCP server', () => {
+    const mkt = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
+    assert.match(mkt.metadata.description, /skills, agents, rules and hooks/);
+    assert.doesNotMatch(mkt.metadata.description, /\bMCP\b/i);
+});

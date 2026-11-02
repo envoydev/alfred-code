@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// PreToolUse gate (matchers: Write + Edit + NotebookEdit + Bash): a session belongs to ONE
+// PreToolUse gate (matchers: Write + Edit + NotebookEdit + Bash, and a filesystem server's four write tools under any
+// registration name - SYS-02, below): a session belongs to ONE
 // project. Work in project A that turns out to need a change in project B - a sibling repo, a
 // consumed package, a related service - is HANDED OFF, never applied: the session writes a task
 // card for B and stops there. Reading and investigating B is untouched (no Read/Grep/Glob
@@ -511,7 +512,8 @@ function block(what, shown, abs = shown) {
   const other = otherProjectName(abs);
   // The main block names its branch like the unread one below (audit 2026-10-20, the hooks track's minor list: every
   // other row of this guard carried none, so the ledger could not split a file-tool write from a shell one).
-  global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool' : /git write/.test(what) ? 'git-write' : 'shell-write' };
+  global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool'
+    : /^(?:write_file|edit_file|move_file|create_directory) /.test(what) ? 'mcp-file-write' : /git write/.test(what) ? 'git-write' : 'shell-write' };
   const otherRoot = otherProjectRoot(abs);
   // Absolute, the sibling named: the user pastes the hand-off into that repo's session, which finds the card by this path.
   const card = path.resolve(ROOT, docsRoot, 'work', 'cross-project-tasks', `${other}.md`);
@@ -542,6 +544,29 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'Not
   const abs = resolveTarget(String(target));
   if (recordAt(abs, null)) recordBlock(`${tool} of a file`, String(target));
   if (!allowed(abs)) block(`${tool} of a file`, String(target), abs);
+  process.exit(0);
+}
+
+// A filesystem server the user registers writes too (audit 2026-11-03 SYS-02; HK-26 gave the secret guard its read
+// route): `write_file`, `edit_file` and `create_directory` take `path`, `move_file` takes `source` and `destination` - the
+// reference server's schemas (@modelcontextprotocol/server-filesystem, src/filesystem/server.ts in
+// github.com/modelcontextprotocol/servers, read 2026-11-03). Matched by the tool's name under any registration, since the
+// stack ships no server. The server expands a leading `~` (lib.ts validatePath); a relative path is read at the project
+// root, the file tools' anchor. A move takes its source OUT of where it stood, so both ends are judged, as `mv` is - its
+// destination is the new path itself (the server refuses one that exists), a plain write; a field missing or not a
+// string names no target.
+const FS_WRITE_TOOL = /^mcp__.+__(?:write_file|edit_file|move_file|create_directory)$/;
+if (FS_WRITE_TOOL.test(String(tool || ''))) {
+  const verb = String(tool).replace(/^mcp__.+__/, '');
+  const ends = verb === 'move_file'
+    ? [[input.source, `${verb} of a source`, 'remove'], [input.destination, `${verb} to a destination`, null]]
+    : [[input.path, `${verb} of a ${verb === 'create_directory' ? 'folder' : 'file'}`, null]];
+  for (const [p, what, kind] of ends) {
+    if (typeof p !== 'string' || !p.trim()) continue;
+    const abs = resolveTarget(expandTilde(p));
+    if (recordAt(abs, kind)) recordBlock(what, p);
+    if (!allowed(abs)) block(what, p, abs);
+  }
   process.exit(0);
 }
 

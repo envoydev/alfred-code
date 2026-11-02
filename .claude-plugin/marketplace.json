@@ -5,7 +5,7 @@
     "url": "https://github.com/envoydev"
   },
   "metadata": {
-    "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
+    "description": "Claude Code agent stack - skills, agents, rules and hooks, installed and updated via the alfred-code plugin.",
     "version": "3.6.0"
   },
   "plugins": [
@@ -254,6 +254,26 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__.+__(write_file|edit_file|move_file)$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-config-protection.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__.+__(write_file|edit_file|move_file|create_directory)$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js\"",
                 "timeout": 10
               }
             ]

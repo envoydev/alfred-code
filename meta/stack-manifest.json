@@ -878,6 +878,12 @@
       "note": "same gate on the shell routes (an in-place edit, redirect, tee, rm, mv or cp onto the config) - run inside shell-guards.js with the other shell guards"
     },
     {
+      "file": "guard-config-protection.js",
+      "matcher": "^mcp__.+__(write_file|edit_file|move_file)$",
+      "event": "",
+      "note": "same gate on a filesystem server the user registers: write_file judged as a Write over tool_input.path, edit_file as an edit over its edits (a dryRun writes nothing), move_file as a removal of its source and a write of its destination, matched by the tool's name under any registration (audit 2026-11-03 SYS-02)"
+    },
+    {
       "file": "guard-cross-project-write.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
@@ -888,6 +894,12 @@
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "same gate on the shell routes (redirect, tee, in-place sed/perl, cp/mv, rm/mkdir/chmod, git -C, cd then a write) - run inside shell-guards.js"
+    },
+    {
+      "file": "guard-cross-project-write.js",
+      "matcher": "^mcp__.+__(write_file|edit_file|move_file|create_directory)$",
+      "event": "",
+      "note": "same gate on a filesystem server the user registers: write_file, edit_file and create_directory judged on tool_input.path, move_file on its source and its destination, matched by the tool's name under any registration (audit 2026-11-03 SYS-02)"
     },
     {
       "file": "guard-desktop-exec.js",

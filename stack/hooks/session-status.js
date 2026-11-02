@@ -393,6 +393,80 @@ function ensureExcluded(bases, deps) {
   return out;
 }
 
+// UNINSTALL (audit 2026-11-03 SYS-03): what this module wrote for the project goes - under the root and each listed base,
+// every file a status write names (`<id>.json`, a crashed write's `.tmp`), then the `status/`, `session-inspector/` and
+// `.claude/` folders each only once empty; each exclude pair it added for those bases (the comment with the anchored line
+// right under it); and the list of bases. Never a file session-inspector keeps there (HANDOFF.md, plans/, scores/), a
+// file no status write names, a refused base (outside the project, a linked folder), a line of the user's own, nor
+// another project's pair in a shared git dir. A pair for a base the list has since dropped stays - a stated ceiling.
+// Returns { files, folders, lines }; fail-open like the rest.
+function removeStatus(root, deps) {
+  const d = depsOf(deps);
+  const out = { files: 0, folders: [], lines: 0 };
+  try {
+    if (typeof root !== 'string' || !root || !path.isAbsolute(root) || !d.layout) return out;
+    const bases = [];
+    const seen = new Set();
+    for (const b of [root, ...readList(root, d)]) {
+      if (typeof b !== 'string' || !path.isAbsolute(b)) continue;
+      const key = d.layout.dirKey(b);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (!refusedBase(b, root, d)) bases.push(b);
+    }
+    for (const b of bases) {
+      const dir = statusDir(b);
+      let names = null;
+      try { names = fs.readdirSync(dir); } catch { names = null; }
+      for (const name of names || []) {
+        if (!PRUNE_NAME.test(name)) continue;
+        try { if (fs.lstatSync(path.join(dir, name)).isFile()) { fs.unlinkSync(path.join(dir, name)); out.files++; } } catch { /* gone */ }
+      }
+      // the folders this module made, innermost first, each only once empty; the root's .claude is the uninstall's
+      const tops = d.layout.dirKey(b) === d.layout.dirKey(root) ? [dir, path.dirname(dir)] : [dir, path.dirname(dir), path.join(b, '.claude')];
+      for (const at of tops) {
+        try { if (fs.readdirSync(at).length) break; fs.rmdirSync(at); out.folders.push(at); } catch { break; }
+      }
+    }
+    const exec = d.exec || execFileSync;
+    const groups = new Map();
+    for (const base of bases) {
+      const top = d.layout.gitTopOf(base);
+      if (!top) continue;
+      const line = excludeLine(top, base);
+      if (!line) continue;
+      const key = d.layout.dirKey(d.layout.worktreeMain(top) || top);
+      if (!groups.has(key)) groups.set(key, { top, lines: new Set() });
+      groups.get(key).lines.add(line);
+    }
+    for (const { top, lines } of groups.values()) {
+      let common = null;
+      try {
+        const [cmd, argv, opts] = d.prelude.gitSafe(['-C', top, 'rev-parse', '--git-common-dir'], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
+        const answer = String(exec(cmd, argv, opts)).trim();
+        common = answer ? path.resolve(top, answer) : null;
+      } catch { common = null; }
+      if (!common) continue;
+      const file = path.join(common, 'info', 'exclude');
+      let text;
+      try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+      // each row with its own line ending, so every other byte of the file stays as it was
+      const rows = text.match(/[^\n]*\n|[^\n]+$/g) || [];
+      const bare = (r) => r.replace(/\r?\n$/, '').trim();
+      const kept = [];
+      let dropped = 0;
+      for (let i = 0; i < rows.length; i++) {
+        if (bare(rows[i]) === EXCLUDE_COMMENT && i + 1 < rows.length && lines.has(bare(rows[i + 1]))) { i++; dropped++; continue; }
+        kept.push(rows[i]);
+      }
+      if (!dropped) continue;
+      try { fs.writeFileSync(file, kept.join('')); out.lines += dropped; } catch { /* left as it was */ }
+    }
+    try { fs.rmSync(listFile(root, d), { force: true }); } catch { /* none */ }
+  } catch { /* what was done */ }
+  return out;
+}
+
 // The callers' one line each.
 function onSessionStart(payload, entry) {
   try {
@@ -422,5 +496,5 @@ function onPrompt(payload, modes) {
 module.exports = {
   FIELDS, ID_RE, PRUNE_MS, SLOW_MS, MAX_BASES, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
   baseOf, rootOf, ownBase, statusFile, scorerField, handoffPrompt, buildStatus, writeStatus, statusBases, pruneStatus,
-  ensureExcluded, onSessionStart, onStop, onPrompt,
+  ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt,
 };

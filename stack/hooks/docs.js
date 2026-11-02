@@ -528,6 +528,11 @@ function versioningMismatch() {
   // The docs ROOT, since tracked() now answers for every domain under it rather than one folder.
   const where = docsRel();
   if (declared.mode === 'git' && !tracked()) {
+    // Not committed YET is no disagreement (audit 2026-11-03 SYS-04): the installer seeds GIT-PREFERENCES.md under a
+    // 'git' declaration and nobody has committed it, and every fresh install read 'mismatch' at each start and compaction.
+    // The docs disagree with 'git' only once git ignores their root, or history holds a commit of them the index no
+    // longer does (one `git log` on this path alone).
+    if (where && !rootIgnored() && !git(['log', '-1', '--format=%H', '--', where])) return null;
     return `Versioning mismatch: ${declared.key} declares 'git', but ${where} is not tracked by git - the setting wins, so doc sections are written in place and nothing versions them until the docs are committed. Switch it to local in /alfred-code:configure's Environment area when these docs are never meant to be committed.`;
   }
   if (declared.mode === 'local' && tracked()) {
@@ -1991,6 +1996,27 @@ function loadWatch() {
   };
 }
 
+// Whether any section can answer the first-change gate's line 'read the section covering the file' (audit 2026-11-03
+// SYS-04: a fresh install's preferences seed alone printed it, pointing at no section): a durable section declaring a
+// cover, or a watch / newModule entry, whose glob can reach a source root. Coverless domains (preferences/, handed over
+// by preferences-session.js) and recomputed ones are no answer, as the hold reads them. A glob reaches a root when its
+// literal head - the text before its first wildcard - and `<root>/` share a prefix either way.
+function watchesSourceRoot() {
+  const w = loadWatch();
+  const roots = w.sourceRoots.map((r) => `${String(r).replace(/^\.\//, '').replace(/\/+$/, '')}/`);
+  const reaches = (g) => { const head = String(g).replace(/^\.\//, '').split(/[*?[{]/)[0]; return roots.some((r) => head.startsWith(r) || r.startsWith(head)); };
+  const answers = (d) => !COVERLESS_DOMAINS.has(d) && !recomputed(d);
+  if ([...w.watch, ...w.newModule].some((e) => answers(e.domain) && e.globs.some(reaches))) return true;
+  for (const d of durableDomains().filter(answers)) {
+    for (const f of domainFiles(d)) {
+      let secs = [];
+      try { secs = sections(f); } catch { secs = []; }
+      if (secs.some((s) => !s.history && s.covers.some(reaches))) return true;
+    }
+  }
+  return false;
+}
+
 function watchHits(files, dirs = []) {
   const w = loadWatch();
   const hits = [];
@@ -2202,7 +2228,7 @@ module.exports = {
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
-  lint, integrity, seedIds, loadWatch, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
+  lint, integrity, seedIds, loadWatch, watchesSourceRoot, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
   recomputed, refRecomputed, durableDomains, watchMerge,
   sectionHash, firstSentence, ceilings, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
 };

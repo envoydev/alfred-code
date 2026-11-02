@@ -207,7 +207,22 @@ function removeGeneratedRules({ claudeDir, projectRoot, sourceDir, docsPath, log
     try { if (!fs.readdirSync(rulesDir).length) fs.rmdirSync(rulesDir); } catch { /* none, or the user's files are there */ }
 }
 
-module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp, removeGeneratedRules };
+// The session status files session-status.js writes in every install (`.claude/session-inspector/status/<id>.json`, under
+// the project root and each folder its list names) and the exclude pair it adds to the common git dir's `info/exclude`
+// (audit 2026-11-03 SYS-03). That module owns both shapes, so it takes them back; only the status files, folders it
+// leaves empty and the pairs it added go - session-inspector's own files and the user's exclude lines stay.
+function removeSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () => {} })
+{
+    let status;
+    try { status = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'session-status.js')); }
+    catch (e) { note(`session status: not removed - the module could not be loaded (${e.message})`); return; }
+    const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot, ...(dataRoot ? { ALFRED_CODE_DATA_PATH: dataRoot } : {}) } });
+    const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
+    if (got.files) log(`  session status: ${got.files} file${got.files === 1 ? '' : 's'} removed${got.folders.length ? `, and the emptied ${got.folders.map(rel).join(', ')}` : ''}`);
+    if (got.lines) log(`  .git/info/exclude: ${got.lines} line${got.lines === 1 ? '' : 's'} the stack added removed (# alfred-code: session-inspector status files); your own lines stay`);
+}
+
+module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp, removeGeneratedRules, removeSessionStatus };
 
 // `node uninstall.js seed <project root>` - seedPlan over the stamp's ledger, nothing written: one
 // `instructions-seed: <path> unedited|edited` line per seed, or `instructions-seed: none` (no stamp, no ledger, no seed).

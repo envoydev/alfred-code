@@ -2446,6 +2446,47 @@ test('guard-cross-project-write: it fails open rather than guessing', () => {
   assert.equal(opened, 0, 'the escape hatch opens a second tree this project really owns');
 });
 
+// Audit 2026-11-03 SYS-02: a filesystem server the user registers writes by `path` (write_file, edit_file,
+// create_directory) and moves from `source` to `destination` (move_file) - the reference server's schemas - and no guard
+// judged it (HK-26 added only its read route). Matched by the tool's name under any registration name.
+const FS_WRITE_NAMES = ['mcp__filesystem__write_file', 'mcp__plugin_fs_fs__edit_file', 'mcp__files__create_directory']; // mcp-fixture
+const FS_MOVE = 'mcp__filesystem__move_file'; // mcp-fixture
+test('guard-cross-project-write: a filesystem server write is judged like a Write, a move on both ends (audit 2026-11-03 SYS-02)', () => {
+  const outFile = path.join(XP_OTHER, 'src', 'a.ts');
+  for (const tool of FS_WRITE_NAMES) {
+    const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+      input: JSON.stringify({ tool_name: tool, tool_input: { path: outFile, content: 'x', edits: [] } }),
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
+    });
+    assert.equal(r.status, 2, `${tool}: outside the project`);
+    assert.match(r.stderr, /outside this session's project/, tool);
+    assert.equal(xp({ tool_name: tool, tool_input: { path: path.join(XP_ROOT, 'src', 'a.ts') } }), 0, `${tool}: inside the project`);
+    assert.equal(xp({ tool_name: tool, tool_input: { path: 'src/a.ts' } }), 0, `${tool}: a relative path, read at the project root`);
+    assert.equal(xp({ tool_name: tool, tool_input: { path: '../projB/x.ts' } }), 2, `${tool}: a relative reach`);
+    assert.equal(xp({ tool_name: tool, tool_input: {} }), 0, `${tool}: no path, nothing to judge`);
+    assert.equal(xp({ tool_name: tool, tool_input: { path: 42 } }), 0, `${tool}: a path that is no string`);
+    assert.equal(xp({ tool_name: tool }), 0, `${tool}: no tool_input`);
+  }
+  const inside = path.join(XP_ROOT, 'a.txt');
+  const outside = path.join(XP_OTHER, 'a.txt');
+  assert.equal(xp({ tool_name: FS_MOVE, tool_input: { source: inside, destination: outside } }), 2, 'a move INTO another project');
+  assert.equal(xp({ tool_name: FS_MOVE, tool_input: { source: outside, destination: inside } }), 2, 'a move OUT of another project removes it there');
+  assert.equal(xp({ tool_name: FS_MOVE, tool_input: { source: inside, destination: path.join(XP_ROOT, 'b.txt') } }), 0, 'our own rename');
+  assert.equal(xp({ tool_name: FS_MOVE, tool_input: { source: inside } }), 0, 'a move with one end missing judges the end it has');
+  assert.equal(xp({ tool_name: FS_MOVE, tool_input: { destination: outside } }), 2, 'and blocks on that end');
+  // reads and listings are not this guard's
+  for (const tool of ['mcp__filesystem__read_text_file', 'mcp__filesystem__list_directory', 'mcp__filesystem__write_file_x']) // mcp-fixture
+    assert.equal(xp({ tool_name: tool, tool_input: { path: outFile } }), 0, `${tool}: not a write tool`);
+  // the manifest wires the guard on the four write tools, under any server name, and on no other
+  const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
+    .find((h) => h.file === 'guard-cross-project-write.js' && /write_file/.test(h.matcher));
+  assert.ok(row, 'a manifest row');
+  const re = new RegExp(row.matcher);
+  for (const tool of [...FS_WRITE_NAMES, FS_MOVE]) assert.ok(re.test(tool), tool);
+  for (const tool of ['mcp__filesystem__read_text_file', 'mcp__filesystem__write_file_x', 'write_file']) assert.ok(!re.test(tool), tool); // mcp-fixture
+});
+
 // --- block telemetry: the block RATE is what says a gate earns its keep ----
 // Measured 2026-09-04: hooks cost 22-25ms, essentially all of it the node spawn, so their
 // runtime is not the risk - a FALSE block is, because it costs the denial text plus a whole
@@ -4235,6 +4276,56 @@ test('guard-config-protection: an existing check config cannot be weakened, a ne
     assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the env switch turns it off'));
   withProject(root, { ALFRED_CODE_HOOKS_OFF: 'guard-answer,guard-config-protection' }, () =>
     assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the per-project hooks csv switches it off'));
+});
+
+// Audit 2026-11-03 SYS-02: a filesystem server the user registers is the same gate's fourth route - write_file judged
+// as a Write over `path`, edit_file as an edit over `edits` (oldText / newText; a dryRun writes nothing), move_file as a
+// removal of `source` and a write of `destination` - matched by the tool's name under any registration name.
+test('guard-config-protection: a filesystem server write, edit or move of a check config is judged like the file tools (audit 2026-11-03 SYS-02)', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-fs-');
+  const call = (tool, input) => run(H, { tool_name: tool, cwd: root, tool_input: input });
+  withProject(root, {}, () => {
+    const ts = at('tsconfig.json', '{ "compilerOptions": { "strict": true, "paths": {} } }');
+    const eslint = at('eslint.config.js', 'export default [];');
+    for (const tool of ['mcp__filesystem__write_file', 'mcp__plugin_fs_fs__write_file']) { // mcp-fixture
+      assert.strictEqual(call(tool, { path: ts, content: '{ "compilerOptions": { "strict": false, "paths": {} } }' }), 2, `${tool}: a strictness key turned off`);
+      assert.strictEqual(call(tool, { path: 'tsconfig.json', content: '{ "compilerOptions": { "strict": false } }' }), 2, `${tool}: a relative path, read at the project root`);
+      assert.strictEqual(call(tool, { path: ts, content: '{ "compilerOptions": { "strict": true, "paths": { "a": ["b"] } } }' }), 0, `${tool}: a non-strictness change`);
+      assert.strictEqual(call(tool, { path: eslint, content: 'export default [{ rules: {} }];' }), 2, `${tool}: an existing whole-file config`);
+      assert.strictEqual(call(tool, { path: path.join(root, 'src', 'a.ts'), content: 'x' }), 0, `${tool}: a source file`);
+      assert.strictEqual(call(tool, { path: path.join(root, '.prettierrc'), content: '{}' }), 0, `${tool}: creating a config`);
+    }
+    const edit = 'mcp__files__edit_file'; // mcp-fixture
+    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"strict": true', newText: '"strict": false' }] }), 2, 'edit_file: a strictness key turned off');
+    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"strict": true', newText: '"strict": false' }], dryRun: true }), 0, 'edit_file: a dry run writes nothing');
+    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"paths": {}', newText: '"paths": { "@app/*": ["src/*"] }' }] }), 0, 'edit_file: a non-strictness key');
+    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"paths": {}', newText: '"paths": {}, "noImplicitAny": false' }] }), 2, 'edit_file: a loosening key added');
+    assert.strictEqual(call(edit, { path: ts, edits: 'garbage' }), 0, 'edit_file: edits that are no list change nothing');
+    assert.strictEqual(call(edit, { path: ts }), 0, 'edit_file: no edits');
+    const move = 'mcp__filesystem__move_file'; // mcp-fixture
+    assert.strictEqual(call(move, { source: eslint, destination: path.join(root, 'old', 'eslint.config.js') }), 2, 'move_file: moving a check away removes it');
+    assert.strictEqual(call(move, { source: path.join(root, 'a.txt'), destination: eslint }), 2, 'move_file: onto an existing config replaces it');
+    at('a.txt', 'x');
+    assert.strictEqual(call(move, { source: path.join(root, 'a.txt'), destination: path.join(root, 'b.txt') }), 0, 'move_file: an ordinary rename');
+    assert.strictEqual(call(move, { source: path.join(root, 'a.txt') }), 0, 'move_file: no destination');
+    assert.strictEqual(call(move, {}), 0, 'move_file: no fields');
+    assert.strictEqual(call(move, { source: 7, destination: null }), 0, 'move_file: fields that are no strings');
+    assert.strictEqual(call('mcp__filesystem__create_directory', { path: path.join(root, 'tsconfig.json') }), 0, 'create_directory is no config change'); // mcp-fixture
+    assert.strictEqual(call('mcp__filesystem__read_text_file', { path: ts }), 0, 'a read is not this guard\'s'); // mcp-fixture
+    const outside = fs.mkdtempSync(path.join(TMP, 'cfg-fs-outside-'));
+    fs.writeFileSync(path.join(outside, 'tsconfig.json'), '{ "compilerOptions": { "strict": true } }');
+    assert.strictEqual(call('mcp__filesystem__write_file', { path: path.join(outside, 'tsconfig.json'), content: '{}' }), 0, 'outside the project - the cross-project guard owns it'); // mcp-fixture
+    at('.alfred/state/approvals/CONFIG-EDIT-ALLOW', 'tsconfig.json\n');
+    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"strict": true', newText: '"strict": false' }] }), 0, 'the receipt is honoured');
+  });
+  // the manifest wires the guard on the three tools that change a file's text, under any server name
+  const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
+    .find((h) => h.file === H && /write_file/.test(h.matcher));
+  assert.ok(row, 'a manifest row');
+  const re = new RegExp(row.matcher);
+  for (const tool of ['mcp__filesystem__write_file', 'mcp__a__edit_file', 'mcp__plugin_x_y__move_file']) assert.ok(re.test(tool), tool); // mcp-fixture
+  for (const tool of ['mcp__filesystem__create_directory', 'mcp__filesystem__read_text_file', 'write_file']) assert.ok(!re.test(tool), tool); // mcp-fixture
 });
 
 // A heredoc body and a quoted span are TEXT the command carries - a runbook that describes the rm, a

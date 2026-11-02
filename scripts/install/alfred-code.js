@@ -2286,6 +2286,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     uninstallLayer.removeGeneratedRules({ claudeDir, projectRoot, sourceDir: path.join(__dirname, '..', '..'), docsPath, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
+    uninstallLayer.removeSessionStatus({ projectRoot, dataRoot: keptRoot, log, note });
     // A child leaves its parent, and D5's account key goes with the last project on the account that records it. This
     // project's own file sits under the root the stamp records - the settings pass above already took
     // ALFRED_CODE_DATA_PATH out.
