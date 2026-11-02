@@ -5,10 +5,10 @@
 // against the file types the project holds. The installer runs it on every run (`tools.js lsp`, install/docs.js) and the
 // hooks only read its file, so no session or seat start pays for the walk.
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const prefs = require('./preferences.js');
+const { pluginsRoot } = require('./plugins-root.js');
 
 const FILE = 'lsp-coverage.json';
 const WALK_CAP = 20000;
@@ -90,7 +90,7 @@ function dependenciesOf(installPath, name, marketDir, market)
 // ${CLAUDE_PLUGIN_ROOT} against its own (m7).
 function pluginServers({ projectRoot, env, enabled })
 {
-    const plugins = path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins');
+    const plugins = pluginsRoot(env);
     const registry = readJson(path.join(plugins, 'installed_plugins.json'));
     const markets = readJson(path.join(plugins, 'known_marketplaces.json')) || {};
     const here = realOf(projectRoot);

@@ -11,8 +11,9 @@
 // local-scope row naming `--project`, and no user-scope row): `<project>/.claude/settings.local.json`, since the
 // command names this machine's node. claude-hud's own config.json is account-wide either way.
 //   1. the settings file's `statusLine` - the command claude-hud 0.8.0's setup writes for a Node runtime: the
-//      first `node` on PATH as found (setup's `command -v node`), in the bash sort -V form - on Windows
-//      too when Git Bash is there, else the cmd.exe line and its launcher.
+//      first `node` on PATH as found (setup's `command -v node`), in the bash sort -V form, its cache glob under
+//      the plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR, else <account>/plugins) - on Windows too when Git Bash is
+//      there, else the cmd.exe line and its launcher.
 //      No statusLine: written. claude-hud's own line in a current shape: left as it is. claude-hud's
 //      line in a stale shape (a pinned version path, the old PowerShell wrapper, a runtime that is
 //      gone): its command refreshed, every other key kept. A line that is NOT claude-hud's: kept and
@@ -39,6 +40,8 @@ const path = require('node:path');
 const { accountDir } = require('./install/stamp.js');
 const { parseJson } = require('./install/json-file.js');
 const { planFor, applyTargets, backupOnce, report, readDoc } = require('./plugin-settings.js');
+// The plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR, else <account>/plugins) - one home, beside lsp-coverage.js, its other reader.
+const { pluginsRoot, movedRoot } = require('../stack/skills/capture-preferences/scripts/plugins-root.js');
 
 const HUD = 'claude-hud';
 const CATALOG = path.join(__dirname, '..', 'meta', 'plugin-settings.json');
@@ -46,20 +49,27 @@ const CATALOG = path.join(__dirname, '..', 'meta', 'plugin-settings.json');
 // The Node shape for a bash-run status line (setup.md:199): the marketplace-aware cache glob, the
 // newest version by `sort -V`, COLUMNS exported, `exec` with no second `bash -c` layer.
 const SORT_V = 'cols=${COLUMNS:-}; case "$cols" in ""|*[!0-9]*) cols=$(stty size 2>/dev/null </dev/tty | awk \'{print $2}\');; esac; case "$cols" in ""|*[!0-9]*) cols=120;; esac; export COLUMNS=$(( cols > 4 ? cols - 4 : 1 )); plugin_dir=$(ls -1d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-hud/*/ 2>/dev/null | sort -V | tail -1); exec "{RUNTIME_PATH}" "${plugin_dir}{SOURCE}"';
+// The form this script WRITES: SORT_V with the plugins root resolved the way Claude Code resolves it, so the line still
+// finds the cache when CLAUDE_CODE_PLUGIN_CACHE_DIR moves it (code.claude.com/docs/en/plugins/loading, 'Find plugins on
+// disk'); claude-hud's own launcher reads the variable the same way since 0.14.2. SORT_V itself is read, never written.
+const SORT_V_ROOT = SORT_V.replace('"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/', '"${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"/cache/');
 // What /claude-hud:setup itself writes on macOS / Linux (setup.md:185 node, :180 bun) - read as
 // current there, never written here.
 const AWK_NODE = 'bash -c \'cols=${COLUMNS:-}; case "$cols" in ""|*[!0-9]*) cols=$(stty size 2>/dev/null </dev/tty | awk \'"\'"\'{print $2}\'"\'"\');; esac; case "$cols" in ""|*[!0-9]*) cols=120;; esac; export COLUMNS=$(( cols > 4 ? cols - 4 : 1 )); plugin_dir=$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-hud/*/ 2>/dev/null | awk -F/ \'"\'"\'{ print $(NF-1) "\\t" $(0) }\'"\'"\' | grep -E \'"\'"\'^[0-9]+\\.[0-9]+\\.[0-9]+[[:space:]]\'"\'"\' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec "{RUNTIME_PATH}" "${plugin_dir}{SOURCE}"\'';
 const AWK_BUN = AWK_NODE.replace('exec "{RUNTIME_PATH}" "', 'exec "{RUNTIME_PATH}" --env-file /dev/null "');
 // Windows (setup.md:369, the cmd path per :375-377): the launcher below, through the absolute cmd.exe.
 const CMD = '{CMD_PATH} /d /s /c ""{RUNTIME_PATH}" "{WRAPPER_PATH}""';
-const SHAPES = { sortV: SORT_V, awkNode: AWK_NODE, awkBun: AWK_BUN, cmd: CMD };
+const SHAPES = { sortV: SORT_V, sortVRoot: SORT_V_ROOT, awkNode: AWK_NODE, awkBun: AWK_BUN, cmd: CMD };
+// The bash shapes whose cache glob ignores a moved plugins root: current only while nothing moves it.
+const ROOT_BLIND = [SORT_V, AWK_NODE, AWK_BUN];
 // claude-hud 0.11's own lines (setup.mjs buildCommand), read as current, never written here: POSIX quotes the runtime and
 // the launcher in single quotes (a quote inside as '\''), Bun adding --env-file /dev/null; Git Bash runs the shim.
 const LAUNCHER_POSIX_RE = /^'((?:[^']|'\\'')+)'( --env-file \/dev\/null)? '((?:[^']|'\\'')+)'$/;
 const LAUNCHER_GITBASH = 'exec "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/claude-hud/statusline.cmd"';
 const unquote = (word) => word.split("'\\''").join("'");
 
-// The Windows launcher, `<account>/plugins/claude-hud/statusline.mjs` (setup.md:237-293).
+// The Windows launcher, `<account>/plugins/claude-hud/statusline.mjs` (setup.md:237-293), reading a moved plugins root
+// as claude-hud 0.14.2's own scripts/statusline.mjs does.
 const LAUNCHER = String.raw`import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -70,7 +80,9 @@ const width = Number.isFinite(envColumns) && envColumns > 0 ? envColumns : 120;
 process.env.COLUMNS = String(Math.max(1, width - 4));
 
 const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-const cacheDir = path.join(claudeDir, 'plugins', 'cache');
+// CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root, the cache in its cache/ folder.
+const pluginsDir = (process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR || '').trim() || path.join(claudeDir, 'plugins');
+const cacheDir = path.join(pluginsDir, 'cache');
 
 function versionParts(value) {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(value);
@@ -210,10 +222,11 @@ function expected({ platform, configDir, runtime, env, exists, bash })
 {
     // Where claude-hud 0.11's own setup puts its launcher (and, under Git Bash, its statusline.cmd shim).
     const hudDir = path.join(configDir, 'plugins', HUD);
+    const rootMoved = Boolean(movedRoot(env || {}));
     if (platform !== 'win32' || bash)
     {
         const node = platform === 'win32' ? runtime.replace(/\\/g, '/') : runtime;
-        return { shell: 'bash', command: fill(SORT_V, { RUNTIME_PATH: node, SOURCE: 'dist/index.js' }), launcher: null, hudDir };
+        return { shell: 'bash', command: fill(SORT_V_ROOT, { RUNTIME_PATH: node, SOURCE: 'dist/index.js' }), launcher: null, hudDir, rootMoved };
     }
     const wrapper = path.win32.join(configDir, 'plugins', HUD, 'statusline.mjs');
     return {
@@ -221,6 +234,7 @@ function expected({ platform, configDir, runtime, env, exists, bash })
         command: fill(CMD, { CMD_PATH: cmdPath(env, exists), RUNTIME_PATH: runtime, WRAPPER_PATH: wrapper }),
         launcher: { file: path.join(configDir, 'plugins', HUD, 'statusline.mjs'), wrapper },
         hudDir,
+        rootMoved,
     };
 }
 
@@ -245,8 +259,10 @@ function classify(statusLine, { platform, want, exists })
     const win = platform === 'win32';
     // Windows takes node only (setup.md:128, :153), never the awk form (setup.md:194), and only the
     // form of the shell that will run it: a bash line cannot run without Git Bash, a cmd line under it.
-    const shapes = !win ? [[SORT_V, 'dist/index.js'], [AWK_NODE, 'dist/index.js'], [AWK_BUN, 'src/index.ts']]
-        : want.shell === 'bash' ? [[SORT_V, 'dist/index.js']] : [[CMD, '']];
+    // A root-blind glob finds no claude-hud while CLAUDE_CODE_PLUGIN_CACHE_DIR moves the root - stale then, like a gone runtime.
+    const shapes = (!win ? [[SORT_V_ROOT, 'dist/index.js'], [SORT_V, 'dist/index.js'], [AWK_NODE, 'dist/index.js'], [AWK_BUN, 'src/index.ts']]
+        : want.shell === 'bash' ? [[SORT_V_ROOT, 'dist/index.js'], [SORT_V, 'dist/index.js']] : [[CMD, '']])
+        .filter(([shape]) => !(want.rootMoved && ROOT_BLIND.includes(shape)));
     // claude-hud 0.11's launcher lines: this account's own launcher copy, on disk, and (POSIX) a runtime that is.
     const hudDir = want.hudDir || '';
     if (hudDir && !win)
@@ -289,9 +305,10 @@ const projectOff = (project, id) => ['settings.local.json', 'settings.json']
 // (the version dirs the launcher accepts, setup.md:250 and :277). The user's OFF wins. `scope` is where its
 // status line goes: `user` for a user-scope row (every project), `project` for a project- or local-scope row
 // naming `project` alone - a row of another project serves nothing here.
-function hudInstall(configDir, settings, project)
+function hudInstall(configDir, settings, project, env = process.env)
 {
-    const reg = readJsonFile(path.join(configDir, 'plugins', 'installed_plugins.json'));
+    const root = pluginsRoot(env, configDir);
+    const reg = readJsonFile(path.join(root, 'installed_plugins.json'));
     const rows = (reg && reg.plugins && typeof reg.plugins === 'object') ? reg.plugins : {};
     const ids = Object.keys(rows).filter((id) => id.split('@')[0] === HUD && Array.isArray(rows[id]) && rows[id].length);
     const none = project ? 'claude-hud is not installed for this project or this account' : 'claude-hud is not installed in this account';
@@ -302,7 +319,7 @@ function hudInstall(configDir, settings, project)
     const scope = userIds.some((id) => enabled[id] !== false) ? 'user'
         : projectIds.some((id) => !projectOff(project, id)) ? 'project' : null;
     if (!scope) return { ok: false, why: projectIds.length ? 'claude-hud is switched off for this project' : 'claude-hud is switched off in this account' };
-    const cache = path.join(configDir, 'plugins', 'cache');
+    const cache = path.join(root, 'cache');
     let versions = [];
     try
     {
@@ -356,7 +373,7 @@ function planHud({ configDir, project, platform = process.platform, env = proces
 {
     const accountFile = path.join(configDir, 'settings.json');
     const account = readDoc(accountFile);
-    const install = hudInstall(configDir, account.doc, project);
+    const install = hudInstall(configDir, account.doc, project, env);
     const own = install.ok && install.scope === 'project';
     const settingsFile = own ? path.join(project, '.claude', 'settings.local.json') : accountFile;
     const settings = own ? readDoc(settingsFile) : account;
