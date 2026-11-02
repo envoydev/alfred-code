@@ -155,7 +155,7 @@ test('Windows: a claude-hud line of another shape is stale - the old PowerShell 
     assert.strictEqual(planHud({ configDir: gone, ...opts }).statusLine.state, 'stale');
 });
 
-test('a statusLine that is not claude-hud\'s is kept, reported with the /claude-hud:setup line, and given no refresh interval', () =>
+test('a statusLine that is not claude-hud\'s is kept, reported with claude-hud\'s own setup route, and given no refresh interval', () =>
 {
     const mine = { type: 'command', command: '~/.claude/statusline.sh', padding: 1 };
     const dir = account({ settings: { statusLine: mine } });
@@ -173,6 +173,18 @@ test('a statusLine that is not claude-hud\'s is kept, reported with the /claude-
     assert.strictEqual(label('npx ccstatusline'), 'cc-statusline');
     assert.strictEqual(label('claude-pace --x'), 'claude-pace');
     assert.strictEqual(label('echo hi'), 'custom');
+    // Audit 2026-11-03 PL-02: claude-hud 0.15.0 drops /claude-hud:setup and /claude-hud:configure for one skill, `hud`
+    // (CHANGELOG 0.15.0), a plugin skill namespaced /claude-hud:hud (code.claude.com/docs/en/skills) - the route named
+    // follows the newest cached version, /claude-hud:setup before it.
+    // The row already applied, so the plan's item is the skip that names the route.
+    const config = { lineLayout: 'compact', showSeparators: false, gitStatus: { showAheadBehind: true, showFileStats: true },
+        display: { showConfigCounts: true, showSkills: true, showMcp: true, showAgents: true, showTools: true, showCost: true, showEffortLevel: true, showPromptCache: true } };
+    const now = account({ versions: ['0.12.1', '0.15.0'], settings: { statusLine: mine }, config });
+    const p15 = planHud({ configDir: now, platform: 'darwin', runtime: NODE });
+    assert.strictEqual(p15.item.detail, 'the account statusLine is not claude-hud\'s (source: statusline script) - kept; /claude-hud:hud replaces it');
+    assert.ok(applyHud(p15).lines.includes('hud: statusLine kept - it is not claude-hud\'s (source: statusline script); /claude-hud:hud replaces it, backing yours up first'));
+    const p12 = planHud({ configDir: account({ versions: ['0.12.1'], settings: { statusLine: mine }, config }), platform: 'darwin', runtime: NODE });
+    assert.match(p12.item.detail, /- kept; \/claude-hud:setup replaces it$/);
 });
 
 test('a stale claude-hud line is refreshed, its other keys kept; claude-hud\'s own current shapes are left as they are', () =>
@@ -581,9 +593,10 @@ test('PL7 claude-hud 0.11\'s own launcher lines read as current on darwin, linux
 });
 
 // PL7: the claude-hud row of meta/plugin-settings.json names the version its keys were read from, and the stack's update
-// is what moves claude-hud. A cached claude-hud newer than that version goes red here: re-read its dist/config.js and
-// scripts/setup.mjs, re-stamp `verified`, and teach classify() any new launcher line. Reads this machine's account cache;
-// with none (CI), nothing to compare.
+// is what moves claude-hud. A cached claude-hud newer than that version goes red here: re-read its src/config.ts and
+// src/schema.ts (the keys), install.mjs and scripts/statusline.mjs (the lines and the launcher) and package.json
+// engines, re-stamp `verified`, and teach classify() any new launcher line. Reads this machine's plugins root (a moved
+// one included); with no claude-hud cached there (CI), nothing to compare.
 test('PL7 the claude-hud row was verified on a version no older than the newest claude-hud cached in this account', (t) =>
 {
     const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-settings.json'), 'utf8')).plugins['claude-hud'];
@@ -712,7 +725,7 @@ test('the runtime written is checked against the cached claude-hud\'s engines.no
     for (const v of ['22.18.0', '22.19.0', '24.0.0', '23.0.0'])
         assert.ok(!at(v, '>=22.18.0').lines.some(miss), v);
     const under = at('22.17.1', '>=22.18.0');
-    assert.ok(under.lines.includes('hud: runtime too old - /opt/node/bin/node is node 22.17.1; claude-hud 0.15.0 needs node >=22.18.0 (its package.json engines), so its status line prints an upgrade line instead of the HUD - put a newer node first on PATH and run this again'), under.lines.join('\n'));
+    assert.ok(under.lines.includes('hud: runtime too old - /opt/node/bin/node is node 22.17.1; claude-hud 0.15.0 needs node >=22.18.0 (its package.json engines), so its status line prints an upgrade line instead of the HUD - put a newer node first on PATH and run this again, or let /claude-hud:hud point the line at one'), under.lines.join('\n'));
     assert.match(under.plan.item.note, /; node 22\.17\.1 is under claude-hud 0\.15\.0's >=22\.18\.0$/, 'the init plan says it before the ask');
     assert.ok(JSON.parse(fs.readFileSync(under.plan.settingsFile, 'utf8')).statusLine, 'the line is still written');
     assert.ok(at('20.11.0', '>=22.18.0').lines.some((l) => l.startsWith('hud: runtime too old - /opt/node/bin/node is node 20.11.0;')));

@@ -74,15 +74,16 @@ test('a gated target with the block present is patched in place', () => {
     assert.strictEqual(doc.model, 'opus', 'the rest of settings.json is untouched');
 });
 
-test('the claude-hud row carries the Compact preset of 0.8.0: lineLayout compact, showSeparators false, each with a why', () => {
+test('the claude-hud row carries the compact single-line layout: lineLayout compact, showSeparators false, each with a why', () => {
     const hud = CATALOG.plugins['claude-hud'];
     const config = hud.targets[0];
-    // commands/configure.md's layout table: Compact = lineLayout "compact", showSeparators false.
+    // claude-hud 0.15.0 src/schema.ts: lineLayout "compact" is the single line, showSeparators its rule (0.8.0-0.14's
+    // commands/configure.md called the pair the Compact preset).
     assert.strictEqual(config.settings.lineLayout, 'compact');
     assert.strictEqual(config.settings.showSeparators, false);
-    assert.match(hud.verified, /commands\/configure\.md/, 'the preset is cited where it was read');
+    assert.match(hud.verified, /src\/schema\.ts/, 'the layout is cited where it was read');
     assert.match(hud.verified, /mergeConfig/, 'and the keys where the plugin reads them');
-    // dist/config.js migrateConfig: a legacy `layout` key is migrated only while `lineLayout` is absent,
+    // src/config.ts migrateLegacyLayout: a legacy `layout` key is migrated only while `lineLayout` is absent,
     // so adding lineLayout would silently override that older choice.
     assert.deepStrictEqual(config.chosen_by, { lineLayout: 'layout', showSeparators: 'layout' });
 });

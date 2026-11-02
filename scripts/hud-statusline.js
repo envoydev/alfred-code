@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 // hud-statusline.js - claude-hud arrives CONFIGURED: /alfred-code:init's claude-hud item, made
-// deterministic instead of a model walk through claude-hud's own /claude-hud:setup.
+// deterministic instead of a model walk through claude-hud's own setup (/claude-hud:hud from 0.15.0,
+// /claude-hud:setup before).
 //
 //   node scripts/hud-statusline.js [--config-dir <dir>] [--project <dir>] [--catalog <file>]
 //
@@ -17,7 +18,8 @@
 //      No statusLine: written. claude-hud's own line in a current shape: left as it is. claude-hud's
 //      line in a stale shape (a pinned version path, the old PowerShell wrapper, a runtime that is
 //      gone): its command refreshed, every other key kept. A line that is NOT claude-hud's: kept and
-//      reported with the /claude-hud:setup line, never replaced and never given a refresh interval.
+//      reported with claude-hud's own setup route for the cached version, never replaced and never given a
+//      refresh interval. The node written is checked against the newest cached version's engines.node; a miss is said.
 //   2. the claude-hud row of meta/plugin-settings.json (the Compact layout among it), through
 //      plugin-settings.js - after the statusLine, because the row's refresh interval needs that block.
 // claude-hud not installed, or switched off by the user: one skip line, nothing written. An account
@@ -27,13 +29,17 @@
 // a fallback to the environment's account.
 //
 // The shapes below are claude-hud 0.8.0's (commands/setup.md; MIT, Copyright (c) 2026 Jarrod Watts),
-// kept byte for byte so a line /claude-hud:setup wrote reads as current here, and ours there. claude-hud 0.11
-// (0.11.2's scripts/setup.mjs `buildCommand`) writes a launcher line instead - the runtime and a copy of its
+// kept byte for byte so a line /claude-hud:setup wrote reads as current here; the line written differs from 0.8.0's
+// sort -V form only in its plugins root (SORT_V_ROOT), and claude-hud's own install takes any line naming it as its own.
+// claude-hud 0.11 (0.11.2's scripts/setup.mjs `buildCommand`) writes a launcher line instead - the runtime and a copy of its
 // statusline.mjs at <account>/plugins/claude-hud/ (POSIX), a statusline.cmd shim there (Git Bash), or the same cmd.exe
 // line as 0.8.0 (PowerShell) - and those read as current too, so /alfred-code:init never rewrites a line claude-hud's
 // own setup just wrote (audit 2026-10-14, PL7: two writers of one key, each undoing the other). Re-read on 0.12.0 (audit
 // 2026-10-20b): scripts/setup.mjs and scripts/statusline.mjs are unchanged since 0.11.2, and dist/index.js still exports
-// the `main` the launcher below calls; 0.12.1 leaves both scripts byte for byte.
+// the `main` the launcher below calls; 0.12.1 leaves both scripts byte for byte. Re-read on 0.15.0 (audit 2026-11-03):
+// setup.mjs and commands/ are gone - its `hud` skill runs install.mjs, whose three lines (POSIX launcher, Git Bash shim,
+// PowerShell cmd.exe) are the 0.11 ones above; dist/index.js is a stub re-exporting hud.mjs's `main`, which runs itself
+// when dist/index.js is the entry, so the sort -V line still renders; its launcher reads a moved plugins root (0.14.2).
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -343,6 +349,11 @@ function hudInstall(configDir, settings, project, env = process.env)
 const parts = (v) => String(v).split(/[.+-]/).slice(0, 3).map(Number);
 const below = (a, b) => { for (let i = 0; i < 3; i += 1) if (a[i] !== b[i]) return a[i] < b[i]; return false; };
 
+// claude-hud's own setup route for the newest cached version: from 0.15.0 its one `hud` skill ('/hud replaces
+// /claude-hud:setup and /claude-hud:configure', CHANGELOG 0.15.0), which as a plugin skill answers to /claude-hud:hud
+// (code.claude.com/docs/en/skills); /claude-hud:setup before.
+const setupRoute = (newest) => (newest && !below(parts(newest.version), [0, 15, 0]) ? '/claude-hud:hud' : '/claude-hud:setup');
+
 // The version a runtime answers: this process's own in-process, any other asked with `--version`.
 function versionOf(runtime)
 {
@@ -367,7 +378,8 @@ function runtimeCheck({ runtime, newest, runtimeVersion })
     if (!version) return { line: `hud: runtime not checked - ${runtime} --version printed no version; ${who} needs node ${range}`, note: `node version unknown; ${who} needs ${range}` };
     if (!below(parts(version), floor.slice(1, 4).map((n) => Number(n || 0)))) return null;
     return {
-        line: `hud: runtime too old - ${runtime} is node ${version}; ${who} needs node ${range} (its package.json engines), so its status line prints an upgrade line instead of the HUD - put a newer node first on PATH and run this again`,
+        // 0.15.0's skill points the line at a newer node it finds; setup before it writes the node it runs on.
+        line: `hud: runtime too old - ${runtime} is node ${version}; ${who} needs node ${range} (its package.json engines), so its status line prints an upgrade line instead of the HUD - put a newer node first on PATH and run this again${setupRoute(newest) === '/claude-hud:hud' ? ', or let /claude-hud:hud point the line at one' : ''}`,
         note: `node ${version} is under ${who}'s ${range}`,
     };
 }
@@ -438,7 +450,7 @@ function planHud({ configDir, project, platform = process.platform, env = proces
     const note = [addsNote(plan.targets), plan.runtimeMiss && plan.runtimeMiss.note].filter(Boolean).join('; ');
     if (plan.changes) plan.item = { state: plan.statusLine.state === 'stale' ? 'refresh' : 'missing', detail: null, note };
     else if (plan.statusLine.state === 'foreign')
-        plan.item = { state: 'skip', detail: `the ${plan.where} statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; /claude-hud:setup replaces it` };
+        plan.item = { state: 'skip', detail: `the ${plan.where} statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; ${setupRoute(install.newest)} replaces it` };
     else plan.item = { state: 'present', detail: '' };
     return plan;
 }
@@ -504,7 +516,7 @@ function applyHud(plan, run = {})
         if (plan.runtimeMiss) lines.push(plan.runtimeMiss.line);
     }
     else if (sl.state === 'current') lines.push('hud: statusLine current - left as it is');
-    else lines.push(`hud: statusLine kept - it is not claude-hud's (source: ${sl.label}); /claude-hud:setup replaces it, backing yours up first`);
+    else lines.push(`hud: statusLine kept - it is not claude-hud's (source: ${sl.label}); ${setupRoute(plan.install.newest)} replaces it, backing yours up first`);
 
     // Re-planned after the statusLine write: the row's refresh interval is gated on that block.
     const targets = rowTargets(plan);

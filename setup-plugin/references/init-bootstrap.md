@@ -49,9 +49,11 @@ the user installs it; never attempt one. `claude-hud status line + compact layou
 lines: its command (`hud-statusline.js`) writes the `statusLine` claude-hud's own setup would - into the
 account `settings.json`, or into this project's `.claude/settings.local.json` when claude-hud is installed for
 this project alone (2.2.0: the user picks its scope, this project by default) - then claude-hud's row of `meta/plugin-settings.json`, add-only - a status line that is not
-claude-hud's is kept and reported with `/claude-hud:setup`. Its command ends in
+claude-hud's is kept and reported with claude-hud's own setup route (`/claude-hud:hud` from claude-hud 0.15.0,
+`/claude-hud:setup` before - the line names the one the cached version has). Its command ends in
 `# adds <n> claude-hud keys: <names>`, a shell comment the description keeps, so keys an install-phase Skip
-left out are named before they land. `refresh` is claude-hud's own line in a stale shape: the description says it
+left out are named before they land; a node under the cached claude-hud's own floor is named there too
+(`; node <version> is under claude-hud <version>'s <range>`), and the run prints it as a `hud: runtime too old` line. `refresh` is claude-hud's own line in a stale shape: the description says it
 is replaced, after the command copies the account `settings.json` to `settings.json.bak.<time>`. A
 `skip` line is not an option either: one narration line (claude-hud absent or switched off, or the
 user's own status line with nothing else to add).
