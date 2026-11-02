@@ -217,9 +217,28 @@ function relOf(ctx, abs) {
   const wt = /^\.claude\/worktrees\/[^/]+\/(.+)$/.exec(rel);
   return wt ? wt[1] : rel;
 }
-// Exempt from the code hold: outside the project, the data root and the docs root (the captures write there - bar the
-// plan folders, whose plan carries code decisions), .claude/ and .git/.
+// Scratch is never the project's code (usage audit 2026-11-03 U17), by the cross-project guard's rule: the OS temp dirs, the
+// harness scratch root and the payload's `scratchpad_dir` count only when they hold no checkout of the project (one worked
+// on from a temp dir); a project kept under the scratch root gets back only this session's `<root>/<segment>/<session id>`,
+// never a folder that holds the project itself.
+const UID = typeof process.getuid === 'function' ? process.getuid() : null;
+function scratch(ctx, abs) {
+  const P = real(abs);
+  const holdsProject = (dir) => ctx.bases.some((b) => inside(dir, b));
+  const scratchRoots = UID == null ? [] : [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`].map(real);
+  const roots = [os.tmpdir(), '/tmp', '/private/tmp', '/var/folders', ctx.scratchpad || ''].filter(Boolean).map(real).concat(scratchRoots);
+  if (roots.some((r) => inside(r, P) && !holdsProject(r))) return true;
+  if (!ctx.sid || !/^[\w-]+$/.test(ctx.sid)) return false;
+  return scratchRoots.some((s) => {
+    if (!inside(s, P)) return false;
+    const [segment, sid] = path.relative(s, P).split(path.sep);
+    return Boolean(segment) && sid !== undefined && fold(sid) === fold(ctx.sid) && !holdsProject(path.join(s, segment, sid));
+  });
+}
+// Exempt from the code hold: outside the project, scratch (above), the data root and the docs root (the captures write
+// there - bar the plan folders, whose plan carries code decisions), .claude/ and .git/.
 function exempt(ctx, abs) {
+  if (scratch(ctx, abs)) return true;
   const rel = relOf(ctx, abs);
   if (rel === null || rel === '' || rel.startsWith('..')) return true;
   if (ctx.plans.some((d) => under(rel, d))) return false;
@@ -658,11 +677,30 @@ function gitWrites(command, cwd) {
 function mcpGitWrite(input) {
   try { const r = forgeLib.classify(input); return !!r && forgeLib.PREF_HOLD.has(r.concept); } catch { return false; }
 }
+// A shell word as a path: quotes off, a leading `~` expanded, a Git Bash mount spelling made native - the cross-project
+// guard's anchor normaliser. One function, so shell-writes.js's anchor cache (keyed on it) compiles once per command.
+function shellNorm(t) {
+  const s = shellReader.unquote(String(t));
+  const home = /^~(?:[\\/]|$)/.test(s) ? shellReader.homeDir() : '';
+  return shellReader.nativePath(s === '~' ? home : home ? path.join(home, s.slice(2)) : s);
+}
+// A shell write's targets, each resolved where the shell stands when it writes: the cwd moved by every `cd` before it,
+// through the cross-project guard's own anchor (usage audit 2026-11-03 U17: `cd <scratchpad> && mkdir fvcheck && ...`
+// read as the project's own files, and a 7.9k code-preferences hold landed on scratch work in three sessions). A relative
+// target after a `cd` the reader cannot follow is not judged - never guessed at the payload's cwd.
 function shellTargets(command, cwd) {
   try {
-    const scan = shellReader.scanShell(String(command), {});
-    return scan.targets.filter((t) => !t.unknown).map((t) => scan.expandVars(String(t.raw || '')).replace(/^['"]|['"]$/g, ''))
-      .filter((t) => t && !t.includes('$') && !t.startsWith('/dev/')).map((t) => path.resolve(cwd, t));
+    const scan = shellReader.scanShell(String(command), { cwd, files: false });
+    const out = [];
+    for (const t of scan.targets) {
+      if (t.unknown) continue;
+      const raw = shellNorm(scan.expandVars(String(t.raw || ''), t.index));
+      if (!raw || raw.includes('$') || raw.startsWith('/dev/')) continue;
+      if (path.isAbsolute(raw)) { out.push(path.resolve(raw)); continue; }
+      const base = shellReader.anchorAt(scan.cds, t.index, cwd, shellNorm);
+      if (base !== null) out.push(path.resolve(base, raw));
+    }
+    return out;
   } catch { return []; }
 }
 // What a shell command reads as a Read would: null when no word prints a file outside the preferences folder; else
@@ -999,6 +1037,9 @@ function main() {
   if (cursorOff) return;
   const start = path.resolve(process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd());
   const ctx = contextOf(start);
+  // the session's own scratch (exempt): its id and the harness's scratchpad folder, absent when the session has none
+  ctx.sid = typeof input.session_id === 'string' ? input.session_id : '';
+  ctx.scratchpad = typeof input.scratchpad_dir === 'string' && path.isAbsolute(input.scratchpad_dir) ? input.scratchpad_dir : '';
   // The documented examples spell one seat 'agent-abc123' on one event and 'abc123' on another (docs-session.js
   // agentKey), so the prefix is dropped: the start's marks must reach the seat's own Reads.
   const actor = input.agent_id ? String(input.agent_id).replace(/^agent-/, '') : 'main';

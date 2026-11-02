@@ -208,6 +208,32 @@ test('a shell write to a source file is an edit; one outside the project is not'
     finally { p.rm(); }
 });
 
+// Usage audit 2026-11-03 U17: a relative target was resolved at the payload's cwd, past the command's own `cd`, so scratch
+// work in the session scratchpad was held as the project's code (three sessions, ~7.9k each).
+test('U17: a shell target is resolved where the command\'s cd left the shell; temp and the session scratch are no code', () =>
+{
+    const p = project();
+    const away = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-away-')));
+    try
+    {
+        assert.ok(!denied(p.hook(bash(`cd ${away} && cat > f.ts <<'EOF'\nexport const y = 2;\nEOF`, sid()))), 'a cd out to a temp folder: the file is not the project\'s');
+        assert.ok(!denied(p.hook(bash(`cd ${away} && mkdir check && echo x > check/run.ts`, sid()))), 'nor a folder made there');
+        const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+        assert.ok(!denied(p.hook(bash(`cd /tmp/claude-${uid}/-proj/sess-1/scratchpad && echo x > f.ts`, 'sess-1'))), 'the harness scratch root');
+        p.write('src/sub/.keep', '');
+        assert.ok(denied(p.hook(bash('cd src/sub && cat > f.ts <<\'EOF\'\nexport const z = 3;\nEOF', sid()))), 'a cd into the project keeps the file the project\'s');
+        assert.ok(denied(p.hook(bash(`cd ${away} && cd ${p.root} && echo x > f.ts`, sid()))), 'a cd back into the project is followed too');
+        assert.ok(denied(p.hook(bash('echo y > src/g.ts && cd "$SOMEWHERE" && echo x > f.ts', sid()))), 'a target before an unknown cd is still judged');
+        assert.ok(!denied(p.hook(bash('cd "$SOMEWHERE" && echo x > f.ts', sid()))), 'a relative target after a cd the reader cannot follow is never guessed');
+        // the payload's scratchpad_dir: a scratch folder the project's checkout holds is no code - unless it holds the project
+        const scratch = path.join(p.root, 'scratch-pad');
+        assert.ok(denied(p.hook(bash(`cd ${scratch} && echo x > f.ts`, sid()))), 'without the payload field the folder is the project\'s');
+        assert.ok(!denied(p.hook(bash(`cd ${scratch} && echo x > f.ts`, sid(), { scratchpad_dir: scratch }))), 'named by the payload, it is scratch');
+        assert.ok(denied(p.hook(bash('echo x > src/h.ts', sid(), { scratchpad_dir: path.dirname(p.root) }))), 'a scratchpad that holds the project exempts none of it');
+    }
+    finally { p.rm(); fs.rmSync(away, { recursive: true, force: true }); }
+});
+
 test('reading a doc first marks it: a Read, a cat and a docs.js show each count, for that doc alone', () =>
 {
     const p = project();
