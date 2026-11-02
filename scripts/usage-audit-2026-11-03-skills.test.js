@@ -39,3 +39,11 @@ test('U32: the hand-written AUTO stamp is deleted last - after the close ask is 
     const sec = mech.split('## The APPROVAL stamp - writing it, and its lifetime')[1].split('## Agents-mode dispatch - step 4')[0];
     assert.match(sec, /\*\*The hand-written stamp goes LAST\.\*\* Step 6 deletes it only after the close stop's ask is answered, or after the close printed when nothing is pending - never before the ask/);
 });
+
+// U29: a side effect on a surface the plan did not name was filed MINOR (14% of its run went to rework), and a change
+// served to every device was tested on one device class.
+test('U29: an effect on a surface or device class the plan did not name is at least MATERIAL', () => {
+    const t = read('stack/skills/task-verify-code/SKILL.md');
+    const rubric = flat(t.slice(t.indexOf('Then the body: a ranked punch-list'), t.indexOf('## Example')));
+    assert.match(rubric, /An effect on a surface or device class the plan did not name - another page or screen, a browser, a phone, a platform the changed code also serves - is at least MATERIAL, under auto-run too/);
+});

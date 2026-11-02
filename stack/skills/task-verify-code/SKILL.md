@@ -86,6 +86,8 @@ ask for the cleanup (measured). Delete it as soon as the check that needed it pa
 
 Then the body: a ranked punch-list, most severe first - one line per finding: `severity | the defect (file:symbol) | the fix`. If the code is sound, say so plainly and name what you checked and ran. Every finding keyed to a file + symbol so a fix lands exactly there. Nothing you could not verify is reported as unverified - unverified is never a pass. Hand the list back; this skill does not apply fixes.
 
+An effect on a surface or device class the plan did not name - another page or screen, a browser, a phone, a platform the changed code also serves - is at least MATERIAL, under auto-run too: no planned check looked there, so the user is the one who finds it (usage audit 2026-11-03: one filed MINOR took 14% of its run in rework).
+
 When the review is the pre-commit checkpoint (a commit is the next act) and the verdict is sound - or sound after fixes that landed and re-verified - Read `references/commit-gate-receipt.md` and write the receipt it shapes. A punch-list with unresolved BLOCKER/MATERIAL findings writes no receipt.
 
 ## Example
