@@ -603,11 +603,18 @@ function configuredLegs(root, opts, env = process.env)
     return cfg ? parseLegs(cfg) : LEGS;
 }
 
+// core.hooksPath may name the hooks folder relatively (what --install-hook writes) or by its absolute path (a hand-set
+// or older spelling); both are the gate's own hook, so install keeps it and uninstall unsets it.
+function ownsHooksPath(root, current)
+{
+    return !!current && path.resolve(root, current) === path.resolve(root, HOOKS_PATH);
+}
+
 function installHook(root)
 {
     const commonDir = path.resolve(root, git(root, ['rev-parse', '--git-common-dir']));
     const current = tryGit(root, ['config', '--get', 'core.hooksPath']);
-    if (current && current !== HOOKS_PATH) throw new Error(`core.hooksPath is already '${current}' - not replacing it; call scripts/git-hooks/pre-push from there instead`);
+    if (current && !ownsHooksPath(root, current)) throw new Error(`core.hooksPath is already '${current}' - not replacing it; call scripts/git-hooks/pre-push from there instead`);
     const own = safeList(path.join(commonDir, 'hooks')).filter(f => !f.endsWith('.sample'));
     git(root, ['config', 'core.hooksPath', HOOKS_PATH]);
     console.log(`alfred-gate: pre-push hook on (core.hooksPath = ${HOOKS_PATH}) - every push runs the gate first; skip one with git push --no-verify`);
@@ -617,7 +624,7 @@ function installHook(root)
 
 function uninstallHook(root)
 {
-    if (tryGit(root, ['config', '--get', 'core.hooksPath']) !== HOOKS_PATH) { console.log('alfred-gate: the pre-push hook is not on'); return; }
+    if (!ownsHooksPath(root, tryGit(root, ['config', '--get', 'core.hooksPath']))) { console.log('alfred-gate: the pre-push hook is not on'); return; }
     git(root, ['config', '--unset', 'core.hooksPath']);
     console.log('alfred-gate: pre-push hook off');
 }
@@ -662,4 +669,4 @@ if (require.main === module)
     main(process.argv.slice(2)).then(code => process.exit(code), err => { console.error(`alfred-gate: ${err.message || err}`); process.exit(2); });
 }
 
-module.exports = { LEGS, nodeSkew, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs };
+module.exports = { LEGS, nodeSkew, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };

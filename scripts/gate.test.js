@@ -312,3 +312,23 @@ test('gate: end to end on macOS - a pass is stamped and skipped next time, the t
     }
     finally { fs.rmSync(fx.dir, { recursive: true, force: true }); }
 });
+
+test('gate: --uninstall-hook turns the hook off when core.hooksPath names the hooks folder by its absolute path', () => {
+    const repo = tmp('gate-hook-');
+    try
+    {
+        execFileSync('git', ['init', '-q', repo]);
+        const abs = path.join(repo, 'scripts', 'git-hooks');
+        execFileSync('git', ['-C', repo, 'config', 'core.hooksPath', abs]);
+        gate.installHook(repo);
+        assert.strictEqual(path.resolve(repo, execFileSync('git', ['-C', repo, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim()), abs, 'install accepts a same-folder absolute path');
+        execFileSync('git', ['-C', repo, 'config', 'core.hooksPath', abs]);
+        gate.uninstallHook(repo);
+        assert.strictEqual(spawnSync('git', ['-C', repo, 'config', '--get', 'core.hooksPath']).status, 1, 'the absolute spelling is unset');
+        execFileSync('git', ['-C', repo, 'config', 'core.hooksPath', path.join(repo, 'other-hooks')]);
+        gate.uninstallHook(repo);
+        assert.strictEqual(execFileSync('git', ['-C', repo, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(), path.join(repo, 'other-hooks'), 'a foreign hooks folder is left alone');
+        assert.throws(() => gate.installHook(repo), /already/);
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
