@@ -343,6 +343,8 @@ function parseDoc(text, entries = false) {
     if (f) { if (!fence) fence = f[1][0]; else if (f[1][0] === fence) fence = null; return; }
     if (!fence && /^##\s+\S/.test(l)) heads.push(i);
   });
+  // a section's line span, 1-based as `sed -n` counts: its heading line to its last line holding text (shellMarks)
+  const lastText = (from, to) => { for (let i = to - 1; i >= from; i--) if (/\S/.test(lines[i])) return i + 1; return from + 1; };
   const sections = heads.map((h, k) => {
     const body = lines.slice(h, k + 1 < heads.length ? heads[k + 1] : lines.length);
     const meta = body.slice(1, 9).filter((l) => /^\s*<!--[\s\S]*?-->\s*$/.test(l)).join('\n');
@@ -351,6 +353,7 @@ function parseDoc(text, entries = false) {
     const covers = ((/<!--\s*covers:\s*(.*?)\s*-->/.exec(meta) || [])[1] || '').split(/[,\s]+/).filter(Boolean);
     return {
       heading, id, mark: id || heading.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, ''),
+      from: h + 1, to: lastText(h, h + body.length),
       covers,
       reach: entries ? scopeOf((fieldLines(body, SCOPE_LINE, false)[0] || '').replace(/^- Scope:/, ''))
         : covers.map((g) => { const re = globRe(g); return (t) => re.test(t); }),
@@ -360,7 +363,8 @@ function parseDoc(text, entries = false) {
     };
   });
   const preamble = clean(lines.slice(0, heads.length ? heads[0] : lines.length).join('\n'));
-  return { preamble: entries ? preamble.split('\n').filter((l) => l.trim() && !/^#\s|^(?:Updated|Retired|Captured):/.test(l.trim())).join('\n') : preamble, sections };
+  return { preamble: entries ? preamble.split('\n').filter((l) => l.trim() && !/^#\s|^(?:Updated|Retired|Captured):/.test(l.trim())).join('\n') : preamble, sections,
+    lastLine: lastText(0, lines.length), lineCount: lines.length - (lines[lines.length - 1] === '' ? 1 : 0) };
 }
 // The seed's locked entries, key -> section, in the seed's order; null when the seed is not beside this hook.
 let seedCache;
@@ -626,15 +630,133 @@ function readMarks(ctx, t, cwd) {
   const doc = readDoc(ctx, d);
   return doc && Number(t.limit) >= doc.text.split('\n').length ? [d.key] : [];
 }
-// What a shell command marks: a whole-file reader naming a doc (no pipe into a cutter, no head/tail flag), or a
-// `docs.js show <doc>#<id>` of one section. A name in an echo, a toc `show` and a peek mark nothing.
-function shellMarks(command, targets) {
+// The 1-based line ranges a `sed -n` / `head` / `tail` word prints of each file it names, as [file, [[from, to], ...]]
+// pairs; null for any spelling it does not know (a script past `N[,M|,$|,+K]p`, an in-place or script-file sed, a byte
+// count, a follow, a negative count) - an unknown spelling marks nothing. `lines(file)` is the file's line count, which
+// a tail range needs.
+function printedRanges(w, lines) {
+  const argv = w.argv.map(String);
+  const name = w.name.toLowerCase();
+  const files = [];
+  if (name === 'sed') {
+    let quiet = false;
+    let script = null;
+    for (let i = 0; i < argv.length; i++) {
+      const a = argv[i];
+      if (a === '--') { files.push(...argv.slice(i + 1)); break; }
+      if (a === '--quiet' || a === '--silent') quiet = true;
+      else if (a === '--regexp-extended' || a === '--posix' || a === '--unbuffered') continue;
+      else if (a === '--expression' || /^--expression=/.test(a)) script = `${script === null ? '' : `${script}\n`}${a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i] || ''}`;
+      else if (/^-[nErsue]+$/.test(a)) {
+        if (a.includes('n')) quiet = true;
+        if (a.includes('e')) { if (!a.endsWith('e')) return null; script = `${script === null ? '' : `${script}\n`}${argv[++i] || ''}`; }
+      } else if (a.startsWith('-') && a !== '-') return null;
+      else if (script === null) script = a;
+      else files.push(a);
+    }
+    if (!quiet || script === null || files.length !== 1) return null;
+    const ranges = [];
+    for (const part of script.split(/[;\n]/).map((s) => s.trim()).filter(Boolean)) {
+      const m = /^(\d+)(?:\s*,\s*(?:(\d+)|(\$)|\+(\d+)))?\s*p$/.exec(part);
+      if (!m) return null;
+      const from = Number(m[1]);
+      ranges.push([from, m[3] ? Infinity : m[4] !== undefined ? from + Number(m[4]) : m[2] !== undefined ? Math.max(from, Number(m[2])) : from]);
+    }
+    return [[files[0], ranges]];
+  }
+  let n = 10;
+  let fromStart = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--') { files.push(...argv.slice(i + 1)); break; }
+    const v = a === '-n' ? argv[++i] : (/^(?:-n|--lines=)(.+)$/.exec(a) || /^-(\d+)$/.exec(a) || [])[1];
+    if (v !== undefined) {
+      const m = /^(\+)?(\d+)$/.exec(String(v));
+      if (!m || (m[1] && name === 'head')) return null;
+      n = Number(m[2]);
+      fromStart = Boolean(m[1]);
+    } else if (/^-[qv]+$/.test(a) || a === '--quiet' || a === '--silent' || a === '--verbose') continue;
+    else if (a.startsWith('-') && a !== '-') return null;   // -c, --bytes, -f, -F, --follow, -r and the rest
+    else if (name === 'tail' && !files.length && /^\+\d+$/.test(a)) { n = Number(a.slice(1)); fromStart = true; }
+    else files.push(a);
+  }
+  return files.map((f) => {
+    if (name === 'head') return [f, [[1, n]]];
+    const total = lines(f);
+    if (total === null) return [f, []];
+    return [f, [fromStart ? [Math.max(n, 1), total] : [Math.max(total - n + 1, 1), total]]];
+  });
+}
+// What a shell command marks: a whole-file reader naming a doc (no pipe into a cutter, no head/tail flag), a
+// `docs.js show <doc>#<id>` of one section, or a `sed -n` / `head` / `tail` range printing whole sections - each
+// section from its heading to its last line of text, and the doc when the ranges reach all of it, as a Read's do
+// (usage audit 2026-11-03 U18: `sed -n 32,112p` and `238,294p` of two sections marked nothing, and a 21.4k plan
+// Write was held to hand them over again). A range piped on into another stage or sent to a file prints nothing the
+// model reads, and neither does a doc the command writes. A name in an echo, a toc `show` and a peek mark nothing.
+function shellMarks(ctx, command, targets, cwd) {
   let words = [];
   try { words = shellReader.commandWords(command); } catch { return []; }
   const docByBase = (arg) => ALL_DOCS.find((d) => path.basename(String(arg)) === d.file) || null;
   const written = (d) => targets.some((x) => path.basename(String(x)) === d.file);
   const partial = words.some((w) => PARTIAL_WORD.test(w.name));
   const out = [];
+  const spans = new Map();   // doc key -> { d, ranges }
+  let anchor = null;
+  const where = (w) => {
+    if (anchor === null) {
+      try {
+        const scan = shellReader.scanShell(String(command), { cwd, files: false });
+        anchor = (at) => shellReader.anchorAt(scan.cds, at, cwd, shellNorm);
+      } catch { anchor = () => null; }
+    }
+    return anchor(w.at);
+  };
+  // printed where the model reads it: no pipe on to another stage, no stdout redirect to a file (`2>/dev/null`, `>&2` and
+  // `2>&1` keep it on the terminal)
+  const toTerminal = (w) => {
+    const c = w.cmd || {};
+    const text = c.words && c.words[0] ? c.words[0].src : '';
+    const redirs = Array.isArray(c.redirs) ? c.redirs : [];
+    const end = Math.max(...(c.words || []).map((t) => t.e), ...redirs.map((r) => (r.target ? r.target.e : r.at + 1)), 0);
+    if (/^[ \t]*\|(?!\|)/.test(text.slice(end))) return false;
+    return !redirs.some((r) => {
+      if (!(/^(?:>|>>|>\||&>|&>>)$/.test(r.op) || (r.op === '>&' && r.target && !/^(?:\d+|-)$/.test(r.target.raw)))) return false;
+      const fd = /(?:^|[\s;&|(])(\d+)$/.exec(text.slice(0, r.at));
+      return !(fd && fd[1] !== '1') && !(r.target && r.target.raw === '/dev/stderr');
+    });
+  };
+  for (const w of words) {
+    if (!/^(?:sed|head|tail)$/i.test(w.name) || w.via === 'xargs' || w.via === 'find' || !toTerminal(w)) continue;
+    const base = where(w);
+    const docAt = (f) => {
+      const p = shellNorm(f);
+      if (!p || p === '-' || p.includes('$') || (!path.isAbsolute(p) && base === null)) return null;
+      return docOfPath(ctx, path.resolve(base || cwd, p));
+    };
+    const read = new Map();
+    const docText = (d) => { if (!read.has(d.key)) read.set(d.key, readDoc(ctx, d)); return read.get(d.key); };
+    const printed = printedRanges(w, (f) => { const d = docAt(f); const doc = d && docText(d); return doc ? parseDoc(doc.text).lineCount : null; });
+    for (const [f, ranges] of printed || []) {
+      const d = docAt(f);
+      if (!d || written(d) || !ranges.length) continue;
+      const s = spans.get(d.key) || { d, ranges: [] };
+      s.ranges.push(...ranges);
+      spans.set(d.key, s);
+    }
+  }
+  for (const { d, ranges } of spans.values()) {
+    const doc = readDoc(ctx, d);
+    if (!doc) continue;
+    const parsed = parseDoc(doc.text);
+    const merged = [];
+    for (const [a, b] of ranges.slice().sort((x, y) => x[0] - y[0])) {
+      const last = merged[merged.length - 1];
+      if (last && a <= last[1] + 1) last[1] = Math.max(last[1], b); else merged.push([a, b]);
+    }
+    const covers = (from, to) => merged.some(([a, b]) => a <= from && b >= to);
+    if (covers(1, parsed.lastLine)) out.push(d.key);
+    for (const s of parsed.sections) if (covers(s.from, s.to)) out.push(`${d.key}#${s.mark}`);
+  }
   for (const w of words) {
     if (WHOLE_READER.test(w.name) && !partial && !w.argv.some((a) => PARTIAL_FLAG.test(a))) {
       for (const a of w.argv) { const d = docByBase(a); if (d && !written(d)) out.push(d.key); }
@@ -677,6 +799,10 @@ function gitWrites(command, cwd) {
 function mcpGitWrite(input) {
   try { const r = forgeLib.classify(input); return !!r && forgeLib.PREF_HOLD.has(r.concept); } catch { return false; }
 }
+// A shell write's targets, each resolved where the shell stands when it writes: the cwd moved by every `cd` before it,
+// through the cross-project guard's own anchor (usage audit 2026-11-03 U17: `cd <scratchpad> && mkdir fvcheck && ...`
+// read as the project's own files, and a 7.9k code-preferences hold landed on scratch work in three sessions). A relative
+// target after a `cd` the reader cannot follow is not judged - never guessed at the payload's cwd.
 // A shell word as a path: quotes off, a leading `~` expanded, a Git Bash mount spelling made native - the cross-project
 // guard's anchor normaliser. One function, so shell-writes.js's anchor cache (keyed on it) compiles once per command.
 function shellNorm(t) {
@@ -684,10 +810,6 @@ function shellNorm(t) {
   const home = /^~(?:[\\/]|$)/.test(s) ? shellReader.homeDir() : '';
   return shellReader.nativePath(s === '~' ? home : home ? path.join(home, s.slice(2)) : s);
 }
-// A shell write's targets, each resolved where the shell stands when it writes: the cwd moved by every `cd` before it,
-// through the cross-project guard's own anchor (usage audit 2026-11-03 U17: `cd <scratchpad> && mkdir fvcheck && ...`
-// read as the project's own files, and a 7.9k code-preferences hold landed on scratch work in three sessions). A relative
-// target after a `cd` the reader cannot follow is not judged - never guessed at the payload's cwd.
 function shellTargets(command, cwd) {
   try {
     const scan = shellReader.scanShell(String(command), { cwd, files: false });
@@ -1150,7 +1272,7 @@ function main() {
     const command = typeof t.command === 'string' ? t.command : '';
     if (!command) return;
     const targets = shellTargets(command, cwd);
-    mark(shellMarks(command, targets));
+    mark(shellMarks(ctx, command, targets, cwd));
     // A seat's `cat` or `grep` of code reads as its Read does (the user's ruling of 2026-10-22).
     const seat = reader();
     const reads = seat ? shellReads(ctx, command, cwd) : null;
