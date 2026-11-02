@@ -899,13 +899,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     first ask with no fresh option after a typed prompt followed this session's plan `Completed:` stamp (once per stamp;
     audit 2026-10-10 C08 / C09 / C26); a question shaped as an approval (approve, as shown, is ready, post / file /
     publish / send this) with no chat text since the user's last typed turn that carries its subject - 200 characters or
-    more naming its noun (audit 2026-10-11, session 2ca8e8ee: a staged plan and a ticket comment approved unseen); and a
+    more naming its noun (audit 2026-10-11, session 2ca8e8ee: a staged plan and a ticket comment approved unseen) - the
+    noun being the approval verb's own object (a pronoun or 'as shown' points back to the nearest phrase not after a
+    preposition), quoted text in the ask counting as shown and an option label not, a pointer saying 'above' needing the
+    200 characters too ('above 5' is no pointer), and the denial saying to re-send the ask unchanged (usage audit
+    2026-11-03 U04: 4 of 5 measured denials were of asks shown in full; the transcript can lag the ask's own message at
+    PreToolUse, so text in that message costs one re-send); and a
     small solve-task close whose `Result:` line has no `review:` field (session 5984019e) - a close stating no `Size:` is
     judged on the cycle's size, read from the transcript: the newest one stated, raised by a `size check: raise to
     standard`, else spec-check's `size floor:` (a trivial floor counts, since a trivial run has no stop), only after a
     source edit this cycle and never where task-design / verify-plan / implement ran or a plan file was read or written
     (audit 2026-10-20 C37, 4a210c3c). The solve-task FLOW STOP FIELDS note reads the whole transcript once per session
-    for the flow's marker (`guard-stop-flow-*` keeps how far it read), and accepts a field opening a sentence inside a
+    for the flow's marker (`guard-stop-flow-*` keeps how far it read), says nothing once the plan is stamped `Completed:`
+    and a typed turn followed until a typed /task-solve or the flow's Skill call re-arms it (usage audit 2026-11-03 U08: 6
+    of 6 post-cycle asks drew notes), and accepts a field opening a sentence inside a
     one-line question; the same read places the stop, so the note also names a RECEIPT the stop owes and left out - `Size:`
     at a cycle's first stop (no ask answered since its marker or its new-scope prompt, an opening fresh hand-off excepted),
     `mechanics: read` at the approval (an 'Approve' option), `memories purged:` at the close (no ask answered since the
@@ -1360,7 +1367,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     their dispatchers; `SessionStart`, every source; `SubagentStart`; `UserPromptExpansion` on the run names) - the user's
     preferences docs under `<docs-path>/preferences/` bind every actor, and a rule only asks for the read (the user's rulings
     of 2026-10-21: `alfred-preferences.md` is a read-on-trigger pointer, this hook makes the read happen). The FIRST file edit
-    of each actor (the main session, and each seat by `agent_id`) is held until the code docs that exist were read -
+    of each actor (the main session, and each seat by `agent_id`; a shell write's target resolved where the command's own
+    `cd` leaves it, and one under the OS temp dir, the harness scratch root or the payload's `scratchpad_dir` - none
+    holding the project - no edit: usage audit 2026-11-03 U17, the 7.9k code docs handed over for scratch files) is held
+    until the code docs that exist were read -
     the entries of `PERSONAL-CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` whose `Scope:` reaches the target
     (`scopeOf`: preferences.js's glob reading, a glob with no `/` matched on the file name, a path with none matching
     everything under it; a plain area or no `Scope:` reaches every edit), each without its `Check:` line, then
@@ -1381,7 +1391,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     left out capped at 700, the rest named as a `node .claude/hooks/docs.js show <ref>` line when the engine and
     `preferences/watch.json` are there, else a Read line). Only a WHOLE read marks a doc read (audit 2026-10-21 H-Q1): a Read
     with no range or one reaching its last line, a whole-file shell reader naming it (no `head`, `grep` or pipe into one), a
-    `docs.js show` of each of its sections. A judge (`JUDGE`: an `agent_type` ending `solution-designer` or `-verifier`, or
+    `docs.js show` of each of its sections; a `sed -n a,bp`, `head` or `tail` range marks each section it covers from
+    heading to last line, every line the whole doc, and a partial, piped or redirected range nothing (usage audit
+    2026-11-03 U18: a section read by range was held again and a 21.4k plan Write discarded). A judge (`JUDGE`: an `agent_type` ending `solution-designer` or `-verifier`, or
     one of the four finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer`, `output-scorer` (the grader is handed the code docs it grades a plan against, AC27) - `alfred-code:<seat>`
     always, a BARE name only where the install stamp's `library-agents:` line records its copy (`copiedSeats`: the copy
     route; none on the plugin route), so another plugin's or the project's own `security-auditor` is no judge: side notes
