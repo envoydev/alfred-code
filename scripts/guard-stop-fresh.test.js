@@ -56,7 +56,9 @@ const logEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtem
 
 // A close is judged from the harness's own `last_assistant_message` field, which is what the live
 // hook reads first - no transcript needed for the phrase cases.
-const close = (text, extra) => runIn('guard-stop-contract.js',
+// In-process (hook-inprocess.js): this file's ~400 closes cost 65.7s spawned, 14.6s here. The runIn calls below stay spawned.
+const { runHook } = require('./hook-inprocess');
+const close = (text, extra) => runHook('guard-stop-contract.js',
   { hook_event_name: 'Stop', last_assistant_message: text, ...(extra || {}) }, { env: logEnv() });
 
 // ---------------------------------------------------------------------------------------------

@@ -21,7 +21,9 @@ process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 
 let seq = 0;
 const logEnv = () => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')) });
-const run = (payload) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `s${++seq}`, ...payload }), encoding: 'utf8', env: logEnv() });
+// In-process (hook-inprocess.js); the ask runs below stay spawned, so the process boundary stays tested here too.
+const { runHook } = require('./hook-inprocess');
+const run = (payload) => runHook(path.basename(HOOK), { session_id: `s${++seq}`, ...payload }, { env: logEnv() });
 const transcript = (rows) => {
   const p = path.join(TMP, `t${++seq}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');

@@ -2655,6 +2655,10 @@ if (payload.tool_name === 'AskUserQuestion') { try { settleAskFixed(); } catch {
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   let askFixed = null;
+  // Set right before the denial's exit inside the try below. A real process never returns from process.exit, but a
+  // runner whose exit throws (shell-guards.js runGuard, the suites' in-process runner, scripts/hook-inprocess.js)
+  // would have the fail-open catch swallow it and run the hook on - so the catch lets that throw through.
+  let denied = false;
   try {
     // Build the ask's text from its FIELDS. JSON.stringify would introduce double quotes of its
     // own and make the house-voice check fire on every ask ever made.
@@ -2883,6 +2887,7 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
           + (dropHandoff ? ` ${notPay}${leftAlone ? ` A question left with one option is no question: take that option${leftAlone.options[0] ? ` - '${String(leftAlone.options[0].label || '')}' -` : ''} and drop the question.` : ''}` : '')
           + (mechanical && resend.length ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : '', dropHandoff ? 'the fresh-session hand-off dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(resend, null, 1)}\n` : '\n'));
+        denied = true;
         process.exit(2);
       }
       else if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
@@ -2969,7 +2974,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         'cannot be unsent, and the ask just answered did not settle its rotation. Before this turn ' +
         'closes, ask whether to rotate it now - name the key and its shape only, never the value.');
     }
-  } catch { /* fail-open: an injection is never worth breaking an ask over */ }
+  } catch (err) { if (denied) throw err; /* fail-open: an injection is never worth breaking an ask over */ }
 
   if (notes.length || askFixed) {
     process.stdout.write(JSON.stringify({
