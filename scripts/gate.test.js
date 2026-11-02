@@ -327,7 +327,7 @@ test('gate: --uninstall-hook turns the hook off when core.hooksPath names the ho
         assert.strictEqual(spawnSync('git', ['-C', repo, 'config', '--get', 'core.hooksPath']).status, 1, 'the absolute spelling is unset');
         execFileSync('git', ['-C', repo, 'config', 'core.hooksPath', path.join(repo, 'other-hooks')]);
         gate.uninstallHook(repo);
-        assert.strictEqual(execFileSync('git', ['-C', repo, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(), path.join(repo, 'other-hooks'), 'a foreign hooks folder is left alone');
+        assert.strictEqual(execFileSync('git', ['-C', repo, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim(), path.join(repo, 'other-hooks'), 'a foreign folder is left alone');
         assert.throws(() => gate.installHook(repo), /already/);
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }

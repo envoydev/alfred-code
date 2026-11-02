@@ -73,3 +73,31 @@ test('no test file under scripts/ fails the run instead of passing on zero tests
   assert.match(r.out, /no test file/);
   assert.deepEqual(r.ran, []);
 });
+
+// B6 (2026-11-03): a full run left 330 entries in the machine's temp dir. The run's own temp dir takes every write a
+// test or a hook makes there and goes when the run ends, a failed run included.
+test('the run hands the tests a temp dir of its own and removes it, pass or fail', () => {
+  const root = fixture({ tests: [] });
+  const leak = (name, fail) => fs.writeFileSync(path.join(root, 'scripts', `${name}.test.js`), [
+    "const fs = require('node:fs'), os = require('node:os'), path = require('node:path');",
+    `require('node:test')('${name} ran', () => {`,
+    "  fs.mkdtempSync(path.join(os.tmpdir(), 'left-'));",
+    `  fs.writeFileSync(${JSON.stringify(path.join(root, `${name}.tmp`))}, [os.tmpdir(), process.env.TEMP, process.env.TMP].join('\\n'));`,
+    fail ? "  throw new Error('red');" : '',
+    '});', ''].join('\n'));
+  for (const [name, fail, status] of [['a', false, 0], ['b', true, 1]]) {
+    for (const f of fs.readdirSync(path.join(root, 'scripts'))) if (f.endsWith('.test.js')) fs.rmSync(path.join(root, 'scripts', f));
+    leak(name, fail);
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'run-tests-parent-'));
+    made.push(parent);
+    const env = { ...process.env, TMPDIR: parent, TEMP: parent, TMP: parent };
+    delete env.NODE_TEST_CONTEXT;
+    const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'run-tests.js'), '--test-reporter=tap'], { cwd: os.tmpdir(), env, encoding: 'utf8' });
+    assert.equal(r.status, status, r.stdout + r.stderr);
+    const seen = fs.readFileSync(path.join(root, `${name}.tmp`), 'utf8').split('\n');
+    assert.equal(new Set(seen).size, 1, `TMPDIR, TEMP and TMP name one folder: ${seen}`);
+    assert.equal(path.dirname(seen[0]), parent, 'the run temp dir sits in the caller\'s temp dir');
+    assert.ok(path.basename(seen[0]).length <= 9, `a short name, since some tests bound a message quoting a temp path: ${seen[0]}`);
+    assert.deepEqual(fs.readdirSync(parent), [], `nothing is left in the caller's temp dir (${name})`);
+  }
+});

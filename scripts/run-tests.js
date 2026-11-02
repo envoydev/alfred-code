@@ -12,7 +12,13 @@
 //   npm test [-- <node --test flags, as --flag=value>] [<test file or glob> ...]
 //
 // A test path given replaces the default pattern. No test file under scripts/ fails the run.
+//
+// The run gets a temp dir of its own (TMPDIR, TEMP and TMP), removed when it ends, pass or fail: a full run left 330
+// folders and files in the machine's temp dir (measured 2026-11-03 - mkdtemp folders a suite never removed, hook
+// markers, the V8 cache), and every hook's stale sweep lists that dir (52,840 entries once). The name stays short,
+// since a few tests bound a message that quotes a temp path.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -35,6 +41,10 @@ if (!args.some(isTarget) && !hasTestFile(path.join(ROOT, 'scripts'))) {
     process.stderr.write(`run-tests: no test file matches ${PATTERN} under ${ROOT} - a run of zero tests is not a pass\n`);
     process.exit(1);
 }
-const r = spawnSync(process.execPath, ['--test', ...args, ...(args.some(isTarget) ? [] : [PATTERN])], { cwd: ROOT, stdio: 'inherit' });
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'at-'));
+const env = { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp };
+let r;
+try { r = spawnSync(process.execPath, ['--test', ...args, ...(args.some(isTarget) ? [] : [PATTERN])], { cwd: ROOT, stdio: 'inherit', env }); }
+finally { try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 3 }); } catch (e) { process.stderr.write(`run-tests: the run's temp dir ${tmp} was not removed: ${e.message}\n`); } }
 if (r.error) { process.stderr.write(`run-tests: ${r.error.message}\n`); process.exit(1); }
 process.exit(r.status ?? 1);
