@@ -11,14 +11,17 @@
 //     the PowerShell tool excluded.
 //   - MacOS-MCP's `Shell` - a shell command the Bash-route guards (rm, secret, force-push, cross-project
 //     write) never see. MacOS-MCP 0.4.6 has no exclude flag, so the tool itself is the gate's unit.
+//   - a server's `PowerShell` (Windows-MCP's own) or `execute_shell_command` - the same unjudged shell (E-batch
+//     mcp-B-m1), each opened by its own receipt line, the tool's name.
 //   - Playwright MCP's `browser_run_code_unsafe` - 'executes arbitrary JavaScript in the Playwright server process and is
 //     RCE-equivalent' (its README, read 2026-10-24), with no flag to switch it off. 2.5.0 to 2.10.0 denied it in settings
 //     under the stack's own server names only, so one added back under its record name ran it unjudged (ruling N9).
-// All three are denied; App's `launch`, `switch` and `resize` pass. The stack ships no such server (2026-10-24), so each
+// Each is denied; App's `launch`, `switch` and `resize` pass. The stack ships no such server (2026-10-24), so each
 // tool is matched by its NAME under whatever server the user registered (a plugin's, a .mcp.json row, any name) - a user
 // server with a tool of the same name meets the same gate, the accepted cost.
 // 'Allow' is honoured through <data root>/state/approvals/DESKTOP-EXEC-ALLOW, the pre-2.8.0 <docs-path>/flow/ one still
 // read (this session's own, under 8h): a line `App` opens every launch_executable, `Shell` every macOS shell call,
+// `PowerShell` / `execute_shell_command` every call of that tool,
 // `browser_run_code_unsafe` every browser code run, an executable's FULL path that one executable
 // (a bare name only a call naming it bare - audit 2026-10-20, the hooks track's minor list: a file-name line opened that
 // name in every directory), `*` both.
@@ -45,9 +48,9 @@ if (require.main === module) {
 }
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
-// The three tools under any registration (the tool-type match, no-MCP spec N6).
+// The tools under any registration (the tool-type match, no-MCP spec N6).
 const WIN_APP = /^mcp__.+__App$/;
-const MAC_SHELL = /^mcp__.+__Shell$/;
+const MAC_SHELL = /^mcp__.+__(?:Shell|PowerShell|execute_shell_command)$/;
 const RUN_CODE = /^mcp__.+__browser_run_code_unsafe$/;
 const CODE_LINE = 'browser_run_code_unsafe';
 
@@ -106,6 +109,8 @@ const tool = String(payload.tool_name || '');
 const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
 const isApp = WIN_APP.test(tool);
 const isShell = MAC_SHELL.test(tool);
+// The shell tool's own name: its receipt line, and what its denial names.
+const shellName = isShell ? tool.replace(/^.*__/, '') : '';
 const isCode = RUN_CODE.test(tool);
 // App's own default mode is `launch` (a Start-menu name), so only the named process mode is judged.
 if (!isShell && !isCode && !(isApp && String(input.mode || '').trim().toLowerCase() === 'launch_executable')) process.exit(0);
@@ -129,14 +134,15 @@ let bareLine = '';
 // No prelude, no reader: shut.
 let receipts = null;
 try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
-const ALLOW_LABELS = ['Allow the browser code runner this session', 'Allow the desktop Shell this session', 'Allow this executable this session'];
+const ALLOW_LABELS = ['Allow the browser code runner this session', 'Allow the desktop Shell this session', 'Allow this executable this session',
+  "Allow the server's PowerShell this session", "Allow the server's execute_shell_command this session"];
 const held = receipts && receipts.securityReceipt ? receipts.securityReceipt(receipt, payload, { marker: 'DESKTOP-EXEC-ALLOW', labels: ALLOW_LABELS }) : null;
 const allowed = (() => {
   try {
     if (!held || !held.live) return false;
     const lines = held.lines;
     if (lines.includes('*')) return true;
-    if (isShell) return lines.includes('Shell');
+    if (isShell) return lines.includes(shellName);
     if (isCode) return lines.includes(CODE_LINE);
     if (lines.includes('App') || (executable !== '' && lines.some((l) => samePath(l, executable)))) return true;
     const file = executable.split(/[\\/]/).pop();
@@ -173,7 +179,22 @@ if (isShell) {
   // The ledger keeps the command's VERB, as every other guard keeps a branch or a token: 120 characters of the command
   // carried whatever credential it held (audit 2026-10-08 row 40). A leading `NAME=value` is skipped, never recorded.
   const verb = (String(input.command || '').trim().split(/\s+/).find((w) => !/^[A-Za-z_]\w*=/.test(w)) || '').slice(0, 40);
-  global.BLOCK_DETAIL = { tool: 'Shell', verb };
+  global.BLOCK_DETAIL = { tool: shellName, verb };
+  if (shellName !== 'Shell') {
+    process.stderr.write(
+      `Blocked: the ${shellName} tool of a registered server (\`${tool}\`) runs a shell command outside every shell guard\n` +
+      `(the rm, secret, force-push and cross-project write guards judge Claude Code's own Bash and PowerShell tools, not this one).\n` +
+      `Run the command on the Bash or PowerShell tool instead, where those guards see it.\n\n` +
+      `If the user wants it run through that server, do not decide for them: end this turn with ONE AskUserQuestion\n` +
+      `carrying, in this order -\n` +
+      `  'Use the Bash or PowerShell tool instead (Recommended)' - the shell guards judge the command there\n` +
+      `  'Allow the server's ${shellName} this session' - the command runs unjudged, with the user's full rights\n` +
+      `On 'Allow', write the receipt ${receiptRel} with the line \`${shellName}\` - exactly these lines, the session line\n` +
+      `first - and retry the SAME call:\n` +
+      writeLines([shellName]) + COUNTS + shut,
+    );
+    process.exit(2);
+  }
   process.stderr.write(
     `Blocked: the macOS desktop server's Shell tool runs a shell command outside every shell guard (the rm,\n` +
     `secret, force-push and cross-project write guards judge the Bash tool, not this one).\n` +

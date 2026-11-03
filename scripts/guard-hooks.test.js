@@ -6283,6 +6283,48 @@ test('audit 2026-10-30 HK-03 / HK-16: DISCARD, CROSS-WRITE and DESKTOP-EXEC are 
   }
 });
 
+// E-batch mcp-B-m1: a registered server's PowerShell (Windows-MCP ships one) or execute_shell_command runs a shell command
+// no shell guard sees, as MacOS-MCP's Shell does - each is gated by its tool name under any registration, and its own
+// receipt line, the tool's name, opens it after the user's answer; a Shell line opens neither.
+test('B-m1: an MCP PowerShell or execute_shell_command tool is gated', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-bm1-'));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root };
+  const TOOLS = [['mcp__win__PowerShell', 'PowerShell'], ['mcp__x__execute_shell_command', 'execute_shell_command'], [`mcp__plugin_${'my-win'}_${'my-win'}__PowerShell`, 'PowerShell']]; // mcp-fixture
+  let k = 0;
+  const session = (rows) => { const tp = rcFile(path.join(root, 'sessions', `b${++k}.jsonl`), rows); pause(5); return tp; };
+  const call = (tool, tp, input = { command: 'Remove-Item -Recurse C:\\x' }) => runIn('guard-desktop-exec.js', { tool_name: tool, tool_input: input, session_id: RC, transcript_path: tp, cwd: root }, { env });
+  const label = (name) => `Allow the server's ${name} this session`;
+  for (const [tool, name] of TOOLS) {
+    const denied = call(tool, session([rc.typed('clean it')]));
+    assert.equal(denied.status, 2, tool);
+    assert.match(denied.stderr, new RegExp(`the ${name} tool`), 'the denial names the tool');
+    assert.match(denied.stderr, /outside every shell guard/);
+    assert.ok(denied.stderr.includes(`'${label(name)}'`), 'its allow label is offered');
+    assert.ok(denied.stderr.includes(`  session: ${RC}\n  ${name}\n`), `the receipt line names the tool\n${denied.stderr}`);
+    assert.equal(call(tool, session([rc.typed('clean it')]), {}).status, 2, `${tool} with no command is the same tool`);
+    // the user's allow, this session: its own line opens it
+    let tp = session([rc.typed('clean it'), rc.denial('DESKTOP-EXEC-ALLOW', tool), rc.answer(label(name))]);
+    stateReceipt(root, 'DESKTOP-EXEC-ALLOW', `session: ${RC}\n${name}\n`);
+    assert.equal(call(tool, tp).status, 0, `${tool}: its line after the user's allow`);
+    // a Shell line, or the other tool's line, opens nothing here
+    tp = session([rc.typed('clean it'), rc.denial('DESKTOP-EXEC-ALLOW', tool), rc.answer(label(name))]);
+    stateReceipt(root, 'DESKTOP-EXEC-ALLOW', `session: ${RC}\nShell\n${name === 'PowerShell' ? 'execute_shell_command' : 'PowerShell'}\n`);
+    assert.equal(call(tool, tp).status, 2, `${tool}: another tool's line`);
+    // the user's other pick is no allow
+    tp = session([rc.typed('clean it'), rc.denial('DESKTOP-EXEC-ALLOW', tool), rc.answer('Use the Bash or PowerShell tool instead (Recommended)')]);
+    stateReceipt(root, 'DESKTOP-EXEC-ALLOW', `session: ${RC}\n${name}\n`);
+    assert.equal(call(tool, tp).status, 2, `${tool}: the built-in route was the answer`);
+  }
+  // Claude Code's own PowerShell tool is the shell route the guards judge, and a longer tool name is another tool
+  for (const tool of ['PowerShell', 'mcp__win__PowerShellX', 'mcp__x__execute_shell_commands', 'mcp__x__Xexecute_shell_command'])
+    assert.equal(call(tool, session([rc.typed('clean it')])).status, 0, `${tool} is not this guard's`);
+  // the generated core wiring reaches both tool names
+  const core = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8')).plugins.find((p) => p.name === 'alfred-code');
+  const group = core.hooks.PreToolUse.find((g) => g.hooks.some((h) => /guard-desktop-exec\.js/.test(h.command)));
+  for (const [tool] of TOOLS) assert.match(tool, new RegExp(group.matcher), `the core matcher takes ${tool}`);
+  assert.doesNotMatch('mcp__win__PowerShellX', new RegExp(group.matcher));
+});
+
 test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript shows the user typing it - the hook\'s two routes and task-solve\'s waiver', () => {
   const { approvalStamp } = require('../stack/hooks/hook-prelude.js');
   let k = 0;

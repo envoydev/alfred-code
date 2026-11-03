@@ -72,8 +72,12 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
     assert.ok(re.test(name), name);
   assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
   assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
-  assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any\s+registration name/);
+  assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop server types' process launchers, `App` and `Shell`, under any\s+registration name/);
   assert.match(claude(), /type's code runner `browser_run_code_unsafe` the same way/);
+  // E-batch mcp-B-m1: a server's PowerShell and execute_shell_command are wired and documented with the Shell.
+  for (const name of ['mcp__win__PowerShell', 'mcp__x__execute_shell_command']) assert.ok(re.test(name), name); // mcp-fixture
+  for (const name of ['PowerShell', 'mcp__x__PowerShellX', 'mcp__x__execute_shell_commands']) assert.ok(!re.test(name), `${name} is not matched`); // mcp-fixture
+  assert.match(claude(), /`\|\^mcp__\.\+__PowerShell\$\|\^mcp__\.\+__execute_shell_command\$`/);
   // The stale hook count, never the word itself: the footprint counts seventeen references.
   assert.doesNotMatch(read('README.md'), /seventeen (?:wired |stack )?hooks/);
   assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen (?:wired |stack )?hooks/);

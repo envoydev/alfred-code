@@ -1513,7 +1513,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `clone` laying a settings file down, an extract tool other than tar and unzip, a scoped `claude plugin marketplace
     remove` of the core's marketplace, a glob or a deeper folder removed, and a dropped core key from a shell write whose
     content the guard cannot know (a redirect, a `jq` / `sponge` rewrite, `: > file`).
-  - `guard-desktop-exec.js` (PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any
+  - `guard-desktop-exec.js` (PreToolUse on the desktop server types' process launchers, `App` and `Shell`, under any
     registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
     (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server
     type's code runner `browser_run_code_unsafe` the same way, `|^mcp__.+__browser_run_code_unsafe$`: Playwright's README
@@ -1522,8 +1522,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (2026-10-24, ruling N9, a side note's finding: an add-back under the record name ran it unjudged)) - the
     user's ruling of 2026-09-29 (I10): Windows-MCP's `App` with `mode: launch_executable` (any executable, caller-given
     args - the server excludes tools by NAME, never by mode) and every MacOS-MCP `Shell` call (a shell command no
-    shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. 'Allow' is honoured through
-    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
+    shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. A server's `PowerShell` (Windows-MCP's
+    own) and `execute_shell_command` are that same unjudged shell (E-batch mcp-B-m1): `|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$`
+    in the matcher, each denied pointing at Claude Code's own Bash or PowerShell tool, each opened only by its own line -
+    the tool's name - after the 'Allow the server's <tool> this session' answer; a `Shell` line opens neither. 'Allow' is honoured through
+    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `PowerShell`, `execute_shell_command`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
     a Windows path - or `*`; a bare file name opens only a call naming it bare, never that name in every directory - audit
     2026-10-20, the hooks track's minor list; a security receipt, THE RECEIPTS above); the denial suggests the full path - and names a live bare line that
     missed it, with the full path to write in its place - and a Shell block row keeps
