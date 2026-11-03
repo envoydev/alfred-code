@@ -325,8 +325,9 @@ table of the actionable rows only - an install whose env already matches gets th
   entry's `entry` to its `into` csv (`ALFRED_CODE_PUSH_GATE=0` becomes `guard-ungated-commit:push` in
   `ALFRED_CODE_HOOKS_OFF`), so the switch it held stays off - and the entry's `why` is the reason column. A key the catalog does not list and no migration names is someone else's - leave it.
 - **INVALID** - a key whose value fails the row's `validate` shape (a percent or token count outside `min`..`max`
-  and not its `off` value, a window under `min`, an hour count that is no non-negative number, an instrumentation switch
-  that is neither `0` nor `1`, a whole number outside `min`..`max`, a csv item outside its `values`). Show the value and the expected shape; the fix is the catalog default unless the user types
+  and not its `off` value, a window under `min`, an hour count that is no non-negative number and not the row's `follow`
+  word - `cache` for `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, the seed, which waits the prompt cache's own life - an
+  instrumentation switch that is neither `0` nor `1`, a whole number outside `min`..`max`, a csv item outside its `values`). Show the value and the expected shape; the fix is the catalog default unless the user types
   another. The shape is the ONLY test - a value that differs from the default is a deliberate pin,
   never a finding.
 

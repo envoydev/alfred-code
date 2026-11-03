@@ -67,8 +67,9 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   `Result:` / `Progress:` / `Leftovers:` lines, and the close its receipts: they are the user's first sight of the run.
 - **The fresh-session numbers are this stop's.** The stop-contract hook injects the carry and the cold floor at each
   stop; a figure injected at an earlier stop is stale (e6a68237 quoted a 74-minute-old 192k while the request carried
-  284.5k). An idle gap is the clock route's `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (default 2): the prompt that
-  ends it is offered the fresh session by the hook, and the next ask lists it.
+  284.5k). An idle gap is the clock route's `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (default `cache`: the prompt
+  cache's own life - 5 min or 1 h, else 1 h; an explicit hour count overrides): the prompt that ends it is offered the
+  fresh session by the hook, and the next ask lists it.
 
 ## Agents-mode dispatch - step 4
 

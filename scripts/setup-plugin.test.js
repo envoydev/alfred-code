@@ -1717,3 +1717,16 @@ test('the capture-quality history entry tells an account-file override to be re-
     assert.match(entry, /`~\/\.claude\/settings\.json`/, 'the account file named');
     assert.match(entry, /by hand/, 'the re-key is the user\'s');
 });
+
+// validate's INVALID rows are judged by the model from validate.md's prose against each catalog row's `validate` shape,
+// so a row whose shape names a `follow` word (the idle wait's `cache`, U16 of the 2026-11-03 usage audit) must find that
+// word named valid there - else the value this release seeds lists as INVALID and its fix writes the hour count back.
+test('validate: a catalog row\'s follow word is valid, named in the INVALID rule beside the hour count', () => {
+    const rows = require('../meta/environment.json').env.filter((r) => r.validate && r.validate.follow);
+    assert.ok(rows.some((r) => r.key === 'ALFRED_CODE_FRESH_SESSION_AFTER_HOURS' && r.validate.follow === 'cache'), 'the idle wait follows the cache');
+    const rule = /- \*\*INVALID\*\*[\s\S]*?never a finding\./.exec(cmdBody('validate'));
+    assert.ok(rule, 'validate.md carries the INVALID rule');
+    const text = flat(rule[0]);
+    assert.match(text, /an hour count that is no non-negative number and not the row's `follow` word/, 'the hour shape accepts the follow word');
+    for (const row of rows) assert.ok(text.includes(`\`${row.validate.follow}\``), `${row.key}: '${row.validate.follow}' is named valid in the INVALID rule`);
+});
