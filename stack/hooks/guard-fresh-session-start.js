@@ -1389,7 +1389,7 @@ function modeBanner(autoOn) {
   const name = `/${skill.replace(/^alfred-code:/, '')}`;
   const mode = autoOn
     ? `**Auto-run: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
-      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/mode-auto-run --mode-auto-run-off`.'
+      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/mode-auto-run --mode-auto-run-off`.'
     : `**Auto-run: OFF** for ${name} - each question waits for your answer.`
       + (autoRefused ? ` (auto-run did NOT start: ${autoRefused}.)`
         : autoFlags && autoFlags.late ? ' (mode flags count only right after the command: `--mode-auto-run-on` there starts auto-run.)' : '');
@@ -1507,7 +1507,7 @@ if (auto && !auto.marker) {
   // more; one carrying a request (`/mode-output-scorer --mode-auto-run-on <request>`) runs it under the mode (final review I2)
   if (EVENT === 'UserPromptExpansion') expansionOut(auto.kept ? '' : autoFlags && autoFlags.request
     ? `auto-run is ON for this session (${auto.file}) - this line's request runs under it: each ask takes its (Recommended) `
-      + 'option; one with no marked option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), waits for the user.'
+      + 'option; one with no marked option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), waits for the user.'
     : `auto-run is ON for this session (${auto.file}) - no run started: `
       + 'the next task, capture, loop, issue or mode command runs under it, each ask taking its (Recommended) option. Do nothing else for this line.');
   else skillOut('');
@@ -1517,7 +1517,7 @@ if (auto) {
   const contract = `auto-run is ON for this /${auto.run} run: auto-run is on for this session (${auto.file} holds the user's words), and ${auto.marker} marks this run. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
-    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop) - waits for the user, so put only those; '
+    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop, spend on a billed run) - waits for the user, so put only those; '
     + "a guard's security ask (a credential shown, work discarded, a write outside the project, a desktop launch, a protective guard switched off) is never auto-run's to allow: take its safe option and list the act for the user in the close; "
     + "write every AskUserQuestion's questions and labels in English while auto-run is on - the hook reads English only and an ask it cannot read waits for the user - and the rest of the run in the user's language. "
     + `(2) Do not end a turn between steps: the Stop hook sends you back while ${auto.marker} stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. `

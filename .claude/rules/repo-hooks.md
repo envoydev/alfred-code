@@ -114,7 +114,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
   hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
   push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, post, send, upload, a remote branch or tag
-  deleted, a hard reset, a database dropped, rotate, revoke, pay - audit HK01: an auto-answered 'Open the PR' was push
+  deleted, a hard reset, a database dropped, rotate, revoke, pay - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
   in real transcripts the narrowed pattern drops 91 hits, all of those shapes or a `/purchases/` path, and adds none);

@@ -372,7 +372,7 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
     assert.match(said, /^auto-run is ON for this \/loop-code-quality run/, 'the contract first, its shape unchanged');
     assert.strictEqual(said.split(BANNER_HEAD).length, 2, 'the banner once');
     assert.deepStrictEqual(bannerOf(on), [
-        '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/mode-auto-run --mode-auto-run-off`.',
+        '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/mode-auto-run --mode-auto-run-off`.',
         "**Context:** no fresh-session hand-off - the session auto-compacts at Claude Code's own point in its 1M context window (claude-opus-5-5) and the run goes on from the summary and its state files.",
     ]);
     // the second flow of the same run rides the live stamp, and says so too
@@ -541,6 +541,24 @@ test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line ar
     for (const [question, label] of [['Licence needed. Buy it?', 'Pay for the licence (Recommended)'], ['Done. Next?', 'Send the report to the client (Recommended)'],
         ['Next?', 'Push to origin (Recommended)'], ['Order ready. Next?', 'Charge the customer card (Recommended)']])
         assert.strictEqual(answered(ask(p, 'pay1', [q(question, [label, 'Not now'])])), null, `waits: ${label}`);
+    // a billed run waits too, named by its bill, its spend or a dollar cap (auto-run B, 2026-11-04: all three were answered)
+    for (const [question, label] of [['Gate ready. Run it?', 'Run it, cap $5 (Recommended)'], ['Probe?', 'Five billed Sonnet runs (Recommended)'],
+        ['Replay the fixtures?', 'Spend up to 2 USD on the replay (Recommended)'], ['A/B ready.', 'Run the A/B, about $60 (Recommended)'],
+        ['Batch 2?', 'Go on - it bills the API key (Recommended)'], ['The probe runs nested sessions, about $3, cap $5. Run it?', 'Yes (Recommended)'],
+        ['How much may I spend tonight?', 'The replay only (Recommended)'], ['Which should run?', 'The paid A/B (Recommended)']])
+        assert.strictEqual(answered(ask(p, 'pay1', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
+    const billedDesc = { question: 'Gate ready. Run it?', header: 'H', multiSelect: false,
+        options: [{ label: 'Run it (Recommended)', description: 'five billed Sonnet runs, cap 5 dollars' }, { label: 'Not now', description: 'd' }] };
+    assert.strictEqual(answered(ask(p, 'pay1', [billedDesc])), null, 'a bill named only in the description waits');
+    // a recommended pick that DECLINES the spend is answered, its description naming the bill it declines included
+    const declined = { question: 'The proof is billed: nested runs, about $41, capped at $57. Run it now?', header: 'H', multiSelect: false,
+        options: [{ label: 'Skip it, mark NOT RUN (Recommended)', description: 'the billed proof waits for your word' }, { label: 'Run it, cap $57', description: 'd' }] };
+    assert.deepStrictEqual(answered(ask(p, 'pay1', [declined])), { [declined.question]: 'Skip it, mark NOT RUN (Recommended)' }, 'a declined spend is answered');
+    // local words that only look like money, a cost already measured and a negated bill stay answered
+    for (const [question, label] of [['Variable unused. Rename it?', 'Rename $value to $count (Recommended)'], ['Regex?', 'Anchor it with ^ and $ (Recommended)'],
+        ['Fix the billing module test?', 'Fix the test (Recommended)'], ['Spending too long here. Move on?', 'Move to the next item (Recommended)'],
+        ['A/B result: the same cost ($2.96 vs $3.01). Drop the nudge?', 'Drop it (Recommended)'], ['Build it?', 'Build it locally - no billed runs (Recommended)']])
+        assert.ok(answered(ask(p, 'pay1', [q(question, [label, 'Not now'])])), `answered, a local act: ${question} ${label}`);
 
     // the new-cycle deny: a typed prompt after this session's plan was stamped Completed:, then an ask with no fresh option
     const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',

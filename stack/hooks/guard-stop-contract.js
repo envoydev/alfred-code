@@ -2918,6 +2918,24 @@ const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:databases?|db|tables?|schemas?)\b[^\n]{0,80}\bdrop(?:s|ped|ping)?\b`,
   String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|(?<![/\w.-])(?:pay(?!\s+for\s+(?:itself|themselves|(?:the\s+|its\s+|their\s+)?(?:agent\s+)?seats?)\b)|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
 ].join('|'), 'i');
+// A BILLED run waits too (auto-run B, 2026-11-04: 'Run it, cap $5 - five billed Sonnet runs' was answered; the user's
+// 'fix the gap'). Its words are the bill (`billed`, `bills`, a paid run, spend - not spending time), a negated one
+// ('no billed runs') excluded, and a dollar amount. The pick's label and description count always; the question counts
+// when the pick does not DECLINE the spend ('Skip it', 'Defer', 'Keep 0', 'Later'), and its amount only in a forward frame
+// ('about $41', 'cap $5', '~$18') - a question quoting a cost already measured ('the same cost ($2.96 vs $3.01)') is a
+// report. A declining pick is judged on its label alone, so its description may name the bill it declines. Measured over
+// the 2,457 distinct recommended questions on the maintainer's machine (2026-11-04): it holds 45, about half real spend
+// approvals, the rest naming the billed step as deferred ('asked for separately', 'waits for your word') - a false hit
+// costs one wait, a miss spends for the user. `$1` as a regex back-reference reads as an amount (a stated ceiling).
+const AUTO_BILL_RE = /(?<!\b(?:no|not|never|non|zero)[- ]?)\b(?:bill(?:s|ed)?|paid\s+(?:runs?|tests?|probes?|proofs?|checks?|calls?|A\/Bs?|evals?|batch(?:es)?)|spend(?:s|ing)?(?!\s+(?:more\s+|less\s+|some\s+|the\s+|a\s+few\s+|a\s+bit\s+of\s+)?(?:time|minutes?|hours?|days?|effort|turns?|rounds?|a\s+while|(?:too\s+)?long)\b))\b/i;
+const AUTO_AMOUNT_RE = /(?<![\w`'"$])\$\s?\d|\b\d[\d,.]*\s?(?:USD|dollars?)\b|\bUSD\s?\d/i;
+const AUTO_FORWARD_AMOUNT_RE = /(?:\babout|\baround|~|\bup\s+to|\bat\s+most|\bcap(?:ped)?(?:\s+at)?|\bbudget(?:ed)?(?:\s+of)?|\bestimated?(?:\s+at)?|\bexpected|\bworst\s+case(?:\s+of)?|\bspend)\s*(?:of\s+)?(?<![\w`'"$])\$\s?\d|\$\s?\d[\d,.]*(?:\s?-\s?\$?\d[\d,.]*)?\s+(?:expected|estimated|cap|budget|worst\s+case|max(?:imum)?)\b/i;
+const AUTO_DECLINE_RE = /^\s*(?:skip|defer|no\b|not\b|don'?t|do\s+not|leave|hold|keep\b|wait|stop|later|none|park|cancel|decline|postpone|off\b|close\b)/i;
+function autoBilled(question, pick) {
+  if (AUTO_DECLINE_RE.test(pick.label)) return AUTO_BILL_RE.test(pick.label) || AUTO_AMOUNT_RE.test(pick.label);
+  const own = `${pick.label} ${pick.description || ''}`;
+  return AUTO_BILL_RE.test(own) || AUTO_AMOUNT_RE.test(own) || AUTO_BILL_RE.test(question) || AUTO_FORWARD_AMOUNT_RE.test(question);
+}
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;
   const answers = {};
@@ -2930,7 +2948,7 @@ function autoAnswers(questions) {
     const pick = AUTO_FRESH_RE.test(marked[0].label)
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
     if (!pick) return null;
-    if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`)) return null;
+    if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`) || autoBilled(q.question, pick)) return null;
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
     if (unreadable(`${q.question} ${pick.label}`)) return null;
     answers[q.question] = pick.label;
