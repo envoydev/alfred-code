@@ -76,3 +76,13 @@ test('RU-05: alfred-docs-root:7 lists the capture domains by name and the ad-hoc
         assert.ok(quality.includes(p), `capture-quality names ${p}`);
     assert.match(read('stack', 'rules', 'alfred-preferences.md'), /preferences\//, 'the preferences docs keep their always-on pointer');
 });
+
+test('RU-10: the DB / external-service test clause lives in habits-test-first, not the always-on quality gates', () =>
+{
+    const squash = (s) => s.replace(/\s+/g, ' ');
+    assert.doesNotMatch(read('stack', 'rules', 'alfred-quality-gates.md'), /integration tests for DB \/ external service/);
+    assert.doesNotMatch(read('stack', 'rules', 'alfred-quality-gates.md'), /Unit tests for new code/);
+    const skill = squash(read('stack', 'skills', 'habits-test-first', 'SKILL.md'));
+    const cycle = skill.slice(skill.indexOf('## The cycle'), skill.indexOf('2. **Watch it fail'));
+    assert.ok(cycle.includes('Code that talks to a database or an external service also gets an integration test of that boundary.'), cycle);
+});
