@@ -42,7 +42,8 @@
 // when dist/index.js is the entry, so the sort -V line still renders; its launcher reads a moved plugins root (0.14.2).
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+// R105 / M6: an external command starts through runtime.js, the one Windows-safe spawn (a node.cmd shim resolves there).
+const { spawnCommand } = require('./install/runtime.js');
 
 const { accountDir } = require('./install/stamp.js');
 const { parseJson } = require('./install/json-file.js');
@@ -358,7 +359,7 @@ const setupRoute = (newest) => (newest && !below(parts(newest.version), [0, 15, 
 function versionOf(runtime)
 {
     if (runtime === process.execPath) return process.versions.node;
-    const r = spawnSync(runtime, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    const r = spawnCommand(runtime, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
     const m = /^v?(\d+\.\d+\.\d+)/.exec(String((r && r.stdout) || '').trim());
     return m ? m[1] : null;
 }
