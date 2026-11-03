@@ -707,7 +707,7 @@
       "file": "guard-catastrophic-rm.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "block recursive rm (Remove-Item -Recurse and cmd /c rd /s too) of /, ~, $HOME (however spelled - ${HOME:?}, the absolute home path), a Windows drive, the cwd or its parent (. / .. / $(pwd)), the project root or a folder holding it, a bare *, or several top-level dirs at once; and a git discard, forced checkout/switch, stash drop/clear or reflog expire that would destroy work"
+      "note": "block recursive rm (Remove-Item -Recurse and cmd /c rd /s too) of /, ~, $HOME (however spelled - ${HOME:?}, the absolute home path), a Windows drive, the cwd or its parent (. / .. / $(pwd)), the project root or a folder holding it, a bare *, or several top-level dirs at once; and a git discard, forced checkout/switch, stash drop/clear or reflog expire that would destroy work; the DISCARD-ALLOW receipt opens it after the user's answer, and so does the user's pick of the discard in an ask naming every file (audit 2026-11-03 U21)"
     },
     {
       "file": "guard-read-whole-file.js",
@@ -869,7 +869,7 @@
       "file": "guard-config-protection.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, guard-config-protection in ALFRED_CODE_HOOKS_OFF turns it off"
+      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, guard-config-protection in ALFRED_CODE_HOOKS_OFF turns that half off; a settings write adding a protective guard to ALFRED_CODE_HOOKS_OFF or setting disableAllHooks asks under every stand-down, opened only by the GUARD-OFF-ALLOW security receipt (audit 2026-11-03 SYS-01)"
     },
     {
       "file": "guard-config-protection.js",
@@ -887,7 +887,7 @@
       "file": "guard-cross-project-write.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card"
+      "note": "one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card; an absolute path the user typed this session opens its folder (audit 2026-11-03 U20)"
     },
     {
       "file": "guard-cross-project-write.js",

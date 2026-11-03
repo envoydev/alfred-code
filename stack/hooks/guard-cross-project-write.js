@@ -371,6 +371,38 @@ function memoryBlock(what, shown, hit) {
   );
   process.exit(2);
 }
+// A PATH THE USER TYPED (usage audit 2026-11-03 U20, the user's ruling): an ABSOLUTE path in a turn the user typed this
+// session opens writes under its folder - a folder as written, a file's own folder (an existing file, else a last name
+// with an extension) - so a write the user named in their own words is not asked again (1e53bc45: a 6,338-token body
+// generated twice; e95004e7: a 7m44s wait). Read from the transcript where the write is judged (hook-prelude.js
+// typedTurnTexts / typedPaths), never from a file the model writes (HK-03), and only once a write would otherwise be
+// denied. The containment rule holds as for a receipt root: a folder holding the project opens nothing, and a typed FILE
+// whose folder holds it opens that one file (`~/.zshrc`). A relative path, `~user`, a path in tool output, a harness row
+// or the model's text opens nothing; the user accepted that a path inside text they pasted counts. The transcript itself
+// stays shut (recordAt runs first).
+let typedRoots = null;
+function typedAllowed(t) {
+  if (typedRoots === null) {
+    typedRoots = [];
+    try {
+      const texts = receipts && receipts.typedTurnTexts ? receipts.typedTurnTexts(payload) : [];
+      for (const text of texts) {
+        for (const p of receipts.typedPaths(text, { home: HOME, native: nativePath })) {
+          const at = realish(p.abs);
+          let st = null;
+          try { st = fs.statSync(at); } catch { st = null; }
+          const base = path.basename(at);
+          const isFile = !p.slash && (st ? !st.isDirectory() : /.\.[A-Za-z0-9]{1,10}$/.test(base));
+          const dir = isFile ? path.dirname(at) : at;
+          if (inside(ROOT, dir)) { if (isFile) typedRoots.push({ file: at }); continue; }
+          typedRoots.push({ dir });
+        }
+      }
+    } catch { typedRoots = []; }
+  }
+  if (!typedRoots.length) return false;
+  return typedRoots.some((r) => (r.file ? fold(t) === fold(r.file) : inside(t, r.dir)));
+}
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
@@ -380,6 +412,7 @@ function allowed(target) {
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
   if (sameRepoWorktree(t)) return true;
+  if (typedAllowed(t)) return true; // a folder the user typed (U20)
 
   return false;
 }
