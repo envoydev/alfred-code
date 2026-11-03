@@ -1249,7 +1249,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     rows), released exactly as the compaction hold is. The compaction hold passes a shell call that writes nothing too,
     idle or not (audit 2026-10-20 C12: a read-only `cat COMPACT-STATE` was the first post-compaction call and forced an
     ask); a changing call after an `AskUserQuestion` whose answer came past the idle wait arms the idle hold
-    once per ask (C49: an ask answered next morning never reached the prompt-route offer). THE IDLE WAIT (usage audit
+    once per ask (C49: an ask answered next morning never reached the prompt-route offer) - never one that puts the
+    fresh-session choice itself (`fresh-session.js isFreshAsk`, the `FRESH_ASK_RE` test every answered-choice reader
+    makes). Both idle routes keep the RE-OFFER STEP the Stop and tick routes keep (`grownSinceAnswer`): no offer and no
+    hold until the carry has grown `REOFFER_GROWTH` (1.5x) past the newest fresh-session ask answered in any turn, 'Continue
+    here' included (`freshAskAnsweredCtx`, which parses only answer and ask rows). Review fix pass, run B, M4: with the
+    5-minute wait a 'Continue here' given after the wait read as a new slow ask, armed the hold again and denied the
+    next change at once, and every 5-minute gap on a paying carry re-offered the choice just declined. THE IDLE WAIT (usage audit
     2026-11-03 U16: the seeded 2h waited past the cache on every route, so the gap's first message had paid the cold
     re-write long before the offer) follows the prompt cache: `fresh-session.js idleWait(usage)` takes the life the
     reply before the gap wrote - the last reply on the prompt route, the ask's own on the ask route - through a HOST
@@ -1270,7 +1276,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     marked `tick` (with the plan path, the carry and the task) unless: no card is left open or the edit writes
     `Completed:` (the finish step and the Stop's close are next); a card IN_PROGRESS before is still open after and has
     no `needs:` line (a seat is building it - a parked card is no flight); the offers are off; the carry is at or under
-    the trigger; it has not grown by `fresh-session.js REOFFER_GROWTH` (1.5, shared with the Stop branch) since the
+    the trigger; it has not grown by `fresh-session.js REOFFER_GROWTH` (1.5, shared with the Stop branch and the idle routes) since the
     newest offer of any route - the Stop's blocked carry (`stopOfferCtx`, the file the Stop branch writes), the newest
     answered fresh-session ask, the tick's own last arm (`guard-fresh-tick-*`); or a resume does not pay (route `tick`).
     Nobody at the terminal (a live AUTO waiver included) writes an `unattended` `tick-offer` row instead; a standing hold

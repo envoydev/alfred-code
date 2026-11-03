@@ -32,7 +32,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     2026-11-03 usage audit: `install/marketplace-autoupdate.js` reads it in the docs' order (a settings file's
     `extraKnownMarketplaces` entry, the highest file's whole, then `known_marketplaces.json`, then off; the DISABLE_* env
     switches), and the answer writes `autoUpdate` true or false on the stack's entry in the ACCOUNT settings.json alone, a
-    no too so no later init asks). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
+    no too so no later init asks; through `workspace.js writeLike`, which, like D5's apply and remove, writes a LINKED
+    file's real target - the temp file and the rename in that file's folder, the link kept, review fix pass, run B, m7: a
+    dotfiles link had become a plain file). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
     settings value would apply over a launcher's) runs init's bootstrap with nobody answering (the install phase
     refuses it): each ask takes its
     Recommended option unless it is destructive (loses or replaces what the project or account owns - a
