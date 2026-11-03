@@ -3049,3 +3049,71 @@ test('HK-26: a filesystem server read of a credential file is refused, a clean o
   for (const tool of [...names, many]) assert.ok(re.test(tool), tool);
   for (const tool of ['mcp__filesystem__list_directory', 'mcp__filesystem__read_text_file_x', 'read_text_file']) assert.ok(!re.test(tool), tool); // mcp-fixture
 });
+
+// E1-5 (inventory A, HK-04's runtime half): an inline script that builds the path from the shell's working folder by
+// concatenation reads the same file as the literal form, so it gets the literal form's treatment.
+test('E1-5: a runtime building the cwd path by concatenation is judged', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'e15-'));
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }));
+  const literal = at(`node -e "console.log(require('fs').readFileSync('.env','utf8'))"`);
+  assert.notStrictEqual(literal, 0, 'the literal form is judged (the reference)');
+  for (const c of [
+    `node -e "console.log(require('fs').readFileSync(process.env.PWD+'/.env','utf8'))"`,
+    `node -e "console.log(require('fs').readFileSync(process.cwd()+'/.env','utf8'))"`,
+    "node -e \"console.log(require('fs').readFileSync(`${process.cwd()}/.env`,'utf8'))\"",
+    `python3 -c "import os; print(open(os.environ['PWD']+'/.env').read())"`,
+    `python3 -c "import os; print(open(os.getcwd()+'/.env').read())"`,
+    `python3 -c "import os; print(open(os.environ.get('PWD')+'/.env').read())"`,
+  ]) assert.strictEqual(at(c), literal, c);
+  assert.strictEqual(at(`node -e "console.log(require('fs').readFileSync(process.cwd()+'/README.md','utf8'))"`), 0, 'another file passes');
+});
+
+// U22 (inventory A): a read-only verb spelled by its system path is the same verb; a path inside the project is not
+// trusted (the H1 rule).
+test('U22: a path-qualified read-only verb in a pipe stage is read-only', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'u22-'));
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }));
+  // each system-path spelling gets exactly the bare verb's verdict: a count passes, a print is rewritten to the view
+  for (const [bare, verb] of [['grep -c API', 'grep'], ['grep API', 'grep'], ['wc -l', 'wc']])
+  {
+    const want = at(`cat .env | ${bare}`);
+    for (const dirName of ['/usr/bin/', '/bin/', '/usr/local/bin/', '/opt/homebrew/bin/'])
+      assert.strictEqual(at(`cat .env | ${dirName}${bare}`), want, `${dirName}${bare} against bare ${verb}`);
+  }
+  assert.strictEqual(at('cat .env | grep -c API'), 0, 'the bare count (the reference) passes');
+  assert.strictEqual(at('cat .env | ./tools/grep -c API'), 2, 'a project path is never trusted');
+  assert.strictEqual(at('cat .env | /tmp/x/grep -c API'), 2, 'nor a path outside the system directories');
+});
+
+// U23 (usage audit 2026-11-03): the guard's own --with-sensitive runner carries a command line of its own. A print verb in it
+// was judged to the end of the OUTER stage, so `echo 'target ok' && docker run -e PGPASSWORD=\$DB_ALPHA_PASSWORD ...` read as a
+// print of the password, and the retry dropped the safety test that preceded the delete. A real print inside still stops.
+test('U23: the runner\'s own command line is judged stage by stage', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'u23-'));
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }));
+  const runner = `node "${HOOK}" --with-sensitive --`;
+  // the audit's command, rebuilt with neutral names: double-quoted, escaped dollars, a test chain before the use
+  const audit = `S=/tmp/q; ${runner} "test \\"\\$DB_ALPHA_HOST:\\$DB_ALPHA_PORT\\" != \\"\\$DB_PROD_HOST:\\$DB_PROD_PORT\\" && ` +
+    `echo 'target: alpha differs from prod' && docker run --rm -v $S:/q -e PGPASSWORD=\\$DB_ALPHA_PASSWORD postgres:16-alpine ` +
+    `psql -h \\$DB_ALPHA_HOST -U \\$DB_ALPHA_USER -d appdb -f /q/x.sql" 2>&1 | tail -n 14`;
+  assert.strictEqual(at(audit), 0, 'the audit command runs as written');
+  assert.strictEqual(at(`${runner} 'echo ok && docker run -e PGPASSWORD=$DB_PASSWORD img'`), 0, 'single-quoted, echo before the use');
+  // a print of a credential-shaped variable inside the line is still refused, never rewritten away from the runner
+  assert.strictEqual(at(`${runner} "echo \\$DB_PASSWORD"`), 2, 'an echo of the variable inside the line');
+  assert.strictEqual(at(`${runner} 'echo ok; printf %s $API_TOKEN'`), 2, 'a printf in a later inner step');
+  assert.notStrictEqual(at(`${runner} "make deploy"; echo $API_TOKEN`), 0, 'an echo beside the runner is judged as before');
+});
+
+// O2 (inventory A): read_media_file reads a file by path like read_file.
+test('O2: read_media_file is judged like read_file', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'o2-'));
+  const envFile = path.join(dir, '.env');
+  fs.writeFileSync(envFile, `API_TOKEN=${FAKE_TOKEN}\n`);
+  const call = (tool, input) => run({ tool_name: tool, tool_input: input, cwd: dir, session_id: 'fs' }, { CLAUDE_PROJECT_DIR: dir });
+  assert.strictEqual(call('mcp__fs__read_file', { path: envFile }).status, 2, 'read_file (the reference)'); // mcp-fixture
+  assert.strictEqual(call('mcp__fs__read_media_file', { path: envFile }).status, 2, 'read_media_file of .env'); // mcp-fixture
+  fs.writeFileSync(path.join(dir, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  assert.strictEqual(call('mcp__fs__read_media_file', { path: path.join(dir, 'logo.png') }).status, 0, 'an image passes'); // mcp-fixture
+});

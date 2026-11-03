@@ -2041,6 +2041,10 @@ function shellUnescape(text) {
 // Scoped to the stage's own command word: `\bwc\b` matched inside `grep -v wc`, and `jq keys`
 // matched `jq 'keys, .'`, which prints the whole document beside the keys (review findings).
 const PREFIX_WORDS = /^\s*(?:(?:sudo|command|nice|time|exec|builtin|nohup|\w+=\S*)\s+)*/;
+// A verb spelled by its system directory is the same verb (U22: `cat .env | /usr/bin/grep -c API` was refused where the bare
+// `grep -c` passed). Only the system directories: `./tools/grep` or `/tmp/x/grep` is whatever that file is, never trusted.
+const SYSTEM_BIN = /^(?:\/usr\/local\/bin|\/opt\/homebrew\/bin|\/usr\/bin|\/bin)\/(?=[\w.+-]+(?:\s|$))/;
+const systemVerb = (stage) => stage.replace(SYSTEM_BIN, '');
 function jqReduces(stage) {
   let filter = null;
   for (const t of shellTokens(stage).slice(1)) { if (t.startsWith('-')) continue; filter = t.replace(/^(['"])([\s\S]*)\1$/, '$2'); break; }
@@ -2051,7 +2055,7 @@ function jqReduces(stage) {
 function isReducer(stage) {
   // a loop body's or branch's own keyword is no verb (audit 2026-10-20 C17, 40c4e87c: `for f in ...; do grep -c -i x "$f";
   // done` read `do grep` as no count and came back as the file's whole redacted view)
-  const s = stage.replace(/^\s*(?:(?:do|then|else|elif|!|\{)\s+)+/, '').replace(PREFIX_WORDS, '');
+  const s = systemVerb(stage.replace(/^\s*(?:(?:do|then|else|elif|!|\{)\s+)+/, '').replace(PREFIX_WORDS, ''));
   if (/^wc\b/.test(s)) return true;
   // a count, quiet or list flag anywhere in a cluster of grep's no-value flags (`-ci`, `-qE` - the 2026-10-17 usage audit's
   // host check); a letter that takes a value (`-d recurse`, `-e`, `-A 3`) ends the cluster, so `-drecurse` is no count
@@ -2157,6 +2161,10 @@ const DIR_ENV = new Set(['HOME', 'USERPROFILE', 'CLAUDE_CONFIG_DIR', 'CLAUDE_PRO
 const HOME_CALL = /^(?:(?:require\s*\(\s*['"](?:node:)?os['"]\s*\)|os)\s*\.\s*homedir\s*\(\s*\)|homedir\s*\(\s*\)|(?:pathlib\s*\.\s*)?Path\s*\.\s*home\s*\(\s*\)|Dir\s*\.\s*home|os\s*\.\s*path\s*\.\s*expanduser\s*\(\s*(['"])~\1\s*\))$/;
 const ENV_DIR = /^(?:process\s*\.\s*env\s*(?:\.\s*(\w+)|\[\s*['"](\w+)['"]\s*\])|os\s*\.\s*environ\s*(?:\[\s*['"](\w+)['"]\s*\]|\.\s*get\s*\(\s*['"](\w+)['"]\s*\))|os\s*\.\s*getenv\s*\(\s*['"](\w+)['"]\s*\)|ENV\s*(?:\[\s*['"](\w+)['"]\s*\]|\.\s*fetch\s*\(\s*['"](\w+)['"]\s*\))|\$ENV\{\s*['"]?(\w+)['"]?\s*\}|Deno\s*\.\s*env\s*\.\s*get\s*\(\s*['"](\w+)['"]\s*\)|getenv\s*\(\s*['"](\w+)['"]\s*\)|\$_(?:SERVER|ENV)\s*\[\s*['"](\w+)['"]\s*\])$/;
 const HOME_MOVED = /process\s*\.\s*env\s*(?:\.\s*(?:HOME|USERPROFILE)|\[\s*['"](?:HOME|USERPROFILE)['"]\s*\])\s*=(?!=)|os\s*\.\s*environ\s*\[\s*['"](?:HOME|USERPROFILE)['"]\s*\]\s*=(?!=)|\$ENV\{\s*['"]?HOME['"]?\s*\}\s*=(?!=)|\bENV\s*\[\s*['"]HOME['"]\s*\]\s*=(?!=)/;
+// The shell's working folder read at run time (E1-5, HK-04's runtime half): `process.cwd()`, `os.getcwd()` and the PWD
+// variable (ENV_DIR's `PWD` row) resolve to where the shell stands, so `process.cwd() + '/.env'` reads the same file as
+// the literal `'.env'`. Only these spellings - the family is open-ended.
+const CWD_CALL = /^(?:process\s*\.\s*cwd|os\s*\.\s*getcwd)\s*\(\s*\)$/;
 const QUOTES = '"\'`';
 // Every opening bracket's partner in ONE quote-aware pass (-1 when unbalanced), and the deepest nesting: closeOf per
 // bracket rescanned the rest of the text each time, so nested parens cost their square (review M3 of 2.1.6).
@@ -2238,9 +2246,11 @@ function evalPath(expr, vals, homeMoved, depth = 0) {
     return bad ? null : { p: body, rooted };
   }
   if (HOME_CALL.test(e)) return HOME && !homeMoved ? { p: HOME, rooted: true } : null;
+  if (CWD_CALL.test(e)) return { p: pwdNow(), rooted: true };
   const env = e.match(ENV_DIR);
   if (env) {
     const name = env.slice(1).find(Boolean);
+    if (name === 'PWD') return { p: pwdNow(), rooted: true };
     if (!DIR_ENV.has(name) || (homeMoved && (name === 'HOME' || name === 'USERPROFILE'))) return null;
     const d = name === 'HOME' ? HOME : name === 'USERPROFILE' ? process.env.USERPROFILE || HOME : process.env[name];
     return d ? { p: d, rooted: true } : null;
@@ -2283,7 +2293,7 @@ function evalPath(expr, vals, homeMoved, depth = 0) {
 // to one - as absolute paths for the candidate scan.
 // A rooted path starts at a run-time directory, and every such spelling (HOME_CALL, ENV_DIR's DIR_ENV names) carries
 // one of these words: code without one builds no rooted path, so it is not read at all.
-const ROOT_HINT = /homedir|\.\s*home\b|expanduser|HOME|USERPROFILE|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR/;
+const ROOT_HINT = /homedir|\.\s*home\b|expanduser|HOME|USERPROFILE|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR|cwd|PWD/;
 function builtPaths(texts) {
   const out = new Set();
   for (const text of texts) {
@@ -2645,6 +2655,7 @@ function readOnlyInline(words, step) {
   return !CODE_EFFECT.test(step) && !(lang !== 'node' && lang !== 'python' && SHELL_QUOTE_EFFECT.test(step));
 }
 function readOnlyStep(step) {
+  step = systemVerb(step);
   if (READ_ONLY_STEP.test(step)) return true;
   const all = shellTokens(step);
   const words = [];
@@ -2841,6 +2852,21 @@ const expandAssigned = (s) => s.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g
   return v && v.length === 1 && !v[0].includes('$') ? v[0] : m;
 });
 const selfRun = (stage, re = SELF_READ) => re.test(stage) || (stage.includes('$') && re.test(expandAssigned(stage)));
+// U23 (usage audit 2026-11-03): this guard's own runner runs the line after `--with-sensitive --` in a shell of its own, so
+// a print verb in it is judged inside that line's own stages - judged to the end of the OUTER stage, `echo 'target ok' &&
+// docker run -e PGPASSWORD=$DB_PASSWORD ...` read as a print of the password, and the retry dropped the safety test. Each
+// `[stage, the stage it pipes into]` of the line, or null when the stage is no runner.
+const SELF_RUNNER = /guard-secret-value\.js["']?\s+--with-sensitive\b/;
+function runnerStages(stage) {
+  if (!selfRun(stage, SELF_RUNNER)) return null;
+  const words = shellTokens(stage.trim()).filter((w) => !/^\d*[<>]/.test(w));
+  let k = words.findIndex((w) => wordOf(w) === '--with-sensitive') + 1;
+  if (k <= 0) return null;
+  if (wordOf(words[k] || '') === '--') k++;
+  if (k >= words.length) return null;
+  const line = words.slice(k).map(wordOf).join(' ');
+  return splitSegments(line).flatMap((seg) => { const st = splitPipes(seg); return st.map((x, i) => [x, st[i + 1]]); });
+}
 // The first step of `text` that may change something, skipping the stage being rewritten; null when none. `onlySeg`:
 // judge the skipped stage's own segment alone - a splice keeps every other segment running as written.
 function changingStep(text, skipSeg, skipStage, onlySeg, depth = 0) {
@@ -3592,6 +3618,8 @@ function refuseSensitiveMention(text, steps = text) {
       if (/^--exclude(?:-dir)?$/.test(args[i])) exclusions.push(args[++i] || '');
       else if (/^--exclude(?:-dir)?=/.test(args[i])) exclusions.push(args[i].replace(/^[^=]*=/, ''));
       else if (/^zip$/i.test(verb) && args[i] === '-x') { while (args[i + 1] && !args[i + 1].startsWith('-')) { patternAt.add(i + 1); exclusions.push(args[++i]); } }
+      // find's test words match names (U24: `-not -path './.alfred/*'` was opened as a path); judgeFind owns what a test reaches
+      else if (/^g?find$/.test(verb) && /^-i?(?:name|path|wholename|regex|lname)$/.test(args[i])) patternAt.add(++i);
     }
     const excludes = (segs) => exclusions.some((x) => {
       const p = x.replace(/^\.?\//, '').replace(/\/\*{1,2}$/, '').replace(/\/+$/, '');
@@ -4326,24 +4354,27 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       // variable in a later `grep -v "$X"` stage is not printed, and a `curl -d "$TOKEN"` stage is a
       // use, not a print (the value never enters the transcript). EVERY print verb in the stage is
       // judged, not just the first - the arguments of `echo` swallowed `$(printenv NAME)` whole.
-      const verbs = [...stage.matchAll(/(?:^|[\s(])(echo|printf|printenv)\b/g)];
-      for (let i = 0; i < verbs.length; i++) {
-        const args = stage.slice(verbs[i].index + verbs[i][0].length, i + 1 < verbs.length ? verbs[i + 1].index : stage.length);
-        // `${NAME:+word}` and `${NAME+word}` print `word` when NAME is set, never its value
-        const names = [...args.matchAll(/\$(\{)?(?!#)([A-Za-z_][A-Za-z0-9_]*)(\+|:\+)?/g)].filter((m) => !(m[1] && m[3])).map((m) => m[2]);
-        if (verbs[i][1] === 'printenv') {
-          names.push(...shellTokens(args).map((w) => w.replace(/[^A-Za-z0-9_]/g, '')).filter((w) => /^[A-Za-z_]\w*$/.test(w)));
+      // the runner's own line is judged stage by stage (runnerStages); any other stage is its own window
+      for (const [text, next] of runnerStages(stage) || [[stage, stages[sj + 1]]]) {
+        const verbs = [...text.matchAll(/(?:^|[\s(])(echo|printf|printenv)\b/g)];
+        for (let i = 0; i < verbs.length; i++) {
+          const args = text.slice(verbs[i].index + verbs[i][0].length, i + 1 < verbs.length ? verbs[i + 1].index : text.length);
+          // `${NAME:+word}` and `${NAME+word}` print `word` when NAME is set, never its value
+          const names = [...args.matchAll(/\$(\{)?(?!#)([A-Za-z_][A-Za-z0-9_]*)(\+|:\+)?/g)].filter((m) => !(m[1] && m[3])).map((m) => m[2]);
+          if (verbs[i][1] === 'printenv') {
+            names.push(...shellTokens(args).map((w) => w.replace(/[^A-Za-z0-9_]/g, '')).filter((w) => /^[A-Za-z_]\w*$/.test(w)));
+          }
+          // `${!v}` prints the variable v NAMES (HK-05: `for v in $(compgen -e); do echo "$v=${!v}"; done` printed the
+          // environment): a name the command bound to one literal is that variable, any other is every variable.
+          // `${!prefix@}`, `${!prefix*}` and `${!arr[@]}` list names or keys, never a value.
+          for (const m of args.matchAll(/\$\{!([A-Za-z_]\w*)(?![\w@*[])/g)) {
+            const bound = varOf(m[1]);
+            if (bound && bound.length === 1 && /^[A-Za-z_]\w*$/.test(bound[0])) names.push(bound[0]);
+            else if (!feedsStdinLogin(next)) blockEnvDump();
+          }
+          const hit = names.find((n) => SECRET_KEY_RE.test(n));
+          if (hit && !feedsStdinLogin(next)) blockVariable(hit);
         }
-        // `${!v}` prints the variable v NAMES (HK-05: `for v in $(compgen -e); do echo "$v=${!v}"; done` printed the
-        // environment): a name the command bound to one literal is that variable, any other is every variable.
-        // `${!prefix@}`, `${!prefix*}` and `${!arr[@]}` list names or keys, never a value.
-        for (const m of args.matchAll(/\$\{!([A-Za-z_]\w*)(?![\w@*[])/g)) {
-          const bound = varOf(m[1]);
-          if (bound && bound.length === 1 && /^[A-Za-z_]\w*$/.test(bound[0])) names.push(bound[0]);
-          else if (!feedsStdinLogin(stages[sj + 1])) blockEnvDump();
-        }
-        const hit = names.find((n) => SECRET_KEY_RE.test(n));
-        if (hit && !feedsStdinLogin(stages[sj + 1])) blockVariable(hit);
       }
       if (!IS_PWSH && !forceRuntime && !allowAll && printsTokenCommand(stage, sj === stages.length - 1)) {
         block('Blocked: this command prints a credential - its stdout IS the token.\n' +
@@ -4567,10 +4598,10 @@ if (/^mcp__.+__browser_file_upload$/.test(String(payload.tool_name || ''))) {
   }
 }
 // The FIFTH read route (audit 2026-10-30 HK-26): a filesystem server the user registers returns a file's text to the model
-// - `read_text_file` (and the older `read_file`) by `path`, with an optional `head` line count, and `read_multiple_files` by
-// `paths` (the server's README). Each path takes the Read judgement, a `head` as a window from line 1; matched by the tool's
+// - `read_text_file` (and the older `read_file`) by `path`, with an optional `head` line count, `read_media_file` by `path` (O2:
+// base64 of any file, a `.env` included), and `read_multiple_files` by `paths` (the server's README). Each path takes the Read judgement, a `head` as a window from line 1; matched by the tool's
 // name under any registration, since the stack ships no server. A listing or a file's facts print no content.
-const FS_READ_TOOL = /^mcp__.+__(?:read_file|read_text_file|read_multiple_files)$/;
+const FS_READ_TOOL = /^mcp__.+__(?:read_file|read_text_file|read_multiple_files|read_media_file)$/;
 if (FS_READ_TOOL.test(String(payload.tool_name || ''))) {
   const many = /__read_multiple_files$/.test(String(payload.tool_name));
   const paths = many ? (Array.isArray(input.paths) ? input.paths : []) : [input.path];

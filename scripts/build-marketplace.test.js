@@ -432,3 +432,15 @@ test('the marketplace metadata description names no MCP server', () => {
     assert.match(mkt.metadata.description, /skills, agents, rules and hooks/);
     assert.doesNotMatch(mkt.metadata.description, /\bMCP\b/i);
 });
+
+// O2 (inventory A): a filesystem server's read_media_file reads a file like read_file; the core entry wires the secret
+// guard on it too.
+test('O2: the filesystem read row names read_media_file', () => {
+  const hooks = JSON.stringify(byName['alfred-code'].hooks || {});
+  const m = /"matcher":"(\^mcp__\.\+__\([^"]*read_text_file[^"]*\)\$)"/.exec(hooks);
+  assert.ok(m, 'the core entry carries the filesystem read row');
+  const re = new RegExp(m[1].replace(/\\\\/g, '\\'));
+  assert.ok(re.test('mcp__x__read_media_file'), 'read_media_file'); // mcp-fixture
+  assert.ok(re.test('mcp__x__read_text_file'), 'read_text_file still'); // mcp-fixture
+  assert.ok(!re.test('mcp__x__read_media_file_x'), 'anchored'); // mcp-fixture
+});

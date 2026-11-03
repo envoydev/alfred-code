@@ -474,9 +474,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + a Playwright server's `browser_file_upload` under any
     registration name (N6), whose
     `tool_input.paths` each take the Read judgement - a page asking for an upload got any workspace file, audit 2026-10-14
-    PL3 - + a filesystem server's `read_text_file` / `read_file` / `read_multiple_files` under any registration name, whose
-    `path` (a `head` judged as a window from line 1) or `paths` take it too - the user's own server returned a `.env` unjudged,
-    audit 2026-10-30 HK-26, one more node start on those calls only) - credentials are read for PRESENCE, never
+    PL3 - + a filesystem server's `read_text_file` / `read_file` / `read_media_file` / `read_multiple_files` under any
+    registration name, whose `path` (a `head` judged as a window from line 1) or `paths` take it too - the user's own server
+    returned a `.env` unjudged, audit 2026-10-30 HK-26; `read_media_file` returns any file as base64, E-batch O2 - one more
+    node start on those calls only) - credentials are read for PRESENCE, never
     value. A leading `NAME=value` word and every `$(...)` / backtick body are judged as commands of their own, quote-
     and nesting-aware (audit 2026-10-20 C17: the source protocol's own `MARK="...$(printf ... | ...)"` read as a
     changing step); a count or a facts-only print (a length, a boolean, a type, a label) runs as written, never one routed
@@ -654,13 +655,21 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     no resolver follows) or bare in a pipe whose stages name the data root (`ls -a .alfred | grep .secrets | xargs ...`) -
     and a `find` handing what it finds to a reader (an `-exec` / `-ok` action, a pipe on, a `$(...)` around it) is refused
     when its walk reaches the store and a `-name` / `-path` test matches the store's name, or, from the data root itself,
-    no name test narrows it; a `-maxdepth` short of the store passes. The same day the dump half took `$(pwd)` / a backtick
+    no name test narrows it; a `-maxdepth` short of the store passes. The word after a find test (`-name`, `-path`,
+    `-wholename`, `-regex`, `-lname` and their `-i` forms) is a pattern, never a path the command opens (E-batch U24:
+    `-not -path './.alfred/*'` excluding the data root was refused as naming the store). The same day the dump half took `$(pwd)` / a backtick
     `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
     `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
     path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged. Audit 2026-10-30 HK-04: `$PWD`
     itself is where the shell stands in every spelling - a quoted piece (`"$PWD"/.env`, the shell's quote removal), an
     assignment (`f=$PWD/.env`, `D=$PWD`), a `for` list - after a followed `cd`, a relative one moving from the payload's
     cwd; what VARS leaves (`${PWD:?}`, `${HOME:=x}`) goes through shell-writes.js `shellVars`, never inside a verbatim body.
+    An inline script's own cwd - `process.cwd()`, `os.getcwd()`, `process.env.PWD`, `os.environ['PWD']` - is that place
+    too when it builds a path by concatenation (E-batch E1-5, HK-04's runtime half). A read-only verb spelled by a system
+    directory (`/usr/bin/grep`, `/bin/`, `/usr/local/bin/`, `/opt/homebrew/bin/`) is the bare verb; a project or temp
+    path to a verb is whatever that file is (U22). In the runner's own line a print verb is judged inside that line's own
+    stage, so `echo 'ok' && docker run -e PGPASSWORD=$DB_PASSWORD ...` prints nothing while an `echo $DB_PASSWORD` in it
+    still blocks (U23, usage audit 2026-11-03: the retry dropped the safety test before a delete).
     The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and

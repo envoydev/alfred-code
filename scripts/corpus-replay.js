@@ -80,8 +80,8 @@ const ROUTES = [
   // A file server's read tools, the secret guard's fifth read route (audit 2026-10-30 HK-26): a user-registered
   // filesystem server under any registration name.
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__.+__(read_file|read_text_file|read_multiple_files)$',
-    tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['read_file', 'read_text_file', 'read_multiple_files'].map((t) => `mcp__${s}__${t}`)) },
+    pattern: '^mcp__.+__(read_file|read_text_file|read_multiple_files|read_media_file)$',
+    tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['read_file', 'read_text_file', 'read_multiple_files', 'read_media_file'].map((t) => `mcp__${s}__${t}`)) },
   // The same server's write tools (audit 2026-11-03 SYS-02): the cross-project guard on all four, the config guard on the
   // three that change a file's text.
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', deny: true,

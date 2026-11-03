@@ -269,7 +269,9 @@ test(`final review C1: the store behind a computed prefix, or found and fed to a
     // print through one is the literal path's print: rewritten to the masked view, which prints no value of the store.
     fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
     for (const command of [`cat "$(pwd)/.alfred/${FILE}"`, `cat "$(git rev-parse --show-toplevel)/.alfred/${FILE}"`,
-        `awk -F= '{print $2}' "$(pwd)/.alfred/${FILE}"`, `grep -h . "$(pwd)/.alfred/${FILE}"`, `R=$(pwd); cat "$R/.alfred/${FILE}"`])
+        `awk -F= '{print $2}' "$(pwd)/.alfred/${FILE}"`, `grep -h . "$(pwd)/.alfred/${FILE}"`, `R=$(pwd); cat "$R/.alfred/${FILE}"`,
+        // E1-5: the runtime's own cwd call resolves to the store, so it takes the literal path's route (the masked view)
+        `python3 -c "import os; print(open(os.getcwd()+'/.alfred/${FILE}', 'r').read())"`])
     {
         const r = run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' });
         assert.notStrictEqual(verdict(r), 0, `${command}: rewritten or refused, never run as written`);
@@ -280,7 +282,6 @@ test(`final review C1: the store behind a computed prefix, or found and fed to a
         }
     }
     for (const command of [`source "$(pwd)/.alfred/${FILE}"`,
-        `python3 -c "import os; print(open(os.getcwd()+'/.alfred/${FILE}', 'r').read())"`,
         `find .alfred -name ${FILE} -exec cat {} +`, `find . -name '${FILE}' -exec cat {} \\;`, `find . -iname '${FILE.toUpperCase()}' -execdir cat {} +`,
         `find .alfred -name ${FILE} | xargs cat`, `cat $(find . -name ${FILE})`, `ls -a .alfred | grep ${FILE} | xargs -I{} cat .alfred/{}`,
         'find .alfred -type f -exec cat {} +', 'find .alfred -type f | xargs cat', 'find .alfred -type f -print0 | xargs -0 cat'])
@@ -291,6 +292,19 @@ test(`final review C1: the store behind a computed prefix, or found and fed to a
         assert.strictEqual(bash(dir, command), 0, command);
     // a walk stopped short of the data root - `.secrets` only: any mention of the legacy name but a look is refused
     if (FILE === '.secrets') assert.strictEqual(bash(dir, 'find . -maxdepth 1 -name .secrets -exec cat {} +'), 0, 'a -maxdepth short of the store');
+});
+
+// U24 (inventory A): the word after a find test (-path, -name, -regex and their kin) is a PATTERN, never a path the
+// command opens - `-not -path './.alfred/*'` excluding the data root was refused as if it named the store.
+test(`U24: find pattern operands are patterns, not paths [${FILE}]`, () =>
+{
+    const { dir } = project('u24', { file: FILE });
+    for (const command of ["find . -not -path './.alfred/*' -name '*.md'", "find . -path ./.alfred -prune -o -name '*.md' -print",
+        "find . ! -ipath '*/.alfred/*' -type f", "find . -not -wholename './.alfred/*' -not -regex '.*/\\.alfred/.*' -name '*.md'"])
+        assert.strictEqual(bash(dir, command), 0, command);
+    for (const command of [`find .alfred -name ${FILE} -exec cat {} \\;`, "find . -path './.alfred/*' -exec cat {} +"])
+        assert.strictEqual(bash(dir, command), 2, command);
+    assert.notStrictEqual(bash(dir, `cat ./.alfred/${FILE}`), 0, 'the store itself is never read as written');
 });
 
 // Final review 2026-10-25 C2: on a case-insensitive disk (macOS, Windows) `.alfred/.SECRETS` and `.ALFRED/.secrets` open
