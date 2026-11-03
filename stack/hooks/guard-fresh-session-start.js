@@ -350,6 +350,35 @@ function writesNothing(command) {
       && !(scan.unread && scan.unread.length);
   } catch { return false; }
 }
+// U15-1 (usage audit 2026-11-03): a prompt the user typed after the answer that armed the ask route's hold is the user
+// back at the terminal - the prompt route judges that prompt's own gap - so it releases the hold. Read in the tail past
+// that answer's tool_result (a hold written before the ask id was recorded reads past its own size); a harness prompt
+// and a Stop hook's feedback row are nobody typing.
+function typedAfterAnswer(hold) {
+  if (typeof fresh.isTypedTurn !== 'function') return false;
+  try {
+    const p = payload.transcript_path;
+    const size = fs.statSync(p).size;
+    const start = Math.max(hold.ask ? 0 : Number(hold.size) || 0, size - 8 * 1024 * 1024, 0);
+    if (start >= size) return false;
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    let after = !hold.ask;
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('"user"')) continue;
+      let o;
+      try { o = JSON.parse(line); } catch { continue; }
+      if (!o || o.type !== 'user' || !o.message) continue;
+      const c = o.message.content;
+      if (!after) { after = Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.tool_use_id === hold.ask); continue; }
+      if (!fresh.isTypedTurn(o)) continue;
+      const text = typeof c === 'string' ? c : c.filter((b) => b && b.type === 'text').map((b) => String(b.text || '')).join('\n');
+      if (!harnessPrompt(text) && !/^\s*Stop hook feedback:/.test(text)) return true;
+    }
+  } catch { /* unreadable - the hold stands */ }
+  return false;
+}
 function compactHold() {
   let hold;
   try { hold = JSON.parse(fs.readFileSync(compactHoldFile(), 'utf8')); } catch { return; }
@@ -369,6 +398,7 @@ function compactHold() {
   if (unattended(payload)) return release('unattended');
   if (fresh.askAnsweredSince(since)) return release('asked');
   if (shortStepSince(since)) return release('single-short-step');
+  if (hold.via === 'ask' && typedAfterAnswer(hold)) return release('typed-after-answer');
   // the Stop branch blocked at this carry or past it since the tick: the offer was made at the close
   if (tick && Number(hold.ctx) > 0 && typeof fresh.stopOfferCtx === 'function' && fresh.stopOfferCtx() >= Number(hold.ctx)) return release('offered-at-stop');
   const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
@@ -444,7 +474,7 @@ function armAskGap() {
   if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail }); return; }
   try {
     if (fs.existsSync(compactHoldFile())) return;
-    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', gapH: ASK_GAP.gapH, gapMs: ASK_GAP.gapMs }));
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', ask: ASK_GAP.id, gapH: ASK_GAP.gapH, gapMs: ASK_GAP.gapMs }));
   } catch { return; }
   ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the idle hold armed by an ask answered after a long gap', detail });
 }
@@ -853,7 +883,9 @@ function skillHeads(root, skill) {
   const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
   const out = [nodePath.join(cfg, 'skills', bare, 'SKILL.md'), nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md'),
     nodePath.join(cfg, 'commands', `${bare}.md`), nodePath.join(root, '.claude', 'commands', `${bare}.md`)];
-  const cache = nodePath.join(cfg, 'plugins', 'cache');
+  // CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root, the cache in its cache/ folder (READER-2;
+  // code.claude.com/docs/en/plugins/loading) - hud-statusline.js reads it the same way; a hook cannot require a script.
+  const cache = nodePath.join((process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR || '').trim() || nodePath.join(cfg, 'plugins'), 'cache');
   // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known when the call carries a
   // scoped name, and is a short scan otherwise. A plugin's COMMANDS are read only under its namespace: a name with no
   // colon is a personal or project command or a built-in (audit 2026-10-20 H10: the built-in `init` matched the core's
@@ -1368,7 +1400,8 @@ function modeBanner(autoOn) {
       ? `**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts ${where} instead of offering a fresh session.`
       : FRESH_OFF || at === null
         ? `**Context:** the fresh-session offers are off - the session compacts ${where}.`
-        : `**Context:** session refresh - past ~${tokens(at)} tokens ${window ? `of ${room}` : `(ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of ${room} is not known)`}, the run offers to resume in a fresh session from its state file instead of compacting.`;
+        // U12-2: the number is the trigger the offer waits for, never the carry now
+        : `**Context:** session refresh - the run offers to resume in a fresh session once the carry passes ~${tokens(at)} tokens ${window ? `of ${room} (a trigger, not the current size)` : `(ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of ${room} is not known; a trigger, not the current size)`}, instead of compacting.`;
   const acwNote = acwIgnoredNote();
   return `${acwNote ? `${acwNote}\n\n` : ''}${BANNER_HEAD}\n${mode}\n${ctxLine}`;
 }

@@ -392,10 +392,10 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
     const off = bannerOf(typedRun(p, 'c1', '/task-solve fix the cache', t));
     assert.deepStrictEqual(off, [
         '**Auto-run: OFF** for /task-solve - each question waits for your answer.',
-        '**Context:** session refresh - past ~400k tokens of its 1M context window (claude-sonnet-5-5), the run offers to resume in a fresh session from its state file instead of compacting.',
+        '**Context:** session refresh - the run offers to resume in a fresh session once the carry passes ~400k tokens of its 1M context window (claude-sonnet-5-5) (a trigger, not the current size), instead of compacting.',
     ]);
     // a 200k model takes its own tier's trigger
-    assert.match(bannerOf(typedRun(p, 'c2', '/capture-awareness', transcript([], 'claude-haiku-4-5')))[1], /past ~180k tokens of its 200k context window \(claude-haiku-4-5\)/);
+    assert.match(bannerOf(typedRun(p, 'c2', '/capture-awareness', transcript([], 'claude-haiku-4-5')))[1], /once the carry passes ~180k tokens of its 200k context window \(claude-haiku-4-5\) \(a trigger, not the current size\)/);
     assert.strictEqual(bannerOf(typedRun(p, 'c3', '/loop-test-coverage-quality', t, { ALFRED_CODE_AUTO_COMPACT: '1' }))[1],
         "**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5) instead of offering a fresh session.");
     assert.strictEqual(bannerOf(typedRun(p, 'c4', '/issue-diagnoser the login 500', t, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }))[1],
@@ -413,7 +413,7 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
     // an unknown model and no window: no number is invented for the window, and the default is said as the trigger it is
     const bare = project();
     assert.strictEqual(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1],
-        '**Context:** session refresh - past ~180k tokens (ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of its context window is not known), the run offers to resume in a fresh session from its state file instead of compacting.');
+        '**Context:** session refresh - the run offers to resume in a fresh session once the carry passes ~180k tokens (ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of its context window is not known; a trigger, not the current size), instead of compacting.');
     // the fresh-session offer keeps its text and its place; the banner follows it
     const big = transcript([], 'claude-opus-5-5', 450000);
     const offered = context(typedRun(p, 'c7', '/loop-code-quality src/', big));
@@ -432,13 +432,13 @@ test('mode banner: the model SessionStart recorded gives the window before any r
     const start = (sid, model) => run('guard-fresh-session-start.js', { hook_event_name: 'SessionStart', source: 'startup', session_id: sid, cwd: p.root, model }, { CLAUDE_PROJECT_DIR: p.root });
 
     assert.strictEqual(bannerOf(typedRun(p, 'r0', '/capture-awareness', none))[1],
-        '**Context:** session refresh - past ~180k tokens (ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of its context window is not known), the run offers to resume in a fresh session from its state file instead of compacting.',
+        '**Context:** session refresh - the run offers to resume in a fresh session once the carry passes ~180k tokens (ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of its context window is not known; a trigger, not the current size), instead of compacting.',
         'no record: the alias is not read, so the window is unknown');
     assert.strictEqual(start('r1', 'claude-sonnet-5-5').status, 0);
     assert.strictEqual(bannerOf(typedRun(p, 'r1', '/capture-awareness', none))[1],
-        '**Context:** session refresh - past ~400k tokens of its 1M context window (claude-sonnet-5-5), the run offers to resume in a fresh session from its state file instead of compacting.');
+        '**Context:** session refresh - the run offers to resume in a fresh session once the carry passes ~400k tokens of its 1M context window (claude-sonnet-5-5) (a trigger, not the current size), instead of compacting.');
     assert.strictEqual(run('guard-fresh-session-start.js', { hook_event_name: 'PostModelSwitch', session_id: 'r1', cwd: p.root, from_model: 'claude-sonnet-5-5', to_model: 'claude-haiku-4-5' }, { CLAUDE_PROJECT_DIR: p.root }).status, 0);
-    assert.match(bannerOf(typedRun(p, 'r1', '/capture-awareness', none))[1], /past ~180k tokens of its 200k context window \(claude-haiku-4-5\)/, 'a /model switch moves it');
+    assert.match(bannerOf(typedRun(p, 'r1', '/capture-awareness', none))[1], /once the carry passes ~180k tokens of its 200k context window \(claude-haiku-4-5\) \(a trigger, not the current size\)/, 'a /model switch moves it');
     // the auto-compact window is quoted against the model's own capacity, never against the default
     fs.writeFileSync(path.join(p.root, '.claude', 'settings.json'), JSON.stringify({ model: 'sonnet', autoCompactWindow: 350000 }));
     start('r2', 'claude-sonnet-5-5');

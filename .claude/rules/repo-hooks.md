@@ -145,8 +145,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   or `**Auto-run: OFF**` (each ask waits; a refused start says why, and a flag past the leading run is said to count only
   right after the command), then `**Context:**` - auto-run or
   `COMPACT_INSTEAD` compacts (at the seeded `autoCompactWindow` when one is set, else Claude Code's own point), offers off
-  compact too, and otherwise the fresh-session refresh past `ctxThreshold()` - with the window and model the engine read,
-  no number invented for an unknown window, and an auto-compact window past the model's capacity (a `/model` switch to a
+  compact too, and otherwise the fresh-session refresh once the carry passes `ctxThreshold()` - said as the trigger it is,
+  '(a trigger, not the current size)', since 'past ~400k' read as the session's size (usage audit 2026-11-03 U12-2) -
+  with the window and model the engine read, no number invented for an unknown window, and an auto-compact window past the model's capacity (a `/model` switch to a
   smaller model) quoted as the capacity it is capped at (code.claude.com/docs/en/model-config, 'Set the auto-compact
   window': 'Claude Code caps it at the model's context window', verified 2026-10-21). It rides AFTER the contract, the compact note or the offer
   (`expansionOut`), so each of those keeps its shape; a seat, the Skill route and nobody at the terminal get none - judged
@@ -1269,7 +1270,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `docs-session.test.js`).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
-    running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;
+    running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10;
+    the caches under `CLAUDE_CODE_PLUGIN_CACHE_DIR` when it moves the plugins root, trimmed, else `<config dir>/plugins`,
+    READER-2; the user's slash turn is untouched;
     a plugin COMMAND and the router skill too - `commands/`, `setup-plugin/commands/`, `setup-plugin/skills/` - audit
     2026-10-08: the guided commands - six since setup merged into init, 2026-10-17 - and `alfred-code` were never resolved;
     a plugin COMMAND is read only under its plugin's namespace, since a bare name is a personal or project command or a
@@ -1325,7 +1328,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     ask); a changing call after an `AskUserQuestion` whose answer came past the idle wait arms the idle hold
     once per ask (C49: an ask answered next morning never reached the prompt-route offer) - never one that puts the
     fresh-session choice itself (`fresh-session.js isFreshAsk`, the `FRESH_ASK_RE` test every answered-choice reader
-    makes). Both idle routes keep the RE-OFFER STEP the Stop and tick routes keep (`grownSinceAnswer`): no offer and no
+    makes). The ask route's hold records the ask it answered, and a prompt the user TYPED after that answer releases it
+    (`typed-after-answer`, usage audit 2026-11-03 U15-1: the user is back, and the prompt route judges that prompt's own
+    gap); a harness prompt and a `Stop hook feedback:` row are nobody typing. Both idle routes keep the RE-OFFER STEP the Stop and tick routes keep (`grownSinceAnswer`): no offer and no
     hold until the carry has grown `REOFFER_GROWTH` (1.5x) past the newest fresh-session ask answered in any turn, 'Continue
     here' included (`freshAskAnsweredCtx`, which parses only answer and ask rows). Review fix pass, run B, M4: with the
     5-minute wait a 'Continue here' given after the wait read as a new slow ask, armed the hold again and denied the

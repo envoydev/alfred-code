@@ -1855,6 +1855,33 @@ test('guard-fresh-session-start: a manual-only flag is read from the running plu
   assert.equal(call({ CLAUDE_PLUGIN_ROOT: running }), 0, 'the running plugin is read first');
 });
 
+// READER-2 (usage audit 2026-11-03): CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root, its cache in cache/
+// (code.claude.com/docs/en/plugins/loading; .claude/skills/repo-audit-plugins/references/currency.md) - the flag was read
+// only under <config>/plugins/cache, so a moved install's manual-only skill ran on the model's call.
+test('READER-2: skillHeads reads a moved plugins root', () => {
+  const cfg = fs.mkdtempSync(path.join(TMP, 'skillcfg-'));
+  const moved = fs.mkdtempSync(path.join(TMP, 'plugins-root-'));
+  const skill = (pluginsRoot, name, flagged) => {
+    const d = path.join(pluginsRoot, 'cache', 'mk', 'alfred-code', '1.0.0', 'stack', 'skills', name);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'SKILL.md'), `---\nname: ${name}\ndescription: x\n${flagged ? 'disable-model-invocation: true\n' : ''}---\n`);
+  };
+  skill(moved, 'bar', true);
+  skill(path.join(cfg, 'plugins'), 'bar', false);
+  skill(path.join(cfg, 'plugins'), 'baz', true);
+  const call = (name, value) => {
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, CLAUDE_PLUGIN_ROOT: '' };
+    if (value === undefined) delete env.CLAUDE_CODE_PLUGIN_CACHE_DIR; else env.CLAUDE_CODE_PLUGIN_CACHE_DIR = value;
+    return runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: `alfred-code:${name}` } }, { env }).status;
+  };
+  assert.equal(call('bar', moved), 2, 'the moved root holds the flagged copy');
+  assert.equal(call('bar', `  ${moved} `), 2, 'a value with spaces around it is trimmed');
+  for (const value of [undefined, '', '   ']) {
+    assert.equal(call('bar', value), 0, `${JSON.stringify(value)}: <config>/plugins/cache holds the unflagged copy`);
+    assert.equal(call('baz', value), 2, `${JSON.stringify(value)}: and its flagged one is read`);
+  }
+});
+
 test('guard-unapproved-dispatch: what-type and where-defined sweeps over plain words are no symbol question', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
   const disp = (seat, prompt) => runIn('guard-unapproved-dispatch.js',
