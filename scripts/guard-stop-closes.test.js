@@ -671,10 +671,12 @@ test('scorer backstop: the outputs list - root-cause alone holds T3, never T2 (A
   assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O1' }, only), 2);
   assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O2' }, only), 0);
   assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O3' }, { ALFRED_CODE_SCORER_OUTPUTS: 'designer-plan,root-cause' }), 2);
-  // B1 (2026-11-03): unset is the catalog default, plan files only - T2 held, T3 not; set empty is all three
+  // B1 (2026-11-03): unset or set empty is the catalog default, plan files only - T2 held, T3 not; all three names hold T3
   assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O4' }), 2, 'unset: a plan file');
   assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O5' }), 0, 'unset: no root-cause');
-  assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O6' }, { ALFRED_CODE_SCORER_OUTPUTS: '' }), 2, 'set empty: all three');
+  assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O6' }, { ALFRED_CODE_SCORER_OUTPUTS: '' }), 0, 'set empty: unset, no root-cause');
+  assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O7' }, { ALFRED_CODE_SCORER_OUTPUTS: '' }), 2, 'set empty: a plan file');
+  assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O8' }, ALL), 2, 'all three names: a root-cause');
 });
 test('scorer backstop: user-invocable-only holds no T2 or T3, and still holds a typed stack (AC19)', () => {
   writeOverride('mode-output-scorer', 'user-invocable-only');       // ROOT/.claude/settings.local.json

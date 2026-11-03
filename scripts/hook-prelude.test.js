@@ -1076,10 +1076,13 @@ test('scorer parses: the level, the run cap and the outputs list', () => {
     for (const [v, want] of [['1', 1], ['10', 10], ['3', 3], ['0', 3], ['11', 3], ['abc', 3], ['', 3], [undefined, 3], ['2.5', 3]])
         assert.strictEqual(scorerRounds({ ALFRED_CODE_SCORER_ROUNDS: v }), want, `rounds ${v}`);
     const all = ['designer-plan', 'root-cause', 'inline-plan'];
-    // B1 (2026-11-03): an unset key is the catalog default, plan files only; a key set empty still means all three
+    // B1 (2026-11-03): unset, empty or a list naming no valid output is the catalog default, plan files only (an empty
+    // value is unset - the ruling of the run B follow-ups); all three names grade every output
     assert.deepStrictEqual(scorerOutputs({}), { outputs: ['designer-plan'], ignored: [] }, 'no key at all');
-    for (const [v, outputs, ignored] of [[undefined, ['designer-plan'], []], ['', all, []], ['designer-plan,root-cause', ['designer-plan', 'root-cause'], []],
-        [' Root-Cause , inline-plan', ['root-cause', 'inline-plan'], []], ['topic-explainer', all, ['topic-explainer']],
+    for (const [v, outputs, ignored] of [[undefined, ['designer-plan'], []], [null, ['designer-plan'], []], ['', ['designer-plan'], []], [' , ', ['designer-plan'], []],
+        ['designer-plan,root-cause,inline-plan', all, []], ['designer-plan,root-cause', ['designer-plan', 'root-cause'], []],
+        [' Root-Cause , inline-plan', ['root-cause', 'inline-plan'], []], ['topic-explainer', ['designer-plan'], ['topic-explainer']],
+        ['foo,Foo,bar', ['designer-plan'], ['foo', 'bar']],
         ['foo,root-cause', ['root-cause'], ['foo']], ['inline-plan,designer-plan,inline-plan', ['designer-plan', 'inline-plan'], []]])
         assert.deepStrictEqual(scorerOutputs({ ALFRED_CODE_SCORER_OUTPUTS: v }), { outputs, ignored }, `outputs ${v}`);
 });

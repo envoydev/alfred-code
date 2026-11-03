@@ -93,7 +93,7 @@
       "key": "ALFRED_CODE_SCORER_OUTPUTS",
       "default": "designer-plan",
       "ask": false,
-      "what": "mode-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. `designer-plan` (the seed) grades plan files only, the output the scorer measurably improved; empty means all three; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
+      "what": "mode-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. `designer-plan` (the seed) grades plan files only, the output the scorer measurably improved; unset, empty or a list naming none of the three reads as the seed - list all three names to grade every output; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
       "validate": {
         "type": "csv",
         "values": [

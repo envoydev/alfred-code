@@ -1438,14 +1438,15 @@ function wholeIn(value, min, max, otherwise)
 }
 const scorerLevel = (env = process.env) => wholeIn(envOf(env, 'SCORER_LEVEL'), 60, 100, 80);
 const scorerRounds = (env = process.env) => wholeIn(envOf(env, 'SCORER_ROUNDS'), 1, 10, 3);
-// The csv read case-insensitively and trimmed; a name outside the three is reported back, and no valid name is all three.
-// An unset key is the catalog default, plan files only (B1, 2026-11-03); a key set empty still means all three.
+// The csv read case-insensitively and trimmed; a name outside the three is reported back. Unset, empty (an empty value is
+// unset, as layout.js valueIn reads it) or a list naming no valid output is the catalog default, plan files only (B1,
+// 2026-11-03): all three names grade every output.
+const SCORER_OUTPUTS_DEFAULT = Object.freeze(['designer-plan']);
 function scorerOutputs(env = process.env)
 {
-    if (env['ALFRED_CODE_SCORER_OUTPUTS'] === undefined || env['ALFRED_CODE_SCORER_OUTPUTS'] === null) return { outputs: ['designer-plan'], ignored: [] };
-    const names = String(envOf(env, 'SCORER_OUTPUTS') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const names = String(envOf(env, 'SCORER_OUTPUTS') ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     const outputs = SCORER_AUTOMATIC.filter((n) => names.includes(n));
-    return { outputs: outputs.length ? outputs : [...SCORER_AUTOMATIC], ignored: [...new Set(names.filter((n) => !SCORER_AUTOMATIC.includes(n)))] };
+    return { outputs: outputs.length ? outputs : [...SCORER_OUTPUTS_DEFAULT], ignored: [...new Set(names.filter((n) => !SCORER_AUTOMATIC.includes(n)))] };
 }
 
 // A session id as a file or folder name: a separator, a space or any other character outside [\w.-] becomes `_`, and a

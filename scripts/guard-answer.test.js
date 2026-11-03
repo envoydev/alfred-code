@@ -346,7 +346,7 @@ test('scorer: env on injects the on line with the level, the run cap and every l
 });
 test('scorer: all four keys unset read the catalog defaults - on, level 80, rounds 3, plan files only (B1)', () => {
     assert.ok(prompt('a1b', 'plan it').endsWith(` scorer: on (level 80, rounds 3, env)${PLAN_LINE}`));
-    assert.ok(prompt('a1b', 'plan it', { ALFRED_CODE_SCORER_OUTPUTS: '' }).endsWith(` scorer: on (level 80, rounds 3, env)${ON_LINE}`), 'set empty: all three');
+    assert.ok(prompt('a1b', 'plan it', { ALFRED_CODE_SCORER_OUTPUTS: '' }).endsWith(` scorer: on (level 80, rounds 3, env)${PLAN_LINE}`), 'set empty: unset, plan files only');
     assert.strictEqual(msgOf('a1b', 'plan it'), 'Modes ON: output-scorer (level 80)');
     assert.strictEqual(stateOf('a1b'), null, 'the default writes no session file');
 });
@@ -392,7 +392,7 @@ test('scorer: the outputs list narrows the phrases; a bad name is ignored with o
     assert.match(prompt('a8', 'x', { ...ON, ALFRED_CODE_SCORER_OUTPUTS: ' Root-Cause ' }), /releasing a root-cause verdict;/);
     for (const bad of ['topic-explainer', 'foo']) {
         const env = { ...ON, ALFRED_CODE_SCORER_OUTPUTS: bad };
-        assert.ok(prompt(`a9${bad}`, 'x', env).endsWith(ON_LINE), bad);
+        assert.ok(prompt(`a9${bad}`, 'x', env).endsWith(PLAN_LINE), `${bad}: no valid name reads the default, plan files only`);
         prompt(`a9${bad}`, 'y', env);
         assert.strictEqual(scorerRows('scorer-outputs-ignored').filter((r) => r.detail.name === bad).length, 1, bad);
     }

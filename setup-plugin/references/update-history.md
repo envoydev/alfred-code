@@ -365,7 +365,7 @@ A designer's plan file, a diagnoser's root-cause verdict and an inline plan can 
 `output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It was seeded OFF
 until 3.6.0 (the section after 3.6.0 says what changed): `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
 `ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
-outputs (a csv; empty means all three). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
+outputs (a csv; list all three names to grade every output). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
 stack - `/habits-explain-topic /mode-output-scorer <request>` - grades that one request's output even while it is off,
 an explainer answer, a ticket, an upgrade plan or a pick included. An output that cannot reach the level is withheld and
 the user decides: answer the open decisions, accept it marked, one more revision, or keep it withheld.
@@ -666,8 +666,9 @@ designer's plan file is graded before it is released, a root-cause verdict and a
 file was written, scored plans won 14 of 15 pairs; inline plans lost 3 of 3. This update moves the stack's own old
 seeds - `0` and the empty list - to the new ones and prints `reset to 1 (the old stack seed 0)` and `reset to
 designer-plan (the old stack seed empty)`; a value you set yourself stays, and so does a `0` or an empty list the stamp
-does not record as the stack's. To keep it off, set `ALFRED_CODE_SCORER=0` in `/alfred-code:configure`'s environment
-area.
+does not record as the stack's. An empty list now reads as unset, plan files only: list all three names
+(`designer-plan,root-cause,inline-plan`) to grade every output. To keep it off, set `ALFRED_CODE_SCORER=0` in
+`/alfred-code:configure`'s environment area.
 
 ## after 3.6.0 - init offers Claude Code's auto-update for the stack's marketplace
 

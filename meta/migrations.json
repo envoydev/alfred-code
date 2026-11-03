@@ -419,7 +419,7 @@
   },
   {
    "id": "scorer-seeded-on",
-   "since": "3.6.1",
+   "since": "3.7.0",
    "detect": {
     "settings_env_value": {
      "key": "ALFRED_CODE_SCORER",
@@ -437,7 +437,7 @@
   },
   {
    "id": "scorer-outputs-designer-plan",
-   "since": "3.6.1",
+   "since": "3.7.0",
    "detect": {
     "settings_env_value": {
      "key": "ALFRED_CODE_SCORER_OUTPUTS",
@@ -450,8 +450,8 @@
     "when_value": "",
     "to": "designer-plan"
    },
-   "why": "the scorer on by default grades designer plan files only: inline plans lost 3 of 3 scored pairs (docs/habits-scorer-evidence.md). The stack's old seed, empty (all three outputs), moves to designer-plan; a list the user set stays",
-   "then": "nothing - list more outputs in ALFRED_CODE_SCORER_OUTPUTS, or empty it for all three"
+   "why": "the scorer on by default grades designer plan files only: inline plans lost 3 of 3 scored pairs (docs/habits-scorer-evidence.md). The stack's old seed, empty (all three outputs before 3.7.0, the seed since), moves to designer-plan; a list the user set stays",
+   "then": "nothing - list all three names in ALFRED_CODE_SCORER_OUTPUTS to grade every output"
   }
  ]
 }
