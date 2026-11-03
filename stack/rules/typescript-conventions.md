@@ -8,6 +8,7 @@ ON the touch, so it can never precede its own trigger) - even when the touch is 
 session's main thread (measured: both this rule and the Angular one attached, their bodies entered the
 session, and neither skill was loaded across 12 edits to `.ts` components). Say which layers you
 loaded, or that they were already in context - the receipt is what makes the load happen.
+A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget.
 
 Where a FRAMEWORK or SURFACE rule attached on the same touch, its skill loads in that SAME first
 action, on top of this baseline, and that rule's list is the authority on what to load - one first

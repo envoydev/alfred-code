@@ -14,8 +14,9 @@ is the `markdown-style` Skill call, before the NEXT write to that file lands (a 
 attaches ON the touch, so it can never precede its own trigger - measured 9.9 s after the edit). ADR,
 Mermaid-diagram or C4 work loads `docs-as-code` in that SAME first action, on top of it - one first
 action, not two competing ones. Skip the load when it is already in context. Name the skill you
-loaded, or say it was already in context - the receipt is what makes the load happen. Skip one-line
-tweaks.
+loaded, or say it was already in context - the receipt is what makes the load happen. A compaction
+ends the already-in-context skip - a loaded skill outlives one only within a shared budget. Skip
+one-line tweaks.
 
 <!-- Maintainer note: a run working through the shell gets no attach on a shell write -
      0 attaches over 123 `.md` write targets - so a sentence saying so here could never reach the run it

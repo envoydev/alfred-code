@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "skill": "tier4-db-test",
+  "sources": [
+    "stack/skills/habits-test-first/SKILL.md",
+    "stack/rules/alfred-interaction.md"
+  ],
+  "extracted": "2026-11-03",
+  "note": "Audit 2026-10-30 Tier 4, RU-10 (1333d940): 'Unit tests for new code; integration tests for DB / external service' leaves the always-on quality-gates rule, and habits-test-first's write-the-test step gains 'Code that talks to a database or an external service also gets an integration test of that boundary.' The fixture's users module talks to a node:sqlite database (src/db.js opens one, in memory by default), but its one existing createUser test stubs the database - so a run that follows the project's test style writes a stub test, and only the clause asks for a test against a real database. Graded: the test-first skill loaded before the first source write (its always-on pointer is the after arm's only route to the clause), a test written, and one that opens a real database. A test written through a shell write (a heredoc append, a python open-for-write) counts: two runs wrote theirs that way. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 30,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill",
+      "LSP"
+    ],
+    "selection": {
+      "skills": [
+        "javascript",
+        "habits-test-first"
+      ],
+      "rules": [
+        "javascript-conventions",
+        "alfred-quality-gates"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Test-first, per this project's testing rules: add `findUserByEmail(db, email)` to src/users.js - it returns the user row for that email, matched case-insensitively, or null when there is none.",
+    "plain": "Add `findUserByEmail(db, email)` to src/users.js - it returns the user row for that email, matched case-insensitively, or null when there is none.",
+    "adverse": "Quick one: add `findUserByEmail(db, email)` to src/users.js - the user row for that email, case-insensitive, or null. Keep it short."
+  },
+  "matchers": {
+    "src_write": {
+      "succeeded": true,
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "(^|/)src/[^/]+\\.js$"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "(^|/)src/[^/]+\\.js$"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "(^|/)src/[^/]+\\.js$"
+        }
+      ]
+    },
+    "test_write": {
+      "succeeded": true,
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "(^|/)test/[^/]+\\.js$"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "(^|/)test/[^/]+\\.js$"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "(^|/)test/[^/]+\\.js$"
+        },
+        {
+          "tool": "Bash",
+          "field": "command",
+          "text_match": [
+            "test/[^\\s'\"]*\\.js",
+            ">>?\\s*['\"]?test/|\\btee\\b|open\\([^)]*['\"][wa]['\"]|write_text|writeFileSync|appendFileSync"
+          ]
+        }
+      ]
+    },
+    "real_db_test": {
+      "succeeded": true,
+      "any": [
+        {
+          "all": [
+            {
+              "tool": "Edit",
+              "field": "file_path",
+              "text_match": "(^|/)test/[^/]+\\.js$"
+            },
+            {
+              "tool": "Edit",
+              "field": "new_string",
+              "text_match": "openDb\\s*\\(|DatabaseSync|node:sqlite"
+            }
+          ]
+        },
+        {
+          "all": [
+            {
+              "tool": "MultiEdit",
+              "field": "file_path",
+              "text_match": "(^|/)test/[^/]+\\.js$"
+            },
+            {
+              "tool": "MultiEdit",
+              "field": "edits",
+              "text_match": "openDb\\s*\\(|DatabaseSync|node:sqlite"
+            }
+          ]
+        },
+        {
+          "all": [
+            {
+              "tool": "Write",
+              "field": "file_path",
+              "text_match": "(^|/)test/[^/]+\\.js$"
+            },
+            {
+              "tool": "Write",
+              "field": "content",
+              "text_match": "openDb\\s*\\(|DatabaseSync|node:sqlite"
+            }
+          ]
+        },
+        {
+          "tool": "Bash",
+          "field": "command",
+          "text_match": [
+            "test/[^\\s'\"]*\\.js",
+            ">>?\\s*['\"]?test/|\\btee\\b|open\\([^)]*['\"][wa]['\"]|write_text|writeFileSync|appendFileSync",
+            "openDb\\s*\\(|DatabaseSync|node:sqlite"
+          ]
+        }
+      ]
+    },
+    "test_first_loaded": {
+      "tool": "Skill",
+      "field": "skill",
+      "text_match": "^([^:]*:)?habits-test-first$"
+    }
+  },
+  "steps": [
+    {
+      "id": "test-first-loaded",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "Non-trivial code is written test-first - the FIRST action is the `habits-test-first` Skill call, before the first production edit.",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the test-first skill is loaded before the first source write",
+          "before": {
+            "ref": "test_first_loaded"
+          },
+          "after": {
+            "ref": "src_write"
+          }
+        }
+      ]
+    },
+    {
+      "id": "test-written",
+      "session": false,
+      "from": "stack/skills/habits-test-first/SKILL.md",
+      "quote": "Use the project's own framework, folder and naming.",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "a test is written for the new function",
+          "ref": "test_write"
+        }
+      ]
+    },
+    {
+      "id": "db-boundary-test",
+      "session": false,
+      "from": "stack/skills/habits-test-first/SKILL.md",
+      "quote": "Code that talks to a database or an external service also gets an integration test of that boundary.",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "a test opens a real database (openDb, DatabaseSync, node:sqlite)",
+          "ref": "real_db_test"
+        }
+      ]
+    }
+  ]
+}

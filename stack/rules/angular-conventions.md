@@ -9,6 +9,7 @@ is incidental to the session's main thread (measured: with this rule and the Typ
 attached, neither skill was loaded across 12 edits). Skip the load when it is already in context
 (some seats preload it); conventions are the source of truth, not recall. Say which layers you
 loaded, or that they were already in context - the receipt is what makes the load happen.
+A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget.
 
 Covers components, services, directives, pipes, guards, resolvers, modules, routes, and templates -
 an Ionic/Capacitor app shares the same conventions (a bespoke layout outside `src/app` / `src/lib`:

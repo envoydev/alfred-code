@@ -8,6 +8,7 @@ lands (a path-scoped rule attaches ON the touch, so it can never precede its own
 load when it is already in context (some seats preload it); conventions are the source of truth, not
 recall. Name the skill you loaded, or say it was already in context - the receipt is what makes the
 load happen.
+A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget.
 
 This surface rule leads that first action where the C# baseline attached on the same touch: both
 skills load, `dotnet-winforms` first, and this file's list is the authority on what to load.

@@ -20,7 +20,8 @@ fail, and that it fails for the behavior it names.
 
 1. **Write the test.** One behavior per test, named for that behavior, asserting the observable
    result the requirement or the task card's acceptance names - never the implementation's
-   internals. Use the project's own framework, folder and naming.
+   internals. Use the project's own framework, folder and naming. Code that talks to a database or an
+   external service also gets an integration test of that boundary.
 2. **Watch it fail for the expected reason.** Run it and read the failure. It counts as red only
    when it compiled, RAN and failed on the assertion the behavior names - a compile error, a missing
    fixture, an import typo or a skipped test is not red: fix that and run again. A test that passes

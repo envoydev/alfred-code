@@ -75,7 +75,9 @@ test('R4: the markdown carve-out names every generated rule and no shipped one',
 test('R5: the sibling orientation doc stays in awareness/, any other sibling doc goes to work/cross-project-tasks/', () =>
 {
     const rule = injected('alfred-docs-root');
-    // the 2026-10-29 merge widened the awareness entry (the project's facts, its resources, the map); the sibling repos stay in it
-    assert.match(rule, /the awareness docs \(`awareness\/` - the install's inventory, [^)]*the run book, [^)]*the sibling repos[^)]*\)/);
+    // audit 2026-10-30 RU-05 moved the orientation half: the rule names `awareness/` as a capture's domain, and the capture
+    // that writes the sibling doc fixes its path there (the line's own list of the awareness docs left the always-on copy)
+    assert.match(rule, /each capture in the domain folder its skill names \([^)]*`awareness\/`[^)]*\)/);
+    assert.match(read('stack/skills/capture-awareness/SKILL.md'), /\| `<docs-path>\/awareness\/RELATED-PROJECTS-AWARENESS\.md` \| the sibling repos and their seams \|/);
     assert.ok(rule.includes('by default any other doc about it, and a change it must make (a task card), lives in `work/cross-project-tasks/`'));
 });

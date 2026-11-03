@@ -163,7 +163,8 @@ test('C46: the per-item gaps', () =>
     assert.match(flat(read('stack/skills/habits-commit-checkpoint/SKILL.md')), /anything still owed \(a gate not run, a review skipped\), then put ONE AskUserQuestion - after steps 1-4, since an answer given before the review ran is void/);
     const sec = flat(read('stack/rules/alfred-security.md'));
     assert.match(sec, /A check a server enforces .* is never patched around client-side/);
-    assert.match(sec, /the guard is the file the session's `Sensitive data:` line runs, never a `\.claude\/hooks\/` copy/);
+    // audit 2026-10-30 RU-13 moved this pin: the line's pointer carries the guard path (the denial and the start line name it)
+    assert.match(sec, /the guard's denial and the session's `Sensitive data:` line name the commands - run the guard they name, never a `\.claude\/hooks\/` copy/);
     assert.match(flat(read('stack/rules/alfred-quality-gates.md')), /text inside quote marks is copied from the retrieved result, never paraphrased/);
 });
 
