@@ -54,7 +54,9 @@ let partOff = (hook, part) => envOf(process.env, LEGACY_PART[part]) === '0';
 try { partOff = require('./hook-prelude.js').partOff || partOff; } catch { /* an install without the prelude reads the old keys */ }
 const docsOff = (part) => partOff('docs-session', part);
 
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// layout.js's reader when it is beside this file, so an inline DATA_PATH spelling ('./') names the root every other
+// hook reads (E-batch ab-HO5); an older copy route without layout.js keeps the old expression.
+const docsRootEnv = () => (layout && typeof layout.docsRoot === 'function' ? layout.docsRoot() : envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`);
 // 2.8.0: the hooks' state lives under <data root>/state/ (layout.js); the pre-2.8.0 <docs-path>/flow/ is still read for
 // the 2.x line, and is the only path when layout.js is not beside this file.
 let layout = null;
@@ -1810,7 +1812,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
 if (require.main === module) {
   try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

@@ -212,3 +212,24 @@ test('the 3.4.1 git text is replaced as the stack\'s own', () =>
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' }), 'replaced');
     assert.match(fs.readFileSync(ignoreOf(root), 'utf8'), /^\/awareness\/USER-AWARENESS\.md$/m);
 });
+
+test('ab-HO5: DATA_PATH=\'./\' reads the same in docsRootEnv and layout.dataRoot', () =>
+{
+    const layout = require('../stack/hooks/layout.js');
+    const { docsRootEnv } = require('../stack/hooks/docs-session.js');
+    const root = repo();
+    const saved = { data: process.env.ALFRED_CODE_DATA_PATH, docs: process.env.ALFRED_CODE_DOCS_PATH };
+    delete process.env.ALFRED_CODE_DOCS_PATH;
+    try
+    {
+        for (const spelling of ['./', '.', './.alfred/', '\'./\''])
+        {
+            process.env.ALFRED_CODE_DATA_PATH = spelling;
+            assert.strictEqual(path.resolve(root, docsRootEnv()), path.resolve(root, layout.dataRoot(), 'docs'), `DATA_PATH=${spelling}`);
+        }
+    }
+    finally
+    {
+        for (const [k, v] of [['ALFRED_CODE_DATA_PATH', saved.data], ['ALFRED_CODE_DOCS_PATH', saved.docs]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+});
