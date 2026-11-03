@@ -290,7 +290,8 @@ kept, never moved back to `.alfred`. Keeping it is no change. A change - to `.al
 folder - rides step 11's ONE installer call as `--data-path <folder> --data-move move` (a
 change on its own, so that call runs); report its
 `docs root:` and `data root:` lines verbatim - the docs and the sensitive-data file move at once. The docs root is always `<data root>/docs`, so a
-data-root change carries the docs with it and re-stamps the rule. Claude Code's own
+data-root change carries the docs with it and re-stamps the rule. A hand edit to `ALFRED_CODE_DATA_PATH` instead moves
+the docs at the next `/alfred-code:update`. Claude Code's own
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
 

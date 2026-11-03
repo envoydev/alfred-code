@@ -242,16 +242,20 @@ test('a quality/ folder with no watch.json is no docs domain - the engine never 
         if (saved.docs === undefined) delete process.env.ALFRED_CODE_DOCS_PATH; else process.env.ALFRED_CODE_DOCS_PATH = saved.docs;
         r.rm();
     }
-    const root = squash(read('stack/rules/alfred-docs-root.md'));
-    assert.match(root, /`quality\/ARCHITECTURE-ASSESSMENT\.md` and `quality\/CODE-ASSESSMENT\.md`/, 'the docs-root rule names both beside each other');
+    // audit 2026-10-30 RU-05 moved this pin: the docs-root rule names the `quality/` domain, and the capture that writes
+    // both assessments names them beside each other in its parts table
+    assert.match(squash(read('stack/rules/alfred-docs-root.md')), /each capture in the domain folder its skill names \([^)]*`quality\/`[^)]*\)/);
+    const capture = read('stack/skills/capture-quality/SKILL.md');
+    assert.match(capture, /`<docs-path>\/quality\/ARCHITECTURE-ASSESSMENT\.md`[^\n]*\n[^\n]*`<docs-path>\/quality\/CODE-ASSESSMENT\.md`/, 'capture-quality names both beside each other');
 });
 
-test('the docs-root rule names the coverage doc and its raw folder in quality/, never the old test-coverage/ folder', () =>
+test('capture-quality names the coverage doc and its raw folder in quality/, and no home names the old test-coverage/ folder', () =>
 {
-    const root = squash(read('stack/rules/alfred-docs-root.md'));
-    assert.match(root, /`quality\/COVERAGE-QUALITY\.md`/);
-    assert.match(root, /`coverage-raw\/`/);
-    assert.doesNotMatch(root, /`test-coverage\/`/);
+    // audit 2026-10-30 RU-05 moved the two names from the docs-root rule to the capture that writes them
+    const capture = read('stack/skills/capture-quality/SKILL.md');
+    assert.ok(capture.includes('`<docs-path>/quality/COVERAGE-QUALITY.md`, `<docs-path>/quality/coverage-raw/`'));
+    for (const text of [squash(read('stack/rules/alfred-docs-root.md')), capture])
+        assert.doesNotMatch(text, /`test-coverage\/`/);
 });
 
 test('an existing loops folder is the capture\'s rule source: numbered stages in numeric order, never the fix discipline or the run records', () =>

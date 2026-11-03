@@ -273,8 +273,12 @@ test('rules F11b: the domain list puts the architecture map under awareness/, wi
 {
     const line = read('stack/rules/alfred-docs-root.md').split('\n').find((l) => /EVERY doc the assistant creates/.test(l)) || '';
     assert.ok(!/`architecture\/`/.test(line), 'no architecture/ domain folder');
-    assert.match(line, /the awareness docs \(`awareness\/` - [^)]*the architecture map[^)]*\/capture-awareness architecture[^)]*\)/);
-    assert.match(line, /the awareness docs \(`awareness\/` - [^)]*the run book[^)]*the sibling repos/);
+    // audit 2026-10-30 RU-05: the line keeps the structural-doc route beside the `awareness/` domain; the awareness docs'
+    // own list (the run book, the sibling repos) moved to capture-awareness's table, which writes them
+    assert.match(line, /each capture in the domain folder its skill names \([^)]*`awareness\/`[^)]*; a structural doc such as the module boundaries goes into the architecture map as a section through `\/capture-awareness architecture`\)/);
+    const capture = read('stack/skills/capture-awareness/SKILL.md');
+    assert.match(capture, /\| `<docs-path>\/awareness\/RUN-AND-DEBUG-AWARENESS\.md` \| the run book \|/);
+    assert.match(capture, /\| `<docs-path>\/awareness\/RELATED-PROJECTS-AWARENESS\.md` \| the sibling repos and their seams \|/);
 });
 
 test('rules F12: the git seed states no commit header shape', () =>
