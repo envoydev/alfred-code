@@ -121,12 +121,17 @@ function profileOff(hook, env)
 }
 
 // A hook's own on-switch (`ALFRED_CODE_<suffix>=1`), with the profile applied: strict reads a STRICT_ON
-// switch as on over the seeded 0. The csv needs no case here - a hook it names stood down before this.
+// switch as on over the seeded 0. The csv needs no case here - a hook it names stood down before this. A DEFAULT_ON
+// switch reads an unset key as its catalog default, on (the scorer since 2026-11-03, B1); only an explicit value but 1
+// turns it off.
+const DEFAULT_ON = new Set(['SCORER']);
 function switchOn(suffix, env)
 {
     const source = env || process.env;
     if (STRICT_ON.has(suffix) && hookProfile(source) === 'strict') return true;
-    return String(envOf(source, suffix) || '').trim() === '1';
+    const value = envOf(source, suffix);
+    if (value === undefined && DEFAULT_ON.has(suffix)) return true;
+    return String(value || '').trim() === '1';
 }
 
 // A hook's OLD name in the csv still switches it off (audit 2026-10-20, the hooks track's minor list: the csv is the
@@ -1434,8 +1439,10 @@ function wholeIn(value, min, max, otherwise)
 const scorerLevel = (env = process.env) => wholeIn(envOf(env, 'SCORER_LEVEL'), 60, 100, 80);
 const scorerRounds = (env = process.env) => wholeIn(envOf(env, 'SCORER_ROUNDS'), 1, 10, 3);
 // The csv read case-insensitively and trimmed; a name outside the three is reported back, and no valid name is all three.
+// An unset key is the catalog default, plan files only (B1, 2026-11-03); a key set empty still means all three.
 function scorerOutputs(env = process.env)
 {
+    if (env['ALFRED_CODE_SCORER_OUTPUTS'] === undefined || env['ALFRED_CODE_SCORER_OUTPUTS'] === null) return { outputs: ['designer-plan'], ignored: [] };
     const names = String(envOf(env, 'SCORER_OUTPUTS') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     const outputs = SCORER_AUTOMATIC.filter((n) => names.includes(n));
     return { outputs: outputs.length ? outputs : [...SCORER_AUTOMATIC], ignored: [...new Set(names.filter((n) => !SCORER_AUTOMATIC.includes(n)))] };
@@ -1467,7 +1474,8 @@ function readScorerFile(root, sessionId, env = process.env)
 }
 // Usable first: either hook standing down or its `scorer` part switched off, or no loadable copy of the skill, makes the
 // scorer unusable - no line, no hold, stacks included. A user-invocable-only copy still grades a typed stack, so it is
-// usable but never on by itself. Then the session's flag file, else ALFRED_CODE_SCORER; a garbage file reads as absent.
+// usable but never on by itself. Then the session's flag file, else ALFRED_CODE_SCORER (on when unset, B1); a garbage file
+// reads as absent.
 function scorerState(root, sessionId, env = process.env)
 {
     const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORER_AUTOMATIC], ignored: [], source: 'env', file: null, copy: null };

@@ -1076,7 +1076,9 @@ test('scorer parses: the level, the run cap and the outputs list', () => {
     for (const [v, want] of [['1', 1], ['10', 10], ['3', 3], ['0', 3], ['11', 3], ['abc', 3], ['', 3], [undefined, 3], ['2.5', 3]])
         assert.strictEqual(scorerRounds({ ALFRED_CODE_SCORER_ROUNDS: v }), want, `rounds ${v}`);
     const all = ['designer-plan', 'root-cause', 'inline-plan'];
-    for (const [v, outputs, ignored] of [[undefined, all, []], ['', all, []], ['designer-plan,root-cause', ['designer-plan', 'root-cause'], []],
+    // B1 (2026-11-03): an unset key is the catalog default, plan files only; a key set empty still means all three
+    assert.deepStrictEqual(scorerOutputs({}), { outputs: ['designer-plan'], ignored: [] }, 'no key at all');
+    for (const [v, outputs, ignored] of [[undefined, ['designer-plan'], []], ['', all, []], ['designer-plan,root-cause', ['designer-plan', 'root-cause'], []],
         [' Root-Cause , inline-plan', ['root-cause', 'inline-plan'], []], ['topic-explainer', all, ['topic-explainer']],
         ['foo,root-cause', ['root-cause'], ['foo']], ['inline-plan,designer-plan,inline-plan', ['designer-plan', 'inline-plan'], []]])
         assert.deepStrictEqual(scorerOutputs({ ALFRED_CODE_SCORER_OUTPUTS: v }), { outputs, ignored }, `outputs ${v}`);
@@ -1084,9 +1086,14 @@ test('scorer parses: the level, the run cap and the outputs list', () => {
 
 test('scorerState: env, the flag file, a garbage file, and every switch that makes it unusable (AC13, AC20)', () => {
     assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', scorerOn)), { usable: true, on: true, source: 'env' });
-    assert.strictEqual(scorerState(scorerRoot, 's1', scorerBase).on, false);
+    // B1 (2026-11-03): an unset or empty switch is the catalog default, on; only an explicit value but 1 is off
+    for (const v of [undefined, ''])
+        assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', { ...scorerBase, ALFRED_CODE_SCORER: v })), { usable: true, on: true, source: 'env' }, `switch ${v}`);
+    assert.deepStrictEqual(scorerState(scorerRoot, 's1', scorerBase).outputs, ['designer-plan'], 'unset outputs: plan files only');
+    for (const v of ['0', 'yes', ' 2 '])
+        assert.strictEqual(scorerState(scorerRoot, 's1', { ...scorerBase, ALFRED_CODE_SCORER: v }).on, false, `switch ${v}`);
     scorerWrite(scorerFile(scorerRoot, 's2', scorerBase), 'on\nat: x\n');
-    assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's2', scorerBase)), { usable: true, on: true, source: 'flag' });
+    assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's2', { ...scorerBase, ALFRED_CODE_SCORER: '0' })), { usable: true, on: true, source: 'flag' }, 'on beats env off');
     scorerWrite(scorerFile(scorerRoot, 's3', scorerBase), 'off\nat: x\n');
     assert.strictEqual(scorerState(scorerRoot, 's3', scorerOn).on, false, 'off beats env');
     scorerWrite(scorerFile(scorerRoot, 's4', scorerBase), 'garbage');

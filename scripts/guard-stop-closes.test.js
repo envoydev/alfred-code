@@ -533,14 +533,16 @@ const T3W = call('t3', 'Write', { file_path: `${ROOT}/.alfred/docs/work/diagnose
 const T3E = call('t4', 'Edit', { file_path: `${ROOT}/.alfred/docs/work/diagnoses/f.md`, old_string: 'Cause: <pending>', new_string: 'Cause: unproven - 2 hypotheses ranked' });
 const T3S = call('t5', 'Agent', { subagent_type: 'alfred-code:issue-diagnoser-runtime', prompt: 'diagnose' });
 const SCORED = 'Scored: 91/100 (level 80) - 1 run(s) - independent - designer-plan';
+// B1 (2026-11-03): unset outputs read plan files only, so a case about a root-cause trigger lists all three
+const ALL = { ALFRED_CODE_SCORER_OUTPUTS: 'designer-plan,root-cause,inline-plan' };
 // backed(sid, line, folder) writes scorer/<folder>/b/rounds.log ending on `line` - the log next writes (R34)
 const backed = (sid, line = 'released ab12cd34', folder = sid) => { const d = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', folder, 'b'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'rounds.log'), `output: custom\n1 0 ab12cd34\n${line}\n`); };
 
 test('scorer backstop: T1, T2, both T3 writes and a settled T3 seat with no Scored line are held once; with it, not (AC11)', () => {
   for (const [name, make] of [['t1', T1], ['t2', () => T2], ['t3', () => T3W], ['t4', () => T3E], ['t5', () => T3S]]) {
-    assert.strictEqual(scorer([typed('go'), make(`A-${name}`)], 'done', { session_id: `A-${name}` }), 2, name);
+    assert.strictEqual(scorer([typed('go'), make(`A-${name}`)], 'done', { session_id: `A-${name}` }, ALL), 2, name);
     backed(`B-${name}`);
-    assert.strictEqual(scorer([typed('go'), make(`B-${name}`)], `done\n${SCORED}`, { session_id: `B-${name}` }), 0, name);
+    assert.strictEqual(scorer([typed('go'), make(`B-${name}`)], `done\n${SCORED}`, { session_id: `B-${name}` }, ALL), 0, name);
   }
 });
 test('scorer backstop: a draft in another session\'s folder is no T1 for this one (R31)', () => {
@@ -556,16 +558,16 @@ test('scorer backstop: a Cause: <pending> write and a diagnoser seat still runni
 test('scorer backstop: an Edit keeping the Cause line, a released root-cause, a bold <pending> - no T3 (final review 2)', () => {
   const f = `${ROOT}/.alfred/docs/work/diagnoses/f.md`;
   const cards = call('t8', 'Edit', { file_path: f, old_string: 'Cause: X disposes the scope\n', new_string: 'Cause: X disposes the scope\n\n### Task 1 - keep the scope\n' });
-  assert.strictEqual(scorer([typed('add the task cards'), cards], 'cards added', { session_id: 'V1' }), 0);
+  assert.strictEqual(scorer([typed('add the task cards'), cards], 'cards added', { session_id: 'V1' }, ALL), 0);
   const stamp = call('t9', 'Edit', { file_path: f, old_string: 'Cause: X disposes the scope', new_string: 'Cause: X disposes the scope - signature ObjectDisposedException, fix: own scope per run' });
   const d = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'V2', 'cause');
   fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(d, 'rounds.log'), 'output: root-cause\n1 0 ab12cd34\nreleased ab12cd34\n');
   fs.utimesSync(path.join(d, 'rounds.log'), (Date.now() - 600000) / 1000, (Date.now() - 600000) / 1000);   // an earlier cycle
-  assert.strictEqual(scorer([typed('close it out'), stamp], 'stamped', { session_id: 'V2' }), 0);
-  assert.strictEqual(scorer([typed('close it out'), stamp], 'stamped', { session_id: 'V3' }), 2, 'no released root-cause: held');
+  assert.strictEqual(scorer([typed('close it out'), stamp], 'stamped', { session_id: 'V2' }, ALL), 0);
+  assert.strictEqual(scorer([typed('close it out'), stamp], 'stamped', { session_id: 'V3' }, ALL), 2, 'no released root-cause: held');
   const bold = call('t10', 'Write', { file_path: `${ROOT}/.alfred/docs/work/diagnoses/h.md`, content: '  Cause: **<pending>**\n  Cause: `<pending>`\n' });
-  assert.strictEqual(scorer([typed('go'), bold], 'triaged', { session_id: 'V4' }), 0);
+  assert.strictEqual(scorer([typed('go'), bold], 'triaged', { session_id: 'V4' }, ALL), 0);
 });
 test('scorer backstop: a withheld output whose continue ask is open (rounds.log ends on asked) backs its Scored line (final review 3)', () => {
   backed('W1', 'asked ab12cd34 ask-continue');
@@ -641,6 +643,10 @@ test('scorer backstop: the outputs list - root-cause alone holds T3, never T2 (A
   assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O1' }, only), 2);
   assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O2' }, only), 0);
   assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O3' }, { ALFRED_CODE_SCORER_OUTPUTS: 'designer-plan,root-cause' }), 2);
+  // B1 (2026-11-03): unset is the catalog default, plan files only - T2 held, T3 not; set empty is all three
+  assert.strictEqual(scorer([typed('go'), T2], 'plan', { session_id: 'O4' }), 2, 'unset: a plan file');
+  assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O5' }), 0, 'unset: no root-cause');
+  assert.strictEqual(scorer([typed('go'), T3W], 'cause', { session_id: 'O6' }, { ALFRED_CODE_SCORER_OUTPUTS: '' }), 2, 'set empty: all three');
 });
 test('scorer backstop: user-invocable-only holds no T2 or T3, and still holds a typed stack (AC19)', () => {
   writeOverride('mode-output-scorer', 'user-invocable-only');       // ROOT/.claude/settings.local.json
@@ -686,10 +692,16 @@ test('scorer backstop: a Stop hook feedback row starts no cycle; the check runs 
   assert.strictEqual(closeOver(tp, 'Here is the plan.', { session_id: 'S7', stop_hook_active: true }), 2);
   assert.strictEqual(closeOver(tp, 'Here is the plan.', { session_id: 'S7', stop_hook_active: true }), 0);   // once per cycle
 });
-test('scorer backstop: all four keys unset, the switch at 0, or guard-stop-contract:scorer off - never held, nothing written (AC1, AC20)', () => {
-  for (const env of [{ ALFRED_CODE_SCORER: '' }, { ALFRED_CODE_SCORER: '0' }, { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:scorer' }])
+test('scorer backstop: the switch at 0, any value but 1, or guard-stop-contract:scorer off - never held, nothing written (AC1, AC20)', () => {
+  for (const env of [{ ALFRED_CODE_SCORER: '0' }, { ALFRED_CODE_SCORER: 'yes' }, { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:scorer' }])
     assert.strictEqual(scorer([typed('go'), T1('S0'), T2], 'done', { session_id: 'S0' }, env), 0, JSON.stringify(env));
   assert.ok(!fs.existsSync(scorerHeldFile(ROOT, 'S0')));
+});
+test('scorer backstop: all four keys unset (or the switch empty) read the default - on, plan files only - and hold (B1)', () => {
+  // closeOver seeds the switch at 1 and no outputs key; an empty value reads as unset (hook-prelude.js envOf)
+  const unset = { ALFRED_CODE_SCORER: '' };
+  assert.strictEqual(scorer([typed('go'), T2], 'done', { session_id: 'S1' }, unset), 2, 'a plan file');
+  assert.strictEqual(scorer([typed('go'), T3W], 'done', { session_id: 'S2' }, unset), 0, 'no root-cause');
 });
 
 // --- the output-scorer's seal (spec 5.10): the seat's report is written to the score file its first line names, sealed,
