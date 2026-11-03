@@ -1320,8 +1320,9 @@ const SETUP_ASK_TEMPLATES = {
     'setup-plugin/commands/uninstall.md': 2,
     'setup-plugin/commands/status.md': 1,
     // +2: step 4's memory and navigation asks (spec P1 + P2, 2026-10-24). +1: the account's both-instruction-files ask
-    // in a joined child (workspace layering, 2026-10-26).
-    'setup-plugin/references/init-bootstrap.md': 4,
+    // in a joined child (workspace layering, 2026-10-26). +1: the marketplace auto-update ask, once per account (U01 of the
+    // 2026-11-03 usage audit).
+    'setup-plugin/references/init-bootstrap.md': 5,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's
     // detection confirm and its dispute follow-up, which was asked in plain text (audit 2026-10-21 commands T2-08).
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).

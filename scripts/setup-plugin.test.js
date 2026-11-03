@@ -1513,6 +1513,11 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     assert.strictEqual(firstOption(cascade, 'Update the <n> project\\(s\\) below this one as well\\? <each project\'s rel>'), 'Yes, update them too (Recommended)');
     assert.strictEqual(firstOption(cascade, 'Join these installed projects'), 'Join as children (Recommended)');
     assert.strictEqual(firstOption(refBody('init-bootstrap'), 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
+    // U01 of the 2026-11-03 usage audit: the auto-update ask rides step 4's call, and each answer is one script call.
+    const boot = refBody('init-bootstrap');
+    assert.strictEqual(firstOption(boot, 'Let Claude Code keep the stack up to date by itself\\?'), 'Turn it on (Recommended)');
+    assert.match(boot, /On step 2's `auto-update: ask` line, the same call carries one more question/);
+    assert.match(boot, /'Turn it on' runs `node "\$TMP\/repo\/scripts\/install\/marketplace-autoupdate\.js" --apply --root \.` and 'Leave it off' the\s+same with `--decline`/);
     const child = refBody('init-child');
     assert.strictEqual(firstOption(child, 'Where should the stack\'s plugins be enabled in this child'), 'local (Recommended)');
     assert.strictEqual(firstOption(child, 'Ignore these machine-local paths in this clone'), '.git/info/exclude (Recommended)');

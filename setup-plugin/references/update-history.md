@@ -667,3 +667,10 @@ plans won 14 of 15 pairs; inline plans lost 3 of 3. The seed stays absent-only, 
 `ALFRED_CODE_SCORER=0` or an empty `ALFRED_CODE_SCORER_OUTPUTS` - the old seed or your own - keeps it, and a
 `seeded (1)` line shows only where the key was missing. To turn it on here, set both keys in
 `/alfred-code:configure`'s environment area; to keep it off, nothing to do.
+
+## after 3.6.0 - init offers Claude Code's auto-update for the stack's marketplace
+
+`/alfred-code:init` now asks once per account whether Claude Code may update the stack's marketplace by itself: a yes
+writes `autoUpdate: true` on its entry in your account's `settings.json`, a no writes `false` so no project asks
+again. An install already initialised is not asked by this update: turn it on under `/plugin` > Marketplaces > the
+stack's marketplace > Enable auto-update. `/alfred-code:update` still moves this project's own copies.

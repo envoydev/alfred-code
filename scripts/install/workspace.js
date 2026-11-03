@@ -1623,5 +1623,5 @@ module.exports = {
     readPlan, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
-    releaseChildren, leaveParent, managedSettingsFile, checkLoads,
+    releaseChildren, leaveParent, managedSettingsFile, checkLoads, writeLike,
 };
