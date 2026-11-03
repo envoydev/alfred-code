@@ -1,0 +1,57 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const envColumns = Number.parseInt(process.env.COLUMNS ?? '', 10);
+const width = Number.isFinite(envColumns) && envColumns > 0 ? envColumns : 120;
+process.env.COLUMNS = String(Math.max(1, width - 4));
+
+const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+const cacheDir = path.join(claudeDir, 'plugins', 'cache');
+
+function versionParts(value) {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(value);
+  return match ? match.slice(1, 4).map(Number) : null;
+}
+
+function compareVersions(a, b) {
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
+
+const candidates = [];
+try {
+  for (const marketplace of fs.readdirSync(cacheDir, { withFileTypes: true })) {
+    if (!marketplace.isDirectory()) continue;
+    const pluginRoot = path.join(cacheDir, marketplace.name, 'claude-hud');
+    let versions = [];
+    try {
+      versions = fs.readdirSync(pluginRoot, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const version of versions) {
+      if (!version.isDirectory()) continue;
+      const parts = versionParts(version.name);
+      if (!parts) continue;
+      const dir = path.join(pluginRoot, version.name);
+      if (fs.existsSync(path.join(dir, 'dist', 'index.js'))) {
+        candidates.push({ dir, parts });
+      }
+    }
+  }
+} catch {
+  process.exit(0);
+}
+
+candidates.sort((a, b) => compareVersions(a.parts, b.parts));
+const latest = candidates.at(-1);
+if (!latest) process.exit(0);
+
+const hud = await import(pathToFileURL(path.join(latest.dir, 'dist', 'index.js')).href);
+if (typeof hud.main === 'function') {
+  await hud.main();
+}
