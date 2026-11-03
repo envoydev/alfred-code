@@ -62,10 +62,7 @@ test('agents #2: the WPF seats point at the net48 reference instead of contradic
         const text = squash(read(s));
         assert.doesNotMatch(text, /generators (are )?unavailable/, `${s}: the stale net48 claim`);
         assert.ok(text.includes("`dotnet-wpf`'s `references/net-framework-48.md`"), `${s}: the pointer`);
-        // audit 2026-10-30 AG-03 candidate: the WPF stack's rules install dotnet-wpf, so the seat loads it through the Skill
-        // tool at its code step instead of preloading it - either way the reference's skill is in the seat's context
-        const directive = body(s).split('\n').find((l) => /through the Skill tool - (they are|it is) not preloaded: /.test(l)) || '';
-        assert.ok((meta(s).skills || []).includes('dotnet-wpf') || directive.includes('`dotnet-wpf` ('), `${s}: the reference's skill is preloaded or loaded at the code step`);
+        assert.ok(meta(s).skills.includes('dotnet-wpf'), `${s}: the reference's skill is preloaded`);
     }
     const ref = squash(readRel('stack/skills/dotnet-wpf/references/net-framework-48.md'));
     assert.match(ref, /PackageReference, not packages\.config/);

@@ -17,5 +17,5 @@ here).
 Writing or changing a `*.test.ts` / `*.spec.ts` outside Angular loads the skill covering plain TS/JS
 tests in the same action, before the first test edit lands, where installed.
 
-Skip a load when it is already in context (some seats load them at their code step); conventions are the source of
+Skip a load when it is already in context (some seats preload them); conventions are the source of
 truth, not recall. Skip one-line tweaks.

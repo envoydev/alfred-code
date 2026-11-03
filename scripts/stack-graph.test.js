@@ -9,13 +9,10 @@ test('agent skill edges come from the declared skills: frontmatter', () => {
     const a = graph.agents['aspnet-solution-designer'];
     assert.ok(a, 'aspnet-solution-designer must be in the graph');
     assert.strictEqual(a.skillsSource, 'frontmatter');
-    for (const s of ['dotnet-web-backend', 'task-design'])
+    for (const s of ['csharp-design-patterns', 'dotnet-web-backend', 'dotnet-testing', 'task-design'])
     {
         assert.ok(a.skills.includes(s), `expected agent->skill edge to ${s}`);
     }
-    // Audit 2026-10-30 AG-03 candidate: the code skills the aspnet seed and rules already install left the preloads and
-    // are loaded at the code step - so they are no agent edge any more.
-    for (const s of ['csharp-design-patterns', 'dotnet-testing']) assert.ok(!a.skills.includes(s), `no agent->skill edge to ${s}`);
 });
 
 test('rule skill edges resolve from the rule body', () => {

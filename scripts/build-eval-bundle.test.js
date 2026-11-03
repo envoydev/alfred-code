@@ -43,7 +43,7 @@ test('the bundle leaves the source tree untouched - the rewrite happens in the c
     const before = fs.readFileSync(path.join(REPO, 'stack/agents/web-angular-implementer.md'), 'utf8');
     execFileSync(process.execPath, [SCRIPT, path.join(tmp('bundle-'), 'b')], { encoding: 'utf8' });
     assert.equal(fs.readFileSync(path.join(REPO, 'stack/agents/web-angular-implementer.md'), 'utf8'), before);
-    assert.match(before, /^\s*-\s*habits-done-gate\s*$/m, 'the shipped library seat keeps its bare preload');
+    assert.match(before, /^\s*-\s*angular-conventions\s*$/m, 'the shipped library seat keeps its bare preload');
 });
 
 test('the bundle refuses to wipe a directory that is not a previous bundle - the repo above all', () =>

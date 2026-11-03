@@ -5,7 +5,7 @@ paths: ["**/*.sql", "**/Migrations/**/*.cs"]
 Editing hand-written SQL or a schema migration - load `database-conventions`: the FIRST action after
 this rule attaches is that Skill call, before the NEXT edit lands (a path-scoped rule attaches ON the
 touch, so it can never precede its own trigger) - skip the load when it is already in context (some
-seats load it at their code step); conventions are the source of truth, not recall. Name the skill you loaded, or say
+seats preload it); conventions are the source of truth, not recall. Name the skill you loaded, or say
 it was already in context - the receipt is what makes the load happen.
 
 An EF migration (`Migrations/**/*.cs`) is schema work: the same first action adds the skill covering
