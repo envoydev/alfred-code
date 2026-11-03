@@ -1081,7 +1081,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     inside it (90% of it). The offer fires only
     when a fresh session pays back with the cache warm (THE VERDICT below),
     re-arms at 1.5x growth - counted from its own block or the newest fresh-session ask answered in ANY turn, at that
-    ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same
+    ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. THE
+    POST-CYCLE RE-OFFER (usage audit 2026-11-03 U13: a decline made while a plan cycle closed held the next scope at the
+    full carry): after a plan's `Completed:` stamp with a typed turn after it (`flowState`), a clean close under the step
+    re-offers ONCE per stamp - unless a fresh-session ask was answered after that typed turn (`freshAskAnswered`, the
+    answer row's byte offset); every Stop offer made in that span writes the stamp's offset to `guard-stop-fresh-*.cycle`,
+    so the next decline falls back to the step (`fresh-session-post-cycle` block rows). `REOFFER_GROWTH` and the block
+    record's path (`stopOfferFile`) live in the engine, which the tick hold reads too. A long-idle or long-span session takes the same
     offer under the window (the clock note, `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`: an hour count, `0` off; at the
     seeded `cache` the note keeps 2h, `CLOCK_HOURS`, since it judges the session's span too). The offer waits
     while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).

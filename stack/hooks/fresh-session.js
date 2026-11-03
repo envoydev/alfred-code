@@ -936,30 +936,50 @@ function freshAskAnsweredThisTurn() {
 // as its own last offer, so a choice answered one typed turn back is not asked again until the carry grows past the
 // re-offer step (audit 2026-10-11 SD11, session 7f8803eb: 'Continue in fresh session' answered, the next turn's close
 // carrying the asked-for resume prompt was blocked and the re-ask denied by the user, 878.8k cache-read).
-function freshAskAnsweredCtx() {
+function freshAskAnsweredCtx() { return freshAskAnswered().ctx; }
+// The same newest answered fresh-session ask with `at`, the byte offset of the row that answered it (-1 when there is
+// none): the Stop branch's post-cycle re-offer counts a choice made before the cycle's next typed turn as spent, and one
+// made after it as standing (usage audit 2026-11-03 U13). Lines split on the newline byte, so an offset is a byte offset.
+function freshAskAnswered() {
+  const none = { ctx: 0, at: -1 };
   try {
-    const lines = transcriptText(0, 8 * 1024 * 1024).split('\n');
-    const answered = new Set();
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (!lines[i].trim()) continue;
+    const p = payload.transcript_path;
+    if (!p) return none;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 8 * 1024 * 1024);
+    const buf = Buffer.alloc(size - start);
+    const fd = fs.openSync(p, 'r');
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    const rows = [];
+    for (let from = 0; from < buf.length;) {
+      let nl = buf.indexOf(10, from);
+      if (nl < 0) nl = buf.length;
+      rows.push([from, nl]);
+      from = nl + 1;
+    }
+    const answered = new Map();
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const line = buf.toString('utf8', rows[i][0], rows[i][1]);
+      if (!line.trim()) continue;
       let o;
-      try { o = JSON.parse(lines[i]); } catch { continue; }
+      try { o = JSON.parse(line); } catch { continue; }
       if (!o || !o.message || !Array.isArray(o.message.content)) continue;
       const c = o.message.content;
       if (o.type === 'user') {
         for (const b of c) {
-          if (answeredBlock(o, b)) answered.add(b.tool_use_id);
+          if (answeredBlock(o, b) && !answered.has(b.tool_use_id)) answered.set(b.tool_use_id, start + rows[i][0]);
         }
         continue;
       }
       if (o.type !== 'assistant') continue;
-      if (!c.some((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {})))) continue;
+      const hit = c.find((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {})));
+      if (!hit) continue;
       const u = o.message.usage || {};
-      return (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+      return { ctx: (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0), at: answered.get(hit.id) };
     }
-    return 0;
+    return none;
   } catch {
-    return 0;
+    return none;
   }
 }
 // Was any ask answered (or declined) in the transcript past byte `from` - the size an offer recorded? Only an ask's own
@@ -998,6 +1018,6 @@ module.exports = {
   AFTER_HOURS_FOLLOW, CACHE_LIFE_MS, IDLE_WAIT_FALLBACK_MS, afterHoursOf, CACHE_LIFE_READERS, hostOf, cacheLifeOf, idleWait, gapText,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   truePoints, compactionFacts, idleCompaction, settleCompactPoints, readWindow,
-  transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
+  transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, freshAskAnswered, askAnsweredSince,
   REOFFER_GROWTH, stopOfferFile, stopOfferCtx,
 };
