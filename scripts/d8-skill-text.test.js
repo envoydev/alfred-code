@@ -13,13 +13,18 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (s) => s.replace(/\s+/g, ' ');
 const STRATEGY = 'stack/skills/habits-execution-strategy/SKILL.md';
 
-const BULLET = '- **A heavy session** - heavier than a step\'s seat pin (the newest `Seats:` line, else the model your system prompt names; a `Seats:` line saying no step moves wins) - marks the seat only at these choice points, and only for a SIZEABLE step (Mode): '
+// One condition in every clause that decides on a Seats line (I2, the 2026-11-03 review comparison: a load clause read ANY
+// line as heavy, the switch-down 'no step moves' line included).
+// 1,450 at planning; 1,461 once the fix-pass review had the bullet read the newest line and bound the one-step line to its step.
+const BULLET_MAX = 1475;
+const HEAVY = 'the newest `Seats:` line unless it says no step moves, else a system-prompt model above Sonnet';
+const BULLET = '- **A heavy session** - heavier than a step\'s seat pin (the newest `Seats:` line unless it says no step moves, else the model your system prompt names) - marks the seat only at these choice points, and only for a SIZEABLE step (Mode): '
     + '`task-solve` build; `task-solve` plan gate; `task-solve` reviewer; `task-design` mode; `task-implement` build; `task-implement` red after five; `task-implement` review; `task-verify-plan` audit; `issue-diagnoser` gather; the `loop-code-quality`, `loop-architecture-quality` and `loop-test-coverage-quality` mode; `task-solve-cross` mode; `task-solve-cross` plan gate; `task-build-from-scratch` mode; the `review-code` and `review-security` seat ask; `task-version-upgrade` approve; the forced inline of `capture-quality` code-quality and architecture-quality and `capture-awareness` code-style'
-    + '. These stay here: one command, one grep, a one-file edit or diff, an unplanned review of a diff `task-solve`\'s size table calls `small`, and a stack with no seat; a risk-trigger diff keeps the verifier at any size. Design moves to the designer seat only from a session heavier than opus; a seats package keeps its designers. At a one-step choice the load writes only `Execution: <route> - mode <serial seats: 1 | serial> - model <seat pins | session> - <the size reason>`, with no plan, route or trim ask, or scorer. The direct route reads no model (Route).';
+    + '. These stay here: one command, one grep, a one-file edit or diff, an unplanned review of a diff `task-solve`\'s size table calls `small`, and a stack with no seat; a risk-trigger diff keeps the verifier at any size. Design moves to the designer seat only from a session heavier than opus; a seats package keeps its designers. At a one-step choice the load writes only `Execution: <route> - mode <serial seats: 1 | serial> - model <seat pins | session> - <the size reason>`, with no plan, route or trim ask, or scorer; that line applies to its own step only, and a later choice writes its own. The direct route reads no model (Route).';
 
 test('the Model section holds the heavy-session bullet whole', () => {
     assert.ok(squash(read(STRATEGY)).includes(squash(BULLET)));
-    assert.ok(BULLET.length <= 1450, `bullet is ${BULLET.length} characters`);
+    assert.ok(BULLET.length <= BULLET_MAX, `bullet is ${BULLET.length} characters`);
 });
 test('the bullet list equals POINTS, in row order', () => {
     const text = squash(read(STRATEGY));
@@ -68,22 +73,25 @@ test('every clause is conditioned', () => {
         const n = r.needle.toLowerCase();
         assert.ok(n.includes('on a heavy session') || n.includes('serial seats'), `row ${r.row} clause is not conditioned: ${r.needle.slice(0, 70)}`);
         if (r.needle.includes('load `habits-execution-strategy` with the Skill tool'))
-            assert.ok(r.needle.includes('a `Seats:` line in context, or a system-prompt model above Sonnet') || r.needle.includes('the newest `Seats:` line in context unless it says no step moves, else a system-prompt model above Sonnet'), `row ${r.row}: the load carries the heavy-session condition`);
+            assert.ok(r.needle.includes(HEAVY), `row ${r.row}: the load carries the heavy-session condition`);
     }
     for (const r of ROWS.filter((x) => x.row === 14)) assert.ok(r.needle.includes('any other keeps the no-ask path'), `row 14 ${r.skill} keeps the no-ask path`);
 });
 
 // What Sonnet pays: the clause text every sonnet session loads with these skills, bounded. The strategy file's base size is a literal.
-const STRATEGY_BASE_CHARS = 13673;
+const STRATEGY_BASE_BYTES = 13673;
+// I7: the bullet plus the verdict and mapping edits, 1,897 bytes after the fix pass and its review; a growth past it is a decision, not drift.
+const STRATEGY_GROWTH_MAX = 1950;
 test('what Sonnet pays', () => {
-    assert.ok(BULLET.length <= 1450, `bullet is ${BULLET.length}`);
+    assert.ok(BULLET.length <= BULLET_MAX, `bullet is ${BULLET.length}`);
     const clauses = ROWS.filter((r) => r.kind === 'clause').map((r) => r.needle.length);
     for (const n of clauses) assert.ok(n <= 360, `a clause is ${n} characters`);   // 330 at planning; rows 14 and 16 name the newest line (review finding 1)
     const mean = clauses.reduce((a, b) => a + b, 0) / clauses.length;
-    assert.ok(mean <= 260, `clause mean ${mean}`);
+    assert.ok(mean <= 265, `clause mean ${mean}`);   // 260 at planning; 260.2 once I2 named the newest line in every load clause
     const perRow = {};
     for (const r of ROWS) perRow[r.row] = (perRow[r.row] || 0) + r.needle.length;
-    const growth = fs.statSync(path.join(ROOT, STRATEGY)).size - STRATEGY_BASE_CHARS;
+    const growth = fs.statSync(path.join(ROOT, STRATEGY)).size - STRATEGY_BASE_BYTES;
+    assert.ok(growth <= STRATEGY_GROWTH_MAX, `strategy growth ${growth} bytes, past ${STRATEGY_GROWTH_MAX}`);
     console.log(`# D8 cost: bullet ${BULLET.length}; strategy growth ${growth} bytes; ${clauses.length} clauses, total ${clauses.reduce((a, b) => a + b, 0)}, mean ${Math.round(mean)}; per row ${JSON.stringify(perRow)}`);
 });
 
@@ -115,13 +123,26 @@ test('the asks D8 leaves alone keep their marks', () => {
     assert.ok(UNTOUCHED.length >= 14);
 });
 
-// Review finding 1: a `/model` switch down prints a `Seats:` line saying no step moves, so 'a line in context' alone reads a
-// Sonnet session as heavy - the parts that load nothing (row 16) and the reviews (row 14) name the NEWEST line and its exception.
-test('the clauses that decide on their own read the newest Seats line, not any', () => {
-    const own = ROWS.filter((r) => r.kind === 'clause' && (r.row === 14 || r.row === 16));
-    assert.strictEqual(own.length, 5);
-    for (const r of own) {
-        assert.ok(r.needle.includes('the newest `Seats:` line in context unless it says no step moves, else a system-prompt model above Sonnet'), `row ${r.row} ${r.skill}`);
-        assert.ok(!r.needle.includes('a `Seats:` line in context, or'), `row ${r.row} ${r.skill} still reads any line`);
-    }
+// Review finding 1, then I2: a `/model` switch down prints a `Seats:` line saying no step moves, so 'a line in context' alone reads a
+// Sonnet session as heavy - every clause that names a Seats line names the NEWEST one and its exception.
+test('every clause that names a Seats line reads the newest one, not any', () => {
+    const named = ROWS.filter((r) => r.kind === 'clause' && r.needle.includes('`Seats:` line'));
+    assert.strictEqual(named.length, 16);
+    for (const r of named) assert.ok(r.needle.includes(HEAVY), `row ${r.row} ${r.skill}`);
+    for (const f of [...new Set(ROWS.map((r) => r.file))]) assert.ok(!/a `Seats:` line in context, or/.test(squash(read(f))), `${f} still reads any line`);
+});
+
+// I1: D8 dropped the AUTO root stamp's absolute path from task-solve's waiver while step-mechanics points back to it.
+test('the AUTO waiver writes the root stamp at its absolute path', () => {
+    const waiver = /\*\*Autonomy waiver \(AUTO\)\.\*\*[^\n]*(?:\n(?!\n)[^\n]*)*/.exec(read('stack/skills/task-solve/SKILL.md'));
+    assert.ok(waiver, 'the waiver paragraph');
+    assert.ok(squash(waiver[0]).includes('write `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL`, first line `AUTO'), squash(waiver[0]).slice(0, 300));
+    assert.ok(squash(read('stack/skills/task-solve/references/step-mechanics.md')).includes("The waiver's root stamp, its `AUTO` first line"), 'the pointer still names it');
+});
+
+// I6: step 2's one-step load must not answer step 3's build - each choice writes its own verdict.
+test("step 3 reads the build's own Execution line", () => {
+    const ts = squash(read('stack/skills/task-solve/SKILL.md'));
+    assert.ok(ts.includes('unless this run already did; write this build\'s own `Execution:` line, the mode-fit reason'), 'task-solve step 3');
+    assert.ok(squash(read(STRATEGY)).includes('that line applies to its own step only, and a later choice writes its own'), 'the bullet');
 });

@@ -37,12 +37,15 @@ test('S1: only the two solve flows hand-write an AUTO stamp, and they say it the
         'stack/skills/task-solve/SKILL.md',
     ]);
     const waiver = (rel) => /\*\*Autonomy waiver \(AUTO\)\.\*\* (.*?AUTO starts after its answer\.)/.exec(flat(read(rel)))[1];
-    // task-solve-cross's SKILL.md sits at its 18,000-char cap, so its copy lives in the reference read before the first stop
-    assert.strictEqual(waiver('stack/skills/task-solve-cross/references/execution-modes.md'), waiver('stack/skills/task-solve/SKILL.md'));
+    // task-solve-cross's SKILL.md sits at its 18,000-char cap, so its copy lives in the reference read before the first stop.
+    // The one difference is the root's name: Claude Code substitutes `${CLAUDE_PROJECT_DIR}` in a SKILL.md only, so the
+    // reference names `<project root>` (the D8 fix pass, 2026-11-03; project-root-placeholder.test.js).
+    assert.strictEqual(waiver('stack/skills/task-solve-cross/references/execution-modes.md'), waiver('stack/skills/task-solve/SKILL.md').replace('${CLAUDE_PROJECT_DIR}', '<project root>'));
     const cross = flat(read('stack/skills/task-solve-cross/SKILL.md'));
     assert.doesNotMatch(cross, /'run without plan review', 'no stops'/, 'no stops is the full waiver, not a plan-review-only one');
     assert.match(cross, /or the autonomy waiver in `references\/execution-modes\.md` - and the run then continues with `plan_review: waived`/);
-    assert.match(flat(read('stack/skills/task-solve-cross/references/execution-modes.md')), /under the autonomy waiver in `SKILL\.md`/);
+    // the root AUTO stamp points at the waiver in the same file - the cross SKILL.md holds none (the fix pass's review, finding 5)
+    assert.match(flat(read('stack/skills/task-solve-cross/references/execution-modes.md')), /under the autonomy waiver above/);
     for (const d of ['task-implement', 'task-build-from-scratch', 'task-version-upgrade', 'loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality', 'issue-diagnoser'])
     {
         const t = flat(read(`stack/skills/${d}/SKILL.md`));

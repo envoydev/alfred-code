@@ -82,8 +82,8 @@ Next: <its first move> -> <the steps left>.
 ````
 
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
-recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL`
-with first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived under it, and take each stop's recommended option; the
+recommended without asking me'), never self-authorize silently - write `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL`,
+first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived, and take each stop's recommended option; the
 pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
 
 ## Size first
@@ -128,8 +128,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 1. **DESIGN** - run `task-design`, with `habits-clarify` loaded first. It writes the plan file -
    the artifact, not the chat - with its design rules settled IN it, so step 5 reviews against a plan that already decided them. *Stop* -
    none on a full spec, where step 2 follows in the same step (above).
-2. **GATE** - run `task-verify-plan` over the plan file in the mode step 1 ran - no mode ask. On a heavy session (a `Seats:` line in context, or a system-prompt
-   model above Sonnet), load `habits-execution-strategy` with the Skill tool before this gate unless this run
+2. **GATE** - run `task-verify-plan` over the plan file in the mode step 1 ran - no mode ask. On a heavy session (the newest `Seats:` line unless it says no step moves, else a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this gate unless this run
    did; its 'Model' bullet sends the audit to the `<stack>-verifier` seat whatever step 1's mode. The audit
    stamps its eight-field block into the plan: `Gated: passed`; `passed - <N> fixes applied` for the
    non-judgment fixes it landed in this step, each named in the stop's `Result:` line; or the gaps,
@@ -147,7 +146,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    ask is this stop too ('Not yet' is the route-back).
 3. **APPROVE** - Read `references/step-mechanics.md` now - this ask's mode-fit rule and the
    mechanics of steps 4-6 are its content, not homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then load
-   `habits-execution-strategy` (the Skill tool) unless this run already did; its `Execution:` line is the
+   `habits-execution-strategy` (the Skill tool) unless this run already did; write this build's own `Execution:` line, the
    mode-fit reason. Then present the gated plan and put the gate through ONE question whose
    options each NAME the mode:
 

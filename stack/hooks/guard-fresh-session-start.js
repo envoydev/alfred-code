@@ -120,11 +120,17 @@ if (cursorOff) process.exit(0);
 })();
 // One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a probe, never a
 // block. Best-effort - a lost row is a lost measurement, never a changed turn.
+// This session's hook-blocks ledger: layout.js's statistics path, else the docs root's for a layout.js older than this hook.
+function ledgerFile() {
+  const base = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  const dir = (() => { try { return require('./layout.js').statsPath(base, ['hook-blocks']); } catch { return nodePath.resolve(base, docsRootEnv(), 'hook-blocks'); } })();
+  return nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
+}
 function ledgerRow(row) {
   try {
-    const dir = (() => { try { return require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']); } catch { return nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks'); } })();
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+    const file = ledgerFile();
+    fs.mkdirSync(nodePath.dirname(file), { recursive: true });
+    fs.appendFileSync(file, JSON.stringify({
       ts: new Date().toISOString(), hook: nodePath.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
     }) + '\n');
   } catch { /* never throws */ }
@@ -1372,17 +1378,31 @@ const banner = EVENT === 'UserPromptExpansion' && !payload.agent_id && BANNER_RE
 // whether or not anyone is at the terminal (the banner's gate does not apply: the banner reports a mode to a person),
 // never for a seat, and after a /model switch down it says so once this session's ledger holds a `seats-line` row.
 // The engine's stand-in (fresh-session.js missing mid-update) has no `seatsFacts`, so the line is simply absent there.
-const SEATS_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:(?:task|capture|loop|issue|mode)-[a-z][a-z0-9-]*|review-code|review-security|habits-execution-strategy)$/;
+// The flows with a choice point the 'Model' bullet lists (scripts/d8-rows.js, held equal by seats-line.test.js), the
+// bullet's own skill, and `/mode-auto-run` with a request, which runs the solve flow by reading its body (no Skill call).
+const SEATS_SKILLS = ['task-solve', 'task-solve-cross', 'task-design', 'task-implement', 'task-verify-plan', 'task-build-from-scratch',
+  'task-version-upgrade', 'issue-diagnoser', 'loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage-quality',
+  'capture-quality', 'capture-awareness', 'review-code', 'review-security', 'habits-execution-strategy', 'mode-auto-run'];
+const SEATS_SKILL_RE = new RegExp(`^(?:alfred-code:)?(?:alfred-)?(?:${SEATS_SKILLS.join('|')})$`);
 function seatsFactsNow() {
   if (payload.agent_id || !SEATS_SKILL_RE.test(skill)) return null;
+  // `/mode-auto-run` reaches a choice point only through its request: an empty or flag-only line runs no flow.
+  if (AUTO_SELF_RE.test(skill) && !(autoFlags && autoFlags.request)) return null;
   if (!(EVENT === 'UserPromptExpansion' || (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)))) return null;
   return fresh.seatsFacts(fresh.sessionModelId());
 }
+// Read on a flow call at or under the seats' tier: the ledger's newest 4 MB, 20x the largest of 413 local ledgers
+// (207 KB, measured 2026-11-03). A row only past that window leaves the down line unsaid.
+const SEATS_LEDGER_TAIL = 4 * 1024 * 1024;
 function seatsLedgerHolds() {
+  let fd = null;
   try {
-    const dir = require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']);
-    return fs.readFileSync(nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), 'utf8').includes('"kind":"seats-line"');
-  } catch { return false; }
+    fd = fs.openSync(ledgerFile(), 'r');
+    const size = fs.fstatSync(fd).size;
+    const buf = Buffer.alloc(Math.min(size, SEATS_LEDGER_TAIL));
+    const got = fs.readSync(fd, buf, 0, buf.length, size - buf.length);
+    return buf.toString('utf8', 0, got).includes('"kind":"seats-line"');
+  } catch { return false; } finally { if (fd !== null) { try { fs.closeSync(fd); } catch { /* closed */ } } }
 }
 let seatsInfo = null;
 function seatsLine() {
@@ -1397,7 +1417,8 @@ function seatsLine() {
   }
   if (seatsLedgerHolds()) {
     seatsInfo = { model: facts.id, multiple: facts.multiple, down: true };
-    return `**Seats:** this session now runs ${facts.id}, the seats' own tier - no step moves for the model.`;
+    const tier = facts.tier === fresh.MODEL_TIER.sonnet ? "the seats' own tier" : 'lighter than the seats';
+    return `**Seats:** this session now runs ${facts.id}, ${tier} - no step moves for the model.`;
   }
   return '';
 }

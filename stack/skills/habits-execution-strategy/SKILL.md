@@ -87,8 +87,8 @@ ones (Mode, below). When one holds, those units run in order; the rest may still
   a mechanical task whose correctness shows on the diff AND an independent verifier re-runs its
   gates; never below the pin on auth, a migration, concurrency, security, a shared contract seam or
   unclear legacy code. The heaviest model is for design and hard root cause, not routine edits.
-- **A heavy session** - heavier than a step's seat pin (the newest `Seats:` line, else the model
-  your system prompt names; a `Seats:` line saying no step moves wins) - marks the seat only at
+- **A heavy session** - heavier than a step's seat pin (the newest `Seats:` line unless it
+  says no step moves, else the model your system prompt names) - marks the seat only at
   these choice points, and only for a SIZEABLE step (Mode): `task-solve` build; `task-solve` plan
   gate; `task-solve` reviewer; `task-design` mode; `task-implement` build; `task-implement` red
   after five; `task-implement` review; `task-verify-plan` audit; `issue-diagnoser` gather; the
@@ -101,7 +101,7 @@ ones (Mode, below). When one holds, those units run in order; the rest may still
   verifier at any size. Design moves to the designer seat only from a session heavier than opus; a
   seats package keeps its designers. At a one-step choice the load writes only `Execution: <route> -
   mode <serial seats: 1 | serial> - model <seat pins | session> - <the size reason>`, with no plan,
-  route or trim ask, or scorer. The direct route reads no model (Route).
+  route or trim ask, or scorer; that line applies to its own step only, and a later choice writes its own. The direct route reads no model (Route).
 - **A seat type with no pin** (a general-purpose or explore subagent) runs on the session's model
   unless the dispatch names one - the heaviest model, when the session runs on it. Name its model in
   the verdict: the lighter one for read-only search, inventory and classification; the session's only

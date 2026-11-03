@@ -48,7 +48,7 @@ This change is <n> changed lines over <stacks> - review it in a seat to keep thi
 
 The seat is security-auditor, dispatched exactly as the roster spells it (`alfred-code:security-auditor` where the core plugin carries it), with a diff brief naming the target's read commands, this skill's method and `references/not-a-finding.md`, and the report shape below. Under the bar, run inline without asking. Inside the solve flows dispatch stays explicit-only: inline unless the stop that led here offered the seat and the user picked it.
 
-On a heavy session (the newest `Seats:` line in context unless it says no step moves, else a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. A session above opus also asks for a diff `task-solve` sizes `standard`; any other keeps the no-ask path.
+On a heavy session (the newest `Seats:` line unless it says no step moves, else a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. A session above opus also asks for a diff `task-solve` sizes `standard`; any other keeps the no-ask path.
 
 ## Run
 

@@ -44,7 +44,7 @@ Build here or through the stack seats? <the verdict's reason>
 - 'In this session (Recommended)' - <why it fits one chat>
 - 'Dispatch the stack seats' - <the slices that run in parallel>
 ```
-On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. `serial seats` marks the seats option.
+On a heavy session (the newest `Seats:` line unless it says no step moves, else a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. `serial seats` marks the seats option.
 
 No dispatch is INLINE without asking, and so is a scaffold too small to fan out unless the verdict reads `serial seats` - then ask, the seats marked.
 

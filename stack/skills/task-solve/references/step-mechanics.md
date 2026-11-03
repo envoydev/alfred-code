@@ -24,7 +24,7 @@ this cycle, not remembered from an earlier one.
 ## Mode fit - the step-3 approve ask
 
 Two build modes, the recommendation decided per plan by the `Execution:` verdict that
-`habits-execution-strategy` gave for it, the reason in the option's description:
+`habits-execution-strategy` gave for this build (a one-step line an earlier choice wrote is not it), the reason in the option's description:
 
 - **session** - `task-implement` runs the tasks in this chat. Fits when the tasks are few,
   serial, or one stack's.
@@ -80,7 +80,7 @@ dependency order: the next card only after the last card's report is in and its 
 red stops the chain and routes by the build-time stop list.
 
 - **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-run the hook's `AUTO` stamp already stands - leave it)
-  (the dispatch hook blocks an unstamped implementer). It is the plan's own - `<plan id>` is the plan file's name without `.md`. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. DELETE it when the fan-out completes,
+  (the dispatch hook blocks an unstamped implementer). It is the plan's own - `<plan id>` is the plan file's name without `.md`. Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. DELETE it when the fan-out completes,
   before the step-5 stop: a live stamp can authorize an unrelated dispatch for up to 8h.
 - **The contract version.** MINT it - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY
   dispatch prompt verbatim, with the seat's literal note name:

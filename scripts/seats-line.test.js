@@ -214,3 +214,60 @@ test('a hook without fresh-session.js still runs', () => {
     assert.ok(context(r).includes('**Auto-run:'), 'the banner prints');
     assert.ok(!context(r).includes('**Seats:**'), 'no line without the engine');
 });
+
+// ---------------------------------------------------------------------------------------------
+// the D8 fix pass (docs/review-comparison-2026-11-03-evidence.md, I3 I4 I5 I8)
+// ---------------------------------------------------------------------------------------------
+test('I3: a switch down to haiku says lighter than the seats, never their own tier', () => {
+    const p = project();
+    assert.ok(context(viaSkill(p, 's15', 'task-design', transcript())).includes(HEAD));
+    const down = context(viaSkill(p, 's15', 'task-design', transcript([], 'claude-haiku-5-5')));
+    assert.ok(down.includes('**Seats:** this session now runs claude-haiku-5-5, lighter than the seats - no step moves for the model.'), down);
+    assert.ok(!down.includes("the seats' own tier"), down);
+});
+test('I4: with no layout.js the row and its read share the docs-root ledger', () => {
+    const dir = fs.mkdtempSync(path.join(TMP, 'hooks-'));
+    for (const f of fs.readdirSync(HOOKS)) if (f !== 'layout.js') { try { fs.copyFileSync(path.join(HOOKS, f), path.join(dir, f)); } catch { /* a folder */ } }
+    const p = project();
+    const on = (sid, model) => run({ hook_event_name: 'PreToolUse', tool_name: 'Skill', session_id: sid, cwd: p.root, transcript_path: transcript([], model),
+        tool_input: { skill: 'task-design', args: '' } }, { CLAUDE_PROJECT_DIR: p.root }, dir);
+    const up = on('s16', OPUS);
+    assert.strictEqual(up.status, 0, up.stderr);
+    assert.ok(context(up).includes(HEAD), up.stdout);
+    assert.ok(fs.existsSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', 's16.jsonl')), 'the fallback ledger holds the row');
+    const down = context(on('s16', 'claude-sonnet-5-5'));
+    assert.ok(down.includes("**Seats:** this session now runs claude-sonnet-5-5, the seats' own tier"), down);
+});
+test("I5: the down line reads only the ledger's newest 4 MB", () => {
+    const p = project();
+    fs.mkdirSync(p.blocks, { recursive: true });
+    const seat = JSON.stringify({ mode: 'probe', kind: 'seats-line', detail: { model: OPUS } }) + '\n';
+    const filler = (JSON.stringify({ mode: 'probe', kind: 'other', reason: 'x'.repeat(200) }) + '\n').repeat(Math.ceil((4 * 1024 * 1024 + 4096) / 240));
+    fs.writeFileSync(path.join(p.blocks, 's17.jsonl'), seat + filler);
+    assert.ok(!context(viaSkill(p, 's17', 'task-design', transcript([], 'claude-sonnet-5-5'))).includes('**Seats:**'), 'a row past the window is unread');
+    fs.writeFileSync(path.join(p.blocks, 's17b.jsonl'), filler + seat);
+    assert.ok(context(viaSkill(p, 's17b', 'task-design', transcript([], 'claude-sonnet-5-5'))).includes('no step moves'), 'a row inside it is read');
+});
+test("I8: the line's skill list is the rows' skills, the bullet's own and /mode-auto-run", () => {
+    const src = fs.readFileSync(path.join(HOOKS, 'guard-fresh-session-start.js'), 'utf8');
+    const m = /const SEATS_SKILLS = \[([^\]]*)\]/.exec(src);
+    assert.ok(m, 'SEATS_SKILLS is a literal list');
+    const listed = [...m[1].matchAll(/'([a-z-]+)'/g)].map((x) => x[1]).sort();
+    const { ROWS } = require('./d8-rows.js');
+    assert.deepStrictEqual(listed, [...new Set([...ROWS.map((r) => r.skill), 'habits-execution-strategy', 'mode-auto-run'])].sort());
+    const p = project();
+    for (const skill of ['mode-output-scorer', 'capture-preferences', 'capture-usage-report', 'task-verify-code']) {
+        const r = viaSkill(p, `s18-${skill}`, skill, transcript());
+        assert.strictEqual(r.status, 0, `${skill}: ${r.stderr}`);
+        assert.ok(!r.stdout.includes('**Seats:**'), `${skill} has no choice point`);
+    }
+});
+test('I8 review: /mode-auto-run prints the line only with a request', () => {
+    const p = project();
+    const line = (sid, args) => context(typed(p, sid, 'mode-auto-run', transcript(), {}, { command_args: args, prompt: `/mode-auto-run ${args}`.trim() }));
+    for (const [sid, args] of [['s19a', ''], ['s19b', '--mode-auto-run-off'], ['s19c', '--mode-auto-run-on']]) {
+        assert.ok(!line(sid, args).includes('**Seats:**'), `'/mode-auto-run ${args}' runs no flow`);
+        assert.strictEqual(seatRows(p, sid).length, 0, `'/mode-auto-run ${args}' writes no seats row`);
+    }
+    assert.ok(line('s19d', 'fix the login bug').includes(HEAD), 'a request runs the solve flow');
+});
