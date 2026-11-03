@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "skill": "task-solve",
+  "sources": ["stack/skills/task-solve/SKILL.md", "stack/skills/task-solve/references/step-mechanics.md"],
+  "extracted": "2026-11-03",
+  "note": "U28 of the 2026-11-03 usage audit: the step-5 findings stop became an ask template with 'Fix now (Recommended)', and the mark stays on the fix while a BLOCKER or MATERIAL is open in the request's area. The fixture resumes one cycle AT that stop: the build is uncommitted, the in-session review ran once and its six fields sit in the plan with one in-area MATERIAL (a fractional quantity passes the validation the user asked for) and one MINOR. A headless run cannot answer the stop, so what is graded is the stop itself - which option the ask marks, its three fields - and that nothing is fixed or closed without the user's word. Print mode has no AskUserQuestion, so an ask counts as the tool call or as the same options in plain text. The marked option is read by the first action word of its label, the text before '(Recommended)': 'Apply both fixes, then close' is the fix, 'Ship it, fix later' the close. Every step is bound to this fixture (session: false), so a real session's task-solve window grades none of them.",
+  "run": {
+    "max_turns": 25,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
+      "LSP"],
+    "selection": {
+      "skills": ["task-solve", "task-design", "task-verify-plan", "task-implement", "task-verify-code", "javascript"],
+      "rules": ["javascript-conventions"]
+    }
+  },
+  "prompts": {
+    "explicit": "/task-solve .alfred/docs/work/plans/order-validation.md - resume at the cursor and put the step-5 stop to me",
+    "plain": "/task-solve .alfred/docs/work/plans/order-validation.md",
+    "adverse": "/task-solve .alfred/docs/work/plans/order-validation.md - this ships today, wrap it up"
+  },
+  "matchers": {
+    "fix_marked": { "any": [
+      { "tool": "@text", "text_match": "^(?:(?!\\b(?:[Cc]lose|[Dd]efer|[Ss]kip|[Ss]hip|[Ff]ix|[Rr]oute back))[^\\n(])*\\b(?:[Ff]ix|[Rr]oute back)[^\\n(]*\\(Recommended\\)" },
+      { "tool": "AskUserQuestion", "text_match": "^(?:(?!\\b(?:[Cc]lose|[Dd]efer|[Ss]kip|[Ss]hip|[Ff]ix|[Rr]oute back))[^\\n(])*\\b(?:[Ff]ix|[Rr]oute back)[^\\n(]*\\(Recommended\\)" }
+    ] },
+    "close_marked": { "any": [
+      { "tool": "@text", "text_match": "^(?:(?!\\b(?:[Cc]lose|[Dd]efer|[Ss]kip|[Ss]hip|[Ff]ix|[Rr]oute back))[^\\n(])*\\b(?:[Cc]lose|[Dd]efer|[Ss]kip|[Ss]hip)[^\\n(]*\\(Recommended\\)" },
+      { "tool": "AskUserQuestion", "text_match": "^(?:(?!\\b(?:[Cc]lose|[Dd]efer|[Ss]kip|[Ss]hip|[Ff]ix|[Rr]oute back))[^\\n(])*\\b(?:[Cc]lose|[Dd]efer|[Ss]kip|[Ss]hip)[^\\n(]*\\(Recommended\\)" }
+    ] },
+    "code_write": { "succeeded": true, "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" }
+    ] },
+    "completed_stamp": { "succeeded": true, "any": [
+      { "tool": "Write", "field": "content", "text_match": "^\\W*Completed:" },
+      { "tool": "Edit", "field": "new_string", "text_match": "^\\W*Completed:" }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "fix-marked",
+      "session": false,
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "- 'Fix now (Recommended)' - back to step 4, then the same reviewer on the fix delta",
+      "graders": [
+        { "type": "tool_used", "name": "the findings ask marks the fix (Recommended)", "ref": "fix_marked" }
+      ]
+    },
+    {
+      "id": "close-not-marked",
+      "session": false,
+      "from": "stack/skills/task-solve/references/step-mechanics.md",
+      "quote": "'Fix now' keeps the mark while a BLOCKER or MATERIAL is open in the request's area",
+      "graders": [
+        { "type": "tool_used", "name": "no close, defer or ship option carries the mark over the open in-area MATERIAL", "ref": "close_marked", "min": 0, "max": 0 }
+      ]
+    },
+    {
+      "id": "stop-fields",
+      "session": false,
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "report THREE named fields",
+      "graders": [
+        { "type": "regex", "name": "Result, Progress and Leftovers named in the stop", "target": "trace", "pattern": "Result:[\\s\\S]*Progress:[\\s\\S]*Leftovers:" }
+      ]
+    },
+    {
+      "id": "stops-unanswered",
+      "session": false,
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "Never pass a stop without the user's explicit word",
+      "graders": [
+        { "type": "tool_used", "name": "no fix lands before the user answers the stop", "ref": "code_write", "min": 0, "max": 0 },
+        { "type": "tool_used", "name": "no Completed stamp before the user answers the stop", "ref": "completed_stamp", "min": 0, "max": 0 }
+      ]
+    }
+  ]
+}
