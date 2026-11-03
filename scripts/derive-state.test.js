@@ -802,7 +802,7 @@ test('classifyNew (2.1.0): an always skill or seat arrives, a stack seat is offe
     assert.deepStrictEqual([by['skill dotnet-web-backend'].verdict, by['skill dotnet-web-backend'].entry], ['offer', null]);
     assert.deepStrictEqual([by['agent aspnet-implementer'].verdict, by['agent aspnet-implementer'].entry, by['agent aspnet-implementer'].recommend], ['offer', 'alfred-code', 'leave'],
         'the core carries it, but a seat nobody picked is denied - taking it copies its skills');
-    assert.ok(by['agent aspnet-implementer'].copies.includes('skill csharp'), 'the preloads a yes copies are named');
+    assert.ok(by['agent aspnet-implementer'].copies.includes('skill dotnet-data-access'), 'the preloads a yes copies are named');
     assert.strictEqual(by['agent evidence-gatherer'].verdict, 'arrives');
     assert.strictEqual(by['agent code-style-analyzer'].verdict, 'off');
 });

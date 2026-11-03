@@ -101,7 +101,7 @@ test('M52: web-angular-implementer loads the design-quality reference, the exten
 {
     const web = squash(body('web-angular-implementer'));
     assert.doesNotMatch(web, /Design quality section/, 'angular-conventions has no such section');
-    assert.ok(web.includes('load `references/design-quality.md` of the preloaded `angular-conventions`'), 'the reference its SKILL.md names');
+    assert.ok(web.includes('load `references/design-quality.md` of `angular-conventions`'), 'the reference its SKILL.md names');
     assert.ok(fs.existsSync(path.join(ROOT, 'stack', 'skills', 'angular-conventions', 'references', 'design-quality.md')));
     assert.ok(squash(readRel('stack/skills/angular-conventions/SKILL.md')).includes('load `references/design-quality.md`'), 'the skill points at it too');
     const ext = squash(body('browser-extension-implementer'));
@@ -361,7 +361,15 @@ test('agents F15 + F17: no implementation product in a role line, and the review
     assert.match(text, /^- Load the domain skill for a seam you must judge in depth/m);
 });
 
-test('agents F06: every quoted skill-section pointer in a trap list resolves to a heading of a skill the seat preloads', () =>
+// Audit 2026-10-30 AG-03 candidate: a trio seat loads the code skills its stack already installs through the Skill tool at
+// the step that writes or judges code, so a pointer may resolve into one of those as well as into a preload.
+const stepLoads = (seat) =>
+{
+    const line = body(seat).split('\n').find((l) => /through the Skill tool - (they are|it is) not preloaded: /.test(l));
+    return line ? [...line.replace(/^\d\. /, '').split(/\. (?=[A-Z])/)[0].matchAll(/`([a-z][a-z0-9-]*)` \(/g)].map((m) => m[1]) : [];
+};
+
+test('agents F06: every quoted skill-section pointer in a trap list resolves to a heading of a skill the seat preloads or loads at its code step', () =>
 {
     const headings = (skill) =>
     {
@@ -372,7 +380,7 @@ test('agents F06: every quoted skill-section pointer in a trap list resolves to 
     for (const s of seats)
     {
         const traps = section(body(s), 'Failure modes I hunt');
-        const preloads = meta(s).skills || [];
+        const preloads = [...(meta(s).skills || []), ...stepLoads(s)];
         for (const m of traps.matchAll(/'## ([^']+)'/g))
         {
             pointers++;

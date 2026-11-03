@@ -95,3 +95,102 @@ test('AG-07: no seat restates the navigation tool order; each still points at th
         if (/the navigation tools your start line orders/.test(body)) assert.match(body, /`\.claude\/rules\/alfred-navigation\.md`/, `${s}: the pointer`);
     }
 });
+
+// AG-03: the 30 trio seats preload 12k-60k chars of skill bodies on every dispatch - a plan audit and a findings-plan run
+// included. The candidate is the install-safe split: a seat keeps a preload where it is that skill's only install route in
+// the stack that hosts it, or a process skill (habits-*, task-design); every other code-skill preload leaves `skills:` and
+// the body loads it through the Skill tool in ONE directive at the step that writes or judges code. The pins this moved
+// held 'prose-instructed loads fired in 0 of 5 seats' - the measurement the billed A/B re-tests.
+const AG03 = {
+    'aspnet-implementer': { moved: ['csharp', 'dotnet-testing', 'dotnet-web-error-handling'], kept: ['dotnet-data-access', 'dotnet-web-backend', 'habits-done-gate', 'habits-test-first'] },
+    'aspnet-solution-designer': { moved: ['csharp-design-patterns', 'dotnet-testing'], kept: ['dotnet-web-backend', 'task-design'] },
+    'aspnet-verifier': { moved: ['csharp', 'dotnet-testing'], kept: ['dotnet-code-quality', 'dotnet-data-access', 'dotnet-web-backend', 'habits-done-gate'] },
+    'browser-extension-implementer': { moved: ['javascript', 'typescript'], kept: ['browser-extension', 'habits-done-gate', 'habits-test-first'] },
+    'browser-extension-solution-designer': { moved: ['ts-js-testing'], kept: ['browser-extension', 'task-design'] },
+    'browser-extension-verifier': { moved: ['javascript', 'ts-js-testing', 'typescript'], kept: ['browser-extension', 'habits-done-gate'] },
+    'console-implementer': { moved: ['csharp', 'dotnet-testing'], kept: ['dotnet-hosted-services', 'habits-done-gate', 'habits-test-first'] },
+    'console-solution-designer': { moved: ['csharp-design-patterns', 'dotnet-testing'], kept: ['dotnet-hosted-services', 'task-design'] },
+    'console-verifier': { moved: ['csharp', 'dotnet-testing'], kept: ['dotnet-code-quality', 'dotnet-hosted-services', 'habits-done-gate'] },
+    'data-implementer': { moved: ['database-conventions'], kept: ['csharp', 'dotnet-data-access', 'dotnet-testing', 'habits-done-gate', 'habits-test-first'] },
+    'data-solution-designer': { moved: ['database-conventions', 'dotnet-migrate'], kept: ['task-design'] },
+    'data-verifier': { moved: ['database-conventions', 'dotnet-migrate'], kept: ['dotnet-testing', 'habits-done-gate'] },
+    'devops-implementer': { moved: ['devops'], kept: ['habits-done-gate'] },
+    'devops-solution-designer': { moved: ['devops'], kept: ['task-design'] },
+    'devops-verifier': { moved: ['devops'], kept: ['habits-done-gate'] },
+    'ionic-angular-implementer': { moved: ['angular-conventions', 'javascript', 'typescript'], kept: ['ionic', 'habits-done-gate', 'habits-test-first'] },
+    'ionic-angular-solution-designer': { moved: ['angular-conventions', 'angular-testing'], kept: ['ionic', 'task-design'] },
+    'ionic-angular-verifier': { moved: ['angular-conventions', 'angular-testing', 'javascript', 'typescript'], kept: ['ionic', 'habits-done-gate'] },
+    'web-angular-implementer': { moved: ['angular-conventions', 'javascript', 'typescript'], kept: ['habits-done-gate', 'habits-test-first'] },
+    'web-angular-solution-designer': { moved: ['angular-conventions', 'angular-testing'], kept: ['task-design'] },
+    'web-angular-verifier': { moved: ['angular-conventions', 'angular-testing', 'javascript', 'typescript'], kept: ['habits-done-gate'] },
+    'windows-service-implementer': { moved: ['csharp', 'dotnet-testing'], kept: ['dotnet-hosted-services', 'dotnet-windows-service', 'habits-done-gate', 'habits-test-first'] },
+    'windows-service-solution-designer': { moved: ['csharp-design-patterns', 'dotnet-testing'], kept: ['dotnet-hosted-services', 'dotnet-windows-service', 'task-design'] },
+    'windows-service-verifier': { moved: ['csharp', 'dotnet-testing'], kept: ['dotnet-code-quality', 'dotnet-hosted-services', 'dotnet-windows-service', 'habits-done-gate'] },
+    'winforms-implementer': { moved: ['csharp', 'dotnet-testing', 'dotnet-winforms'], kept: ['habits-done-gate', 'habits-test-first'] },
+    'winforms-solution-designer': { moved: ['csharp-design-patterns', 'dotnet-testing', 'dotnet-winforms'], kept: ['task-design'] },
+    'winforms-verifier': { moved: ['csharp', 'dotnet-testing', 'dotnet-winforms'], kept: ['dotnet-code-quality', 'habits-done-gate'] },
+    'wpf-implementer': { moved: ['csharp', 'dotnet-testing', 'dotnet-wpf'], kept: ['habits-done-gate', 'habits-test-first'] },
+    'wpf-solution-designer': { moved: ['csharp-design-patterns', 'dotnet-testing', 'dotnet-wpf'], kept: ['task-design'] },
+    'wpf-verifier': { moved: ['csharp', 'dotnet-testing', 'dotnet-wpf'], kept: ['dotnet-code-quality', 'habits-done-gate'] },
+};
+const TRIO = SEATS.filter((s) => /-(solution-designer|implementer|verifier)$/.test(s));
+const frontmatterSkills = (s) =>
+{
+    const fm = read(`stack/agents/${s}.md`).match(/^---\n([\s\S]*?)\n---\n/)[1];
+    const list = fm.match(/^skills:[ \t]*\n((?:[ \t]*-[ \t]*\S.*\n?)+)/m);
+    return list ? list[1].split('\n').map((l) => l.replace(/^[ \t]*-[ \t]*/, '').trim()).filter(Boolean) : [];
+};
+
+test('AG-03: each trio seat preloads only its only-route and process skills', () =>
+{
+    assert.deepStrictEqual(TRIO.slice().sort(), Object.keys(AG03).sort(), 'the 30 trio seats');
+    const graph = JSON.parse(read('meta/stack-graph.json'));
+    for (const [seat, { moved, kept }] of Object.entries(AG03))
+    {
+        assert.deepStrictEqual(frontmatterSkills(seat).slice().sort(), kept.slice().sort(), `${seat}: skills:`);
+        assert.deepStrictEqual(graph.agents[seat].skills.slice().sort(), kept.slice().sort(), `${seat}: the graph edge`);
+        for (const s of moved) assert.ok(!graph.agents[seat].skills.includes(s), `${seat}: ${s} left the preloads`);
+    }
+});
+
+test('AG-03: ONE Skill-tool load directive per seat, at the step that writes or judges code, naming every moved skill', () =>
+{
+    for (const [seat, { moved }] of Object.entries(AG03))
+    {
+        const text = read(`stack/agents/${seat}.md`);
+        const body = text.slice(text.indexOf('\n---\n', 4) + 5);
+        const directives = body.split('\n').filter((l) => /through the Skill tool - (they are|it is) not preloaded: /.test(l));
+        assert.strictEqual(directives.length, 1, `${seat}: one directive`);
+        const [line] = directives;
+        assert.match(line, /^\d\. Before (the first code edit|judging the code|judging the fit|setting the test strategy), load (these|this) through the Skill tool - (they are|it is) not preloaded: /, `${seat}: a numbered step opens with it`);
+        const section = body.slice(0, body.indexOf(line)).split('\n').filter((l) => /^## /.test(l)).pop();
+        assert.match(section, /^## (Loop|Checks|Method) \(bounded\)$/, `${seat}: the directive sits in the steps`);
+        const named = line.replace(/^\d\. /, '').split(/\. (?=[A-Z])/)[0];
+        for (const s of moved) assert.ok(named.includes(`\`${s}\` (`), `${seat}: the directive names ${s} with what it covers`);
+        // no sentence still says a moved skill is preloaded
+        for (const sentence of squash(body).split(/(?<=[.;])\s+/))
+        {
+            if (!/\bpreloaded\b/.test(sentence) || /not preloaded/.test(sentence)) continue;
+            for (const s of moved) assert.ok(!sentence.includes(`\`${s}\``), `${seat}: '${sentence.slice(0, 120)}' still calls ${s} preloaded`);
+        }
+    }
+});
+
+test('AG-03: nothing drops out of a stack\'s install - every stack closes the same skill set with the moved preloads put back', () =>
+{
+    const { computeClosure, withAlways } = require('./stack-select.js');
+    const graph = JSON.parse(read('meta/stack-graph.json'));
+    const recs = JSON.parse(read('meta/recommendations.json'));
+    const before = JSON.parse(JSON.stringify(graph));
+    for (const [seat, { moved }] of Object.entries(AG03)) before.agents[seat].skills = [...new Set([...before.agents[seat].skills, ...moved])];
+    const hosting = Object.entries(recs.stacks).filter(([, seed]) => (seed.agents || []).some((a) => AG03[a]));
+    assert.strictEqual(hosting.length, 10, 'the 10 trio stacks');
+    for (const [tag, seed] of Object.entries(recs.stacks))
+    {
+        assert.deepStrictEqual(computeClosure(graph, seed).skills, computeClosure(before, seed).skills, `${tag}: the stack's own closure`);
+        assert.deepStrictEqual(computeClosure(graph, withAlways(seed, recs.always)).skills, computeClosure(before, withAlways(seed, recs.always)).skills, `${tag}: the install closure`);
+    }
+    for (const [tag, seed] of hosting)
+        for (const seat of seed.agents.filter((a) => AG03[a]))
+            for (const s of AG03[seat].moved) assert.ok(computeClosure(graph, seed).skills.includes(s), `${tag}: ${s} (moved off ${seat}) still installs`);
+});

@@ -23,7 +23,7 @@ test('--check always names its verdict, clean or not', () => {
 
 test('an agent pulls its declared skills and plugins; body mentions pull nothing', () => {
     const c = computeClosure(graph, { agents: ['aspnet-solution-designer'] });
-    for (const s of ['csharp-design-patterns', 'dotnet-web-backend', 'dotnet-testing'])
+    for (const s of ['dotnet-web-backend', 'task-design'])
     {
         assert.ok(c.skills.includes(s), `expected skill ${s} pulled by aspnet-solution-designer's frontmatter`);
     }
@@ -31,16 +31,22 @@ test('an agent pulls its declared skills and plugins; body mentions pull nothing
     // The dotnet ROUTER is deliberately not preloaded by the designers any more (a router beside its
     // own leaves cost ~15k chars per dispatch); it reaches the install through the C# stack seeds.
     assert.ok(!c.skills.includes('dotnet'), 'the dotnet router is no longer an agent edge');
-    // aspnet-implementer preloads its operative stack skills via skills: frontmatter (the
-    // prose-instructed loads fired in 0 of 5 seats in one measured session while every
-    // frontmatter preload landed). A per-task surface pick it merely NAMES in the body is no
-    // edge at all - naming a skill must never reach an install decision - and a body-sourced
-    // agent still locks nothing.
+    // aspnet-implementer preloads via skills: frontmatter the stack skills its stack installs by no other route
+    // (prose-instructed loads fired in 0 of 5 seats in one measured session while every frontmatter preload landed).
+    // Audit 2026-10-30 AG-03 candidate: a code skill the stack's own seed or rules already install leaves the preloads
+    // and is loaded at the code step through the Skill tool - the A/B re-tests that 0-of-5 measurement. A per-task
+    // surface pick it merely NAMES in the body is no edge at all - naming a skill must never reach an install
+    // decision - and a body-sourced agent still locks nothing.
     const impl = computeClosure(graph, { agents: ['aspnet-implementer'] });
-    for (const s of ['csharp', 'dotnet-web-backend', 'dotnet-web-error-handling', 'dotnet-data-access', 'dotnet-testing'])
+    for (const s of ['dotnet-web-backend', 'dotnet-data-access', 'habits-done-gate', 'habits-test-first'])
     {
         assert.ok(impl.skills.includes(s), `the frontmatter preload '${s}' is a hard edge`);
     }
+    const aspnet = computeClosure(graph, require('../meta/recommendations.json').stacks.aspnet);
+    for (const s of ['csharp', 'dotnet-testing', 'dotnet-web-error-handling']) assert.ok(!impl.skills.includes(s), `'${s}' left the implementer's preloads`);
+    for (const s of ['csharp-design-patterns', 'dotnet-testing']) assert.ok(!c.skills.includes(s), `'${s}' left the designer's preloads`);
+    for (const s of ['csharp', 'csharp-design-patterns', 'dotnet-testing', 'dotnet-web-error-handling'])
+        assert.ok(aspnet.skills.includes(s), `'${s}' still installs with the aspnet stack, by its seed or rules`);
     assert.strictEqual(graph.agents['aspnet-implementer'].suggests, undefined, 'the suggests edge is removed from the graph');
     assert.ok(!impl.skills.includes('dotnet-minimal-api'), 'a per-task surface pick named in the body is not pulled');
     // The minimal-code plugin was dropped from the stack in 0.2.74 (a standing contradiction with

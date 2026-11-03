@@ -36,7 +36,9 @@ test('every house cite is bare - the project copy - and names a library skill', 
             assert.ok(library.has(line), `${r.file}: bare ${line} must be a library skill`);
         }
     }
-    assert.ok(bare > 100, `the seats preload house skills (${bare})`);
+    // a floor that keeps the loop above from passing on nothing: 149 cites before the audit 2026-10-30 AG-03 candidate
+    // moved each code skill a stack already installs out of the trio preloads, 80 after
+    assert.ok(bare > 60, `the seats preload house skills (${bare})`);
 });
 
 // No shipped agent preloads a foreign skill since R72, so a fixture seat carries one.

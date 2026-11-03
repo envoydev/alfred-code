@@ -374,11 +374,8 @@
     },
     "aspnet-implementer": {
       "skills": [
-        "csharp",
         "dotnet-data-access",
-        "dotnet-testing",
         "dotnet-web-backend",
-        "dotnet-web-error-handling",
         "habits-done-gate",
         "habits-test-first"
       ],
@@ -389,8 +386,6 @@
     },
     "aspnet-solution-designer": {
       "skills": [
-        "csharp-design-patterns",
-        "dotnet-testing",
         "dotnet-web-backend",
         "task-design"
       ],
@@ -401,10 +396,8 @@
     },
     "aspnet-verifier": {
       "skills": [
-        "csharp",
         "dotnet-code-quality",
         "dotnet-data-access",
-        "dotnet-testing",
         "dotnet-web-backend",
         "habits-done-gate"
       ],
@@ -417,9 +410,7 @@
       "skills": [
         "browser-extension",
         "habits-done-gate",
-        "habits-test-first",
-        "javascript",
-        "typescript"
+        "habits-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -429,8 +420,7 @@
     "browser-extension-solution-designer": {
       "skills": [
         "browser-extension",
-        "task-design",
-        "ts-js-testing"
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -440,10 +430,7 @@
     "browser-extension-verifier": {
       "skills": [
         "browser-extension",
-        "habits-done-gate",
-        "javascript",
-        "ts-js-testing",
-        "typescript"
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -466,9 +453,7 @@
     },
     "console-implementer": {
       "skills": [
-        "csharp",
         "dotnet-hosted-services",
-        "dotnet-testing",
         "habits-done-gate",
         "habits-test-first"
       ],
@@ -479,9 +464,7 @@
     },
     "console-solution-designer": {
       "skills": [
-        "csharp-design-patterns",
         "dotnet-hosted-services",
-        "dotnet-testing",
         "task-design"
       ],
       "skillsSource": "frontmatter",
@@ -491,10 +474,8 @@
     },
     "console-verifier": {
       "skills": [
-        "csharp",
         "dotnet-code-quality",
         "dotnet-hosted-services",
-        "dotnet-testing",
         "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
@@ -505,7 +486,6 @@
     "data-implementer": {
       "skills": [
         "csharp",
-        "database-conventions",
         "dotnet-data-access",
         "dotnet-testing",
         "habits-done-gate",
@@ -518,8 +498,6 @@
     },
     "data-solution-designer": {
       "skills": [
-        "database-conventions",
-        "dotnet-migrate",
         "task-design"
       ],
       "skillsSource": "frontmatter",
@@ -529,8 +507,6 @@
     },
     "data-verifier": {
       "skills": [
-        "database-conventions",
-        "dotnet-migrate",
         "dotnet-testing",
         "habits-done-gate"
       ],
@@ -541,7 +517,6 @@
     },
     "devops-implementer": {
       "skills": [
-        "devops",
         "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
@@ -551,7 +526,6 @@
     },
     "devops-solution-designer": {
       "skills": [
-        "devops",
         "task-design"
       ],
       "skillsSource": "frontmatter",
@@ -561,7 +535,6 @@
     },
     "devops-verifier": {
       "skills": [
-        "devops",
         "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
@@ -605,12 +578,9 @@
     },
     "ionic-angular-implementer": {
       "skills": [
-        "angular-conventions",
         "habits-done-gate",
         "habits-test-first",
-        "ionic",
-        "javascript",
-        "typescript"
+        "ionic"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -619,8 +589,6 @@
     },
     "ionic-angular-solution-designer": {
       "skills": [
-        "angular-conventions",
-        "angular-testing",
         "ionic",
         "task-design"
       ],
@@ -631,12 +599,8 @@
     },
     "ionic-angular-verifier": {
       "skills": [
-        "angular-conventions",
-        "angular-testing",
         "habits-done-gate",
-        "ionic",
-        "javascript",
-        "typescript"
+        "ionic"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -703,11 +667,8 @@
     },
     "web-angular-implementer": {
       "skills": [
-        "angular-conventions",
         "habits-done-gate",
-        "habits-test-first",
-        "javascript",
-        "typescript"
+        "habits-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -716,8 +677,6 @@
     },
     "web-angular-solution-designer": {
       "skills": [
-        "angular-conventions",
-        "angular-testing",
         "task-design"
       ],
       "skillsSource": "frontmatter",
@@ -727,11 +686,7 @@
     },
     "web-angular-verifier": {
       "skills": [
-        "angular-conventions",
-        "angular-testing",
-        "habits-done-gate",
-        "javascript",
-        "typescript"
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -740,9 +695,7 @@
     },
     "windows-service-implementer": {
       "skills": [
-        "csharp",
         "dotnet-hosted-services",
-        "dotnet-testing",
         "dotnet-windows-service",
         "habits-done-gate",
         "habits-test-first"
@@ -754,9 +707,7 @@
     },
     "windows-service-solution-designer": {
       "skills": [
-        "csharp-design-patterns",
         "dotnet-hosted-services",
-        "dotnet-testing",
         "dotnet-windows-service",
         "task-design"
       ],
@@ -767,10 +718,8 @@
     },
     "windows-service-verifier": {
       "skills": [
-        "csharp",
         "dotnet-code-quality",
         "dotnet-hosted-services",
-        "dotnet-testing",
         "dotnet-windows-service",
         "habits-done-gate"
       ],
@@ -781,9 +730,6 @@
     },
     "winforms-implementer": {
       "skills": [
-        "csharp",
-        "dotnet-testing",
-        "dotnet-winforms",
         "habits-done-gate",
         "habits-test-first"
       ],
@@ -794,9 +740,6 @@
     },
     "winforms-solution-designer": {
       "skills": [
-        "csharp-design-patterns",
-        "dotnet-testing",
-        "dotnet-winforms",
         "task-design"
       ],
       "skillsSource": "frontmatter",
@@ -806,10 +749,7 @@
     },
     "winforms-verifier": {
       "skills": [
-        "csharp",
         "dotnet-code-quality",
-        "dotnet-testing",
-        "dotnet-winforms",
         "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
@@ -819,9 +759,6 @@
     },
     "wpf-implementer": {
       "skills": [
-        "csharp",
-        "dotnet-testing",
-        "dotnet-wpf",
         "habits-done-gate",
         "habits-test-first"
       ],
@@ -832,9 +769,6 @@
     },
     "wpf-solution-designer": {
       "skills": [
-        "csharp-design-patterns",
-        "dotnet-testing",
-        "dotnet-wpf",
         "task-design"
       ],
       "skillsSource": "frontmatter",
@@ -844,10 +778,7 @@
     },
     "wpf-verifier": {
       "skills": [
-        "csharp",
         "dotnet-code-quality",
-        "dotnet-testing",
-        "dotnet-wpf",
         "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
