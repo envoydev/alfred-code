@@ -15,14 +15,20 @@ const path = require('path');
 const layout = require('./layout.js');
 
 const NOTE_CAP = 4000;
+// A run's whole list is cut at LIST_CAP, the oldest notes first (E-batch mcp-B-m4c: twelve full notes printed 48k).
+const LIST_CAP = 40000;
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// A Windows device name, with or without an extension, opens the device and never a file; a trailing dot is dropped by
+// Windows, so `a.` and `a` would be one store (E-batch mcp-B-m4b). Refused on every OS, so a name works on each.
+const DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/i;
+const segmentOk = (p) => SEGMENT.test(p) && !DEVICE.test(p) && !p.endsWith('.');
 const NAME_HELP = 'handoff: a note name is <feature>/<contract_version>/<seat>[/<task>], each part letters, digits, . _ -';
 
 const storeDir = (cwd = process.cwd()) => layout.statePath(layout.projectRootOf(cwd).project, 'handoff', '');
 const fileOf = (dir, feature) => path.join(dir, `${feature}.jsonl`);
 const segments = (name, min, max) => {
   const parts = String(name || '').split('/');
-  return parts.length >= min && parts.length <= max && parts.every((p) => SEGMENT.test(p)) ? parts : null;
+  return parts.length >= min && parts.length <= max && parts.every(segmentOk) ? parts : null;
 };
 
 // The feature's notes in write order; a line that is not a note is skipped. Throws on an unreadable file.
@@ -65,7 +71,17 @@ function list(run, { cwd } = {}) {
   const wanted = parts.length === 2 ? (n) => n.name.startsWith(prefix) : (n) => n.name === run;
   const notes = latest(readNotes(fileOf(storeDir(cwd), parts[0])).filter(wanted));
   if (!notes.length) return { code: 0, out: 'handoff: none' };
-  return { code: 0, out: notes.map((n) => `## ${n.name} (${n.at})\n${n.text}`).join('\n\n') };
+  const blocks = [];
+  let size = 0;
+  for (const n of notes) {
+    const block = `## ${n.name} (${n.at})\n${n.text}`;
+    const grown = size + (blocks.length ? 2 : 0) + block.length;
+    if (blocks.length && grown > LIST_CAP) break;
+    blocks.push(block);
+    size = grown;
+  }
+  const cut = notes.length - blocks.length;
+  return { code: 0, out: blocks.join('\n\n') + (cut ? `\n[${cut} more notes cut]` : '') };
 }
 
 function left(feature, { cwd } = {}) {
@@ -89,7 +105,7 @@ function purge(feature, { cwd } = {}) {
   return { code: 0, out: `handoff: purged ${names.length} notes (${names.join(', ') || 'none'})` };
 }
 
-module.exports = { put, list, left, purge, storeDir, NOTE_CAP };
+module.exports = { put, list, left, purge, storeDir, NOTE_CAP, LIST_CAP };
 
 if (require.main === module) {
   const [cmd, arg] = process.argv.slice(2);
@@ -108,6 +124,6 @@ if (require.main === module) {
     else if (cmd === 'purge') finish(purge(arg));
     else finish({ code: 2, err: 'usage: handoff.js put <name> | list <feature>/<contract_version>[/<seat>[/<task>]] | left [<feature>] | purge <feature>' });
   } catch (err) {
-    finish({ code: 1, err: `handoff: the store cannot be read (${err.code || err.name})` });
+    finish({ code: 1, err: `handoff: the store cannot be read or written (${err.code || err.name})` });
   }
 }

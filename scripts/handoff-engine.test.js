@@ -138,9 +138,74 @@ test('an unreadable store prints no count and exits 1', { skip: process.platform
         const r = run(root, ['left', 'checkout']);
         assert.strictEqual(r.status, 1);
         assert.strictEqual(r.out, '');
-        assert.match(r.err, /handoff: the store cannot be read \(EACCES\)/);
+        assert.match(r.err, /handoff: the store cannot be read or written \(EACCES\)/);
     }
     finally { fs.chmodSync(dir, 0o700); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('B-m4a: a failed write says read or written', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () =>
+{
+    const root = project();
+    const dir = path.join(root, '.alfred', 'state', 'handoff');
+    try
+    {
+        assert.strictEqual(run(root, ['put', 'checkout/v1/designer'], 'a\n').status, 0);
+        fs.chmodSync(dir, 0o500);
+        // a new feature's file: creating it needs the folder writable, which it is not
+        const r = run(root, ['put', 'orders/v1/implementer'], 'b\n');
+        assert.strictEqual(r.status, 1);
+        assert.strictEqual(r.out, '');
+        assert.match(r.err, /^handoff: the store cannot be read or written \(EACCES\)$/m);
+    }
+    finally { fs.chmodSync(dir, 0o700); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('B-m4b: Windows device names and a trailing dot are refused', () =>
+{
+    const root = project();
+    try
+    {
+        for (const bad of ['con', 'NUL', 'com1', 'LPT9', 'aux.txt', 'prn.md', 'a.'])
+        {
+            const seat = run(root, ['put', `checkout/v1/${bad}`], 'x\n');
+            assert.strictEqual(seat.status, 2, `seat ${bad}`);
+            assert.match(seat.err, /a note name is/);
+            assert.strictEqual(run(root, ['put', `${bad}/v1/designer`], 'x\n').status, 2, `feature ${bad}`);
+            assert.strictEqual(run(root, ['list', `${bad}/v1`]).status, 2, `list ${bad}`);
+            assert.strictEqual(run(root, ['purge', bad]).status, 2, `purge ${bad}`);
+        }
+        for (const good of ['console', 'nullable', 'a.b', 'com', 'lpt10'])
+            assert.strictEqual(run(root, ['put', `${good}/v1/designer`], 'x\n').status, 0, good);
+        assert.deepStrictEqual(fs.readdirSync(path.join(root, '.alfred', 'state', 'handoff')).sort(),
+            ['a.b.jsonl', 'com.jsonl', 'console.jsonl', 'lpt10.jsonl', 'nullable.jsonl']);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('B-m4c: a run list is capped in total', () =>
+{
+    const { LIST_CAP } = require(ENGINE);
+    assert.strictEqual(LIST_CAP, 40000);
+    const root = project();
+    try
+    {
+        for (let i = 1; i <= 12; i++)
+            assert.strictEqual(run(root, ['put', `checkout/v1/s${String(i).padStart(2, '0')}`], `${String(i).padStart(2, '0')}${'x'.repeat(3998)}\n`).status, 0);
+        const l = run(root, ['list', 'checkout/v1']);
+        assert.strictEqual(l.status, 0);
+        const lines = l.out.replace(/\n$/, '').split('\n');
+        const last = lines.pop();
+        const shown = (l.out.match(/^## checkout\/v1\/s\d\d /gm) || []).length;
+        assert.ok(shown >= 1 && shown < 12, `shown ${shown}`);
+        assert.strictEqual(last, `[${12 - shown} more notes cut]`);
+        assert.ok(lines.join('\n').length <= LIST_CAP, `body ${lines.join('\n').length}`);
+        // newest first, so the cut drops the oldest
+        assert.match(l.out, /^## checkout\/v1\/s12 /m);
+        assert.doesNotMatch(l.out, /^## checkout\/v1\/s01 /m);
+        // one note's own name is never cut
+        assert.doesNotMatch(run(root, ['list', 'checkout/v1/s01']).out, /more notes cut/);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('the data root setting places the store', () =>
