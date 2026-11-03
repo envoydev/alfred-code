@@ -794,3 +794,31 @@ test('the runtime\'s version is asked of the runtime itself (a node on PATH), pr
     assert.ok(lines.some((l) => l.startsWith(`hud: runtime too old - ${path.join(bin, 'node')} is node 22.17.0;`)), lines.join('\n'));
     assert.strictEqual(hud.versionOf(process.execPath), process.versions.node);
 });
+
+// E-batch final review M4: a pre-3.7.0 Windows install without Git Bash holds a CURRENT line (the CMD shape never changed)
+// and the 1.0.0 launcher, blind to a moved plugins root - m2's own population, refreshed with the line left as it is.
+test('final review M4: an older launcher of ours under a current line is refreshed, the line untouched', () => {
+    const OLD = fs.readFileSync(path.join(__dirname, 'fixtures', 'hud-launcher-1.0.0.txt'));
+    const opts = { platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE) };
+    const at = (dir) => path.join(dir, 'plugins', 'claude-hud', 'statusline.mjs');
+    const dir = account({});
+    applyHud(planHud({ configDir: dir, ...opts }));
+    const settingsBefore = fs.readFileSync(path.join(dir, 'settings.json'), 'utf8');
+    fs.writeFileSync(at(dir), OLD);
+    const plan = planHud({ configDir: dir, ...opts });
+    assert.strictEqual(plan.statusLine.state, 'current');
+    assert.strictEqual(plan.writesLine, false);
+    assert.strictEqual(plan.refreshesLauncher, true);
+    assert.strictEqual(plan.changes, 1);
+    const res = applyHud(plan);
+    assert.strictEqual(fs.readFileSync(at(dir), 'utf8'), LAUNCHER);
+    assert.ok(res.lines.some((l) => /^hud: launcher refreshed - /.test(l)), res.lines.join('\n'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'), settingsBefore, 'the line is left as it is');
+    assert.strictEqual(planHud({ configDir: dir, ...opts }).changes, 0, 'a re-run changes nothing');
+    // a launcher someone else wrote under a current line is still theirs
+    fs.writeFileSync(at(dir), '// claude-hud own\n');
+    const foreign = planHud({ configDir: dir, ...opts });
+    assert.strictEqual(foreign.changes, 0);
+    applyHud(foreign);
+    assert.strictEqual(fs.readFileSync(at(dir), 'utf8'), '// claude-hud own\n');
+});

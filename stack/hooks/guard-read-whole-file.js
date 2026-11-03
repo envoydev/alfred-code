@@ -2054,7 +2054,7 @@ function readLoopEchoes(command) {
 const SHELL_RUNS = /\b(?:bash|sh|zsh|dash|ksh|fish|su|script|pwsh|powershell)\b/i;
 // U25 (inventory A): a group `{ ...; }` or subshell `( ... )` whose stdout is redirected INTO a file copies what its commands
 // print, as `cat a > b` does - the segment cuts split it at its own `;`, so the `cat` inside read as a dump. The spans
-// [open, close] of each such group on the quote-filled text; a terminal device or an fd target (`>&2`) still prints, and a
+// [open, close, target] of each such group on the quote-filled text; a terminal device or an fd target (`>&2`) still prints, and a
 // substitution's parens (`$(`, `<(`, `>(`, `=(`, `((`) open no group.
 const GROUP_TO_FILE = /^[ \t]*(?:1|&)?>>?[ \t]*(?!&)([^\s;&|<>()]+)/;
 const TERMINAL_OUT = /^\/dev\/(?:std(?:out|err)|tty|fd\/[12])$|^\/proc\/self\/fd\/[12]$/;
@@ -2070,7 +2070,7 @@ function redirectedGroups(filled) {
     else if ((c === ')' || (c === '}' && /[\s;]/.test(before))) && stack.length && stack[stack.length - 1].close === c) {
       const open = stack.pop();
       const to = !open.text && GROUP_TO_FILE.exec(filled.slice(i + 1));
-      if (to && !TERMINAL_OUT.test(to[1])) spans.push([open.at, i]);
+      if (to && !TERMINAL_OUT.test(to[1])) spans.push([open.at, i, to[1]]);
     }
   }
   return spans;
@@ -2315,7 +2315,7 @@ function gitPrinted(words) {
 // `cp src/big.ts /tmp/b.txt && cat /tmp/b.txt`: the copy is not on disk when the hook runs (or holds something else),
 // so a later print of a copy's destination is sized as its source (audit 2026-10-30, found beside HK-19). cp / mv / ln /
 // install and `cat <src> > <dest>`; a destination folder takes the source's name.
-function copiesOf(command, filled) {
+function copiesOf(command, filled, groups = []) {
   const map = new Map();
   const base = anchorDirs[0] || process.cwd();
   const put = (dest, src, at) => { for (const k of [dest, pathMod.resolve(base, nativePath(dest))]) map.set(k, { src, at }); };
@@ -2332,6 +2332,20 @@ function copiesOf(command, filled) {
   }
   for (const m of command.matchAll(/(?:^|[;&|\n(])\s*cat[ \t]+("[^"]+"|'[^']+'|[^\s;&|<>]+)[ \t]*>[ \t]*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g)) {
     if (filled[m.index + m[0].indexOf('cat')] !== '\x01') put(unq(m[2]), unq(m[1]), m.index);
+  }
+  // E-batch final review I2: a group or subshell redirected into a file (U25) copies what its cats print, so a later print of
+  // the target is sized as a source - the largest, when several cats fill one target.
+  const sizeOf = (f) => { try { return fs.statSync(pathMod.resolve(base, nativePath(f))).size; } catch { return -1; } };
+  for (const [a, b, target] of groups) {
+    if (!target) continue;
+    const dest = unq(target);
+    let best = null;
+    for (const m of command.slice(a + 1, b).matchAll(/(?:^|[;&|\n({])\s*cat[ \t]+("[^"]+"|'[^']+'|[^\s;&|<>(){}]+)/g)) {
+      if (filled[a + 1 + m.index + m[0].indexOf('cat')] === '\x01') continue;
+      const src = unq(m[1]);
+      if (!best || sizeOf(src) > sizeOf(best)) best = src;
+    }
+    if (best) put(dest, best, a);
   }
   return map;
 }
@@ -2658,7 +2672,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // verb is text. A segment piped into a shell runs its strings, so it is read as written.
   const filled = quoteFilled(command);
   const intoFile = redirectedGroups(filled);
-  const copies = copiesOf(command, filled);
+  const copies = copiesOf(command, filled, intoFile);
   const cuts = [0];
   for (const s of groupsAsCuts(filled).matchAll(/&&|\|\||;|\n/g)) cuts.push(s.index, s.index + s[0].length); // a subshell or group's parens are cuts
   cuts.push(command.length);

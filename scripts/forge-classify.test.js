@@ -282,3 +282,32 @@ test('fn-10b: curl -K reads its config', () => {
     assert.ok(over && over.strength === 'unknown' && /64KB/.test(over.why), `over the cap: ${JSON.stringify(over)}`);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('final review I1: a heredoc inside an interpreter\'s own code argument is scanned', () => {
+  const bash = (command) => forge.classify({ tool_name: 'Bash', tool_input: { command }, cwd: os.tmpdir() });
+  const PY = "import requests\nrequests.put('https://api.github.com/repos/o/r/pulls/1/merge')";
+  const JS = "fetch('https://api.github.com/repos/o/r/pulls/1/merge', { method: 'PUT' })";
+  for (const command of [`python3 -c "$(cat <<'EOF'\n${PY}\nEOF\n)"`, `node -e "$(cat <<'EOF'\n${JS}\nEOF\n)"`, `node -e "$(cat <<< "${JS}")"`]) {
+    const r = bash(command);
+    assert.ok(r && r.concept === forge.CONCEPTS.MERGE, `${command.split('\n')[0]}: ${JSON.stringify(r)}`);
+  }
+  // fn-4 still holds: a substitution heredoc that feeds a command other than the interpreter's code stays text
+  assert.strictEqual(bash(`echo "$(cat <<'EOF'\n${JS}\nEOF\n)" > notes.md\nnode -e "console.log(1)"`), null);
+});
+
+test('final review M2: a curl config read from stdin, a descriptor or a non-file is unread', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-curlfd-'));
+  try {
+    const bash = (command) => forge.classify({ tool_name: 'Bash', tool_input: { command }, cwd: dir });
+    fs.mkdirSync(path.join(dir, 'cfgdir'));
+    for (const command of ['curl -K /dev/stdin <<< "url = https://api.github.com/repos/o/r/pulls/1/merge"', 'curl --config /dev/fd/0 < merge.cfg',
+      'curl -K /proc/self/fd/0', 'curl --config=/dev/fd/3 3< merge.cfg', 'curl -K cfgdir']) {
+      const r = bash(command);
+      assert.ok(r && r.strength === 'unknown' && /config file/.test(r.why), `${command}: ${JSON.stringify(r)}`);
+    }
+    // the read is never opened: readCurlConfig names a descriptor path unread without touching it
+    for (const f of ['/dev/stdin', '/dev/fd/0', '/dev/fd/3', '/proc/self/fd/0']) assert.strictEqual(forge.readCurlConfig(f, dir).why, `${f} is a descriptor`);
+    assert.strictEqual(forge.readCurlConfig('cfgdir', dir).why, 'cfgdir is not a regular file');
+    assert.ok(forge.readCurlConfig('merge.cfg', dir).why, 'a missing file stays unread');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

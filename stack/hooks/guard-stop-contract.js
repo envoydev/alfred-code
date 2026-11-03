@@ -3178,7 +3178,9 @@ if (payload.tool_name === 'AskUserQuestion') {
       const numberLine = numbers ? ` Measured now: ${fresh.payText(numbers.ctx, fresh.freshVerdict(numbers.ctx))}` : '';
       // A stale figure the ask already states ('Last measured: ~157k ...') is REPLACED by the fresh one, never left beside
       // it (usage audit 2026-11-03 U12, b2aa04d4: two contradicting figures in one ask).
-      const MEASURED_RE = /\b(?:last )?measured:?\s*~?\d[\d.,]*k?\b[^.]*\./i;
+      // A token figure only - after a colon, or one with its k (final review M3: 'measured 3 suites' is a count) - and up to its
+      // sentence's end, a '.' before a space or the end (a '.' inside '1.5x' cut the question there).
+      const MEASURED_RE = /\b(?:last )?measured(?::\s*~?\d[\d.,]*k?|\s+~?\d[\d.,]*k)\b[^\n]*?\.(?=\s|$)/i;
       const restated = (q) => !!numbers && typeof q.question === 'string' && MEASURED_RE.test(q.question);
       const MARK = /\s*\(Recommended\)/i;
       const dropBy = (test) => (opts) => {

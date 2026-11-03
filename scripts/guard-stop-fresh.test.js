@@ -1541,3 +1541,17 @@ test('guard-stop-contract: a /mode-auto-run run that reads the installed solve f
   assert.doesNotMatch(note('ta-reread', [auto, readOf(SOLVE), assistantRow('a', `Size: standard - two modules. ${fields}`), ...answered('u1'),
     typed('use the v2 endpoint'), readOf(SOLVE), assistantRow('b', fields)], goOn), /Size/);
 });
+
+// E-batch final review M3: the replaced figure ran to the first '.', so a decimal cut it ('about 1.5x' left '5x the cold
+// floor' in the question the user reads), and a 'measured 3 suites' sentence was taken for a token figure.
+test('guard-stop-contract (final review M3): a measured figure is replaced to its sentence end, and only a token figure', () => {
+  const hot = transcript('m3-hot', [assistantRow('h0', 'ok', { cache_creation_input_tokens: 90000 }), assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
+  const updOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
+  const opts = [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }];
+  const dec = updOf(askIn(hot, [{ question: 'Next? Last measured: ~157k tokens, about 1.5x the cold floor. Resume or stay?', options: opts }]));
+  assert.match(dec.questions[0].question, /^Next\? Measured now: This session carries ~900k[^]* Resume or stay\?$/, dec.questions[0].question);
+  assert.doesNotMatch(dec.questions[0].question, /5x the cold floor|157k/);
+  const suites = updOf(askIn(hot, [{ question: 'I measured 3 suites before. Resume or stay?', options: opts }]));
+  assert.match(suites.questions[0].question, /^I measured 3 suites before\. Resume or stay\?$/, 'a count of suites is no token figure');
+  assert.match(suites.questions[0].options[0].description, /Measured now:/, 'the fresh figure goes on the option instead');
+});

@@ -1587,3 +1587,28 @@ test('HK-02: standDown carries the narrowed twin rule, and a copied hook still n
     }
     finally { p.done(); }
 });
+
+// E-batch final review M1: guard-desktop-exec and guard-secret-value's own routes run as their own process and stood down
+// before they read the payload - with no session, a twin wired mid-session still stood these two protective guards down.
+test('final review M1: the standalone protective guards pass their session - a mid-session twin leaves them running', () => {
+    const rows = (file) => require('../meta/stack-manifest.json').hooks.filter((h) => h.file === file && /^(?:@|\^mcp__)/.test(h.matcher)).map((h) => `${file}::${h.matcher}`);
+    const p = twinProject();
+    try
+    {
+        assert.strictEqual(dispatch(p, 'guard-fresh-session-start.js', { session_id: 'S', hook_event_name: 'SessionStart', source: 'startup' }).status, 0);
+        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(copyRouteSettings([...rows('guard-desktop-exec.js'), ...rows('guard-secret-value.js')])));
+        for (const f of ['guard-desktop-exec.js', 'guard-secret-value.js']) fs.writeFileSync(path.join(p.repo, '.claude', 'hooks', f), '// copied\n');
+        fs.writeFileSync(path.join(p.repo, '.env'), DOTENV);
+        const shell = { tool_name: `mcp__${'win'}__PowerShell`, tool_input: { command: 'Remove-Item -Recurse C:\\x' } };
+        const read = { tool_name: `mcp__${'fsx'}__read_text_file`, tool_input: { path: path.join(p.repo, '.env') } };
+        for (const [file, call] of [['guard-desktop-exec.js', shell], ['guard-secret-value.js', read]])
+        {
+            const r = dispatch(p, file, { session_id: 'S', ...call });
+            assert.strictEqual(r.status, 2, `${file}: the plugin copy still judges for S: ${r.stdout}${r.stderr}`);
+            const fresh = dispatch(p, file, { session_id: 'S9', ...call });
+            assert.strictEqual(fresh.status, 0, `${file}: a session that began with the twin wired yields to it`);
+            assert.strictEqual(fresh.stdout + fresh.stderr, '', file);
+        }
+    }
+    finally { p.done(); }
+});

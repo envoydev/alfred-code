@@ -34,8 +34,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   SessionStart (startup, resume, clear, fork; a compaction keeps it), else by the first call naming the session in a
   set-up repo, or the first finding a twin in a repo never set up (exclusive create - the residual: a twin written before
   that call counts). Both dispatchers read `session_id` before their check and `useSession` it, so every guard they run
-  in-process is narrowed; a hook run as its own process, a call naming no session and an unreadable or unwritable
-  snapshot yield as before; a repo never set up with no twin gets no read and no write; a repo never set up (no install
+  in-process is narrowed. The two protective guards that also run as their own process (`guard-desktop-exec`, the secret
+  guard's MCP and SessionStart routes) take every gate but the twin yield first (`standDown(..., { twin: false })`) and
+  call `yieldToCopiedTwin` with the payload's session once they have read it (E-batch final review M1); any other hook run
+  as its own process, a call naming no session and an unreadable or unwritable snapshot yield as before; a repo never set up with no twin gets no read and no write; a repo never set up (no install
   record in it, any folder between it and its git top level (a monorepo package with its own install), the top itself -
   never a repo kept at the home directory, for the installer's `gitRoot` as much as the hooks, seam m3 - or - for a git
   worktree - its main checkout, so a worktree of an
@@ -431,7 +433,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     awk / `perl -p`, grep with an empty pattern, a read loop echoing every line, perl's handle read, php's
     `file_get_contents` / `readfile`); a bounded run, or one into a file, is not - and a group or subshell redirected to a
     file copies (U25: `{ echo a; cat big.html; } > out.txt` was cut at its own `;`; a terminal device or `>&2` still
-    prints). A verb, `;` or `|` inside a quoted string is
+    prints), and a later print of that file is sized as the largest file a cat inside the group printed, as HK-19 sizes
+    `cat a > b` (final review I2: `{ cat big.html; } > out.txt && cat out.txt`). A verb, `;` or `|` inside a quoted string is
     text (`grep -c 'cat -n' f` runs no cat), unless a shell runs the string (a shell's `-c`, `eval`, `watch`, a stage piped
     into `sh`), and pairing stops trusting quotes after a comment's apostrophe; `echo "$(cat f)"` prints what its
     substitution read, an assignment of one does not. Only a gated file over the threshold
@@ -1827,10 +1830,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     FORGE-SHAPED server (repo coordinates in the input, a forge word in the key with no local `repo_path`, or launched as
     a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). E-batch fn-1 /
     fn-4 / fn-10: a tool whose name holds `run` beside `code` (`browser_run_code_unsafe`) is no pipeline act; inline code is
-    read only where an interpreter runs it - its `-e` / `-c` string, a heredoc or here-string of its own stage or one an
-    earlier stage of its pipe passes on, never the whole command (`cat <<EOF > notes.md` beside a `node -e` is text); `gh
+    read only where an interpreter runs it - its `-e` / `-c` string, a heredoc or here-string of its own stage, one an
+    earlier stage of its pipe passes on, or one opened inside its own words (`python3 -c "$(cat <<'EOF' ... EOF)"`, final
+    review I1), never the whole command (`cat <<EOF > notes.md` beside a `node -e` is text); `gh
     api -F <key>=@<file>` is a hidden body; curl's `-K` / `--config` file is read (64KB, from where the call runs) and
-    parsed with the call, one it cannot read or past the cap making the call `unknown`; and a bare `@` refspec is `HEAD`
+    parsed with the call, one it cannot read or past the cap making the call `unknown` - a descriptor (`/dev/stdin`,
+    `/dev/fd/N`, `/proc/self/fd/N`) is never opened (the hook's own stdin is drained) and a non-file is refused by stat
+    before any open a FIFO would block (final review M2); and a bare `@` refspec is `HEAD`
     (`pushTargets`). A not-checked reason over 160 characters keeps git's END, the text after its last `: ` (fn-2). Every publish
     the gate allows, the push half off included, is ledgered in `<data root>/state/forge/ACTS-<session>.jsonl` under the
     REPOSITORY's root (`forge.js ledgerRoot` - a worktree and its main checkout share one), a `git push` one row per

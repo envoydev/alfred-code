@@ -47,12 +47,15 @@ function judgeTick(units) { JUDGE_WORK.used += units; if (JUDGE_WORK.used > JUDG
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 // R86: a repo never set up keeps this guard live but gets no block row (R54) - false fails open to logging.
 let unsetRepo = false;
+let twinYield = null;
 if (require.main === module) {
   let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
-    off = prelude.standDown('guard-secret-value');
+    // The twin yield waits for the payload's session (E-batch final review M1): a twin wired mid-session never stands it down.
+    off = prelude.standDown('guard-secret-value', undefined, undefined, { twin: false });
+    twinYield = (session) => prelude.yieldToCopiedTwin('guard-secret-value', undefined, { session });
     unsetRepo = prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
@@ -1551,6 +1554,9 @@ try {
   process.exit(0); // unparseable stdin - don't block
 }
 if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
+let yields = false;
+try { yields = Boolean(twinYield && twinYield(payload.session_id)); } catch { yields = false; }
+if (yields) process.exit(0);
 // SessionStart: the project's sensitive data by KEY only, and the run that uses it - nothing when there is none.
 if (payload.hook_event_name === 'SessionStart') {
   const cwd = payload.cwd || process.cwd();

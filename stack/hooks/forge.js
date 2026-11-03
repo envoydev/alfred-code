@@ -221,9 +221,14 @@ function curlConfigWords(text) {
 }
 function readCurlConfig(file, dir) {
   if (!file || file === '-') return { why: 'stdin' };
+  // E-batch final review M2: a descriptor names the CALL's stdin or a redirect, never a file the hook can read - its own stdin
+  // is drained, so `-K /dev/stdin <<< ...` read as an empty config and the call passed. A non-file is refused by stat, before
+  // an open a FIFO would block.
+  if (/^\/dev\/(?:stdin|fd\/\d+)$|^\/proc\/self\/fd\/\d+$/.test(file)) return { why: `${file} is a descriptor` };
   const where = path.resolve(dir || process.cwd(), file.replace(/^~(?=\/|$)/, require('node:os').homedir()));
   let fd;
   try {
+    if (!fs.statSync(where).isFile()) return { why: `${path.basename(where)} is not a regular file` };
     fd = fs.openSync(where, 'r');
     const buf = Buffer.alloc(CURL_CONFIG_MAX + 1);
     const n = fs.readSync(fd, buf, 0, buf.length, 0);
@@ -416,17 +421,20 @@ function classifyShell(c, raw, cwd, pre) {
   // stage's, or one an earlier stage of its pipe passes on (`cat <<EOF | node`); a body any other command takes is text
   // (E-batch fn-4: `cat <<EOF > notes.md` beside a `node -e` scanned the notes as code).
   let fed = null;
-  const fedTo = (cmd) => {
+  const fedTo = (cmd, span) => {
     if (!fed) {
       fed = [];
       const docs = new Map();
       try { for (const h of sw.heredocsOf(command)) docs.set(h.index, command.slice(h.bodyStart, h.bodyEnd)); } catch { /* none */ }
       for (const k of (parsed && parsed.cmds) || []) for (const r of k.redirs || []) {
-        if ((r.op === '<<' || r.op === '<<-') && docs.has(r.at)) fed.push({ cmd: k, text: docs.get(r.at) });
-        else if (r.op === '<<<' && r.target && typeof r.target.s === 'number') fed.push({ cmd: k, text: command.slice(r.target.s, r.target.e) });
+        if ((r.op === '<<' || r.op === '<<-') && docs.has(r.at)) fed.push({ cmd: k, at: r.at, text: docs.get(r.at) });
+        else if (r.op === '<<<' && r.target && typeof r.target.s === 'number') fed.push({ cmd: k, at: r.at, text: command.slice(r.target.s, r.target.e) });
       }
     }
-    return fed.filter((d) => d.cmd === cmd || (cmd && d.cmd.elem === cmd.elem && d.cmd.stage < cmd.stage)).map((d) => d.text);
+    // E-batch final review I1: one opened INSIDE the interpreter's own words (`python3 -c "$(cat <<'EOF' ... EOF)"`) is its
+    // code too - the substitution's `cat` owns the redirect, the interpreter runs what it prints.
+    const inside = (d) => span && typeof d.at === 'number' && d.at > span.at && d.at < span.end;
+    return fed.filter((d) => d.cmd === cmd || (cmd && d.cmd.elem === cmd.elem && d.cmd.stage < cmd.stage) || inside(d)).map((d) => d.text);
   };
   const dirOf = (w) => { try { return (read.callDir && read.callDir({ at: w.at })) || cwd || process.cwd(); } catch { return cwd || process.cwd(); } };
   for (const w of words) {
@@ -440,7 +448,7 @@ function classifyShell(c, raw, cwd, pre) {
     else if (api) r = classifyApi(c, api, 'api');
     else if (c.interpreters.has(name)) {
       const flagAt = argv.findIndex((a) => /^(?:-[A-Za-z]*[eEc]|-p|--eval|--print|-command)$/i.test(a));
-      const code = [...(flagAt >= 0 && argv[flagAt + 1] ? [argv[flagAt + 1]] : []), ...fedTo(w.cmd)];
+      const code = [...(flagAt >= 0 && argv[flagAt + 1] ? [argv[flagAt + 1]] : []), ...fedTo(w.cmd, span)];
       r = code.flatMap((t) => interpreterCalls(c, t)).sort((a, b) => rankOf(b) - rankOf(a))[0] || null;
     } else if (name === 'git') {
       if (argv.length && c.nounOf.get(argv[0]) === 'change') r = classifyCli(c, name, argv);
@@ -784,4 +792,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-module.exports = { classify, classifyCommand, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

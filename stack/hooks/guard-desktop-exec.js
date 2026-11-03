@@ -36,12 +36,15 @@ let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 // PROTECTIVE (hook-prelude.js, final review IM2): live under `minimal`, a Cursor payload and a repo never set up,
 // where it writes no block row (R54) - false fails open to logging.
 let unsetRepo = false;
+let twinYield = null;
 if (require.main === module) {
   let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
-    off = prelude.standDown('guard-desktop-exec');
+    // The twin yield waits for the payload's session (E-batch final review M1): a twin wired mid-session never stands it down.
+    off = prelude.standDown('guard-desktop-exec', undefined, undefined, { twin: false });
+    twinYield = (session) => prelude.yieldToCopiedTwin('guard-desktop-exec', undefined, { session });
     unsetRepo = prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
   if (off) process.exit(0);
@@ -57,6 +60,9 @@ const CODE_LINE = 'browser_run_code_unsafe';
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
 if (!payload || typeof payload !== 'object') process.exit(0);
+let yields = false;
+try { yields = Boolean(twinYield && twinYield(payload.session_id)); } catch { yields = false; }
+if (yields) process.exit(0);
 
     // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
     // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a

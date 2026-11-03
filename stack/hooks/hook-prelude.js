@@ -1298,13 +1298,14 @@ function cursorStandDown(input, file, argv)
 
 // The one call every hook makes: true means do nothing at all, exit 0, print nothing. `setUp: false` skips
 // GATE 4 alone - for a hook that keeps one check live in a repo never set up and reads neverSetUp() itself
-// (the dispatch guard's implementer gate, M9).
-function standDown(hook, env, argv, { setUp = true, call } = {})
+// (the dispatch guard's implementer gate, M9). `twin: false` leaves GATE 3 to the caller: a hook run as its own process
+// calls yieldToCopiedTwin once it has read the payload's session (E-batch final review M1).
+function standDown(hook, env, argv, { setUp = true, call, twin = true } = {})
 {
     try
     {
         if (isCliInvocation(argv)) return false;
-        return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env, call)
+        return hookDisabled(hook, env) || profileOff(hook, env) || (twin && yieldToCopiedTwin(hook, env, call))
             || (setUp && neverSetUp(env) && !PROTECTIVE.has(baseName(hook)));
     }
     catch { return false; }
