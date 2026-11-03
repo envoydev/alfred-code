@@ -766,9 +766,9 @@ function addLines(lines, add = [], log = () => {})
 // introduced, or one an --add pulls in, arrives with what needs it. `from` is what the user picked;
 // hook lines are leaf picks and pass through untouched (`hook none` included), and a name the graph
 // does not know - the user's own item - is left where it is.
-function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () => {} } = {})
+function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () => {}, label = 'installed-only' } = {})
 {
-    if (!graph || !graph.catalog) { log('installed-only: closure skipped - no dependency graph in this source'); return [...lines]; }
+    if (!graph || !graph.catalog) { log(`${label}: closure skipped - no dependency graph in this source`); return [...lines]; }
     const { computeClosure, findUnknownNames, dropUnknownNames, categoryOf } = require('../stack-select.js');
     const key = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mcps', plugin: 'plugins' };
     const raw = { skills: [], agents: [], rules: [], mcps: [], plugins: [] };
@@ -810,15 +810,25 @@ function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () 
     }
     const out = [...lines];
     for (const [name, { category, why, reason }] of left)
-        if (!out.includes(`${category} ${name}`)) log(`installed-only: required: ${category} ${name} - ${why}; left out, ${reason}`);
+        if (!out.includes(`${category} ${name}`)) log(`${label}: required: ${category} ${name} - ${why}; left out, ${reason}`);
     for (const [name, why] of Object.entries(closure.reasons))
     {
         const line = `${categoryOf(closure, name)} ${name}`;
         if (left.has(name) || out.includes(line)) continue;
         out.push(line);
-        log(`installed-only: required: ${line} - ${why}`);
+        log(`${label}: required: ${line} - ${why}`);
     }
     return out;
+}
+
+// E-batch O4: install takes a --selection file as the walk wrote it, already closed - a hand-written partial one was applied
+// as given and closed only by the next update's read-back. It is closed here from its own picks, each line it adds said
+// once; the walk's own selection gains nothing (computeClosure is what wrote it), so the pass is idempotent.
+function closeSelection(lines, { graph, log = () => {} } = {})
+{
+    const picks = lines.map((l) => String(l).trim()).filter((l) => /^(?:skill|agent|rule|mcp|plugin) \S/.test(l));
+    if (!graph || !graph.catalog) return [...lines];
+    return closeLines(lines, { from: picks, graph, log, label: 'selection' });
 }
 
 // `--drop`: the items the user switched off (configure's drop, update carrying a renamed item's
@@ -933,6 +943,6 @@ function lockedLines(always)
 }
 
 module.exports = {
-    lockedLines, addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, foreignRefFiles, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    lockedLines, addLines, closeLines, closeSelection, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, foreignRefFiles, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, GENERATED_FILES, FORMER_PLUGINS,
 };

@@ -675,7 +675,9 @@ const readObject = (file) =>
 // R6: `autoMemoryDirectory` where Claude Code reads it first - the managed drop-ins (merged after the file in alphabetical
 // order, so the last wins), the managed file, the member's settings.local.json, its settings.json, the account's.
 // `trusted` reads only the files a cloned repo cannot ship - the managed ones, the account's, and the settings.local.json
-// Claude Code reads (localSettingsFile) when `untracked(file)` vouches for it.
+// Claude Code reads (localSettingsFile) when `untracked(file)` vouches for it. The untrusted read takes that same file
+// first, then a leftover in the start folder, then settings.json (E-batch 300-memdirs: a session started in a sub-folder
+// read the start folder's file alone, while Claude Code reads the repo root's - the main checkout's for a worktree).
 function autoMemorySetting(root, { account, home, managed, trusted = false, untracked = () => false, platform = process.platform })
 {
     const dropDir = path.join(path.dirname(managed), 'managed-settings.d');
@@ -683,7 +685,8 @@ function autoMemorySetting(root, { account, home, managed, trusted = false, untr
     try { drops = fs.readdirSync(dropDir).filter((n) => n.endsWith('.json') && !n.startsWith('.')).sort().reverse().map((n) => path.join(dropDir, n)); }
     catch { /* no drop-in folder */ }
     const local = trusted ? localSettingsFile(root, { home, platform }) : path.join(root, '.claude', 'settings.local.json');
-    const project = trusted ? (local ? [local] : []) : [local, path.join(root, '.claude', 'settings.json')];
+    const rootLocal = trusted ? null : localSettingsFile(root, { home, platform });
+    const project = trusted ? (local ? [local] : []) : [...new Set([rootLocal, local].filter(Boolean)), path.join(root, '.claude', 'settings.json')];
     for (const file of [...drops, managed, ...project, path.join(account, 'settings.json')])
     {
         const value = (readObject(file) || {}).autoMemoryDirectory;
@@ -704,7 +707,7 @@ const MEMORY_NAME_MAX = 200;
 function memoryDirsOf(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
     const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
-    const set = autoMemorySetting(root, { account, home, managed });
+    const set = autoMemorySetting(root, { account, home, managed, platform });
     if (set) return [set];
     if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
     const top = gitTopOf(root, { home });

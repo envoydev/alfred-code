@@ -52,7 +52,7 @@ const VALUED = new Map([
 ]);
 
 const BOOLEAN = new Map([
-    ['--forge-cli', 'forgeCli'], ['--keep-pins', 'keepPins'],
+    ['--forge-cli', 'forgeCli'], ['--github-cli', 'forgeCli'], ['--keep-pins', 'keepPins'],
     ['--installed-only', 'installedOnly'], ['--print-plan', 'printPlan'], ['--skills-only', 'skillsOnly'],
 ]);
 
@@ -86,7 +86,10 @@ const RETIRED_SCOPED = new Set(['browser', 'chrome-control', 'msedge-control', '
     'windows-control', 'macos-control', 'mobile-control', 'alfred-navigation', 'alfred-documentation', 'alfred-memory']);
 const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
-const ALIASES = new Map([['--docs-move', '--data-move']]);
+// An old spelling and the flag it now is. `--github-cli` named --forge-cli before the forge-neutral rename (E-batch fn-11): a
+// walk copied before it still passes the old one, which reads as the new and says so on a `notes` line.
+const ALIASES = new Map([['--docs-move', '--data-move'], ['--github-cli', '--forge-cli']]);
+const NOTED_ALIASES = new Set(['--github-cli']);
 
 const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
 
@@ -109,7 +112,7 @@ function parseArgs(argv)
         docsVersioning: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
         selection: '', source: '', planOut: '', parentPlan: '',
         forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
-        add: [], drop: [], scopeOf: {}, ignored: [],
+        add: [], drop: [], scopeOf: {}, ignored: [], notes: [],
     };
 
     const given = new Set();
@@ -120,7 +123,17 @@ function parseArgs(argv)
         const name = arg.startsWith('--') && eq > -1 ? arg.slice(0, eq) : arg;
 
         if (REMOVED.has(name)) fail(`${name} was removed in 2.0.0 - ${REMOVED.get(name)}; drop the flag`);
-        if (BOOLEAN.has(name) && name === arg) { out[BOOLEAN.get(name)] = true; continue; }
+        if (BOOLEAN.has(name) && name === arg)
+        {
+            const flag = ALIASES.get(name) || name;
+            const old = [...ALIASES].find(([, now]) => now === flag)?.[0];
+            const twin = name === flag ? old : flag;
+            if (twin && given.has(twin)) fail(`${flag} and ${old} are one flag - pass ${flag} alone`);
+            given.add(name);
+            if (NOTED_ALIASES.has(name)) out.notes.push(`${name} is the old spelling of ${flag} - read as ${flag}`);
+            out[BOOLEAN.get(name)] = true;
+            continue;
+        }
         if (RETIRED_FLAGS.has(name))
         {
             if (!(eq > -1 && name !== arg)) i++;

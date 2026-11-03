@@ -633,3 +633,27 @@ test('the three body snippets read a core cached under any key, and never an orp
         finally { fs.rmSync(home, { recursive: true, force: true }); }
     }
 });
+
+// E-batch READER-1: CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root (the cache in its cache/ folder), and the
+// snapshot was read from <config>/plugins/cache whatever it said.
+test('READER-1: the snapshot reads a moved plugins root; unset, empty or blank reads <config>/plugins', () => {
+    const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-moved-'));
+    const moved = fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-root-'));
+    try
+    {
+        const home = plantBare(cfg, 'envoydev', 'alfred-code', '2.0.0');
+        const away = path.join(moved, 'cache', 'envoydev', 'alfred-code', '3.0.0');
+        fs.mkdirSync(path.dirname(away), { recursive: true });
+        fs.renameSync(plantBare(fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-tmp-')), 'envoydev', 'alfred-code', '3.0.0'), away);
+        const VAR = 'CLAUDE_CODE_PLUGIN_CACHE_DIR';
+        assert.strictEqual(pluginCache(cfg, { [VAR]: moved }), away, 'set: <root>/cache');
+        for (const v of [undefined, '', '   ']) assert.strictEqual(pluginCache(cfg, v === undefined ? {} : { [VAR]: v }), home, `${JSON.stringify(v)}: <config>/plugins/cache`);
+        // a snapshot without plugins-root.js reads <config>/plugins as before
+        const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-noroot-'));
+        fs.mkdirSync(path.join(bare, 'scripts', 'install'), { recursive: true });
+        for (const f of ['source.js', 'brand.js']) fs.copyFileSync(path.join(__dirname, 'install', f), path.join(bare, 'scripts', 'install', f));
+        try { assert.strictEqual(require(path.join(bare, 'scripts', 'install', 'source.js')).pluginCache(cfg, { [VAR]: moved }), home, 'no plugins-root.js: <config>/plugins/cache'); }
+        finally { fs.rmSync(bare, { recursive: true, force: true }); }
+    }
+    finally { fs.rmSync(cfg, { recursive: true, force: true }); fs.rmSync(moved, { recursive: true, force: true }); }
+});

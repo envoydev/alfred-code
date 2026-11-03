@@ -128,7 +128,9 @@ The stores and what each holds, where the docs root and the data root live, and 
 - **A child reads its ancestors' docs and memory, never writes them** (workspace layering, release 3, 2026-10-27). An
   ancestor's docs root is `layout.docsRootOf` - its own settings' leftover `ALFRED_CODE_DOCS_PATH`, else `<its data
   root>/docs`, never the child's env. Its memory folder is `layout.memoryDirsOf`, Claude Code's own rule: the first
-  string `autoMemoryDirectory` (the managed drop-ins last first, the managed file, the member's `settings.local.json`, its
+  string `autoMemoryDirectory` (the managed drop-ins last first, the managed file, the member's `settings.local.json` -
+  the one Claude Code reads, `layout.localSettingsFile`: the repo root's, a worktree's main checkout's, the start folder's
+  on Windows - then a leftover in the start folder (E-batch 300-memdirs: a sub-folder start read only its own), its
   `settings.json`, the account's; a leading `~` is the home folder), else `<account>/projects/<name>/memory`, `<name>`
   its git top (a linked worktree's main checkout) with every character outside `[A-Za-z0-9]` as `-`; past 200
   characters Claude Code appends `-<hash>`, so the existing `<first 200>-*` folders are listed (probe A5,

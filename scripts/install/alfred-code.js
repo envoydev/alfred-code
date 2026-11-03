@@ -135,7 +135,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     try { args = parseArgs(argv); }
     catch (e) { err(`${USAGE}\nerror: ${e.message}\n`); return 1; }
     // A flag 2.10.1 retired with its server, passed by a command body an older session still runs.
-    for (const line of args.ignored) log(line);
+    for (const line of [...args.ignored, ...(args.notes || [])]) log(line);
 
     const home = env.HOME || env.USERPROFILE || '';
     // With no home and no CLAUDE_CONFIG_DIR the account dir would be a RELATIVE `.claude` - the
@@ -482,7 +482,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             let text;
             try { text = fs.readFileSync(args.selection, 'utf8'); }
             catch { err(`selection file not found: ${args.selection}\n`); return 1; }
-            picked = selection.parseSelection(selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming).join('\n'));
+            const given = selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming);
+            // O4: a hand-written partial selection is closed now, not at the next update; the walk's own adds nothing.
+            picked = selection.parseSelection(selection.closeSelection(given, { graph: readJson(path.join(resolved.dir, 'meta', 'stack-graph.json')), log }).join('\n'));
             // A joined child installs its parent's set minus its ignores whatever rows the walk's selection kept.
             if (wsPrep.parentLines)
             {

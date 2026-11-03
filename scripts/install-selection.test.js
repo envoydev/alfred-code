@@ -944,3 +944,23 @@ test('lockedLines: the always rules and skills, nothing else', () =>
     assert.strictEqual(sel.lockedLines(undefined).size, 0);
     assert.strictEqual(sel.lockedLines({ rules: 'a' }).size, 0);
 });
+
+// E-batch O4: a hand-written partial --selection on install was applied as given - its closure came only at the next
+// update. The install route closes it (closeLines, labelled 'selection'); the walk's own closed selection is unchanged.
+test('O4: a partial --selection on install is closed', () =>
+{
+    const graph = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-graph.json'), 'utf8'));
+    const { computeClosure, emitSelectionFile } = require('./stack-select.js');
+    const logs = [];
+    const partial = ['agent angular-test-resolver', 'hook none'];
+    const closed = sel.closeSelection(partial, { graph, log: (m) => logs.push(m) });
+    for (const want of ['skill habits-done-gate', 'skill habits-root-cause']) assert.ok(closed.includes(want), want);
+    assert.ok(logs.some((l) => /^selection: required: skill habits-done-gate - /.test(l)), logs.join('\n'));
+    assert.ok(!logs.some((l) => /installed-only/.test(l)), 'the install route says selection, not installed-only');
+    assert.deepStrictEqual(sel.closeSelection(closed, { graph, log: () => {} }), closed, 'a re-run adds nothing');
+    const walk = emitSelectionFile(computeClosure(graph, { skills: ['review-code'], agents: ['angular-test-resolver'], rules: ['alfred-interaction'], mcps: [], plugins: [], hooks: [] }), { hooksAnswered: true }).split('\n');
+    const quiet = [];
+    assert.deepStrictEqual(sel.closeSelection(walk, { graph, log: (m) => quiet.push(m) }), walk, "the walk's own selection is byte-equal");
+    assert.deepStrictEqual(quiet, []);
+    assert.deepStrictEqual(sel.closeSelection(partial, { graph: null, log: () => {} }), partial, 'no graph: applied as given');
+});

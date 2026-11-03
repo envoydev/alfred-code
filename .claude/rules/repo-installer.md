@@ -31,7 +31,8 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     `habits-adjust-agents-md`, and once per account Claude Code's auto-update for the stack's marketplace - U01 of the
     2026-11-03 usage audit: `install/marketplace-autoupdate.js` - the stack's marketplace being the one the account's
     `installed_plugins.json` records the core from, a local folder one too (D10), else the one `brand.marketOf` matches - reads it in the docs' order (a settings file's
-    `extraKnownMarketplaces` entry, the highest file's whole, then `known_marketplaces.json`, then off; the DISABLE_* env
+    `extraKnownMarketplaces` entry, the highest file's whole, then `known_marketplaces.json` - it and `installed_plugins.json`
+    under the plugins root `CLAUDE_CODE_PLUGIN_CACHE_DIR` may move, `source.js pluginsBase` (E-batch READER-3) - then off; the DISABLE_* env
     switches), and the answer writes `autoUpdate` true or false on the stack's entry in the ACCOUNT settings.json alone, a
     no too so no later init asks; through `workspace.js writeLike`, which, like D5's apply and remove, writes a LINKED
     file's real target - the temp file and the rename in that file's folder, the link kept, review fix pass, run B, m7: a
@@ -72,6 +73,10 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     never skills alone); update takes it as a pre-ledger install
     (picks off disk, old names renamed, docs move offered), init asks once with update recommended, the rest route to update, and
     the hooks' record list is NOT extended, so they stay down until that update writes the stamp.
+  - A `--selection` file on INSTALL is closed from its own picks before it is applied (`selection.closeSelection`, each
+    added line logged `selection: required: ...`; E-batch O4: a hand-written partial one waited for the next update's
+    closure) - the walk's own selection gains nothing. `--github-cli`, the old spelling of `--forge-cli`, reads as it with
+    one note line (E-batch fn-11).
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
     items of a parked retired entry - and `parked_plugins`, so the walk's closure cannot switch either
@@ -277,7 +282,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   existing copies. Never reintroduce a raw fetch of a repo-owned file (per-file, stale, mixes
   revisions).
 - **The plugin cache IS the snapshot, so the common run downloads nothing but a newer release**
-  (`pluginCache`, `scripts/install/source.js`): `<config>/plugins/cache/<marketplace>/alfred-code/<version>/`
+  (`pluginCache`, `scripts/install/source.js`): `<config>/plugins/cache/<marketplace>/alfred-code/<version>/` - under the
+  plugins root `CLAUDE_CODE_PLUGIN_CACHE_DIR` moves (`pluginsBase`, through the snapshot's own
+  `capture-preferences/scripts/plugins-root.js`; a snapshot without it reads `<config>/plugins`, E-batch READER-1; the
+  protocol's two snippets still read `<config>/plugins/cache` and fall through to the archive there) -
   is the whole repo, because every marketplace entry is sourced from the repo ROOT (measured on a real
   install) - but with NO `RELEASE-SOURCE` and no `.git`, so its revision is the `v<version>` tag of its
   own `plugin.json` (`readRevision`, shared with `stamp-compare.js`). The NEWEST valid entry across

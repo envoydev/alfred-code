@@ -72,9 +72,10 @@ test('install-args: the boolean flags take no value', () =>
     assert.strictEqual(p.skillsOnly, true);
 });
 
-test('install-args: --github-cli is gone - --forge-cli installs the CLI of whichever forge the origin is', () =>
+// fn-11 (E-batch): the old spelling reads as --forge-cli with a note - a walk copied before the rename still passes it.
+test('install-args: --forge-cli installs the CLI of whichever forge the origin is; --github-cli is its old spelling', () =>
 {
-    fails(['install', '--github-cli'], /unknown argument '--github-cli'/);
+    assert.strictEqual(ok(['install', '--github-cli']).forgeCli, true);
     assert.strictEqual(ok(['install']).forgeCli, false);
 });
 
@@ -430,4 +431,14 @@ test('install-args: --memory takes default or custom, lower-cased', () =>
 test('install-args: --memory docs is refused until docs mode ships', () =>
 {
     fails(['install', '--memory', 'docs'], /^--memory must be 'default' or 'custom'/);
+});
+
+// E-batch fn-11 (forge-neutral ledger): --github-cli, the flag's name before --forge-cli, failed as an unknown flag.
+test('fn-11: --github-cli is the old spelling of --forge-cli', () =>
+{
+    const p = parseArgs(['install', '--github-cli']);
+    assert.strictEqual(p.forgeCli, true);
+    assert.deepStrictEqual(p.notes, ['--github-cli is the old spelling of --forge-cli - read as --forge-cli']);
+    assert.deepStrictEqual(parseArgs(['install', '--forge-cli']).notes, [], 'the current spelling says nothing');
+    assert.throws(() => parseArgs(['install', '--github-cli', '--forge-cli']), /--forge-cli and --github-cli are one flag - pass --forge-cli alone/);
 });

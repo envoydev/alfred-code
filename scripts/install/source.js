@@ -98,9 +98,22 @@ function readRevision(dir)
 //
 // An orphaned dir (the CLI marks one `.orphaned_at` but keeps its files) is never the snapshot - a
 // stale copy would install the release this run is replacing.
-function pluginCache(configDir)
+// The plugins root Claude Code keeps the cache, known_marketplaces.json and installed_plugins.json under: <config>/plugins
+// unless CLAUDE_CODE_PLUGIN_CACHE_DIR moves it (E-batch READER-1 / READER-3). The one reader is plugins-root.js, which sits
+// in every snapshot the installer runs from (the plugin cache, the release archive and a clean export are the whole repo);
+// a snapshot without it reads <config>/plugins, the reading before.
+const PLUGINS_ROOT_JS = path.join(__dirname, '..', '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'plugins-root.js');
+function pluginsBase(configDir, env = process.env)
 {
-    const base = path.join(configDir, 'plugins', 'cache');
+    let reader = null;
+    try { reader = require(PLUGINS_ROOT_JS); }
+    catch { /* an older or partial snapshot */ }
+    return reader && typeof reader.pluginsRoot === 'function' ? reader.pluginsRoot(env, configDir) : path.join(configDir, 'plugins');
+}
+
+function pluginCache(configDir, env = process.env)
+{
+    const base = path.join(pluginsBase(configDir, env), 'cache');
     let best = null;
     let bestVersion = null;
     let marketplaces;
@@ -135,7 +148,7 @@ function httpsRemote(url)
 function createSource(opts)
 {
     const {
-        configDir, sourceDir, repoUrl,
+        configDir, sourceDir, repoUrl, env = process.env,
         log = () => {}, note = () => {},
         // The two outward routes are injected so a test can prove 'nothing was downloaded' by a
         // counter rather than by being fast, and so the resolution ORDER is testable offline.
@@ -166,7 +179,7 @@ function createSource(opts)
 
     function fromCache()
     {
-        const dir = pluginCache(configDir);
+        const dir = pluginCache(configDir, env);
         if (!dir) return null;
         const { sha, ref } = readRevision(dir);
         log(`source: plugin cache ${dir} @ ${ref || '?'} ${(sha || 'unknown').slice(0, 12)} (no download)`);
@@ -216,4 +229,4 @@ function createSource(opts)
     return { resolve, cleanup, get current() { return resolved; } };
 }
 
-module.exports = { createSource, isValidSource, pluginCache, compareVersions, readReleaseSource, readRevision, versionTag, httpsRemote };
+module.exports = { createSource, isValidSource, pluginCache, pluginsBase, compareVersions, readReleaseSource, readRevision, versionTag, httpsRemote };
