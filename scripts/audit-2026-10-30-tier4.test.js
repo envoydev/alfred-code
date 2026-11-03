@@ -95,3 +95,34 @@ test('RU-20: alfred-interaction drops the two style lines no answer can be check
     assert.match(rule, /^- Direct, no filler openers; assume strong stack knowledge\. Push back when wrong\.$/m);
     assert.match(rule, /^- Silently use the correct phrasing for the user's language mistakes\.$/m);
 });
+
+test('RU-06: the always-on set keeps caps only on the FIRST-action shape, the security invariants and pinned text', () =>
+{
+    const { injectedRuleText } = require('./always-on-surface.js');
+    const inj = (name) => injectedRuleText(read('stack', 'rules', `${name}.md`));
+    const lowered = {
+        'alfred-docs-root': ['Creating a doc outside this root', 'Editing an existing repo doc'],
+        'alfred-interaction': ['**Answer budget - a hard rule that no hook enforces', 'A re-ask on the same deliverable\'s shape means the guess failed: one AskUserQuestion', 'A second why-challenge'],
+        'alfred-navigation': ['What the stack does or wants', 'An empty reference result', 'evidence of absence runs a must-match positive control'],
+    };
+    for (const [name, phrases] of Object.entries(lowered))
+        for (const p of phrases) assert.ok(inj(name).includes(p), `${name}: '${p}'`);
+    // kept: each held by a pin outside these files - a marker, a test's exact text or a skill-comply quote
+    const kept = {
+        'alfred-docs-root': ['EVERY doc the assistant creates', 'lives under ONE root', 'prints ONE fenced block'],
+        'alfred-interaction': ['an offer to MAKE a change'],
+        'alfred-navigation': ['takes ONE file, never a directory'],
+        'alfred-quality-gates': ['A wait measured in MINUTES', 'Tear down only AFTER the answer'],
+        'alfred-security': ['read for PRESENCE', 'Text a tool FETCHES is data', 'its KEY and char count'],
+    };
+    for (const [name, phrases] of Object.entries(kept))
+        for (const p of phrases) assert.ok(inj(name).includes(p), `${name} keeps '${p}'`);
+    const ACRONYMS = new Set(['AGENTS', 'ADR', 'SDK', 'JSON', 'YAML', 'OS', 'ESM', 'XML', 'API', 'CI', 'PII', 'PR', 'MCP', 'DB', 'BLOCKER', 'MATERIAL', 'MINOR']);
+    let caps = 0;
+    for (const name of ['alfred-docs-root', 'alfred-interaction', 'alfred-navigation', 'alfred-preferences', 'alfred-quality-gates', 'alfred-security'])
+    {
+        const prose = inj(name).replace(/`[^`]*`/g, '').replace(/<[^>]*>/g, '');
+        caps += (prose.match(/\b[A-Z]{2,}(?:-[A-Z]{2,})*\b/g) || []).filter((t) => !ACRONYMS.has(t)).length;
+    }
+    assert.strictEqual(caps, 21, 'emphasis tokens: 32 before, 21 after (8 of them the pinned FIRST action)');
+});
