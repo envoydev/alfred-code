@@ -625,6 +625,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             instructionsFile: ctx.instructionsAnswer,
             ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
             memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
+            untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile),
         });
 
         summarise(ctx, failures);
@@ -687,7 +688,8 @@ function runLayers(ctx)
         catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
         // After migratePlans, so superpowers/plans/ reaches plans/ first; after the .gitignore step, so a nested history/
         // .gitignore of the stack's is gone before history/ moves into the data root's state/.
-        try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
+        // ab-C5: the tracked state files it names once go back into the stamp; a throw keeps the earlier record.
+        try { ctx.untrackTold = docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log, told: stampLayer.readUntrackTold(ctx.stampFile) }).untrackTold; }
         catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
         // After migrateLayout, whose general rows it reuses; a throw past its first step leaves a marker the next update
         // reads to finish the move (docs.migrateArchitecture, D9).

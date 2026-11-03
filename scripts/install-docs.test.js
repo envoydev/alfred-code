@@ -1692,3 +1692,86 @@ test('the late pass: no map file, no pass; ORIENTATION alone takes its one key',
     migrateArch(orient);
     assert.strictEqual(readAt(orient, `${AW}/RUN-AND-DEBUG-AWARENESS.md`), '- ARCHITECTURE#layers\n- ARCHITECTURE-ORIENTATION-AWARENESS#start\n');
 });
+
+// E-batch 351-m3: `git rm` of a tracked `{}` watch.json takes the emptied folder with it, so removeIfEmpty found nothing to
+// read and the run never said the old domain went.
+test('351-m3: a git-tracked empty watch prints the removed line', () =>
+{
+    const root = project({ files: { [`${ARCH}/ARCHITECTURE.md`]: MAP_TEXT, [`${ARCH}/watch.json`]: '{}\n', [`${AW}/watch.json`]: '{}\n' }, commit: ['.alfred'] });
+    const logs = [];
+    const out = migrateArch(root, logs);
+    assert.ok(!hasAt(root, ARCH), 'the folder is gone');
+    assert.strictEqual(out.removed, true);
+    assert.ok(logs.includes('  docs migration (awareness): architecture/ removed - nothing is left in it'), logs.join(' | '));
+});
+
+// E-batch 351-m4: a team file citing the old map by a path - from the project root or relative to itself - is named on a
+// later update, never rewritten; the engine's own spellings stay the only ones the respell touches.
+test('351-m4: the late pass names a path form of the old map', () =>
+{
+    const plan = '# Plan\n\n- root: .alfred/docs/architecture/ARCHITECTURE.md#x\n- relative: ../architecture/ARCHITECTURE.md#x\n';
+    const root = project({ files: { ...LATE_MAP, '.alfred/docs/plans/p.md': plan } });
+    const logs = [];
+    migrateArch(root, logs);
+    assert.strictEqual(readAt(root, '.alfred/docs/plans/p.md'), plan, 'never rewritten');
+    assert.deepStrictEqual(logs.filter((m) => m.includes('plans/p.md')), [
+        '  !! docs migration (awareness): .alfred/docs/plans/p.md:3 names .alfred/docs/architecture/ARCHITECTURE.md#x - plan it with update-preflight.js --respell',
+        '  !! docs migration (awareness): .alfred/docs/plans/p.md:4 names ../architecture/ARCHITECTURE.md#x - plan it with update-preflight.js --respell',
+    ], logs.join(' | '));
+    // the stack's own docs keep a path form as written, unnamed (only the engine's two spellings are its refs)
+    const own = project({ files: { ...LATE_MAP, '.alfred/docs/quality/Q.md': '# Q\n\n- .alfred/docs/architecture/ARCHITECTURE.md#x\n' } });
+    const quiet = [];
+    migrateArch(own, quiet);
+    assert.strictEqual(readAt(own, '.alfred/docs/quality/Q.md'), '# Q\n\n- .alfred/docs/architecture/ARCHITECTURE.md#x\n');
+    assert.deepStrictEqual(quiet, []);
+});
+
+// E-batch 351-m5: a teammate's branch merged after the move can bring a branch version back under architecture/; the late
+// pass moves it to the awareness home the engine composes, the way the move's own step 3 did.
+test('351-m5: the late pass moves an overlay a branch brought back', () =>
+{
+    const root = project({ files: { ...LATE_MAP,
+        '.alfred/docs/.branches/b/architecture/ARCHITECTURE/modules.md': '## Modules\n- see ORIENTATION#setup\n',
+        '.alfred/docs/.branches/b/.base/architecture/references/patterns.md': '# Patterns\n' } });
+    const logs = [];
+    const out = migrateArch(root, logs);
+    assert.strictEqual(readAt(root, '.alfred/docs/.branches/b/awareness/ARCHITECTURE-AWARENESS/modules.md'), '## Modules\n- see ARCHITECTURE-ORIENTATION-AWARENESS#setup\n');
+    assert.strictEqual(readAt(root, '.alfred/docs/.branches/b/.base/awareness/references/patterns.md'), '# Patterns\n');
+    assert.ok(!hasAt(root, '.alfred/docs/.branches/b/architecture') && !hasAt(root, '.alfred/docs/.branches/b/.base/architecture'), 'the old lanes are gone');
+    assert.deepStrictEqual(out.overlays.sort(), ['.branches/b/.base/awareness/references', '.branches/b/awareness/ARCHITECTURE-AWARENESS']);
+    const before = treeOf(root);
+    const again = [];
+    migrateArch(root, again);
+    assert.deepStrictEqual(treeOf(root), before, 'a re-run changes nothing');
+    assert.deepStrictEqual(again, []);
+});
+
+// E-batch 351-m6: the watch move renamed architecture/watch.json to awareness/watch.json, then wrote the prefixed kinds; a
+// throw between the two left the unprefixed file at the new home and the resumed run read 'none'. The rename now goes back.
+test('351-m6: a throwing watch write leaves the move resumable', () =>
+{
+    for (const commit of [[], ['.alfred']])
+    {
+        const root = project({ files: { [`${ARCH}/ARCHITECTURE.md`]: MAP_TEXT, [`${ARCH}/watch.json`]: ARCH_WATCH }, commit });
+        const real = fs.writeFileSync;
+        let armed = true;
+        fs.writeFileSync = function (file, ...rest)
+        {
+            if (armed && String(file).endsWith(path.join('awareness', 'watch.json'))) { armed = false; throw Object.assign(new Error('disk full'), { code: 'ENOSPC' }); }
+            return real.call(this, file, ...rest);
+        };
+        let caught = null;
+        try { migrateArch(root); }
+        catch (err) { caught = err; }
+        finally { fs.writeFileSync = real; }
+        const shape = commit.length ? 'tracked' : 'untracked';
+        assert.strictEqual(caught && caught.step, 2, `${shape}: step 2 throws`);
+        assert.strictEqual(readAt(root, `${ARCH}/watch.json`), ARCH_WATCH, `${shape}: the watch is back at its old home`);
+        assert.ok(!hasAt(root, `${AW}/watch.json`), `${shape}: nothing half-written at the new home`);
+        if (commit.length)
+            assert.deepStrictEqual(porcelain(root).filter((l) => l.includes('watch.json')), [], `${shape}: the index holds no watch.json change`);
+        migrateArch(root);
+        assert.strictEqual(JSON.parse(readAt(root, `${AW}/watch.json`)).watch[0].kind, 'architecture: map', `${shape}: the resumed run prefixes the kinds`);
+        assert.ok(!hasAt(root, ARCH) && !hasAt(root, PENDING), `${shape}: the move finished`);
+    }
+});

@@ -51,7 +51,7 @@ The stores and what each holds, where the docs root and the data root live, and 
   the usage audit's reports and raw transcript copies), both under the data root's `/*`, so never committed whatever the
   versioning; `docs.migrateLayout` moves an older project's folders there on update, file by file, `git mv` where tracked, a
   doc clash kept at the old path and named (so is a file standing where a folder moves, item 6), a ledger at both homes appended to the new file and any other state file left
-  to the new home's copy, the one the hooks read (final review 2026-10-20b C2: kept, the pair clashed on every run). The usage audit's copy step still checks `git check-ignore` before it copies; the
+  to the new home's copy, the one the hooks read (final review 2026-10-20b C2: kept, the pair clashed on every run). A file `git mv` kept tracked under the ignored `state/` or `statistics/` - or one a teammate committed there - is never untracked by the update (a committed `git rm --cached` deletes it from every teammate's checkout on their next pull): after the moves hold, each is named once with that command and recorded on the stamp's `untrack-told:` line (E-batch ab-C5). The usage audit's copy step still checks `git check-ignore` before it copies; the
   folder was `alfred-code-usage-report/` until 2.1.7 - `docs.migrateUsageReport`, run after this
   file is current, moves it straight to `statistics/usage-report/`, never moving raw copies to a path git would not ignore, never over a session folder the new
   one holds). A file holding a text an earlier release wrote (`DOCS_IGNORE_FORMER`) is the stack's

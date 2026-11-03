@@ -356,3 +356,86 @@ test('leave and tail: false keep the log to the moves', () =>
     const again = migrate(root, { moves: [ARCH_ROW], leave: ['watch.json'], tail: false });
     assert.deepStrictEqual(again.logs, [], 'an all-current call prints no layout: current');
 });
+
+// E-batch ab-C5: `git mv` keeps a moved state file tracked under the data root's ignored state/ and statistics/. The update
+// never changes the index for it - a staged deletion, once committed, deletes the file from every teammate's checkout on
+// their next pull - so each one is named once, with the command that stops tracking it, and recorded in the stamp.
+const DATA_IGNORE = '/*\n!/.gitignore\n!/docs/\n';
+const C5_LINE = (p) => `  layout: ${p} is ignored state git still tracks - \`git rm --cached -- ${p}\` stops tracking it; committed, that deletes it from every teammate's checkout on their next pull`;
+const c5Lines = (logs) => logs.filter((l) => l.includes('is ignored state git still tracks'));
+const lsFiles = (root) => git(root, 'ls-files').split('\n').filter(Boolean);
+
+test('ab-C5: a state file the layout move puts under an ignored path is named with its untrack command', () =>
+{
+    const root = repo();
+    put(root, '.alfred/.gitignore', DATA_IGNORE);
+    put(root, '.alfred/docs/history/s1.json');
+    put(root, '.alfred/docs/plans/p.md');
+    put(root, 'notes/own.md');
+    git(root, 'add', '-f', '.');
+    git(root, 'commit', '-qm', 'old layout');
+    const r = migrate(root);
+    assert.ok(has(root, '.alfred/state/history/s1.json') && has(root, '.alfred/docs/work/plans/p.md'), r.logs.join(' | '));
+    assert.ok(lsFiles(root).includes('.alfred/state/history/s1.json'), 'still tracked - the update never untracks');
+    assert.deepStrictEqual(git(root, 'diff', '--cached', '--name-status').split('\n').filter((l) => l.startsWith('D')), [], 'no staged deletion');
+    assert.deepStrictEqual(c5Lines(r.logs), [C5_LINE('.alfred/state/history/s1.json')], r.logs.join(' | '));
+    assert.deepStrictEqual(r.untrackTold, ['.alfred/state/history/s1.json']);
+});
+
+test('ab-C5: a project the 2.8 move already reached gets the line too, once', () =>
+{
+    const root = repo();
+    put(root, '.alfred/.gitignore', DATA_IGNORE);
+    put(root, '.alfred/state/approvals/APPROVAL');
+    put(root, '.alfred/statistics/hook-blocks/s1.jsonl');
+    put(root, '.alfred/docs/awareness/watch.json', '{}\n');
+    git(root, 'add', '-f', '.');
+    git(root, 'commit', '-qm', '2.8 layout');
+    const first = migrate(root, { told: [] });
+    assert.deepStrictEqual(c5Lines(first.logs), [C5_LINE('.alfred/state/approvals/APPROVAL'), C5_LINE('.alfred/statistics/hook-blocks/s1.jsonl')], first.logs.join(' | '));
+    assert.ok(first.logs.includes('  layout: current'), 'nothing moved, so the layout is still said current');
+    const second = migrate(root, { told: first.untrackTold });
+    assert.deepStrictEqual(c5Lines(second.logs), [], 'said once');
+    assert.deepStrictEqual(second.untrackTold, first.untrackTold, 'the record is carried');
+    git(root, 'rm', '-q', '--cached', '--', '.alfred/state/approvals/APPROVAL');
+    fs.rmSync(path.join(root, '.alfred/statistics/hook-blocks/s1.jsonl'));
+    const third = migrate(root, { told: second.untrackTold });
+    assert.deepStrictEqual(c5Lines(third.logs), []);
+    assert.deepStrictEqual(third.untrackTold, [], 'an untracked or deleted path leaves the record');
+});
+
+test('ab-C5: a move that throws prints nothing', () =>
+{
+    const root = repo();
+    put(root, '.alfred/.gitignore', DATA_IGNORE);
+    put(root, '.alfred/state/approvals/APPROVAL');
+    git(root, 'add', '-f', '.');
+    git(root, 'commit', '-qm', 'state');
+    put(root, '.alfred/docs/hook-blocks/a.jsonl');
+    put(root, '.alfred/docs/hook-blocks/b.jsonl');
+    const logs = [];
+    const real = fs.renameSync;
+    let calls = 0;
+    fs.renameSync = function (...a) { calls += 1; if (calls === 2) throw Object.assign(new Error('busy'), { code: 'EBUSY' }); return real.apply(this, a); };
+    let caught = null;
+    try { docs.migrateLayout({ projectRoot: root, docsPath: '.alfred/docs', dataPath: '.alfred', log: (m) => logs.push(m), told: [] }); }
+    catch (err) { caught = err; }
+    finally { fs.renameSync = real; }
+    assert.ok(caught, 'the move throws');
+    assert.ok(has(root, '.alfred/docs/hook-blocks/a.jsonl') && has(root, '.alfred/docs/hook-blocks/b.jsonl'), 'the rollback put both back');
+    assert.deepStrictEqual(c5Lines(logs), [], logs.join(' | '));
+});
+
+test('ab-C5: the stamp writes, reads and drops the untrack-told line', () =>
+{
+    const stamp = require('./install/stamp.js');
+    const base = { repoUrl: 'https://example.invalid/r', ref: 'main', sha: 'abc', version: '3.7.1', installed: 'now', action: 'update', scope: 'project', hooks: [], alwaysRules: [] };
+    const text = stamp.renderStamp({ ...base, untrackTold: ['.alfred/state/b', '.alfred/state/a', '.alfred/state/a', 'x,y'] });
+    assert.match(text, /^untrack-told: \.alfred\/state\/a,\.alfred\/state\/b$/m, 'sorted, unique, a comma-holding path never recorded');
+    assert.doesNotMatch(stamp.renderStamp({ ...base, untrackTold: [] }), /^untrack-told:/m, 'no line for an empty record');
+    const root = repo();
+    const file = path.join(root, 'alfred-code.stamp');
+    fs.writeFileSync(file, text);
+    assert.deepStrictEqual(stamp.readUntrackTold(file), ['.alfred/state/a', '.alfred/state/b']);
+    assert.deepStrictEqual(stamp.readUntrackTold(path.join(root, 'none')), []);
+});
