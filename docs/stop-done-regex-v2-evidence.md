@@ -97,9 +97,35 @@ whose owed item is in prose alone - the stated limit below.
 - **The limit.** A close in another language with no close label passes whatever it says (1 labelled miss). The remedy
   is the labels the skills already print in any reply language (`alfred-interaction.md`), never a translated word list.
 
+## An independent reader (2026-11-03, after the merge)
+
+The labels above are the tuning seat's own. A second reader, a fresh agent shown only the judge's criteria
+(`stack/hooks/stop-judge-prompt.txt`) and the close texts - shuffled, with no label, verdict or regex - labelled 162
+closes: the 94 above, the 23 v2 newly holds, 30 of its 227 new releases (seeded sample) and 15 of the 182 both versions
+hold. It marked 42 hold, 119 release, 1 unsure. Scored text-only by the same offline runner, each row's
+`stop_hook_active` and `background_tasks` as recorded:
+
+- The two readers agree on 83 of the 93 shared closes (89%, Cohen's kappa 0.70).
+
+| Set (blind labels) | v3.7.0 right | wrong holds | misses | v2 right | wrong holds | misses |
+|---|---|---|---|---|---|---|
+| The 94 labelled | 56 / 93 | 34 | 3 | 80 / 93 | 6 | 7 |
+| The 18 replayed | 6 / 18 | 12 | 0 | 16 / 18 | 1 | 1 |
+| v2's new holds | 13 / 23 | 0 | 10 | 10 / 23 | 13 | 0 |
+| v2's new releases (sample) | 3 / 30 | 27 | 0 | 27 / 30 | 0 | 3 |
+| Both hold (sample) | 5 / 15 | 10 | 0 | 5 / 15 | 10 | 0 |
+| All 161 | 77 / 161 | 71 | 13 | 122 / 161 | 29 | 10 |
+
+- About 5 of v2's 13 wrong new holds wait on running work that a replay cannot show: with live work in the registry the
+  `neutral-live-work` reading releases them. The rest need the transcript (an answer to the user's own question, a
+  hold the user chose) - about 8 truly wrong, as the population check above estimated.
+- Both versions still hold 10 of 15 sampled closes the reader releases: the retune left that group where it was.
+- The empty registry matters: scored with `background_tasks: []` on every row, v2 reads each stated wait as owed and
+  falls to 94 / 161. A replay cannot know what was running; production can.
+
 ## Not measured
 
 - The live rate: each exemption that fires writes one `done-close-exempt` probe row naming it - `resume-unread`,
   `neutral-live-work` and the widened `own-work-running` included. A week of those rows is the production reading.
-- A second reader of the labels, or the user's.
+- The user's own reading of the labels.
 - No billed model call ran: the judge was not re-run against the v2 corpus.
