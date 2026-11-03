@@ -68,7 +68,7 @@ test('every clause is conditioned', () => {
         const n = r.needle.toLowerCase();
         assert.ok(n.includes('on a heavy session') || n.includes('serial seats'), `row ${r.row} clause is not conditioned: ${r.needle.slice(0, 70)}`);
         if (r.needle.includes('load `habits-execution-strategy` with the Skill tool'))
-            assert.ok(r.needle.includes('a `Seats:` line in context, or a system-prompt model above Sonnet'), `row ${r.row}: the load carries the heavy-session condition`);
+            assert.ok(r.needle.includes('a `Seats:` line in context, or a system-prompt model above Sonnet') || r.needle.includes('the newest `Seats:` line in context unless it says no step moves, else a system-prompt model above Sonnet'), `row ${r.row}: the load carries the heavy-session condition`);
     }
     for (const r of ROWS.filter((x) => x.row === 14)) assert.ok(r.needle.includes('any other keeps the no-ask path'), `row 14 ${r.skill} keeps the no-ask path`);
 });
@@ -78,7 +78,7 @@ const STRATEGY_BASE_CHARS = 13673;
 test('what Sonnet pays', () => {
     assert.ok(BULLET.length <= 1450, `bullet is ${BULLET.length}`);
     const clauses = ROWS.filter((r) => r.kind === 'clause').map((r) => r.needle.length);
-    for (const n of clauses) assert.ok(n <= 330, `a clause is ${n} characters`);
+    for (const n of clauses) assert.ok(n <= 360, `a clause is ${n} characters`);   // 330 at planning; rows 14 and 16 name the newest line (review finding 1)
     const mean = clauses.reduce((a, b) => a + b, 0) / clauses.length;
     assert.ok(mean <= 260, `clause mean ${mean}`);
     const perRow = {};
@@ -113,4 +113,15 @@ test('the asks D8 leaves alone keep their marks', () => {
         assert.ok(marked, `${u.file}: the ask "${u.firstLine.slice(0, 60)}" still marks '${u.recommended}'`);
     }
     assert.ok(UNTOUCHED.length >= 14);
+});
+
+// Review finding 1: a `/model` switch down prints a `Seats:` line saying no step moves, so 'a line in context' alone reads a
+// Sonnet session as heavy - the parts that load nothing (row 16) and the reviews (row 14) name the NEWEST line and its exception.
+test('the clauses that decide on their own read the newest Seats line, not any', () => {
+    const own = ROWS.filter((r) => r.kind === 'clause' && (r.row === 14 || r.row === 16));
+    assert.strictEqual(own.length, 5);
+    for (const r of own) {
+        assert.ok(r.needle.includes('the newest `Seats:` line in context unless it says no step moves, else a system-prompt model above Sonnet'), `row ${r.row} ${r.skill}`);
+        assert.ok(!r.needle.includes('a `Seats:` line in context, or'), `row ${r.row} ${r.skill} still reads any line`);
+    }
 });

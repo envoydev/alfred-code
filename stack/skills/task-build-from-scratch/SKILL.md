@@ -48,7 +48,7 @@ On a heavy session (a `Seats:` line in context, or a system-prompt model above S
 
 No dispatch is INLINE without asking, and so is a scaffold too small to fan out unless the verdict reads `serial seats` - then ask, the seats marked.
 
-**DELEGATED** - for each vertical slice, dispatch that slice's stack seats directly from the main session (its designer, then implementer(s), then verifier - the domain-trio vertical, this skill's own `references/domain-trio-protocol.md`). Each slice's designer plan goes through ONE ask before its first implementer, and the stamp below quotes the answer:
+**DELEGATED** - for each vertical slice, dispatch that slice's stack seats directly from the main session (its designer, then implementer(s), then verifier - the domain-trio vertical, this skill's own `references/domain-trio-protocol.md`). Under `serial seats` the dispatches go one at a time in dependency order, each after the last report with its gates green; a red stops the chain. Each slice's designer plan goes through ONE ask before its first implementer, and the stamp below quotes the answer:
 
 ```ask
 <slice> plan, <N> tasks. Build it?
