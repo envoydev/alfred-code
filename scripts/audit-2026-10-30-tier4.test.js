@@ -145,55 +145,7 @@ test('RU-13: alfred-security keeps the secret invariants and points at the guard
     assert.match(read('stack', 'rules', 'alfred-docs-root.md'), /`ALFRED_CODE_DATA_PATH` \(default `\.alfred`\)/);
 });
 
-// RU-08 (round 2): the routers attached on every green .cs / .ts / .scss touch and mattered only on a red build, when the
-// root-cause habit loads anyway. The routing and the seat boundary move into that habit's broken-build section, the
-// resolvers described by what they cover; each router keeps ONE line pointing there that names its own two seats (the
-// graph's rule -> seat edges are what pull the resolvers into an install), and the .NET one keeps its package-change line.
-test('RU-08: habits-root-cause carries the resolver routing and the seat boundary; each router keeps one pointer line', () =>
-{
-    const squash = (s) => s.replace(/\s+/g, ' ');
-    const RESOLVERS = { 'dotnet-repair-agents': ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver'], 'angular-repair-agents': ['ng-build-error-resolver', 'angular-test-resolver'] };
-    const rc = squash(read('stack', 'skills', 'habits-root-cause', 'SKILL.md'));
-    for (const kept of ['## A broken build or red suite',
-        'offer the resolver through AskUserQuestion (resolver seat vs in-session fix, resolver recommended) - that ask comes before step 1 of the loop, and an in-session pick then starts at step 1',
-        'exactly as the roster spells it',
-        'A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a shared-contract change',
-        'Never edit the contract to go green.',
-        'A return with no closing status line - a seat stopped at its `maxTurns` (Claude Code marks the output partial from 2.1.246) or killed mid-task - is never DONE and never resumed as-is',
-        'a second status-less return from that task goes to the user as BLOCKED',
-        'A seat with no Agent tool (an implementer or a resolver) does NOT delegate',
-        'A read-only seat (a verifier, a designer, a reviewer, an analyzer) has no Edit to loop with: it reports the red and names the resolver.',
-        'its one sanctioned dispatch is the evidence-gatherer: it names the resolver in its report, never dispatches one.'])
-        assert.ok(rc.includes(kept), `habits-root-cause: '${kept}'`);
-    for (const seat of Object.values(RESOLVERS).flat())
-        assert.ok(!rc.includes(seat), `habits-root-cause describes the resolvers, never names ${seat} (it ships into every stack)`);
-    assert.ok(rc.indexOf('## A broken build or red suite') < rc.indexOf('## The loop'), 'the ask section precedes the loop it gates');
-    const graph = JSON.parse(read('meta', 'stack-graph.json'));
-    for (const [name, seats] of Object.entries(RESOLVERS))
-    {
-        const raw = read('stack', 'rules', `${name}.md`);
-        const paras = raw.replace(/^---[\s\S]*?\n---\n/, '').replace(/<!--[\s\S]*?-->/g, '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-        const route = paras.filter((p) => p.includes('`habits-root-cause`'));
-        assert.strictEqual(route.length, 1, `${name}: one routing line`);
-        assert.ok(!route[0].includes('\n'), `${name}: the routing is one line`);
-        assert.strictEqual(paras.length, name === 'dotnet-repair-agents' ? 2 : 1, `${name}: the routing line (and on .NET the package-change paragraph, SD15), nothing else`);
-        for (const seat of seats) assert.ok(route[0].includes(`\`${seat}\``), `${name} names ${seat}`);
-        assert.ok(route[0].includes('exactly as the roster spells it'), `${name}: the roster spelling stays`);
-        for (const gone of ['AskUserQuestion', 'BLOCKED_CONTRACT_CHANGE', 'maxTurns', 'does NOT delegate'])
-            assert.ok(!raw.includes(gone), `${name}: '${gone}' moved to habits-root-cause`);
-        assert.ok(raw.length <= (name === 'dotnet-repair-agents' ? 1300 : 1500), `${name}: ${raw.length} chars`);
-        assert.deepStrictEqual([...graph.rules[name].agents].sort(), [...seats].sort(), `${name}: the graph still pulls its resolvers`);
-        assert.ok(graph.rules[name].skills.includes('habits-root-cause'), `${name}: and the root-cause habit`);
-    }
-    const reg = JSON.parse(read('meta', 'shared-rules.json')).rules;
-    assert.ok(!reg['repair-router-ask-first'] && !reg['repair-router-delegation-protocol'], 'one home each now - no multi-home pin');
-    const files = (k) => [reg[k].owner, ...reg[k].sites].map((h) => h.file);
-    const HRC = 'stack/skills/habits-root-cause/SKILL.md';
-    for (const k of ['seat-statusless-return', 'blocking-ask-tool-shape'])
-    {
-        assert.ok(files(k).includes(HRC), `${k}: habits-root-cause is a home`);
-        assert.ok(!files(k).some((f) => /-repair-agents\.md$/.test(f)), `${k}: the routers left`);
-    }
-    for (const f of [HRC, 'stack/rules/dotnet-repair-agents.md', 'stack/rules/angular-repair-agents.md'])
-        assert.ok(files('seat-dispatch-spelling').includes(f), `seat-dispatch-spelling keeps ${f}`);
-});
+// RU-08 (dadc79f1) is HELD - A/B red (docs/tier4-rules-ab-2026-11-03-evidence.md): with the routing moved into
+// habits-root-cause and each router down to one line naming its seats, a red .NET build dispatched the resolver as often
+// (7 of 7 each arm) but loaded habits-root-cause - now the only home of the contract stop and the status-less return - in
+// 6 of 14 runs against 9 of 14. The routers keep their full text; rule-prose and flow-skill-prose pin it there.

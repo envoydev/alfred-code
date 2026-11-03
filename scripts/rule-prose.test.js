@@ -23,16 +23,14 @@ const pathsOf = (name) => JSON.parse(/^paths:\s*(\[.*\])\s*$/m.exec(frontmatterO
 
 // ------------------------------------------------------------------ M62
 
-// Audit 2026-10-30 RU-08 moved the seat boundary from both routers into habits-root-cause, which every red build loads and
-// every install carries - so the sentence has one home, and the routers' two-copy registry entry went with it.
-test('M62: the root-cause habit gives a read-only seat its action - report the red, name the resolver', () =>
+test('M62: both repair routers give a read-only seat its action - report the red, name the resolver', () =>
 {
     const line = 'A read-only seat (a verifier, a designer, a reviewer, an analyzer) has no Edit to loop with: it reports the red and names the resolver';
-    const rc = squash(read('stack/skills/habits-root-cause/SKILL.md'));
-    assert.strictEqual(rc.split(line).length - 1, 1, 'habits-root-cause carries it once');
     for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
-        assert.ok(!squash(rule(name)).includes(line) && squash(rule(name)).includes('`habits-root-cause` skill\'s broken-build section'), `${name}.md points at it`);
-    assert.ok(!registry()['repair-router-delegation-protocol'], 'one home, no multi-home pin');
+        assert.ok(squash(rule(name)).includes(line), `${name}.md`);
+    const entry = registry()['repair-router-delegation-protocol'];
+    for (const home of homes(entry))
+        assert.ok(squash(home.marker).includes('it reports the red and names the resolver'), `the pinned marker covers the new sentence in ${home.file}`);
 });
 
 // ------------------------------------------------------------------ M64
@@ -156,16 +154,16 @@ test('M73: the devops rule attaches on every delivery surface its skill claims',
     assert.ok(JSON.stringify(graph).includes('**/azure-pipelines*.yml'), 'the graph was regenerated');
 });
 
-// 2.1.6 review A1: the resolvers are dispatched from the main session, so whatever routes them routes a capped
-// resolver's status-less return too (the sentence is pinned as seat-statusless-return). Audit 2026-10-30 RU-08: that is
-// habits-root-cause's broken-build section now; the routers point at it.
-test('the resolver routing treats a status-less resolver return as a seat death', () =>
+// 2.1.6 review A1: the repair routers dispatch the resolvers from the main session, so they route a capped
+// resolver's status-less return too (the sentence is pinned as seat-statusless-return).
+test('the repair routers route a status-less resolver return as a seat death', () =>
 {
-    const HRC = 'stack/skills/habits-root-cause/SKILL.md';
-    assert.match(squash(read(HRC)), /A return with no closing status line - a seat stopped at its `maxTurns` \(Claude Code marks the output partial from 2\.1\.246\) or killed mid-task - is never DONE and never resumed as-is/);
-    assert.ok(homes(registry()['seat-statusless-return'] || { owner: {} }).some((h) => h.file === HRC), 'a pinned home');
     for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
-        assert.ok(squash(rule(name)).includes('`habits-root-cause` skill\'s broken-build section'), `${name}: routes through it`);
+    {
+        const text = squash(rule(name));
+        assert.match(text, /A return with no closing status line - a seat stopped at its `maxTurns` \(Claude Code marks the output partial from 2\.1\.246\) or killed mid-task - is never DONE and never resumed as-is/, name);
+        assert.ok(homes(registry()['seat-statusless-return'] || { owner: {} }).some((h) => h.file === `stack/rules/${name}.md`), `${name}: a pinned home`);
+    }
 });
 
 // ------------------------------------------------------------------ 2026-10-08 audit (rules.md F3-F16, hooks.md #14)
@@ -246,21 +244,15 @@ test('rules F9: the simplification-ceiling line sits with the comment rules and 
 });
 
 // Audit 2026-10-30 RU-02: the always-on 'Code fails - the FIRST action is the habits-root-cause Skill call' and the routers'
-// resolver ask were two first steps on one red build; the routers stated the one order - the ask, then the load. RU-08
-// moved the ask INTO habits-root-cause, so the order is one chain: the always-on load, then the skill's ask before step 1.
-test('rules F10 / RU-02: on a broken build the resolver ask comes before the loop, and an in-session pick starts at step 1', () =>
+// resolver ask were two first steps on one red build; the routers now state the one order - the ask, then the load.
+test('rules F10 / RU-02: on a broken build the resolver ask comes first, and an in-session pick starts at the root-cause habit, in both routers', () =>
 {
-    const rc = squash(read('stack/skills/habits-root-cause/SKILL.md'));
-    assert.ok(rc.includes('resolver recommended) - that ask comes before step 1 of the loop, and an in-session pick then starts at step 1.'), 'the order');
-    assert.ok(rc.includes('offer the resolver through AskUserQuestion'), 'the pinned ask stays');
-    assert.ok(homes(registry()['blocking-ask-tool-shape']).some((h) => h.file === 'stack/skills/habits-root-cause/SKILL.md'), 'the ask shape is pinned there');
-    assert.ok(!registry()['repair-router-ask-first'], 'one home, no multi-home pin');
-    assert.match(injected('alfred-interaction'), /the FIRST action is the `habits-root-cause` Skill call/, 'the always-on load is the first step');
     for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
     {
         const text = squash(rule(name));
-        assert.ok(text.includes('is routed by the `habits-root-cause` skill\'s broken-build section, loaded first:'), `${name}: the router agrees - the load first`);
-        assert.ok(!text.includes('that ask comes before the `habits-root-cause` Skill call'), `${name}: no second order`);
+        assert.ok(text.includes('resolver recommended) - that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code, and an in-session pick then starts at that call:'), name);
+        assert.ok(homes(registry()['repair-router-ask-first']).some((h) => h.file === `stack/rules/${name}.md`), `${name}: the order is pinned`);
+        assert.ok(text.includes('offer the resolver through AskUserQuestion'), `${name}: the pinned ask stays`);
     }
     const graph = JSON.parse(read('meta/stack-graph.json'));
     for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])

@@ -938,7 +938,8 @@
     },
     "angular-repair-agents": {
       "skills": [
-        "habits-root-cause"
+        "habits-root-cause",
+        "task-solve-cross"
       ],
       "agents": [
         "angular-test-resolver",
@@ -1031,7 +1032,8 @@
     },
     "dotnet-repair-agents": {
       "skills": [
-        "habits-root-cause"
+        "habits-root-cause",
+        "task-solve-cross"
       ],
       "agents": [
         "dotnet-build-error-resolver",

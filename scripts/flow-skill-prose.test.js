@@ -368,8 +368,7 @@ test('a status-less seat return is a seat death in every orchestrator that route
     assert.ok(entry, 'pinned in meta/shared-rules.json');
     const homes = copiesOf(entry);
     for (const f of ['stack/skills/task-solve-cross/references/domain-trio-protocol.md', 'stack/skills/loop-code-quality/references/delegated-mode.md',
-        // audit 2026-10-30 RU-08: the repair routers' copies moved to habits-root-cause, which routes the resolvers now
-        'stack/skills/task-solve/references/step-mechanics.md', 'stack/skills/habits-root-cause/SKILL.md'])
+        'stack/skills/task-solve/references/step-mechanics.md', 'stack/rules/dotnet-repair-agents.md', 'stack/rules/angular-repair-agents.md'])
     {
         assert.ok(homes.includes(f), `${f} is a pinned home`);
         const text = flat(read(f));

@@ -14,19 +14,6 @@ A fix aimed at a symptom moves the failure somewhere nobody is looking. It finds
 - The debugging method that proves the cause before any change is made to fix it.
 - Not for what a known failure signature or error code usually means, which the signature catalogs cover, or a whole investigation from scattered evidence (logs, monitors, a customer report), which is the gated diagnose flow's job.
 
-## A broken build or red suite
-
-Where this chat can dispatch seats and the roster holds a resolver for the stack - a build-error resolver for a broken build, a test-failure resolver for a red suite once the build is green (the stack's repair rule names them) - delegating beats looping in-session: the resolver absorbs the repeated build and test output and returns only a diagnosis. The run's session-or-agents pick, or the user's word, decides - absent both, offer the resolver through AskUserQuestion (resolver seat vs in-session fix, resolver recommended) - that ask comes before step 1 of the loop, and an in-session pick then starts at step 1. Dispatch the resolver exactly as the roster spells it.
-
-```ask
-The <build | suite> is red. Hand it to the <build-error | test-failure> resolver, or fix it in this session?
-- 'Resolver seat (Recommended)' - it absorbs the repeated build and test output and returns only a diagnosis
-- 'Fix it in this session' - the loop below runs here, from step 1
-```
-
-- A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a shared-contract change - outside its bounded scope by design; a running `task-solve-cross` flow handles it per its contract protocol - otherwise name `/task-solve-cross` as the user's next step (the skill is manual-only; a model Skill call is blocked). Never edit the contract to go green.
-- A return with no closing status line - a seat stopped at its `maxTurns` (Claude Code marks the output partial from 2.1.246) or killed mid-task - is never DONE and never resumed as-is, since a resume hands a runaway a fresh budget: re-dispatch it ONCE with a scoped resume brief (its handoff note and partial diff name what landed); a second status-less return from that task goes to the user as BLOCKED.
-
 ## The loop
 
 1. **Read the whole failure.** Every line of the error, every frame, and the FIRST failure in the log rather than the last - later ones are often fallout. Quote the lines that matter before touching anything; a warning printed beside the error is evidence too.
@@ -50,7 +37,6 @@ No root cause in the code - the evidence points at the environment, timing or an
 - A read-only run - a diagnoser seat, or the gated diagnose flow in this chat - runs steps 1-5, adds no instrumentation to the code and writes no fix: it reports the cause, the evidence and the route.
 - A repair seat that does not write new tests (a build or test-suite resolver) runs steps 1-5, the one fix of step 6 without its failing test, and step 7.
 - A single-chat run takes all seven.
-- A seat with no Agent tool (an implementer or a resolver) does NOT delegate - the resolver routing above is the orchestrator's; run your own bounded fix loop and report the red per your cap. A read-only seat (a verifier, a designer, a reviewer, an analyzer) has no Edit to loop with: it reports the red and names the resolver. A diagnoser carries the Agent tool but its one sanctioned dispatch is the evidence-gatherer: it names the resolver in its report, never dispatches one.
 
 ## Signs the loop was skipped
 
