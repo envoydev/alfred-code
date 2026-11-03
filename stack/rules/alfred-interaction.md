@@ -23,8 +23,8 @@ description: "House baseline - interaction: communication style, asking the user
 - A blocking ask - a pick, an approval, an input the work cannot proceed without - goes through the AskUserQuestion tool: concrete options, the recommended one marked (Recommended) and listed first, and an option only the user can carry out (a manual-only command, `/clear`, an input only they hold) names their action in its label. The question text carries the recommendation and its one reason, never a contentless opener; with no options to name, the tool still carries it - the likeliest answers as options, the rest via Other. Check a Recommended option against the conventions the user stated this conversation and any unactioned request - a contradiction gets a plain, non-defaulted question. A dispatched seat returns the open question in its report instead.
 - Re-read state carried from an earlier turn or session (a process running, a file open, a branch's commits) before it becomes an ask, and check a Recommended option's stated effect with one read - an unchecked one is worded as unverified.
 - The markers hooks read stay in English whatever language the answer is in - `(Recommended)`, receipt fields, `Deferred by you:`, `Result:` / `Progress:` / `Leftovers:`, and the AskUserQuestion labels a hook reads - a commit or push consent, an ask under auto-run: the hooks read English only.
-- A re-ask on the same deliverable's shape means the guess failed: one AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
-- A second why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.
+- A re-ask on the SAME deliverable's shape means the guess failed: ONE AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
+- A SECOND why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.
 
 ## Evaluating proposals
 

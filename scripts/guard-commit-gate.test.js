@@ -6,7 +6,8 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
-const { reviewedTranscript, REVIEW_ROW } = require('./hook-test-env');
+// Non-English text is generated from code points (foreignWords): no other language is written into this repo's code.
+const { reviewedTranscript, REVIEW_ROW, foreignWords } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -195,7 +196,7 @@ test('audit 2026-10-08: a WAIVED quote must waive the review, in the user\'s wor
   const { dir } = pushRepo();
   fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
   spawnSync('git', ['-C', dir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
-  for (const [quote, want] of [['what time is it?', 2], ['push it', 2], ['skip the review', 0], ['just push', 0], ['push it anyway, no review', 0], ['пуш без перевірки', 2]]) {
+  for (const [quote, want] of [['what time is it?', 2], ['push it', 2], ['skip the review', 0], ['just push', 0], ['push it anyway, no review', 0], [foreignWords(3, 11), 2]]) {
     writeReceipt(dir, 'PUSH-GATE', `WAIVED - "${quote}"\n`);
     assert.equal(gateIn(dir, 'git push'), want, `WAIVED - "${quote}"`);
   }
@@ -1867,7 +1868,7 @@ test('audit 2026-10-11 SD16: a literal cd "$WT" is followed, and a detached scra
 });
 
 // Deep hooks review 2026-10-16 (the user's ruling: the hooks read English only): a quote holding any letter outside ASCII is
-// no consent on either gate - the Ukrainian lists had read 'закомітив, не пуш' and 'Я зміни закомітив, перевір' as consent -
+// no consent on either gate - the old non-English word lists had read 'committed, no push' and 'I committed the changes, check' as consent -
 // and the denial routes to an ask; a waiver can be a picked option too, while someone is at the terminal.
 test('deep review: a non-English quote is no consent and names the answered: route; a waiver can be picked', () => {
   const dir = scratchRepo();
@@ -1877,7 +1878,7 @@ test('deep review: a non-English quote is no consent and names the answered: rou
     writeReceipt(dir, 'COMMIT-GATE', ['VERIFIED the checkpoint', `authorized: "${words}"`, `head: ${head}`, 'spec: 1 file', 'live-probe: NOT RUN - fixture', FMT].join('\n') + '\n');
     return gateFull(dir, 'git commit -am x');
   };
-  for (const words of ['закоміть', 'Я зміни закомітив, перевір', 'закомітив, не пуш', 'так, пуш', 'commit пізніше', 'не треба commit', 'commit the café fix']) {
+  for (const words of [foreignWords(1, 21), foreignWords(4, 22), foreignWords(3, 23), foreignWords(2, 24), `commit ${foreignWords(1, 25)}`, `${foreignWords(2, 26)} commit`, 'commit the café fix']) {
     const c = commit(words);
     assert.equal(c.status, 2, `commit gate: ${words}`);
     assert.match(c.stderr, /is not in English - the gate reads a quote in English only; ask with AskUserQuestion/, words);
@@ -1897,7 +1898,7 @@ test('deep review: a non-English quote is no consent and names the answered: rou
   const nothing = waive('WAIVED - answered: Push now');
   assert.equal(nothing.status, 2, 'a label that skips nothing');
   assert.match(nothing.stderr, /skips no review/);
-  assert.equal(waive('WAIVED - "пуш без перевірки"').status, 2, 'a non-English waiver quote');
+  assert.equal(waive(`WAIVED - "${foreignWords(3, 27)}"`).status, 2, 'a non-English waiver quote');
   assert.equal(waive('WAIVED - answered: Skip the review and push', { ALFRED_CODE_UNATTENDED: '1' }).status, 2, 'nobody at the terminal');
 });
 

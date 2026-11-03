@@ -1341,11 +1341,12 @@ test('guard-answer: a verbatim-repeated prompt is an ambiguity signal, not a re-
 // Deep hooks review 2026-10-16, the user's ruling 'English + script rule': the word lists read English only, so a close
 // in another language is not judged on its words - only on its neutral signals.
 test('guard-stop-contract: a close the hook cannot read as English is not judged on its words, a closing question mark still is (deep review: English only)', () => {
-  const stall = 'Задача 3 готова. Чекаю на твоє рішення.';
-  const ask = 'Задача 3 готова. Пушити?';
+  const { foreignWords } = require('./hook-test-env'); // another script's text, generated from code points
+  const stall = `${foreignWords(1, 41)} 3 ${foreignWords(1, 42)}. ${foreignWords(4, 43)}.`;
+  const ask = `${foreignWords(1, 41)} 3 ${foreignWords(1, 42)}. ${foreignWords(1, 44)}?`;
   for (const [state, rows] of [['none', fgBash], ['agent', reviewAgent]]) {
-    assert.equal(closeOver(`en-stall-${state}`, rows, stall).status, 0, `a stall in Ukrainian under ${state}`);
-    assert.equal(closeOver(`en-ask-${state}`, rows, ask).status, 2, `a closing '?' in Ukrainian under ${state}`);
+    assert.equal(closeOver(`en-stall-${state}`, rows, stall).status, 0, `a stall in another language under ${state}`);
+    assert.equal(closeOver(`en-ask-${state}`, rows, ask).status, 2, `a closing '?' in another language under ${state}`);
   }
 });
 

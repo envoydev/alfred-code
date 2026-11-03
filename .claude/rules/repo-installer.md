@@ -29,7 +29,8 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     one-time set-up in the new session (`init-plan.js`: the machine installs behind one ask, `stamp.js mark` dating the stamp's
     `initialised:` line - Claude's own memory is left as it is - the captures, the AGENTS.md fill through
     `habits-adjust-agents-md`, and once per account Claude Code's auto-update for the stack's marketplace - U01 of the
-    2026-11-03 usage audit: `install/marketplace-autoupdate.js` reads it in the docs' order (a settings file's
+    2026-11-03 usage audit: `install/marketplace-autoupdate.js` - the stack's marketplace being the one the account's
+    `installed_plugins.json` records the core from, a local folder one too (D10), else the one `brand.marketOf` matches - reads it in the docs' order (a settings file's
     `extraKnownMarketplaces` entry, the highest file's whole, then `known_marketplaces.json`, then off; the DISABLE_* env
     switches), and the answer writes `autoUpdate` true or false on the stack's entry in the ACCOUNT settings.json alone, a
     no too so no later init asks; through `workspace.js writeLike`, which, like D5's apply and remove, writes a LINKED

@@ -66,9 +66,10 @@ plugins run from: no probe, no archive.
   later, so a concurrent session keeps running (code.claude.com/docs/en/plugins-reference). Never offer to delete
   one and never delete one; when the listing shows more than one, say so in ONE close-out line - the count and
   the keeper - and that Claude Code clears the rest itself.
-- A same-version re-release that changed nothing loaded: `claude plugin uninstall alfred-code@<key> --scope
-  <scope>` then `claude plugin install alfred-code@<key> --scope <scope>` - `<key>` the resolve line's `key=`,
-  `<scope>` the core's own (never `managed`; without `--scope` the CLI picks `user`).
+- A same-version re-release that changed nothing loaded: ONE Bash call, `claude plugin uninstall alfred-code@<key>
+  --scope <scope> && claude plugin install alfred-code@<key> --scope <scope>` - `<key>` the resolve line's `key=`,
+  `<scope>` the core's own (never `managed`; without `--scope` the CLI picks `user`). Run apart, the uninstall alone
+  switches every guard off, and the config guard asks.
 
 ## Why the narration and tool rules
 

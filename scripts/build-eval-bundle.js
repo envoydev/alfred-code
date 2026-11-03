@@ -3,7 +3,7 @@
 // The EVAL BUNDLE - the core plus the whole library, flattened into ONE plugin, for
 // `claude plugin eval` only. Nothing installs it.
 //
-//   node scripts/build-eval-bundle.js <out>
+//   node scripts/build-eval-bundle.js [--core] <out>
 //
 // Library items are project copies, listed by no marketplace entry, so the eval CLI - which loads a
 // plugin into an isolated session - cannot see them any other way. The bundle is named
@@ -25,6 +25,10 @@ const { coreEntry } = require('./build-marketplace.js');
 
 const REPO = path.resolve(__dirname, '..');
 const BUNDLE_DESCRIPTION = 'Eval bundle: the alfred-code core plus the full library, for claude plugin eval only.';
+// `--core` (D7, 2026-11-03, the user's design): the core ALONE - its commands, router, seats and the trees they name - with
+// setup-plugin/evals/ as its evals/. `claude plugin eval alfred-code@envoydev` resolved setup-plugin/ on 2.1.317, where
+// `${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js` does not exist; a path target to this folder loads what an install loads.
+const CORE_DESCRIPTION = 'Eval bundle: the alfred-code core alone with its own eval cases, for claude plugin eval only.';
 
 // Bare house preloads in the frontmatter `skills:` list become `alfred-code:<n>`; a name with a
 // colon belongs to another plugin and is left alone.
@@ -43,12 +47,12 @@ function scopePreloads(text, houseSkills)
     return `---\n${lines.join('\n')}\n---${text.slice(m[0].length)}`;
 }
 
-function build(out, { repo = REPO } = {})
+function build(out, { repo = REPO, coreOnly = false } = {})
 {
     const place = placement();
     const core = coreEntry({ placement: place });
-    const skills = [...place.plugins[CORE].skills, ...place.library.skills];
-    const agents = [...place.plugins[CORE].agents, ...place.library.agents];
+    const skills = [...place.plugins[CORE].skills, ...(coreOnly ? [] : place.library.skills)];
+    const agents = [...place.plugins[CORE].agents, ...(coreOnly ? [] : place.library.agents)];
     const house = new Set(skills);
 
     // The output is wiped first, so only an absent or empty directory, or a bundle this script wrote,
@@ -57,7 +61,7 @@ function build(out, { repo = REPO } = {})
     const stat = fs.statSync(out, { throwIfNoEntry: false });
     const entries = stat && stat.isDirectory() ? fs.readdirSync(out) : [];
     let ours = false;
-    try { ours = JSON.parse(fs.readFileSync(path.join(out, '.claude-plugin', 'plugin.json'), 'utf8')).description === BUNDLE_DESCRIPTION; } catch { ours = false; }
+    try { ours = [BUNDLE_DESCRIPTION, CORE_DESCRIPTION].includes(JSON.parse(fs.readFileSync(path.join(out, '.claude-plugin', 'plugin.json'), 'utf8')).description); } catch { ours = false; }
     if (stat && (!stat.isDirectory() || (entries.length && !ours))) throw new Error(`${out} is not an empty directory and not a previous eval bundle - pick a new directory`);
     fs.rmSync(out, { recursive: true, force: true });
     for (const d of ['skills', 'agents', 'commands', 'evals', '.claude-plugin']) fs.mkdirSync(path.join(out, d), { recursive: true });
@@ -74,14 +78,16 @@ function build(out, { repo = REPO } = {})
     for (const tree of ROOT_TREES)
         fs.cpSync(path.join(repo, tree), path.join(out, tree), { recursive: true, filter: (src) => path.relative(repo, src) !== path.join('meta', 'evals') });
 
-    const casesDir = path.join(repo, 'meta', 'evals', 'library');
-    const cases = fs.existsSync(casesDir) ? fs.readdirSync(casesDir).filter((c) => fs.existsSync(path.join(casesDir, c, 'case.yaml'))) : [];
+    // the library cases are case.yaml dirs; the core's own (setup-plugin/evals/) are prompt.md + graders/ dirs
+    const casesDir = coreOnly ? path.join(repo, 'setup-plugin', 'evals') : path.join(repo, 'meta', 'evals', 'library');
+    const caseFile = coreOnly ? 'prompt.md' : 'case.yaml';
+    const cases = fs.existsSync(casesDir) ? fs.readdirSync(casesDir).filter((c) => c !== 'results' && fs.existsSync(path.join(casesDir, c, caseFile))) : [];
     for (const c of cases) fs.cpSync(path.join(casesDir, c), path.join(out, 'evals', c), { recursive: true });
 
     fs.writeFileSync(path.join(out, '.claude-plugin', 'plugin.json'), `${JSON.stringify({
         name: CORE,
         version: core.version,
-        description: BUNDLE_DESCRIPTION,
+        description: coreOnly ? CORE_DESCRIPTION : BUNDLE_DESCRIPTION,
         // `claude plugin validate --strict` refuses a manifest without it (measured, 2026-09-24).
         author: core.author,
     }, null, 2)}\n`);
@@ -91,9 +97,13 @@ function build(out, { repo = REPO } = {})
 if (require.main === module)
 {
     require('../stack/hooks/hook-prelude.js').blockingStdio();
-    const out = process.argv[2];
-    if (!out) { console.error('usage: build-eval-bundle.js <out>'); process.exit(1); }
-    try { console.log(JSON.stringify(build(path.resolve(out)))); }
+    const args = process.argv.slice(2);
+    const coreOnly = args.includes('--core');
+    const rest = args.filter((a) => a !== '--core');
+    // one output folder and no other flag: a typo builds nothing rather than the wrong bundle
+    if (rest.length !== 1 || rest[0].startsWith('-')) { console.error('usage: build-eval-bundle.js [--core] <out>'); process.exit(1); }
+    const out = rest[0];
+    try { console.log(JSON.stringify(build(path.resolve(out), { coreOnly }))); }
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 

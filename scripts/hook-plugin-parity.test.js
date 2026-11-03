@@ -138,10 +138,15 @@ test('a missing prelude leaves every hook running - the gate is fail-open', () =
 // R54 / Task 16 review M8: under a user-scope core every hook runs in every repo the user opens. A repo
 // never set up gets nothing written - no .claude/docs/ ledger, history, state or compact file - from
 // any of them, whatever the event. Each payload is one the hook acts on in a set-up project. R86: the
-// PROTECTIVE guards stay live there (the rm guard still blocks `rm -rf /`), and skip their row.
+// PROTECTIVE guards stay live there (the rm guard still blocks `rm -rf /`), and skip their row. The
+// cross-project guard keeps ONE check there too (the user's ruling of 2026-11-03): a change that reaches
+// the installed plugins' code asks in every project, so `rm -rf /` - which takes ~/.claude/plugins with
+// it - is its one block. HOME is a temp folder holding that tree, so the real one is never read.
 test('in a never-set-up project every plugin-launched hook writes nothing, and only the protective guards speak', () => {
     const { PROTECTIVE } = require(path.join(HOOKS_DIR, 'hook-prelude.js'));
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'parity-unset-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'parity-home-'));
+    fs.mkdirSync(path.join(home, '.claude', 'plugins'), { recursive: true });
     execFileSync('git', ['init', '-q', repo]);
     fs.writeFileSync(path.join(repo, 'big.js'), 'x'.repeat(200000));
     const events = [
@@ -165,14 +170,17 @@ test('in a never-set-up project every plugin-launched hook writes nothing, and o
                     out = execFileSync(process.execPath, [path.join(HOOKS_DIR, hook + '.js')], {
                         input: JSON.stringify({ session_id: 'unset-test', cwd: repo, ...event }), encoding: 'utf8', timeout: 20000,
                         stdio: ['pipe', 'pipe', 'pipe'],
-                        env: { ...process.env, CLAUDE_PROJECT_DIR: repo, CLAUDE_PLUGIN_ROOT: '/cfg/plugins/cache/envoydev/alfred-code/2.0.0', ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_TURN_CHECK: '1' },
+                        env: { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), CLAUDE_PROJECT_DIR: repo, CLAUDE_PLUGIN_ROOT: '/cfg/plugins/cache/envoydev/alfred-code/2.0.0', ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_TURN_CHECK: '1' },
                     });
                 }
                 catch (err) { status = err.status; out = String(err.stdout || '') + String(err.stderr || ''); }
+                const destructive = Boolean(event.tool_input && event.tool_input.command === 'rm -rf /');
                 if (PROTECTIVE.has(hook))
-                {
-                    const destructive = event.tool_input && event.tool_input.command === 'rm -rf /';
                     assert.strictEqual(status, hook === 'guard-catastrophic-rm' && destructive ? 2 : 0, `${hook} on ${event.hook_event_name} stays live: ${out.slice(0, 200)}`);
+                else if (hook === 'guard-cross-project-write' && destructive)
+                {
+                    assert.strictEqual(status, 2, `the installed-code check stays live in a repo never set up: ${out.slice(0, 200)}`);
+                    assert.match(out, /installed plugins/, out.slice(0, 200));
                 }
                 else
                 {
@@ -182,7 +190,11 @@ test('in a never-set-up project every plugin-launched hook writes nothing, and o
                 assert.ok(!fs.existsSync(path.join(repo, '.claude')), `${hook} on ${event.hook_event_name} wrote .claude/ into a repo never set up`);
             }
     }
-    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+    finally
+    {
+        fs.rmSync(repo, { recursive: true, force: true });
+        fs.rmSync(home, { recursive: true, force: true });
+    }
 });
 
 test('no suite states the hook count as a number that went stale with the eighteenth hook (2.1.5 final review R12)', () => {

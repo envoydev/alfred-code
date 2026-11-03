@@ -168,16 +168,18 @@ test('install-runtime: resolveWin never looks in the current directory - an empt
 
 test('install-runtime: a path under a non-ASCII folder reaches the spawn exactly as Node holds it - .exe direct, .cmd through cmd.exe (I1)', () =>
 {
-    const env = { PATH: 'C:\\тест\\bin;C:\\Windows', ComSpec: 'C:\\Windows\\system32\\cmd.exe' };
-    const exe = files(`C:\\тест\\bin\\${BIN}.exe`);
+    // The folder name is generated from code points (foreignWords): no other language is written into this repo's code.
+    const DIR = require('./hook-test-env').foreignWords(1, 31);
+    const env = { PATH: `C:\\${DIR}\\bin;C:\\Windows`, ComSpec: 'C:\\Windows\\system32\\cmd.exe' };
+    const exe = files(`C:\\${DIR}\\bin\\${BIN}.exe`);
     const direct = recorder();
     cliRunner(BIN, { env, platform: 'win32', resolve: (cmd, e) => resolveWin(cmd, e, exe.isFile), spawn: direct.spawn })(['plugin', 'list'], { quiet: true });
-    assert.strictEqual(direct.calls[0].cmd, `C:\\тест\\bin\\${BIN}.exe`);
-    const shim = files(`C:\\тест\\bin\\${BIN}.cmd`);
+    assert.strictEqual(direct.calls[0].cmd, `C:\\${DIR}\\bin\\${BIN}.exe`);
+    const shim = files(`C:\\${DIR}\\bin\\${BIN}.cmd`);
     const viaCmd = recorder();
     cliRunner(BIN, { env, platform: 'win32', resolve: (cmd, e) => resolveWin(cmd, e, shim.isFile), spawn: viaCmd.spawn })(['plugin', 'list'], { quiet: true });
     assert.strictEqual(viaCmd.calls[0].cmd, 'C:\\Windows\\system32\\cmd.exe');
-    assert.ok(viaCmd.calls[0].args[3].startsWith(`"C:\\тест\\bin\\${BIN}.cmd `), viaCmd.calls[0].args[3]);
+    assert.ok(viaCmd.calls[0].args[3].startsWith(`"C:\\${DIR}\\bin\\${BIN}.cmd `), viaCmd.calls[0].args[3]);
 });
 
 test('install-runtime: resolveOnce keeps a FOUND path for the run, and looks again after a miss - a tool installed mid-run is found (M2)', () =>

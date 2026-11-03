@@ -954,7 +954,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     question to the user) wins over every wait and every text exemption (R2-M1), and a wait on the stack's own seats (a designer,
     a diagnoser, an analyzer) is a wait on work (R2-m3). Its word lists read ENGLISH ONLY (deep hooks review 2026-10-16,
     the user's ruling: the Ukrainian halves decided 4 closes in 4 weeks, 2 of them false blocks): a close in another
-    language is judged only on its neutral signals (a closing '?', the ask rule, the background registry), auto-mode never
+    language is judged only on its neutral signals (its English close labels and its shape - THE RETUNE below - the ask
+    rule, the background registry), auto-mode never
     answers an ask it cannot read (`autoAnswers`, `hook-prelude.js unreadable` - 30% or more of the letters outside ASCII),
     and the markers it reads stay English whatever the answer's language (alfred-interaction.md); holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
@@ -1014,13 +1015,37 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     7ec6c7db); the same words unquoted still hold. Each done-close exemption is one named entry of `DONE_EXEMPTIONS`, and
     the first that fires on a close the base test held writes one `mode: probe`, `kind: done-close-exempt` row naming it -
     the rate a change to one is measured on (C03 had no row).
+    THE RETUNE (3.7.1; the user's ruling of 2026-11-03: hold the judge, keep the regex, cover more): a labelled corpus of
+    real closes, read on the judge's own criteria (94 labelled - the 18 replayed plus 76 sampled from 3,482), set every
+    change, each citing its corpus pattern in a code comment; `docs/stop-done-regex-v2-evidence.md` holds the method and the
+    counts (the 18: 6 right before, 18 after; the 94: 52 before, 87 after). The DONE half (`doneProse`) reads no done word in
+    a future or conditional frame (`FUTURE_DONE_RE`: 'tell me when it's done', 'once CI is green', 'I'll mark it done'), in
+    a step from before this turn (`EARLIER_DONE_RE`) or inside single quotes (`QUOTED_SPAN_RE`), nor `complete` in
+    'auto-complete', and takes a first-person perfect or past of a work verb ('I've written the fix', 'I added the audit
+    line'). The PENDING half reads `pendingProse`, where these are status: a record of picks taken, on one labelled line as
+    well as over a list (`DECISION_RECORD_LINE_RE`; the auto-mode headings open one too), an item carried from earlier, one
+    the user chose to leave ('as you asked'), one set for a later session, a list item another party or the user's own
+    checks own, a 'Not run:' line saying why it cannot run here, and the diff held for review (`DIFF_HOLD_RE`, the judge's
+    own release - a step gated on reporting work is still owed when the registry is empty). 'that / which remains' is
+    pending only opening a clause or after a work noun, 'it / this / they never ran' is old code, and a found issue 'not
+    fixed' or a check 'still red' is owed. A hand-back after 'following' / 'per' / 'given' is past, 'your own <noun>' hands
+    back only an act, an approval noun heading a label is a record, and a stop announced for when the work in flight
+    reports ('Once the plan passes, I'll stop for your approval') is no hand-back now. With NO transcript to read
+    (`turnUnread`: none named, or gone) a `Deferred by you:` line is taken at its word, the resume hand-off (a fenced block
+    naming `/clear` or a fresh session) passes as `resume-unread`, and a named wait on work ('Waiting on three fix
+    agents', and an 'After that' sequel to it) is own work running; a readable transcript keeps every older reading. A
+    close in ANOTHER LANGUAGE - under 70% of its prose letters in the Latin script, code spans, paths and links dropped
+    (`latinShare`) - skips every English list: done is a `Result:` line or a `Progress: N of M` past 0, owed is a
+    `Progress:` short of M or a `Not run:` / `Left for you:` line naming an item, only a close ENDING on '?' asked, and work
+    still out in the registry or the transcript passes it (`neutral-live-work`). `Leftovers:` alone is no signal, and a
+    close carrying none of the labels passes - the stated limit, never a word list; the suites build such text from code
+    points (`hook-test-env.js foreignWords`). Replayed text-only over all 3,482 closes (no transcript-backed exemption can
+    run there) it holds 223 where the old reading held 448.
     THE STOP JUDGE (audit 2026-10-30 HK-22), HELD since 2026-11-03 (the user's ruling: 'hold judge, keep regex'): a prompt
     hook runs no stack prelude, so under the plugin's default user scope it would judge every repo, set up or not, and no
     stand-down reaches it. The manifest row carries `held: true`: `promptWiring` still validates it and wires it on neither
-    route, and the regex DONE half holds as before. The regex is retuned instead (3.7.1, the user's ruling): a labelled
-    corpus of real closes, a target at or above the judge's 14 to 16 of 18 with no regression, and in a reply in another
-    language only language-neutral signals - the stack's fixed English close labels and the close's shape - with no
-    non-English text in plugin code. What follows is the judge as built, for the day the key goes. The regex DONE half
+    route, and the regex DONE half holds as before, retuned instead (THE RETUNE, above: 18 of the 18 replayed closes
+    the judge scored 14 to 16 on). What follows is the judge as built, for the day the key goes. The regex DONE half
     held 18 replayed closes 13 times wrong, and a Haiku judge over the same 18 scored 14 to 16 in three runs. It is a
     Claude Code `prompt` hook on the core's Stop, beside this hook - its text `stack/hooks/stop-judge-prompt.txt` (one file,
     for a later Cursor or Codex adapter), `timeout: 30` and NO `model`: the hook evaluator sends the field to the API as
@@ -1299,7 +1324,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     anchored at the payload's `cwd` (the Bash tool's persisted cwd, as the rm and config guards read it; a missing,
     relative or vanished one is the project root), a file-tool path at the project root (audit 2026-10-08). Session
     scratch (the harness root `/tmp/claude-<uid>` listed on its own, so a project kept under `/tmp` still reaches it),
-    `~/.claude` / `~/.claude-<name>`, a relocated `CLAUDE_CONFIG_DIR` and `/dev` stay writable; paths compared as REAL paths in their on-disk
+    `~/.claude` / `~/.claude-<name>`, a relocated `CLAUDE_CONFIG_DIR` and `/dev` stay writable - except each account dir's `plugins/`
+  (minus `plugins/data/`, plugin state) and the running plugin's own root (`CLAUDE_PLUGIN_ROOT`), where the installed
+  guards live: a write there, or a removal of a folder holding one (a `~/.claude-<name>` holding a `plugins/` included),
+  is asked with 'Drop the change' recommended and opened only by the user's allow answer and its receipt, or a typed folder
+  or an `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` entry naming the tree or a folder in it - never a broader one (the ~/.claude
+  gap, the user's design of 2026-11-03; block row `plugin-code`). It runs in EVERY project, under every stand-down (a repo
+  never set up, the opt-out, `minimal`, a Cursor host - only the plugin copy beside a copied twin leaves it to the twin),
+  since every project runs one installed copy (the user's ruling of 2026-11-03): stood down, the guard judges that alone,
+  asks nothing of an unread script, and writes no block row in a repo never set up. A folder right under `plugins/` named
+  after a plugin the account's `installed_plugins.json` lists passes (claude-hud's `plugins/claude-hud/`; never the
+  core's name, never one Claude Code keeps there - `cache`, `marketplaces`, `store`, `synced`, `repos`, `.trash`); paths compared as REAL paths in their on-disk
     letter case (the native realpath, and on win32 a case-folded compare as well - M9); a Git Bash mount path (`/c/...`,
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the
@@ -1408,9 +1443,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `minimal` profile, a Cursor payload, `CONFIG_PROTECT=0` and a repo never set up, which writes no block row (R86).
     Removing a guard from the list, a guard already listed and any other key pass. Not read: `.variables` (layout.js never
     reads the off-list there, D7) and a workspace member's files (they hand down `<hook>:<part>` entries only, and no
-    protective guard has a part). Ceilings: a destination or value the shell computes, a runtime script that builds the
-    JSON, a `git checkout` / `clone` laying a settings file down, an extract tool other than tar and unzip, and a plugin
-    switched off in `enabledPlugins`.
+    protective guard has a part). THE PLUGIN SWITCH-OFF (SYS-01b; a side agent's note, the user's design of 2026-11-03):
+    `enabledPlugins` holding the core (`alfred-code@<key>`) at `false` in a watched file, or a watched file that enabled it
+    no longer enabling it - a dropped key loads nothing (`docs/plugin-cli-evidence.md` S29): its whole new text read (a
+    Write, an applied Edit, a sed, a copy's source; one Claude Code cannot load, or empty, enables nothing), or the file
+    removed (`rm`, a move away, a folder holding it or its `.claude/`) - and `claude plugin disable|uninstall|remove` of the
+    core or `disable --all` at a command position (`commandIndex`; in the command and each script it carries, heredoc
+    bodies, comments and quoted text blanked, so a commit message or PR body naming the act is prose) stand every Alfred
+    Code guard down from the next session: the same ask and receipt, the receipt line the act with its options dropped
+    (`claude plugin disable alfred-code@envoydev`). An `install` or `enable` of the same core at the same scope later in the
+    command, joined by `&&` alone, is a reinstall and passes, so the update notes' same-version re-release runs both in one
+    call. Ceilings: a destination or value the shell computes, a runtime script that builds the JSON, a `git checkout` /
+    `clone` laying a settings file down, an extract tool other than tar and unzip, a scoped `claude plugin marketplace
+    remove` of the core's marketplace, a glob or a deeper folder removed, and a dropped core key from a shell write whose
+    content the guard cannot know (a redirect, a `jq` / `sponge` rewrite, `: > file`).
   - `guard-desktop-exec.js` (PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any
     registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
     (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server

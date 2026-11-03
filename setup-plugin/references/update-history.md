@@ -691,3 +691,17 @@ counts as the allow.
 `/alfred-code:status` and update flag `claude-hud` below 0.15.0. The stop contract still holds a close that reports a
 step done and leaves the next one pending as a statement; a model-judged version of that check is built but held.
 Nothing to do by hand.
+
+## after 3.7.0 - the done check holds fewer finished closes, and the plugins' own code asks first
+
+The stop check for a close that reports a step done and leaves the next one pending was retuned on a labelled set of
+real closes. It now passes a close that only records what was decided, a wait on work still running or an item you
+chose to leave, and still holds one that leaves a step owed and unasked. A close in another language is judged only by
+its English labels (`Result:`, `Left for you:`, `Not run:`) and its shape.
+
+A change that would write into the installed plugins' code (`~/.claude/plugins`, outside its `data/` folder) now asks
+first in every project, set up or not; a plugin working in its own folder passes. Switching the core plugin off -
+through `enabledPlugins`, a removed settings file that enables it, or the `claude plugin` command - asks too.
+
+`/alfred-code:init` now finds a stack installed from a local folder when it offers marketplace auto-update. Nothing to
+do by hand.

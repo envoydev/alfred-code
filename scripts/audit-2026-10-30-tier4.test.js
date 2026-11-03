@@ -97,9 +97,17 @@ test('RU-06: the always-on set keeps caps only on the FIRST-action shape, the se
     const inj = (name) => injectedRuleText(read('stack', 'rules', `${name}.md`));
     const lowered = {
         'alfred-docs-root': ['Creating a doc outside this root', 'Editing an existing repo doc'],
-        'alfred-interaction': ['**Answer budget - a hard rule that no hook enforces', 'A re-ask on the same deliverable\'s shape means the guess failed: one AskUserQuestion', 'A second why-challenge'],
-        'alfred-navigation': ['What the stack does or wants', 'An empty reference result', 'evidence of absence runs a must-match positive control'],
+        'alfred-interaction': ['**Answer budget - a hard rule that no hook enforces'],
     };
+    // Only the two lines the rules A/B measured stay lowered (docs-placement 7/7 a side, house-voice 4/10 a side); the five it
+    // could not measure - a second user turn (SAME/ONE, SECOND) or no grader (STACK, EMPTY, ABSENCE) - keep their caps
+    // (2026-11-03, after 3.7.0: unproven emphasis changes are backed out, docs/tier4-rules-ab-2026-11-03-evidence.md).
+    const restored = {
+        'alfred-interaction': ['A re-ask on the SAME deliverable\'s shape means the guess failed: ONE AskUserQuestion', 'A SECOND why-challenge'],
+        'alfred-navigation': ['What the STACK does or wants', 'An EMPTY reference result', 'evidence of ABSENCE runs a must-match positive control'],
+    };
+    for (const [name, phrases] of Object.entries(restored))
+        for (const p of phrases) assert.ok(inj(name).includes(p), `${name} restores '${p}'`);
     for (const [name, phrases] of Object.entries(lowered))
         for (const p of phrases) assert.ok(inj(name).includes(p), `${name}: '${p}'`);
     // kept: each held by a pin outside these files - a marker, a test's exact text or a skill-comply quote
@@ -119,7 +127,7 @@ test('RU-06: the always-on set keeps caps only on the FIRST-action shape, the se
         const prose = inj(name).replace(/`[^`]*`/g, '').replace(/<[^>]*>/g, '');
         caps += (prose.match(/\b[A-Z]{2,}(?:-[A-Z]{2,})*\b/g) || []).filter((t) => !ACRONYMS.has(t)).length;
     }
-    assert.strictEqual(caps, 21, 'emphasis tokens: 32 before, 21 after (8 of them the pinned FIRST action)');
+    assert.strictEqual(caps, 27, 'emphasis tokens: 32 before, 21 after RU-06, 27 with the six unmeasured restored (8 of them the pinned FIRST action)');
 });
 
 // RU-13: the credentials line keeps presence-never-value, the store and the pinned phrases, and leaves the commands' spelling

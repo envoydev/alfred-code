@@ -129,3 +129,59 @@ test('the bundle passes claude plugin validate --strict when the CLI is here', {
     const cfg = tmp('cfg-');
     execFileSync('claude', ['plugin', 'validate', '--strict', out], { env: { ...process.env, CLAUDE_CONFIG_DIR: cfg, HOME: cfg }, stdio: 'pipe' });
 });
+
+// D7 (2026-11-03, the user's design): `claude plugin eval alfred-code@envoydev` resolved setup-plugin/, where the
+// commands' `${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js` does not exist. `--core` builds the CORE alone as one plugin
+// - its commands, router, seats and the trees they name - with setup-plugin/evals/ as its evals/, so a path target loads
+// what an install loads and the core's own cases run there.
+test('--core: the core alone, its own eval cases as evals/, every path its commands name resolving inside it', () =>
+{
+    const out = path.join(tmp('bundle-'), 'core');
+    const printed = JSON.parse(execFileSync(process.execPath, [SCRIPT, '--core', out], { encoding: 'utf8' }));
+    const { placement, CORE } = require('./plugin-placement.js');
+    const core = placement().plugins[CORE];
+    assert.deepEqual(fs.readdirSync(path.join(out, 'skills')).sort(), ['alfred-code', ...core.skills].sort(), 'the router and the core\'s own skills, no library skill');
+    assert.equal(fs.readdirSync(path.join(out, 'agents')).length, core.agents.length, 'the core\'s seats');
+    const evalCases = fs.readdirSync(path.join(REPO, 'setup-plugin', 'evals'), { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'results').map((e) => e.name).sort();
+    assert.deepEqual(fs.readdirSync(path.join(out, 'evals')).sort(), evalCases, 'setup-plugin/evals/ cases, no library case');
+    for (const c of evalCases) assert.ok(fs.existsSync(path.join(out, 'evals', c, 'prompt.md')), `${c} travels whole`);
+    for (const f of fs.readdirSync(path.join(out, 'commands')).map((n) => path.join(out, 'commands', n)).concat(path.join(out, 'skills', 'alfred-code', 'SKILL.md')))
+        for (const m of fs.readFileSync(f, 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9_./-]+[A-Za-z0-9_-])/g))
+            assert.ok(fs.existsSync(path.join(out, m[1])), `${path.basename(f)} names ${m[1]}, which the core bundle holds`);
+    assert.ok(fs.existsSync(path.join(out, 'scripts', 'install', 'stamp.js')), 'the stamp script the status and router bodies run');
+    assert.match(JSON.parse(fs.readFileSync(path.join(out, '.claude-plugin/plugin.json'), 'utf8')).description, /core alone/);
+    assert.equal(printed.cases, evalCases.length);
+    // a re-build over its own output is allowed, over a full bundle too - both are this script's
+    execFileSync(process.execPath, [SCRIPT, '--core', out]);
+    execFileSync(process.execPath, [SCRIPT, out]);
+    execFileSync(process.execPath, [SCRIPT, '--core', out]);
+    assert.deepEqual(fs.readdirSync(path.join(out, 'evals')).sort(), evalCases, 'a full bundle rebuilt as the core leaves no library case behind');
+    const r = spawnSync(process.execPath, [SCRIPT, '--core'], { encoding: 'utf8' });
+    assert.notEqual(r.status, 0, 'no output dir is a usage error');
+    assert.match(r.stderr, /usage/);
+    // the flag anywhere: after the folder it still builds the core alone (the fresh review of 2026-11-03: it built the full one)
+    execFileSync(process.execPath, [SCRIPT, out, '--core']);
+    assert.match(JSON.parse(fs.readFileSync(path.join(out, '.claude-plugin/plugin.json'), 'utf8')).description, /core alone/);
+    for (const bad of [[out, '--cor'], [out, out + '2']])
+        assert.notEqual(spawnSync(process.execPath, [SCRIPT, ...bad], { encoding: 'utf8' }).status, 0, `${bad.join(' ')} is a usage error, no build`);
+});
+
+test('--core: each plugin eval case grants no Write or Edit, and Bash only as node', () =>
+{
+    const dir = path.join(REPO, 'setup-plugin', 'evals');
+    for (const c of fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'results').map((e) => e.name))
+    {
+        const fm = /^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(dir, c, 'prompt.md'), 'utf8'))[1];
+        const tools = (/^allowed_tools: \[(.*)\]$/m.exec(fm) || [])[1] || '';
+        assert.match(tools, /"Bash\(node:\*\)"/, `${c} grants node`);
+        assert.doesNotMatch(tools.replace(/"Bash\(node:\*\)"/, ''), /\b(Bash|Write|Edit|NotebookEdit)\b/, `${c} grants no other writing tool`);
+    }
+});
+
+test('--core passes claude plugin validate --strict when the CLI is here', { skip: !hasClaude() && 'claude CLI not on PATH' }, () =>
+{
+    const out = path.join(tmp('bundle-'), 'core');
+    execFileSync(process.execPath, [SCRIPT, '--core', out]);
+    const cfg = tmp('cfg-');
+    execFileSync('claude', ['plugin', 'validate', '--strict', out], { env: { ...process.env, CLAUDE_CONFIG_DIR: cfg, HOME: cfg }, stdio: 'pipe' });
+});
