@@ -86,3 +86,12 @@ test('RU-10: the DB / external-service test clause lives in habits-test-first, n
     const cycle = skill.slice(skill.indexOf('## The cycle'), skill.indexOf('2. **Watch it fail'));
     assert.ok(cycle.includes('Code that talks to a database or an external service also gets an integration test of that boundary.'), cycle);
 });
+
+test('RU-20: alfred-interaction drops the two style lines no answer can be checked against', () =>
+{
+    const rule = read('stack', 'rules', 'alfred-interaction.md');
+    assert.doesNotMatch(rule, /casual but professional/);
+    assert.doesNotMatch(rule, /Analogies only/);
+    assert.match(rule, /^- Direct, no filler openers; assume strong stack knowledge\. Push back when wrong\.$/m);
+    assert.match(rule, /^- Silently use the correct phrasing for the user's language mistakes\.$/m);
+});
