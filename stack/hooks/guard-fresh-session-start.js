@@ -263,7 +263,7 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
     sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
     ctxThreshold: () => null, coldFloor: () => null, worthResuming: () => false,
     freshVerdict: () => ({ pays: false }), verdictProbe: () => null, payText: () => '', notPayText: () => '',
-    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
+    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true, autoCompactWindow: () => null,
   };
 }
 fresh.use(payload);
@@ -1365,13 +1365,67 @@ function modeBanner(autoOn) {
 // run, ALFRED_CODE_UNATTENDED=1 or a hand-written stamp still reads as nobody.
 const banner = EVENT === 'UserPromptExpansion' && !payload.agent_id && BANNER_RE.test(skill) && !unattended({ ...payload, session_id: '' })
   ? modeBanner(Boolean(auto)) : '';
-// Every UserPromptExpansion output goes through here, the banner after the text; `leave` is an exit with nothing else to say.
+// --- the SEATS fact line (D8, the user's ruling of 2026-11-03) ---
+// A session heavier than the seats' own tier (sonnet) is told so in one line on every flow call, both routes: the typed
+// command and the model's Skill call. The line is a FACT for the model - the price multiple of the build, review and
+// gather seats - and `habits-execution-strategy` 'Model' says which steps move; nothing here moves a mark. It prints
+// whether or not anyone is at the terminal (the banner's gate does not apply: the banner reports a mode to a person),
+// never for a seat, and after a /model switch down it says so once this session's ledger holds a `seats-line` row.
+// The engine's stand-in (fresh-session.js missing mid-update) has no `seatsFacts`, so the line is simply absent there.
+const SEATS_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:(?:task|capture|loop|issue|mode)-[a-z][a-z0-9-]*|review-code|review-security|habits-execution-strategy)$/;
+function seatsFactsNow() {
+  if (payload.agent_id || !SEATS_SKILL_RE.test(skill)) return null;
+  if (!(EVENT === 'UserPromptExpansion' || (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)))) return null;
+  return fresh.seatsFacts(fresh.sessionModelId());
+}
+function seatsLedgerHolds() {
+  try {
+    const dir = require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']);
+    return fs.readFileSync(nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), 'utf8').includes('"kind":"seats-line"');
+  } catch { return false; }
+}
+let seatsInfo = null;
+function seatsLine() {
+  const facts = seatsFactsNow();
+  if (!facts) return '';
+  if (facts.tier > fresh.MODEL_TIER.sonnet) {
+    seatsInfo = { model: facts.id, multiple: facts.multiple, down: false };
+    const price = facts.multiple ? `${facts.multiple} the price of` : 'heavier than';
+    const lighter = facts.designers ? `, ${facts.designers} lighter` : '';
+    return `**Seats:** this session runs ${facts.id}, ${price} the build, review and gather seats (${fresh.SEAT_IDS.sonnet}); `
+      + `the designers run ${fresh.SEAT_IDS.opus}${lighter} - \`habits-execution-strategy\` 'Model' says which steps move.`;
+  }
+  if (seatsLedgerHolds()) {
+    seatsInfo = { model: facts.id, multiple: facts.multiple, down: true };
+    return `**Seats:** this session now runs ${facts.id}, the seats' own tier - no step moves for the model.`;
+  }
+  return '';
+}
+const SEATS = (() => { try { return typeof fresh.seatsFacts === 'function' ? seatsLine() : ''; } catch { return ''; } })();
+// One measurement row per process that printed the line (a blocked call writes no output, so no row).
+let seatsRowWritten = false;
+function seatsPrinted(route) {
+  if (seatsRowWritten || !SEATS) return;
+  seatsRowWritten = true;
+  ledgerRow({ mode: 'probe', kind: 'seats-line', reason: 'probe: the Seats line printed', detail: { ...seatsInfo, route } });
+}
+// Every UserPromptExpansion output goes through here, the banner and the Seats line after the text; `leave` is an exit with nothing else to say.
 function expansionOut(text) {
-  const body = [text, banner].filter(Boolean).join('\n\n');
-  if (body) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptExpansion', additionalContext: body } }));
+  const body = [text, banner, SEATS].filter(Boolean).join('\n\n');
+  if (!body) return;
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptExpansion', additionalContext: body } }));
+  if (SEATS) seatsPrinted('typed');
+}
+// The PreToolUse twin: the text (when there is one) and the Seats line, nothing when both are empty.
+function skillOut(text) {
+  const body = [text, SEATS].filter(Boolean).join('\n\n');
+  if (!body) return;
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: body } }));
+  if (SEATS) seatsPrinted('skill');
 }
 function leave() {
   if (EVENT === 'UserPromptExpansion') expansionOut('');
+  else if (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) skillOut('');
   process.exit(0);
 }
 // The solve flow a /mode-auto-run code change follows by reading it: the library copy the model could load - personal, then
@@ -1396,6 +1450,7 @@ if (auto && !auto.marker) {
       + 'option; one with no marked option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), waits for the user.'
     : `auto-run is ON for this session (${auto.file}) - no run started: `
       + 'the next task, capture, loop, issue or mode command runs under it, each ask taking its (Recommended) option. Do nothing else for this line.');
+  else skillOut('');
   process.exit(0);
 }
 if (auto) {
@@ -1414,7 +1469,7 @@ if (auto) {
     + `(8) A message the user types mid-run is input to the run: take it in and carry on; if it asks to stop the run, print its close and delete ${auto.marker}.`
     + (AUTO_SELF_RE.test(auto.run) ? ` ${solveFlowLine()}` : '');
   if (EVENT === 'UserPromptExpansion') expansionOut(contract);
-  else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: contract } }));
+  else skillOut(contract);
   process.exit(0);
 }
 // M7: a refused /mode-auto-run start offers no fresh session - nothing runs, so there is nothing to resume; nor does a
@@ -1670,7 +1725,7 @@ if (COMPACT_INSTEAD) {
   try { fs.writeFileSync(compactNoteFile(), new Date().toISOString(), { flag: 'wx' }); sweepOffers(); } catch (e) { first = !(e && e.code === 'EEXIST'); }
   const note = first ? `${COMPACT_NOTE} So /${skill} puts no fresh-session option in any ask and never ends a turn to move to a new session.` : '';
   if (EVENT === 'UserPromptExpansion') expansionOut(note);
-  else if (note) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: note } }));
+  else skillOut(note);
   process.exit(0);
 }
 const usage = lastUsage();

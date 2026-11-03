@@ -33,7 +33,7 @@ Two build modes, the recommendation decided per plan by the `Execution:` verdict
   can build in parallel (the measured multi-slice exception: built inline, such a plan cost a
   multiple of its dispatched build).
 
-The verdict maps straight to the mark: `parallel seats` recommends agents, `serial` or `batched`
+The verdict maps straight to the mark: `parallel seats` or `serial seats` recommends agents, `serial` or `batched`
 recommends session. The plan's `Approved:` line is written after this ask is answered, quoting the answer - never
 in the edit that appends the gate block, ahead of the ask. A plan whose cards own their files and verify alone recommends agents - building
 it one card after another loses time and buys no quality. A fixed default is not a recommendation. Agents mode exists only where subagent dispatch is
@@ -75,7 +75,9 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
 
 Each task card goes to its stack's `<stack>-implementer` seat, dispatched exactly as the roster
 spells it (`alfred-code:<seat>` where the core plugin carries it) - a flat fan-out with the main
-session the only orchestrator:
+session the only orchestrator. Under `serial seats`, the cards go out one at a time in the plan's
+dependency order: the next card only after the last card's report is in and its gates are green; a
+red stops the chain and routes by the build-time stop list.
 
 - **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-run the hook's `AUTO` stamp already stands - leave it)
   (the dispatch hook blocks an unstamped implementer). It is the plan's own - `<plan id>` is the plan file's name without `.md`. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. DELETE it when the fan-out completes,
@@ -127,7 +129,9 @@ Three options, one recommended, reason stated:
 - **'task-verify-code in-session'** - a routine diff: no dispatch, stays in this context.
 - **'the stack's `<stack>-verifier` seat'** - the diff is large, trips a risk trigger (auth,
   migration, concurrency, security, a big refactor), or was built in this session and deserves
-  eyes that did not write it; frontmatter model unless the user names one.
+  eyes that did not write it; frontmatter model unless the user names one. On a heavy session the 'Model'
+  bullet of `habits-execution-strategy` sets this mark. It marks the verifier for every diff past one file; on a
+  serial-seats build whose card tripped a risk trigger, the stop's reason names the trigger and the card.
 - **'skip'** - straight to step 6's done-gate; never the recommendation.
 
 For a broader sweep the user can run `/review-code --depth deep` themselves - it is not part of

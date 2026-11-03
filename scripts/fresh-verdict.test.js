@@ -147,6 +147,11 @@ test('prices: the rates equal meta/model-prices.json', () => {
   assert.ok(checked > models.length, 'the nested long-prompt price is checked too');
   assert.equal(eng.RESUME_READ, 13000);
   assert.ok(Object.isFrozen(eng.CACHE_READ_RATES));
+  for (const [key, price] of Object.entries(eng.SEAT_PRICE)) {
+    const row = models.find((m) => m.id === key);
+    assert.ok(row, `${key} has a models[] row`);
+    for (const col of ['input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output']) assert.equal(price[col], row[col], `${key} ${col}`);
+  }
 });
 
 test('modelKey: the windows table\'s key rule', () => {

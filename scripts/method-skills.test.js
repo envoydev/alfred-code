@@ -254,13 +254,13 @@ test('the solve and diagnose flows load the execution strategy before they decid
     assert.ok(at(cross, load) > -1 && at(cross, load) < at(cross, 'Size <size> across'), 'task-solve-cross loads it before its mode ask');
     const diag = body('issue-diagnoser');
     assert.ok(at(diag, load) > at(diag, '4b. PLAN TASKS') && at(diag, load) < at(diag, 'Then decompose the minimal change'), 'issue-diagnoser loads it before the fix cards');
-    assert.match(squash(read('stack/skills/task-solve/references/step-mechanics.md')), /`parallel seats` recommends agents/, 'the mode-fit rule follows the verdict');
+    assert.match(squash(read('stack/skills/task-solve/references/step-mechanics.md')), /`parallel seats` or `serial seats` recommends agents/, 'the mode-fit rule follows the verdict');
     const strategy = squash(read('stack/skills/habits-execution-strategy/SKILL.md'));
     assert.doesNotMatch(strategy, /Not inside a stamped solve flow/, 'the flows are no longer excluded');
     assert.match(strategy, /how the work runs, not only what it changes/, 'it reasons about how the work runs');
     assert.match(strategy, /can these units run at the same time without losing quality\?/, 'it asks the parallel question');
     assert.match(strategy, /\*\*parallel is the recommendation\*\*/, 'parallel is recommended when quality holds');
-    assert.match(strategy, /Execution: route <direct \| the flow offered> - mode <serial \| batched \| parallel seats: <n>> - model </, 'one verdict names route, mode and model');
+    assert.match(strategy, /Execution: route <direct \| the flow offered> - mode <serial \| serial seats: <n> \| batched \| parallel seats: <n>> - model </, 'one verdict names route, mode and model');
     for (const route of ['**Direct**', 'gated single-chat solve flow', 'cross-domain solve flow', 'diagnose flow', 'greenfield or framework-upgrade flows'])
         assert.ok(strategy.includes(route), `the route list holds ${route}`);
     assert.match(strategy, /never a silent switch/, 'a flow route is offered, never taken silently');

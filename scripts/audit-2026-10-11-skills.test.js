@@ -144,7 +144,7 @@ test('2ca8e8ee#1 #2: the upgrade gate follows a printed plan and offers the in-s
     assert.strictEqual(gates.length, 2, 'both gate templates say the plan is above');
     assert.ok(!asksOf(up).some((a) => /^The staged plan is ready:/.test(a.question)), 'no gate over an unshown plan');
     assert.deepStrictEqual(gates[0].options, ['Approve - execute through the seats (Recommended)', 'Approve - execute in this session', 'Just the plan', 'Stop - changes needed']);
-    assert.match(flat(up), /The mark moves to 'in this session' when the verdict reads `serial`; the run never drops the seats on its own call/);
+    assert.match(flat(up), /The mark moves to 'in this session' when the verdict reads `serial` \(not `serial seats`\); the run never drops the seats on its own call/);
     assert.match(flat(up), /Load `habits-execution-strategy` \(the Skill tool\); its `Execution:` line is the mode reason/);
     const strat = flat(read('stack/skills/habits-execution-strategy/SKILL.md'));
     assert.match(strat, /Inside a flow that owns dispatch - the solve flows, the diagnose flow, the version-upgrade flow -/);

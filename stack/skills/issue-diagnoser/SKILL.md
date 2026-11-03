@@ -65,6 +65,7 @@ Gather the evidence <inline | through the seats>: <what settles it - one grep, o
 - 'Gather inline in this session (Recommended)' - a single command or a bounded grep settles it
 - 'Gather through evidence-gatherer seats' - big or many sources; the raw volume never lands here
 ```
+On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. One command or one bounded grep stays inline.
 
 The mark moves to the seats when the evidence is BIG or MANY (a multi-megabyte log, a CI dump,
 three sources to correlate): the whole point of that seat is that the raw volume never lands in

@@ -51,7 +51,7 @@ The staged plan above: <n> stages, each with its verification and rollback point
 - 'Stop - changes needed' - I ask what to change next, in plain text
 ```
 
-The mark moves to 'in this session' when the verdict reads `serial`; the run never drops the seats on its own call. With a user-level call still open, executing would guess its answer, so the plan is the recommendation:
+The mark moves to 'in this session' when the verdict reads `serial` (not `serial seats`); the run never drops the seats on its own call. With a user-level call still open, executing would guess its answer, so the plan is the recommendation:
 
 ```ask
 The staged plan above is ready, but <n> user-level call(s) are open. Take the plan and settle them first.
