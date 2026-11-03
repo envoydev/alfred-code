@@ -976,6 +976,19 @@ function askAnsweredSince(from) {
   }
   return false;
 }
+// ---- the last offer each route made (usage audit 2026-11-03 U13) -------------------------------------------------------
+// How far the carry must grow before an offer is made again - 150k -> 225k -> 337k: an escalation that tracks the cost
+// growing rather than the ask count (guard-stop-contract.js lastBlockCtx).
+const REOFFER_GROWTH = 1.5;
+// The Stop branch's record of the carry it last blocked at. The tick hold reads it too: an offer made at a close is spent
+// for the tick after it, and a tick hold the Stop has offered over since is released.
+function stopOfferFile(p = payload) {
+  const key = String((p && p.transcript_path) || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-fresh-${key}.blocked`;
+}
+function stopOfferCtx(p = payload) {
+  try { return parseInt(fs.readFileSync(stopOfferFile(p), 'utf8'), 10) || 0; } catch { return 0; }
+}
 
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
@@ -986,4 +999,5 @@ module.exports = {
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   truePoints, compactionFacts, idleCompaction, settleCompactPoints, readWindow,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
+  REOFFER_GROWTH, stopOfferFile, stopOfferCtx,
 };

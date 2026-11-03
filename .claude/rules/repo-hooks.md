@@ -1214,7 +1214,23 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `promptCacheTtl` / `CLAUDE_CODE_PROMPT_CACHE_TTL` pick one (code.claude.com/docs/en/prompt-caching, verified
     2026-11-03); Claude Code's idle compaction runs on the 1h cache only, so it lands inside that gap first and the
     offer reads no context past it (IDLE_NOTE). The texts print a gap under an hour in minutes (`gapText`), and the
-    `idle-gap-offer` row carries `wait` (setting, cache, fallback) and `waitMin`. A compaction point more than
+    `idle-gap-offer` row carries `wait` (setting, cache, fallback) and `waitMin`. THE TICK HOLD (usage audit 2026-11-03
+    U13: past the trigger the offer waited for a Stop, and a build that ticks its plan card by card emits none between
+    tasks, so the next task ran at the full carry): a main-session `Edit` / `MultiEdit` / `Write` on a `plans/*.md` file
+    whose added text carries a `status: DONE` line is judged at PreToolUse (`tickCall`, a path test and one regex; the
+    plan on disk is the text before, `planAfter` the text after). A card that turned DONE leaves the same one-shot hold
+    marked `tick` (with the plan path, the carry and the task) unless: no card is left open or the edit writes
+    `Completed:` (the finish step and the Stop's close are next); a card IN_PROGRESS before is still open after and has
+    no `needs:` line (a seat is building it - a parked card is no flight); the offers are off; the carry is at or under
+    the trigger; it has not grown by `fresh-session.js REOFFER_GROWTH` (1.5, shared with the Stop branch) since the
+    newest offer of any route - the Stop's blocked carry (`stopOfferCtx`, the file the Stop branch writes), the newest
+    answered fresh-session ask, the tick's own last arm (`guard-fresh-tick-*`); or a resume does not pay (route `tick`).
+    Nobody at the terminal (a live AUTO waiver included) writes an `unattended` `tick-offer` row instead; a standing hold
+    is kept. The hold passes the plan's own edits (the Resume line and the Decisions ledger come after the tick) and a
+    shell call that writes nothing, and denies the next change with the task, the plan path, the Resume line as the plan
+    holds it at the denial and the priced ask (`tick-hold` rows); it releases as the others do, and also once the Stop
+    branch has blocked at the hold's carry or past it (`offered-at-stop`). A seat's tick arms nothing. Cursor and Codex
+    have no PreToolUse payload this reads yet, so the tick hold is Claude Code's alone. A compaction point more than
     5% over the configured `autoCompactWindow`, in a session started after the settings file was written, makes
     `autoCompactWindow()` return null - the hook says once that the window was not honoured and names `/autocompact`
     (C10: a 350k value in `settings.local.json` compacted at 466.8k-469.7k in three sessions; cause unproven, the docs

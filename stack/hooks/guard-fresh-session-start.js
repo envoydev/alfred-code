@@ -221,9 +221,31 @@ function askGapArm() {
     return { id: ask.id, gapH: Math.round(gapMs / 360000) / 10, gapMs, wait, marker };
   } catch { return null; }
 }
+// THE TICK HOLD (usage audit 2026-11-03 U13): past the trigger the offer waited for a Stop, and a build that ticks its
+// plan card by card emits none between tasks - so the next task ran at the full carry, and the offer came only at the
+// close. A main-session edit that ticks a plan card DONE is judged here: past the trigger, with tasks still open, no other
+// card in flight and the verdict paying, it leaves the hold (route 'tick'), and the NEXT task's first change is put to the
+// user - the plan's Resume line already holds the cursor. The common case pays a path test and one regex.
+const PLAN_FILE_RE = /(?:^|[\\/])plans[\\/][^\\/]+\.md$/i;
+const STATUS_RE = /^\s*[-*]\s*\**status\**\s*:\s*\**\s*`?([A-Za-z_]+)/im;
+const DONE_LINE_RE = /^\s*[-*]\s*\**status\**\s*:\s*\**\s*`?DONE\b/im;
+function tickCall() {
+  try {
+    if (payload.agent_id || !/^(?:Edit|MultiEdit|Write)$/.test(String(payload.tool_name || ''))) return null;
+    const input = payload.tool_input || {};
+    const file = typeof input.file_path === 'string' ? input.file_path : '';
+    if (!PLAN_FILE_RE.test(file)) return null;
+    const added = payload.tool_name === 'Write' ? input.content
+      : payload.tool_name === 'Edit' ? input.new_string
+      : Array.isArray(input.edits) ? input.edits.map((e) => (e && typeof e.new_string === 'string' ? e.new_string : '')).join('\n') : '';
+    if (typeof added !== 'string' || !DONE_LINE_RE.test(added)) return null;
+    return { file: nodePath.resolve(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), file) };
+  } catch { return null; }
+}
 const ASK_GAP = IS_HOLD_CALL && !IS_SKILL_CALL ? askGapArm() : null;
+const TICK = IS_HOLD_CALL && !IS_SKILL_CALL ? tickCall() : null;
 // The common case - no hold pending - leaves before anything else is read.
-if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !fs.existsSync(compactHoldFile())) process.exit(0);
+if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !TICK && !fs.existsSync(compactHoldFile())) process.exit(0);
 if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact', 'PostModelSwitch'].includes(EVENT)) process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
@@ -316,17 +338,22 @@ function compactHold() {
   try { hold = JSON.parse(fs.readFileSync(compactHoldFile(), 'utf8')); } catch { return; }
   if (payload.agent_id || !hold || typeof hold !== 'object') return;
   const idle = hold.route === 'idle';
+  const tick = hold.route === 'tick';
+  // the tick route: the plan's own edits pass - its Resume line and Decisions ledger are written after the tick
+  if (tick && /^(?:Write|Edit|MultiEdit)$/.test(String(payload.tool_name || '')) && samePath((payload.tool_input || {}).file_path, hold.plan)) return;
   if (/^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || '')) && writesNothing((payload.tool_input || {}).command)) return;
-  const kind = idle ? 'idle-hold' : 'compact-hold';
+  const kind = idle ? 'idle-hold' : tick ? 'tick-hold' : 'compact-hold';
   const release = (outcome, detail) => {
     try { fs.unlinkSync(compactHoldFile()); } catch { /* already gone */ }
-    ledgerRow({ mode: 'probe', kind, reason: `probe: ${idle ? 'idle-gap' : 'post-compaction'} hold released - ${outcome}`, detail: { outcome, ...(detail || {}) } });
+    ledgerRow({ mode: 'probe', kind, reason: `probe: ${idle ? 'idle-gap' : tick ? 'plan-tick' : 'post-compaction'} hold released - ${outcome}`, detail: { outcome, ...(detail || {}) } });
   };
   const since = Number(hold.size) || 0;
   if (Date.now() - (Date.parse(hold.at) || 0) > 12 * 3600 * 1000) return release('stale');
   if (unattended(payload)) return release('unattended');
   if (fresh.askAnsweredSince(since)) return release('asked');
   if (shortStepSince(since)) return release('single-short-step');
+  // the Stop branch blocked at this carry or past it since the tick: the offer was made at the close
+  if (tick && Number(hold.ctx) > 0 && typeof fresh.stopOfferCtx === 'function' && fresh.stopOfferCtx() >= Number(hold.ctx)) return release('offered-at-stop');
   const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
   const floor = fresh.coldFloor();
   if (!(ctx > 0)) return;
@@ -335,6 +362,21 @@ function compactHold() {
   try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1 })); } catch { /* the cap still ends it */ }
   global.BLOCK_DETAIL = { branch: kind, ctx, floor };
   const pay = fresh.payText(ctx, fresh.freshVerdict(ctx));
+  if (tick) {
+    // the Resume line as the plan holds it NOW - the build rewrites it after the tick, and that edit passes
+    let resume = String(hold.resume || '');
+    try { resume = resumeLine(fs.readFileSync(String(hold.plan), 'utf8')) || resume; } catch { /* the line read at the tick */ }
+    process.stderr.write(
+      `Held once: plan task '${hold.task}' was just ticked DONE in ${relPlan(hold.plan)}, and the next task is a clean point\n`
+      + `to resume from. ${pay}\n`
+      + `The plan's Resume line is the cursor a fresh session picks up from${resume ? ` (now: '${resume}')` : ''} - keep it naming\n`
+      + `the next task; an edit to the plan passes. Before the next task's first change, put the choice to the user as ONE\n`
+      + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready\n`
+      + `resume block naming the plan), or continue here. If the remaining work is a single short step, say so in one line -\n`
+      + `'single short step: <what>' - and retry this call.`,
+    );
+    process.exit(2);
+  }
   if (idle) {
     // the gap as the offer printed it: minutes under an hour since the wait follows the cache (U16), a hold an older
     // release wrote carrying only its hours
@@ -380,9 +422,91 @@ function armAskGap() {
   } catch { return; }
   ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the idle hold armed by an ask answered after a long gap', detail });
 }
+// The tick hold's helpers: the plan's cards by their `### Task <n>` heading, each with its status word and whether a
+// `needs:` line parks it on a run; the text an Edit, MultiEdit or Write leaves (null when an edit matches nothing);
+// the Resume line; the plan's path as the project names it.
+function planCards(text) {
+  const cards = new Map();
+  for (const part of String(text || '').split(/^(?=#{2,4}[ \t]+Task\b)/m)) {
+    const head = /^#{2,4}[ \t]+(Task\b[^\r\n]*)/.exec(part);
+    if (!head) continue;
+    const body = part.slice(head[0].length).split(/^#{1,6}[ \t]/m)[0];   // to the next heading, never the ledger after it
+    const status = STATUS_RE.exec(body);
+    if (!status) continue;
+    const id = /^Task\s+([\w.-]+)/i.exec(head[1]);
+    cards.set(id ? id[1].toLowerCase() : head[1].trim(), { title: head[1].trim(), status: status[1].toUpperCase(), parked: /^\s*[-*]\s*\**needs\**\s*:/im.test(body) });
+  }
+  return cards;
+}
+function planAfter(before, tool, input) {
+  if (tool === 'Write') return typeof input.content === 'string' ? input.content : null;
+  const edits = tool === 'Edit' ? [input] : Array.isArray(input.edits) ? input.edits : null;
+  if (!edits) return null;
+  let text = before;
+  for (const e of edits) {
+    if (!e || typeof e.old_string !== 'string' || typeof e.new_string !== 'string' || !e.old_string || !text.includes(e.old_string)) return null;
+    text = e.replace_all ? text.split(e.old_string).join(e.new_string) : text.replace(e.old_string, () => e.new_string);
+  }
+  return text;
+}
+const resumeLine = (text) => { const m = /^Resume:[ \t]*([^\r\n]*)/m.exec(String(text || '')); return m ? m[1].trim().slice(0, 200) : ''; };
+function relPlan(file) {
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  const rel = nodePath.relative(root, String(file || ''));
+  return (rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel : String(file || '')).split(nodePath.sep).join('/');
+}
+function samePath(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const norm = (f) => { const r = nodePath.resolve(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), f); return process.platform === 'win32' ? r.toLowerCase() : r; };
+  return norm(a) === norm(b);
+}
+// The carry the tick hold last armed at: its own offer is spent, so the next tick waits for the carry to grow by the
+// engine's re-offer step, as the Stop branch's own offer does.
+function tickOfferFile() {
+  const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-tick-${key}.ctx`);
+}
+const tickOfferCtx = () => { try { return parseInt(fs.readFileSync(tickOfferFile(), 'utf8'), 10) || 0; } catch { return 0; } };
+// The tick arm, judged on the edit that writes the tick (PreToolUse: the plan on disk is the text before it). No arm on
+// the last task (the finish step and the Stop's close come next), a plan the edit closes with Completed:, a card still in
+// flight (another IN_PROGRESS card not parked on a run - a seat building it), the offers off, a carry at or under the
+// trigger or under the re-offer step since the last offer of any route, or a resume that would not pay back. Nobody at the
+// terminal - a live AUTO waiver included - logs the skip instead. A standing hold is kept.
+function armTick() {
+  let before;
+  try { const st = fs.statSync(TICK.file); if (!st.isFile() || st.size > 2 * 1024 * 1024) return; before = fs.readFileSync(TICK.file, 'utf8'); } catch { return; }
+  const after = planAfter(before, payload.tool_name, payload.tool_input || {});
+  if (after === null) return;
+  const was = planCards(before);
+  const now = planCards(after);
+  const ticked = [...now].filter(([id, c]) => c.status === 'DONE' && was.has(id) && was.get(id).status !== 'DONE');
+  if (!ticked.length) return;
+  const open = [...now.values()].filter((c) => c.status !== 'DONE');
+  if (!open.length || /^Completed:/m.test(after)) return;
+  if ([...was].some(([id, c]) => c.status === 'IN_PROGRESS' && !c.parked && now.has(id) && now.get(id).status !== 'DONE')) return;
+  if (FRESH_OFF) return;
+  const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
+  const trigger = ctxThreshold();
+  if (trigger === null || !(ctx > trigger)) return;
+  const since = Math.max(typeof fresh.stopOfferCtx === 'function' ? fresh.stopOfferCtx() : 0,
+    typeof fresh.freshAskAnsweredCtx === 'function' ? fresh.freshAskAnsweredCtx() : 0, tickOfferCtx());
+  if (since && ctx < since * (Number(fresh.REOFFER_GROWTH) || 1.5)) return;
+  if (!paysAt('tick', ctx)) return;
+  const task = ticked[0][1].title;
+  const detail = { ctx, trigger, task, plan: relPlan(TICK.file), open: open.length };
+  if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'tick-offer', reason: UNATTENDED_SKIP, detail }); return; }
+  try { fs.writeFileSync(tickOfferFile(), String(ctx)); } catch { /* the next tick re-judges */ }
+  try {
+    if (fs.existsSync(compactHoldFile())) return;
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'tick', plan: TICK.file, ctx, task, resume: resumeLine(after) }));
+    sweepOffers();
+  } catch { return; }
+  ledgerRow({ mode: 'probe', kind: 'tick-offer', reason: 'probe: the tick hold armed - a plan task ticked DONE past the trigger', detail });
+}
 if (IS_HOLD_CALL && !IS_SKILL_CALL) {
   if (ASK_GAP) armAskGap();
   compactHold();
+  if (TICK) armTick();
   process.exit(0);
 }
 

@@ -669,6 +669,129 @@ test('compact-state: the idle wait follows the cache life the last reply wrote (
     assert.strictEqual(edit(compacted).status, 0, 'an idle compaction inside the gap leaves no hold');
 });
 
+// Usage audit 2026-11-03 U13: past the trigger, the fresh-session offer waited for a Stop - and a build that ticks its plan
+// card by card emits none between tasks, so the next task ran at the full carry. A tick past the trigger now arms the
+// hold, and the next task's first change is the one put to the user; the plan's Resume line is the cursor.
+test('compact-state: a plan task ticked DONE past the trigger holds the next task\'s first change (usage audit 2026-11-03 U13)', () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const SHELL = path.join(HOOKS, 'shell-guards.js');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const plan = (statuses, resume = 'next task 2') => ['# Export - plan', '', 'Asked: "export the rows"', `Resume: ${resume}`, '', '## Tasks', '',
+        ...statuses.flatMap((s, i) => [`### Task ${i + 1} - slice ${i + 1}`, '', `- status: ${s}`, '- estimate: 10m', ''])].join('\n');
+    const DONE = '- status: DONE (`npm test` - 12 passed)';
+    const setup = ({ statuses = ['IN_PROGRESS', 'TODO', 'TODO'], carry = 450000, floor = 40000, env: more = {}, head = [], mid = [] } = {}) =>
+    {
+        const p = project();
+        const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'tick-')), ...more };
+        const tp = p.transcript([...head, usageRow('f', { cache_creation_input_tokens: floor }), ...mid, usageRow('a', { cache_read_input_tokens: carry })]);
+        const file = path.join(p.root, '.alfred', 'docs', 'work', 'plans', 'export.md');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, plan(statuses));
+        const via = (hook, tool, input, extra = {}) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp, ...extra }, env, hook);
+        // the tick as a build writes it: judged at PreToolUse, then the edit lands
+        const tick = (old = '- status: IN_PROGRESS', next = DONE, extra = {}) =>
+        {
+            const r = via(FILES, 'Edit', { file_path: file, old_string: old, new_string: next }, extra);
+            if (r.status === 0) fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(old, next));
+            return r;
+        };
+        const edit = () => via(FILES, 'Edit', { file_path: path.join(p.root, 'src.js'), old_string: 'a', new_string: 'b' });
+        const ledger = () => { try { return fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8'); } catch { return ''; } };
+        const stopFile = path.join(env.ALFRED_CODE_HOOK_LOG_DIR, `guard-stop-fresh-${tp.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.blocked`);
+        return { p, tp, env, file, via, tick, edit, ledger, stopFile };
+    };
+    const answered = (id, q = 'Fresh?') => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: `Your questions have been answered: "${q}"="Continue here"` }] } });
+
+    const s = setup();
+    assert.strictEqual(s.tick().status, 0, 'the tick itself is never held');
+    assert.strictEqual(s.via(FILES, 'Edit', { file_path: s.file, old_string: 'Resume: next task 2', new_string: 'Resume: next task 2 - nothing mid-task' }).status, 0,
+        "the plan's own edits pass - the Resume line, the Decisions ledger");
+    fs.writeFileSync(s.file, fs.readFileSync(s.file, 'utf8').replace('Resume: next task 2', 'Resume: next task 2 - nothing mid-task'));
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0, 'a reading shell call passes');
+    assert.strictEqual(s.via(FILES, 'Read', { file_path: s.file }).status, 0, 'a read passes');
+    const held = s.edit();
+    assert.strictEqual(held.status, 2, "the next task's first change is held");
+    const said = held.stderr.replace(/\s+/g, ' ');
+    assert.match(said, /plan task 'Task 1 - slice 1' was just ticked DONE in \.alfred\/docs\/work\/plans\/export\.md/);
+    assert.match(said, /\(now: 'next task 2 - nothing mid-task'\)/, 'the Resume line as it stands at the denial');
+    assert.match(said, /~450k tokens per message/);
+    assert.match(said, /A fresh session restarts at ~40k/);
+    assert.match(said, /'Resume in a fresh session \(Recommended\)'/);
+    assert.match(said, /single short step: <what>/);
+    assert.match(s.ledger(), /"kind":"tick-offer"/, 'one probe row records the arm');
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > src.js' }).status, 2, 'a writing shell call is a change too');
+    assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
+    assert.match(s.ledger(), /"kind":"tick-hold"[^\n]*"outcome":"denied-twice"/);
+
+    const a = setup();
+    a.tick();
+    fs.appendFileSync(a.tp, JSON.stringify(answered('q1')) + '\n');
+    assert.strictEqual(a.edit().status, 0, 'an answered ask releases it');
+    const o = setup();
+    o.tick();
+    fs.writeFileSync(o.stopFile, '452000');
+    assert.strictEqual(o.edit().status, 0, 'the Stop made the offer since: released');
+    assert.match(o.ledger(), /"kind":"tick-hold"[^\n]*"outcome":"offered-at-stop"/);
+
+    // every way a build writes the tick
+    const both = setup();
+    both.tick('- status: IN_PROGRESS\n- estimate: 10m\n\n### Task 2 - slice 2\n\n- status: TODO', `${DONE}\n- estimate: 10m\n\n### Task 2 - slice 2\n\n- status: IN_PROGRESS`);
+    assert.strictEqual(both.edit().status, 2, 'a tick that also starts the next card holds');
+    const multi = setup();
+    multi.via(FILES, 'MultiEdit', { file_path: multi.file, edits: [{ old_string: '- status: IN_PROGRESS', new_string: DONE }, { old_string: 'Resume: next task 2', new_string: 'Resume: next task 2 (fresh)' }] });
+    assert.strictEqual(multi.edit().status, 2, 'a MultiEdit tick holds');
+    const write = setup();
+    write.via(FILES, 'Write', { file_path: write.file, content: plan(['DONE (`npm test` - 12 passed)', 'TODO', 'TODO']) });
+    assert.strictEqual(write.edit().status, 2, 'a Write that ticks holds');
+    const parked = setup({ statuses: ['IN_PROGRESS', 'TODO', 'IN_PROGRESS\n- needs: the integration run'] });
+    parked.tick();
+    assert.strictEqual(parked.edit().status, 2, "a card parked on a run (needs:) is no work in flight");
+
+    const none = (label, t, args = []) => { t.tick(...args); assert.strictEqual(t.edit().status, 0, label); return t; };
+    none('under the trigger: no hold', setup({ carry: 300000 }));
+    none('the last task: the finish step is next, no hold', setup({ statuses: ['DONE (x)', 'DONE (x)', 'IN_PROGRESS'] }));
+    none('another card still in flight: no hold', setup({ statuses: ['IN_PROGRESS', 'IN_PROGRESS', 'TODO'] }));
+    none('a tick that closes the plan with Completed: no hold', setup({ statuses: ['DONE (x)', 'IN_PROGRESS', 'TODO'] }), ['- status: IN_PROGRESS', `${DONE}\n\nCompleted: 2026-11-03`]);
+    const un = none('nobody at the terminal: no hold', setup({ env: { ALFRED_CODE_UNATTENDED: '1' } }));
+    assert.match(un.ledger(), /"mode":"unattended"[^\n]*"kind":"tick-offer"/, 'logged, not offered');
+    none('the project compacts instead (AUTO_COMPACT=1): no hold', setup({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }));
+    none('a fresh session would not pay back: no hold', setup({ floor: 420000 }));
+    const auto = setup({ head: [{ type: 'user', message: { role: 'user', content: 'run it overnight' } }] });
+    fs.mkdirSync(auto.p.flow, { recursive: true });
+    fs.writeFileSync(path.join(auto.p.flow, 'APPROVAL'), 'AUTO - "run it overnight"\n');
+    none('a live AUTO waiver: no hold', auto);
+    none("a seat's tick: no hold", setup(), [undefined, undefined, { agent_id: 'seat-1' }]);
+    const grown = setup();
+    fs.writeFileSync(grown.stopFile, '400000');
+    none('the Stop offered at 400k: 450k has not grown 1.5x, no hold', grown);
+    const askRow = { type: 'assistant', message: { id: 'q', model: 'claude-opus-5-5', usage: { cache_read_input_tokens: 400000 },
+        content: [{ type: 'tool_use', id: 'toolu_f1', name: 'AskUserQuestion', input: { questions: [{ question: 'Resume in a fresh session?' }] } }] } };
+    none('a fresh-session ask answered at 400k: no hold before 600k', setup({ mid: [askRow, answered('toolu_f1', 'Resume in a fresh session?')] }));
+    // the tick's own offer counts as spent: the next tick waits for the carry to grow 1.5x
+    const twice = setup({ statuses: ['IN_PROGRESS', 'TODO', 'TODO', 'TODO'] });
+    twice.tick();
+    fs.appendFileSync(twice.tp, JSON.stringify(usageRow('b', { cache_read_input_tokens: 455000 }, 'single short step: none left in this card')) + '\n');
+    assert.strictEqual(twice.edit().status, 0, 'the single-short-step line releases it');
+    none('the next tick at 455k: no hold', twice, ['- status: TODO', DONE]);
+    fs.appendFileSync(twice.tp, JSON.stringify(usageRow('c', { cache_read_input_tokens: 700000 })) + '\n');
+    twice.tick('- status: TODO', DONE);
+    assert.strictEqual(twice.edit().status, 2, 'grown past 1.5x (700k over 450k): held again');
+
+    // missing, empty and garbage input never block, and arm nothing
+    const g = setup();
+    const plans = path.join(g.p.root, '.alfred', 'docs', 'work', 'plans');
+    assert.strictEqual(g.via(FILES, 'MultiEdit', { file_path: g.file, edits: 'garbage' }).status, 0);
+    assert.strictEqual(g.via(FILES, 'Edit', { file_path: path.join(plans, 'gone.md'), old_string: '- status: IN_PROGRESS', new_string: DONE }).status, 0, 'a plan not on disk');
+    assert.strictEqual(g.via(FILES, 'Write', { file_path: path.join(plans, 'new.md'), content: plan(['DONE (x)', 'TODO']) }).status, 0, 'a new plan written with a card DONE');
+    assert.strictEqual(g.via(FILES, 'Edit', { file_path: path.join(g.p.root, 'notes', 'status.md'), old_string: 'x', new_string: DONE }).status, 0, 'a file outside a plans folder');
+    fs.writeFileSync(path.join(plans, 'empty.md'), '');
+    assert.strictEqual(g.via(FILES, 'Write', { file_path: path.join(plans, 'empty.md'), content: DONE }).status, 0, 'an empty plan');
+    assert.strictEqual(g.via(FILES, 'Edit', { file_path: g.file, old_string: 'no such text', new_string: DONE }).status, 0, 'an edit that matches nothing');
+    assert.strictEqual(g.edit().status, 0, 'none of them armed a hold');
+    assert.strictEqual(g.p.run('{not json', {}, FILES).status, 0, 'garbage stdin');
+});
+
 // The cache-aware verdict (spec 2026-10-28, sections 1-3): claude-opus-5-5 reads at 0.05x, the 1h split writes at 2x and
 // the payback window is 30, so over a 79k floor a fresh session pays back past a 211,600 carry - and never at ctx 0.
 test('compact-state: the chained, hold and idle routes offer only where a fresh session pays back with the cache warm', () =>

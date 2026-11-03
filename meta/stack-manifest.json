@@ -857,7 +857,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "the post-compaction hold on an edit - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
+      "note": "the post-compaction hold on an edit, and the TICK HOLD (usage audit 2026-11-03 U13): a main-session edit that ticks a plan card DONE past the trigger - tasks still open, no other card in flight, the carry past the re-offer step since the last offer, a resume that pays - holds the next task's first change for the fresh-session ask naming the plan and its Resume line, the plan's own edits passing; nobody at the terminal (a live AUTO waiver included) logs the skip - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
     },
     {
       "file": "guard-fresh-session-start.js",

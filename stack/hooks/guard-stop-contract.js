@@ -245,8 +245,9 @@ const FRESH_AFTER_HOURS = (() => {
   return n === null ? CLOCK_HOURS : n;
 })();
 
-// How far the context must grow before the fresh-session offer is made again (see below).
-const REOFFER_GROWTH = 1.5;
+// How far the context must grow before the fresh-session offer is made again (see below) - the engine's, shared with the
+// tick hold (usage audit 2026-11-03 U13).
+const REOFFER_GROWTH = typeof fresh.REOFFER_GROWTH === 'number' ? fresh.REOFFER_GROWTH : 1.5;
 // `/clear` is NOT in this list. It matched the token quoted as report CONTENT - a turn merely
 // describing session hygiene ('every <=130k session opened with `/clear` + resumed from a file')
 // silenced the offer at PEAK context (A/B replay: with the token exit 0, with the same sentence in
@@ -2585,6 +2586,8 @@ function recordBlockCtx(ctx) {
   try { fs.writeFileSync(blockStateFile(), String(ctx)); } catch { /* never let state break the gate */ }
 }
 function blockStateFile() {
+  // the engine names it (fresh-session.js stopOfferFile), so the tick hold reads the same record
+  if (typeof fresh.stopOfferFile === 'function') return fresh.stopOfferFile(payload);
   const os = require('os');
   const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
