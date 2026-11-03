@@ -87,6 +87,27 @@ function layersOf({ projectRoot, env, managedFile })
     return { layers, userFile, knownFile: path.join(configDir, 'plugins', 'known_marketplaces.json') };
 }
 
+// D10 (the U01 live check, 2026-11-03; the user's design): the marketplace the CORE is installed from is the stack's,
+// whatever its source - a local folder one included, which brand.js stackSlug matches only through ALFRED_CODE_MARKETPLACE.
+// Read from the account's installed_plugins.json (`plugins: { "<name>@<key>": [{ scope, projectPath, ... }] }`) as
+// `marketOf`'s listing rows, this project's record first, then a user-scope one, then any; a key the account no longer
+// registers is skipped, and a registry that is absent or not that shape reads as no record.
+function coreInstalls({ registryFile, projectRoot, registered })
+{
+    const reg = readFile(registryFile);
+    const plugins = reg.state === 'ok' && isObj(reg.data.plugins) ? reg.data.plugins : {};
+    // a drive letter or folder spelled in another case is the same folder on Windows (`c:\` beside `C:\`)
+    const real = (p) => { let r; try { r = fs.realpathSync(p); } catch { r = path.resolve(p); } return process.platform === 'win32' ? r.toLowerCase() : r; };
+    const here = real(projectRoot);
+    const rank = (rows) => (rows.some((r) => isObj(r) && r.projectPath && real(String(r.projectPath)) === here) ? 0
+        : rows.some((r) => isObj(r) && r.scope === 'user') ? 1 : 2);
+    return Object.entries(plugins)
+        .map(([id, rows]) => ({ id, rows: Array.isArray(rows) ? rows : [] }))
+        .filter(({ id, rows }) => rows.length && id.includes('@') && brand.isCore(id.split('@')[0]) && registered.has(id.slice(id.indexOf('@') + 1)))
+        .sort((a, b) => rank(a.rows) - rank(b.rows))
+        .map(({ id }) => ({ id, enabled: true }));
+}
+
 // What the account and this project say about the stack's marketplace: its key, the entry that decides, the verdict.
 function autoUpdateState({ projectRoot = process.cwd(), env = process.env, managedFile } = {})
 {
@@ -110,7 +131,8 @@ function autoUpdateState({ projectRoot = process.cwd(), env = process.env, manag
         const m = l.read.state === 'ok' ? mapOf(l.read.data) : null;
         if (m && m.map) for (const [name, v] of Object.entries(m.map)) regs.push({ ...(isObj(v) ? v : {}), name });
     }
-    const found = brand.marketOf({ marketplaces: regs, env });
+    const listing = coreInstalls({ registryFile: path.join(path.dirname(knownFile), 'installed_plugins.json'), projectRoot, registered: new Set(regs.map((r) => r.name)) });
+    const found = brand.marketOf({ listing, marketplaces: regs, env });
     if (!found.known) return notAsked("the stack's marketplace is not registered on this account - nothing to update");
     const key = found.key;
     const knownEntry = known.state === 'ok' && isObj(known.data[key]) ? known.data[key] : null;

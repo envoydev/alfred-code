@@ -257,3 +257,56 @@ test('CLI: --check by default, --apply and --decline print one line, two modes r
     assert.strictEqual(both.status, 2);
     assert.match(both.stderr, /one of --check, --apply or --decline/);
 });
+
+// D10 (the U01 live check, 2026-11-03; the user's design): a stack installed from a LOCAL FOLDER marketplace was 'not
+// registered' unless ALFRED_CODE_MARKETPLACE named the folder. The account's installed_plugins.json says which marketplace
+// the core came from, whatever its source - this project's record first, then the user-scope one, then any - and only a
+// marketplace the account still registers counts.
+test('D10: the marketplace the core is installed from is the stack\'s, whatever its source - read from installed_plugins.json', () =>
+{
+    const dir = path.join(TMP, 'local-clone');
+    const LOCAL = { 'alfred-dev': { source: { source: 'directory', path: dir }, installLocation: dir, lastUpdated: '2026-11-01T00:00:00.000Z' } };
+    const reg = (w, plugins) => fs.writeFileSync(path.join(w.acct, 'plugins', 'installed_plugins.json'), typeof plugins === 'string' ? plugins : JSON.stringify({ version: 2, plugins }, null, 2));
+    const keyOf = (w, env) => { const s = au.autoUpdateState(opts(w, env)); return s.state === 'not-asked' ? 'not-asked' : s.key; };
+
+    const w = world({ known: LOCAL });
+    assert.strictEqual(keyOf(w), 'not-asked', 'no install record and no ALFRED_CODE_MARKETPLACE: as before');
+    reg(w, { 'alfred-code@alfred-dev': [{ scope: 'user', installPath: '/x', version: '3.7.0' }] });
+    assert.strictEqual(keyOf(w), 'alfred-dev', 'the user-scope install names the folder marketplace');
+    assert.strictEqual(au.stateLine(au.autoUpdateState(opts(w))), 'auto-update: ask alfred-dev');
+    const applied = spawnSync(process.execPath, [SCRIPT, '--apply', '--root', w.root], { encoding: 'utf8', env: { ...process.env, ...w.env } });
+    assert.strictEqual(applied.status, 0, applied.stderr);
+    assert.deepStrictEqual(json(w.userFile).extraKnownMarketplaces['alfred-dev'], { source: LOCAL['alfred-dev'].source, autoUpdate: true }, 'a yes writes the folder source verbatim');
+    assert.strictEqual(au.autoUpdateState(opts(w)).state, 'on', 'and a re-run reads it on, asking nothing');
+
+    const both = world({ known: { ...KNOWN(), ...LOCAL } });
+    reg(both, { 'alfred-code@envoydev': [{ scope: 'user', installPath: '/x' }], 'alfred-code@alfred-dev': [{ scope: 'project', projectPath: both.root, installPath: '/y' }] });
+    assert.strictEqual(keyOf(both), 'alfred-dev', "this project's record outranks the user-scope one");
+    if (process.platform === 'win32')
+    {
+        // the same folder in another letter case is this project (the fresh review of 2026-11-03)
+        const flipped = both.root.replace(/^[a-z]/i, (c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase())).toUpperCase();
+        reg(both, { 'alfred-code@envoydev': [{ scope: 'user', installPath: '/x' }], 'alfred-code@alfred-dev': [{ scope: 'project', projectPath: flipped, installPath: '/y' }] });
+        assert.strictEqual(keyOf(both), 'alfred-dev', 'a projectPath in another case is still this project on Windows');
+    }
+    reg(both, { 'alfred-code@alfred-dev': [{ scope: 'project', projectPath: path.join(TMP, 'elsewhere'), installPath: '/y' }], 'alfred-code@envoydev': [{ scope: 'user', installPath: '/x' }] });
+    assert.strictEqual(keyOf(both), 'envoydev', "the user-scope record outranks another project's");
+    reg(both, { 'alfred-code@alfred-dev': [{ scope: 'project', projectPath: path.join(TMP, 'elsewhere'), installPath: '/y' }] });
+    assert.strictEqual(keyOf(both), 'alfred-dev', "another project's record still names the stack's marketplace");
+
+    const gone = world({ known: LOCAL });
+    reg(gone, { 'alfred-code@removed-market': [{ scope: 'user', installPath: '/x' }] });
+    assert.strictEqual(keyOf(gone), 'not-asked', 'a record whose marketplace is no longer registered is skipped');
+    reg(gone, { 'alfred-code-extras@alfred-dev': [{ scope: 'user', installPath: '/x' }] });
+    assert.strictEqual(keyOf(gone), 'not-asked', 'a plugin whose name only starts with the core\'s is no core');
+    for (const bad of ['{ not json', '', '[]', JSON.stringify({ version: 2, plugins: [] }), JSON.stringify({ version: 2, plugins: { 'alfred-code@alfred-dev': 'x' } })])
+    {
+        reg(gone, bad);
+        assert.strictEqual(keyOf(gone), 'not-asked', `a garbage registry reads as no record: ${JSON.stringify(bad)}`);
+    }
+    reg(gone, '{ not json');
+    assert.strictEqual(keyOf(gone, { ALFRED_CODE_MARKETPLACE: dir }), 'alfred-dev', 'the env setting still names the folder');
+    const github = world({ known: KNOWN() });
+    reg(github, '{ not json');
+    assert.strictEqual(keyOf(github), 'envoydev', 'a GitHub-source install is unaffected by a garbage registry');
+});
