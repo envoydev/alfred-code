@@ -537,14 +537,17 @@ const contentText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map
 // The text of a turn the user TYPED: a user row, never a meta row (a skill body, an expansion), a compaction summary or a
 // sidechain row (both the model's words - the final review of 2026-10-30 FA-2: `AUTO - "Pending Tasks"` was proven by a
 // summary), a tool result (an ask's answer is the harness's row) or a harness prompt (a task notice, a command's output, a
-// seat's hand-back). The tagged `<command-name>` / `<command-args>` row of a typed command is the user's.
+// seat's hand-back). The tagged `<command-name>` / `<command-args>` row of a typed command is the user's. A `!` line's rows
+// (`<bash-input>`, `<bash-stdout>`, `<bash-stderr>`) and a local command's are the harness's whole, as a command's output
+// row is (LOCAL_ONLY_RE; review fix pass run B m6: a literal `</bash-stdout>` inside the output cut the span strip short,
+// and a path printed after it read as typed and opened writes, U20).
 function typedRowText(row)
 {
     if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary || row.isSidechain) return '';
     const c = row.message && row.message.content;
     if (Array.isArray(c) && c.some((x) => x && x.type === 'tool_result')) return '';
     const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
-    return text.trim() && !harnessPrompt(text) ? text : '';
+    return text.trim() && !harnessPrompt(text) && !LOCAL_ONLY_RE.test(text) ? text : '';
 }
 // 'on' / 'off' when a typed line's leading run switches auto-run (the one parser), else null.
 const autoEventOf = (text) => { const f = modeFlags(text); return f.family && f.autoRun ? f.autoRun : null; };

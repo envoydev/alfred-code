@@ -1322,14 +1322,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     read); the denial is cut to the ask and its three options (1,553 to ~600 fixed chars).
     The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the answer rows every receipt reads could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is denied with no receipt or allowance route (`recordAt`, branch `transcript`); memory, `settings.json`, a Read, a grep and a copy OUT stay open.
     A PATH THE USER TYPED (usage audit 2026-11-03 U20, the user's ruling): an ABSOLUTE path in a turn the user typed this
-    session opens writes under its folder - a folder for itself and below, a file for its own folder - read from the
+    session opens writes - a typed FOLDER for itself and below, a typed FILE for that one file only (review fix pass run B
+    m5: a typed `<dir>/r.md` opened every sibling of r.md) - read from the
     transcript at decision time (`hook-prelude.js typedTurnTexts` / `typedPaths`; no receipt, since a file the model can
-    write is no consent, HK-03, and the read runs only on a call about to be denied). `~/` is expanded, a Windows drive,
+    write is no consent, HK-03, and the read runs only on a call about to be denied). File or folder is read off the disk;
+    a trailing slash is a folder, and a path that does not exist yet is a file when its last name has an extension or is a
+    dotfile, else a folder, so a doubt takes the narrower reading. `~/` is expanded, a Windows drive,
     UNC or Git Bash mount spelling is read through `nativePath`, quotes, a trailing slash or comma and a `:line` suffix
     are dropped, and the compare is a real-path prefix at a separator (`reportsx` is not `reports`). A relative path, a
-    URL, the model's own text, a tool result, a compaction summary, a sidechain or `isMeta` row and a harness prompt
-    (`typedRowText`) open nothing; a typed folder that HOLDS the project opens nothing, and a typed FILE whose folder holds
-    it opens that one file only (`~/.zshrc` never opens the home). The record rule above still wins.
+    URL, the model's own text, a tool result, a compaction summary, a sidechain or `isMeta` row, a harness prompt and a
+    `!` command's own row (`<bash-input>`, `<bash-stdout>`, `<bash-stderr>` - run B m6: a path printed by the user's `!`
+    command opened its folder) (`typedRowText`) open nothing; a typed folder that HOLDS the project opens nothing (`~/.zshrc`
+    opens that file, never the home). The record rule above still wins.
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route + a filesystem
     server's `write_file` as a Write, `edit_file` as an edit over its `oldText` / `newText` (a `dryRun` writes nothing) and
     `move_file` as a removal of its source and of a config its destination would replace, a new destination's shadowing
@@ -1371,19 +1375,42 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     force-push or desktop exec guard; its old name too, `HOOK_RENAMED`) to `ALFRED_CODE_HOOKS_OFF` in a settings `env`, or
     sets `disableAllHooks: true`, is denied with ONE ask ('Keep the guards on (Recommended)' / 'Allow this guard
     switch-off'), opened only by `GUARD-OFF-ALLOW`, a security receipt (THE RECEIPTS above; a line naming the file as shown,
-    its real path or `*`). Watched files: the project's `.claude/settings.json` and `settings.local.json`, the repository
+    its real path or `*`). On win32 the off-list key is read in any letter case (the environment is case-insensitive there,
+    so `alfred_code_hooks_off` is the same variable - review fix pass run B m8). Watched files: the project's
+    `.claude/settings.json` and `settings.local.json`, the repository
     root's `settings.local.json` (`layout.js localSettingsFile`, Claude Code 2.1.211+), the account's `settings.json`
     (`CLAUDE_CONFIG_DIR`, else `~/.claude`), the managed file and its `managed-settings.d/*.json`. Judged on every route:
     a file tool and a filesystem server on the file they leave (JSONC, a BOM and trailing commas forgiven; a fragment or
     an Edit Claude Code may still apply another way by the names it adds), a shell write to a watched file on the JSON it
     carries (a heredoc body, a quoted object, an existing non-settings file it names - at most 16, 1MB each, a copy's source
     or a `jq` filter's input) and on the guard names in the rest, an in-place `sed` applied in memory, a `move_file` on its
-    source. It runs BEFORE every stand-down - the csv (one naming this guard first would open the protective ones), the
+    source. WHAT A CALL LANDS (review fix pass run B M1: only a target spelled `*.json` was judged, so `cp <f> .claude/`,
+    `cp -t .claude <f>`, `cd .claude && cp <f> .`, `mv <f> .claude`, `rsync <dir>/ .claude/`, `ln -sf <f> .claude/`,
+    `tar -C .claude -xf x.tar` and `jq ... f | sponge f` passed): every watched path a copy, move, link, install, rsync,
+    `Copy-Item`, extract, download or `move_file` would land is judged on what lands there - a folder destination takes the
+    source's last name (`shell-writes.js copyPlan` / `psCopyPlan`: `-t`, `-T`, `--parents`, rsync's trailing slash and
+    cp's `/.` laying down contents, a last-name glob expanded, `ln -s` read from the link's folder), a recursive copy or
+    move by the file at the same place under its source, an extract by the archive's own entry (tar plain or gzipped and
+    zip, read in the hook - `--strip-components`, `-P`, unzip's `-j`; `tarPlan` / `unzipPlan`, and `scanShell`'s `landing`
+    option reports an extract with no destination as one into the working folder), `dd` by its `if=`. Content this hook
+    CANNOT read asks the same question: a source the shell computes, a missing file no earlier step of the command fills,
+    another compressor, a link inside an archive, a download (what `curl` writes does not exist yet) - so a download and
+    extract in the project root asks, the stated cost. A source an earlier step fills is judged on what the command
+    carries. `sponge` is a writer for every guard. THE COPIED TWIN (run B M2: a Write of `.claude/hooks/shell-guards.js`
+    plus a settings entry running it stood the plugin's dispatcher down, `hook-prelude.js yieldToCopiedTwin`, and `rm -rf ~`
+    passed): a settings write ADDING a hooks entry whose command names `.claude/hooks/<hook>.js` for a dispatcher
+    (`shell-guards`, `file-guards`), a protective guard or the cross-project guard (the transcript rule every security
+    receipt rests on) counts as a switch-off on every route, an entry the file already held passes; and while the plugin
+    route is live (`CLAUDE_PLUGIN_ROOT` set, this run not the project's copy) a write that creates or replaces one of those
+    files in the project's `.claude/hooks/` - on any route, a copy into the folder included - asks too. The copy route
+    (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) is untouched: the installer writes both through its own process, and with no
+    plugin root the copy IS the guard. It runs BEFORE every stand-down - the csv (one naming this guard first would open the protective ones), the
     `minimal` profile, a Cursor payload, `CONFIG_PROTECT=0` and a repo never set up, which writes no block row (R86).
     Removing a guard from the list, a guard already listed and any other key pass. Not read: `.variables` (layout.js never
     reads the off-list there, D7) and a workspace member's files (they hand down `<hook>:<part>` entries only, and no
-    protective guard has a part). Ceilings: a path or value the shell computes, a runtime script that builds the JSON,
-    and a plugin switched off in `enabledPlugins`.
+    protective guard has a part). Ceilings: a destination or value the shell computes, a runtime script that builds the
+    JSON, a `git checkout` / `clone` laying a settings file down, an extract tool other than tar and unzip, and a plugin
+    switched off in `enabledPlugins`.
   - `guard-desktop-exec.js` (PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any
     registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
     (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server

@@ -880,7 +880,7 @@
       "file": "guard-config-protection.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, guard-config-protection in ALFRED_CODE_HOOKS_OFF turns that half off; a settings write adding a protective guard to ALFRED_CODE_HOOKS_OFF or setting disableAllHooks asks under every stand-down, opened only by the GUARD-OFF-ALLOW security receipt (audit 2026-11-03 SYS-01)"
+      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, guard-config-protection in ALFRED_CODE_HOOKS_OFF turns that half off; a settings write adding a protective guard to ALFRED_CODE_HOOKS_OFF or setting disableAllHooks asks under every stand-down, opened only by the GUARD-OFF-ALLOW security receipt (audit 2026-11-03 SYS-01) - judged on what a copy, move, link or extract into a watched folder lands (unread content asks too), and a new hooks entry wiring a copied twin of a dispatcher or protective guard is a switch-off"
     },
     {
       "file": "guard-config-protection.js",
