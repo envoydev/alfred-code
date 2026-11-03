@@ -756,6 +756,33 @@ test('scorer backstop: no typed prompt in the transcript - not held, one scorer-
   assert.strictEqual(scorer([T1('V1')], 'done', { session_id: 'V1' }), 0);
   assert.strictEqual(ledgerRows('scorer-cycle-unread').length, 1);
 });
+// sc-11: the probe row says the backstop judged nothing - true only while it would have judged
+test('scorer backstop: no probe row while the scorer is off', () => {
+  assert.strictEqual(scorer([T1('V2')], 'done', { session_id: 'V2' }, { ALFRED_CODE_SCORER: '0' }), 0);
+  assert.strictEqual(ledgerRows('scorer-cycle-unread').length, 0, 'off: no row');
+  assert.strictEqual(scorer([T1('V3')], 'done', { session_id: 'V3' }), 0);
+  assert.strictEqual(ledgerRows('scorer-cycle-unread').length, 1, 'on: one row');
+});
+// sc-5: a harness that sends no background_tasks still launched the grader this session - its un-ended async launch is the wait
+test('scorer backstop: a grader launched in the transcript with no registry is live', () => {
+  const launch = (id, type) => [call(`g-${id}`, 'Agent', { subagent_type: type, prompt: 'grade', run_in_background: true }),
+    result(`g-${id}`, `Async agent launched successfully. agentId: ${id}`, { status: 'async_launched', agentId: id })];
+  const wait = 'Scoring custom - the grader is running';
+  assert.strictEqual(scorer([typed('go'), T1('L5'), ...launch('a5', 'alfred-code:output-scorer')], wait, { session_id: 'L5' }), 0);
+  assert.ok(!fs.existsSync(scorerHeldFile(ROOT, 'L5')), 'the live grader is the wait');
+  const ended = typed('<task-notification><task-id>a6</task-id><status>completed</status></task-notification>');
+  scorer([typed('go'), T1('L6'), ...launch('a6', 'alfred-code:output-scorer'), ended], wait, { session_id: 'L6' });
+  assert.ok(fs.existsSync(scorerHeldFile(ROOT, 'L6')), 'its notice ended it: held');
+  scorer([typed('go'), T1('L7'), ...launch('a7', 'alfred-code:evidence-gatherer')], wait, { session_id: 'L7' });
+  assert.ok(fs.existsSync(scorerHeldFile(ROOT, 'L7')), 'another seat is no grader: held');
+});
+// sc-8: the skill says a stack naming habits-adjust-agents-md grades nothing, so the backstop owes nothing for it
+test('scorer backstop: a stack naming habits-adjust-agents-md owes no score', () => {
+  assert.strictEqual(scorer([typed('/habits-adjust-agents-md /mode-output-scorer improve it')], 'here', { session_id: 'J1' }), 0);
+  assert.strictEqual(scorer([typed('<command-name>/habits-adjust-agents-md</command-name>\n<command-args>/mode-output-scorer improve it</command-args>')], 'here', { session_id: 'J2' }), 0);
+  for (const sid of ['J1', 'J2']) assert.ok(!fs.existsSync(scorerHeldFile(ROOT, sid)), sid);
+  assert.strictEqual(scorer([typed('why did habits-adjust-agents-md skip? /mode-output-scorer explain x')], 'here', { session_id: 'J3' }), 2, 'talk about the skill is no stack');
+});
 test('scorer backstop: typed rows with no uuid or timestamp key the cycle by the row\'s hash - held once across two closes', () => {
   const tp = transcript([typed('go'), T1('K1')]);
   assert.strictEqual(closeOver(tp, 'done', { session_id: 'K1' }), 2);
@@ -793,7 +820,7 @@ test('scorer backstop: all four keys unset (or the switch empty) read the defaul
   assert.strictEqual(scorer([typed('go'), T3W], 'done', { session_id: 'S2' }, unset), 0, 'no root-cause');
 });
 
-// --- the output-scorer's seal (spec 5.10): the seat's report is written to the score file its first line names, sealed,
+// --- the output-scorer's seal (spec 5.11): the seat's report is written to the score file its first line names, sealed,
 // from its SubagentHandback call or, with none, from SubagentStop - only inside this session's scorer folder, never twice.
 const crypto = require('node:crypto');
 const SCORECARD = path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'scripts', 'scorecard.js');
@@ -826,6 +853,21 @@ test('scorer seal: a leading blank line, bold or backticks around score-file: st
     handback(`${head}${file}${head.startsWith('`') ? '`' : ''}\nbody`);
     assert.ok(fs.existsSync(file), id);
   }
+});
+// sc-10: a seat that opens with a line or two of preface still names its score file
+test('seal: the score-file line may follow up to two preface lines', () => {
+  const at3 = path.join(FOLDER, 'ad000001.score.md'); const at4 = path.join(FOLDER, 'ad000002.score.md');
+  handback(`Graded the plan.\n\nHere is the card:\nscore-file: ${at3}\nbody`);
+  assert.ok(fs.existsSync(at3), 'the third non-empty line seals');
+  handback(`One.\nTwo.\nThree.\nscore-file: ${at4}\nbody`);
+  assert.ok(!fs.existsSync(at4), 'the fourth does not');
+});
+// sc-12: the seal is the spec's 5.11 (5.10 is the read guard)
+test('seal: the hook comment and repo-hooks.md name spec 5.11', () => {
+  const hook = fs.readFileSync(HOOK, 'utf8');
+  assert.ok(hook.includes("seal (mode-output-scorer, spec 5.11)"), 'the hook comment'); assert.ok(!hook.includes('spec 5.10)'), 'no 5.10 left in the hook');
+  const doc = fs.readFileSync(path.join(__dirname, '..', '.claude', 'rules', 'repo-hooks.md'), 'utf8');
+  assert.ok(doc.includes('THE SEAL (5.11)'), 'repo-hooks.md'); assert.ok(!doc.includes('THE SEAL (5.10)'), 'no 5.10 left in repo-hooks.md');
 });
 test('scorer seal: a second delivery of the same score-file never rewrites the first seal (AC22)', () => {
   const file = path.join(FOLDER, 'ab000001.score.md');

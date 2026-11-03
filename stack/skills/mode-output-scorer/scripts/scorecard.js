@@ -445,6 +445,16 @@ function runStart(args) {
     round = rounds.length ? Math.max(...rounds) + 1 : 0;
     draftId = id;
   }
+  // The run cap next holds (sc-6; spec 5.5: every grade line is one run, a regrade included): --rounds, else
+  // ALFRED_CODE_SCORER_ROUNDS, else 3 (inline-plan runs once), plus the attempt's bought runs. A retry of an incomplete
+  // grade is next's own order, and so is a revision next owes - the newest line a `bought`, or the fix-on-pass
+  // revision not yet graded - so those start past it.
+  const owed = log && (new RegExp(`^bought ${ID_RE}$`).test(log.newest) || (log.fixing && log.grades.length === log.fixing.at));
+  if (log && !args['retry-of'] && !owed) {
+    const ids = new Set(log.grades.filter((g) => g.attempt === attempt).map((g) => g.id));
+    const cap = (OUTPUTS[output].runs === 1 ? 1 : roundsOf(args.rounds, process.env, ctx.root)) + log.bought.filter((x) => ids.has(x)).length;
+    if (ids.size >= cap) fail(2, `slug ${ctx.slug} has used its run cap of ${cap} in attempt ${attempt} - run next and put its ask; a run past the cap starts only after decide --choice revise`);
+  }
   fs.mkdirSync(ctx.folder, { recursive: true });
   if (!log) {
     fs.writeFileSync(path.join(ctx.folder, 'inputs.md'), `${inputsOf(ctx, output, args.target).join('\n')}\n`);
@@ -535,8 +545,9 @@ function runNext(args) {
     const r = why ? orig : rev;
     return { round: r, line: `Fix: ${why ? `not kept - ${why}` : `kept - ${rev.open.length} of ${orig.open.length} MATERIAL left`} - release the draft at ${r.draft}` };
   };
-  const withheld = (r) => [
-    `Ceiling: ${r.ceiling}/100 (level ${level}) - ${r.needs.length ? r.needs.join('; ') : 'nothing closable left'}`,
+  // at the cap a ceiling above the score is the cap's doing, never 'nothing closable left' (sc-7)
+  const withheld = (r, capReached = false) => [
+    `Ceiling: ${r.ceiling}/100 (level ${level}) - ${r.needs.length ? r.needs.join('; ') : capReached && r.ceiling > r.value ? 'the run cap is reached' : 'nothing closable left'}`,
     `Findings: ${r.blocked.length} BLOCKER, ${r.open.length} MATERIAL`,
     `Scored: ${r.value}/100 (level ${level}) - NOT PASSED after ${runs} run(s) - withheld at ${r.draft}`,
   ];
@@ -616,7 +627,7 @@ function runNext(args) {
         else choice = bought ? 'keep' : 'revise';
         const mark = `asked ${best.id} ${action}`;
         if (log.newest !== mark) fs.appendFileSync(ctx.logFile, `${mark}\n`);
-        out.push(`${action} ${best.id} recommend ${choice}`, ...withheld(best));
+        out.push(`${action} ${best.id} recommend ${choice}`, ...withheld(best, used >= cap));
       }
     }
   }

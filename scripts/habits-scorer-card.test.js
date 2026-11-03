@@ -192,7 +192,7 @@ test('start: ids, the header lines, attempt 2 after answers.md, regrade and retr
     assert.deepStrictEqual([g.draft, g.round], [a.draft, '0']); assert.notStrictEqual(g.id, a.id);
     assert.strictEqual(start('s0', ['--retry-of', a.id]).draft, a.draft);
     assert.match(fs.readFileSync(log('s0'), 'utf8'), new RegExp(`^1 0 ${g.id} regrade-of ${a.id}$`, 'm'));
-    assert.strictEqual(start('s0').round, '1');
+    assert.strictEqual(start('s0', ['--rounds', '4']).round, '1');                         // three grade lines used the cap of 3 (sc-6)
     fs.writeFileSync(a.task, 'the request\n'); fs.writeFileSync(answers('s0'), 'x\n');
     const b = start('s0'); assert.deepStrictEqual([b.attempt, b.round], ['2', '0']); start('s0');
     assert.strictEqual(fs.readFileSync(a.task, 'utf8'), 'the request\n\n## Answers (attempt 2)\n\nx\n');   // appended once (R27)
@@ -341,6 +341,32 @@ test('next: a ceiling under the level, or under 5 above the total, asks instead 
     assert.deepStrictEqual(next('k1').slice(0, 4), [`ask-continue ${id} recommend answer`, 'Ceiling: 78/100 (level 80) - the retention period',
         'Findings: 0 BLOCKER, 0 MATERIAL', `Scored: 60/100 (level 80) - NOT PASSED after 1 run(s) - withheld at ${path.join(dir('k1'), `${id}.draft.md`)}`]);
     const j = graded('k2', { total: 60, ceiling: 64 }); assert.match(next('k2')[0], new RegExp(`^ask-continue ${j} `));
+});
+// sc-6: start holds the cap next holds - --rounds, else ALFRED_CODE_SCORER_ROUNDS, else 3 - over the attempt's grades plus
+// its bought runs; a retry grades the same round, and a bought run's revision is owed past it
+test('sc-6: start refuses past the run cap', () => {
+    for (const [slug, extra, env, cap] of [['c6a', ['--rounds', '3'], {}, 3], ['c6b', [], {}, 3], ['c6c', [], { ALFRED_CODE_SCORER_ROUNDS: '2' }, 2]]) {
+        const go = (more = []) => cli(['start', ...at(slug), '--output', 'designer-plan', ...extra, ...more], env);
+        let id;
+        for (let i = 0; i < cap; i++) { const r = go(); assert.strictEqual(r.status, 0, `${slug} start ${i}: ${r.stderr}`); id = kv(r).id; }
+        const over = go();
+        assert.strictEqual(over.status, 2, slug); assert.match(over.stderr, new RegExp(`run cap of ${cap}\\b`), slug);
+        assert.strictEqual(go(['--retry-of', id]).status, 0, `${slug}: a retry grades the same round`);
+        fs.appendFileSync(log(slug), `bought ${id}\n`);
+        assert.strictEqual(go().status, 0, `${slug}: the bought run starts`);
+        assert.strictEqual(go().status, 2, `${slug}: one bought run is one start`);
+    }
+});
+// sc-7: at the cap, a closable ceiling is the cap's doing - never 'nothing closable left'; SKILL.md's template names it
+test('sc-7: the ask at the cap says the cap is reached', () => {
+    for (const t of [50, 60, 70]) graded('c7', { total: t });
+    const out = next('c7');
+    assert.match(out[0], /^ask-continue /);
+    assert.strictEqual(out[1], 'Ceiling: 100/100 (level 80) - the run cap is reached');
+    const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'SKILL.md'), 'utf8');
+    assert.match(skill, /the next revision can reach at most <ceiling> - <the needs line, the run cap is reached, or nothing closable left>/);
+    const s = start('c7b'); fs.writeFileSync(s['score-file'], card100(60));                          // no unmet check tagged: nothing closable
+    assert.deepStrictEqual(next('c7b').slice(0, 2), [`ask-continue ${s.id} recommend accept`, 'Ceiling: 60/100 (level 80) - nothing closable left']);
 });
 test('next --auto: revise first at the cap with a BLOCKER, then keep; accept with no BLOCKER; never answer (AC26, R19)', () => {
     for (const t of [50, 52, 53]) graded('u1', { total: t, blocker: true, ceiling: 70 });

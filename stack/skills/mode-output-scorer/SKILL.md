@@ -68,7 +68,7 @@ The outputs, their producers, rubrics, runs and docs are the table in `reference
 The continue question, its numbers from `next`'s `Ceiling:` and `Findings:` lines:
 
 ```ask
-The <output> scored <S>/100 (level <n>); the next revision can reach at most <ceiling> - <the needs line, or nothing closable left>. How should it go on?
+The <output> scored <S>/100 (level <n>); the next revision can reach at most <ceiling> - <the needs line, the run cap is reached, or nothing closable left>. How should it go on?
 - 'Answer the open decisions (Recommended)' - your answers join the task and one more attempt runs
 - 'Accept it at <S>, marked' - it goes out now, its score and open findings named
 - 'Revise once more' - one more revision and grade, about one seat run

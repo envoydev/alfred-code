@@ -1245,15 +1245,19 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `work/plans/` (on, `designer-plan` listed; not where a draft was written, a plan reader - `task-implement`,
     `task-verify-plan`, `task-verify-code` - ran, or the loop released that `target:`); T3 a findings write whose `Cause:`
     is set, or a diagnoser seat that settled (on, `root-cause` listed); T4 a typed stack naming `mode-output-scorer` (on
-    or off; a flag-only `/mode-output-scorer --mode-output-scorer-off` line is no stack, the stack-modes spec section 4). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
+    or off; a flag-only `/mode-output-scorer --mode-output-scorer-off` line is no stack, the stack-modes spec section 4; nor
+    is one that also names `habits-adjust-agents-md`, which grades nothing - sc-8). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
     holds a `released` / `final` line written since the cycle opened (2s slack); a typed one is no receipt and writes one
     `scorer-receipt-unbacked` row. The `SCORER-HELD-<session>` marker holds the cycle's key (the row's uuid, else its
     timestamp, else its hash), and the check sits BEFORE the `stopHeld` exit, so a rewrite after this hook's own hold for
     another reason is still judged while the marker keeps it to one hold. A live `output-scorer` seat in
-    `background_tasks` is the loop's own wait, never held; a seat's Stop and a transcript-less Stop judge nothing; no
-    opening row writes one `scorer-cycle-unread` row. The hold's block row names `branch: scorer` (AC11, AC14, AC16, AC17,
-    AC19, AC24, AC25; `guard-stop-closes.test.js`, 'scorer backstop'). THE SEAL (5.10): an `output-scorer` seat's report
-    names its score file on its first line (`*` and backticks dropped); PreToolUse `SubagentHandback` - or SubagentStop's
+    `background_tasks` is the loop's own wait, never held - with no registry sent, an async `output-scorer` launch the
+    transcript holds with no notice that ended it is (sc-5, the launch scan `liveBackgroundWork` reads); a seat's Stop and
+    a transcript-less Stop judge nothing; no opening row writes one `scorer-cycle-unread` row while the scorer is on, none
+    while it is off (sc-11). The hold's block row names `branch: scorer` (AC11, AC14, AC16, AC17,
+    AC19, AC24, AC25; `guard-stop-closes.test.js`, 'scorer backstop'). THE SEAL (5.11): an `output-scorer` seat's report
+    names its score file on one of its first three non-empty lines (`*` and backticks dropped; a line or two of preface,
+    sc-10); PreToolUse `SubagentHandback` - or SubagentStop's
     `last_assistant_message` for a run with no hand-back, before that route's `stop_hook_active` exit - writes it as
     `seal: sha256 <hex>` then the report as delivered, only into this session's scorer folder (both sides realpathed, so
     macOS's `/var` is `/private/var` and a symlinked parent leads nowhere), only a `.score.md` that does not exist yet

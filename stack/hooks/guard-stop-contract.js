@@ -546,15 +546,34 @@ function registeredWork() {
   });
 }
 // Is a seat of the type `re` names still out - a `subagent` entry of the Stop registry not yet settled? The scorer
-// backstop reads it: a grader still running is the loop's own wait, a diagnoser still running has no verdict yet.
+// backstop reads it: a grader still running is the loop's own wait, a diagnoser still running has no verdict yet. A
+// harness that sends no registry is read from the transcript (sc-5): an async Agent / Task launch of that type, not ended.
 function seatLive(re) {
-  if (payload.hook_event_name !== 'Stop' || !Array.isArray(payload.background_tasks)) return false;
-  return payload.background_tasks.some((t) => !!t && typeof t === 'object' && String(t.type || '').toLowerCase() === 'subagent'
-    && !SETTLED_STATUS.test(String(t.status || '')) && re.test(String(t.agent_type || '')));
+  if (payload.hook_event_name !== 'Stop') return false;
+  if (Array.isArray(payload.background_tasks)) {
+    return payload.background_tasks.some((t) => !!t && typeof t === 'object' && String(t.type || '').toLowerCase() === 'subagent'
+      && !SETTLED_STATUS.test(String(t.status || '')) && re.test(String(t.agent_type || '')));
+  }
+  const scan = launchScan();
+  return !!scan && scan.live.some((l) => /^(?:Agent|Task)$/.test(l.name) && re.test(String(l.input.subagent_type || '')));
 }
 function liveBackgroundWork() {
   const reg = registeredWork();
   if (reg !== null) return reg;
+  const scan = launchScan();
+  if (!scan) return null;
+  if (scan.live.length) return true;
+  return scan.truncated || scan.inherited ? null : false;
+}
+// The transcript's background launches still out, each { ids, monitor, name, input }, plus whether the read was cut
+// short (truncated) or saw a notice for work launched before the window (inherited); null when there is none to read.
+// Read once per run: liveBackgroundWork and seatLive both ask.
+let launchScanMemo;
+function launchScan() {
+  if (launchScanMemo === undefined) launchScanMemo = readLaunches();
+  return launchScanMemo;
+}
+function readLaunches() {
   const p = payload.transcript_path;
   if (!p) return null;
   let text;
@@ -614,7 +633,7 @@ function liveBackgroundWork() {
           if (!finiteShell(command)) continue;
           taskId = meta.backgroundTaskId || (/running in background with ID:\s*([\w-]+)/i.exec(r) || [])[1];
         }
-        live.push({ ids: new Set([b.tool_use_id, taskId].filter(Boolean)), monitor: name === 'Monitor' });
+        live.push({ ids: new Set([b.tool_use_id, taskId].filter(Boolean)), monitor: name === 'Monitor', name, input });
         for (const id of live[live.length - 1].ids) seen.add(id);
       }
     }
@@ -638,8 +657,7 @@ function liveBackgroundWork() {
       }
     }
   }
-  if (live.length) return true;
-  return truncated || inherited ? null : false;
+  return { live, truncated, inherited };
 }
 // The words a close uses for such work when the transcript cannot be read: an agent, a review or an
 // implementer as the running noun, or a waiter that wakes the session. Read ONLY when liveBackgroundWork()
@@ -1121,6 +1139,9 @@ function walkBack(start, fallback) {
 // cycle's key, and whether the receipt was there but unbacked.
 const SCORED_RE = /(?:^|\n)\s*\**Scored\**:\s*\d+\/100/;
 const DIAGNOSER_RE = /(?:^|:)issue-diagnoser-(?:ci|runtime)$/;
+// A typed stack naming habits-adjust-agents-md grades nothing (mode-output-scorer SKILL.md), so it owes no T4 (sc-8): the
+// slash form, a `<command-name>` row, or the bare name after a usage word - the shape of hook-prelude.js STACK_RE.
+const ADJUST_STACK_RE = /(?:^|[\s(>])(?:\/(?:alfred-code:)?|(?:using|with|via|run|stack|through)\s+(?:the\s+)?)habits-adjust-agents-md(?=[\s.,;:)!?<]|$)/i;
 // a placeholder in bold or backticks (`Cause: **<pending>**`) is no verdict either (final review 2)
 const VERDICT_RE = /^\s*Cause:\s*[*_`]*(?!<pending>)[^\s*_`]/m;
 // The verdict lines an edit adds: a Cause line already in old_string is the stamp being kept, not a new verdict.
@@ -1186,11 +1207,13 @@ function scorerOwed(state, pre, root) {
       if (o.isCompactSummary || !typedMessage(o, row) || /^\s*Stop hook feedback:/.test(text)) return undefined;
       // the opening row: its uuid, else its timestamp, else the row's own hash keys the cycle
       const key = o.uuid || o.timestamp || `${payload.transcript_path}#${crypto.createHash('sha256').update(JSON.stringify(o)).digest('hex')}`;
-      return { ...seen, open: n, at: Date.parse(o.timestamp || ''), key: String(key), stacked: seen.stacked || (!flagOnly && pre.stackNamed(text)) };
+      const stacked = !ADJUST_STACK_RE.test(text) && (seen.stacked || (!flagOnly && pre.stackNamed(text)));
+      return { ...seen, open: n, at: Date.parse(o.timestamp || ''), key: String(key), stacked };
     };
   }, null);
   if (!found) {
-    ledgerRow({ tool: '', mode: 'probe', kind: 'scorer-cycle-unread', reason: 'probe: no typed prompt in the transcript - the scorer backstop judged nothing' });
+    // only while the scorer is on: off, the backstop judges nothing whatever the transcript holds (sc-11)
+    if (state.on) ledgerRow({ tool: '', mode: 'probe', kind: 'scorer-cycle-unread', reason: 'probe: no typed prompt in the transcript - the scorer backstop judged nothing' });
     return { owed: null, cycle: null };
   }
   // the scorer's own folders: this session's, and the SELF route's (R29); a log written before the cycle opened is
@@ -1769,8 +1792,9 @@ function subagentOwnTools(file) {
   }
   return tools;
 }
-// --- the output-scorer's seal (mode-output-scorer, spec 5.10) ------------------------------------------
-// The grader's report names its score file on its first line, and this hook writes it, sealed: `seal: sha256 <hex of the
+// --- the output-scorer's seal (mode-output-scorer, spec 5.11) ------------------------------------------
+// The grader's report names its score file on one of its first three non-empty lines (a line or two of preface is
+// how a seat opens; sc-10), and this hook writes it, sealed: `seal: sha256 <hex of the
 // report>` then the report as delivered, so a card the author typed or edited never grades (scorecard.js sealOf, the
 // same hash). Only into this session's scorer folder - both sides realpathed, so macOS's /var reads as /private/var and
 // a symlinked parent leads nowhere - only a `.score.md`, and only one that does not exist yet (`wx`: a second delivery,
@@ -1783,7 +1807,7 @@ function sealScorecard(message) {
   try {
     const pre = require('./hook-prelude.js');
     const text = String(message == null ? '' : message);
-    const head = /^score-file:\s*(\S.*?)\s*$/.exec((text.split('\n').find((l) => l.trim()) || '').replace(/[*`]/g, '').trim());
+    const head = text.split('\n').filter((l) => l.trim()).slice(0, 3).map((l) => /^score-file:\s*(\S.*?)\s*$/.exec(l.replace(/[*`]/g, '').trim())).find(Boolean);
     if (head) {
       const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
       file = path.resolve(root, head[1].replace(/\\/g, '/'));
