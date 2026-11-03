@@ -136,6 +136,65 @@ test('the core carries every stack hook inline, its own two first in each event'
     assert.strictEqual(total(core.hooks), total(stack) + 4, 'nothing doubled, nothing lost');
 });
 
+// HK-22 (audit 2026-10-30): the stop judge ships as a `prompt` hook - a manifest row with `type: prompt`, its text read
+// from ONE file (stack/hooks/stop-judge-prompt.txt) so a later host adapter reads the same words. The row names the stop
+// contract's file, so it renders the same `file::matcher` spec as the command row: the command wiring takes it once.
+// Its `model` is LEFT OUT: the hook evaluator passes the field to the API as written, so the `haiku` alias failed every
+// call ('There's an issue with the selected model (haiku)', a non-blocking error - the judge never ran; measured in a live
+// `claude -p` session 2026-11-03), and a pinned id breaks on a provider whose Haiku carries another id. With none, Claude
+// Code runs its background model - Haiku on every provider (claude-haiku-5-5 on the Anthropic API, measured).
+test('HK-22: the core carries the stop judge as one prompt hook on Stop - the prompt file\'s text, no model alias', () => {
+    const core = coreEntry();
+    const prompts = Object.entries(core.hooks).flatMap(([event, groups]) => groups.flatMap((g) => g.hooks
+        .filter((h) => h.type === 'prompt').map((h) => ({ event, matcher: g.matcher, ...h }))));
+    const text = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'stop-judge-prompt.txt'), 'utf8').trim();
+    assert.deepStrictEqual(prompts, [{ event: 'Stop', matcher: undefined, type: 'prompt', prompt: text, timeout: 30 }]);
+    assert.match(text, /\$ARGUMENTS/, 'the hook input lands where the prompt says');
+    assert.match(text, /If `stop_hook_active` is true, answer \{"ok": true\}/, 'a turn already sent back is released - no loop');
+    const stopContract = core.hooks.Stop.flatMap((g) => g.hooks).filter((h) => /guard-stop-contract\.js/.test(h.command || ''));
+    assert.strictEqual(stopContract.length, 1, 'the stop contract\'s command hook is wired once');
+    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks.filter((r) => r.type === 'prompt');
+    assert.deepStrictEqual(raw.map((r) => [r.file, r.matcher, r.active]), [['guard-stop-contract.js', '@Stop', false]],
+        'one prompt row, parked (active: false) so the copy route - command hooks only - never wires it twice');
+});
+
+test('HK-22: a prompt row that cannot ship fails the generator loudly', () => {
+    const fixture = (row, file) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-row-'));
+        fs.mkdirSync(path.join(dir, 'meta'));
+        fs.mkdirSync(path.join(dir, 'stack', 'hooks'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'meta', 'stack-manifest.json'), JSON.stringify({ hooks: [
+            { file: 'guard-stop-contract.js', matcher: '@Stop', event: '', note: 'x' },
+            { file: 'guard-stop-contract.js', matcher: '@Stop', event: '', type: 'prompt', prompt: 'judge.txt', timeout: 30, active: false, note: 'x', ...row },
+        ] }));
+        if (file !== null) fs.writeFileSync(path.join(dir, 'stack', 'hooks', 'judge.txt'), file === undefined ? 'Judge $ARGUMENTS' : file);
+        return dir;
+    };
+    const ok = fixture({});
+    assert.deepStrictEqual(parseHookWirings(ok).filter((w) => w.type === 'prompt'),
+        [{ type: 'prompt', file: 'guard-stop-contract.js', event: 'Stop', prompt: 'Judge $ARGUMENTS', timeout: 30 }]);
+    fs.rmSync(ok, { recursive: true, force: true });
+    const pinned = fixture({ model: 'claude-haiku-5-5' });
+    assert.strictEqual(parseHookWirings(pinned).find((w) => w.type === 'prompt').model, 'claude-haiku-5-5', 'a full model id passes through');
+    fs.rmSync(pinned, { recursive: true, force: true });
+    for (const [row, file, why] of [
+        [{}, null, /cannot read the prompt/],
+        [{}, '  \n', /is empty/],
+        [{}, 'Judge the close.', /\$ARGUMENTS/],
+        [{ model: '' }, undefined, /empty model/],
+        [{ model: 'haiku' }, undefined, /alias 'haiku'/],
+        [{ model: 'sonnet[1m]' }, undefined, /alias 'sonnet\[1m\]'/],
+        [{ timeout: 0 }, undefined, /timeout/],
+        [{ matcher: '@SessionStart' }, undefined, /SessionStart takes no prompt hook/],
+        [{ matcher: 'Bash' }, undefined, /names no event/],
+        [{ prompt: '../judge.txt' }, undefined, /inside stack\/hooks/],
+    ]) {
+        const dir = fixture(row, file);
+        assert.throws(() => parseHookWirings(dir), why, JSON.stringify(row));
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 test('mergeHooks keeps one group per matcher, the first block\'s hooks first', () => {
     const own = { PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [{ command: 'own' }] }], SessionStart: [{ matcher: 'startup', hooks: [{ command: 'stamp' }] }] };
     const stack = { PreToolUse: [{ matcher: 'Bash', hooks: [{ command: 'rm' }] }, { matcher: 'AskUserQuestion', hooks: [{ command: 'stop' }] }], Stop: [{ hooks: [{ command: 'contract' }] }] };
@@ -308,7 +367,9 @@ test('the core entry wires the library-stamp line at a startup, a clear and a re
 test('the README trust surface counts what the core entry carries', () =>
 {
     const core = coreEntry();
-    const files = new Set(Object.values(core.hooks).flat().flatMap((g) => g.hooks)
+    // A prompt hook runs no file (HK-22, the stop judge): it is a model call, which the doc names on a line of its own.
+    const all = Object.values(core.hooks).flat().flatMap((g) => g.hooks);
+    const files = new Set(all.filter((h) => h.type !== 'prompt')
         .map((h) => /\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/.exec(h.command)[1]));
     // A dispatcher is a runner, not a hook: the guards it runs in-process are the hooks.
     const dispatcher = require('../stack/hooks/shell-guards.js');
@@ -337,6 +398,10 @@ test('the README trust surface counts what the core entry carries', () =>
     if (dispatched) assert.match(row, new RegExp(`${word(dispatcher.GUARDS.length)} of them run in-process by one dispatcher \\(\`${dispatcher.SELF}\\.js\`\\)`), 'the row names the dispatcher that runs the shell guards');
     if (fileDispatched) assert.match(row, new RegExp(`${word(fileDispatcher.GUARDS.length)} by another \\(\`${fileDispatcher.SELF}\\.js\`\\) on the file tools`), 'and the one that runs the file guards');
     if (ridden) assert.match(row, /the turn build check \(`check-turn-build\.js`\) inside `history-session\.js`'s Stop/, 'and the hook that runs the turn check');
+    const judges = all.filter((h) => h.type === 'prompt');
+    const judgeLine = doc.split('\n').find((l) => /stop judge/.test(l)) || '';
+    // no `model` key runs Claude Code's background model (Haiku); a named one is a full id the doc spells out
+    for (const h of judges) assert.match(judgeLine, new RegExp(`${h.model ? `one \`${h.model}\` call` : 'one call to Claude Code\'s background model \\(Haiku'}[^.]*\`stack/hooks/stop-judge-prompt\.txt\``), 'the doc names the model call each prompt hook makes, and its text');
 });
 
 // Review finding 2: code.claude.com/docs/en/plugins-reference - 'If you declare `options` on any field,

@@ -771,6 +771,28 @@ test('check 48: a core missing a stack wiring, or a core with no hooks, is a fin
     assert.ok(lintHooksEntry(none).some((f) => /no `alfred-code` entry/.test(f)), 'no core at all is caught');
 });
 
+// HK-22 (audit 2026-10-30): the stop judge is a `prompt` hook - no command, so the launcher shape does not apply; it is
+// held instead to a model, a timeout and the hook input's placeholder, and its text to the prompt file through the
+// generated block (a drifted text is a stale entry).
+test('check 48: a prompt hook needs a timeout and $ARGUMENTS, no model alias, and its text follows the prompt file', () => {
+    const { lintPromptHook, lintHooksEntry } = require('./lint-skills.js');
+    const good = { type: 'prompt', prompt: 'Judge $ARGUMENTS', timeout: 30 };
+    assert.deepStrictEqual(lintPromptHook(good, 'Stop'), [], 'no model: Claude Code\'s background model');
+    assert.deepStrictEqual(lintPromptHook({ ...good, model: 'claude-haiku-5-5' }, 'Stop'), [], 'a full id');
+    // measured 2026-11-03: the hook evaluator sends the field as written, and `haiku` failed every call
+    for (const alias of ['haiku', 'sonnet', 'opus', 'fable', 'best', 'default', 'opusplan', 'opus[1m]', ' Haiku '])
+        assert.ok(lintPromptHook({ ...good, model: alias }, 'Stop').some((f) => /model alias/.test(f)), alias);
+    assert.ok(lintPromptHook({ ...good, model: '' }, 'Stop').some((f) => /empty model/.test(f)));
+    assert.ok(lintPromptHook({ ...good, timeout: undefined }, 'Stop').some((f) => /no timeout/.test(f)));
+    assert.ok(lintPromptHook({ ...good, prompt: 'Judge the close.' }, 'Stop').some((f) => /\$ARGUMENTS/.test(f)));
+    assert.ok(lintPromptHook(good, 'SessionStart').some((f) => /SessionStart takes no prompt hook/.test(f)));
+    const drifted = liveMarketplace();
+    const judge = drifted.plugins.find((p) => p.name === 'alfred-code').hooks.Stop.flatMap((g) => g.hooks).find((h) => h.type === 'prompt');
+    assert.ok(judge, 'the live core carries the stop judge');
+    judge.prompt = judge.prompt.replace('Hold the close', 'Block the close');
+    assert.ok(lintHooksEntry(drifted).some((f) => /core entry's hooks are STALE/.test(f)), 'a prompt edited in the entry and not the file is caught');
+});
+
 test('check 49: the live file is clean, and a stale RETIRED alias, a renames key or a hooks entry fail', () => {
     const { lintMarketplaceEntries } = require('./lint-skills.js');
     assert.deepStrictEqual(lintMarketplaceEntries(liveMarketplace()), [], 'the live file is clean');

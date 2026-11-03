@@ -37,7 +37,13 @@ test('manifest: an active:false row is SHIPPED but not seeded', () =>
 test('manifest: the hook and mcp CATALOGS are never narrowed', () =>
 {
     const m = loadManifest(ROOT);
-    assert.deepStrictEqual(m.catalogs.hooks, m.hooks, 'no hook is parked today, so the two lists must match exactly');
+    // Audit 2026-10-30 HK-22: one row is parked - the stop judge, a `prompt` hook the plugin route alone carries. It names
+    // the stop contract's file on the same Stop, so its rendered string repeats that wiring and every catalog reader (each
+    // dedupes by file or by wiring id) sees the same hooks; the copy route never wires it.
+    const parked = (m.rows.hooks || []).filter((r) => r.active === false);
+    assert.deepStrictEqual(parked.map((r) => [r.type, r.file, r.matcher]), [['prompt', 'guard-stop-contract.js', '@Stop']], 'the stop judge is the one parked hook row');
+    assert.deepStrictEqual(m.catalogs.hooks.filter((h, i) => m.catalogs.hooks.indexOf(h) === i), m.hooks, 'the catalog is the live list plus that repeat');
+    assert.ok(m.hooks.includes('guard-stop-contract.js::@Stop::'), 'the stop contract\'s own Stop wiring is live');
     assert.strictEqual(m.catalogs.mcps.length, (m.rows.mcps || []).length);
 });
 

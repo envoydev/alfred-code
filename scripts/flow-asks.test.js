@@ -150,14 +150,22 @@ test('A4: a commit ask recommends the local commit and a push or publish ask rec
     assert.ok(commits >= 3 && pushes >= 2, `the walk found the asks (commit ${commits}, push ${pushes})`);
 });
 
-test('A4: the stop-contract hook\'s pending-close push offers no commit', () => {
+// Since audit 2026-10-30 HK-22 the stop judge (a prompt hook on Stop, stack/hooks/stop-judge-prompt.txt) holds a pending
+// close and writes its reason, so A4 is pinned on its prompt: the reason names no commit or push as the next move, and a
+// diff held for the user's review, stated as status, is released.
+test('A4: the stop judge\'s pending-close reason offers no commit', () => {
+    const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'a4-'));
     const r = spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-stop-contract.js')], {
         input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'a4', last_assistant_message: 'The fix is done and the suite is green. Not pushed yet - the next step whenever you are ready.' }),
-        encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'a4-')) },
+        encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root },
     });
-    assert.strictEqual(r.status, 2, 'the pending close is still held');
-    assert.doesNotMatch(r.stderr, /push or hold|commit now/i, 'the push names no commit or push as the next move');
-    assert.match(r.stderr, /uncommitted diff is held/i, 'and says the diff stays held');
+    assert.strictEqual(r.status, 0, 'the stop contract hands the pending close to the judge');
+    assert.match(fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'a4.jsonl'), 'utf8'), /"exempt":"stop-judge"/);
+    fs.rmSync(root, { recursive: true, force: true });
+    const judge = read('stack/hooks/stop-judge-prompt.txt');
+    const reason = judge.slice(judge.indexOf('To hold it:'));
+    assert.doesNotMatch(reason, /push or hold|commit now/i, 'the reason names no commit or push as the next move');
+    assert.match(judge, /the only open item is an uncommitted diff held for the user's review stated as status/, 'and a diff held for review is released');
 });
 
 // ---- A5: a blocked tool is recovered in the session ----------------------------------------------

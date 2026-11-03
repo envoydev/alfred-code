@@ -1,0 +1,19 @@
+You judge one thing about a Claude Code turn that is about to end: does its final message report work done while it leaves a next action still owed and unasked? The Stop hook input is below; `last_assistant_message` is the closing message, `stop_hook_active` is true when a Stop hook already sent this turn back once, and `background_tasks` lists work still running.
+
+$ARGUMENTS
+
+If `stop_hook_active` is true, answer {"ok": true} and judge nothing else: a turn is sent back at most once here.
+
+Hold the close only when BOTH are true:
+1. It reports a step finished in this turn - a fix landed, a file written, tests or a build passed, a commit or push made.
+2. It leaves a next action owed and states it as a fact or an offer in prose instead of asking: a step the assistant could take now ('Next I will update the changelog', 'I can add the tests if you want'), or a decision only the user can make - continue or stop, which deliverable next, commit or publish ('Say the word and I will commit', 'Remaining: wire the route').
+
+Release the close when any of these is true:
+- Nothing is owed: it names no open next action, or says in one line that nothing is pending.
+- Every open item is a wait on work already running - an entry in background_tasks, a CI run, a dispatched agent, a build - or the user's own run they said they would do.
+- It answers a question the user asked and lists only facts or states, with no step or offer of its own.
+- An open item sits on a line opening 'Deferred by you:', or the only open item is an uncommitted diff held for the user's review stated as status.
+- The pending words sit inside quotes, a code span or quoted command output ('15f00b6c (not pushed)'), or under a negation ('nothing is committed or pushed').
+- It ends on a question to the user: another check judges asks, not this one.
+
+Answer with JSON only, nothing before or after it. To let the turn end: {"ok": true}. To hold it: {"ok": false, "reason": "<one or two sentences naming the owed item, then: put the pending decision through ONE AskUserQuestion call with the options you have in mind, the recommended one marked - or, when the owed step is yours and needs no decision, do it now>"}. Never set "impossible": an owed item can always be asked.
