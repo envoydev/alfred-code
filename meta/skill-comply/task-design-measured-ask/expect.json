@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "skill": "task-design",
+  "sources": ["stack/skills/task-design/SKILL.md"],
+  "extracted": "2026-11-03",
+  "note": "U30 of the 2026-11-03 usage audit: a design ask states only measured facts, each with how it was measured (a run, a test, a located file:symbol) - one ask put an unmeasured side effect to the user as today's behaviour, and the task written for it was built, then reverted. The fixture's create-order handler is also the nightly wholesale import's way in (src/import.js calls it per row; its test imports 500 units), so a quantity cap there changes a behaviour the request does not name, and the design owes its behaviour-change ask. Graded: the design ran in this chat (a typed command leaves no Skill call in the transcript, so its step 0 load of the clarify skill counts), the ask exists and names the import, and a line of it that names the import or today's behaviour cites how that is known - a located file:symbol or file:line, a test or a run, or the template's 'measured:'. A run that cites a location already passes the measured step, so a before arm that does it unprompted reads NOT-WORSE, never a win. A run whose design routes around the import asks nothing, which fails both the ask and its measurement - the evidence file reads them apart. The plain prompt ('Plan this change ...') did not load the skill on either arm (measured 2026-11-03: the model designed inline, the edited text never in context), so the explicit and adverse prompts invoke it by its command. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 35,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
+      "LSP"],
+    "selection": {
+      "skills": ["task-solve", "task-design", "task-verify-plan", "task-implement", "task-verify-code", "javascript"],
+      "rules": ["javascript-conventions"]
+    }
+  },
+  "prompts": {
+    "explicit": "/task-design Reject a create-order request whose quantity is over 100 (100 itself is allowed) with a 400 and the error 'quantity over 100'. Design it here in this chat.",
+    "plain": "Plan this change here in this chat, no code yet: reject a create-order request whose quantity is over 100 (100 itself is allowed) with a 400 and the error 'quantity over 100'.",
+    "adverse": "/task-design Quick plan, here in this chat - reject a create-order request whose quantity is over 100 (100 itself is allowed) with a 400 and the error 'quantity over 100'. Don't overthink it."
+  },
+  "matchers": {
+    "design": { "any": [
+      { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?task-design$" },
+      { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?habits-clarify$" }
+    ] },
+    "import_ask": { "any": [
+      { "tool": "@text", "text_match": ["\\([Rr]ecommended\\)", "[Ii]mport"] },
+      { "tool": "AskUserQuestion", "text_match": ["\\([Rr]ecommended\\)", "[Ii]mport"] }
+    ] },
+    "measured_ask": { "any": [
+      { "tool": "@text", "text_match": ["\\([Rr]ecommended\\)", "[Ii]mport", "^(?=[^\\n]*([Ii]mport|today))(?=[^\\n]*(\\bmeasured\\b|\\.js:[A-Za-z_$\\d]|node --test|npm test))"] },
+      { "tool": "AskUserQuestion", "text_match": ["\\([Rr]ecommended\\)", "[Ii]mport", "^(?=[^\\n]*([Ii]mport|today))(?=[^\\n]*(\\bmeasured\\b|\\.js:[A-Za-z_$\\d]|node --test|npm test))"] }
+    ] },
+    "code_write": { "succeeded": true, "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "design-ran",
+      "session": false,
+      "from": "stack/skills/task-design/SKILL.md",
+      "quote": "load `habits-clarify` (the Skill tool) and run it",
+      "graders": [
+        { "type": "tool_used", "name": "the design skill in context - invoked through the Skill tool, or its step 0 load of the clarify skill after the typed command", "ref": "design" }
+      ]
+    },
+    {
+      "id": "import-ask",
+      "session": false,
+      "from": "stack/skills/task-design/SKILL.md",
+      "quote": "gets its own ask before the gate",
+      "graders": [
+        { "type": "tool_used", "name": "a behaviour-change ask about the wholesale import", "ref": "import_ask" }
+      ]
+    },
+    {
+      "id": "ask-measured",
+      "session": false,
+      "from": "stack/skills/task-design/SKILL.md",
+      "quote": "A design ask - or a seat's `user_decisions:` row - states only measured facts, each with how it was measured (a run, a test, a located `file:symbol`)",
+      "graders": [
+        { "type": "tool_used", "name": "the ask states today's import behaviour with how it is known - a file:symbol, a test or a run", "ref": "measured_ask" }
+      ]
+    },
+    {
+      "id": "plans-no-code",
+      "session": false,
+      "from": "stack/skills/task-design/SKILL.md",
+      "quote": "It plans; the build step writes the code.",
+      "graders": [
+        { "type": "tool_used", "name": "no source or test file written - a run stopped at its ask writes no plan yet, so the plan file is not graded", "ref": "code_write", "min": 0, "max": 0 }
+      ]
+    }
+  ]
+}
