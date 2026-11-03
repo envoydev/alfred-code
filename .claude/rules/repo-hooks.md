@@ -1324,7 +1324,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     anchored at the payload's `cwd` (the Bash tool's persisted cwd, as the rm and config guards read it; a missing,
     relative or vanished one is the project root), a file-tool path at the project root (audit 2026-10-08). Session
     scratch (the harness root `/tmp/claude-<uid>` listed on its own, so a project kept under `/tmp` still reaches it),
-    `~/.claude` / `~/.claude-<name>`, a relocated `CLAUDE_CONFIG_DIR` and `/dev` stay writable; paths compared as REAL paths in their on-disk
+    `~/.claude` / `~/.claude-<name>`, a relocated `CLAUDE_CONFIG_DIR` and `/dev` stay writable - except each account dir's `plugins/`
+  (minus `plugins/data/`, plugin state) and the running plugin's own root (`CLAUDE_PLUGIN_ROOT`), where the installed
+  guards live: a write there, or a removal of a folder holding one (a `~/.claude-<name>` holding a `plugins/` included),
+  is asked with 'Drop the change' recommended and opened only by the user's allow answer and its receipt, or a typed folder
+  or an `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` entry naming the tree or a folder in it - never a broader one (the ~/.claude
+  gap, the user's design of 2026-11-03; block row `plugin-code`). Ceiling: in a repo never set up the plugin route stands
+  this guard down (GATE 4), so an edit of the cache's guard code from there is unjudged; paths compared as REAL paths in their on-disk
     letter case (the native realpath, and on win32 a case-folded compare as well - M9); a Git Bash mount path (`/c/...`,
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the
@@ -1433,9 +1439,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `minimal` profile, a Cursor payload, `CONFIG_PROTECT=0` and a repo never set up, which writes no block row (R86).
     Removing a guard from the list, a guard already listed and any other key pass. Not read: `.variables` (layout.js never
     reads the off-list there, D7) and a workspace member's files (they hand down `<hook>:<part>` entries only, and no
-    protective guard has a part). Ceilings: a destination or value the shell computes, a runtime script that builds the
-    JSON, a `git checkout` / `clone` laying a settings file down, an extract tool other than tar and unzip, and a plugin
-    switched off in `enabledPlugins`.
+    protective guard has a part). THE PLUGIN SWITCH-OFF (SYS-01b; a side agent's note, the user's design of 2026-11-03):
+    `enabledPlugins` holding the core (`alfred-code@<key>`) at `false` in a watched file, or a watched file that enabled it
+    no longer enabling it - a dropped key loads nothing (`docs/plugin-cli-evidence.md` S29): its whole new text read (a
+    Write, an applied Edit, a sed, a copy's source; one Claude Code cannot load, or empty, enables nothing), or the file
+    removed (`rm`, a move away, a folder holding it or its `.claude/`) - and `claude plugin disable|uninstall|remove` of the
+    core or `disable --all` at a command position (`commandIndex`; in the command and each script it carries, heredoc
+    bodies, comments and quoted text blanked, so a commit message or PR body naming the act is prose) stand every Alfred
+    Code guard down from the next session: the same ask and receipt, the receipt line the act with its options dropped
+    (`claude plugin disable alfred-code@envoydev`). An `install` or `enable` of the same core at the same scope later in the
+    command, joined by `&&` alone, is a reinstall and passes, so the update notes' same-version re-release runs both in one
+    call. Ceilings: a destination or value the shell computes, a runtime script that builds the JSON, a `git checkout` /
+    `clone` laying a settings file down, an extract tool other than tar and unzip, a scoped `claude plugin marketplace
+    remove` of the core's marketplace, a glob or a deeper folder removed, and a dropped core key from a shell write whose
+    content the guard cannot know (a redirect, a `jq` / `sponge` rewrite, `: > file`).
   - `guard-desktop-exec.js` (PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any
     registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
     (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server

@@ -2231,6 +2231,110 @@ test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness s
   } finally { fs.rmSync(proj, { recursive: true, force: true }); }
 });
 
+// THE INSTALLED PLUGINS' OWN CODE (the ~/.claude gap, the user's design of 2026-11-03): the account folder is a write
+// allowance because memory lands there - and so did <account>/plugins/, where the cache holds the very guards that judge
+// the session. An Edit there could switch one off. plugins/ (minus plugins/data/, plugin state) and the running plugin's own
+// root now count as outside, with an ask whose allow answer opens them through the usual receipt.
+test("guard-cross-project-write: the account's plugins folder and the running plugin's root are outside; plugins/data stays open (~/.claude gap)", (t) => {
+  const cfg = fs.mkdtempSync(path.join(TMP, 'xw-plug-'));
+  const root = fs.mkdtempSync(path.join(TMP, 'projP-'));
+  const devParent = fs.mkdtempSync(path.join(TMP, 'plugdev-'));
+  const dev = path.join(devParent, 'plugin');
+  fs.mkdirSync(dev);
+  const tp = path.join(root, 'session.jsonl');
+  // set up: on the plugin route a repo with no install record stands every non-protective guard down (GATE 4), this one included
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), '');
+  const go = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify({ transcript_path: tp, session_id: 'gap-1', ...payload }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg, CLAUDE_PLUGIN_ROOT: '', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.alfred/docs', ...env } });
+  const w = (f, env) => go({ tool_name: 'Write', tool_input: { file_path: f } }, env);
+  const sh = (c, env) => go({ tool_name: 'Bash', tool_input: { command: c } }, env);
+  const plugins = path.join(cfg, 'plugins');
+  const hooksDir = path.join(plugins, 'cache', 'mk', 'alfred-code', '9.9.9', 'stack', 'hooks');
+  fs.mkdirSync(hooksDir, { recursive: true });
+  fs.mkdirSync(path.join(plugins, 'data', 'alfred-code-mk'), { recursive: true });
+  const guard = path.join(hooksDir, 'guard-catastrophic-rm.js');
+  fs.writeFileSync(guard, '// the guard\n');
+  const shownTree = fs.realpathSync.native(plugins);
+
+  // blocked: the cache, the registries, a marketplace clone - every route
+  const denied = w(guard);
+  assert.equal(denied.status, 2, 'a Write of an installed guard');
+  assert.match(denied.stderr, /installed plugins/, 'the denial says what the folder is');
+  assert.match(denied.stderr, /ONE AskUserQuestion/);
+  assert.match(denied.stderr, /'Drop the change \(Recommended\)'/, 'dropping it is the recommended answer');
+  assert.ok(denied.stderr.includes(`Allow writes into ${shownTree} for this session`), 'the allow option names the plugins folder');
+  assert.doesNotMatch(denied.stderr, /Task card/, 'no hand-off card: the plugins folder is no project');
+  assert.equal(go({ tool_name: 'Edit', tool_input: { file_path: guard, old_string: 'a', new_string: 'b' } }).status, 2, 'an Edit');
+  assert.equal(w(path.join(plugins, 'installed_plugins.json')).status, 2, 'the install registry');
+  assert.equal(w(path.join(plugins, 'known_marketplaces.json')).status, 2, 'the marketplace registry');
+  assert.equal(w(path.join(plugins, 'marketplaces', 'mk', 'x.json')).status, 2, 'a marketplace clone');
+  assert.equal(sh(`echo 'process.exit(0)' > ${guard}`).status, 2, 'a shell redirect');
+  assert.equal(sh(`cp /dev/null ${guard}`).status, 2, 'a copy onto it');
+  assert.equal(sh(`cd ${hooksDir} && echo x > guard-secret-value.js`).status, 2, 'a relative write after a cd there');
+  assert.equal(sh(`rm -rf ${plugins}`).status, 2, 'removing the plugins folder itself');
+  assert.equal(sh(`rm -rf ${cfg}`).status, 2, 'removing a folder that holds it');
+  assert.equal(go({ tool_name: 'mcp__fs__write_file', tool_input: { path: guard, content: 'x' } }).status, 2, "a filesystem server's write");
+
+  // open as before: plugin state, memory, plans, settings, and the boundary siblings
+  assert.equal(w(path.join(plugins, 'data', 'alfred-code-mk', 'state.json')).status, 0, 'plugins/data/ - plugin state');
+  assert.equal(sh(`rm -rf ${path.join(plugins, 'data', 'alfred-code-mk')}`).status, 0, 'clearing a plugin\'s own state');
+  assert.equal(w(path.join(cfg, 'projects', 'p', 'memory', 'm.md')).status, 0, 'memory');
+  assert.equal(w(path.join(cfg, 'plans', 'p.md')).status, 0, 'plans');
+  assert.equal(w(path.join(cfg, 'settings.json')).status, 0, 'settings (the config guard judges a switch-off there)');
+  assert.equal(w(path.join(cfg, 'plugins-old', 'x.js')).status, 0, 'a sibling named plugins-something');
+  assert.equal(w(path.join(cfg, 'pluginsdata', 'x.js')).status, 0, 'and one with no separator');
+
+  // the ~ spelling and a second account dir resolve the same way (HOME is a temp home here)
+  if (process.platform !== 'win32') {
+    const home = fs.mkdtempSync(path.join(TMP, 'home-'));
+    const env = { HOME: home, CLAUDE_CONFIG_DIR: '' };
+    assert.equal(sh('echo x > ~/.claude/plugins/cache/mk/a.js', env).status, 2, '~/.claude/plugins');
+    assert.equal(sh('echo x > ~/.claude/projects/p/memory/m.md', env).status, 0, '~/.claude memory stays open');
+    assert.equal(w(path.join(home, '.claude-work', 'plugins', 'cache', 'a.js'), env).status, 2, 'a second account dir\'s plugins');
+    assert.equal(w(path.join(home, '.claude-work', 'plugins', 'data', 'x', 's.json'), env).status, 0, 'and its plugins/data');
+    assert.equal(w(path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md'), env).status, 0, 'and its memory');
+    // removing a second account dir takes its plugins with it (the fresh review of 2026-11-03: it passed)
+    fs.mkdirSync(path.join(home, '.claude-work', 'plugins', 'cache'), { recursive: true });
+    fs.mkdirSync(path.join(home, '.claude-empty', 'projects'), { recursive: true });
+    assert.equal(sh('rm -rf ~/.claude-work', env).status, 2, 'rm of ~/.claude-work');
+    assert.equal(sh('mv ~/.claude-work ~/.claude-work-old', env).status, 2, 'a move of it');
+    assert.equal(sh('rm -rf ~/.claude-empty', env).status, 0, 'an account dir holding no plugins folder');
+  }
+
+  // a typed folder opens the tree only from the tree down (the fresh review of 2026-11-03: a typed account dir opened it)
+  const typedRow = (text) => JSON.stringify({ type: 'user', sessionId: 'gap-1', timestamp: new Date().toISOString(), entrypoint: 'cli', message: { role: 'user', content: text } }) + '\n';
+  fs.writeFileSync(tp, typedRow(`look at ${cfg}/ please`)); pause(30);
+  assert.equal(w(guard).status, 2, 'a typed account dir opens no plugin code');
+  assert.equal(w(path.join(cfg, 'notes', 'n.md')).status, 0, 'it still opens the rest of that dir');
+  fs.writeFileSync(tp, typedRow(`patch ${path.join(plugins, 'cache')}/ for me`)); pause(30);
+  assert.equal(w(guard).status, 0, 'a typed folder inside the tree opens it');
+  fs.writeFileSync(tp, '');
+
+  // the running plugin's own root, wherever it sits (a --plugin-dir inside a folder an allowance opens)
+  const devEnv = { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: devParent };
+  assert.equal(w(path.join(dev, 'hooks', 'g.js'), devEnv).status, 0, 'no plugin running from it: the allowance opens the folder');
+  const devDenied = w(path.join(dev, 'hooks', 'g.js'), { ...devEnv, CLAUDE_PLUGIN_ROOT: dev });
+  assert.equal(devDenied.status, 2, "the running plugin's root inside that allowance");
+  assert.ok(devDenied.stderr.includes(`Allow writes into ${fs.realpathSync.native(dev)} for this session`), 'the ask names the plugin root');
+  assert.equal(w(path.join(devParent, 'notes.md'), { ...devEnv, CLAUDE_PLUGIN_ROOT: dev }).status, 0, 'a file beside it stays open');
+  assert.equal(w(path.join(root, 'stack', 'hooks', 'g.js'), { CLAUDE_PLUGIN_ROOT: root }).status, 0, 'a plugin developed in this project: its own files');
+  const bare = fs.mkdtempSync(path.join(TMP, 'projBare-'));
+  assert.equal(w(guard, { CLAUDE_PROJECT_DIR: bare, CLAUDE_PLUGIN_ROOT: dev }).status, 0, 'the stated ceiling: a repo never set up stands the plugin route down (only the protective guards stay live there)');
+
+  // what opens it: an allowance naming the tree (never a broader one), a typed folder, the user's own allow answer
+  assert.equal(w(guard, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: path.join(plugins, 'cache') }).status, 0, 'an allowance naming the cache');
+  assert.equal(w(guard, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: cfg }).status, 2, 'the whole account dir as an allowance does not');
+  fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
+    + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
+      toolUseResult: { answers: { 'Write there?': `Allow writes into ${shownTree} for this session` } } }) + '\n'); pause(30);
+  stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: gap-1\n${plugins}\n`);
+  assert.equal(w(guard).status, 0, "the user's allow answer and its receipt open it");
+  assert.equal(sh(`rm -rf ${cfg}`).status, 2, 'but not a removal of the account folder that holds it');
+  if (process.platform === 'win32') t.diagnostic('the ~ cases are POSIX-only (HOME)');
+});
+
 test('guard-cross-project-write: the session cleaning its own scratch is not a cross-project write', () => {
   // Every shape here was replayed as a false positive against a real session's own scratch.
   // in-project on purpose: the defect was the TOKENIZER, which split `"$SP"/run*.log` into two

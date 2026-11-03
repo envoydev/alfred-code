@@ -236,6 +236,188 @@ test('SYS-01: malformed input fails open, and both dispatchers carry the ask', (
   assert.match(sh.stderr, GUARD_OFF);
 });
 
+// ---- SYS-01b: the plugin switch-off ------------------------------------------------------------------------------------
+// A side agent's note, the user's design of 2026-11-03: one enabledPlugins line, or the CLI's disable / uninstall, turns
+// every Alfred Code guard off from the next session - wider than any off-list entry. The same ask and receipt as SYS-01.
+const ON = settings({ model: 'sonnet', enabledPlugins: { 'alfred-code@envoydev': true, 'other@m': true } });
+test('SYS-01b: the core switched off in enabledPlugins - false, or its true key dropped - asks in every settings file; anything else passes', () => {
+  const p = project('sys01b-files').write([typed('tidy the settings')]);
+  const shared = path.join(p.root, '.claude', 'settings.json');
+  const local = path.join(p.root, '.claude', 'settings.local.json');
+  const user = path.join(p.home, '.claude', 'settings.json');
+  for (const [file, shown] of [[shared, '.claude/settings.json'], [local, '.claude/settings.local.json'], [user, '~/.claude/settings.json']])
+  {
+    fs.writeFileSync(file, ON);
+    const r = configWrite(p, file, settings({ model: 'sonnet', enabledPlugins: { 'alfred-code@envoydev': false, 'other@m': true } }));
+    assert.equal(r.status, 2, `false in ${shown}\n${r.stderr}`);
+    assert.match(r.stderr, /enabledPlugins/, 'the denial names the key');
+    assert.match(r.stderr, /every Alfred Code guard/, 'and what it switches off');
+    assert.match(r.stderr, GUARD_OFF);
+    assert.match(r.stderr, /'Keep the guards on \(Recommended\)'/);
+    assert.ok(r.stderr.includes(`  session: ${S}\n  ${shown}\n`), `the exact receipt lines\n${r.stderr}`);
+    assert.equal(configWrite(p, file, settings({ model: 'sonnet', enabledPlugins: { 'other@m': true } })).status, 2, `its true key dropped in ${shown} (S29: a dropped key loads nothing)`);
+    assert.equal(configWrite(p, file, settings({ model: 'sonnet' })).status, 2, `enabledPlugins dropped whole in ${shown}`);
+    fs.rmSync(file);
+  }
+  fs.writeFileSync(shared, ON);
+  const passes = [
+    [settings({ model: 'opus', enabledPlugins: { 'alfred-code@envoydev': true, 'other@m': true } }), 'another key changed'],
+    [settings({ model: 'sonnet', enabledPlugins: { 'alfred-code@envoydev': true, 'other@m': false } }), 'another plugin disabled'],
+    [settings({ enabledPlugins: { 'alfred-code@fork': true } }), 'the core moved to another marketplace, still on'],
+    [settings({ enabledPlugins: { 'alfred-code-extras@m': false, 'alfred-code@envoydev': true } }), 'a plugin whose name only starts with the core\'s'],
+  ];
+  for (const [content, why] of passes) assert.equal(configWrite(p, shared, content).status, 0, why);
+  fs.writeFileSync(shared, settings({ enabledPlugins: { 'alfred-code@envoydev': false } }));
+  assert.equal(configWrite(p, shared, settings({ enabledPlugins: { 'alfred-code@envoydev': true } })).status, 0, 'enabling it');
+  assert.equal(configWrite(p, shared, settings({ model: 'x', enabledPlugins: { 'alfred-code@envoydev': false } })).status, 0, 'already off: nothing new switched off');
+  fs.writeFileSync(shared, settings({ model: 'sonnet' }));
+  assert.equal(configWrite(p, shared, settings({ model: 'opus' })).status, 0, 'a file that never enabled it');
+  assert.equal(configWrite(p, path.join(p.root, 'conf', 'settings.json'), settings({ enabledPlugins: { 'alfred-code@envoydev': false } })).status, 0, 'a file no hook reads');
+  const garbage = p.file('.claude/settings.local.json', '{ not json');
+  assert.equal(configWrite(p, garbage, settings({ enabledPlugins: { 'alfred-code@envoydev': false } })).status, 2, 'a garbage file replaced by a switch-off');
+  assert.equal(configWrite(p, garbage, settings({ model: 'opus' })).status, 0, 'a garbage file replaced by a harmless one');
+});
+
+test('SYS-01b: the edit and shell routes - an edit, a dropped line, a fragment, a sed, a redirect, a jq rewrite', () => {
+  const p = project('sys01b-routes').write([typed('go')]);
+  const f = p.file('.claude/settings.json', ON);
+  assert.equal(configEdit(p, f, '"alfred-code@envoydev": true', '"alfred-code@envoydev": false').status, 2, 'an edit flipping it');
+  assert.equal(configEdit(p, f, '"alfred-code@envoydev": true,\n    ', '').status, 2, 'an edit dropping its line');
+  assert.equal(configEdit(p, f, '"other@m": true', '"other@m": false').status, 0, 'an edit of another plugin');
+  assert.equal(configEdit(p, f, 'NOT IN THE FILE', '"alfred-code@envoydev": false').status, 2, 'a fragment naming it false');
+  assert.equal(configEdit(p, f, 'NOT IN THE FILE', '"alfred-code@envoydev": true').status, 0, 'a fragment naming it true');
+  const cases = [
+    [`sed -i.bak 's/"alfred-code@envoydev": true/"alfred-code@envoydev": false/' .claude/settings.json`, 2, 'an in-place sed'],
+    [`sed -i.bak 's/"other@m": true/"other@m": false/' .claude/settings.json`, 0, 'a sed on another plugin'],
+    [`echo '{"enabledPlugins":{"alfred-code@envoydev":false}}' > ~/.claude/settings.json`, 2, 'a redirect into the user file'],
+    [`jq '.enabledPlugins["alfred-code@envoydev"] = false' .claude/settings.json > /tmp/s.json && mv /tmp/s.json .claude/settings.json`, 2, 'a jq rewrite moved over it'],
+    [`jq '.model = "opus"' .claude/settings.json > /tmp/s.json && mv /tmp/s.json .claude/settings.json`, 0, 'a jq rewrite of another key'],
+  ];
+  for (const [cmd, want, why] of cases) { const r = configShell(p, cmd); assert.equal(r.status, want, `${why}: ${cmd}\n${r.stderr}`); }
+});
+
+test('SYS-01b: the claude plugin CLI - disable, uninstall or remove of the core asks; a reinstall, another plugin or a read passes', () => {
+  const p = project('sys01b-cli').write([typed('go')]);
+  const asks = [
+    ['claude plugin disable alfred-code@envoydev', 'disable'],
+    ['claude plugin disable alfred-code --scope project', 'by its bare name'],
+    ['claude plugin uninstall alfred-code@envoydev --scope user --keep-data', 'uninstall'],
+    ['claude plugins remove "alfred-code@envoydev"', 'remove, quoted, the plural spelling'],
+    ['claude plugin disable --all', 'disable --all'],
+    ['claude plugin disable -a -s project', 'disable -a'],
+    ['/usr/local/bin/claude plugin disable alfred-code@envoydev', 'the binary by its path'],
+    [`bash -c 'claude plugin disable alfred-code@envoydev'`, 'inside bash -c'],
+    ['cd /tmp && timeout 30 claude plugin uninstall alfred-code@envoydev', 'after a cd, behind a wrapper'],
+    ['claude plugin uninstall alfred-code@envoydev && claude plugin install other@m', 'a reinstall of another plugin is no reinstall of the core'],
+  ];
+  for (const [cmd, why] of asks)
+  {
+    const r = configShell(p, cmd);
+    assert.equal(r.status, 2, `${why}: ${cmd}\n${r.stderr}`);
+    assert.match(r.stderr, GUARD_OFF, why);
+    assert.match(r.stderr, /every Alfred Code guard/, why);
+  }
+  const passes = [
+    ['claude plugin disable other@m', 'another plugin'],
+    ['claude plugin disable alfred-code-extras@m', 'a name that only starts with the core\'s'],
+    ['claude plugin enable alfred-code@envoydev', 'enabling it'],
+    ['claude plugin list --json', 'a read'],
+    ['claude plugin disable --help', 'the help'],
+    ['claude plugin disable', 'no plugin named and no --all'],
+    ['echo "claude plugin disable alfred-code@envoydev"', 'quoted text'],
+    ['claude plugin uninstall alfred-code@envoydev --scope project && claude plugin install alfred-code@envoydev --scope project', 'a reinstall in one call'],
+    ['claude plugin disable alfred-code@envoydev && claude plugin enable alfred-code@envoydev', 'a disable then enable, joined by &&'],
+    ['claude plugin uninstall alfred-code@envoydev 2>&1 && claude plugin install alfred-code@envoydev 2>&1', 'a reinstall with its output joined'],
+  ];
+  for (const [cmd, why] of passes) { const r = configShell(p, cmd); assert.equal(r.status, 0, `${why}: ${cmd}\n${r.stderr}`); }
+});
+
+// The fresh review of 2026-11-03 (each reproduced against the first build): prose naming the act asked, a removal or an
+// emptied file passed, a JSON file word read as a dropped key, the reinstall was taken across `||` and scopes.
+test('SYS-01b review: prose naming the act passes; the act at a command position asks; the reinstall is && at one scope', () => {
+  const p = project('sys01b-review-cli').write([typed('go')]);
+  const prose = [
+    [`git commit -m "$(cat <<'EOF'\nfix(hooks): claude plugin uninstall alfred-code@envoydev now asks\n\nCo-Authored-By: x\nEOF\n)"`, 'a commit message in a heredoc'],
+    [`git commit -m 'fix: the config guard\n\nclaude plugin disable alfred-code@envoydev asks now'`, 'a multi-line -m'],
+    [`gh pr create --title t --body "Notes:\n- claude plugin disable alfred-code@envoydev asks"`, 'a PR body'],
+    [`cat > notes.md <<'EOF'\nrun claude plugin uninstall alfred-code@envoydev to remove it\nEOF`, 'a heredoc written to a file'],
+    ['echo run claude plugin disable alfred-code@envoydev to turn it off', 'echo words, no command position'],
+    ['grep -rn "claude plugin disable" docs # claude plugin disable alfred-code@envoydev', 'a comment'],
+  ];
+  for (const [cmd, why] of prose) { const r = configShell(p, cmd); assert.equal(r.status, 0, `${why}: ${cmd}\n${r.stderr}`); }
+  const asks = [
+    [`echo "it's"; claude plugin disable alfred-code@envoydev; echo "that's it"`, 'apostrophes around the act'],
+    ['sudo -u me claude plugin disable alfred-code@envoydev', 'behind sudo'],
+    ['claude plugin uninstall alfred-code@envoydev || claude plugin install alfred-code@envoydev', '|| runs the install only when the uninstall failed'],
+    ['claude plugin uninstall alfred-code@envoydev; claude plugin install alfred-code@envoydev', '; runs it whatever the uninstall did'],
+    ['claude plugin uninstall alfred-code@envoydev --scope user && claude plugin install alfred-code@envoydev --scope project', 'another scope - the core leaves every other project'],
+    ['claude plugin disable alfred-code@envoydev && claude plugin install alfred-code@nowhere', 'another marketplace\'s core'],
+    ['claude plugin disable alfred-code@envoydev; claude plugin enable alfred-code@envoydev', 'a disable then enable across ;'],
+  ];
+  for (const [cmd, why] of asks) { const r = configShell(p, cmd); assert.equal(r.status, 2, `${why}: ${cmd}\n${r.stderr}`); }
+});
+
+test('SYS-01b review: removing or emptying a file that enables the core asks; a JSON word beside a rewrite is no dropped key', () => {
+  const p = project('sys01b-review-files').write([typed('go')]);
+  const f = p.file('.claude/settings.json', ON);
+  p.file('package.json', JSON.stringify({ name: 'x', version: '1.0.0' }));
+  const removals = [
+    ['rm .claude/settings.json', 'rm'],
+    ['mv .claude/settings.json .claude/settings.json.bak', 'a move away'],
+    ['rm -rf .claude', 'the folder holding it'],
+    ['cp /dev/null .claude/settings.json', 'emptied by a copy'],
+  ];
+  for (const [cmd, why] of removals)
+  {
+    const r = configShell(p, cmd);
+    assert.equal(r.status, 2, `${why}: ${cmd}\n${r.stderr}`);
+    assert.match(r.stderr, /every Alfred Code guard/, why);
+  }
+  assert.match(configShell(p, 'rm .claude/settings.json').stderr, /removing \.claude\/settings\.json takes its enabledPlugins entry/);
+  assert.equal(configWrite(p, f, '').status, 2, 'a Write of nothing');
+  assert.equal(configWrite(p, f, '{ "enabledPlugins": { "alfred-code@envoydev": true, ').status, 2, 'a Write Claude Code cannot load');
+  const user = path.join(p.home, '.claude', 'settings.json');
+  fs.mkdirSync(path.dirname(user), { recursive: true });
+  fs.writeFileSync(user, ON);
+  assert.equal(configShell(p, `rm ${user}`).status, 2, 'the user file: a user-scope core goes everywhere');
+  const rewrites = [
+    `cat package.json; jq '.model="opus"' .claude/settings.json | sponge .claude/settings.json`,
+    `echo '{"a":1}' > /tmp/a.json; jq '.model="opus"' .claude/settings.json | sponge .claude/settings.json`,
+    `jq -s '.[0]' .claude/settings.json package.json > /tmp/s.json && mv /tmp/s.json .claude/settings.json`,
+  ];
+  for (const cmd of rewrites) { const r = configShell(p, cmd); assert.equal(r.status, 0, `${cmd}\n${r.stderr}`); }
+  fs.writeFileSync(f, settings({ model: 'sonnet' }));
+  assert.equal(configShell(p, 'rm .claude/settings.json').status, 0, 'a file that never enabled the core goes freely');
+  fs.writeFileSync(f, ON);
+  // a stated ceiling: a shell write that only empties the file carries no content to read (repo-hooks.md, SYS-01b)
+  assert.equal(configShell(p, ': > .claude/settings.json').status, 0, 'ceiling: an emptying redirect');
+});
+
+test('SYS-01b: GUARD-OFF-ALLOW opens it after the user\'s own allow; the ask holds under the stand-downs and through the dispatcher', () => {
+  const p = project('sys01b-receipt');
+  const LABEL = 'Allow this guard switch-off';
+  const options = [['Keep the guards on (Recommended)', 'leave it'], [LABEL, 'the user wants it off']];
+  const cmd = 'claude plugin disable alfred-code@envoydev --scope project';
+  p.write([typed('turn the alfred plugin off here')]);
+  const denied = configShell(p, cmd);
+  assert.equal(denied.status, 2);
+  assert.ok(denied.stderr.includes(`  session: ${S}\n  claude plugin disable alfred-code@envoydev\n`), `the receipt line is the act, its options dropped\n${denied.stderr}`);
+  p.write([typed('turn the alfred plugin off here'), denial('GUARD-OFF-ALLOW', 'Bash'), asked('Switch the Alfred Code plugin off?', options, LABEL)])
+    .receipt('GUARD-OFF-ALLOW', `session: ${S}\nclaude plugin disable alfred-code@envoydev\n`);
+  assert.equal(configShell(p, cmd).status, 0, 'the user\'s allow opens it');
+  assert.equal(configShell(p, 'claude plugin uninstall alfred-code@envoydev').status, 2, 'only the act the receipt names');
+  p.write([command('task-solve', '--mode-auto-run-on tidy'), denial('GUARD-OFF-ALLOW', 'Bash'), asked('Switch the Alfred Code plugin off?', options, LABEL)]);
+  assert.equal(configShell(p, cmd).status, 2, 'an allow given under auto-run opens nothing');
+  p.write([typed('go')]);
+  for (const env of [{ ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' }, { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }, { ALFRED_CODE_CONFIG_PROTECT: '0' }])
+    assert.equal(configShell(p, cmd, { env }).status, 2, `under ${JSON.stringify(env)}`);
+  const f = p.file('.claude/settings.json', ON);
+  const sh = spawned('shell-guards.js', { session_id: S, cwd: p.root, transcript_path: p.tp, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd } }, { env: p.env, cwd: p.root });
+  assert.equal(sh.status, 2, `the shell dispatcher\n${sh.stderr}`);
+  const file = spawned('file-guards.js', { session_id: S, cwd: p.root, transcript_path: p.tp, hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: f, content: settings({ enabledPlugins: { 'alfred-code@envoydev': false } }) } }, { env: p.env, cwd: p.root });
+  assert.equal(file.status, 2, `the file dispatcher\n${file.stderr}`);
+});
+
 // ---- U20 -------------------------------------------------------------------------------------------------------------
 const crossWrite = (p, file, opts) => hook(p, 'guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }, opts);
 const crossShell = (p, command, opts) => hook(p, 'guard-cross-project-write.js', { tool_name: 'Bash', tool_input: { command } }, opts);

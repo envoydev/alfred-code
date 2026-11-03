@@ -872,7 +872,8 @@ try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
 // (landedAt below; a folder destination takes the source's last name), content it cannot read asks, `sponge` writes, a
 // new hooks entry wiring a copied twin (TWIN_GUARDED) is a switch-off, and so is a twin file written while the plugin route
 // is live. Ceilings: a destination or a value the shell computes, a runtime script that builds the JSON, a git checkout or
-// clone laying a settings file down, another extract tool, and a plugin disabled in `enabledPlugins`.
+// clone laying a settings file down, and another extract tool. The core switched off in `enabledPlugins` or by the CLI is
+// THE PLUGIN SWITCH-OFF, below.
 const PROTECTIVE_GUARDS = (() => { try { return [...receipts.PROTECTIVE]; } catch { return ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec']; } })();
 const RENAMED_HOOKS = (receipts && receipts.HOOK_RENAMED) || {};
 // The key as envOf spells every stack setting: the prefix, then the suffix.
@@ -930,9 +931,20 @@ function wiredTwins(data) {
 // same variable (review fix pass run B m8) - every spelling is read and their guards united.
 const offListText = (env) => Object.keys(env).filter((k) => (process.platform === 'win32' ? k.toUpperCase() === HOOKS_OFF_KEY : k === HOOKS_OFF_KEY))
   .map((k) => (env[k] == null ? '' : String(env[k]))).join(',');
+// THE PLUGIN SWITCH-OFF (SYS-01b; a side agent's note, the user's design of 2026-11-03): `enabledPlugins` holding the core
+// `alfred-code@<key>` at false - or a file that enabled it no longer enabling it, since a dropped key loads nothing
+// (docs/plugin-cli-evidence.md S29) - stands EVERY Alfred Code guard down from the next session, wider than any off-list
+// entry; so do `claude plugin disable|uninstall|remove` of the core and `disable --all` (pluginCliOff, below). The same ask
+// and GUARD-OFF-ALLOW receipt. A reinstall or re-enable of the core later in the same command is no switch-off (the
+// update notes' same-version re-release). Ceilings: a scoped `claude plugin marketplace remove` of the core's marketplace,
+// and a dropped key on a route that cannot parse the file it leaves (a fragment, a shell write by name).
+const CORE_PLUGIN = 'alfred-code';
+const isCoreId = (k) => String(k).split('@')[0].toLowerCase() === CORE_PLUGIN;
+// The core's key named `false`, by text: `"alfred-code@envoydev": false`, `["alfred-code@envoydev"] = false`.
+const CORE_FALSE_RE = new RegExp(`(?<![\\w-])${CORE_PLUGIN}(?:@[\\w.-]+)?["'\\]\\s]*[:=]\\s*["']?false\\b`, 'i');
 // What a settings text switches off - { off: the protective guards its csv names, all: disableAllHooks is true, twins: the
-// guarded hooks it wires a copied twin of } - read as JSON (a BOM, comments and trailing commas forgiven), or null when it
-// is no object.
+// guarded hooks it wires a copied twin of, core: enabledPlugins holds the core at false, coreOn: the core keys it holds at
+// true } - read as JSON (a BOM, comments and trailing commas forgiven), or null when it is no object.
 function offState(text) {
   const src = String(text == null ? '' : text).replace(/^\uFEFF/, '');
   let data = null;
@@ -940,22 +952,34 @@ function offState(text) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const env = data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
   const csv = offListText(env);
-  return { off: new Set(csv.split(',').map(offEntry).filter((n) => PROTECTIVE_GUARDS.includes(n))), all: data.disableAllHooks === true, twins: wiredTwins(data) };
+  const plugins = data.enabledPlugins && typeof data.enabledPlugins === 'object' && !Array.isArray(data.enabledPlugins) ? data.enabledPlugins : {};
+  const coreKeys = Object.keys(plugins).filter(isCoreId);
+  return { off: new Set(csv.split(',').map(offEntry).filter((n) => PROTECTIVE_GUARDS.includes(n))), all: data.disableAllHooks === true, twins: wiredTwins(data),
+    core: coreKeys.some((k) => plugins[k] === false), coreOn: new Set(coreKeys.filter((k) => plugins[k] === true)) };
 }
 // A text that is no settings object (a fragment, a command, a script) by what it names: a guard's name as a word,
-// `disableAllHooks` unless set false, and a guarded hook's path under `.claude/hooks/`.
+// `disableAllHooks` unless set false, a guarded hook's path under `.claude/hooks/`, and the core's key named false. What
+// it enables is unknown (`coreOn` undefined), so a dropped key is never read from it.
 function namedState(text) {
   const s = String(text || '');
   return { off: new Set(PROTECTIVE_GUARDS.filter((n) => new RegExp(`(?<![\\w-])${n}(?:\\.js)?(?![\\w-])`, 'i').test(s))),
-    all: /disableAllHooks/.test(s) && !/disableAllHooks["'\\\s]*[:=]\s*["']?false\b/i.test(s), twins: twinNames(s) };
+    all: /disableAllHooks/.test(s) && !/disableAllHooks["'\\\s]*[:=]\s*["']?false\b/i.test(s), twins: twinNames(s), core: CORE_FALSE_RE.test(s), coreOn: undefined };
 }
-const NOTHING_OFF = { off: new Set(), all: false, twins: new Set() };
+const NOTHING_OFF = { off: new Set(), all: false, twins: new Set(), core: false, coreOn: new Set() };
 const stateOf = (text) => (text == null ? NOTHING_OFF : offState(text) || namedState(text));
-const merged = (states) => ({ off: new Set(states.flatMap((s) => [...s.off])), all: states.some((s) => s.all), twins: new Set(states.flatMap((s) => [...s.twins])) });
+// The state of a file's WHOLE new text (a Write, an applied Edit, a copy's source): a text that is no settings object -
+// empty, or JSON Claude Code cannot load - enables no plugin, so a core key it held is dropped.
+const wholeState = (text) => (text == null ? NOTHING_OFF : offState(text) || { ...namedState(text), coreOn: new Set() });
+const merged = (states) => {
+  const known = states.filter((s) => s.coreOn);
+  return { off: new Set(states.flatMap((s) => [...s.off])), all: states.some((s) => s.all), twins: new Set(states.flatMap((s) => [...s.twins])),
+    core: states.some((s) => s.core), coreOn: known.length ? new Set(known.flatMap((s) => [...s.coreOn])) : undefined };
+};
 const switchedOff = (file, before, after) => {
   const added = [...after.off].filter((n) => !before.off.has(n));
   const twins = [...after.twins].filter((n) => !before.twins.has(n));
-  return added.length || twins.length || (after.all && !before.all) ? { ...file, added, twins, all: after.all && !before.all } : null;
+  const core = (after.core && !before.core) || Boolean(before.coreOn && before.coreOn.size && after.coreOn && !after.coreOn.size);
+  return added.length || twins.length || (after.all && !before.all) || core ? { ...file, added, twins, all: after.all && !before.all, core } : null;
 };
 // The plugin route is live when this run is the plugin's copy (Claude Code sets CLAUDE_PLUGIN_ROOT for a plugin hook) and
 // not the project's own copy under an inherited root - hook-prelude.js yieldToCopiedTwin's test.
@@ -981,10 +1005,10 @@ function guardOffFile(given) {
   if (!file) return null;
   const beforeText = readOr(file.abs);
   const before = stateOf(beforeText);
-  if (typeof ti.content === 'string') return switchedOff(file, before, stateOf(ti.content));
+  if (typeof ti.content === 'string') return switchedOff(file, before, wholeState(ti.content));
   if (typeof ti.new_source === 'string') return switchedOff(file, before, namedState(ti.new_source));
   const change = beforeText == null ? null : appliedChange(ti, file.abs);
-  if (change && change.applied) return switchedOff(file, before, stateOf(change.after));
+  if (change && change.applied) return switchedOff(file, before, wholeState(change.after));
   // An edit Claude Code may still apply another way (its quote normalisation): judged on what it adds, by name.
   const edits = Array.isArray(ti.edits) ? ti.edits : [ti];
   return switchedOff(file, before, namedState(edits.map((e) => (e && typeof e.new_string === 'string' ? e.new_string : '')).join('\n')));
@@ -997,6 +1021,8 @@ function guardOffFs() {
     const dest = fsPath(ti.destination);
     if (!dest) return null;
     const source = fsPath(ti.source);
+    const gone = source && removedCore(source);
+    if (gone) return gone;
     for (const l of landedAt(dest, source || null)) { const hit = judgeLanded(l, { how: 'a move' }); if (hit) return hit; }
     return null;
   }
@@ -1043,7 +1069,9 @@ function carriedState(command, scan) {
     states.push(stateOf(readOr(abs)));
   }
   states.push(namedState(text));
-  return merged(states);
+  // what the command makes of these is unknown (a jq filter, a sponge, a concatenation), so no state here says which core
+  // keys the file will hold: no dropped-key read (the fresh review of 2026-11-03: any JSON file word read as 'drops it')
+  return { ...merged(states), coreOn: undefined };
 }
 // ---- WHAT A COPY, MOVE, LINK, EXTRACT OR DOWNLOAD LANDS (review fix pass run B M1) ------------------------------------
 // Only a target spelled `*.json` was judged, so a switch-off copied INTO a watched folder passed: `cp <f> .claude/`,
@@ -1108,7 +1136,8 @@ function judgeLanded(l, ctx = {}) {
     const carried = ctx.carried && (ctx.carried(l.from) || (l.src && ctx.carried(l.src)));
     let st = null;
     try { st = fs.statSync(l.from); } catch { st = null; }
-    if (carried) return switchedOff(file, before, merged([carried, st && st.isFile() ? stateOf(readOr(l.from)) : NOTHING_OFF]));
+    // the command rewrites the source first, so what the core's enable keys will be there is unknown: no dropped-key read
+    if (carried) return switchedOff(file, before, { ...merged([carried, st && st.isFile() ? stateOf(readOr(l.from)) : NOTHING_OFF]), coreOn: undefined });
     if (st && st.isDirectory()) return null; // a folder lands where the file was: nothing to read as settings
     if (!st) {
       // under a source folder that exists, a name it does not hold lands nothing
@@ -1119,7 +1148,7 @@ function judgeLanded(l, ctx = {}) {
     if (afterText == null) return unread(`${ctx.how || 'a write'} from ${l.from}, which this hook cannot read`);
   }
   if (afterText == null) return unread(`${ctx.how || 'an extract'} whose entry this hook cannot read`);
-  return switchedOff(file, before, stateOf(afterText));
+  return switchedOff(file, before, wholeState(afterText));
 }
 // A source word as the shell hands it on: [abs, ...] (a glob in its last name expanded, dotfiles only for a pattern
 // opening with a dot), or null when the shell computes it.
@@ -1287,6 +1316,85 @@ function extractLanded(verb, argv, resolveWord, dests) {
 const COPY_FAMILY = new Set(['cp', 'mv', 'ln', 'install', 'rsync']);
 const EXTRACTS = new Set(['tar', 'bsdtar', 'gtar', 'unzip']);
 const DOWNLOADS = new Set(['curl', 'wget']);
+// `claude plugin disable|uninstall|remove` of the core, or `disable --all` (SYS-01b): read in the command and in every
+// script it carries (`bash -c '...'`), at a command position only (`shell-writes.js` `commandIndex`, past `sudo`, `env`
+// and the rest of the wrapper list; the binary by its path too), with heredoc bodies, comments and quoted text blanked
+// first - a commit message, a PR body or an `echo` naming the act is prose (the fresh review of 2026-11-03: a commit
+// message quoting the command asked). A later `claude plugin install|enable` of the core joined by `&&` alone, at the
+// same scope, is a reinstall and switches nothing off - `||`, `;` or a newline runs it whatever the removal did. Returns
+// the off record, its receipt line the act with its options dropped (`claude plugin disable alfred-code@envoydev`).
+const CLAUDE_BIN = /^claude(?:\.exe|\.cmd)?$/i;
+const PLUGIN_OFF_VERBS = new Set(['disable', 'uninstall', 'remove']);
+const PLUGIN_ON_VERBS = new Set(['install', 'i', 'enable']);
+function pluginActs(text) {
+  const src = shell.blankComments(shell.blankHeredocs(String(text || '')));
+  const chars = src.split('');
+  for (const [a, b] of shell.quotedSpans(src)) for (let i = a; i < b; i += 1) chars[i] = 'x';
+  const masked = chars.join('');
+  const acts = [];
+  const seps = [];
+  let from = 0;
+  const read = (seg, at) => {
+    const words = shell.shellWords(seg);
+    const k = shell.commandIndex(words);
+    if (!CLAUDE_BIN.test(String(words[k] || '').replace(/^.*[\\/]/, '')) || !/^plugins?$/.test(String(words[k + 1] || ''))) return;
+    const verb = String(words[k + 2] || '');
+    if (!PLUGIN_OFF_VERBS.has(verb) && !PLUGIN_ON_VERBS.has(verb)) return;
+    const args = words.slice(k + 3);
+    if (args.some((w) => /^(?:-h|--help)$/.test(w))) return;
+    let scope = 'user';
+    const ids = [];
+    for (let i = 0; i < args.length; i += 1) {
+      const w = args[i];
+      if (/^(?:--scope|-s)$/.test(w)) { scope = String(args[i + 1] || '').toLowerCase(); i += 1; continue; }
+      if (w.startsWith('--scope=')) { scope = w.slice(8).toLowerCase(); continue; }
+      if (!w.startsWith('-')) ids.push(w);
+    }
+    const named = ids.find(isCoreId);
+    const all = verb === 'disable' && args.some((w) => /^(?:-a|--all)$/.test(w));
+    if (named || all) acts.push({ verb: verb === 'i' ? 'install' : verb, id: named || '--all', scope, at });
+  };
+  // a lone `&` cuts, never the `&` of `2>&1` / `&>`
+  for (const m of masked.matchAll(/&&|\|\||(?<![<>&])&(?![>&])|[;\n|]/g)) {
+    read(src.slice(from, m.index), seps.length);
+    seps.push(m[0]);
+    from = m.index + m[0].length;
+  }
+  read(src.slice(from), seps.length);
+  return { acts, seps };
+}
+// The same plugin: one id, or a bare name beside any core id.
+const sameCore = (a, b) => a.toLowerCase() === b.toLowerCase() || !a.includes('@') || !b.includes('@');
+function pluginCliOff(texts) {
+  for (const text of texts) {
+    let parsed;
+    try { parsed = pluginActs(text); } catch { continue; }
+    const { acts, seps } = parsed;
+    for (let i = 0; i < acts.length; i += 1) {
+      const a = acts[i];
+      if (!PLUGIN_OFF_VERBS.has(a.verb)) continue;
+      const back = acts.slice(i + 1).some((b) => PLUGIN_ON_VERBS.has(b.verb) && b.id !== '--all' && b.scope === a.scope
+        && (a.id === '--all' || sameCore(a.id, b.id)) && seps.slice(a.at, b.at).every((sp) => sp === '&&'));
+      if (back) continue;
+      const line = `claude plugin ${a.verb} ${a.id}`;
+      return { abs: line, shown: line, added: [], twins: [], all: false, core: true, cli: true };
+    }
+  }
+  return null;
+}
+// A REMOVAL (rm, a move's source) of a watched settings file that holds the core at true - or of a folder holding one,
+// itself or under its `.claude/` - drops that key (the fresh review of 2026-11-03: `rm .claude/settings.json` and a `mv`
+// of it passed). A folder deeper down, a glob and a shell write that empties the file are ceilings.
+function removedCore(abs) {
+  const files = [abs, ...['settings.json', 'settings.local.json'].flatMap((n) => [path.join(abs, n), path.join(abs, '.claude', n)])];
+  for (const f of files) {
+    const file = settingsAt(f);
+    if (!file) continue;
+    const before = stateOf(readOr(file.abs));
+    if (before.coreOn && before.coreOn.size) return { ...file, added: [], twins: [], all: false, core: true, removed: true };
+  }
+  return null;
+}
 function guardOffShell() {
   if (!shell) return null;
   let command = String((payload.tool_input || {}).command || '');
@@ -1294,6 +1402,10 @@ function guardOffShell() {
   if (!command.trim()) return null;
   let scan;
   try { scan = shell.scanShell(command, { cwd: CWD, landing: true }); } catch { return null; }
+  let carriedTexts = [];
+  try { carriedTexts = shell.carriedScripts(command, { cwd: CWD }).map((sc) => sc.text); } catch { carriedTexts = []; }
+  const cliOff = pluginCliOff([command, ...carriedTexts]);
+  if (cliOff) return cliOff;
   const norm = (t) => nativePath(shell.unquote(t));
   let carried = null;
   const carriedNow = () => (carried || (carried = carriedState(command, scan)));
@@ -1318,7 +1430,6 @@ function guardOffShell() {
   };
   const done = new Set();
   for (const t of scan.targets) {
-    if (t.verb === 'rm') continue; // a removal switches nothing off
     const anchor = shell.anchorAt(scan.cds, t.index, CWD, norm);
     // a word as the shell resolves it where this step stands; null when the shell computes it
     const resolveWord = (word) => {
@@ -1329,6 +1440,13 @@ function guardOffShell() {
       return path.resolve(anchor || CWD, spelled);
     };
     const verb = String(t.verb || '').toLowerCase();
+    if (t.verb === 'rm' || /^a move OUT/.test(String(t.what || ''))) {
+      // a removal switches no guard off, but a settings file that enables the core takes its key with it
+      const gone = resolveWord(t.raw);
+      const hit = gone && removedCore(gone);
+      if (hit) return hit;
+      continue;
+    }
     const ctx = { carried: writtenBefore(t), how: `a ${verb}` };
     if (Array.isArray(t.argv) && (COPY_FAMILY.has(verb) || shell.PS_COPY.has(verb) || EXTRACTS.has(verb))) {
       if (done.has(t.argv)) continue; // one call names several targets: its plan is read once
@@ -1356,7 +1474,7 @@ function guardOffShell() {
     if (t.what === 'an in-place edit' && beforeText != null) {
       const edited = sedApplied(command, beforeText);
       if (edited && edited.applied) {
-        const hit = switchedOff(file, before, stateOf(edited.text));
+        const hit = switchedOff(file, before, wholeState(edited.text));
         if (hit) return hit;
         continue;
       }
@@ -1376,15 +1494,20 @@ function guardOffDenial(off) {
   const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', GUARD_OFF) : receiptFile).split(path.sep).join('/');
   const twins = off.twins || [];
   const what = [...(off.added.length ? [`adds ${off.added.join(', ')} to ${HOOKS_OFF_KEY}`] : []), ...(off.all ? ['sets disableAllHooks: true'] : []),
+    ...(off.core && !off.cli ? [`switches the ${CORE_PLUGIN} plugin off in enabledPlugins (false, or no longer true)`] : []),
     ...(twins.length ? [`wires a copied twin of ${twins.map((n) => `.claude/hooks/${n}.js`).join(', ')}, which the plugin's own stands down for`] : []),
     ...(off.twinFile ? [`puts a copy of ${off.twinFile}.js where the plugin's own stands down for it once a project settings entry names it`] : [])].join(' and ');
   const guarded = [...off.added, ...twins, ...(off.twinFile ? [off.twinFile] : [])];
-  const names = off.all ? 'every hook' : guarded.length ? guarded.join(', ') : 'a protective guard';
-  global.BLOCK_DETAIL = { branch: 'guard-off', file: off.shown, guards: guarded, all: off.all, ...(off.unread ? { unread: true } : {}) };
+  const names = off.all ? 'every hook' : off.core ? 'every Alfred Code guard' : guarded.length ? guarded.join(', ') : 'a protective guard';
+  global.BLOCK_DETAIL = { branch: 'guard-off', file: off.shown, guards: guarded, all: off.all, ...(off.core ? { core: true } : {}), ...(off.unread ? { unread: true } : {}) };
   process.stderr.write(
     (off.unread
       ? `Blocked: this write lands ${off.shown} by ${off.unread} - what it switches off is unknown, and a settings file can stand a protective guard down from the next call on.\n`
-      : `Blocked: this write to ${off.shown} ${what}, which stands ${off.all ? 'every hook' : guarded.length > 1 ? 'those guards' : 'that guard'} down from the next call on.\n`) +
+      : off.cli
+        ? `Blocked: \`${off.shown}\` switches the ${CORE_PLUGIN} plugin off, which stands every Alfred Code guard down from the next session on.\n`
+        : off.removed
+          ? `Blocked: removing ${off.shown} takes its enabledPlugins entry for the ${CORE_PLUGIN} plugin with it, which stands every Alfred Code guard down from the next session on.\n`
+        : `Blocked: this write to ${off.shown} ${what}, which stands ${off.all ? 'every hook' : off.core ? 'every Alfred Code guard' : guarded.length > 1 ? 'those guards' : 'that guard'} down from the next ${off.core && !off.all ? 'session' : 'call'} on.\n`) +
     `The protective guards stop what cannot be undone (a recursive rm or a discard, a credential read, a force push, a\n` +
     `desktop exec), so switching one off is the user's call, never the model's. End this turn with ONE AskUserQuestion,\n` +
     `in this order -\n` +

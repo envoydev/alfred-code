@@ -14,7 +14,8 @@
 //
 // Reads pass. Writes inside the project root pass. Writes to the session's own scratch (the OS
 // temp dir), to the Claude account dirs (~/.claude and the ~/.claude-<name> siblings - settings,
-// memory, plugins), and to /dev pass. Everything else is blocked - and the block ENDS IN AN ASK:
+// memory; never their plugins/ code, THE INSTALLED PLUGINS' OWN CODE below), and to /dev pass.
+// Everything else is blocked - and the block ENDS IN AN ASK:
 // the denial mandates one AskUserQuestion (task card here - recommended; allow that tree for this
 // session; drop), because a bare denial left the user out of the decision (the model wrote the
 // card or just stopped). The 'allow' answer is honoured through a session receipt, below.
@@ -385,7 +386,7 @@ function memoryBlock(what, shown, hit) {
 // text opens nothing; the user accepted that a path inside text they pasted counts. The transcript itself stays shut
 // (recordAt runs first).
 let typedRoots = null;
-function typedAllowed(t) {
+function typedAllowed(t, within) {
   if (typedRoots === null) {
     typedRoots = [];
     try {
@@ -404,12 +405,59 @@ function typedAllowed(t) {
     } catch { typedRoots = []; }
   }
   if (!typedRoots.length) return false;
-  return typedRoots.some((r) => (r.file ? fold(t) === fold(r.file) : inside(t, r.dir)));
+  // inside a carved plugin tree a typed folder opens only from the tree down, as an allowance does (the fresh review of
+  // 2026-11-03: a typed `~/.claude` opened every plugin's code)
+  return typedRoots.some((r) => (r.file ? fold(t) === fold(r.file) : inside(t, r.dir) && (!within || inside(r.dir, within))));
 }
+// THE INSTALLED PLUGINS' OWN CODE (the ~/.claude gap; the user's design of 2026-11-03): the account dir is an allowance
+// because memory lands there - and so did `<account>/plugins/`, whose cache holds the very guards that judge this session,
+// beside the install and marketplace registries; an Edit of `.../stack/hooks/guard-catastrophic-rm.js` switched that guard
+// off unjudged. So `plugins/` under `~/.claude`, `CLAUDE_CONFIG_DIR` and every `~/.claude-<name>` - minus `plugins/data/`,
+// where a plugin keeps its own state (`${CLAUDE_PLUGIN_DATA}`) - and the running plugin's own root (`CLAUDE_PLUGIN_ROOT`,
+// wherever a `--plugin-dir` puts it) count as outside: a write there, or a removal of a folder holding one, is asked
+// (`pluginBlock`). The project's own files pass first, so a plugin developed in this project is untouched. What opens it:
+// the user's allow answer and its receipt, a folder the user typed, or an ALLOW_WRITE_OUTSIDE entry naming the tree or a
+// folder in it - never a broader one (the whole account dir is the allowance this carve-out narrows).
+const PLUGIN_TREES = [...new Set([HOME ? path.join(HOME, '.claude') : '', process.env.CLAUDE_CONFIG_DIR || '']
+  .filter(Boolean).map((d) => realish(path.join(expandTilde(d), 'plugins'))))];
+const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ? realish(nativePath(expandTilde(process.env.CLAUDE_PLUGIN_ROOT))) : null;
+const OWN_ALLOW = (envOf(process.env, 'ALLOW_WRITE_OUTSIDE') || '').split(path.delimiter).map((s) => s.trim()).filter(Boolean)
+  .map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
+const PLUGIN_STATE = 'data';
+// The carved tree `t` (realish) lies in, or null.
+function pluginTree(t) {
+  for (const p of PLUGIN_TREES) if (inside(t, p) && !inside(t, path.join(p, PLUGIN_STATE))) return p;
+  if (spacePrefix && fold(t).startsWith(fold(spacePrefix))) {
+    const [name, seg, sub] = t.slice(spacePrefix.length).split(path.sep);
+    if (name && seg && fold(seg) === fold('plugins') && !(sub && fold(sub) === fold(PLUGIN_STATE))) return spacePrefix + name + path.sep + seg;
+  }
+  if (PLUGIN_ROOT && inside(t, PLUGIN_ROOT)) return PLUGIN_ROOT;
+  return null;
+}
+// The carved tree a REMOVAL of `t` takes with it: `t` holds one (`rm -rf ~/.claude`, `rm -rf ~/.claude-work`, a folder
+// above every `~/.claude-<name>`), or lies in one.
+function pluginTreeRemoved(t) {
+  const held = [...PLUGIN_TREES, ...(PLUGIN_ROOT ? [PLUGIN_ROOT] : [])].find((p) => inside(p, t));
+  if (held) return held;
+  if (spacePrefix) {
+    const ft = fold(t);
+    const fp = fold(spacePrefix);
+    // `t` is a `~/.claude-<name>` folder itself, or a folder holding them all
+    const name = ft.startsWith(fp) ? t.slice(spacePrefix.length) : null;
+    if (name && !name.includes(path.sep) && fs.existsSync(path.join(t, 'plugins'))) return spacePrefix + name + path.sep + 'plugins';
+    if (fp.startsWith(fold(t.endsWith(path.sep) ? t : t + path.sep))) return path.dirname(spacePrefix);
+  }
+  return pluginTree(t);
+}
+// Whether the user's own allowances open `t` inside a carved tree.
+const pluginOpened = (t, tree) => OWN_ALLOW.some((d) => inside(t, d) && inside(d, tree))
+  || receiptRoots.some((d) => inside(t, d)) || typedAllowed(t, tree);
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
   if (memberMemory(t)) return false;
+  const tree = pluginTree(t);
+  if (tree) return pluginOpened(t, tree);
   if (ownMemory(t)) return true;
   if (effectiveAllow.some((d) => inside(t, d)) || sessionScratchAllowed(t)) return true;
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
@@ -542,9 +590,35 @@ function otherProjectRoot(target) {
   return i < parts.length - 1 ? (parts.slice(0, i + 1).join(path.sep) || path.sep) : path.dirname(t);
 }
 // `shown` is the token the session wrote (or the resolved path after a cd); `abs` is where it lands.
+// The plugins-tree denial: no hand-off card (the tree is no project), dropping the change recommended.
+function pluginBlock(what, shown, tree) {
+  global.BLOCK_DETAIL = { branch: 'plugin-code' };
+  const receiptRel = receiptRelOf();
+  process.stderr.write(
+    `Blocked: ${what} targets '${shown}', inside ${tree} - the installed plugins' own code and registries, where the\n` +
+    `guards judging this session live; a change there can switch one off. A plugin's fix lands in its source repo.\n` +
+    `End this turn with ONE AskUserQuestion, in this order -\n` +
+    `  'Drop the change (Recommended)' - say what you meant to change and where its source lives.\n` +
+    `  'Allow writes into ${tree} for this session' - write ${receiptRel} with exactly these lines\n` +
+    `  and retry; it counts only after the user's own answer to this denial, never one auto-run gave (under 8h):\n` +
+    writeLines([tree]) +
+    shutText(receiptRel) +
+    `Plugin state (plugins/${PLUGIN_STATE}/), memory, plans and settings stay open.`,
+  );
+  process.exit(2);
+}
+// A removal outside the project that takes a carved tree with it (`rm -rf ~/.claude`, a move of a folder holding the cache).
+function judgeRemoval(abs, what, shown) {
+  const t = realish(abs);
+  if (inside(t, ROOT)) return;
+  const tree = pluginTreeRemoved(t);
+  if (tree && !pluginOpened(t, tree)) pluginBlock(what, shown, tree);
+}
 function block(what, shown, abs = shown) {
   const hit = memberMemory(realish(abs));
   if (hit) memoryBlock(what, shown, hit);
+  const tree = pluginTree(realish(abs));
+  if (tree) pluginBlock(what, shown, tree);
   const other = otherProjectName(abs);
   // The main block names its branch like the unread one below (audit 2026-10-20, the hooks track's minor list: every
   // other row of this guard carried none, so the ledger could not split a file-tool write from a shell one).
@@ -601,6 +675,7 @@ if (FS_WRITE_TOOL.test(String(tool || ''))) {
     if (typeof p !== 'string' || !p.trim()) continue;
     const abs = resolveTarget(expandTilde(p));
     if (recordAt(abs, kind)) recordBlock(what, p);
+    if (kind === 'remove') judgeRemoval(abs, what, p);
     if (!allowed(abs)) block(what, p, abs);
   }
   process.exit(0);
@@ -669,6 +744,7 @@ function judge(rawIn, index, what, verb) {
   // that is not allowed: the name climbs to the filesystem root for a .git, and asked of every write it cost a 245KB
   // chain of cd steps most of its time on Windows (2.1.7).
   if (recordAt(abs, recordKind(what, verb))) recordBlock(what, explicit ? raw : abs);
+  if (recordKind(what, verb) === 'remove') judgeRemoval(abs, what, explicit ? raw : abs);
   if (allowed(abs)) return;
   if (/[*?\[]/.test(otherProjectName(abs))) return;
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands
