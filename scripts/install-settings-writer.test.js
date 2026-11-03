@@ -1533,17 +1533,51 @@ test('leaveLocalScope: a custom choice beside the user\'s own autoMemoryEnabled 
     }
 });
 
-// The scorer's four rows are seeded by the absent-only loop like every catalog row: off, level 80, every automatic
-// output (an empty list), 3 runs per attempt - and a value the user already set is never written over.
+// The scorer's four rows are seeded by the absent-only loop like every catalog row: on, level 80, designer plan files
+// only, 3 runs per attempt (B1 of the 2026-11-03 usage audit: scored plan files won 14 of 15 pairs, inline plans lost
+// 3 of 3 - docs/habits-scorer-evidence.md) - and a value the user already set is never written over.
 const SCORER_KEYS = ['', '_LEVEL', '_OUTPUTS', '_ROUNDS'].map((s) => `ALFRED_CODE_SCORER${s}`);
-test('settings-writer: the scorer rows are seeded off, level 80, all outputs, 3 runs; a user value is kept', () =>
+test('settings-writer: the scorer rows are seeded on, level 80, designer plans only, 3 runs; a user value is kept', () =>
 {
     const { data, logs } = write(settingsFile({}));
-    assert.deepStrictEqual(SCORER_KEYS.map((k) => data.env[k]), ['0', '80', '', '3']);
-    assert.ok(logs.includes('  settings.json env: ALFRED_CODE_SCORER seeded (0)'), logs.join('\n'));
-    assert.ok(logs.includes('  settings.json env: ALFRED_CODE_SCORER_OUTPUTS seeded (empty)'), logs.join('\n'));
+    assert.deepStrictEqual(SCORER_KEYS.map((k) => data.env[k]), ['1', '80', 'designer-plan', '3']);
+    assert.ok(logs.includes('  settings.json env: ALFRED_CODE_SCORER seeded (1)'), logs.join('\n'));
+    assert.ok(logs.includes('  settings.json env: ALFRED_CODE_SCORER_OUTPUTS seeded (designer-plan)'), logs.join('\n'));
     const mine = { ALFRED_CODE_SCORER: '1', ALFRED_CODE_SCORER_LEVEL: '95', ALFRED_CODE_SCORER_OUTPUTS: 'root-cause', ALFRED_CODE_SCORER_ROUNDS: '5' };
     assert.deepStrictEqual(SCORER_KEYS.map((k) => write(settingsFile({ env: mine })).data.env[k]), ['1', '95', 'root-cause', '5']);
+});
+
+// An install that holds the OLD seed (`0`, all outputs) keeps it on update: the seed is absent-only, and the ledger
+// cannot tell the stack's `0` from one the user typed. Both old values still read as the stack's own seed
+// (`former_defaults`), so a no-ledger install claims them - and nothing is re-seeded or rewritten.
+test('settings-writer: an install on the old scorer seed (0, all outputs) keeps it on update, with a ledger or none', () =>
+{
+    const old = { ALFRED_CODE_SCORER: '0', ALFRED_CODE_SCORER_OUTPUTS: '' };
+    const ledgered = { env: { 'settings.json': { ALFRED_CODE_SCORER: valueHash('0'), ALFRED_CODE_SCORER_OUTPUTS: valueHash('') } }, deny: [], hooks: [] };
+    for (const prior of [null, ledgered])
+    {
+        const { data, logs, result } = write(settingsFile({ env: old }), { ledger: { prior, releaseHooks: [] } });
+        assert.deepStrictEqual([data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_OUTPUTS], ['0', ''], `ledger ${Boolean(prior)}`);
+        assert.ok(!logs.some((m) => /ALFRED_CODE_SCORER(_OUTPUTS)? (seeded|removed|changed)/.test(m)), logs.join('\n'));
+        const env = result.managed.env['settings.json'];
+        assert.strictEqual(env.ALFRED_CODE_SCORER, valueHash('0'), `ledger ${Boolean(prior)}: the old seed is still the stack's`);
+        assert.strictEqual(env.ALFRED_CODE_SCORER_OUTPUTS, valueHash(''), `ledger ${Boolean(prior)}`);
+    }
+    // A value the user set over the old seed stays theirs: never claimed, never moved.
+    const { data, result } = write(settingsFile({ env: { ALFRED_CODE_SCORER: '0', ALFRED_CODE_SCORER_OUTPUTS: 'root-cause' } }), { ledger: { prior: ledgered, releaseHooks: [] } });
+    assert.strictEqual(data.env.ALFRED_CODE_SCORER_OUTPUTS, 'root-cause');
+    assert.ok(!Object.hasOwn(result.managed.env['settings.json'], 'ALFRED_CODE_SCORER_OUTPUTS'));
+});
+test('the scorer catalog rows: seed 1 and designer-plan, the old seeds kept as former_defaults', () =>
+{
+    const row = (k) => CATALOG.find((r) => r.key === k);
+    assert.strictEqual(row('ALFRED_CODE_SCORER').default, '1');
+    assert.deepStrictEqual(row('ALFRED_CODE_SCORER').former_defaults, ['0']);
+    assert.strictEqual(row('ALFRED_CODE_SCORER_OUTPUTS').default, 'designer-plan');
+    assert.deepStrictEqual(row('ALFRED_CODE_SCORER_OUTPUTS').former_defaults, ['']);
+    assert.match(row('ALFRED_CODE_SCORER').what, /`1` \(the seed\)/);
+    assert.doesNotMatch(row('ALFRED_CODE_SCORER').what, /`0` \(the seed\)/);
+    assert.match(row('ALFRED_CODE_SCORER_OUTPUTS').what, /`designer-plan` \(the seed\)/);
 });
 // The scope picks the FILE (settingsTarget), never the writer, so the per-scope result - project and user in
 // settings.json, local in settings.local.json - is read in the temp-project matrix.

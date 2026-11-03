@@ -67,9 +67,12 @@
     },
     {
       "key": "ALFRED_CODE_SCORER",
-      "default": "0",
+      "default": "1",
+      "former_defaults": [
+        "0"
+      ],
       "ask": false,
-      "what": "mode-output-scorer: `1` grades each automatic output (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scorer` seat before it is released, and holds it until it meets the level or the user accepts it; `0` (the seed) is off. `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a task, capture, loop, issue or mode command override it for the session (off wins when both are typed), and a typed `/<producer> /mode-output-scorer <request>` stack grades that one request even while it is off.",
+      "what": "mode-output-scorer: `1` (the seed) grades each automatic output ALFRED_CODE_SCORER_OUTPUTS names (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scorer` seat before it is released, and holds it until it meets the level or the user accepts it; `0` is off. Seeded on since 2026-11-03 (scored plan files won 14 of 15 pairs, inline plans lost 3 of 3 - docs/habits-scorer-evidence.md); an install seeded `0` before keeps it until changed. `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a task, capture, loop, issue or mode command override it for the session (off wins when both are typed), and a typed `/<producer> /mode-output-scorer <request>` stack grades that one request even while it is off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -91,9 +94,12 @@
     },
     {
       "key": "ALFRED_CODE_SCORER_OUTPUTS",
-      "default": "",
+      "default": "designer-plan",
+      "former_defaults": [
+        ""
+      ],
       "ask": false,
-      "what": "mode-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. Empty (the seed) means all three; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
+      "what": "mode-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. `designer-plan` (the seed) grades plan files only, the output the scorer measurably improved; empty means all three; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
       "validate": {
         "type": "csv",
         "values": [

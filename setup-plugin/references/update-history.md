@@ -362,8 +362,8 @@ the card as the user's to run - only when they want that server again.
 ## after 2.10.1 - grade before release: the output scorer
 
 A designer's plan file, a diagnoser's root-cause verdict and an inline plan can be graded by a fresh, read-only
-`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It is OFF by
-default: `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
+`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It was seeded OFF
+until 3.6.0 (the section after 3.6.0 says what changed): `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
 `ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
 outputs (a csv; empty means all three). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
 stack - `/habits-explain-topic /mode-output-scorer <request>` - grades that one request's output even while it is off,
@@ -658,3 +658,12 @@ An approval receipt now opens a gate only after you answered the guard's ask wit
 each denial prints the exact lines. A receipt left from an older release does not open anything: the next denial asks
 again. Under auto-run a guard's security ask always takes its safe option and lists the act for you in the close.
 Nothing to do by hand.
+
+## after 3.6.0 - the output scorer is seeded on, for designer plans only
+
+A new install seeds `ALFRED_CODE_SCORER=1` and `ALFRED_CODE_SCORER_OUTPUTS=designer-plan`: a designer's plan file is
+graded before it is released, a root-cause verdict and an inline plan are not. Where a plan file was written, scored
+plans won 14 of 15 pairs; inline plans lost 3 of 3. The seed stays absent-only, so an install that already holds
+`ALFRED_CODE_SCORER=0` or an empty `ALFRED_CODE_SCORER_OUTPUTS` - the old seed or your own - keeps it, and a
+`seeded (1)` line shows only where the key was missing. To turn it on here, set both keys in
+`/alfred-code:configure`'s environment area; to keep it off, nothing to do.
