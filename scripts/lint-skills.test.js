@@ -793,8 +793,18 @@ test('check 49: the live file is clean, and a stale RETIRED alias, a renames key
 
     // An entry fetched from outside the repo is the marketplace's own; a hand entry inside the repo is still drift.
     const foreign = liveMarketplace();
-    foreign.plugins.push({ name: 'other-tool', source: { source: 'github', repo: 'envoydev/other-tool' }, description: 'x' });
+    foreign.plugins.push({ name: 'other-tool', source: { source: 'github', repo: 'envoydev/other-tool', ref: 'main', sha: '0123456789abcdef0123456789abcdef01234567' }, description: 'x' });
     assert.deepStrictEqual(lintMarketplaceEntries(foreign), [], 'an object-sourced entry is not the placement\'s');
+    // SYS-07 of the 2026-11-03 system audit: an outside source floating on a branch serves whatever lands there next,
+    // so every one is pinned to its full commit - a missing, short or non-hex sha is a finding.
+    for (const sha of [undefined, '33f60bf', 'not-a-sha-not-a-sha-not-a-sha-not-a-sha!', 42])
+    {
+        const loose = liveMarketplace();
+        const source = { source: 'github', repo: 'envoydev/other-tool', ref: 'main' };
+        if (sha !== undefined) source.sha = sha;
+        loose.plugins.push({ name: 'other-tool', source, description: 'x' });
+        assert.ok(lintMarketplaceEntries(loose).some((f) => /other-tool is fetched from outside this repo with no 40-hex `sha`/.test(f)), `a foreign source with sha ${JSON.stringify(sha)} is a finding`);
+    }
     const inside = liveMarketplace();
     inside.plugins.push({ name: 'stray', source: './stray', description: 'x' });
     assert.ok(lintMarketplaceEntries(inside).some((f) => /carries stray, which the placement does not produce/.test(f)), 'a relative-path hand entry is a finding');
