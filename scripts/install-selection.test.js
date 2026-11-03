@@ -453,7 +453,8 @@ test('closeLines: a requirement never switches back on a parked entry or a denie
     const out = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, parked: ['alfred-code'], log: (m) => logs.push(m) });
     for (const a of seats) assert.ok(!out.includes(`agent ${a}`), `the parked core's seat ${a} stayed out`);
     assert.ok(logs.some((l) => new RegExp(`required: agent ${seats[0]} .*left out, its entry alfred-code is parked here`).test(l)), logs.join('\n'));
-    assert.ok(out.includes('skill task-solve-cross'), 'a library skill has no entry to be parked');
+    // audit 2026-10-30 RU-08: the router names habits-root-cause alone now (task-solve-cross left with the contract stop)
+    assert.ok(out.includes('skill habits-root-cause'), 'a library skill has no entry to be parked');
     const denyLogs = [];
     const out2 = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, deny: [`Agent(alfred-code-dotnet:${seats[0]})`], log: (m) => denyLogs.push(m) });
     assert.ok(!out2.includes(`agent ${seats[0]}`), 'the denied seat stayed out');
