@@ -5062,8 +5062,14 @@ test('guard-desktop-exec: the browser code runner is denied under any registrati
   stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'session: desk\nbrowser_run_code_unsafe\n');
   assert.equal(desktopRun(root, RUN_CODE[2], { code: 'x' }).status, 0, 'its own line opens it');
   assert.equal(desktopRun(root, 'mcp__mac__Shell', { command: 'ls' }).status, 2, 'and nothing else'); // mcp-fixture
+  // E-batch mcp-B-m2 (the user's 'Take all', 2026-11-04): `*` is the desktop lines' wildcard - the code runner takes its own line
   stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'session: desk\n*\n');
-  assert.equal(desktopRun(root, RUN_CODE[1], { code: 'x' }).status, 0, '`*` opens it too');
+  const star = desktopRun(root, RUN_CODE[1], { code: 'x' });
+  assert.equal(star.status, 2, '`*` opens no code runner');
+  assert.match(star.stderr, /with the line `browser_run_code_unsafe`/, 'the denial still names its own line');
+  assert.equal(desktopRun(root, 'mcp__mac__Shell', { command: 'ls' }).status, 0, '`*` still opens the desktop Shell'); // mcp-fixture
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'session: desk\n*\nbrowser_run_code_unsafe\n');
+  assert.equal(desktopRun(root, RUN_CODE[1], { code: 'x' }).status, 0, 'beside `*`, its own line opens it');
 });
 
 // Audit 2026-10-08 row 40: the ledger kept 120 characters of the Shell command, credential included, and the denial

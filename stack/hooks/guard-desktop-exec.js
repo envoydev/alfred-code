@@ -24,7 +24,8 @@
 // `PowerShell` / `execute_shell_command` every call of that tool,
 // `browser_run_code_unsafe` every browser code run, an executable's FULL path that one executable
 // (a bare name only a call naming it bare - audit 2026-10-20, the hooks track's minor list: a file-name line opened that
-// name in every directory), `*` both.
+// name in every directory), `*` every desktop line - never the browser code runner, which takes its own line alone
+// (E-batch mcp-B-m2: a `*` written for the desktop Shell opened in-process JavaScript too).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -147,9 +148,10 @@ const allowed = (() => {
   try {
     if (!held || !held.live) return false;
     const lines = held.lines;
+    // the code runner takes its own line only: `*` is the desktop lines' wildcard (E-batch mcp-B-m2)
+    if (isCode) return lines.includes(CODE_LINE);
     if (lines.includes('*')) return true;
     if (isShell) return lines.includes(shellName);
-    if (isCode) return lines.includes(CODE_LINE);
     if (lines.includes('App') || (executable !== '' && lines.some((l) => samePath(l, executable)))) return true;
     const file = executable.split(/[\\/]/).pop();
     bareLine = (file !== executable && lines.find((l) => !/[\\/]/.test(l) && (winPath(executable) ? l.toLowerCase() === file.toLowerCase() : l === file))) || '';

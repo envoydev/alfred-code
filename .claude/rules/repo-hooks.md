@@ -1530,7 +1530,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     in the matcher, each denied pointing at Claude Code's own Bash or PowerShell tool, each opened only by its own line -
     the tool's name - after the 'Allow the server's <tool> this session' answer; a `Shell` line opens neither. 'Allow' is honoured through
     `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `PowerShell`, `execute_shell_command`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
-    a Windows path - or `*`; a bare file name opens only a call naming it bare, never that name in every directory - audit
+    a Windows path - or `*`, which opens every line but `browser_run_code_unsafe` - that one only by its own line, E-batch mcp-B-m2; a bare file name opens only a call naming it bare, never that name in every directory - audit
     2026-10-20, the hooks track's minor list; a security receipt, THE RECEIPTS above); the denial suggests the full path - and names a live bare line that
     missed it, with the full path to write in its place - and a Shell block row keeps
     the command's verb only, never the command (audit 2026-10-08). PROTECTIVE
