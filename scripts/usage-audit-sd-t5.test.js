@@ -147,7 +147,7 @@ test('SD14 ae38c08f#5 (skill half): an error on a call a PreToolUse hook rewrote
 // `/config` Project instructions value that loads CLAUDE.md and AGENTS.md together.
 test('SKC14 + SKC13: the create-mode write ask is a marked template, and the both-files setting is named', () => {
     const text = read('stack/skills/habits-adjust-agents-md/SKILL.md');
-    const create = asks(text).find((a) => /^Write <file> from the outline above/.test(a.question));
+    const create = asks(text).find((a) => /^Write <file> from the outline in this reply/.test(a.question)); // m3 (2026-11-03): "above" became "in this reply"
     assert.ok(create, 'the create-mode write ask is a template');
     assert.strictEqual(create.options[0], 'Write it (Recommended)');
     assert.ok(create.options.includes('Skip'));

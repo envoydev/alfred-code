@@ -1194,6 +1194,62 @@ test('U02: node <suite>.test.[cm]?js and node --test forms score as test runs; a
   }
 });
 
+// Audit 2026-11-03 m1: a node flag whose value is the next word (`-r ts-node/register`) ended the flag run, so the suite
+// file after it read as the flag's value and the run as no test.
+test('m1: a node flag taking the next word', () => {
+  const { classifyChecks, maskQuotedShell } = require('./analyze-usage.js');
+  const checks = (cmd) => classifyChecks(maskQuotedShell(cmd), cmd, new Map()).kinds;
+  for (const cmd of ['node -r ts-node/register a.test.js', 'node --env-file .env a.test.js', 'node --import tsx a.test.js', 'node --require ./setup.js --test scripts/a.test.js']) {
+    assert.deepStrictEqual(checks(cmd), [{ kind: 'test', scoped: true }], cmd);
+  }
+  for (const cmd of ['node -r ts-node/register server.js', 'node --env-file .env -e "1" a.test.js', 'node --import tsx']) {
+    assert.deepStrictEqual(checks(cmd), [], cmd);
+  }
+});
+
+// Usage audit 2026-11-03 U02 (second half): a suite run as a loop over test files, `node "$f"`, or over ssh read as none.
+test('U02: a loop over test files, node "$f", and ssh', () => {
+  const { classifyChecks, maskQuotedShell } = require('./analyze-usage.js');
+  const tests = (cmd) => classifyChecks(maskQuotedShell(cmd), cmd, new Map()).kinds.filter((k) => k.kind === 'test');
+  for (const cmd of ['for f in scripts/*.test.cjs; do node "$f"; done', 'for t in a.test.js b.test.mjs; do node $t || exit 1; done',
+    'for f in tests/*.test.cjs\ndo\n  node "${f}"\ndone', "ssh host 'npm test'", 'ssh -p 2222 ci@box "cd app && npm test"']) {
+    assert.strictEqual(tests(cmd).length, 1, cmd);
+  }
+  assert.deepStrictEqual(tests('for f in scripts/*.test.cjs; do node "$f"; done'), [{ kind: 'test', scoped: false }], 'a loop over a glob runs the suite');
+  for (const cmd of ['node "$f"', 'for f in src/*.js; do node "$f"; done', "ssh host 'ls -la'", 'echo ssh host npm test', 'for f in a.test.js; do cat "$f"; done']) {
+    assert.deepStrictEqual(tests(cmd), [], cmd);
+  }
+});
+
+// Usage audit 2026-11-03 U03: every free-text turn after a no-tool end_turn was an unheld-stop candidate, flow or not, and
+// a commit whose receipt quoted the checks that ran read as unchecked.
+test('U03: unheld stops need an open flow; a probe receipt counts as checked', () => {
+  const dir = tmp();
+  const endTurn = (id, n, text) => scAsst(id, scT(n), usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const free = path.join(dir, 'free.jsonl');
+  fs.writeFileSync(free, scHuman(scT(0), 'what is in the readme?') + endTurn('a1', 1, 'It describes the install.') + scHuman(scT(2), 'and the license?'));
+  assert.deepStrictEqual(run([free]).main.unheldStopCandidates, [], 'no flow open: no candidate');
+  const flow = path.join(dir, 'flow.jsonl');
+  let body = scHuman(scT(0), '<command-name>/task-solve</command-name>\n<command-args>fix the parser</command-args>');
+  body += endTurn('b1', 1, 'Which parser do you mean, the CSV one or the JSON one?') + scHuman(scT(2), 'the CSV one');
+  body += scAsst('b2', scT(3), usage(1, 0, 100, 5), [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: '/p/docs/work/plans/x.md', old_string: 'Approved: yes', new_string: 'Approved: yes\nCompleted: 2026-11-03' } }]);
+  body += toolRes(scT(4), 'e1', 'ok') + endTurn('b3', 5, 'Stamped.') + scHuman(scT(6), 'thanks, now the readme');
+  fs.writeFileSync(flow, body);
+  assert.deepStrictEqual(run([flow]).main.unheldStopCandidates.map((c) => c.stopTs), [scT(1)], 'inside the flow only, closed by its Completed: stamp');
+  const commit = path.join(dir, 'commit.jsonl');
+  const receipt = (probe) => `node "$R" commit --verified 'the diff' --authorized 'commit it' --probe '${probe}' --format none --findings none && git commit -qm x`;
+  body = scHuman(scT(0), 'commit it');
+  body += scAsst('c1', scT(1), usage(1, 0, 100, 5), [scBash('k1', receipt('npm test - 12 passed'))]) + toolRes(scT(2), 'k1', 'ok');
+  body += scAsst('c2', scT(3), usage(1, 0, 100, 5), [scBash('k2', receipt('NOT RUN - no suite'))]) + toolRes(scT(4), 'k2', 'ok');
+  body += scAsst('c3', scT(5), usage(1, 0, 100, 5), [scBash('k3', `printf 'COMMIT-GATE\\nprobe: dotnet test - 40 passed\\n' > .alfred/state/approvals/COMMIT-GATE --probe`)]) + toolRes(scT(6), 'k3', 'ok');
+  body += scAsst('c4', scT(7), usage(1, 0, 100, 5), [scBash('k4', 'git commit -qm y')]) + toolRes(scT(8), 'k4', 'ok');
+  fs.writeFileSync(commit, body);
+  const e = run([commit]).main.efficiency;
+  assert.strictEqual(e.commitsChecked, 2, 'the receipt with a probe in the same call, and one written before the commit');
+  assert.deepStrictEqual(e.commitsUnchecked, [scT(3)], 'a NOT RUN probe checks nothing');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('U02: a green claim after a node <suite>.test.cjs run in the same turn is backed', () => {
   const dir = tmp();
   const file = path.join(dir, 'session.jsonl');

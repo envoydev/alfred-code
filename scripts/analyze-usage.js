@@ -76,6 +76,13 @@ const ACTIVITY_ROW_TYPES = new Set(['user', 'assistant', 'system', 'attachment']
 const { idleByTiming, idleFloor, isIdleNotice, localOnlyRow } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
 // The stack's orchestration flows and their phases (guard-fresh-session-start.js ORCHESTRATION, skills half): a Skill
 // call of one of these opens a phase; any other skill loaded while one is open serves it.
+// A plan's close stamp (U03): `Completed: <date>` opening a line, a list marker or bold allowed.
+const COMPLETED_STAMP_RE = /(?:^|\n)[ \t]*(?:[-*][ \t]+)?\**Completed:\**[ \t]*\S/;
+// A COMMIT-GATE receipt with a probe of what ran (U03): habits-commit-checkpoint's `receipt.js commit ... --probe '<what
+// ran>'`, run as `node "$R" commit` with R bound to it), or a hand-written receipt naming COMMIT-GATE beside a `--probe` /
+// `probe:` value.
+const RECEIPT_RE = /\bCOMMIT-GATE\b|\breceipt\.js\b|(?:^|[\s;&|(])node\s+\S+\s+commit\s/;
+const RECEIPT_PROBE_RE = /--probe\s+(?:'([^']*)'|"([^"]*)"|(\S+))|(?:^|\\n|\n)probe:\s*([^\\\n]*)/;
 const FLOW_SKILL_RE = /^(?:task-(?:solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|loop-[a-z-]+|capture-[a-z-]+|issue-diagnoser)$/;
 const idleTailLine = (main) => (main.idleTail ? `idle tail ${dur(Date.parse(main.idleTail.to) - Date.parse(main.idleTail.from))} after the last turn, to a \`${main.idleTail.rowType || '?'}\` row at ${main.idleTail.to} - not session time` : '');
 // The session-start instruction files, largest first, and any rule loaded under both the old and the new name of a
@@ -264,8 +271,9 @@ function shellReadTarget(cmd) {
 const RUNNER_PATH = String.raw`(?:[\w.@~$/\\-]*[/\\])?`;
 // A suite file run straight under node is a test run: a consuming project's 66 `node <suite>.test.cjs` runs read as 0
 // and 7 backed green claims as unverified (usage audit 2026-11-03 U02). Node's own flags may come first (`node
-// --test-concurrency=1 --test`), except a syntax check or an eval, which runs no suite.
-const NODE_FLAGS = String.raw`(?:(?!(?:-c|--check|-e|--eval|-p|--print)(?![\w-]))-[\w-]+(?:=\S+)?\s+)*`;
+// --test-concurrency=1 --test`), except a syntax check or an eval, which runs no suite. A flag whose value is the NEXT word
+// (`-r ts-node/register`, `--env-file .env`) takes that word with it (audit 2026-11-03 m1: the suite after it read as no run).
+const NODE_FLAGS = String.raw`(?:(?:-r|--require|--import|--env-file|--loader|--experimental-loader|-C|--conditions)\s+\S+\s+|(?!(?:-c|--check|-e|--eval|-p|--print)(?![\w-]))-[\w-]+(?:=\S+)?\s+)*`;
 const CHECK_RES = {
   test: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+test|(?:npm|pnpm|yarn)\s+(?:run\s+)?test\S*|jest|vitest|mocha|playwright\s+test|ng\s+test|pytest|python3?\s+-m\s+pytest|go\s+test|cargo\s+test|node\s+${NODE_FLAGS}(?:--test|[\w.@~$/\\-]+\.test\.[cm]?js)|mvn\s+test|gradlew?\s+test|phpunit)(?![\w.-])`),
   build: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+(?:build|publish)|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:build|typecheck|type-check)\S*|ng\s+build|tsc|vue-tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradlew?\s+(?:build|assemble))(?![\w.-])`),
@@ -412,10 +420,18 @@ function locateClass(name, input) {
 // they are that check's result (below).
 const CHECK_KINDS = ['test', 'build', 'lint', 'ci'];
 const REDIRECT_TARGET_G = /(?:^|[^<>&\d])(?:\d?>>?|&>>?)\s*([^\s<>&;|]+)/g;
+// Usage audit 2026-11-03 U02: a suite run as `for f in <...>.test.cjs; do node "$f"; done` - the variable is a suite file
+// only when the same command's `for` loop lists one - and `ssh <host> '<cmd>'`, whose quoted remote command is read as a
+// command of its own. A loop over a glob runs the suite (unscoped).
+const LOOP_TEST_G = /(?:^|[\s;&|(])for\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)/g;
+const NODE_VAR_RE = new RegExp(String.raw`^${RUNNER_PATH}node\s+${NODE_FLAGS}("?)\$\{?([A-Za-z_]\w*)\}?\1(?![\w.-])`);
+const SSH_REMOTE_RE = /^ssh\s+(?:-[\w-]+(?:\s+(?!["'])\S+)?\s+)*?[^\s"'-]\S*\s+("|')([\s\S]*)\1\s*$/;
 function classifyChecks(cmdCode, cmdShell, bindings) {
   const found = new Map();
   const logs = [];
   let checkBefore = false;
+  const loopTests = new Set();
+  for (const m of String(cmdShell == null ? cmdCode : cmdShell).matchAll(LOOP_TEST_G)) if (/\.test\.[cm]?js\b/.test(m[2])) loopTests.add(m[1]);
   for (const h of commandHeads(cmdCode, cmdShell)) {
     const hits = [];
     const nx = nxChecks(h.code, h.shell);
@@ -424,6 +440,10 @@ function classifyChecks(cmdCode, cmdShell, bindings) {
       for (const kind of CHECK_KINDS) {
         if (CHECK_RES[kind].test(h.code)) hits.push({ kind, scoped: kind === 'test' ? SCOPED_RE.test(` ${h.shell} `) : undefined });
       }
+      const nv = !hits.length && loopTests.size ? NODE_VAR_RE.exec(h.shell) : null;
+      if (nv && loopTests.has(nv[2])) hits.push({ kind: 'test', scoped: false });
+      const ssh = !hits.length ? SSH_REMOTE_RE.exec(h.shell) : null;
+      if (ssh) hits.push(...classifyChecks(maskQuotedShell(ssh[2]), ssh[2], bindings).kinds);
     }
     if (hits.length) {
       for (const x of hits) {
@@ -2011,6 +2031,13 @@ async function analyzeTranscript(file, window) {
   const rewriteOf = new Map();     // tool_use id -> the hooks that rewrote its input before it ran
   let lastSkillResult = null;      // the Skill call whose result came last, for a body row that names no id
   let prevAssistantNoTool = null;  // ts of an end_turn assistant msg with no tool_use
+  // Usage audit 2026-11-03 U03: a candidate counts only while a FLOW is open - a typed flow command or a flow skill's
+  // Skill call opens it, a tool call writing a `Completed:` stamp or a /clear closes it - since a stop contract binds only
+  // inside a flow; and a COMMIT-GATE receipt carrying a probe of what ran checks the next commit (the receipt quotes checks
+  // from earlier turns; 'NOT RUN' checks nothing).
+  let stopFlowOpen = false;
+  let receiptProbed = false;
+  const stopCandidate = (ts) => { if (prevAssistantNoTool) { if (stopFlowOpen) s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: ts || null }); prevAssistantNoTool = null; } };
   s.gitCommits = 0; s.prMerges = 0; s.clearTs = null; s.ccVersion = null;
   s.unheldStopCandidates = [];     // { stopTs, userTs } - free-text user turn right after a
                                    // no-tool end_turn: candidate unheld gate for the report's
@@ -2082,7 +2109,7 @@ async function analyzeTranscript(file, window) {
           s.userPrompts++;
           s.queuedPrompts = (s.queuedPrompts || 0) + 1;
           onHumanTurn(typed, o.timestamp || at.timestamp);
-          if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
+          stopCandidate(o.timestamp);
         }
         // What the session was GIVEN as standing instructions - each CLAUDE.md / AGENTS.md / always-on rule with its
         // text - is the session-start `instructions` attachment. The analyzer never read it, so the floor was one number
@@ -2355,6 +2382,8 @@ async function analyzeTranscript(file, window) {
         // session's real work under a phantom `clear` row and glues the genuine skills onto it
         // as companions (measured: 4 sessions, one with 62 of 71 messages mis-bucketed).
         activeInvoke = m[1] === 'clear' ? null : { skill: m[1], msgs: 0 };
+        if (m[1] === 'clear') stopFlowOpen = false;
+        else if (FLOW_SKILL_RE.test(houseBare(m[1]))) stopFlowOpen = true;
         askSinceInvoke = false;
         // A mid-file /clear starts a new working window: raw first->last spans across it
         // read as a multi-day session at ~6% ledger coverage when the real work window was
@@ -2514,6 +2543,7 @@ async function analyzeTranscript(file, window) {
           }
           // a dispatched seat may have run the check in its own transcript - the turn is covered
           if (c.name === 'Agent' || c.name === 'Task') turnHadCheck = true;
+          if (/^(?:Edit|Write|MultiEdit)$/.test(c.name) && COMPLETED_STAMP_RE.test([i.new_string, i.content, ...(Array.isArray(i.edits) ? i.edits.map((x) => x && x.new_string) : [])].filter((x) => typeof x === 'string').join('\n'))) stopFlowOpen = false;
           // Every file the session TOUCHED, on both routes - the deterministic proxy for a
           // path-scoped rule attach. A Read is both a file tool and a read target, so the two
           // spellings are deduped before counting.
@@ -2530,6 +2560,7 @@ async function analyzeTranscript(file, window) {
           skillCallIds.set(c.id, c.input.skill);
           const sk = s.skillInvocations[c.input.skill] || (s.skillInvocations[c.input.skill] = { calls: 0, injectedChars: 0, firstTs: o.timestamp || null });
           sk.calls += 1;
+          if (FLOW_SKILL_RE.test(houseBare(c.input.skill))) stopFlowOpen = true;
           // While a FLOW skill's cycle is open, a reference skill loaded for it - after the flow's own clarify ask, many
           // messages in - serves that cycle; only another flow skill opens a phase of its own (audit 2026-10-10,
           // b35afe70: a plugin reference loaded after the design step's ask took 148 of 180 msgs from task-solve).
@@ -2596,7 +2627,13 @@ async function analyzeTranscript(file, window) {
           // counted 0 and printed 'git commits 0' over a receipted commit (audit 2026-10-10 C05: 390aebcb, 49cb4b82, f6c591fa).
           const commits = (cmdCode.match(/(?:^|[;&|(\n]\s*)git\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
           const merges = (cmdCode.match(/(?:^|[;&|(\n]\s*)gh\s+pr\s+merge\b/g) || []).length;
-          if (commits || merges) pendingGitActs.set(c.id, { commits, merges, checked: lastCheckSeq >= 0 && toolSeq - lastCheckSeq <= CHECK_WINDOW, ts: o.timestamp || null });
+          if (COMPLETED_STAMP_RE.test(cmdStr)) stopFlowOpen = false;
+          const probe = RECEIPT_PROBE_RE.exec(cmdStr);
+          if (probe && RECEIPT_RE.test(cmdStr)) receiptProbed = !/^\s*NOT RUN\b/i.test(probe.slice(1).find((x) => x != null) || '');
+          if (commits || merges) {
+            pendingGitActs.set(c.id, { commits, merges, checked: (lastCheckSeq >= 0 && toolSeq - lastCheckSeq <= CHECK_WINDOW) || (commits > 0 && receiptProbed), ts: o.timestamp || null });
+            if (commits) receiptProbed = false;
+          }
           // Doc traffic routed through Bash (heredocs, printf >, rm -f) is real doc I/O the
           // Write/Edit-only counter missed - a receipt written+cleared via Bash showed
           // writes:0, and batched python doc writes showed writes:0 across 3 rewrites (measured).
@@ -2791,7 +2828,7 @@ async function analyzeTranscript(file, window) {
         if (!o.isMeta && !isInjectedText(content) && firstOfTurn()) {
           s.userPrompts++;
           onHumanTurn(content, o.timestamp);
-          if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
+          stopCandidate(o.timestamp);
         }
         return;
       }
@@ -2958,7 +2995,7 @@ async function analyzeTranscript(file, window) {
       if (!hasResult && !o.isMeta && textJoined.trim() && !isInjectedText(textJoined) && firstOfTurn()) {
         s.userPrompts++;
         onHumanTurn(textJoined, o.timestamp);
-        if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
+        stopCandidate(o.timestamp);
       }
     }
   });
