@@ -853,6 +853,14 @@ test('guard-stop-contract: a long or idle run offers the fresh session before th
   assert.equal(ctxOf(askIn(rows('ask-short', 1, 120000), oneQ)), '', 'a one-hour session is left alone');
   assert.equal(ctxOf(askIn(rows('ask-off', 5, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }))), '',
     '0 on the hours knob switches the route off');
+  // Usage audit 2026-11-03 U16: the knob's default follows the prompt cache for the idle offer, and this clock note keeps
+  // its own 2h then - the session span would otherwise meet a 5m cache life on nearly every ask. An hour count sets it.
+  assert.equal(ctxOf(askIn(rows('ask-follow', 1, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'cache' }))), '',
+    'the follow word: a one-hour session is still left alone');
+  assert.match(ctxOf(askIn(rows('ask-follow-3', 3, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'cache' }))), /3\.0h/,
+    'and three hours still offers');
+  assert.match(ctxOf(askIn(rows('ask-half', 1, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0.5' }))), /1\.0h/,
+    'an explicit 0.5 sets the clock route too');
   // The recoverable-share rule owns this route too: a carry that is mostly the install's own floor
   // buys nothing by resuming, however long the session has been open.
   const floorBound = transcript('ask-floorbound', [

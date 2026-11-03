@@ -20,6 +20,8 @@ const ROOT = path.join(__dirname, '..');
 const SEL = 'skill markdown-style\n';
 const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]);
 const CATALOG = require('../meta/environment.json').env.map((r) => r.key);
+// [key, the stack's old seed, the value it resets to] - the env pass's reseed list
+const RESEEDS = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json')).reseed;
 const SETTINGS_KEYS = ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_HOOKS_OFF'];
 // A `seed: false` row (WORKSPACE, FRESH_SESSION_PAYBACK) is never written into a project, so it never moves either.
 const UNSEEDED = require('../meta/environment.json').env.filter((r) => r.seed === false).map((r) => r.key);
@@ -167,12 +169,21 @@ for (const scope of ['project', 'user', 'local'])
             }),
         });
         const [before, after, again] = steps;
-        assert.deepStrictEqual(after.effective, before.effective, outs[1]);
+        // A reseed this release ships (meta/migrations.json clear_settings_env - since 2.12.0, the idle wait's 2 moving to
+        // cache, usage audit 2026-11-03 U16) changes the stack's own old seed on purpose; every other value is unchanged.
+        const reseeded = (key, value) => { const r = RESEEDS.find(([k, bad]) => k === key && bad === value); return r ? r[2] : value; };
+        const expected = Object.fromEntries(Object.entries(before.effective).map(([k, v]) => [k, reseeded(k, v)]));
+        assert.ok(Object.keys(expected).some((k) => expected[k] !== before.effective[k]), 'v2.12.0 seeded a value this release reseeds');
+        assert.deepStrictEqual(after.effective, expected, outs[1]);
         assert.deepStrictEqual(catalogIn(after.env).filter((k) => !SETTINGS_KEYS.includes(k)), [], JSON.stringify(after.env));
-        for (const key of SEEDED) assert.strictEqual(after.vars[key], before.env[key], `${key} did not move unchanged`);
+        for (const key of SEEDED) assert.strictEqual(after.vars[key], reseeded(key, before.env[key]), `${key} did not move unchanged`);
         const moved = Object.entries(before.ledger[file] || {}).filter(([k]) => SEEDED.includes(k));
         assert.ok(moved.length > 0, 'v2.12.0 ledgered its seeds');
-        for (const [key, hash] of moved) assert.strictEqual((after.ledger['.variables'] || {})[key], hash, `${key}'s ledger row did not follow it`);
+        for (const [key, hash] of moved)
+        {
+            const want = reseeded(key, before.env[key]) === before.env[key] ? hash : stampLib.valueHash(reseeded(key, before.env[key]));
+            assert.strictEqual((after.ledger['.variables'] || {})[key], want, `${key}'s ledger row did not follow it`);
+        }
         for (const [key] of moved) assert.ok(!Object.hasOwn(after.ledger[file] || {}, key), `${key} is still ledgered under ${file}`);
         assert.strictEqual(after.ignored, scope === 'local' ? 0 : 1);
         if (scope !== 'local') assert.match(after.dataIgnore, /^!\/\.variables$/m, 'the data root\'s own file re-includes .variables');
@@ -193,7 +204,10 @@ test('AC8: an update over a v2.12.0 export whose own .gitignore line .alfred/ ig
         prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.alfred/\n'),
         each: (repo) => ({ settings: readOr(path.join(repo, '.claude', 'settings.json')), vars: fs.existsSync(varsFile(repo)) }),
     });
-    assert.strictEqual(steps[1].settings, steps[0].settings, outs[1]);
+    // byte-identical but for a reseed this release ships (the idle wait's old seed 2 to cache, U16), done in place
+    const reseedText = (text) => RESEEDS.reduce((t, [key, bad, to]) => t.replace(`"${key}": "${bad}"`, `"${key}": "${to}"`), text);
+    assert.notStrictEqual(reseedText(steps[0].settings), steps[0].settings, 'v2.12.0 seeded a value this release reseeds');
+    assert.strictEqual(steps[1].settings, reseedText(steps[0].settings), outs[1]);
     assert.strictEqual(steps[1].vars, false, 'a .variables was written under an ignored data root');
     assert.match(outs[1], /!! variables: \.alfred\/\.variables is ignored by \.gitignore:1 - the keys are kept in settings\.json/, outs[1]);
     assert.doesNotMatch(outs[1], MOVED_LINE);

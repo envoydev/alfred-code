@@ -478,9 +478,10 @@ test('compact-state: the prompt ending an idle gap past the clock hours is offer
     const ledger = fs.readdirSync(log, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).map((f) => fs.readFileSync(path.join(log, String(f)), 'utf8')).join('')
         + (fs.existsSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks')) ? fs.readdirSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks')).map((f) => fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', f), 'utf8')).join('') : '');
     assert.match(ledger, /"kind":"idle-gap-offer"/, 'one probe row records it');
+    // an explicit hour count overrides the cache life (usage audit 2026-11-03 U16); these rows wrote no split
     const q = project();
-    assert.strictEqual(prompt(q, q.transcript(rows(1.9))).stdout, '', 'under the 2h knob: no offer');
-    assert.match(prompt(q, q.transcript(rows(2.1))).stdout, /sat idle 2\.1h/, 'over it: the offer');
+    assert.strictEqual(prompt(q, q.transcript(rows(1.9)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).stdout, '', 'under an explicit 2h: no offer');
+    assert.match(prompt(q, q.transcript(rows(2.1)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).stdout, /sat idle 2\.1h/, 'over it: the offer');
     const off = project();
     assert.strictEqual(prompt(off, off.transcript(rows(19)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).stdout, '', '0 switches the route off');
     const w = project();
@@ -579,14 +580,93 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
         content: 'Your questions have been answered: "Fresh?"="Continue here"' }] } }) + '\n');
     assert.strictEqual(s.edit().status, 0, 'the fresh-session ask answered releases it');
     assert.strictEqual(s.edit().status, 0, 'and the same long ask never arms it twice');
-    assert.strictEqual(setup(1.9).edit().status, 0, 'under the 2h knob: no hold');
-    assert.strictEqual(setup(2.1).edit().status, 2, 'over it: held');
+    assert.strictEqual(setup(1.9, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).edit().status, 0, 'under an explicit 2h: no hold');
+    assert.strictEqual(setup(2.1, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).edit().status, 2, 'over it: held');
     assert.strictEqual(setup(4.8, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).edit().status, 0, '0 switches it off');
     assert.strictEqual(setup(4.8, { ALFRED_CODE_UNATTENDED: '1' }).edit().status, 0, 'nobody at the terminal: no hold');
     assert.strictEqual(setup(4.8, {}, 100000).edit().status, 0, 'a carry mostly the cold floor: no hold');
     const seat = setup(4.8);
     assert.strictEqual(seat.p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: seat.tp, agent_id: 'seat-1' },
         { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'askgap-')) }).status, 0, 'a seat is never held');
+});
+
+// Usage audit 2026-11-03 U16: the idle offer waited the knob's seeded 2h, past the cache life on every route - a
+// subscription's main conversation caches for 1h, an API key's for 5m (code.claude.com/docs/en/prompt-caching) - so the
+// gap's first message had paid the cold re-write long before anyone was asked. The wait now follows the cache life the
+// last main-conversation reply wrote; no split is the fallback, one hour; an explicit hour count still overrides.
+test('compact-state: the idle wait follows the cache life the last reply wrote (usage audit 2026-11-03 U16)', () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+    const life = (ttl, carry = 289900) => ({ cache_read_input_tokens: carry, cache_creation_input_tokens: 400,
+        ...(ttl ? { cache_creation: { ephemeral_1h_input_tokens: ttl === '1h' ? 400 : 0, ephemeral_5m_input_tokens: ttl === '5m' ? 400 : 0 } } : {}) });
+    const reply = (gapMin, ttl, extra = []) => [{ ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(gapMin + 30) },
+        { ...usageRow('l', life(ttl)), timestamp: ago(gapMin) }, ...extra];
+    const offered = (rows, more = {}) =>
+    {
+        const p = project();
+        const r = p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next card', transcript_path: p.transcript(rows) },
+            { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'wait-')), ...more });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return r.stdout ? startText(r) : '';
+    };
+    assert.strictEqual(offered(reply(4, '5m')), '', '5m cache, 4 minutes idle: still warm, no offer');
+    assert.match(offered(reply(6, '5m')), /sat idle 6 min since its last reply/, '5m cache, 6 minutes idle: the offer');
+    assert.strictEqual(offered(reply(59, '1h')), '', '1h cache, 59 minutes: no offer');
+    assert.match(offered(reply(61, '1h')), /sat idle 1\.0h since its last reply/, '1h cache, 61 minutes: the offer');
+    assert.strictEqual(offered(reply(54, null)), '', 'no split: the one-hour fallback - 54 minutes, no offer');
+    assert.match(offered(reply(66, null)), /sat idle 1\.1h/, 'no split: 66 minutes, the offer');
+    const zero = [{ ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(90) },
+        { ...usageRow('l', { cache_read_input_tokens: 289900, cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 } }), timestamp: ago(30) }];
+    assert.strictEqual(offered(zero), '', 'both splits zero: the fallback - 30 minutes, no offer');
+    assert.strictEqual(offered(reply(114, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }), '', 'an explicit 2 overrides a 5m cache: 1.9h, no offer');
+    assert.match(offered(reply(126, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }), /sat idle 2\.1h/, 'and 2.1h offers');
+    assert.strictEqual(offered(reply(600, '1h'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }), '', '0 is still off');
+    assert.match(offered(reply(6, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'garbage' }), /sat idle 6 min/, 'a garbage value follows the cache');
+    assert.match(offered(reply(6, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'cache' }), /sat idle 6 min/, 'the seed word follows it too');
+    // a seat's row in the main transcript is no main-conversation reply: its 1-minute-old row neither resets the gap
+    // nor sets the life
+    const seatRow = { ...usageRow('s', life('1h')), isSidechain: true, timestamp: ago(1) };
+    assert.match(offered(reply(6, '5m', [seatRow])), /sat idle 6 min/, 'a sidechain row is skipped');
+    // garbage lines among the rows are skipped, never thrown on
+    const p = project();
+    const tp = path.join(p.root, 'transcript.jsonl');
+    fs.writeFileSync(tp, ['{"cut', JSON.stringify(reply(6, '5m')[0]), 'not json', JSON.stringify(reply(6, '5m')[1]), '[1,2]', 'null'].join('\n') + '\n');
+    const g = p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next card', transcript_path: tp }, { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'wait-')) });
+    assert.match(startText(g), /sat idle 6 min/, 'garbage lines are skipped');
+    const ledger = fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8');
+    assert.match(ledger, /"kind":"idle-gap-offer"[^\n]*"wait":"cache"[^\n]*"waitMin":5/, 'the probe row says which wait it took');
+
+    // the ask-gap arm waits the life the ask's own reply wrote
+    const askRows = (gapMin, ttl) => [
+        { ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(gapMin + 60) },
+        { type: 'assistant', timestamp: ago(gapMin + 1), message: { id: 'q', model: 'claude-opus-5-5', usage: life(ttl),
+            content: [{ type: 'tool_use', id: 'toolu_ask1', name: 'AskUserQuestion', input: { questions: [{ question: 'Push now?' }] } }] } },
+        { type: 'user', timestamp: ago(1), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_ask1',
+            content: 'Your questions have been answered: "Push now?"="Push (Recommended)"' }] } },
+    ];
+    const edit = (rows, more = {}) =>
+    {
+        const q = project();
+        const tq = q.transcript(rows);
+        return q.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(q.root, 'a.txt'), old_string: 'a', new_string: 'b' }, transcript_path: tq },
+            { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'wait-ask-')), ...more }, FILES);
+    };
+    assert.strictEqual(edit(askRows(4, '5m')).status, 0, 'a 5m ask answered in 4 minutes: no hold');
+    const held = edit(askRows(6, '5m'));
+    assert.strictEqual(held.status, 2, 'answered in 6 minutes: held');
+    assert.match(held.stderr.replace(/\s+/g, ' '), /last ask waited 6 min for its answer/);
+    assert.strictEqual(edit(askRows(59, '1h')).status, 0, 'a 1h ask answered in 59 minutes: no hold');
+    assert.strictEqual(edit(askRows(61, '1h')).status, 2, 'in 61 minutes: held');
+    assert.strictEqual(edit(askRows(54, null)).status, 0, 'no split: the one-hour fallback');
+    assert.strictEqual(edit(askRows(66, null)).status, 2, 'past it: held');
+    assert.strictEqual(edit(askRows(6, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).status, 0, 'an explicit 2 overrides the cache');
+    assert.strictEqual(edit(askRows(600, '1h'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).status, 0, '0 is off');
+    // Claude Code's idle compaction (the one-hour cache only) between the ask and its answer: the context past it is unknown, no hold
+    const compacted = askRows(66, '1h');
+    compacted.splice(2, 0, { ...boundary('auto', 290000), timestamp: ago(5) });
+    assert.strictEqual(edit(compacted).status, 0, 'an idle compaction inside the gap leaves no hold');
 });
 
 // The cache-aware verdict (spec 2026-10-28, sections 1-3): claude-opus-5-5 reads at 0.05x, the 1h split writes at 2x and

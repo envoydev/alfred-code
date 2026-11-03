@@ -171,14 +171,21 @@ function compactHoldFile() {
 // THE ASK-GAP ARM (audit 2026-10-20 C49, 8a1fb350): an ask answered after a long idle never reached the idle-gap offer -
 // that route reads the gap since the last reply at a TYPED prompt, and here the gap sat inside the ask (posted 01:09,
 // answered 05:57); the first call after it re-cached ~170k and 52 messages ran at 198-244k. So a changing call whose
-// newest answered AskUserQuestion waited `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` or more leaves the idle route's hold,
-// once per ask (a marker naming its tool_use id). The common case pays one 256KB tail read and a substring test.
+// newest answered AskUserQuestion waited the idle wait or more leaves the idle route's hold, once per ask (a marker naming
+// its tool_use id). The wait is the cache life the ask's own reply wrote (fresh-session.js idleWait, usage audit 2026-11-03
+// U16 - 5m, 1h, else one hour), unless `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` names an hour count. The common case pays
+// one 256KB tail read and a substring test; the engine loads only once an answered ask is found.
+function idleWaitOf(usage) {
+  try {
+    const eng = require(nodePath.join(__dirname, 'fresh-session.js'));
+    return eng.idleWait(usage, process.env, eng.hostOf(payload));
+  } catch { return null; }   // no engine beside this hook: every offer is off anyway
+}
 function askGapArm() {
   try {
-    const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
-    const hours = Number.isNaN(n) || n < 0 ? 2 : n;
+    if (parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS')) === 0) return null;   // the route off: no read at all
     const p = payload.transcript_path;
-    if (!(hours > 0) || !p || payload.agent_id) return null;
+    if (!p || payload.agent_id) return null;
     const size = fs.statSync(p).size;
     const start = Math.max(0, size - 256 * 1024);
     const fd = fs.openSync(p, 'r');
@@ -192,9 +199,9 @@ function askGapArm() {
       if (line.includes('"AskUserQuestion"') && line.includes('"assistant"')) {
         try {
           const o = JSON.parse(line);
-          const use = o.type === 'assistant' && Array.isArray(o.message && o.message.content)
+          const use = o.type === 'assistant' && !o.isSidechain && Array.isArray(o.message && o.message.content)
             && o.message.content.find((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion');
-          if (use) { ask = { id: String(use.id || ''), at: Date.parse(o.timestamp || '') }; answeredAt = NaN; }
+          if (use) { ask = { id: String(use.id || ''), at: Date.parse(o.timestamp || ''), usage: o.message.usage || null }; answeredAt = NaN; }
         } catch { /* the window's cut first line */ }
       } else if (ask && ask.id && line.includes('"tool_result"') && line.includes(ask.id)) {
         try {
@@ -205,12 +212,13 @@ function askGapArm() {
       }
     }
     if (!ask || !ask.id || !Number.isFinite(ask.at) || !Number.isFinite(answeredAt)) return null;
-    const gapH = (answeredAt - ask.at) / 3600000;
-    if (gapH < hours) return null;
+    const gapMs = answeredAt - ask.at;
+    const wait = idleWaitOf(ask.usage);
+    if (!wait || !(wait.ms > 0) || gapMs < wait.ms) return null;
     const key = String(p || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
     const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-askgap-${key}.armed`);
     try { if (fs.readFileSync(marker, 'utf8').trim() === ask.id) return null; } catch { /* not armed for this ask */ }
-    return { id: ask.id, gapH: Math.round(gapH * 10) / 10, marker };
+    return { id: ask.id, gapH: Math.round(gapMs / 360000) / 10, gapMs, wait, marker };
   } catch { return null; }
 }
 const ASK_GAP = IS_HOLD_CALL && !IS_SKILL_CALL ? askGapArm() : null;
@@ -252,9 +260,13 @@ function paysAt(route, ctx) {
   if (row) ledgerRow(row);
   return !!v.pays;
 }
-// The idle compaction's line (fresh-session.js idleCompaction): no full context caused it, so nothing is offered.
-const IDLE_NOTE = "This session was compacted while idle - Claude Code's idle compaction, about an hour after the last reply, "
-  + 'before the prompt cache expired - not because the context filled up, so no fresh session is offered. Continue the work from the summary.';
+// The idle compaction's line (fresh-session.js idleCompaction): no full context caused it, so nothing is offered. Claude
+// Code compacts an idle conversation only while it is on the one-hour cache (code.claude.com/docs/en/prompt-caching,
+// 'Compacting the conversation'), so this line and the idle-gap offer's one-hour wait (U16) meet the same gap: the
+// compaction comes first, and the offer reads no context past it.
+const IDLE_NOTE = "This session was compacted while idle - Claude Code's idle compaction, which runs on the one-hour prompt cache "
+  + 'about an hour after the last reply, before that cache expired - not because the context filled up, so no fresh session is offered. '
+  + 'Continue the work from the summary.';
 // COMPACT INSTEAD's one line, said at the compaction start and at the first orchestration run of a session.
 const COMPACT_NOTE = 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1): past its '
   + "window's trigger the session compacts and the work goes on from the summary.";
@@ -324,11 +336,15 @@ function compactHold() {
   global.BLOCK_DETAIL = { branch: kind, ctx, floor };
   const pay = fresh.payText(ctx, fresh.freshVerdict(ctx));
   if (idle) {
+    // the gap as the offer printed it: minutes under an hour since the wait follows the cache (U16), a hold an older
+    // release wrote carrying only its hours
+    const gap = Number(hold.gapMs) > 0 && typeof fresh.gapText === 'function' ? fresh.gapText(Number(hold.gapMs))
+      : Number(hold.gapH) ? `${Number(hold.gapH)}h` : 'past its wait';
     process.stderr.write(
       (hold.via === 'ask'
-        ? `Held once: this session's last ask waited ${Number(hold.gapH) || 'over the set'}h for its answer and its prompt cache went cold; the turns since have re-written it, so the choice\n`
+        ? `Held once: this session's last ask waited ${gap} for its answer and its prompt cache went cold; the turns since have re-written it, so the choice\n`
           + `is priced as from now, and it has not been put to the user yet. ${pay}\n`
-        : `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn and its prompt cache went cold; the turns since have re-written it, so the choice\n`
+        : `Held once: this session sat idle ${gap} before this turn and its prompt cache went cold; the turns since have re-written it, so the choice\n`
           + `is priced as from now, and the one offered at the prompt has not been put to the user yet. ${pay}\n`)
       + `Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
       + `'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready resume\n`
@@ -355,12 +371,12 @@ function armAskGap() {
   const last = lastReply();
   const u = (last && last.usage) || {};
   const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
-  const detail = { gapH: ASK_GAP.gapH, ctx, floor: fresh.coldFloor(), via: 'ask-answer' };
+  const detail = { gapH: ASK_GAP.gapH, ctx, floor: fresh.coldFloor(), via: 'ask-answer', wait: ASK_GAP.wait.from, waitMin: Math.round(ASK_GAP.wait.ms / 60000) };
   if (!(ctx > 0) || !paysAt('ask-gap', ctx)) return;
   if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail }); return; }
   try {
     if (fs.existsSync(compactHoldFile())) return;
-    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', gapH: ASK_GAP.gapH }));
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', gapH: ASK_GAP.gapH, gapMs: ASK_GAP.gapMs }));
   } catch { return; }
   ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the idle hold armed by an ask answered after a long gap', detail });
 }
@@ -372,11 +388,14 @@ if (IS_HOLD_CALL && !IS_SKILL_CALL) {
 
 // THE IDLE-GAP ROUTE (audit 2026-10-10 C09, ca65b406): a next-day prompt after 19h02m idle re-cached 262.7k and ran 14
 // messages at 289.9k with no fresh-session offer - the clock route lives only in the stop contract's AskUserQuestion
-// note, and that resume asked nothing. So the prompt that ENDS a gap of `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (the
-// clock route's own knob: default 2, `0` off) since the last reply injects the offer, once per gap, when a resume
-// pays back with the cache warm (the engine's verdict) - this message re-writes the context either way, so the choice is
-// priced as from now. A harness notice is no
-// return, a seat has no user, and nobody at the terminal gets one row instead.
+// note, and that resume asked nothing. So the prompt that ENDS an idle gap past the wait since the last reply injects the
+// offer, once per gap, when a resume pays back with the cache warm (the engine's verdict) - this message re-writes the
+// context either way, so the choice is priced as from now. The wait is the cache life that last reply wrote (fresh-session.js
+// idleWait, usage audit 2026-11-03 U16: 5m or 1h, else one hour), unless `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` names
+// an hour count (`0` off) - the knob seeded 2 waited past the cache on every route. A harness notice is no return, a seat
+// has no user, and nobody at the terminal gets one row instead. Claude Code's idle compaction (the one-hour cache only,
+// about an hour after the last reply) lands inside the same gap: the context past it is unknown, so no offer follows it.
+// The last reply is the main conversation's - a sidechain row is a seat's, which neither ends the gap nor sets the life.
 function lastReply() {
   try {
     const p = payload.transcript_path;
@@ -392,7 +411,7 @@ function lastReply() {
       if (!line.includes('"assistant"')) continue;
       try {
         const o = JSON.parse(line);
-        if (o.type !== 'assistant' || !o.message || o.message.model === '<synthetic>') continue;
+        if (!o || o.type !== 'assistant' || o.isSidechain || !o.message || o.message.model === '<synthetic>') continue;
         const at = Date.parse(o.timestamp || '');
         if (!Number.isNaN(at)) last = { at, usage: o.message.usage || (last && last.usage) || null };
       } catch { /* the window's cut first line */ }
@@ -402,14 +421,14 @@ function lastReply() {
 }
 function idleGapOffer() {
   if (payload.agent_id || FRESH_OFF) return;
-  const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
-  const hours = Number.isNaN(n) || n < 0 ? 2 : n;
-  if (!(hours > 0)) return;
+  if (parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS')) === 0) return;   // the route off: no read at all
   if (harnessPrompt(payload.prompt)) return;
   const last = lastReply();
   if (!last || !last.usage) return;
-  const gapH = (Date.now() - last.at) / 3600000;
-  if (gapH < hours) return;
+  const wait = typeof fresh.idleWait === 'function' ? fresh.idleWait(last.usage, process.env, fresh.hostOf(payload)) : null;
+  const gapMs = Date.now() - last.at;
+  if (!wait || !(wait.ms > 0) || gapMs < wait.ms) return;
+  const gapH = gapMs / 3600000;
   const u = last.usage;
   const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
   if (!(ctx > 0)) return;
@@ -418,7 +437,7 @@ function idleGapOffer() {
   try { if (fs.readFileSync(marker, 'utf8').trim() === String(last.at)) return; } catch { /* not offered for this gap */ }
   if (!paysAt('idle-gap', ctx)) return;
   const floor = fresh.coldFloor();
-  const detail = { gapH: Math.round(gapH * 10) / 10, ctx, floor };
+  const detail = { gapH: Math.round(gapH * 10) / 10, ctx, floor, wait: wait.from, waitMin: Math.round(wait.ms / 60000) };
   if (unattended(payload)) {
     ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail });
     return;
@@ -432,7 +451,7 @@ function idleGapOffer() {
   // call passes it. A compaction hold already standing is kept.
   try {
     if (!fs.existsSync(compactHoldFile())) {
-      fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', gapH: detail.gapH }));
+      fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', gapH: detail.gapH, gapMs }));
     }
   } catch { /* no hold - the injection below still goes out */ }
   sweepOffers();
@@ -440,7 +459,7 @@ function idleGapOffer() {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `This session sat idle ${gapH.toFixed(1)}h since its last reply; this message has already re-written `
+      additionalContext: `This session sat idle ${fresh.gapText(gapMs)} since its last reply; this message has already re-written `
         + `the context, so the choice is priced as from now: ${fresh.payText(ctx, fresh.freshVerdict(ctx))} If this prompt starts `
         + `or continues work, first put the choice to the user as ONE `
         + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the `

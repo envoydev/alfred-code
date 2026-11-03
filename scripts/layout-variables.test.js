@@ -381,8 +381,9 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
         AUTO_COMPACT: (e) => freshAt(K('AUTO_COMPACT'), e),
         MAXIMUM_RUN_AGENTS: (e) => cap.capOf(e),
         MEMORY: (e) => tools.memoryMode({ projectRoot: empty, env: e }),
-        FRESH_SESSION_AFTER_HOURS: (e) => prelude.envOf(e, 'FRESH_SESSION_AFTER_HOURS')
-            || ['stack/hooks/guard-stop-contract.js', 'stack/hooks/guard-fresh-session-start.js'].map((f) => [...source(f).matchAll(/'FRESH_SESSION_AFTER_HOURS'\)\);\s*(?:const hours = |return )Number\.isNaN\(n\) \|\| n < 0 \? (\d+) : n/g)].map((m) => m[1])).flat().join(','),
+        // one reader since U16 (usage audit 2026-11-03): the engine's, which both hooks call - an hour count, else the
+        // word that follows the cache
+        FRESH_SESSION_AFTER_HOURS: (e) => { const n = fresh.afterHoursOf(e); return n === null ? fresh.AFTER_HOURS_FOLLOW : String(n); },
         FRESH_SESSION_PAYBACK: (e) => fresh.paybackOf(e),
         FORGE_WATCH: (e) => (/=== 'loud-only' \|\| watchSetting\(env\) === 'publish-only'\) watch = watchSetting\(env\)/.test(source('stack/hooks/forge-session.js'))
             && ['loud-only', 'publish-only'].includes(String(prelude.envOf(e, 'FORGE_WATCH') || '')) ? prelude.envOf(e, 'FORGE_WATCH') : 'all'),
@@ -399,12 +400,6 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
         const suffix = row.key.slice(K('').length);
         const unset = readers[suffix]({ CLAUDE_CONFIG_DIR: ACCT });
         const atDefault = readers[suffix]({ CLAUDE_CONFIG_DIR: ACCT, [row.key]: String(row.default) });
-        if (suffix === 'FRESH_SESSION_AFTER_HOURS')
-        {
-            const each = unset.split(',');
-            assert.ok(each.length >= 2 && each.every((v) => v === String(row.default)), `every inline reader falls back to the default: ${unset}`);
-            continue;
-        }
         if (BY_RULING.has(suffix)) { assert.notDeepStrictEqual(unset, atDefault, `${suffix}: the ruling still holds`); continue; }
         assert.deepStrictEqual(unset, atDefault, `${row.key}: nothing set reads ${JSON.stringify(unset)}, the default reads ${JSON.stringify(atDefault)}`);
     }

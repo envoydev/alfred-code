@@ -239,12 +239,13 @@
     },
     {
       "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
-      "default": "2",
+      "default": "cache",
       "ask": false,
-      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends a gap of this many HOURS since the last reply (or since an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). Decimals work (`0.5`); `0` turns the idle offer off. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
+      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends an idle gap since the last reply (or an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). `cache` (the default) waits the prompt cache's own life, read from the last reply: 5 minutes on an API key, credits or a cloud provider, 1 hour on a subscription, and 1 hour where the host records none (usage audit 2026-11-03 U16 - the old seed 2 waited past both, so the gap's first message had already paid the cold re-write). An hour count instead is a fixed wait; decimals work (`0.5`); `0` turns the idle offer off. The stop contract's clock note keeps 2 hours under `cache`. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
       "validate": {
         "type": "hours",
-        "off": "0"
+        "off": "0",
+        "follow": "cache"
       }
     },
     {

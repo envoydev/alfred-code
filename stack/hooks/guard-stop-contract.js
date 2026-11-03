@@ -233,12 +233,16 @@ function paysAt(route, ctx) {
 // branch, which blocks). Context is not the only thing that makes a resume worth it: 63.5% of the
 // audited collection's cache-read was paid under the 1M window's own trigger, and the flows' stop
 // contracts already say 'spans hours, or resumes after an idle gap' - as prose, which slipped in 3
-// of 3 bundles that tested it. Hours, not tokens, and `0` switches this route off. Not seeded by
-// the installers: the trigger NUMBERS are the user's ruling and this one is deliberately an
-// override, not a setting, until the block rate says what it should be.
+// of 3 bundles that tested it. Hours, not tokens, and `0` switches this route off. Since the idle
+// offer's wait follows the prompt cache (usage audit 2026-11-03 U16, fresh-session.js idleWait), the
+// knob's default is 'follow the cache' - and this route keeps its own 2h then: it judges how long the
+// SESSION has been open as well as its longest gap, and a 5m cache life would put the note on nearly
+// every ask. An explicit hour count still sets both routes.
+const CLOCK_HOURS = 2;
 const FRESH_AFTER_HOURS = (() => {
-  const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
-  return Number.isNaN(n) || n < 0 ? 2 : n;
+  const n = typeof fresh.afterHoursOf === 'function' ? fresh.afterHoursOf()
+    : (() => { const v = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS')); return Number.isNaN(v) || v < 0 ? null : v; })();
+  return n === null ? CLOCK_HOURS : n;
 })();
 
 // How far the context must grow before the fresh-session offer is made again (see below).

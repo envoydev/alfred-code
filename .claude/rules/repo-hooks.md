@@ -1082,7 +1082,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     when a fresh session pays back with the cache warm (THE VERDICT below),
     re-arms at 1.5x growth - counted from its own block or the newest fresh-session ask answered in ANY turn, at that
     ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same
-    offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off). The offer waits
+    offer under the window (the clock note, `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`: an hour count, `0` off; at the
+    seeded `cache` the note keeps 2h, `CLOCK_HOURS`, since it judges the session's span too). The offer waits
     while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).
     THE VERDICT (the cache-aware design of 2026-10-28; the user's report of offers near 100k with the prompt cache warm):
     every route that offers, recommends, holds for or demands a fresh session asks `fresh-session.js` `freshVerdict(ctx)`
@@ -1190,8 +1191,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the open flow stamps with their ages, the files this session wrote, no model call) and records an automatic
     compaction's context in `compact-points.json`; the compact start points at the state file - and, for a SLASH run,
     says to re-read its body, which the harness re-attaches only for a Skill call - even with every fresh-session offer off.
-    `UserPromptSubmit` carries only the idle-gap offer: the prompt that ends a gap past the clock route's
-    `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` since the last reply injects the ask once per gap (`guard-fresh-idle-*`), with
+    `UserPromptSubmit` carries only the idle-gap offer: the prompt that ends a gap past the IDLE WAIT since the last
+    main-conversation reply (a sidechain row is a seat's) injects the ask once per gap (`guard-fresh-idle-*`), with
     the carry and cold floor, when a fresh session pays back with the cache warm - never for a task notice, a seat, a carry past a compaction
     or nobody at the terminal (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). The
     injection was spent on a question answered from context (audit 2026-10-11 SD11, fdce35ae / 2ca8e8ee), so the gap
@@ -1199,8 +1200,21 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     shell call that writes nothing passes it, and the first CHANGING call is denied with the numbers (`idle-hold`
     rows), released exactly as the compaction hold is. The compaction hold passes a shell call that writes nothing too,
     idle or not (audit 2026-10-20 C12: a read-only `cat COMPACT-STATE` was the first post-compaction call and forced an
-    ask); a changing call after an `AskUserQuestion` whose answer came past the clock route's hours arms the idle hold
-    once per ask (C49: an ask answered next morning never reached the prompt-route offer). A compaction point more than
+    ask); a changing call after an `AskUserQuestion` whose answer came past the idle wait arms the idle hold
+    once per ask (C49: an ask answered next morning never reached the prompt-route offer). THE IDLE WAIT (usage audit
+    2026-11-03 U16: the seeded 2h waited past the cache on every route, so the gap's first message had paid the cold
+    re-write long before the offer) follows the prompt cache: `fresh-session.js idleWait(usage)` takes the life the
+    reply before the gap wrote - the last reply on the prompt route, the ask's own on the ask route - through a HOST
+    ADAPTER, `cacheLifeOf` (Claude Code's reader takes `message.usage.cache_creation`: `ephemeral_1h_input_tokens` is
+    1h, `ephemeral_5m_input_tokens` 5m; Cursor and Codex keep no such record, so no reader); both zero or absent, or a
+    host with no reader, is the neutral fallback, 1h. `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` is seeded `cache`
+    (anything not an hour count follows the cache, `afterHoursOf`), an hour count overrides on every host and `0` is
+    off; `meta/migrations.json` `idle-wait-follows-the-cache` moves the stack's own old seed `2` to `cache`, ledger-aware,
+    so a typed 2 stays. A subscription gets 1h, credits, an API key or a cloud provider 5m, a subagent 5m, and
+    `promptCacheTtl` / `CLAUDE_CODE_PROMPT_CACHE_TTL` pick one (code.claude.com/docs/en/prompt-caching, verified
+    2026-11-03); Claude Code's idle compaction runs on the 1h cache only, so it lands inside that gap first and the
+    offer reads no context past it (IDLE_NOTE). The texts print a gap under an hour in minutes (`gapText`), and the
+    `idle-gap-offer` row carries `wait` (setting, cache, fallback) and `waitMin`. A compaction point more than
     5% over the configured `autoCompactWindow`, in a session started after the settings file was written, makes
     `autoCompactWindow()` return null - the hook says once that the window was not honoured and names `/autocompact`
     (C10: a 350k value in `settings.local.json` compacted at 466.8k-469.7k in three sessions; cause unproven, the docs

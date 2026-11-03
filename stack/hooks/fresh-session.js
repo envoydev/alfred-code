@@ -704,6 +704,58 @@ function readTtl(tail = 64 * 1024) {
   } catch { /* unreadable - the default */ }
   return { ttl: '5m', ttlFrom: 'fallback', version };
 }
+// ---- the idle wait (usage audit 2026-11-03 U16) ---------------------------------------------------------------------------
+// How long a session sits idle before the prompt that ends the gap, or an ask answered after one, is offered a fresh
+// session. It waited ALFRED_CODE_FRESH_SESSION_AFTER_HOURS, seeded 2 - past the cache life on every route: a subscription's
+// main conversation caches for 1h, credits, an API key or a cloud provider for 5m, a subagent for 5m, and
+// `promptCacheTtl` / `CLAUDE_CODE_PROMPT_CACHE_TTL` pick either (code.claude.com/docs/en/prompt-caching, 'Which TTL each
+// request gets'). So the gap's first message had paid the cold re-write an hour or more before anyone was asked. The wait
+// now FOLLOWS THE CACHE: the life the session's last main-conversation reply wrote, read by the host's own reader (the
+// HOST ADAPTER below). A host that keeps no such record, or a reply that wrote none, takes the neutral fallback - the
+// explicit setting, else one hour. An explicit hour count overrides on every host, and `0` turns the route off.
+const AFTER_HOURS_FOLLOW = 'cache';   // the catalog's default word (meta/environment.json): anything not an hour count follows
+const CACHE_LIFE_MS = Object.freeze({ '1h': 3600000, '5m': 300000 });
+const IDLE_WAIT_FALLBACK_MS = 3600000;
+// The knob: a non-negative hour count (decimals work, `0` off) is the user's wait; anything else - unset, 'cache', garbage,
+// a negative - is null, follow the cache.
+function afterHoursOf(env = process.env) {
+  const n = parseFloat(envOf(env || {}, 'FRESH_SESSION_AFTER_HOURS'));
+  return Number.isNaN(n) || n < 0 ? null : n;
+}
+// THE HOST ADAPTER. A reader per host takes the newest main-conversation reply's usage and answers the cache life that
+// reply wrote, in ms, or null for none. Claude Code's transcript records it as `message.usage.cache_creation` -
+// `ephemeral_1h_input_tokens` / `ephemeral_5m_input_tokens` - the 1h split first, as cacheTtl reads it. Cursor and Codex
+// keep no such record, so they have no reader and every reply there takes the fallback.
+function claudeCodeCacheLife(usage) {
+  const split = usage && typeof usage === 'object' ? usage.cache_creation : null;
+  if (!split || typeof split !== 'object') return null;
+  if (Number(split.ephemeral_1h_input_tokens) > 0) return CACHE_LIFE_MS['1h'];
+  if (Number(split.ephemeral_5m_input_tokens) > 0) return CACHE_LIFE_MS['5m'];
+  return null;
+}
+const CACHE_LIFE_READERS = Object.freeze({ 'claude-code': claudeCodeCacheLife });
+// The host that sent the payload: Cursor by the payload alone (hook-prelude.js cursorHost, never the environment), else
+// Claude Code. A host this file cannot tell apart reads as Claude Code, whose reader finds no split in a record it did not write.
+function hostOf(p = payload) {
+  try { if (typeof prelude.cursorHost === 'function' && prelude.cursorHost(p)) return 'cursor'; } catch { /* read as Claude Code */ }
+  return 'claude-code';
+}
+function cacheLifeOf(usage, host = hostOf()) {
+  const reader = Object.prototype.hasOwnProperty.call(CACHE_LIFE_READERS, host) ? CACHE_LIFE_READERS[host] : null;
+  if (!reader) return null;
+  try { return reader(usage); } catch { return null; }
+}
+// The wait: { ms, from } - 'setting' (an explicit hour count; ms 0 is off), 'cache' (the life the reply wrote) or
+// 'fallback' (no record: one hour).
+function idleWait(usage, env = process.env, host = hostOf()) {
+  const hours = afterHoursOf(env);
+  if (hours !== null) return { ms: hours * 3600000, from: 'setting' };
+  const life = cacheLifeOf(usage, host);
+  return life ? { ms: life, from: 'cache' } : { ms: IDLE_WAIT_FALLBACK_MS, from: 'fallback' };
+}
+// A gap as the texts print it: whole minutes under an hour ('6 min'), else hours to one decimal ('2.1h').
+const gapText = (ms) => (ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))} min` : `${(ms / 3600000).toFixed(1)}h`);
+
 // The verdict at this carry. No reading (ctx 0), an unmeasured floor and P 0 each answer no: the arithmetic cannot be
 // done, and no route offers at an unknown carry. `breakEven` is the messages fresh needs to pay back, rounded up; null
 // when the carry is no more than G (or unread). `readShare` is reported, never priced.
@@ -930,6 +982,7 @@ module.exports = {
   tableWindow, recordSessionModel, knownWindow, ctxThreshold, coldFloor, firstUsage, worthResuming, contextNow,
   RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
   verdictRow, verdictProbe,
+  AFTER_HOURS_FOLLOW, CACHE_LIFE_MS, IDLE_WAIT_FALLBACK_MS, afterHoursOf, CACHE_LIFE_READERS, hostOf, cacheLifeOf, idleWait, gapText,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   truePoints, compactionFacts, idleCompaction, settleCompactPoints, readWindow,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
