@@ -94,8 +94,10 @@ function autoUpdateState({ projectRoot = process.cwd(), env = process.env, manag
     const { layers, userFile, knownFile } = layersOf({ projectRoot, env, managedFile });
     const user = layers.find((l) => l.kind === 'user');
     const off = (source) => OFF_ENV.find((k) => isSet(source[k]));
-    const forced = isSet(env[FORCE_ENV]) || layers.some((l) => l.read.state === 'ok' && isObj(l.read.data.env) && isSet(l.read.data.env[FORCE_ENV]));
-    const offKey = off(env) || layers.map((l) => (l.read.state === 'ok' && isObj(l.read.data.env) ? off(l.read.data.env) : null)).find(Boolean);
+    // Claude Code's own switches, never a stack key: the launch env, then each settings file's `env` block.
+    const blocks = [env, ...layers.map((l) => (l.read.state === 'ok' && isObj(l.read.data.env) ? l.read.data.env : {}))];
+    const forced = blocks.some((b) => isSet(b.FORCE_AUTOUPDATE_PLUGINS));
+    const offKey = blocks.map(off).find(Boolean);
     if (offKey && !forced) return notAsked(`${offKey} is set, so Claude Code runs no plugin auto-update (${FORCE_ENV}=1 lifts it)`);
     if (user.read.state === 'unreadable') return notAsked(`${userFile} is not valid JSON - left as it is`);
     const known = readFile(knownFile);
