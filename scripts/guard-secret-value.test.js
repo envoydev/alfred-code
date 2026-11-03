@@ -1637,10 +1637,13 @@ test('guard-secret-value: a translation bundle holds labels, not credentials', (
   const dir = fs.mkdtempSync(path.join(TMP, 'i18n-'));
   fs.mkdirSync(path.join(dir, 'i18n'), { recursive: true });
   const bundle = path.join(dir, 'i18n', 'uk.json');
-  fs.writeFileSync(bundle, JSON.stringify({ login: { password: 'Пароль', token: 'Токен', secret: 'Secret question' } }, null, 2));
+  // The translated labels are generated from code points (foreignWords): no other language is written into this repo's code.
+  const { foreignWords } = require('./hook-test-env');
+  const label = foreignWords(1, 51);
+  fs.writeFileSync(bundle, JSON.stringify({ login: { password: label, token: foreignWords(1, 52), secret: 'Secret question' } }, null, 2));
   assert.equal(bash(`cat ${bundle}`), 0, 'a translation file is read as written');
   const plain = path.join(dir, 'labels.json');
-  fs.writeFileSync(plain, JSON.stringify({ password: 'Пароль' }, null, 2));
+  fs.writeFileSync(plain, JSON.stringify({ password: label }, null, 2));
   assert.equal(bash(`cat ${plain}`), 0, 'a non-ASCII label is a label wherever it sits - a machine credential is ASCII');
   // ... and a real credential is still a credential, in the same tree and outside it
   const real = path.join(dir, 'i18n', 'en.json');

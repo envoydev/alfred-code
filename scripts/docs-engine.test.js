@@ -2384,7 +2384,7 @@ test('adr new: a title that needs a slug keeps its words in the record and the i
     assert.ok(r.exists(`${DEC}/0001-cache-redis-sessions-carts-v2.md`), out.stdout);
     assert.match(r.read(`${DEC}/0001-cache-redis-sessions-carts-v2.md`), /^# ADR-0001: Cache: Redis \| "sessions" & carts \(v2\)!\n/);
     assert.match(r.read(`${DEC}/DECISIONS.md`), /\| Cache: Redis \\\| "sessions" & carts \(v2\)! \| Proposed \|/, 'a pipe in the title cannot split the row');
-    assert.strictEqual(r.cli(['adr', 'new', 'Кеш сесій']).status, 0);
+    assert.strictEqual(r.cli(['adr', 'new', require('./hook-test-env').foreignWords(2, 41)]).status, 0);   // non-English, generated from code points
     assert.ok(r.exists(`${DEC}/0002-decision.md`), 'a title with nothing to slug still gets a file name');
     const bare = r.cli(['adr', 'new', '   ']);
     assert.strictEqual(bare.status, 1);
