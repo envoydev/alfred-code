@@ -43,11 +43,10 @@ function envOf(env, suffix)
 }
 
 // One ALFRED_CODE_<suffix> setting as a script outside a session sees it: the shell env, then this machine's file before
-// the shared one, the way Claude Code layers them - the files are read here, since no session hands their env over. '' when none of them names it. `key` reads another tool's own variable
-// by its exact name instead (UV_EXCLUDE_NEWER), with no ALFRED_CODE_ or legacy spelling.
-function settingFrom({ env, projectDir, suffix, key })
+// the shared one, the way Claude Code layers them - the files are read here, since no session hands their env over. '' when none of them names it.
+function settingFrom({ env, projectDir, suffix })
 {
-    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);
+    const read = (e) => envOf(e, suffix);
     const own = String(read(env) || '').trim();
     if (own || !projectDir) return own;
     const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');

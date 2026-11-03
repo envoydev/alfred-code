@@ -264,7 +264,7 @@ function readLedger(file)
 const secretsLine = (by, ms) => { const who = by === null ? `run-${ms}` : by; return who ? `secrets: dual ${who}` : 'secrets: dual'; };
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '' } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '' } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -294,6 +294,7 @@ function renderStamp(fields)
         ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
         ...(data && data.kept ? ['data-move: kept'] : []),
         ...(data && data.secrets ? [secretsLine(data.secrets.by, installedMs)] : []),
+        ...(MEMORY_LIFT_FILES.includes(memoryLift) ? [`memory-lift: pending ${memoryLift}`] : []),
         ...(['agents', 'claude'].includes(instructionsFile) ? [`instructions-file: ${instructionsFile}`] : []),
         ...(Array.isArray(ownPicks) ? [`own-picks: ${[...new Set(ownPicks)].map((l) => l.replace(' ', '/')).sort().join(',')}`] : []),
         ...(Array.isArray(ownEnv) ? [`own-env: ${[...new Set(ownEnv)].sort().join(',')}`] : []),
@@ -323,7 +324,7 @@ function writeStamp(opts)
 {
     const {
         source, action, scope, configDir, projectRoot, hooksCatalog, hooksRoute, seatsRoute, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
-        instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', version = '', now = new Date(), log = () => {}, note = () => {},
+        instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }) });
 
@@ -350,7 +351,7 @@ function writeStamp(opts)
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
             alwaysRules: always.rules, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
-            instructionsFile, ownPicks, ownEnv, instructionsBoth,
+            instructionsFile, ownPicks, ownEnv, instructionsBoth, memoryLift,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -540,6 +541,18 @@ function readDataLines(file)
     const dual = /^secrets: *dual(?: +(\S+))? *$/m.exec(text);
     return { root: dr.checkDataPath(root).ok ? root : '', pending: dr.readPending(text), kept: /^data-move: *kept *$/m.test(text),
         secrets: dual ? { by: dual[1] || '' } : null };
+}
+
+// E-batch mcp-A6: `memory-lift: pending <file>` - the 2.10.1 lift of Claude's own memory switch-off could not read that
+// settings file, so a later run retries it there whatever the stamp's release (alfred-code.js liftMemorySwitchOff). '' with no
+// stamp, no line or a file name that is neither settings file.
+const MEMORY_LIFT_FILES = ['settings.json', 'settings.local.json'];
+function readMemoryLift(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return ''; }
+    const named = (/^memory-lift: *pending +(\S+) *$/m.exec(text) || [])[1] || '';
+    return MEMORY_LIFT_FILES.includes(named) ? named : '';
 }
 
 // The instruction file's name the user answered (`instructions-file: agents|claude`) - '' with no stamp, no line or a
@@ -739,7 +752,7 @@ module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
     readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, SERVER_NAME, validServerName, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
-    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS,
+    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS, readMemoryLift,
 };
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for

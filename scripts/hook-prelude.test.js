@@ -967,6 +967,22 @@ test('HOOKS_OFF: an old hook name in the csv still switches the renamed hook off
   assert.strictEqual(prelude.hookDisabled('guard-stop-contract.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }), false, 'no other hook');
 });
 
+// E-batch B-m6: memory-session.js's host traps live on as preferences-session's `host` part, and a stored `memory-session` turns
+// that part off before any update re-spells it. A part never stands the whole hook down - here or in the config guard, whose
+// protective set holds whole-hook names only.
+test('B-m6: a stored memory-session turns the host part off before an update', () => {
+  const prelude = require('../stack/hooks/hook-prelude.js');
+  const env = { ALFRED_CODE_HOOKS_OFF: 'memory-session' };
+  assert.strictEqual(prelude.HOOK_RENAMED['memory-session'], 'preferences-session:host');
+  assert.strictEqual(prelude.partOff('preferences-session', 'host', env), true, 'the old name turns the part off');
+  assert.strictEqual(prelude.partOff('preferences-session', 'host', { ALFRED_CODE_HOOKS_OFF: 'Memory-Session.js' }), true, 'with .js, any case');
+  assert.strictEqual(prelude.partOff('preferences-session', 'tools', env), false, 'no other part');
+  assert.strictEqual(prelude.hookDisabled('preferences-session', env), false, 'never the whole hook');
+  assert.strictEqual(prelude.hookDisabled('memory-session', env), false, 'nor a hook named by the old spelling');
+  const guard = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'guard-config-protection.js'), 'utf8');
+  assert.match(guard, /\.filter\(\(n\) => PROTECTIVE_GUARDS\.includes\(n\)\)/, 'the config guard keeps whole-hook names only');
+});
+
 // The user's 'Fix ALL left gaps' (2026-10-22): a seat covers what its brief names, a review counts at its result line,
 // and the snapshot matches byte for byte only.
 test('briefTargets: a whole-change git diff, else the paths a brief names that exist, else nothing', () =>

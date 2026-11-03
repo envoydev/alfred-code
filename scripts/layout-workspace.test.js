@@ -479,3 +479,15 @@ test('300-memdirs: an untrusted read takes the root settings.local.json', () =>
     git('worktree', 'add', '-q', path.join(m.at('.'), 'p-wt'), '-b', 'feat');
     assert.deepStrictEqual(memOf(m, 'p-wt'), [path.resolve('/p-root-local')], 'a worktree reads the main checkout\'s settings.local.json');
 });
+
+// E-batch mcp-A7d: `key` read another tool's variable by its exact name (UV_EXCLUDE_NEWER) for a server launcher that left in
+// 2.10.1 - no caller passes it. Both copies drop it together (meta/shared-rules.json data-path-setting holds them equal).
+test('A7d: settingFrom takes no key', () =>
+{
+    const params = (rel) => (/function settingFrom\(\{([^}]*)\}\)/.exec(fs.readFileSync(path.join(__dirname, '..', rel), 'utf8')) || [])[1];
+    const hooks = params('stack/hooks/layout.js');
+    const mcpCopy = params('stack/mcp/data-root.js');
+    assert.ok(hooks, 'layout.js settingFrom not found');
+    assert.strictEqual(hooks, mcpCopy, 'the two copies take different parameters');
+    assert.doesNotMatch(hooks, /\bkey\b/, hooks);
+});

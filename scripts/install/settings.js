@@ -242,7 +242,7 @@ function readSettings(file)
     let raw;
     try { raw = fs.readFileSync(file, 'utf8'); }
     catch (err) { const e = new Error(`${path.basename(file)} could not be read (${err.code || err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
-    // An empty file holds nothing to lose: no settings yet, as memory.js writeSwitchOff reads it (release matrix 2026-10-20).
+    // An empty file holds nothing to lose: no settings yet, as docs.js reads it too (release matrix 2026-10-20).
     if (!raw.trim()) return { data: {}, existed: true };
     let parsed;
     try { parsed = parseJson(raw); }
@@ -427,7 +427,8 @@ const isStackKey = (key) => key.startsWith('ALFRED_CODE_');
 // C8 (R100, R101): keys that hold a value of THIS machine - the retired memory server's database path, which no run
 // writes since 2.10.1 (an update's env pass drops the one an earlier release wrote, meta/migrations.json's
 // memory-db-retired). At every scope they live in settings.local.json, never in the committed settings.json, so a scope
-// move leaves one where it is.
+// move leaves one where it is. It stays listed after the retirement (E-batch mcp-A7e): the scope move (leaveLocalScope) runs
+// before the env pass, and without it a local-to-project move calls the leftover 'your value' a line before the pass drops it.
 const PERSONAL_KEYS = ['ALFRED_CODE_MEMORY_DB'];
 
 // Steps 2 and 3 of the env pass, in place, over the keys `only` admits. `stackWrote(label, key, value)` answers from the

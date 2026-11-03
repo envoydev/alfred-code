@@ -428,8 +428,8 @@ function main() {
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
     startNote = recordUntracked(input, root);
   }
-  // On the PLUGIN route this hook runs from the marketplace clone, where docs.js/memory.js/
-  // history.js are all tracked - so a never-set-up project under a user-scope core never reaches
+  // On the PLUGIN route this hook runs from the marketplace clone, where docs.js and
+  // history.js are both tracked - so a never-set-up project under a user-scope core never reaches
   // this line (M1, R47 fix round 1: the require always resolves there). The case that CAN happen is
   // a partial or skewed copy on the HOOKS COPY ROUTE (ALFRED_CODE_HOOKS_VIA_PLUGIN=false), where
   // docs.js failed to land beside this file - exit silently for exactly THAT missing-module case,

@@ -235,7 +235,9 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = 
     // A hook a release renamed (manifest `renamed.hooks`) reads under its new name wherever an older install names it -
     // a copied file (deriveFromDisk below), the stamp's shipped list and an ALFRED_CODE_HOOKS_OFF value - so a hook the
     // user switched off stays off under its new name, and one they kept is no new hook to adopt.
-    const hookRenames = (manifest.renamed && manifest.renamed.hooks) || {};
+    // A value naming a PART (`<hook>:<part>`, B-m6) is an off-list spelling alone: the settings writer re-spells the stored
+    // csv to it, the prelude reads the old name as it, and no hook name here becomes one.
+    const hookRenames = Object.fromEntries(Object.entries((manifest.renamed && manifest.renamed.hooks) || {}).filter(([, to]) => !String(to).includes(':')));
     const hookNow = (h) => { const bare = String(h).trim().replace(/\.js$/, ''); return Object.hasOwn(hookRenames, bare) ? hookRenames[bare] : h; };
     const offNow = (e) => (e && typeof e === 'object' && envOf(e, 'HOOKS_OFF') != null
         ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
@@ -443,7 +445,8 @@ const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mc
 function renamedTo({ renamed, kind, name, log = () => {}, said = new Set() })
 {
     const to = ((renamed && renamed[RENAMED_KIND[kind]]) || {})[name];
-    if (!to) return name;
+    // A hook renamed to a PART (B-m6) keeps its name: a part is no item a selection line can carry.
+    if (!to || (kind === 'hook' && String(to).includes(':'))) return name;
     if (!said.has(`${kind} ${name}`)) { said.add(`${kind} ${name}`); log(`renamed: ${kind} ${name} -> ${to}`); }
     return to;
 }

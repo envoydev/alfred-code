@@ -624,6 +624,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept, secrets: secretsAt },
             instructionsFile: ctx.instructionsAnswer,
             ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
+            memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
         });
 
         summarise(ctx, failures);
@@ -1752,7 +1753,7 @@ function retiredApprovals(ctx)
 // block that says what went, how to add each back and where its data stayed.
 function retiredServersStep(ctx, mcpBefore)
 {
-    liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, ledger: ctx.ledger, memory: ctx.args.memory || null, writerFollows: true, log: ctx.log, note: ctx.note });
+    ctx.memoryLift = liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, ledger: ctx.ledger, memory: ctx.args.memory || null, writerFollows: true, log: ctx.log, note: ctx.note });
     liftMcpDenied(ctx);
     dropEmptiedMcpJson(ctx, mcpBefore);
     sayRetiredServers(ctx);
@@ -1762,19 +1763,24 @@ function retiredServersStep(ctx, mcpBefore)
 // run's own settings file (settingsTarget - never the account's). The server is gone, so the switch-off goes: on the first
 // update or uninstall past the memory server's retirement (the stamp's release before its row's `retiredIn`, or a pre-stamp
 // install whose installer wrote it too), from this run's file alone. A switch-off set after that is the user's and stays.
+// E-batch mcp-A6: a file that cannot be read is retried - the answer is the settings file the stamp's `memory-lift: pending`
+// line names ('' when nothing is left to lift), and a later run at the scope that writes that file lifts it whatever the
+// stamp's release. A run at another scope carries the line as it was.
 function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, claudeDir, scope, ledger = null, memory = null, writerFollows = false, log, note })
 {
     const row = readRetiredPlugins(sourceDir).find((r) => r.name === 'alfred-memory');
     const last = stampLayer.readVersion(stampFile);
-    if (!row || !row.retiredIn || !((last && compareVersions(last, row.retiredIn) < 0) || legacyUnstamped)) return;
     const file = settings.settingsTarget(claudeDir, scope);
-    if (!fs.existsSync(file)) return;
+    const pending = stampLayer.readMemoryLift(stampFile);
+    const retry = pending === path.basename(file);
+    if (!row || !row.retiredIn || !((last && compareVersions(last, row.retiredIn) < 0) || legacyUnstamped || retry)) return pending;
+    if (!fs.existsSync(file)) return '';
     // Custom memory's switch-off (the writer's memory pass) is ledgered; the old server's never was.
-    if (Object.hasOwn(((ledger && ledger.settings) || {})[path.basename(file)] || {}, 'autoMemoryEnabled')) return;
+    if (Object.hasOwn(((ledger && ledger.settings) || {})[path.basename(file)] || {}, 'autoMemoryEnabled')) return '';
     let data;
     try { ({ data } = settings.readSettings(file)); }
-    catch (err) { note(`${err.message} - autoMemoryEnabled was not checked there`); return; }
-    if (data.autoMemoryEnabled !== false) return;
+    catch (err) { note(`${err.message} - autoMemoryEnabled was not checked there; the next update checks it again`); return path.basename(file); }
+    if (data.autoMemoryEnabled !== false) return '';
     delete data.autoMemoryEnabled;
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
     // Custom memory chosen for this file: the writer pass after this puts the switch-off straight back, ledgered, with its own
@@ -1788,8 +1794,9 @@ function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, cl
     // The merged view (D4): settings.local.json over .variables over settings.json.
     const own = variables.read(variables.fileOf(path.dirname(claudeDir), { env: {} })).values;
     const chosen = memory || (scope === 'local' ? { ...beside, ...own, ...envOf(data) } : { ...envOf(data), ...own, ...beside }).ALFRED_CODE_MEMORY;
-    if (writerFollows && chosen === 'custom' && !elsewhere) return;
+    if (writerFollows && chosen === 'custom' && !elsewhere) return '';
     log(`  ${path.basename(file)}: autoMemoryEnabled: false removed - the stack switched Claude's own memory off for its memory server, which it ships no more; set it back to keep it off`);
+    return '';
 }
 
 // The deniedMcpServers rows an earlier release wrote (the stamp's mcp-denied line) switched a broader-scope stack server off
@@ -2427,4 +2434,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, BROWSER_TOOLS_OFF };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY };

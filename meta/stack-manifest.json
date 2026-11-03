@@ -1394,7 +1394,8 @@
       "macos-desktop": "macos-control"
     },
     "hooks": {
-      "guard-answer-length": "guard-answer"
+      "guard-answer-length": "guard-answer",
+      "memory-session": "preferences-session:host"
     }
   },
   "renamedTopics": {

@@ -49,7 +49,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   before, whichever file holds the value. Beside the gates,
   The csv opt-out reads a hook's OLD name too (`HOOK_RENAMED`, the manifest's `renamed.hooks` copied inline and held equal
   by `hook-prelude.test.js`: `guard-answer-length` still switches guard-answer off - audit 2026-10-20, the hooks track's
-  minor list). AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past
+  minor list). A value may name a PART (E-batch B-m6): `memory-session` -> `preferences-session:host`, where the retired
+  hook's host traps live on - `partOff` reads the old name as that part, `hookDisabled` never as a whole hook, the settings
+  writer re-spells a stored one, and `selection.js` keeps it out of every hook name and selection line. AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past
   its auto-continue timeout itself - `afkTimeoutMs` on the result, 'No response after <N>s - the user may be away from
   keyboard' in the text the model reads, partial picks after it (the 2.1.304 bundle;
   code.claude.com/docs/en/tools-reference, 'Question auto-continue timeout'). `askTimedOut` reads either, and every

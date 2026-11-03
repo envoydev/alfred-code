@@ -1,7 +1,7 @@
 // fresh-session.js - the fresh-session ARITHMETIC guard-stop-contract.js and
 // guard-fresh-session-start.js share: the trigger per window tier, which window this session runs
 // in, and what a resume would recover. An ENGINE, copied beside the hooks and never wired (the
-// docs.js / memory.js pattern): both hooks require it through __dirname, so the plugin cache and a
+// docs.js / history.js pattern): both hooks require it through __dirname, so the plugin cache and a
 // copied install find it the same way, and model-windows.json is read from beside it.
 // The two copies it replaces were identical, block for block, when they were moved here.
 'use strict';

@@ -220,9 +220,9 @@ function projectRootOf(start, { home = require('os').homedir() } = {})
 
 // One ALFRED_CODE_<suffix> setting as a script outside a session sees it: the shell env, then this machine's file before
 // the shared one, then the account's.
-function settingFrom({ env, projectDir, suffix, key })
+function settingFrom({ env, projectDir, suffix })
 {
-    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);
+    const read = (e) => envOf(e, suffix);
     const own = String(read(env) || '').trim();
     if (own || !projectDir) return own;
     const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');

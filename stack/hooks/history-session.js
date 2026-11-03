@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // history-session.js - SessionStart + Stop. Thin: the engine history.js sits beside it (copied, not
-// wired - the docs.js / memory.js split). Stop upserts this session's entry under <data root>/state/history/.
+// wired - the docs-session.js / docs.js split). Stop upserts this session's entry under <data root>/state/history/.
 // SessionStart does the same (it pins the start commit), prunes, and injects the last entries of
 // THIS branch - what they committed, left dirty and ruled. No model call; ALFRED_CODE_HISTORY is how many earlier sessions the start block
 // shows (seeded 3, at most 10; the block's cap is 150 chars plus 150 per session), and `0` is off.
@@ -42,7 +42,7 @@ function wiringRows(rows) {
 
 const STDIN_TIMEOUT_MS = 2000;
 
-// Bounded like memory-session.js: a stdin that never closes must not hold the hook past its budget.
+// Bounded like forge-session.js: a stdin that never closes must not hold the hook past its budget.
 function readStdinBounded(timeoutMs) {
   return new Promise((resolve) => {
     let data = '';

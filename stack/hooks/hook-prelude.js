@@ -136,8 +136,9 @@ function switchOn(suffix, env)
 
 // A hook's OLD name in the csv still switches it off (audit 2026-10-20, the hooks track's minor list: the csv is the
 // user's own text, and an update never rewrites it). Old name -> new, the manifest's `renamed.hooks`, copied here so the
-// prelude stays standalone; hook-prelude.test.js holds the two equal.
-const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'guard-answer' });
+// prelude stays standalone; hook-prelude.test.js holds the two equal. A value may name a PART (`<hook>:<part>`, E-batch B-m6:
+// the retired memory-session.js's host traps live on as preferences-session's `host`): it switches that part off in partOff, never a hook.
+const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'guard-answer', 'memory-session': 'preferences-session:host' });
 function hookDisabled(hook, env)
 {
     const source = env || process.env;
@@ -145,7 +146,7 @@ function hookDisabled(hook, env)
     if (!off.trim()) return false;
     const wanted = baseName(hook);
     if (!wanted) return false;
-    return off.split(',').map(baseName).filter(Boolean).map((n) => HOOK_RENAMED[n] || n).includes(wanted);
+    return off.split(',').map(baseName).filter(Boolean).map((n) => HOOK_RENAMED[n] || n).filter((n) => !n.includes(':')).includes(wanted);
 }
 
 // A hook's PART is switched off as `<hook>:<part>` in the same csv (the env audit of 2026-10-21 folded six per-part keys
@@ -163,7 +164,7 @@ function partOff(hook, part, env)
     const legacy = PART_SWITCHES[wanted];
     if (legacy && String(envOf(source, legacy) || '').trim() === '0') return true;
     const off = String(envOf(source, 'HOOKS_OFF') || '');
-    return off.split(',').some((entry) => {
+    return off.split(',').map((entry) => HOOK_RENAMED[baseName(entry)] || entry).some((entry) => {
         const at = entry.indexOf(':');
         return at > 0 && `${baseName(entry.slice(0, at))}:${entry.slice(at + 1).trim().toLowerCase()}` === wanted;
     });
@@ -1673,7 +1674,7 @@ function scanBudget(limits = {})
 // downloaded tree): a `core.fsmonitor` that repository's own config names is a program git starts on any status-like
 // read, and an optional lock is a write. `gitSafe(argv, opts)` returns spawnSync / execFileSync's arguments with both
 // switched off: `spawnSync(...gitSafe(['status'], { cwd }))`. The engines copied without this file (docs.js,
-// history.js, memory.js) spell the same two inline; a test sweeps every hook file for a git spawn that does neither.
+// history.js) spell the same two inline; a test sweeps every hook file for a git spawn that does neither.
 // The temp roots a scratch write or a scratch commit lands under, realpathed: os.tmpdir(), and the harness's per-user
 // scratch root /tmp/claude-<uid> with its macOS /private spelling (POSIX only). One home for guard-ungated-commit.js's
 // scratch-commit rule and docs-session.js's scratch-write rule (usage audit 2026-11-03 U27-2).
