@@ -863,14 +863,16 @@ function main(argv)
     if (dependentsOf)
     {
         const i = dependentsOf.indexOf(':');
-        const cat = { skill: 'skills', agent: 'agents', mcp: 'mcps', plugin: 'plugins' }[dependentsOf.slice(0, i)];
+        const cat = { skill: 'skills', agent: 'agents', mcp: 'mcps', plugin: 'plugins', rule: 'rules' }[dependentsOf.slice(0, i)];
         const name = dependentsOf.slice(i + 1);
-        if (!cat || !name) { console.error(`stack-select: --dependents wants <skill|agent|mcp|plugin>:<name>, got '${dependentsOf}'`); process.exit(2); }
+        if (!cat || !name) { console.error(`stack-select: --dependents wants <skill|agent|rule|mcp|plugin>:<name>, got '${dependentsOf}'`); process.exit(2); }
         // An item the baseline itself requires is held by a rule or skill no drop can take, so a consent-drop of it fails.
         const reaches = (sel) => (computeClosure(graph, sel)[cat] || []).includes(name);
         const holders = [...(always.rules || []).filter((r) => reaches({ rules: [r] })).map((r) => `rule ${r}`),
             ...(always.skills || []).filter((s) => s !== name && reaches({ skills: [s] })).map((s) => `skill ${s}`)];
-        if (cat === 'skills' && (always.skills || []).includes(name)) console.log(`locked: ${dependentsOf} - every install carries it; it cannot be dropped`);
+        // A rule is required by nothing (E-batch ws-4): an always one is locked, any other has no dependents to list.
+        if (cat === 'rules') { if ((always.rules || []).includes(name)) console.log(`locked: ${dependentsOf} - every install carries it; it cannot be dropped`); }
+        else if (cat === 'skills' && (always.skills || []).includes(name)) console.log(`locked: ${dependentsOf} - every install carries it; it cannot be dropped`);
         else if (holders.length) console.log(`locked: ${dependentsOf} - required by the always-on ${holders.join(', ')}, which every install carries; it cannot be dropped`);
         else for (const d of findDependents(graph, raw, cat, name)) console.log(`dependent: ${d.category} ${d.name} - requires ${dependentsOf.slice(0, i)} ${name}`);
     }
