@@ -169,7 +169,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `Path(p).write_text`; a verb, open or binding inside a string literal is no write, a `$NAME` the shell expands in a
   double-quoted `-e` or unquoted heredoc takes the latest literal the command assigned it, and `process.argv[N]` /
   `sys.argv[N]` take the word passed to the script - audit 2026-10-20 C31 / C25), and one through a computed path is one `unknown` target spelled `$UNKNOWN_INTERPRETER_WRITE`
-  (guards skip it as an unexpanded variable; docs-session counts it as a source write only under a root the command names - audit 2026-10-20 C25, 4f2bfdee: a temp-path script was held twice as a source write); a sed `s` with another
+  (guards skip it as an unexpanded variable; docs-session counts it as a source write only under a root the command names, and never when every path word sits under a temp root outside the project - audit 2026-10-20 C25, 4f2bfdee: a temp-path script was held twice as a source write; usage audit 2026-11-03 U27-2); a sed `s` with another
   delimiter (`s#a#b#`, `s|a|b|`) and an address's `a\` / `i\` / `c\` text are scripts, chmod's mode and chown's owner
   are no path, `NAME=( ... )` is an array assignment and never a subshell, and a `git tag` listing (`--contains`,
   `--points-at`, `--merged`, `-l`, `-n`) is a read. It is the ONE home of shell text
@@ -1602,6 +1602,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     are not committed yet - the installer's untracked GIT-PREFERENCES.md seed read 'mismatch' at every start), and the
     'read the section covering the file' line needs a section that can answer it (`docs.js watchesSourceRoot`: a durable,
     covered domain's cover or watch entry reaching a source root; an engine copy without the probe keeps the line).
+    Usage audit 2026-11-03 U27 / U36: the Stop ask leaves out a section whose newest `doc-set` row (the ledger tail, by
+    `normRef`) is at or after the newest change of the files that would ask about it - it was rewritten this turn (U27-1,
+    the Stop route only); an inline runtime (`node -e`, `python3 -c`, `-p`, `--eval`) whose every path word - the
+    script's literals, past one after `+` or holding `${`, and the words after it - resolves under a temp root
+    (`hook-prelude.js tempRoots`: the OS temp dir and the harness's `/tmp/claude-<uid>`, realpath'd) and outside the
+    project is no source write, and a word holding `$` keeps the old reading (U27-2). The engine's `stale` lists a
+    section with NO covers line, in any domain but `preferences`, once a commit since its stamp ADDS a file outside
+    the data root (`no-covers-new-files`; the covered reason is `covered-files-changed`): one `git rev-list --no-walk
+    --ignore-missing` orders the stamps newest first and drops an unknown sha, only the newest two are diffed
+    (`--diff-filter=A <sha> HEAD`, 1s and 1.5s timeouts, inside the hook's 10s), a failed call lists nothing; `status`
+    keeps `outgrown` for the covered rows and lists these as `addedSince`, and the start block names them in one line
+    (U36: a capture written before a module existed read as current for good).
   - `preferences-session.js` (PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep, every MCP call (a navigation server's
     two edit tools and five lookups read by tool name, N6), LSP, Skill and the shell route, the file and shell rows run inside
     their dispatchers; `SessionStart`, every source; `SubagentStart`; `UserPromptExpansion` on the run names) - the user's

@@ -2082,9 +2082,11 @@ if (carriesOwnReceipt('COMMIT-GATE', commitMatch.index)) process.exit(0);
 // detached scratch worktree was held for the project's receipt). The staged scan above still ran; a branch, the
 // project's own tree or a path outside the temp roots is gated as before.
 if (commitMatch.call && gitTop && !(projectDir && gitTop === topOf(projectDir))) {
-  const UID = typeof process.getuid === 'function' ? process.getuid() : null;
-  const realOr = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
-  const tmpRoots = [require('os').tmpdir(), ...(UID != null ? [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`] : [])].map(realOr);
+  // hook-prelude.js tempRoots is the one home; the inline list stays for a prelude older than this hook
+  const tmpRoots = (() => { try { const r = require('./hook-prelude.js').tempRoots; if (typeof r === 'function') return r(); } catch { /* an older prelude */ }
+    const UID = typeof process.getuid === 'function' ? process.getuid() : null;
+    const realOr = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+    return [require('os').tmpdir(), ...(UID != null ? [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`] : [])].map(realOr); })();
   const under = tmpRoots.some((d) => gitTop === d || gitTop.startsWith(d.endsWith(path.sep) ? d : d + path.sep));
   let detached = false;
   if (under) {

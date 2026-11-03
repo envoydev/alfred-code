@@ -436,9 +436,37 @@ function captureStamp(covers) {
   return `<!-- captured: ${head}${withList.length ? ` with: ${withList.join(', ')}` : ''} -->`;
 }
 
+// U36 (usage audit 2026-11-03): a section with no covers line, in a domain whose sections cover code, was never outgrown
+// - a capture written before a module existed read as current for good. Once a commit since its stamp ADDS a file outside
+// the data root, it is listed (reason no-covers-new-files). One rev-list call orders the stamps newest first and drops an
+// unknown sha; only the newest COVERLESS_SHAS are diffed (`--diff-filter=A <sha> HEAD`), 1s for the order and 1.5s per
+// diff, so the added work stays under 4s of the docs hook's 10s; a failed call lists nothing, today's reading.
+const COVERLESS_SHAS = 2;
+const ADDED = new Map();
+function addedSince(sha) {
+  if (!ADDED.has(sha)) {
+    const own = [DOCS_ROOT, path.dirname(DOCS_ROOT)].map((d) => path.relative(ROOT, d).split(path.sep).join('/')).filter((d) => d && !d.startsWith('..'));
+    const out = git(['diff', '--name-only', '--diff-filter=A', sha, 'HEAD'], { timeout: 1500 });
+    ADDED.set(sha, out === null ? [] : out.split('\n').filter(Boolean).filter((f) => !own.some((d) => f === d || f.startsWith(`${d}/`))));
+  }
+  return ADDED.get(sha);
+}
+function coverlessOutgrown(secs) {
+  const cand = secs.filter((s) => s.stamp && !s.covers.length && !COVERLESS_DOMAINS.has(fileDomain(s.file)));
+  const shas = [...new Set(cand.map((s) => s.stamp))];
+  if (!shas.length) return [];
+  const order = git(['rev-list', '--no-walk', '--ignore-missing', ...shas], { timeout: 1000 });
+  if (order === null) return [];
+  const newest = order.split('\n').filter(Boolean).slice(0, COVERLESS_SHAS);
+  const full = (sha) => newest.find((h) => h.startsWith(sha));
+  return cand.filter((s) => full(s.stamp)).map((s) => ({ s, files: addedSince(full(s.stamp)), reason: 'no-covers-new-files' })).filter((x) => x.files.length);
+}
 // A recomputed domain is never outgrown: its capture rewrites it from the code, and the session close asks for it.
+let STALE_ROWS;
+const STALE = () => STALE_ROWS || (STALE_ROWS = stale());
 function stale() {
-  return allSections().filter((s) => !s.history && !recomputed(fileDomain(s.file))).map((s) => ({ s, files: outgrownFiles(s) })).filter((x) => x.files.length);
+  const secs = allSections().filter((s) => !s.history && !recomputed(fileDomain(s.file)));
+  return [...secs.map((s) => ({ s, files: outgrownFiles(s), reason: 'covered-files-changed' })).filter((x) => x.files.length), ...coverlessOutgrown(secs)];
 }
 const orientationState = () => (!fs.existsSync(BLOCK_FILE) ? 'none' : PROVISIONAL.test(safeRead(BLOCK_FILE)) ? 'provisional' : 'captured');
 
@@ -1602,7 +1630,8 @@ function status() {
     overrides: view.map((s) => s.id),
     conflicts: view.filter((s) => s.conflict).map((s) => s.id),
     orphans: view.filter((s) => s.orphan).map((s) => s.id),
-    outgrown: stale().length,
+    outgrown: STALE().filter((r) => r.reason === 'covered-files-changed').length,
+    addedSince: STALE().filter((r) => r.reason === 'no-covers-new-files').map((r) => r.s.id),
     orientation: orientationState(),
     deletedUnmerged: stuck.deleted,
     liveOnMainline: stuck.onMainline,
@@ -2273,7 +2302,9 @@ const commands = {
   stale: () => {
     const rows = stale();
     if (orientationState() === 'provisional') console.log(`${path.relative(DOCS_ROOT, BLOCK_FILE).split(path.sep).join('/')} - provisional: stale by definition until the architecture capture replaces it`);
-    console.log(rows.length ? rows.map((r) => `${r.s.id} - ${r.files.length} covered file(s) changed since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')}`).join('\n') : 'no section has been outgrown');
+    console.log(rows.length ? rows.map((r) => (r.reason === 'no-covers-new-files'
+      ? `${r.s.id} - no covers line, ${r.files.length} file(s) added since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')} (no-covers-new-files)`
+      : `${r.s.id} - ${r.files.length} covered file(s) changed since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')}`)).join('\n') : 'no section has been outgrown');
   },
   hash: () => {
     const r = askRef(args[0]);

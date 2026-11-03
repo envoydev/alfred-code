@@ -2593,6 +2593,40 @@ test('namingSections keeps before it caps', () => {
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
 
+// U36 (usage audit 2026-11-03): a capture written before the code it describes existed carries no covers line, so nothing
+// ever outgrew it. Once a commit since its stamp adds a file outside the data root, stale lists it.
+test('U36: a section that covered no code is outgrown once files are added', () => {
+  const at = (iso, fn) => { process.env.GIT_COMMITTER_DATE = iso; process.env.GIT_AUTHOR_DATE = iso; try { return fn(); } finally { delete process.env.GIT_COMMITTER_DATE; delete process.env.GIT_AUTHOR_DATE; } };
+  const bare = (id, sha) => `## ${id}\n<!-- id: ${id} -->\n<!-- captured: ${sha} -->\nNo code yet.\n`;
+  const r = repo({ files: { 'README.md': 'x\n' } });
+  try {
+    const s0 = r.git('rev-parse', '--short', 'HEAD');
+    r.write('.claude/docs/architecture/ARCHITECTURE.md', `# Map\n\n${bare('overview', s0)}`);
+    r.write('.claude/docs/preferences/watch.json', '{}');
+    r.write('.claude/docs/preferences/CODE-PREFERENCES.md', `# Code preferences\n\n${bare('c1', s0)}`);
+    assert.match(r.cli(['stale']).stdout, /no section has been outgrown/, 'no file added since the stamp');
+    r.write('.claude/notes.md', 'n\n'); r.git('add', '-f', '.claude/notes.md'); r.git('commit', '-qm', 'data root only');
+    assert.match(r.cli(['stale']).stdout, /no section has been outgrown/, 'a file under the data root is no code');
+    r.write('src/app.ts', 'export {};\n'); r.git('add', 'src/app.ts'); r.git('commit', '-qm', 'code');
+    const out = r.cli(['stale']).stdout;
+    assert.match(out, /^\S*overview - no covers line, 1 file\(s\) added since [0-9a-f]+: src\/app\.ts \(no-covers-new-files\)$/m);
+    assert.doesNotMatch(out, /c1\b/, 'a preferences section is never listed');
+  } finally { r.rm(); }
+  // only the newest two stamps are diffed: the oldest of three, though files were added since it, lists nothing
+  const t = repo({ files: { 'README.md': 'x\n' } });
+  try {
+    const c1 = at('2026-01-01T00:00:00Z', () => { t.git('commit', '-q', '--allow-empty', '-m', 'one'); return t.git('rev-parse', '--short', 'HEAD'); });
+    t.write('src/x.ts', 'export {};\n'); t.git('add', 'src/x.ts');
+    const c2 = at('2026-01-02T00:00:00Z', () => { t.git('commit', '-qm', 'two'); return t.git('rev-parse', '--short', 'HEAD'); });
+    const c3 = at('2026-01-03T00:00:00Z', () => { t.git('commit', '-q', '--allow-empty', '-m', 'three'); return t.git('rev-parse', '--short', 'HEAD'); });
+    t.write('.claude/docs/architecture/A.md', `# A\n\n${bare('oldest', c1)}`);
+    t.write('.claude/docs/architecture/B.md', `# B\n\n${bare('middle', c2)}`);
+    t.write('.claude/docs/architecture/C.md', `# C\n\n${bare('newest', c3)}`);
+    assert.match(t.cli(['stale']).stdout, /no section has been outgrown/, 'the third, oldest stamp is not checked');
+    fs.rmSync(path.join(t.root, '.claude/docs/architecture/C.md'));
+    assert.match(t.cli(['stale']).stdout, /^\S*oldest - no covers line, 1 file\(s\) added since/m, 'one of the newest two, it is');
+  } finally { t.rm(); }
+});
 test('outgrown skips a recomputed domain', () => {
   const r = repo({ files: { 'src/a.cs': 'class A {}\n' } });
   try {
