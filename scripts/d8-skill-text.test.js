@@ -40,3 +40,12 @@ test('the verdict format and the mapping lines carry serial seats', () => {
 test('every ROWS entry\'s needle is in its file', () => {
     for (const r of ROWS) assert.ok(squash(read(r.file)).includes(squash(r.needle)), `row ${r.row} ${r.skill}: ${r.needle.slice(0, 70)}`);
 });
+
+test('the old forced-INLINE texts are gone from their files', () => {
+    const gone = [
+        ['stack/skills/loop-code-quality/SKILL.md', 'a scope too small to fan out - one module, never several slices)'],
+        ['stack/skills/loop-architecture-quality/SKILL.md', 'a non-stack project, a scope too small to fan out)'],
+        ['stack/skills/task-build-from-scratch/SKILL.md', 'No dispatch or a scaffold too small to fan out is INLINE without asking.'],
+    ];
+    for (const [file, old] of gone) assert.ok(!squash(read(file)).includes(old), `${file} still holds: ${old}`);
+});

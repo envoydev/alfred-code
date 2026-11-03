@@ -45,7 +45,7 @@ Hunt the weaknesses and strengths of <the modules> through the architecture-anal
 ```
 
 - **DELEGATED** - dispatch architecture-analyzer per module as below; reasoning and writing stay here.
-- **INLINE** (chosen, or no dispatch, or a scope too small to fan out): characterize the modules yourself, navigation-tools-first and bounded, and continue at JUDGE identically. Its one lighter path: when the state script (capture-quality's chain block) reports `architecture-quality: current`, VERIFY + REWRITE - re-measure every recorded entry against the code, fold in the decisions accepted since, then the same whole-file Write. The run gate then takes this form; a run whose HEAD moved - the loop's reconcile after shipped fixes included - runs in full:
+- **INLINE** (chosen, or no dispatch, or a scope too small to fan out): characterize the modules yourself, navigation-tools-first and bounded, and continue at JUDGE identically. On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), a handed DELEGATED stands, and a standalone scope wider than one file opens this part's ask, the seats marked. Its one lighter path: when the state script (capture-quality's chain block) reports `architecture-quality: current`, VERIFY + REWRITE - re-measure every recorded entry against the code, fold in the decisions accepted since, then the same whole-file Write. The run gate then takes this form; a run whose HEAD moved - the loop's reconcile after shipped fixes included - runs in full:
 
 ```ask
 ARCHITECTURE-ASSESSMENT.md is as of this HEAD on a clean tree. Verify and rewrite it, or run the assessment in full?

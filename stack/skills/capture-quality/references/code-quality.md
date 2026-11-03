@@ -37,7 +37,7 @@ Judge <the modules> through the code-quality-analyzer seats or in this session?
 ```
 
 - **DELEGATED** - dispatch code-quality-analyzer per module as below; the gate, the tiers and the writing stay here.
-- **INLINE** (chosen, or no dispatch, or a scope too small to fan out): judge the modules yourself, navigation-tools-first and bounded, by the seat's own finding shape, and continue at JUDGE identically. A run handed INLINE dispatches no seat; a scope that turns out too wide for it is said in one line and the run goes on inline, never switched to seats on its own.
+- **INLINE** (chosen, or no dispatch, or a scope too small to fan out): judge the modules yourself, navigation-tools-first and bounded, by the seat's own finding shape, and continue at JUDGE identically. A run handed INLINE dispatches no seat; a scope that turns out too wide for it is said in one line and the run goes on inline, never switched to seats on its own. On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), a handed DELEGATED stands, and a standalone scope wider than one file opens this part's ask, the seats marked.
 
 ## The run
 
