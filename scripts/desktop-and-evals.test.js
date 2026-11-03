@@ -85,7 +85,9 @@ test('I9: the README runs no case against setup-plugin/ alone, and names a targe
     assert.doesNotMatch(readme, /claude plugin eval setup-plugin\b/, 'setup-plugin alone resolves none of the scripts its bodies call');
     assert.match(readme, /claude plugin eval alfred-code@envoydev --eval-dir setup-plugin\/evals/);
     assert.match(readme, /npm run eval-bundle/);
-    assert.match(readme, /not re-recorded/i, 'the README says the table predates the retarget');
+    // Re-recorded against the core entry on 2026-11-03: the table is dated and names the CLI it ran on.
+    assert.match(readme, /## Last recorded run - \d{4}-\d{2}-\d{2}\b/, 'the README dates its recorded table');
+    assert.match(readme, /This run: Claude Code \d+\.\d+\.\d+/, 'the README names the CLI the table ran on');
 });
 
 test('I9: every setup-plugin/evals case invokes a command or skill the core entry carries, and every plugin path it names resolves there', () =>
