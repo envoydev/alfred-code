@@ -144,6 +144,39 @@ test('no account settings.json yet: a yes makes one holding only the entry', () 
     assert.deepStrictEqual(json(w.userFile), { extraKnownMarketplaces: { envoydev: { source: STACK, autoUpdate: true } } });
 });
 
+// Review fix pass, run B (m7): a dotfiles setup links the account settings.json to a file it tracks, and the temp file
+// renamed over the link replaced it with a plain file - the account cut loose from the dotfiles. The write lands on the
+// link's real file now, still a temp file and a rename, in that file's own folder; the link stays as it was.
+test('a symlinked account settings.json stays a link: its real file gets the entry, every other byte of it kept', { skip: process.platform === 'win32' && 'links need privileges on Windows' }, () =>
+{
+    const w = world({ known: KNOWN() });
+    const dots = path.join(path.dirname(w.acct), 'dotfiles', 'claude');
+    fs.mkdirSync(dots, { recursive: true });
+    const real = path.join(dots, 'settings.json');
+    fs.writeFileSync(real, '{\n    "theme": "dark",\n    "model": "x"\n}\n');
+    fs.symlinkSync(real, w.userFile);
+    assert.strictEqual(au.autoUpdateState(opts(w)).state, 'ask');
+    const r = au.applyAutoUpdate({ ...opts(w), value: true });
+    assert.strictEqual(r.written, true, r.line);
+    assert.ok(fs.lstatSync(w.userFile).isSymbolicLink(), 'the link is still a link');
+    assert.strictEqual(fs.readlinkSync(w.userFile), real, 'pointing where it did');
+    assert.strictEqual(read(real), '{\n    "theme": "dark",\n    "model": "x",\n    "extraKnownMarketplaces": {\n        "envoydev": {\n            "source": {\n'
+        + '                "source": "github",\n                "repo": "envoydev/alfred-code"\n            },\n            "autoUpdate": true\n        }\n    }\n}\n',
+        'the real file holds the entry, its keys, indent and line ending as they were');
+    assert.deepStrictEqual([...fs.readdirSync(dots), ...fs.readdirSync(w.acct)].filter((n) => n.includes('.tmp')), [], 'no temp file left');
+    assert.strictEqual(au.applyAutoUpdate({ ...opts(w), value: true }).written, false, 'a re-run writes nothing');
+    assert.ok(fs.lstatSync(w.userFile).isSymbolicLink());
+    // a relative link, and a no on top of the yes
+    const rel = world({ known: KNOWN() });
+    const relDots = path.join(path.dirname(rel.acct), 'dots');
+    fs.mkdirSync(relDots, { recursive: true });
+    fs.writeFileSync(path.join(relDots, 'settings.json'), '{\n  "a": 1\n}\n');
+    fs.symlinkSync(path.join('..', 'dots', 'settings.json'), rel.userFile);
+    assert.strictEqual(au.applyAutoUpdate({ ...opts(rel), value: false }).written, true);
+    assert.strictEqual(fs.readlinkSync(rel.userFile), path.join('..', 'dots', 'settings.json'), 'the relative link is kept as written');
+    assert.deepStrictEqual(json(path.join(relDots, 'settings.json')), { a: 1, extraKnownMarketplaces: { envoydev: { source: STACK, autoUpdate: false } } });
+});
+
 test('the update switches off the whole pass: not asked unless FORCE_AUTOUPDATE_PLUGINS=1', () =>
 {
     const w = world({ known: KNOWN() });
