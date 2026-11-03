@@ -46,7 +46,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     the walk it shares with init's install phase (`setup-plugin/references/walk.md`), `/alfred-code:status` (read-only, no snapshot: general info, a
     health column from the CLI's own error fields plus a `not installed for this project` row per `plugins.js unreached`
     line - a plugin the settings switch on that no install record reaches, another project's record left out (usage
-    audit 2026-10-10) - usage from `analyze-usage.js --inventory`, plus the
+    audit 2026-10-10) - and a `!!` health per row under its safe floor (`plugins.js floor`: a `meta/stack-manifest.json`
+    plugin row's `floor` - claude-hud 0.15.0, two HIGH advisories; update logs the same line after its plugin pass,
+    PL-04 of the 2026-11-03 plugins audit) - usage from `analyze-usage.js --inventory`, plus the
     install's always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/alfred-code:validate`
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only

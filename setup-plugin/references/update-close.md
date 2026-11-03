@@ -125,8 +125,9 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   `mcp data:` line. No block: say nothing.
 - **RESTART / WARN** - the `--log` call's `restart: yes|no` (a report LINE, not a question) and every `warn: <line>` (a
   fail-soft that fell back and continued - not a re-run trigger), verbatim.
-- **FOLLOW-UPS** - the `context7-local removed` and `claude-hud has no status line yet` lines, verbatim when caught,
-  once each here (both also arrive as `warn:` lines).
+- **FOLLOW-UPS** - the `context7-local removed`, `claude-hud has no status line yet` and `!! <spec> <version> is under its
+  safe floor` lines (a plugin the pass left under its manifest row's `floor` - claude-hud below 0.15.0 carries two HIGH
+  advisories; its update command is in the line), verbatim when caught, once each here (the last two also arrive as `warn:` lines).
 - **VALIDATE** - step 2's `validate: yes` (the version delta spans more than one release) or
   `policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped
   skill's, or carries none) each add a `/alfred-code:validate` suggestion-card row with that reason. Both absent adds

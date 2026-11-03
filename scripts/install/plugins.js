@@ -871,7 +871,48 @@ function unreachedPlugins({ listing, projectRoot, configDir, marketplaces = [] }
     return out;
 }
 
+// THE SAFE FLOOR (PL-04 of the 2026-11-03 plugins audit: claude-hud below 0.15.0 is inside two HIGH advisories, and a
+// third-party marketplace does not auto-update). The floor is DATA - a `floor` on a meta/stack-manifest.json plugin row
+// ({ version, advisories, severity, why }) - read from the snapshot (or the plugin root, for status), never a constant.
+function pluginFloors(sourceDir)
+{
+    let rows;
+    try { rows = parseJson(fs.readFileSync(path.join(sourceDir, 'meta', 'stack-manifest.json'), 'utf8')).plugins; }
+    catch { return {}; }
+    const out = {};
+    for (const r of Array.isArray(rows) ? rows : [])
+        if (r && typeof r.id === 'string' && r.floor && typeof r.floor === 'object' && /^\d+\.\d+\.\d+$/.test(String(r.floor.version || ''))) out[r.id] = r.floor;
+    return out;
+}
+
+const xyz = (v) => (/^(\d+)\.(\d+)\.(\d+)/.exec(String(v || '').trim()) || []).slice(1).map(Number);
+// One line per listing row (parsePluginList's shape) whose plugin has a floor: `!!` under it, naming the advisories and
+// the update at the row's own scope; a version that is no x.y.z is said as not judged. At or past the floor, nothing.
+function floorLines({ rows = [], floors = {} })
+{
+    const lines = [];
+    const seen = new Set();
+    for (const r of rows || [])
+    {
+        if (!r || !r.name) continue;
+        const spec = `${r.name}@${r.marketplace || ''}`;
+        const f = floors[spec];
+        const key = `${spec}@${r.scope || ''}`;
+        if (!f || seen.has(key)) continue;
+        seen.add(key);
+        const have = xyz(r.version);
+        const want = xyz(f.version);
+        if (!have.length) { lines.push(`floor: ${spec} ${r.version || '?'} - not a version, so the safe floor ${f.version} is not judged`); continue; }
+        const at = have.findIndex((n, i) => n !== want[i]);
+        if (at < 0 || have[at] > want[at]) continue;
+        const advisories = (Array.isArray(f.advisories) ? f.advisories : []).join(', ');
+        lines.push(`!! ${spec} ${r.version} is under its safe floor ${f.version}${advisories ? ` - ${advisories}` : ''}${f.severity ? ` (${f.severity})` : ''}: ${f.why || 'a known security fix'} - update it: claude plugin update ${spec} --scope ${r.scope || 'user'}`);
+    }
+    return lines;
+}
+
 module.exports = {
+    pluginFloors, floorLines,
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
     SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, atRelease, leftAt, effectiveOn, withEffective,
     pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor,
@@ -880,6 +921,8 @@ module.exports = {
     copyRouteStandDown, restoreStoodDown, standDownScope, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins, foreignEntry, foreignEntries,
 };
 
+// `node scripts/install/plugins.js floor [projectRoot] [--listing <file>]` - /alfred-code:status's safe-floor read
+// (PL-04): floorLines over this project's listing, else `floor: none`, or `floor: unknown` when it cannot be read.
 // `node scripts/install/plugins.js unreached [projectRoot] [--listing <file>] [--marketplaces <file>]` -
 // /alfred-code:status's read: one `unreached: <spec>\t<settings file>\t<why>` line per plugin the settings switch on
 // that loads nothing here, else `unreached: none`. Without --listing it asks `claude plugin list --json` and
@@ -893,12 +936,25 @@ if (require.main === module)
     const listingFile = flag('--listing');
     const marketplacesFile = flag('--marketplaces');
     const [cmd, root] = argv;
-    if (cmd !== 'unreached') { console.error('usage: plugins.js unreached [projectRoot] [--listing <file>] [--marketplaces <file>]'); process.exit(2); }
+    if (cmd !== 'unreached' && cmd !== 'floor') { console.error('usage: plugins.js unreached|floor [projectRoot] [--listing <file>] [--marketplaces <file>]'); process.exit(2); }
     const projectRoot = path.resolve(root || '.');
     const { capture } = require('./runtime.js');
     let listing = '';
     try { listing = listingFile ? fs.readFileSync(listingFile, 'utf8') : capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot }); }
     catch { listing = ''; }
+    // `floor` (PL-04): every row of this project's listing - each scope it sits at - against the floors this file's own
+    // tree ships (the plugin root /alfred-code:status runs from), one line each, else `floor: none`.
+    if (cmd === 'floor')
+    {
+        let ok = false;
+        try { const data = JSON.parse(listing); ok = Array.isArray(data) || Boolean(data && Array.isArray(data.installed)); }
+        catch { ok = false; }
+        if (!ok) { console.log('floor: unknown - the plugin listing could not be read'); process.exit(0); }
+        const lines = floorLines({ rows: parsePluginList(listing, projectRoot, { everyScope: true }), floors: pluginFloors(path.join(__dirname, '..', '..')) });
+        for (const line of lines) console.log(line);
+        if (!lines.length) console.log('floor: none');
+        process.exit(0);
+    }
     let marketplaces = '[]';
     try { marketplaces = marketplacesFile ? fs.readFileSync(marketplacesFile, 'utf8') : (listingFile ? '[]' : capture('claude', ['plugin', 'marketplace', 'list', '--json'], { cwd: projectRoot })); }
     catch { marketplaces = '[]'; }

@@ -1088,7 +1088,16 @@
     {
       "id": "claude-hud@claude-hud",
       "note": "statusline HUD - optional since 2.2.0, recommended in every install (meta/recommendations.json always.plugins), at the scope the user picks for it (this project by default; a project-scope one gets its status line in the project's settings.local.json); pin: a third-party marketplace, its plugin.json version - auto-update is off there by default, so the stack's update is what moves it",
-      "marketplace": "jarrodwatts/claude-hud"
+      "marketplace": "jarrodwatts/claude-hud",
+      "floor": {
+        "version": "0.15.0",
+        "advisories": [
+          "GHSA-f7gq-pcm8-rxr4",
+          "GHSA-25hg-g83m-4w35"
+        ],
+        "severity": "HIGH",
+        "why": "a repository's git config (from 0.11.1) or a partial clone's lazy fetch (from 0.0.12) runs commands while the HUD collects git state; published 2026-11-02, fixed in 0.15.0"
+      }
     }
   ],
   "mcps": [],
