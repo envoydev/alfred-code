@@ -7,7 +7,20 @@
 //           `clause` is a new sentence, `edit` a changed word, placeholder or replaced sentence;
 //           `file` is repo-relative, `needle` the text the file must hold.
 //   POINTS: Array<{ row: number, text: string }>   the bullet's list, in row order.
-const ROWS = [];
+const SM = 'stack/skills/task-solve/references/step-mechanics.md';
+const TS = 'stack/skills/task-solve/SKILL.md';
+const FS = 'stack/skills/task-solve/references/full-spec.md';
+const CITE = "On a heavy session the 'Model' bullet of `habits-execution-strategy` sets this mark.";
+const ROWS = [
+    { row: 1, skill: 'task-solve', file: SM, kind: 'edit', needle: '`parallel seats` or `serial seats` recommends agents' },
+    { row: 1, skill: 'task-solve', file: SM, kind: 'clause', needle: "Under `serial seats`, the cards go out one at a time in the plan's dependency order: the next card only after the last card's report is in and its gates are green; a red stops the chain and routes by the build-time stop list." },
+    { row: 1, skill: 'task-solve', file: TS, kind: 'edit', needle: "- 'Approve - dispatch the agent seats' - <independent tasks that build in parallel | the cards one at a time in dependency order>" },
+    { row: 1, skill: 'task-solve', file: TS, kind: 'edit', needle: "- 'Build as planned - dispatch the agent seats' - <independent tasks that build in parallel | the cards one at a time in dependency order>" },
+    { row: 2, skill: 'task-solve', file: TS, kind: 'clause', needle: "On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this gate unless this run did; its 'Model' bullet sends the audit to the `<stack>-verifier` seat whatever step 1's mode." },
+    { row: 2, skill: 'task-solve', file: TS, kind: 'edit', needle: 'load `habits-execution-strategy` (the Skill tool) unless this run already did; its `Execution:` line' },
+    { row: 2, skill: 'task-solve', file: FS, kind: 'clause', needle: "; on a heavy session the audit half goes to the `<stack>-verifier` seat by the same 'Model' bullet, still with no stop between" },
+    { row: 3, skill: 'task-solve', file: SM, kind: 'clause', needle: CITE + " It marks the verifier for every diff past one file; on a serial-seats build whose card tripped a risk trigger, the stop's reason names the trigger and the card." },
+];
 const POINTS = [
     { row: 1, text: '`task-solve` build' },
     { row: 2, text: '`task-solve` plan gate' },

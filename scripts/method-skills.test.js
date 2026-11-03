@@ -254,7 +254,7 @@ test('the solve and diagnose flows load the execution strategy before they decid
     assert.ok(at(cross, load) > -1 && at(cross, load) < at(cross, 'Size <size> across'), 'task-solve-cross loads it before its mode ask');
     const diag = body('issue-diagnoser');
     assert.ok(at(diag, load) > at(diag, '4b. PLAN TASKS') && at(diag, load) < at(diag, 'Then decompose the minimal change'), 'issue-diagnoser loads it before the fix cards');
-    assert.match(squash(read('stack/skills/task-solve/references/step-mechanics.md')), /`parallel seats` recommends agents/, 'the mode-fit rule follows the verdict');
+    assert.match(squash(read('stack/skills/task-solve/references/step-mechanics.md')), /`parallel seats` or `serial seats` recommends agents/, 'the mode-fit rule follows the verdict');
     const strategy = squash(read('stack/skills/habits-execution-strategy/SKILL.md'));
     assert.doesNotMatch(strategy, /Not inside a stamped solve flow/, 'the flows are no longer excluded');
     assert.match(strategy, /how the work runs, not only what it changes/, 'it reasons about how the work runs');
