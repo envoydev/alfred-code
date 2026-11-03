@@ -508,7 +508,16 @@ let forgeLib = null;
 try { forgeLib = require(require('path').join(__dirname, 'forge.js')); } catch { /* no classifier: the gh regexes read */ }
 const forgeActs = (c) => { try { return forgeLib ? forgeLib.classifyCommand(String(c || ''), process.cwd()) : null; } catch { return null; } };
 const finiteWatch = (c) => { const acts = forgeActs(c); return acts ? acts.some((r) => r.concept === forgeLib.CONCEPTS.WATCH) : FINITE_WATCH_RE.test(c); };
-const finiteShell = (c) => finiteWatch(c) || (!NEVER_ENDS_RE.test(c) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c));
+// A shell variable named like a server word is no server (usage audit 2026-11-03 U07: `start=$(date +%s); npm test; echo
+// $(( $(date +%s) - start ))` read as `start`): assignments, arithmetic expansions and variable references are left out
+// of the server read - `PORT=3000 npm start` still names its server.
+const SHELL_ARITH_RE = /\$\(\((?:[^()]|\([^()]*\))*\)\)/g;
+const SHELL_ASSIGN_RE = /(?:^|[;&|\s])[A-Za-z_]\w*=(?:\$\([^)]*\)|"[^"]*"|'[^']*'|\S+)/g;
+const SHELL_VAR_RE = /\$\{?[A-Za-z_]\w*\}?/g;
+const serverText = (c) => String(c || '').replace(SHELL_ARITH_RE, ' ').replace(SHELL_ASSIGN_RE, ' ').replace(SHELL_VAR_RE, ' ');
+const finiteShell = (c) => finiteWatch(c) || (!NEVER_ENDS_RE.test(serverText(c)) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c));
+// The user's own status or time question ('How much time is left?', 'Any ETA?') - read by the done-close's status-question release.
+const STATUS_QUESTION_RE = /\b(?:how (?:long|much (?:longer|time))|time (?:is )?left|eta|status|still (?:running|going|working)|done yet|how far)\b[^?\n]*\?\s*$/i;
 // A forge READ - a change request's or a pipeline's state, through any CLI, API call or MCP tool - backs remote state.
 const FORGE_READ_RE = /\bgh\s+(?:pr|run|api|repo)\b/;
 const forgeRead = (block) => {
@@ -2422,6 +2431,9 @@ if (payload.hook_event_name === 'Stop') {
     // ...and a close over work this session launched that is still out, named as running or waited on, is a
     // status line (2.1.6 H4) - read late, since it is the one test that opens the transcript.
     ['own-work-running', () => ownWorkRunning(closeTail, tail)],
+    // ...and the answer to the user's own status or time question ('How much time is left?') while work this session
+    // launched is still out in the registry: a report they asked for, not a stall (usage audit 2026-11-03 U10, 629719b3).
+    ['status-question', () => STATUS_QUESTION_RE.test(newestTypedPrompt().trim()) && registeredWork() === true],
     // ...an answer to the user's question listing only other people's or deferred items (f450ea64), and the mandated
     // close after the user picked the fresh-session option this turn (69dbed46: 'Nothing is committed or pushed' read as
     // done + pending, and the resume block was forced out again at 132.4k) - audit 2026-10-10 C15.
@@ -2851,7 +2863,7 @@ function blockStateFile() {
 //      once, across 109 asks - one session missed all 12 of its own stops.
 // The stale-scope note's remote half (read by freshStateReadThisTurn, so declared before the branch runs).
 const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|remote|upstream|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
-const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b/;
+const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b/;
 // AUTO-MODE answers the ask (the user's ruling, 2026-10-14). Under a live AUTO stamp nobody is at the terminal, and the
 // user's word was 'run everything with the recommended options'. So an ask whose every question marks ONE option
 // '(Recommended)' is answered with it - the documented route: `allow` with the questions echoed and an `answers` map in
@@ -3140,6 +3152,10 @@ if (payload.tool_name === 'AskUserQuestion') {
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const k = (n) => `~${Math.round(n / 1000)}k`;
       const numberLine = numbers ? ` Measured now: ${fresh.payText(numbers.ctx, fresh.freshVerdict(numbers.ctx))}` : '';
+      // A stale figure the ask already states ('Last measured: ~157k ...') is REPLACED by the fresh one, never left beside
+      // it (usage audit 2026-11-03 U12, b2aa04d4: two contradicting figures in one ask).
+      const MEASURED_RE = /\b(?:last )?measured:?\s*~?\d[\d.,]*k?\b[^.]*\./i;
+      const restated = (q) => !!numbers && typeof q.question === 'string' && MEASURED_RE.test(q.question);
       const MARK = /\s*\(Recommended\)/i;
       const dropBy = (test) => (opts) => {
         const kept = opts.filter((o) => !test(o));
@@ -3152,9 +3168,9 @@ if (payload.tool_name === 'AskUserQuestion') {
       const dropHandoffs = (opts) => (opts.every(isFreshHandoff) ? opts : dropBy(isFreshHandoff)(opts));
       const fixed = questions.map((q) => (q && typeof q === 'object' ? {
         ...q,
-        ...(q.question !== undefined ? { question: fix(q.question) } : {}),
+        ...(q.question !== undefined ? { question: restated(q) ? fix(q.question).replace(MEASURED_RE, numberLine.trim()) : fix(q.question) } : {}),
         ...(q.header !== undefined ? { header: fix(q.header) } : {}),
-        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : dropHandoff && !q.multiSelect ? dropHandoffs(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: (isFreshOpt(o) ? fixAbove(fix(o.description || '')) : fix(o.description || '')) + (numbers && isFreshHandoff(o) ? numberLine : '') } : o)) } : {}),
+        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : dropHandoff && !q.multiSelect ? dropHandoffs(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: (isFreshOpt(o) ? fixAbove(fix(o.description || '')) : fix(o.description || '')) + (numbers && isFreshHandoff(o) && !restated(q) ? numberLine : '') } : o)) } : {}),
       } : q));
       // check 15's drop leaves a question with one option only where it removed one; that question is refused, naming it
       const lone = (q, i) => q && Array.isArray(q.options) && q.options.length < 2

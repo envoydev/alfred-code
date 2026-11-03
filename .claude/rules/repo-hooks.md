@@ -930,7 +930,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     curly double quote; audit 2026-10-08) outside a backticked span or fenced block, which it neither judges nor rewrites
     (R5: a string's delimiters in code stay double), once per ask text (a marker the log dir cannot hold goes under the temp
     dir, so a missing dir never re-denies), carrying the corrected strings (I3); a fresh-session option quoting no number
-    within 20% of the measured carry (both numbers appended to its description); a fresh option pointing at a resume block
+    within 20% of the measured carry (both numbers appended to its description - or, where the question already states a
+    figure ('Last measured: ~157k ...'), that sentence REPLACED by the fresh one, never both, U12); a fresh option pointing at a resume block
     'above' that no fence since the typed turn shows (`ASK_ABOVE_RE`, reworded to 'the resume block, printed after this
     answer'); and, with no mechanical fix, an option
     telling the user to type into Other (`OTHER_RE`, module scope - lint check 61 reads that one line and fails a shipped
@@ -979,7 +980,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     and an empty registry outranks the lagging transcript, audit 2026-10-08; when
     that cannot be read, an agent / review / implementer still running or a waiter that wakes the session); a wait counts only when
     it names the running work (a report, a verdict, an agent - an approval, a go-ahead, a decision or a sign-off is a
-    hand-back), a dev server, `dotnet run`, `docker compose up` or another server or watcher is no work that ends, and a
+    hand-back), a dev server, `dotnet run`, `docker compose up` or another server or watcher is no work that ends (read
+    with assignments, arithmetic expansions and variable references left out - `start=$(date +%s); npm test` is a timed
+    suite, `PORT=3000 npm start` a server, usage audit 2026-11-03 U07), and a
     wait on the user, a next step, 'tell me' or 'nothing reports' keeps it a stall
     (review B2, re-verify N-B2) - except that 'tell me', 'let me know' and 'ping me'
     are an OFFER when an offer word follows (if, in case, how, what, whether, about - not before an infinitive:
@@ -1023,7 +1026,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     its own or approval hand-back; an ask just answered no longer exempts a close handing the user a NEW run-and-report
     action ('Run the pull, then tell me when it's done'); a merge, PR, remote or CI ask's stale-scope note (each half its imperative alone since the deep hooks review
     2026-10-16, the stories in `docs/baseline-rules-evidence.md`) needs a
-    remote-aware read (`git fetch`, a `git log origin/...`, `git branch -r`, `gh pr`), never `git status`; and a production
+    remote-aware read (`git fetch`, a `git log origin/...`, `git branch -r`, `gh pr`, `gh repo view`, `gh api user` -
+    E-batch fn-8), never `git status`; and a production
     file the streak CREATED ('File created') beside a test edit is test-first scaffolding, not a root-cause streak. Hooks
     review 2026-10-16 (20 done-close blocks read against their transcripts: 3 right, 15 wrong; the replay of the sample
     clears 9 of the 15 and keeps the 2 right ones it reproduces): the DONE half reads `doneProse` - a done word under a
@@ -1051,7 +1055,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a code span (`QUOTED_OUTPUT_RE`: '15f00b6c (not pushed)' quoted git's own line and held a finished close, session
     7ec6c7db); the same words unquoted still hold. Each done-close exemption is one named entry of `DONE_EXEMPTIONS`, and
     the first that fires on a close the base test held writes one `mode: probe`, `kind: done-close-exempt` row naming it -
-    the rate a change to one is measured on (C03 had no row).
+    the rate a change to one is measured on (C03 had no row). `status-question` (usage audit 2026-11-03 U10, 629719b3):
+    the newest typed prompt is a status or time question ('How much time is left?', 'Any ETA?') and the Stop registry
+    holds live work this session launched - the answer they asked for; with no live work in the registry it holds. The
+    audit's second U10 close (68541f68: the user picked the login route, the close told them how) already passes through
+    the answered-ask exemption and is pinned in `guard-stop-closes.test.js`.
     THE RETUNE (3.7.1; the user's ruling of 2026-11-03: hold the judge, keep the regex, cover more): a labelled corpus of
     real closes, read on the judge's own criteria (94 labelled - the 18 replayed plus 76 sampled from 3,482), set every
     change, each citing its corpus pattern in a code comment; `docs/stop-done-regex-v2-evidence.md` holds the method and the

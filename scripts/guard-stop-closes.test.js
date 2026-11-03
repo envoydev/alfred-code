@@ -926,3 +926,52 @@ test('m3: no shipped ask template draws a pointer', () => {
     '<N> check fixes are heuristic - read each diff above.', 'the check could not resolve - read each diff above.', "'Apply the check fixes' - every diff above is written"])
     assert.match(old, re, `the old wording is a pointer: ${old}`);
 });
+
+// Usage audit 2026-11-03 U07: 'start=$(date +%s)' read as `start`, a server, so a timed suite never counted as finite work.
+test('U07: an assignment named start is no server', () => {
+  const wait = 'Green so far: build and unit tests 1677/1677. Not run: the integration suite, waiting on the Docker daemon (the wait is still going).';
+  const sh = (command) => ({ background_tasks: [{ id: `u7-${seq}`, type: 'shell', status: 'running', command }] });
+  assert.strictEqual(over([typed('go')], wait, sh('start=$(date +%s); npm test; echo $(( $(date +%s) - start ))')).status, 0, 'a timed suite is finite work');
+  assert.strictEqual(over([typed('go')], wait, sh('T0="$(date +%s)" npm test')).status, 0, 'a quoted assignment too');
+  assert.strictEqual(over([typed('go')], wait, sh('npm start')).status, 2, 'npm start is still a server');
+  assert.strictEqual(over([typed('go')], wait, sh('PORT=3000 npm start')).status, 2, 'an assignment before a server leaves the server');
+});
+
+// Usage audit 2026-11-03 U10, two closes rebuilt from the audited sessions (names neutral). 629719b3: 'How much time is
+// left?' answered while the 35-suite gate ran - held as done + pending. 68541f68: the user picked the login route and the
+// close told them how - it passes today (the answered-ask exemption: the pick is one tool call back), pinned.
+test('U10: a status question over live work, and a close after the user picked its pending step', () => {
+  const close = 'About 5 minutes for the gate:\n\n- 31 of 35 suites are done. Left are the four short ones, about a minute each.\n- Then about 2 minutes to re-run the one red suite alone.\n- After that the build stops for your pick of reviewer, then the final check and close. Those take roughly 15-30 minutes, depending on the reviewer you pick.';
+  const rows = (prompt) => [typed(prompt), call(`g${seq}`, 'Bash', { command: 'grep -c ^done gate/summary.txt' }), result(`g${seq}`, '31')];
+  const live = { background_tasks: [{ id: 'gate', type: 'shell', status: 'running', description: 'the 35-suite gate', command: 'for f in tests/*.test.cjs; do node "$f"; done > gate/summary.txt' }] };
+  const sid = `u10-${process.pid}`;
+  const r = run({ hook_event_name: 'Stop', session_id: sid, last_assistant_message: close, transcript_path: transcript([...rows('How much time is left?'), say(`c${seq}`, close)]), ...live });
+  assert.strictEqual(r.status, 0, 'the answer to a time question while the gate runs');
+  const ledger = fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8');
+  assert.match(ledger, /"exempt":"status-question"/, 'its probe row names the release');
+  for (const prompt of ['How long until the gate finishes?', 'Any ETA?', 'Is it still running?', 'status?'])
+    assert.strictEqual(over(rows(prompt), close, live).status, 0, prompt);
+  assert.strictEqual(over(rows('How much time is left?'), close).status, 2, 'no live work in the registry: still held');
+  assert.strictEqual(over(rows('go on with the build'), close, live).status, 2, 'no status question: still held');
+  const Q = "I can't read TKT-101 - the tracker server isn't loaded. How do I get the ticket text?";
+  const picked = [typed('/task-solve check whether TKT-101 is fixed'),
+    call('q1', 'AskUserQuestion', { questions: [{ question: Q, header: 'Ticket text', options: [{ label: 'I paste the ticket text (Recommended)', description: 'You paste it' }, { label: 'Authenticate the tracker connector', description: 'I start the login flow' }] }] }),
+    result('q1', `Your questions have been answered: "${Q}"="Authenticate the tracker connector". You can now continue with these answers in mind.`),
+    call('m1', 'mcp__claude_ai_Tracker__authenticate', {}), result('m1', 'This is a claude.ai MCP connector. Ask the user to run /mcp and select "claude.ai Tracker" to authenticate.')];
+  const howTo = "**Result:** still blocked - the login flow can't be started from this session. It has to be started from `/mcp`.\n**Progress:** 0 of 6 steps\n**Leftovers:** none\n\nTo authenticate:\n- Type `/mcp` in the prompt and select 'claude.ai Tracker', then finish the browser login.\n- Tell me when it's done. I'll then read TKT-101 and check the code for the fix.";
+  assert.strictEqual(over(picked, howTo).status, 0, '68541f68: the step the user picked, explained - passes today, pinned');
+});
+
+// E-batch fn-8: `gh repo view` and `gh api user` read the remote, yet a merge ask after them drew the stale-scope note.
+test('fn-8: gh repo view and gh api user are remote reads', () => {
+  const ask = (rows, question) => {
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
+  };
+  const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };
+  const merged = 'The check needs the new services. Recommended: wait until ticket 3 is merged and install that build.';
+  for (const command of ['gh repo view --json defaultBranchRef', 'gh api user --jq .login'])
+    assert.doesNotMatch(ask(ran(command), merged), /This ask named (?:remote or job|git) state/, command);
+  assert.match(ask(ran('git status --short'), merged), /no remote-aware read in this turn/, 'a local read still draws the note');
+});

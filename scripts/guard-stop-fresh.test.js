@@ -874,6 +874,23 @@ test('guard-stop-contract (U09): a plain Q&A ask after a Completed: stamp is no 
   }
 });
 
+// Usage audit 2026-11-03 U12 (b2aa04d4 L565, L1250, L1315): the model's stale 'Last measured: ~157k' stayed beside the
+// hook's appended 'Measured now: ~335k' - two contradicting figures in one ask.
+test('guard-stop-contract (U12-1): fresh numbers replace a stale measured figure', () => {
+  const hot = transcript('u12-hot', [assistantRow('h0', 'ok', { cache_creation_input_tokens: 90000 }), assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
+  const updOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
+  const opts = [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }];
+  const stale = askIn(hot, [{ question: 'Next? Last measured: ~157k tokens per message in this session, ~67k for a fresh one. Resume or stay?', options: opts }]);
+  assert.equal(stale.status, 0, stale.stderr);
+  const out = JSON.stringify(updOf(stale));
+  assert.doesNotMatch(out, /157k/, 'the stale figure is gone');
+  assert.equal((out.match(/Measured now:/g) || []).length, 1, 'the fresh figure once, never both');
+  assert.match(updOf(stale).questions[0].question, /^Next\? Measured now: This session carries ~900k[^]* Resume or stay\?$/, 'replaced where it stood');
+  const bare = askIn(hot, [{ question: 'Next?', options: opts }]);
+  assert.equal(updOf(bare).questions[0].question, 'Next?', 'no figure in the question: it is left alone');
+  assert.match(updOf(bare).questions[0].options[0].description, /^start clean Measured now: This session carries ~900k/, 'and the option gets it appended, as before');
+});
+
 // ---------------------------------------------------------------------------------------------
 // 4. stop-denial-stale-150k - the denial printed a number that was not this session's trigger
 // ---------------------------------------------------------------------------------------------
