@@ -398,7 +398,10 @@ function ensureExcluded(bases, deps) {
 // `.claude/` folders each only once empty; each exclude pair it added for those bases (the comment with the anchored line
 // right under it); and the list of bases. Never a file session-inspector keeps there (HANDOFF.md, plans/, scores/), a
 // file no status write names, a refused base (outside the project, a linked folder), a line of the user's own, nor
-// another project's pair in a shared git dir. A pair for a base the list has since dropped stays - a stated ceiling.
+// another project's pair still in use in a shared git dir. A stack pair whose status folder exists in NONE of the
+// repository's work trees goes too (E-batch SYS-03: a base the list had dropped kept its pair): it excludes nothing, and
+// the next write re-adds it (`excludeOne`). Only a non-root pair is swept - the root-form pair goes through the list alone -
+// and with no worktree listing (git failed or timed out) nothing is swept, today's reading.
 // Returns { files, folders, lines }; fail-open like the rest.
 function removeStatus(root, deps) {
   const d = depsOf(deps);
@@ -450,13 +453,25 @@ function removeStatus(root, deps) {
       const file = path.join(common, 'info', 'exclude');
       let text;
       try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+      // every work tree of the repository, listed once; null when git could not answer
+      let trees = null;
+      try {
+        const [cmd, argv, opts] = d.prelude.gitSafe(['-C', top, 'worktree', 'list', '--porcelain'], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
+        trees = String(exec(cmd, argv, opts)).split('\n').filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9).trim()).filter(Boolean);
+      } catch { trees = null; }
+      const unused = (line) => {
+        const m = /^\/(.+)\/\.claude\/session-inspector\/status\/$/.exec(line);
+        if (!m || !trees || !trees.length) return false;
+        const rel = m[1].replace(/\\(.)/g, '$1');
+        return !trees.some((t) => { try { return fs.statSync(path.join(t, rel, '.claude', 'session-inspector', 'status')).isDirectory(); } catch { return false; } });
+      };
       // each row with its own line ending, so every other byte of the file stays as it was
       const rows = text.match(/[^\n]*\n|[^\n]+$/g) || [];
       const bare = (r) => r.replace(/\r?\n$/, '').trim();
       const kept = [];
       let dropped = 0;
       for (let i = 0; i < rows.length; i++) {
-        if (bare(rows[i]) === EXCLUDE_COMMENT && i + 1 < rows.length && lines.has(bare(rows[i + 1]))) { i++; dropped++; continue; }
+        if (bare(rows[i]) === EXCLUDE_COMMENT && i + 1 < rows.length && (lines.has(bare(rows[i + 1])) || unused(bare(rows[i + 1])))) { i++; dropped++; continue; }
         kept.push(rows[i]);
       }
       if (!dropped) continue;

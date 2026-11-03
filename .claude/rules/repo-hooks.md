@@ -1811,7 +1811,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Uninstall takes both back through the module's own `removeStatus` (audit 2026-11-03 SYS-03; `uninstall.js
     removeSessionStatus`): under the root and each listed base the files a status write names and the folders they leave
     empty, then each exclude pair it added for those bases - session-inspector's own files beside `status/`, a line of the
-    user's own and another project's pair stay; a pair for a base the list already dropped stays too (a stated ceiling).
+    user's own and another project's pair still in use stay. A stack pair (the comment with its anchored line right under
+    it) whose status folder exists in NONE of the repository's work trees goes too (E-batch SYS-03: a base the list had
+    dropped kept its pair) - it excludes nothing, and the next write re-adds it; the work trees are listed once per common
+    dir (`git worktree list --porcelain`, 1.5s), and with no answer nothing is swept. The root-form pair goes through the
+    list alone, and a lone anchored line is the user's.
     `docs/install-footprint.md` lists both writes.
   - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
     stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by

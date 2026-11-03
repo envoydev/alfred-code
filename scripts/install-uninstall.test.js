@@ -293,6 +293,28 @@ test('uninstall: the session status files and the exclude line the stack added g
     assert.match(outs[1], /info\/exclude: 1 line the stack added removed/);
 });
 
+// E-batch SYS-03: a pair for a base the list has dropped, whose status folder is gone, goes with the uninstall; a pair whose
+// folder is still there (another project's, in use) stays whole.
+test('uninstall: a dropped base\'s exclude pair is swept, a pair in use stays', POSIX_ONLY, () =>
+{
+    const status = require('../stack/hooks/session-status.js');
+    const pair = (rel) => `${status.EXCLUDE_COMMENT}\n/${rel}/.claude/session-inspector/status/\n`;
+    const { result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+        plugins: LISTING,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            fs.mkdirSync(path.join(repo, 'live', '.claude', 'session-inspector', 'status'), { recursive: true });
+            fs.appendFileSync(path.join(repo, '.git', 'info', 'exclude'), '*.mine\n' + pair('dropped') + pair('live'));
+            return null;
+        },
+        inspect: (repo) => fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8'),
+    });
+    assert.ok(result.includes('*.mine\n' + pair('live')), `the user's line and the pair in use stay: ${result}`);
+    assert.doesNotMatch(result, /\/dropped\//, 'the dropped base\'s pair goes');
+    assert.match(outs[1], /info\/exclude: 1 line the stack added removed/);
+});
+
 // The preview and the answer through the real installer: `uninstall.js seed` names the unedited seed, and an uninstall
 // given no answer keeps it while everything else goes (the user's ask of 2026-10-23).
 test('uninstall: the seed preview names the unedited seed, and with no answer the seed alone stays', POSIX_ONLY, () =>
