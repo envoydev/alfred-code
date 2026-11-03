@@ -56,6 +56,8 @@ This change is <n> changed lines over <stacks> - review it in a seat to keep thi
 
 The seat is the touched stack's `<stack>-verifier`, dispatched exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), with a diff brief: the target's read commands, the depth, and the report shape below. Otherwise - under the bar, or a touched stack with no verifier on the roster (verifiers cover ten stacks, and an install holds only the ones it picked) - run inline without asking. Inside the solve flows dispatch stays explicit-only: inline unless the stop that led here offered the seat and the user picked it.
 
+On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. Such a session also asks for a diff `task-solve` sizes `standard`; any other keeps the no-ask path.
+
 ## Run
 
 1. Read the target (above). The preferences hook hands the code preferences over before the first read; where no hook ran, read `PERSONAL-CODE-`, `ARCHITECTURE-` and `PROJECT-CODE-PREFERENCES.md` that exist under `<docs-path>/preferences/` first.

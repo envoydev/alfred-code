@@ -46,6 +46,9 @@ test('the old forced-INLINE texts are gone from their files', () => {
         ['stack/skills/loop-code-quality/SKILL.md', 'a scope too small to fan out - one module, never several slices)'],
         ['stack/skills/loop-architecture-quality/SKILL.md', 'a non-stack project, a scope too small to fan out)'],
         ['stack/skills/task-build-from-scratch/SKILL.md', 'No dispatch or a scaffold too small to fan out is INLINE without asking.'],
+        ['stack/skills/task-verify-plan/SKILL.md', 'always runs the five passes in-session'],
+        ['stack/skills/task-solve-cross/references/cross-domain-run.md', 'the in-session `task-verify-plan` audit'],
+        ['stack/skills/task-solve-cross/SKILL.md', 'and running its five passes in-session - traps named'],
     ];
     for (const [file, old] of gone) assert.ok(!squash(read(file)).includes(old), `${file} still holds: ${old}`);
 });
