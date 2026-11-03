@@ -126,7 +126,8 @@ test('machine: a project-scope claude-hud gets its status line in this project\'
     assert.match(r.stdout, /statusLine written - .*in the project \(\.claude\/settings\.local\.json\)/);
     const local = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8'));
     assert.match(local.statusLine.command, /claude-hud/);
-    assert.strictEqual(local.statusLine.refreshInterval, 5, 'the row\'s refresh interval lands beside the line it belongs to');
+    // PL-06: the row's win32 leaf (meta/plugin-settings.json on_platform) - 30 s on Windows, 5 s elsewhere.
+    assert.strictEqual(local.statusLine.refreshInterval, process.platform === 'win32' ? 30 : 5, 'the row\'s refresh interval lands beside the line it belongs to');
     const account = (() => { try { return JSON.parse(fs.readFileSync(path.join(acct, 'settings.json'), 'utf8')); } catch { return {}; } })();
     assert.strictEqual(account.statusLine, undefined, 'the account status line is every project\'s - never written for one project\'s claude-hud');
     assert.ok(fs.existsSync(path.join(acct, 'plugins', 'claude-hud', 'config.json')), 'claude-hud\'s own config stays account-wide');

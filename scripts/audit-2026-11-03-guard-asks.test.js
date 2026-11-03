@@ -103,7 +103,9 @@ test('SYS-01: the root settings.local.json Claude Code reads for a sub-folder pr
   fs.writeFileSync(path.join(pkg, '.claude', 'alfred-code.stamp'), 'version: 3.6.0\n');
   const env = { CLAUDE_PROJECT_DIR: pkg };
   const r = hook(p, 'guard-config-protection.js', { cwd: pkg, tool_name: 'Write', tool_input: { file_path: path.join(p.root, '.claude', 'settings.local.json'), content: offList('guard-secret-value') } }, { env });
-  assert.equal(r.status, 2, `the repository root's settings.local.json\n${r.stderr}`);
+  // On Windows Claude Code reads the START folder's settings.local.json, never the repository root's for a sub-folder
+  // (layout.js localSettingsFile returns null there), so that file switches nothing and is not watched.
+  assert.equal(r.status, process.platform === 'win32' ? 0 : 2, `the repository root's settings.local.json\n${r.stderr}`);
   assert.equal(hook(p, 'guard-config-protection.js', { cwd: pkg, tool_name: 'Write', tool_input: { file_path: path.join(p.root, 'other', 'settings.json'), content: offList('guard-secret-value') } }, { env }).status, 0,
     'a settings.json no hook reads is no switch');
 });
