@@ -331,31 +331,36 @@ if (forgeLib || PUSH_GATE_ON) {
     }
   }
 }
+// Task 4b: the forge publish acts chained after a push (`git push && gh pr merge 4`). The push is the act selected above, so
+// these are read here once - each needs the receipt even when the push itself moves nothing, each merge gets its own
+// unseen-head check, and each is a ledger row of its own (fn-9).
+let chainedPublish = [];
+if (publishMatch && publishMatch.git && forgeLib && forgeLib.classifyCommand) {
+  try { chainedPublish = forgeLib.classifyCommand(command, gitCwd, { parsed }).filter((a) => a && a.strength === 'known' && forgeLib.PUBLISH.has(a.concept)); }
+  catch { chainedPublish = []; }
+}
 // The act ledger the ref watch reads (forge.js recordAct): what moved, where, from which head - in the repository's one
 // ledger (forge.js ledgerRoot), so a worktree's push is read by the session watching its main checkout. A git push is one row
 // per ref it names, so a push of feat/x never covers a move of main; one naming refs it does not list (--all, --tags) is one
 // row marked `all`. The call's tool_use_id rides along: the watch trusts a row only once its PostToolUse confirmed it ran.
-function ledgerPublish(match, dir) {
+function ledgerPublish(match, dir, { pushRows = true } = {}) {
   if (!forgeLib || !forgeLib.recordAct) return;
   const f = match.forge || {};
   const head = f.head || forgeLib.gitOut(dir, ['rev-parse', 'HEAD']) || null;
   let rows = [{ ref: f.ref || null }];
   if (match.git && forgeLib.pushTargets) {
     rows = [];
-    for (const p of calls.filter((c) => c.sub === 'push')) {
-      const targets = forgeLib.pushTargets(p.argv || [], gitCwd);
-      if (targets === null) rows.push({ ref: null, all: true });
-      else rows.push(...targets.map((ref) => ({ ref })));
-    }
-    if (!rows.length) rows = [{ ref: null }];
-    // fn-9: the command's other publish acts (`git push && gh pr merge 4`) are rows of their own, each with its own concept
-    if (forgeLib.classifyCommand) {
-      let more = [];
-      try { more = forgeLib.classifyCommand(command, gitCwd, { parsed }); } catch { more = []; }
-      for (const a of more) {
-        if (a && a.strength === 'known' && forgeLib.PUBLISH.has(a.concept)) rows.push({ ref: a.ref || null, concept: a.concept, change: a.change, head: a.head, armed: a.armed });
+    // a push that moves nothing (a dry run, nothing ahead) is no act; the merge chained behind it still is (Task 4b)
+    if (pushRows) {
+      for (const p of calls.filter((c) => c.sub === 'push')) {
+        const targets = forgeLib.pushTargets(p.argv || [], gitCwd);
+        if (targets === null) rows.push({ ref: null, all: true });
+        else rows.push(...targets.map((ref) => ({ ref })));
       }
+      if (!rows.length) rows = [{ ref: null }];
     }
+    // fn-9: the command's other publish acts (`git push && gh pr merge 4`) are rows of their own, each with its own concept
+    for (const a of chainedPublish) rows.push({ ref: a.ref || null, concept: a.concept, change: a.change, head: a.head, armed: a.armed });
   }
   let ledger = dir;
   try { ledger = forgeLib.ledgerRoot(dir) || dir; } catch { /* the act's own repo */ }
@@ -371,7 +376,7 @@ function ledgerPublish(match, dir) {
 }
 if (!PUSH_GATE_ON) {
   const dry = publishMatch && publishMatch.git && (publishMatch.call.argv || []).some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a));
-  if (publishMatch && !dry) { try { ledgerPublish(publishMatch, gitRead.callDir(publishMatch.call || { at: publishMatch.index, dirs: [] })); } catch { /* best effort */ } }
+  if (publishMatch && (!dry || chainedPublish.length)) { try { ledgerPublish(publishMatch, gitRead.callDir(publishMatch.call || { at: publishMatch.index, dirs: [] }), { pushRows: !dry }); } catch { /* best effort */ } }
   publishMatch = null;
   askMatch = null;
 }
@@ -1498,15 +1503,20 @@ if (publishMatch) {
     } catch { ahead = true; }
     if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
   }
-  if (!dryRun && ahead && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
+  // the lead act publishes, or a forge publish act chained behind a push that moves nothing does (Task 4b)
+  const leadPublishes = !dryRun && ahead;
+  const gated = leadPublishes || chainedPublish.length > 0;
+  const actOf = (a) => command.slice(a.at, a.end).trim().replace(/\s+/g, ' ').replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
+  const shown = leadPublishes || !chainedPublish.length ? act : actOf(chainedPublish[0]);
+  if (gated && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
     const r = readReceipt('PUSH-GATE', sessionStartMs());
     if (!((r.waived || r.verified) && !r.problem)) {
       process.stderr.write(
         (r.stale
-          ? `Blocked: ${act} - the publish receipt at ${r.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round did not review THIS push).\n`
+          ? `Blocked: ${shown} - the publish receipt at ${r.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round did not review THIS push).\n`
           : r.problem
-            ? `Blocked: ${act} - the publish receipt at ${r.gate} does not hold: ${r.problem}.\n`
-            : `Blocked: ${act} without the publish gate receipt.\n`) +
+            ? `Blocked: ${shown} - the publish receipt at ${r.gate} does not hold: ${r.problem}.\n`
+            : `Blocked: ${shown} without the publish gate receipt.\n`) +
           `A publish leaves this machine for good. Run habits-commit-checkpoint's publish half (load it): say what goes to\n` +
           `which branch, get the user's answer, then write ${r.write} with the skill's scripts/receipt.js (\`push\`) - it\n` +
           `fills head: and spec: from git:\n` +
@@ -1523,20 +1533,25 @@ if (publishMatch) {
   // A merge lands the CHANGE's head, not this checkout's: the receipt's head: must be that head or a descendant of it
   // (forge.js unseenHead - read with plain git, so on every forge and transport; no change ref or no network leaves the
   // local-HEAD rule above standing). The atomic receipt in the command is the newest, then the file.
-  if (!dryRun && ahead && forgeLib && publishMatch.forge && publishMatch.forge.concept === forgeLib.CONCEPTS.MERGE) {
-    let text = command.slice(0, publishMatch.index);
+  // Every merge in the command: the lead act, and each chained behind a push (Task 4b).
+  const merges = !forgeLib ? [] : [
+    ...(leadPublishes && publishMatch.forge && publishMatch.forge.concept === forgeLib.CONCEPTS.MERGE ? [{ m: publishMatch.forge, at: publishMatch.index, shown: act }] : []),
+    ...chainedPublish.filter((a) => a.concept === forgeLib.CONCEPTS.MERGE).map((a) => ({ m: a, at: a.at, shown: actOf(a) })),
+  ];
+  for (const { m, at, shown: mergeAct } of merges) {
+    let text = command.slice(0, at);
     try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
     const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
     let unseen = null;
-    try { unseen = forgeLib.unseenHead({ cwd: root, change: publishMatch.forge.change, sha: publishMatch.forge.head, receiptHead }); } catch { unseen = null; }
+    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, receiptHead }); } catch { unseen = null; }
     if (unseen) {
-      process.stderr.write(`Blocked: ${act} - ${unseen}.\n` +
+      process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
         'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');
       process.exit(2);
     }
   }
   // Allowed: the act ledger the ref watch reads.
-  if (!dryRun && ahead && forgeLib) ledgerPublish(publishMatch, root);
+  if (gated && forgeLib) ledgerPublish(publishMatch, root, { pushRows: leadPublishes });
 }
 
 // --- the COMMIT gate ----------------------------------------------------------------------

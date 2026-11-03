@@ -1783,7 +1783,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     REPOSITORY's root (`forge.js ledgerRoot` - a worktree and its main checkout share one), a `git push` one row per
     ref it names (`forge.js pushTargets`), and every other publish act of the same command a row of its own with its
     own concept (`forge.js classifyCommand`; E-batch fn-9: `git push && gh pr merge 4` ledgered the push alone), each
-    with its `tool_use_id`; the watch trusts a row once its PostToolUse confirmed it.
+    with its `tool_use_id`; the watch trusts a row once its PostToolUse confirmed it. A forge publish act chained behind a
+    push is gated as if it stood alone (E-batch 4b, a side review of fn-9): it needs the receipt when the push moves
+    nothing (a dry run, nothing ahead - the denial names the chained act), each merge in the command gets the unseen-head
+    check (`forge.js unseenHead`, the receipt read up to that merge), and a push that moves nothing writes no push row.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
     a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,

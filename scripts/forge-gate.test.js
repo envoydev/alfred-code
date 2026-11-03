@@ -238,6 +238,43 @@ test('fn-9: git push && gh pr merge ledgers both acts', () => {
   assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref || a.change]), [['branch.write', 'main'], ['change.merge', '4']]);
 });
 
+// Task 4b (a side review of fn-9): the push leads the command, so the merge-only checks never saw the merge behind it -
+// its unseen-head check, and, with nothing ahead to push, the receipt itself.
+test('4b: a merge chained after a push is checked against the change head the review saw', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  const reviewed = headOf(dir);
+  fs.writeFileSync(path.join(dir, 'c.txt'), 'later\n');
+  git('add', '-A'); git('commit', '-qm', 'unreviewed');
+  pushHead(git, headOf(dir), 'refs/pull/7/head');
+  git('reset', '-q', '--hard', reviewed);
+  receipt(dir, reviewed);
+  const r = run(dir, bash('git push origin main && gh pr merge 7 --squash'));
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /never saw/);
+  assert.match(r.stderr, /gh pr merge 7/);
+  pushHead(git, reviewed, 'refs/pull/8/head');
+  const ok = run(dir, bash('git push origin main && gh pr merge 8 --squash'));
+  assert.strictEqual(ok.status, 0, `the reviewed head merges: ${ok.stderr}`);
+});
+
+test('4b: a push with nothing ahead, or a dry run, does not carry a chained merge past the receipt', () => {
+  const { dir } = pushRepo();
+  for (const cmd of ['git push origin main && gh pr merge 4 --squash', 'git push -n origin main && gh pr merge 4 --squash', 'git push --dry-run && gh pr merge 4'])
+  {
+    const r = run(dir, bash(cmd));
+    assert.strictEqual(r.status, 2, `${cmd}: ${r.stderr}`);
+    assert.match(r.stderr, /PUSH-GATE/, cmd);
+  }
+  assert.deepStrictEqual(acts(dir), [], 'a denied act is not ledgered');
+  receipt(dir, headOf(dir));
+  const r = run(dir, bash('git push origin main && gh pr merge 4 --squash'));
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref || a.change]), [['change.merge', '4']], 'the level push moved nothing, so only the merge is an act');
+  assert.strictEqual(run(dir, bash('git push origin main')).status, 0, 'a level push alone still needs nothing');
+});
+
 test('a push from a worktree is ledgered where the main checkout\'s ref watch reads', () => {
   const { dir, git } = pushRepo();
   const wt = path.join(path.dirname(dir), 'wt');
