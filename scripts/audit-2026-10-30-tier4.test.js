@@ -37,18 +37,13 @@ test('RU-09: all ten FIRST-action rules carry the compaction clause once, pinned
     assert.ok(cs.includes('Skip the load only when it is already in context this session'), 'the skip itself stays');
 });
 
-test('RU-05: moving the data root leaves the always-on docs-root rule for configure\'s data-root step', () =>
+// RU-05's data-root half (1787106a) is HELD - A/B red (docs/tier4-rules-ab-2026-11-03-evidence.md): with the move line
+// gone from the always-on rule, a 'move .alfred to .ai-data' request named configure or update in 2 of 6 runs against 5 of
+// 6, and moved the folder by hand in 6 of 6 against 3 of 6. The line stays always-on until a new A/B says otherwise.
+test('RU-05 (held): the always-on docs-root rule keeps the data-root move line', () =>
 {
-    const squash = (s) => s.replace(/\s+/g, ' ');
     const rule = read('stack', 'rules', 'alfred-docs-root.md');
-    assert.doesNotMatch(rule, /data-root question/, 'the always-on rule no longer carries the move');
-    assert.doesNotMatch(rule, /a hand edit to `ALFRED_CODE_DATA_PATH`/);
-    // the parts the row would cut that other pins hold stay: the domain list (M97, R5, code-quality) and the ledger line
-    assert.match(rule, /EVERY doc the assistant creates/);
-    assert.match(rule, /a cleanup keeps them, or its ask names that loss/);
-    const configure = squash(read('setup-plugin', 'commands', 'configure.md'));
-    const step = configure.slice(configure.indexOf('The DATA ROOT (`ALFRED_CODE_DATA_PATH`)'), configure.indexOf('Claude Code\'s own `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`'));
-    assert.ok(step.includes('A hand edit to `ALFRED_CODE_DATA_PATH` instead moves the docs at the next `/alfred-code:update`.'), step.slice(-600));
+    assert.match(rule, /Moving it is `\/alfred-code:configure`'s data-root question; a hand edit to `ALFRED_CODE_DATA_PATH` moves the docs at the next `\/alfred-code:update`\./);
 });
 
 // RU-05 (round 2): the domain line keeps the rule, the capture domains by name and the ad-hoc homes; the paths a capture
