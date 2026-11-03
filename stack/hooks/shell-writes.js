@@ -41,6 +41,15 @@ const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
 const nativePath = (p, platform = process.platform) => (platform === 'win32'
   ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
   : String(p));
+// A path ROOTED WITHOUT A DRIVE (`/`, `\x`) on Windows lands on the drive of the folder the command runs from, while
+// node's resolve takes the hook process's own cwd drive: the runner checks out on D: beside a C: temp, so `rm -rf /`
+// from a C: project read as D:\ and missed the C: plugins tree it takes (3.7.1, the windows-2025 job). `P` and
+// `platform` are for the tests.
+const DRIVELESS_ROOT = /^[\\/](?![\\/])/;
+const resolveFrom = (p, base, P = path, platform = process.platform) => {
+  const n = nativePath(p, platform);
+  return P.isAbsolute(n) && !(platform === 'win32' && DRIVELESS_ROOT.test(n)) ? n : P.resolve(base, n);
+};
 // os.homedir() THROWS on Windows when USERPROFILE is set but empty (uv_os_homedir ENOENT), and a hook calling it at
 // load crashed with exit 1 - failing open (2.1.7, the windows-2025 job). HOME answers then: Git Bash expands `~` from it.
 const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return nativePath(process.env.HOME || ''); } };
@@ -2913,4 +2922,4 @@ function enclosingEnd(P, at, closesOf) {
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
-  shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan, COPY_VERBS };
+  resolveFrom, shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan, COPY_VERBS };

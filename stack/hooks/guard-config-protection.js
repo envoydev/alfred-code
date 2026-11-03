@@ -1187,7 +1187,10 @@ function copyLanded(verb, plan, resolveWord) {
       for (const base of new Set(bases)) {
         // `ln -s` points at its source from the link's own folder
         const from = plan.symbolic && !path.isAbsolute(nativePath(raw)) ? path.resolve(path.dirname(base), nativePath(raw)) : s;
-        out.push(...landedAt(base, from));
+        // THE NULL DEVICE copies nothing in: `cp /dev/null f` empties f. Node on Windows reads `/dev/null` as C:\dev\null,
+        // which is missing, so the empty text is stated, never read (3.7.1, the windows-2025 job); NUL is its Windows name.
+        const empty = !plan.symbolic && (raw === '/dev/null' || (process.platform === 'win32' && /^nul$/i.test(String(raw))));
+        out.push(...landedAt(base, from).map((l) => (empty && !l.deep ? { ...l, text: '' } : l)));
       }
     }
   }

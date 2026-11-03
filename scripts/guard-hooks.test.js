@@ -2852,6 +2852,25 @@ test('mount paths: the shipped rule maps a Git Bash temp path into the Windows t
   assert.equal('/tmp/x'.replace(rule, 'X'), '/tmp/x', 'and neither is /tmp');
 });
 
+// 3.7.1, the windows-2025 job: a path rooted WITHOUT a drive (`/`, `\x`) lands on the drive of the folder the command
+// runs from, but node's resolve took the hook process's own cwd drive - the runner checks out on D: beside a C: temp,
+// so `rm -rf /` from a C: project read as D:\ and missed the C: plugins tree it takes.
+test('drive-less roots: a rooted path with no drive lands on the drive the command runs from', () => {
+  const { resolveFrom } = require(path.join(HOOKS, 'shell-writes.js'));
+  const w = path.win32;
+  const base = 'C:\\Users\\u\\AppData\\Local\\Temp\\proj';
+  assert.equal(resolveFrom('/', base, w, 'win32'), 'C:\\', '`/` is the root of the command\'s own drive');
+  assert.equal(resolveFrom('\\tmp\\x', base, w, 'win32'), 'C:\\tmp\\x', 'and a backslash root too');
+  assert.equal(resolveFrom('D:\\work\\x', base, w, 'win32'), 'D:\\work\\x', 'a path naming its drive keeps it');
+  assert.equal(resolveFrom('\\\\srv\\share\\x', base, w, 'win32'), '\\\\srv\\share\\x', 'a UNC path keeps its server');
+  assert.equal(w.normalize(resolveFrom('/d/work/x', base, w, 'win32')), 'D:\\work\\x', 'a Git Bash mount path names its drive');
+  assert.equal(resolveFrom('sub\\x', base, w, 'win32'), `${base}\\sub\\x`, 'a relative path joins the folder');
+  assert.equal(resolveFrom('/', '/home/u/proj', path.posix, 'linux'), '/', 'off Windows `/` is the one root');
+  assert.equal(resolveFrom('sub/x', '/home/u/proj', path.posix, 'linux'), '/home/u/proj/sub/x');
+  assert.match(fs.readFileSync(path.join(HOOKS, 'guard-cross-project-write.js'), 'utf8'), /return resolveFrom\(p, base \|\| ROOT\)/,
+    'the cross-project guard resolves through it');
+});
+
 test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
   // The translation must never fire off Windows: `/c/...` there is an ordinary absolute path,
   // outside the project, and the gate must keep blocking it.

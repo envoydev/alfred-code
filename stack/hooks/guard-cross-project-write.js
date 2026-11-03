@@ -152,7 +152,8 @@ if (!root || !fs.existsSync(root)) process.exit(0); // no resolvable root - noth
 // never touched.
 // The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
 let nativePath = (p) => String(p);
-try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
+let resolveFrom = null;
+try { ({ resolveFrom, nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 // The NATIVE realpath returns the on-disk letter case (and a Windows 8.3 short name in full); the JS one keeps
 // the case it is given, so `c:\...\proj\x.ts` against a root spelled `C:\...` read as outside (2.1.5 M9). A path
 // that does not exist yet has no on-disk case, so on win32 the compare below folds case as well.
@@ -585,6 +586,8 @@ const SHELL_CWD = (() => {
   return c && path.isAbsolute(c) && fs.existsSync(c) ? real(c) : ROOT;
 })();
 function resolveTarget(p, base) {
+  // `/` from a C: project is C:\, whatever drive this hook process started on (shell-writes.js resolveFrom)
+  if (resolveFrom) return resolveFrom(p, base || ROOT);
   const n = nativePath(p);
   if (path.isAbsolute(n)) return n;
 
