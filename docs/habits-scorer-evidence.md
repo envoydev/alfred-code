@@ -242,7 +242,7 @@ wins 4 or more tasks and off at most 1.
   - The plain prompt fired the plan skill in 11 of 12 runs; the order-lookup on run is the miss.
 - **Following the spec:** `ALFRED_CODE_SCORER` stays seeded `0`. Turning it on by default is the user's separate
   ruling. (Superseded 2026-11-03: the user ruled it seeded `1` with `ALFRED_CODE_SCORER_OUTPUTS=designer-plan` - B1
-  of the usage audit; an install already holding `0` keeps it.)
+  of the usage audit; an update moves the stack's old `0` seed to `1`, a `0` the user set stays.)
 
 ## The A/B, phase 2: three runs per task (2026-10-25)
 

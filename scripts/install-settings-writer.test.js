@@ -1547,34 +1547,70 @@ test('settings-writer: the scorer rows are seeded on, level 80, designer plans o
     assert.deepStrictEqual(SCORER_KEYS.map((k) => write(settingsFile({ env: mine })).data.env[k]), ['1', '95', 'root-cause', '5']);
 });
 
-// An install that holds the OLD seed (`0`, all outputs) keeps it on update: the seed is absent-only, and the ledger
-// cannot tell the stack's `0` from one the user typed. Both old values still read as the stack's own seed
-// (`former_defaults`), so a no-ledger install claims them - and nothing is re-seeded or rewritten.
-test('settings-writer: an install on the old scorer seed (0, all outputs) keeps it on update, with a ledger or none', () =>
+// An install that holds the OLD seed (`0`, all outputs) moves to the new one on update - the two `clear_settings_env`
+// reseeds of meta/migrations.json, gated by the ledger: only a value the stack wrote there moves. A value the user
+// set (no ledger row at it) stays, `0` and `root-cause` alike; with no ledger at all the value alone decides.
+const REAL_MIGRATIONS = envMigrations(require('../meta/migrations.json'));
+const SC_PAIR = (data) => [data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_OUTPUTS];
+test('settings-writer: an install on the stack\'s old scorer seed (0, all outputs) is reset to 1 / designer-plan; a hand-set value stays', () =>
 {
     const old = { ALFRED_CODE_SCORER: '0', ALFRED_CODE_SCORER_OUTPUTS: '' };
-    const ledgered = { env: { 'settings.json': { ALFRED_CODE_SCORER: valueHash('0'), ALFRED_CODE_SCORER_OUTPUTS: valueHash('') } }, deny: [], hooks: [] };
-    for (const prior of [null, ledgered])
+    const rows = (scorer, outputs) => ({ env: { 'settings.json': { ...(scorer ? { ALFRED_CODE_SCORER: valueHash(scorer) } : {}), ...(outputs !== undefined ? { ALFRED_CODE_SCORER_OUTPUTS: valueHash(outputs) } : {}), ALFRED_CODE_HISTORY: valueHash('3') } }, deny: [], hooks: [] });
+    for (const prior of [rows('0', ''), null])
     {
-        const { data, logs, result } = write(settingsFile({ env: old }), { ledger: { prior, releaseHooks: [] } });
-        assert.deepStrictEqual([data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_OUTPUTS], ['0', ''], `ledger ${Boolean(prior)}`);
-        assert.ok(!logs.some((m) => /ALFRED_CODE_SCORER(_OUTPUTS)? (seeded|removed|changed)/.test(m)), logs.join('\n'));
+        const file = settingsFile({ env: old });
+        const { data, logs, result } = write(file, { migrations: REAL_MIGRATIONS, ledger: { prior, releaseHooks: [] } });
+        assert.deepStrictEqual(SC_PAIR(data), ['1', 'designer-plan'], `ledger ${Boolean(prior)}`);
+        assert.ok(logs.includes('  settings.json env: ALFRED_CODE_SCORER reset to 1 (the old stack seed 0)'), logs.join('\n'));
+        assert.ok(logs.includes('  settings.json env: ALFRED_CODE_SCORER_OUTPUTS reset to designer-plan (the old stack seed empty)'), logs.join('\n'));
         const env = result.managed.env['settings.json'];
-        assert.strictEqual(env.ALFRED_CODE_SCORER, valueHash('0'), `ledger ${Boolean(prior)}: the old seed is still the stack's`);
-        assert.strictEqual(env.ALFRED_CODE_SCORER_OUTPUTS, valueHash(''), `ledger ${Boolean(prior)}`);
+        assert.deepStrictEqual([env.ALFRED_CODE_SCORER, env.ALFRED_CODE_SCORER_OUTPUTS], [valueHash('1'), valueHash('designer-plan')], 'the new values are the stack\'s');
+        // a re-run is a no-op
+        const before = fs.readFileSync(file, 'utf8');
+        const again = write(file, { migrations: REAL_MIGRATIONS, ledger: { prior: { env: result.managed.env, deny: [], hooks: [] }, releaseHooks: [] } });
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), before, `ledger ${Boolean(prior)}: the second run changed the file`);
+        assert.ok(!again.logs.some((m) => /SCORER/.test(m)), again.logs.join('\n'));
     }
-    // A value the user set over the old seed stays theirs: never claimed, never moved.
-    const { data, result } = write(settingsFile({ env: { ALFRED_CODE_SCORER: '0', ALFRED_CODE_SCORER_OUTPUTS: 'root-cause' } }), { ledger: { prior: ledgered, releaseHooks: [] } });
-    assert.strictEqual(data.env.ALFRED_CODE_SCORER_OUTPUTS, 'root-cause');
-    assert.ok(!Object.hasOwn(result.managed.env['settings.json'], 'ALFRED_CODE_SCORER_OUTPUTS'));
+    // The user's own: a 0 or root-cause typed over the new seed (the ledger holds 1 / designer-plan), or after the key left
+    // the ledger (no row) - never moved, never claimed.
+    for (const [label, prior, env] of [
+        ['typed over the new seed', rows('1', 'designer-plan'), { ALFRED_CODE_SCORER: '0', ALFRED_CODE_SCORER_OUTPUTS: 'root-cause' }],
+        ['no ledger row for the key', rows(null, undefined), old],
+        ['root-cause over the old seed', rows('0', ''), { ALFRED_CODE_SCORER: '1', ALFRED_CODE_SCORER_OUTPUTS: 'root-cause' }],
+    ])
+    {
+        const { data, logs } = write(settingsFile({ env }), { migrations: REAL_MIGRATIONS, ledger: { prior, releaseHooks: [] } });
+        assert.deepStrictEqual(SC_PAIR(data), [env.ALFRED_CODE_SCORER, env.ALFRED_CODE_SCORER_OUTPUTS], `${label}: ${logs.join(' | ')}`);
+        assert.ok(!logs.some((m) => /SCORER(_OUTPUTS)? reset/.test(m)), label);
+    }
 });
-test('the scorer catalog rows: seed 1 and designer-plan, the old seeds kept as former_defaults', () =>
+// Since 3.0.0 the values sit in .variables and their ledger rows under `.variables`: the reseed reads both there.
+test('settings-writer: the scorer reseed moves the old seed where .variables holds it, gated by the .variables ledger rows', () =>
+{
+    const file = settingsFile({ env: { ALFRED_CODE_HOOKS_OFF: '' } });
+    const varsAt = path.join(path.dirname(path.dirname(file)), '.alfred', '.variables');
+    fs.mkdirSync(path.dirname(varsAt), { recursive: true });
+    for (const [label, held, want] of [
+        ['the stack wrote 0 / empty', { ALFRED_CODE_SCORER: valueHash('0'), ALFRED_CODE_SCORER_OUTPUTS: valueHash('') }, ['1', 'designer-plan']],
+        ['the user typed 0 / empty over 1 / designer-plan', { ALFRED_CODE_SCORER: valueHash('1'), ALFRED_CODE_SCORER_OUTPUTS: valueHash('designer-plan') }, ['0', '']],
+    ])
+    {
+        fs.writeFileSync(varsAt, 'ALFRED_CODE_SCORER=0\nALFRED_CODE_SCORER_OUTPUTS=\n');
+        const prior = { env: { 'settings.json': { ALFRED_CODE_HOOKS_OFF: valueHash('') }, '.variables': held }, deny: [], hooks: [] };
+        const { logs } = write(file, { migrations: REAL_MIGRATIONS, variablesFile: varsAt, ledger: { prior, releaseHooks: [] } });
+        const values = require('./install/variables.js').read(varsAt).values;
+        assert.deepStrictEqual([values.ALFRED_CODE_SCORER, values.ALFRED_CODE_SCORER_OUTPUTS], want, `${label}: ${logs.filter((m) => /SCORER/.test(m)).join(' | ')}`);
+    }
+});
+test('the scorer catalog rows: seed 1 and designer-plan; the old seeds are reseeds, not former_defaults', () =>
 {
     const row = (k) => CATALOG.find((r) => r.key === k);
     assert.strictEqual(row('ALFRED_CODE_SCORER').default, '1');
-    assert.deepStrictEqual(row('ALFRED_CODE_SCORER').former_defaults, ['0']);
+    assert.strictEqual(row('ALFRED_CODE_SCORER').former_defaults, undefined, 'a former default is never rewritten - these are');
     assert.strictEqual(row('ALFRED_CODE_SCORER_OUTPUTS').default, 'designer-plan');
-    assert.deepStrictEqual(row('ALFRED_CODE_SCORER_OUTPUTS').former_defaults, ['']);
+    assert.strictEqual(row('ALFRED_CODE_SCORER_OUTPUTS').former_defaults, undefined);
+    assert.ok(REAL_MIGRATIONS.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_SCORER' && bad === '0' && to === '1'));
+    assert.ok(REAL_MIGRATIONS.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_SCORER_OUTPUTS' && bad === '' && to === 'designer-plan'));
     assert.match(row('ALFRED_CODE_SCORER').what, /`1` \(the seed\)/);
     assert.doesNotMatch(row('ALFRED_CODE_SCORER').what, /`0` \(the seed\)/);
     assert.match(row('ALFRED_CODE_SCORER_OUTPUTS').what, /`designer-plan` \(the seed\)/);

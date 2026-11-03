@@ -222,7 +222,9 @@ test('env: the root\'s ALFRED_CODE_SCORER=1 reaches a local-scope child through 
     ]);
     assert.deepStrictEqual(r.steps[1], ['1', undefined], `read through the chain, never copied: ${r.outs[1]}`);
     assert.deepStrictEqual(r.steps[3], ['0', '0'], r.outs[3]);
-    assert.deepStrictEqual(r.steps[4], ['0', '0'], r.outs[4]);
+    // the ignore env key takes the catalog default (seeded on since B1 of the 2026-11-03 usage audit), not the chain's 1
+    const seed = require('../meta/environment.json').env.find((row) => row.key === SC).default;
+    assert.deepStrictEqual(r.steps[4], [seed, seed], r.outs[4]);
 });
 
 // AC14's env half, Review Focus 7: a 2.12.0 tree with the switch at 1 - the root and a local-scope child installed by that

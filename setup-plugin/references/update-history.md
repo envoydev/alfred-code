@@ -659,14 +659,15 @@ each denial prints the exact lines. A receipt left from an older release does no
 again. Under auto-run a guard's security ask always takes its safe option and lists the act for you in the close.
 Nothing to do by hand.
 
-## after 3.6.0 - the output scorer is seeded on, for designer plans only
+## after 3.6.0 - the output scorer is on, for designer plans only
 
-A new install seeds `ALFRED_CODE_SCORER=1` and `ALFRED_CODE_SCORER_OUTPUTS=designer-plan`: a designer's plan file is
-graded before it is released, a root-cause verdict and an inline plan are not. Where a plan file was written, scored
-plans won 14 of 15 pairs; inline plans lost 3 of 3. The seed stays absent-only, so an install that already holds
-`ALFRED_CODE_SCORER=0` or an empty `ALFRED_CODE_SCORER_OUTPUTS` - the old seed or your own - keeps it, and a
-`seeded (1)` line shows only where the key was missing. To turn it on here, set both keys in
-`/alfred-code:configure`'s environment area; to keep it off, nothing to do.
+The output scorer is now on by default: `ALFRED_CODE_SCORER=1` and `ALFRED_CODE_SCORER_OUTPUTS=designer-plan`, so a
+designer's plan file is graded before it is released, a root-cause verdict and an inline plan are not. Where a plan
+file was written, scored plans won 14 of 15 pairs; inline plans lost 3 of 3. This update moves the stack's own old
+seeds - `0` and the empty list - to the new ones and prints `reset to 1 (the old stack seed 0)` and `reset to
+designer-plan (the old stack seed empty)`; a value you set yourself stays, and so does a `0` or an empty list the stamp
+does not record as the stack's. To keep it off, set `ALFRED_CODE_SCORER=0` in `/alfred-code:configure`'s environment
+area.
 
 ## after 3.6.0 - init offers Claude Code's auto-update for the stack's marketplace
 

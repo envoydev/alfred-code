@@ -35,6 +35,10 @@ test('every settings-env migration in the real file reaches applyEnv', () =>
         'the default became a trigger (the user\'s ruling, 2026-10-21): its old window seed moves to the trigger seed');
     assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_HISTORY' && bad === '1' && to === '3'),
         'the history switch became a session count (item 10, 2026-10-21): the old on seed moves to the count seed');
+    assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_SCORER' && bad === '0' && to === '1'),
+        'the scorer is on by default (B1 of the 2026-11-03 usage audit): the old off seed moves to on');
+    assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_SCORER_OUTPUTS' && bad === '' && to === 'designer-plan'),
+        'and graded for designer plan files only: the old all-three seed moves to designer-plan');
 });
 
 test('an old install is migrated by the real file', () =>

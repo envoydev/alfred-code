@@ -448,7 +448,7 @@ function retireAndReseed(env, migrations, log, label, only = () => true, stackWr
     // typed is theirs even when it equals an old seed (2026-10-16 matrix: a hand-set ALFRED_CODE_CONTEXT_WINDOW_FOR_200K of
     // 150000 was reset to 180000 on every update).
     for (const [key, badSeed, to] of migrations.reseed || [])
-        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (the old stack seed ${badSeed})`); }
+        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (the old stack seed ${badSeed === '' ? 'empty' : badSeed})`); }
     return changed;
 }
 
