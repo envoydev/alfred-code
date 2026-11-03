@@ -126,3 +126,26 @@ test('RU-06: the always-on set keeps caps only on the FIRST-action shape, the se
     }
     assert.strictEqual(caps, 21, 'emphasis tokens: 32 before, 21 after (8 of them the pinned FIRST action)');
 });
+
+// RU-13: the credentials line keeps presence-never-value, the store and the pinned phrases, and leaves the commands' spelling
+// to the texts that print them - the guard's denials and the session's `Sensitive data:` line.
+test('RU-13: alfred-security keeps the secret invariants and points at the guard texts for the commands', () =>
+{
+    const { injectedRuleText } = require('./always-on-surface.js');
+    const line = injectedRuleText(read('stack', 'rules', 'alfred-security.md')).split('\n').find((l) => l.startsWith('- A credential is read for PRESENCE, never value'));
+    assert.ok(line, 'the presence line stays');
+    for (const kept of ["(the secret guard's `--presence` view - its denial prints the command)", 'a generated artifact is checked by grepping the prefix and reporting the count',
+        "Never echo a value or ask for one in chat - the user puts it in the project's `<data root>/.secrets`", '`.sensitive-data`', '`--with-sensitive`',
+        "the guard's denial and the session's `Sensitive data:` line name the commands - run the guard they name, never a `.claude/hooks/` copy",
+        "A documented dev seed is cited by file:line and key, never echoed; an account the run creates at the user's ask is reported once, when made."])
+        assert.ok(line.includes(kept), `kept: '${kept}'`);
+    for (const gone of ["the guard is the file the session's", 'whose path the session', 'or runs a copy-ready command', '`.alfred` by default'])
+        assert.ok(!line.includes(gone), `gone: '${gone}'`);
+    assert.ok(line.length <= 750, `the line is ${line.length} chars (821 before)`);
+    // what left the line is what the guard prints: the copy-ready route on a denial, --with-sensitive and its path at session start
+    const guard = read('stack', 'hooks', 'guard-secret-value.js');
+    assert.ok(guard.includes('runs a copy-ready command in their own terminal'), 'the copy-ready route rides the denial');
+    assert.ok(guard.includes('A command that needs them: node "${__filename}" --with-sensitive -- "<command line>"'), 'the Sensitive data: line names the run and its path');
+    // `.alfred` as the default data root stays always-on in the docs-root rule
+    assert.match(read('stack', 'rules', 'alfred-docs-root.md'), /`ALFRED_CODE_DATA_PATH` \(default `\.alfred`\)/);
+});
