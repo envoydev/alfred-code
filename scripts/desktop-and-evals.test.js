@@ -83,7 +83,10 @@ test('I9: the README runs no case against setup-plugin/ alone, and names a targe
 {
     const readme = read(EVAL_README);
     assert.doesNotMatch(readme, /claude plugin eval setup-plugin\b/, 'setup-plugin alone resolves none of the scripts its bodies call');
-    assert.match(readme, /claude plugin eval alfred-code@envoydev --eval-dir setup-plugin\/evals/);
+    // D7: a path target to the core-only bundle - `alfred-code@envoydev` resolved setup-plugin/ on 2.1.317
+    assert.match(readme, /node scripts\/build-eval-bundle\.js --core "\$OUT"/);
+    assert.match(readme, /claude plugin eval "\$OUT" --allow-tools 'Bash\(node:\*\)'/);
+    assert.doesNotMatch(readme, /claude plugin eval alfred-code@envoydev/, 'the id target loaded setup-plugin/');
     assert.match(readme, /npm run eval-bundle/);
     // Re-recorded against the core entry on 2026-11-03: the table is dated and names the CLI it ran on.
     assert.match(readme, /## Last recorded run - \d{4}-\d{2}-\d{2}\b/, 'the README dates its recorded table');

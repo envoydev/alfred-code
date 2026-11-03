@@ -39,8 +39,9 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     `alfred-code` so the eval CLI can load a library item, with the `scripts/`, `meta/`, `stack/` and
     `setup-plugin/references/` trees at the core's own relative paths, so every
     `${CLAUDE_PLUGIN_ROOT}/...` a bundled body names resolves. The core's own cases
-    (`setup-plugin/evals/`) run against the CORE entry installed from a scratch marketplace of the tree,
-    never `setup-plugin/` alone (its plugin root holds no `scripts/`). The run is billed.
+    (`setup-plugin/evals/`) run against `build-eval-bundle.js --core <out>` - the core alone, these cases as its
+    `evals/` - as a path target with `--allow-tools 'Bash(node:*)'`, never `setup-plugin/` alone (its plugin root holds
+    no `scripts/`, and the `alfred-code@envoydev` id resolved it on 2.1.317 - D7). The run is billed.
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
     one row plus the seed's own (lint check 58 - not check 27, which is the `suggests:` removal
     check below).

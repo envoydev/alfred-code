@@ -11,21 +11,23 @@ six commands and the router skill carry `disable-model-invocation`. That excuse 
 walk makes a valid case - and its without-arm cannot resolve the command at all, which is the
 cleanest delta a suite can produce.
 
-The two cases here are READ-ONLY by construction: neither grants `Bash`, `Write` or `Edit`, so no run can
-install anything, and both fire in the run's empty sandbox working directory where there is no
-install to change.
+The two cases are read-only in intent, not by construction: neither grants `Write` or `Edit`, and `Bash` only as
+`Bash(node:*)` - the stamp script's state read both bodies open with. That grant would let `node -e` write, so
+what keeps a run harmless is where it fires: the run's empty, throwaway sandbox working directory, with no install
+to change.
 
 ## The cases
 
 | case | target | prompt | what it proves |
 |---|---|---|---|
-| `status-no-install` | the core, `alfred-code@envoydev` | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:init` instead of rendering its fixed table shapes from the command body |
-| `router-hands-back-one-command` | the core, `alfred-code@envoydev` | `/alfred-code` | the router reads the state, names ONE command, and does not start the walk itself |
+| `status-no-install` | the core alone (`--core` bundle) | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:init` instead of rendering its fixed table shapes from the command body |
+| `router-hands-back-one-command` | the core alone (`--core` bundle) | `/alfred-code` | the router reads the state, names ONE command, and does not start the walk itself |
 
 Both are meant to run against the CORE entry, never `setup-plugin/` alone: the router and the status
 command run `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .`, and the core's plugin root is
 the repo root, where `scripts/` lives - under `setup-plugin/` that path does not exist. On Claude Code
-2.1.317 the `alfred-code@envoydev` target resolves to `setup-plugin/` all the same (the 2026-11-03 run below).
+2.1.317 the `alfred-code@envoydev` target resolved to `setup-plugin/` all the same (the 2026-11-03 run below),
+so the target is now the core-only bundle (Running it, below).
 
 The three `size-first-*` cases of `task-solve` moved to `meta/evals/library/` in 2.1.4: since 2.1.0
 the core carries no stack skill, so only the eval bundle (the core plus the whole library, one plugin)
@@ -63,19 +65,20 @@ contract, and a `with` score under 1.00 is the command failing it outright.
 
 ## Running it
 
-The target resolves an INSTALLED plugin, so a working tree is graded from a throwaway config dir that
-lists it as the marketplace. `scripts/clean-export.js` copies the tracked files only, so this repo's own
-machine-local `.mcp.json` cannot load into a case:
+The target is a FOLDER holding the core alone (D7, 2026-11-03): `alfred-code@envoydev` resolved
+`setup-plugin/` on 2.1.317, whose plugin root has no `scripts/`, so it is no target any more.
+`build-eval-bundle.js --core` copies the core's commands, router and seats, the trees their bodies name at
+the core's own relative paths, and these cases as its `evals/` - tracked files only, so this repo's
+machine-local `.mcp.json` cannot load into a case. `--allow-tools` grants what the cases list:
 
 ```bash
-export CLAUDE_CONFIG_DIR="$(mktemp -d)"            # a throwaway account dir
-node scripts/clean-export.js . "$CLAUDE_CONFIG_DIR/src"
-claude plugin marketplace add "$CLAUDE_CONFIG_DIR/src"
-claude plugin install alfred-code@envoydev
-claude plugin enable alfred-code@envoydev           # 2.1.317 installs it 'disabled in your settings'
-claude plugin eval alfred-code@envoydev --eval-dir setup-plugin/evals --max-cost-usd 3 --judge-model claude-haiku-4-5 --no-publish   # router + status, the whole dir
-claude plugin eval alfred-code@envoydev --eval-dir setup-plugin/evals --case status-no-install --runs 1 --ablation none --no-publish   # iterate cheaply
+OUT="$(mktemp -d)/alfred-code-core"
+node scripts/build-eval-bundle.js --core "$OUT"
+claude plugin eval "$OUT" --allow-tools 'Bash(node:*)' --max-cost-usd 3 --judge-model claude-haiku-4-5 --no-publish   # router + status, the whole dir
+claude plugin eval "$OUT" --allow-tools 'Bash(node:*)' --case status-no-install --runs 1 --ablation none --no-publish   # iterate cheaply
 ```
+
+Not re-recorded since the re-target: the table above is the 2026-11-03 run against `setup-plugin/`.
 
 Measured on 2.1.317: `--case '[rs][ot]*'` finds no case (the two cases are the whole dir, so the filter
 went); the HTML report is published to claude.ai unless `--no-publish`; the first run in the plugin dir
