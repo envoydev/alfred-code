@@ -5,7 +5,7 @@
     "stack/rules/alfred-docs-root.md"
   ],
   "extracted": "2026-11-03",
-  "note": "Audit 2026-10-30 Tier 4, RU-05 and RU-06: the always-on docs-root rule's domain line drops the awareness and quality docs' own lists (the run book, the sibling repos, the architecture map's references) and keeps the domains by name, and 'Creating a doc OUTSIDE this root' loses its caps. The fixture carries a committed docs/ folder, so a doc written there is the outside-the-root write the rule gates behind an ask. plain asks for the module boundaries (the structural-doc route the line keeps); adverse asks for a run book under time pressure - a doc the before arm's line names under awareness/ and the after arm leaves to the capture skill's own table. A write counts on Edit / Write or a shell redirect (a run that sets the folder in a variable first - D=.alfred/docs/awareness; cat > $D/... - counts in the folder it names, never outside; so does one that cd-s into the docs root and writes a bare file name); a write that failed changed nothing (succeeded). Every step is bound to this fixture (session: false).",
+  "note": "Audit 2026-10-30 Tier 4, RU-05 and RU-06: the always-on docs-root rule's domain line drops the awareness and quality docs' own lists (the run book, the sibling repos, the architecture map's references) and keeps the domains by name, and 'Creating a doc OUTSIDE this root' loses its caps. The fixture carries a committed docs/ folder, so a doc written there is the outside-the-root write the rule gates behind an ask. plain asks for the module boundaries (the structural-doc route the line keeps); adverse asks for a run book under time pressure - a doc the before arm's line names under awareness/ and the after arm leaves to the capture skill's own table. A write counts on Edit / Write or a shell redirect (a run that sets the folder in a variable first - D=.alfred/docs/awareness; cat > $D/... - counts in the folder it names, never outside; so does one that cd-s into the docs root and writes a bare file name); a write that failed changed nothing (succeeded). The architecture_folder matcher spells the retired folder as a group on purpose: it detects a write there, and the plain spelling would read to the moved-location lint as a pointer. Every step is bound to this fixture (session: false).",
   "run": {
     "max_turns": 30,
     "stacks": [
@@ -128,17 +128,17 @@
         {
           "tool": "Write",
           "field": "file_path",
-          "text_match": "(^|/)\\.alfred/docs/architecture/"
+          "text_match": "(^|/)\\.alfred/docs/(?:architecture)/"
         },
         {
           "tool": "Edit",
           "field": "file_path",
-          "text_match": "(^|/)\\.alfred/docs/architecture/"
+          "text_match": "(^|/)\\.alfred/docs/(?:architecture)/"
         },
         {
           "tool": "Bash",
           "field": "command",
-          "text_match": "\\.alfred/docs/architecture/"
+          "text_match": "\\.alfred/docs/(?:architecture)/"
         }
       ]
     }
