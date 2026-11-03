@@ -430,8 +430,11 @@ test('in-process, every guard\'s stand-down ends it where it stands - no exit is
   const dir = project();
   const stdin = Buffer.from(JSON.stringify(bashPayload('rm -rf ~ && git commit -am "wip"', dir)));
   const saved = { ...process.env };
+  // a home of its own with no plugins folder: `rm -rf ~` then takes no installed plugin code with it
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-home-'));
   try {
     process.env.CLAUDE_PROJECT_DIR = dir;
+    Object.assign(process.env, { HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude') });
     for (const [label, env] of [['csv', { ALFRED_CODE_HOOKS_OFF: shell.GUARDS.join(',') }], ['minimal', { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }]]) {
       Object.assign(process.env, env);
       for (const g of shell.GUARDS) {
@@ -443,8 +446,23 @@ test('in-process, every guard\'s stand-down ends it where it stands - no exit is
       for (const k of Object.keys(env)) delete process.env[k];
       if (label === 'csv') assert.deepStrictEqual(ledgerRows(dir), [], 'a stood-down guard writes no row');
     }
-  } finally { for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]; Object.assign(process.env, saved); }
-  assert.deepStrictEqual(hooksOf(ledgerRows(dir)), ['guard-catastrophic-rm.js'], 'under minimal the protective rm guard still blocks, and logs it');
+    // a home holding installed plugin code: the cross guard's plugin half judges under every stand-down (the user's ruling
+    // of 2026-11-03), and its exit still ends it where it stands
+    fs.mkdirSync(path.join(home, '.claude', 'plugins', 'cache'), { recursive: true });
+    for (const env of [{ ALFRED_CODE_HOOKS_OFF: shell.GUARDS.join(',') }, { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }]) {
+      Object.assign(process.env, env);
+      const res = shell.runGuard(path.join(HOOKS, 'guard-cross-project-write.js'), stdin);
+      assert.ok(!res.swallowed, 'the plugin half ran on past its exit');
+      assert.strictEqual(res.code, 2, `the plugin half asks under ${JSON.stringify(env)}`);
+      assert.match(res.stderr, /installed plugins/);
+      for (const k of Object.keys(env)) delete process.env[k];
+    }
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+  assert.deepStrictEqual(hooksOf(ledgerRows(dir)).filter((h) => h !== 'guard-cross-project-write.js'), ['guard-catastrophic-rm.js'], 'under minimal the protective rm guard still blocks, and logs it');
 });
 
 test('a guard list in the wiring runs exactly those guards', () => {

@@ -1329,8 +1329,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   guards live: a write there, or a removal of a folder holding one (a `~/.claude-<name>` holding a `plugins/` included),
   is asked with 'Drop the change' recommended and opened only by the user's allow answer and its receipt, or a typed folder
   or an `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` entry naming the tree or a folder in it - never a broader one (the ~/.claude
-  gap, the user's design of 2026-11-03; block row `plugin-code`). Ceiling: in a repo never set up the plugin route stands
-  this guard down (GATE 4), so an edit of the cache's guard code from there is unjudged; paths compared as REAL paths in their on-disk
+  gap, the user's design of 2026-11-03; block row `plugin-code`). It runs in EVERY project, under every stand-down (a repo
+  never set up, the opt-out, `minimal`, a Cursor host - only the plugin copy beside a copied twin leaves it to the twin),
+  since every project runs one installed copy (the user's ruling of 2026-11-03): stood down, the guard judges that alone,
+  asks nothing of an unread script, and writes no block row in a repo never set up. A folder right under `plugins/` named
+  after a plugin the account's `installed_plugins.json` lists passes (claude-hud's `plugins/claude-hud/`; never the
+  core's name, never one Claude Code keeps there - `cache`, `marketplaces`, `store`, `synced`, `repos`, `.trash`); paths compared as REAL paths in their on-disk
     letter case (the native realpath, and on win32 a case-folded compare as well - M9); a Git Bash mount path (`/c/...`,
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the

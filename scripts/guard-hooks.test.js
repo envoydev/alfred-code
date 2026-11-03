@@ -2301,6 +2301,7 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
     assert.equal(sh('rm -rf ~/.claude-work', env).status, 2, 'rm of ~/.claude-work');
     assert.equal(sh('mv ~/.claude-work ~/.claude-work-old', env).status, 2, 'a move of it');
     assert.equal(sh('rm -rf ~/.claude-empty', env).status, 0, 'an account dir holding no plugins folder');
+    assert.equal(sh(`rm -rf ${home}`, env).status, 2, 'the home above them, holding ~/.claude-work/plugins');
   }
 
   // a typed folder opens the tree only from the tree down (the fresh review of 2026-11-03: a typed account dir opened it)
@@ -2320,8 +2321,48 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
   assert.ok(devDenied.stderr.includes(`Allow writes into ${fs.realpathSync.native(dev)} for this session`), 'the ask names the plugin root');
   assert.equal(w(path.join(devParent, 'notes.md'), { ...devEnv, CLAUDE_PLUGIN_ROOT: dev }).status, 0, 'a file beside it stays open');
   assert.equal(w(path.join(root, 'stack', 'hooks', 'g.js'), { CLAUDE_PLUGIN_ROOT: root }).status, 0, 'a plugin developed in this project: its own files');
+  // every project, under every stand-down (the user's ruling of 2026-11-03, 'Run it in every project'): only a write into
+  // the plugins' code is judged there - the rest of the guard stays down
   const bare = fs.mkdtempSync(path.join(TMP, 'projBare-'));
-  assert.equal(w(guard, { CLAUDE_PROJECT_DIR: bare, CLAUDE_PLUGIN_ROOT: dev }).status, 0, 'the stated ceiling: a repo never set up stands the plugin route down (only the protective guards stay live there)');
+  const sibling = path.join(fs.mkdtempSync(path.join(TMP, 'sib-')), 'f.txt');
+  const bareEnv = { CLAUDE_PROJECT_DIR: bare, CLAUDE_PLUGIN_ROOT: dev };
+  const bareDenied = w(guard, bareEnv);
+  assert.equal(bareDenied.status, 2, 'a repo never set up: the plugin code still asks');
+  assert.match(bareDenied.stderr, /installed plugins/);
+  assert.equal(sh(`echo x > ${guard}`, bareEnv).status, 2, 'and on the shell route');
+  assert.equal(sh(`rm -rf ${plugins}`, bareEnv).status, 2, 'and a removal');
+  assert.equal(w(sibling, bareEnv).status, 0, 'a repo never set up: any other outside write stays unjudged');
+  {
+    // a script past the scan budget: asked in a set-up repo, nothing asked where the guard stands down
+    const { SCAN_LIMITS } = require(path.join(HOOKS, 'hook-prelude.js'));
+    const huge = path.join(fs.mkdtempSync(path.join(TMP, 'huge-')), 'huge.sh');
+    fs.writeFileSync(huge, `${'#'.repeat(SCAN_LIMITS.bytes + 1024)}\necho done\n`);
+    assert.equal(sh(`bash ${huge}`).status, 2, 'set up: an unread script is asked');
+    assert.equal(sh(`bash ${huge}`, bareEnv).status, 0, 'never set up: an unread script asks nothing');
+    fs.rmSync(path.dirname(huge), { recursive: true, force: true });
+  }
+  assert.ok(!fs.existsSync(path.join(bare, '.alfred')), 'R86: a repo never set up is written no block row');
+  for (const env of [{ ALFRED_CODE_HOOKS_OFF: 'guard-cross-project-write' }, { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }]) {
+    assert.equal(w(guard, env).status, 2, `the plugin code asks under ${JSON.stringify(env)}`);
+    assert.equal(w(sibling, env).status, 0, `the rest stands down under ${JSON.stringify(env)}`);
+  }
+  const cursor = go({ tool_name: 'Write', tool_input: { file_path: guard }, cursor_version: '1.7.0' });
+  assert.equal(cursor.status, 2, 'a Cursor host: the plugin code asks');
+  assert.equal(go({ tool_name: 'Write', tool_input: { file_path: sibling }, cursor_version: '1.7.0' }).status, 0, 'the rest stands down there');
+
+  // a plugin's own folder passes (the user's ruling of 2026-11-03, 'Let a plugin's own folder pass') - only one the
+  // account's registry lists, never the core's name, never a folder Claude Code keeps
+  fs.writeFileSync(path.join(plugins, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user' }], 'alfred-code@mk': [{ scope: 'user' }], 'store@x': [{ scope: 'user' }] } }));
+  assert.equal(w(path.join(plugins, 'claude-hud', 'config.json')).status, 0, "claude-hud's own config");
+  assert.equal(sh(`cp /dev/null ${path.join(plugins, 'claude-hud', 'statusline.mjs')}`).status, 0, 'its setup copying its launcher');
+  assert.equal(sh(`rm -rf ${path.join(plugins, 'claude-hud')}`).status, 0, 'removing its own folder');
+  assert.equal(w(path.join(plugins, 'alfred-code', 'x.js')).status, 2, "the core's own name never passes");
+  assert.equal(w(path.join(plugins, 'store', 'x.js')).status, 2, 'a folder Claude Code keeps, even named like a listed plugin');
+  assert.equal(w(path.join(plugins, 'other-hud', 'config.json')).status, 2, 'a folder no installed plugin is named after');
+  assert.equal(w(path.join(plugins, 'installed_plugins.json')).status, 2, 'the registry itself still asks');
+  fs.writeFileSync(path.join(plugins, 'installed_plugins.json'), '{ not json');
+  assert.equal(w(path.join(plugins, 'claude-hud', 'config.json')).status, 2, 'a garbage registry lets no folder pass');
+  fs.rmSync(path.join(plugins, 'installed_plugins.json'));
 
   // what opens it: an allowance naming the tree (never a broader one), a typed folder, the user's own allow answer
   assert.equal(w(guard, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: path.join(plugins, 'cache') }).status, 0, 'an allowance naming the cache');

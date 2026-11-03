@@ -45,15 +45,24 @@ const path = require('path');
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+// The stand-downs are read here and applied as PLUGIN-ONLY mode (THE INSTALLED PLUGINS' OWN CODE, below): every project
+// runs one installed copy of the guards, so a write into it is judged under every stand-down - a repo never set up, the
+// opt-out, `minimal`, a Cursor host - as the config guard's switch-off half is (the user's ruling of 2026-11-03, a side
+// agent's note: 'Run it in every project'). Only the plugin copy standing down beside a copied twin leaves at once - the
+// twin judges the same write. R86: a repo never set up gets no block row.
+let off = false;
+let unsetRepo = false;
 if (require.main === module) {
-  let off = false;
+  let twin = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     off = prelude.standDown('guard-cross-project-write');
+    twin = off && prelude.yieldToCopiedTwin('guard-cross-project-write');
+    unsetRepo = off && prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
-  if (off) process.exit(0);
+  if (twin) process.exit(0);
 }
 let payload;
 try {
@@ -65,7 +74,8 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
 let cursorOff = false;
 try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
-if (cursorOff) process.exit(0);
+// Stood down by any gate: only a write into the installed plugins' code is judged (above).
+const PLUGIN_ONLY = off || cursorOff;
 
 // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
 // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -80,7 +90,7 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2) {
+    if (code === 2 && !unsetRepo) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -415,7 +425,9 @@ function typedAllowed(t, within) {
 // off unjudged. So `plugins/` under `~/.claude`, `CLAUDE_CONFIG_DIR` and every `~/.claude-<name>` - minus `plugins/data/`,
 // where a plugin keeps its own state (`${CLAUDE_PLUGIN_DATA}`) - and the running plugin's own root (`CLAUDE_PLUGIN_ROOT`,
 // wherever a `--plugin-dir` puts it) count as outside: a write there, or a removal of a folder holding one, is asked
-// (`pluginBlock`). The project's own files pass first, so a plugin developed in this project is untouched. What opens it:
+// (`pluginBlock`) - in EVERY project, under every stand-down (PLUGIN_ONLY, at the top), since every project runs the one
+// installed copy, and minus a plugin's own folder (`pluginsOwnFolder`, below). The project's own files pass first, so a
+// plugin developed in this project is untouched. What opens it:
 // the user's allow answer and its receipt, a folder the user typed, or an ALLOW_WRITE_OUTSIDE entry naming the tree or a
 // folder in it - never a broader one (the whole account dir is the allowance this carve-out narrows).
 const PLUGIN_TREES = [...new Set([HOME ? path.join(HOME, '.claude') : '', process.env.CLAUDE_CONFIG_DIR || '']
@@ -424,12 +436,37 @@ const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ? realish(nativePath(expandTi
 const OWN_ALLOW = (envOf(process.env, 'ALLOW_WRITE_OUTSIDE') || '').split(path.delimiter).map((s) => s.trim()).filter(Boolean)
   .map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
 const PLUGIN_STATE = 'data';
+// A PLUGIN'S OWN FOLDER passes (the user's ruling of 2026-11-03, 'Let a plugin's own folder pass'): a folder right under
+// `plugins/` named after a plugin that account's installed_plugins.json lists - claude-hud keeps its config in
+// `plugins/claude-hud/`, and its setup and /claude-hud:configure asked once per session. Never the core's own name, never
+// a name Claude Code keeps there itself (`CLAUDE_OWNED`), and with no readable registry no folder passes - so the cache,
+// the marketplaces, the store, the registries and any name Claude Code adds later still ask.
+const CORE_NAME = (() => { try { return require('./hook-prelude.js').CORE_PLUGIN; } catch { return 'alfred-code'; } })();
+const CLAUDE_OWNED = new Set(['cache', 'marketplaces', 'data', 'store', 'synced', 'repos', '.trash'].map(fold));
+const installedNames = new Map();
+function pluginsOwnFolder(tree, t) {
+  if (!inside(t, tree) || fold(t) === fold(tree)) return false;
+  const first = t.slice(tree.length).split(path.sep).filter(Boolean)[0] || '';
+  const name = fold(first);
+  if (!name || CLAUDE_OWNED.has(name) || name === fold(CORE_NAME)) return false;
+  if (!installedNames.has(tree)) {
+    const names = new Set();
+    try {
+      const reg = JSON.parse(fs.readFileSync(path.join(tree, 'installed_plugins.json'), 'utf8'));
+      const plugins = reg && reg.plugins && typeof reg.plugins === 'object' && !Array.isArray(reg.plugins) ? reg.plugins : {};
+      for (const id of Object.keys(plugins)) if (id.includes('@')) names.add(fold(id.slice(0, id.indexOf('@'))));
+    } catch { /* no readable registry: no plugin's folder passes */ }
+    installedNames.set(tree, names);
+  }
+  return installedNames.get(tree).has(name);
+}
 // The carved tree `t` (realish) lies in, or null.
 function pluginTree(t) {
-  for (const p of PLUGIN_TREES) if (inside(t, p) && !inside(t, path.join(p, PLUGIN_STATE))) return p;
+  for (const p of PLUGIN_TREES) if (inside(t, p) && !inside(t, path.join(p, PLUGIN_STATE))) return pluginsOwnFolder(p, t) ? null : p;
   if (spacePrefix && fold(t).startsWith(fold(spacePrefix))) {
     const [name, seg, sub] = t.slice(spacePrefix.length).split(path.sep);
-    if (name && seg && fold(seg) === fold('plugins') && !(sub && fold(sub) === fold(PLUGIN_STATE))) return spacePrefix + name + path.sep + seg;
+    const tree = spacePrefix + name + path.sep + seg;
+    if (name && seg && fold(seg) === fold('plugins') && !(sub && fold(sub) === fold(PLUGIN_STATE))) return pluginsOwnFolder(tree, t) ? null : tree;
   }
   if (PLUGIN_ROOT && inside(t, PLUGIN_ROOT)) return PLUGIN_ROOT;
   return null;
@@ -437,7 +474,8 @@ function pluginTree(t) {
 // The carved tree a REMOVAL of `t` takes with it: `t` holds one (`rm -rf ~/.claude`, `rm -rf ~/.claude-work`, a folder
 // above every `~/.claude-<name>`), or lies in one.
 function pluginTreeRemoved(t) {
-  const held = [...PLUGIN_TREES, ...(PLUGIN_ROOT ? [PLUGIN_ROOT] : [])].find((p) => inside(p, t));
+  // only a tree that exists: a home with no plugins folder holds no plugin code to lose
+  const held = [...PLUGIN_TREES, ...(PLUGIN_ROOT ? [PLUGIN_ROOT] : [])].find((p) => inside(p, t) && fs.existsSync(p));
   if (held) return held;
   if (spacePrefix) {
     const ft = fold(t);
@@ -445,7 +483,14 @@ function pluginTreeRemoved(t) {
     // `t` is a `~/.claude-<name>` folder itself, or a folder holding them all
     const name = ft.startsWith(fp) ? t.slice(spacePrefix.length) : null;
     if (name && !name.includes(path.sep) && fs.existsSync(path.join(t, 'plugins'))) return spacePrefix + name + path.sep + 'plugins';
-    if (fp.startsWith(fold(t.endsWith(path.sep) ? t : t + path.sep))) return path.dirname(spacePrefix);
+    if (fp.startsWith(fold(t.endsWith(path.sep) ? t : t + path.sep))) {
+      // a folder above them all: the first `~/.claude-<name>/plugins` that exists
+      let names = [];
+      try { names = fs.readdirSync(path.dirname(spacePrefix)); } catch { names = []; }
+      const base = path.basename(spacePrefix);
+      const hit = names.find((n) => n.startsWith(base) && n.length > base.length && fs.existsSync(path.join(path.dirname(spacePrefix), n, 'plugins')));
+      if (hit) return path.join(path.dirname(spacePrefix), hit, 'plugins');
+    }
   }
   return pluginTree(t);
 }
@@ -455,6 +500,7 @@ const pluginOpened = (t, tree) => OWN_ALLOW.some((d) => inside(t, d) && inside(d
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
+  if (PLUGIN_ONLY) { const carved = pluginTree(t); return !carved || pluginOpened(t, carved); }
   if (memberMemory(t)) return false;
   const tree = pluginTree(t);
   if (tree) return pluginOpened(t, tree);
@@ -652,7 +698,7 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'Not
   const target = input.file_path || input.notebook_path;
   if (!target) process.exit(0);
   const abs = resolveTarget(String(target));
-  if (recordAt(abs, null)) recordBlock(`${tool} of a file`, String(target));
+  if (!PLUGIN_ONLY && recordAt(abs, null)) recordBlock(`${tool} of a file`, String(target));
   if (!allowed(abs)) block(`${tool} of a file`, String(target), abs);
   process.exit(0);
 }
@@ -674,7 +720,7 @@ if (FS_WRITE_TOOL.test(String(tool || ''))) {
   for (const [p, what, kind] of ends) {
     if (typeof p !== 'string' || !p.trim()) continue;
     const abs = resolveTarget(expandTilde(p));
-    if (recordAt(abs, kind)) recordBlock(what, p);
+    if (!PLUGIN_ONLY && recordAt(abs, kind)) recordBlock(what, p);
     if (kind === 'remove') judgeRemoval(abs, what, p);
     if (!allowed(abs)) block(what, p, abs);
   }
@@ -719,7 +765,7 @@ function judge(rawIn, index, what, verb) {
     || raw.includes('/../') || raw === '..';
   if (!explicit && base === ROOT) {
     // this project's own file - unless a transcript sits in the project, or the project in the config dir's records
-    if (RECORDS_NEAR_ROOT && recordAt(resolveTarget(nativePath(raw), ROOT), recordKind(what, verb))) recordBlock(what, raw);
+    if (!PLUGIN_ONLY && RECORDS_NEAR_ROOT && recordAt(resolveTarget(nativePath(raw), ROOT), recordKind(what, verb))) recordBlock(what, raw);
     return;
   }
   const expanded = nativePath(expandTilde(raw));
@@ -743,7 +789,7 @@ function judge(rawIn, index, what, verb) {
   // Nothing can be handed off to a repo that cannot be named, so this passes rather than blocks. Asked only of a write
   // that is not allowed: the name climbs to the filesystem root for a .git, and asked of every write it cost a 245KB
   // chain of cd steps most of its time on Windows (2.1.7).
-  if (recordAt(abs, recordKind(what, verb))) recordBlock(what, explicit ? raw : abs);
+  if (!PLUGIN_ONLY && recordAt(abs, recordKind(what, verb))) recordBlock(what, explicit ? raw : abs);
   if (recordKind(what, verb) === 'remove') judgeRemoval(abs, what, explicit ? raw : abs);
   if (allowed(abs)) return;
   if (/[*?\[]/.test(otherProjectName(abs))) return;
@@ -767,6 +813,8 @@ for (const index of scan.gitWrites) {
 // alias it could not read - may write anywhere, so it is asked through the same receipt, never allowed: the verdict
 // flipped to allowed on size alone (a 1.1MB script writing outside passed, the same text at 0.99MB was denied - 2.1.6
 // re-verify 3 R3-m4). The 'allow' line is the script's own path, or `unread` for a command with no file.
+// plugin-only mode asks nothing of a script it cannot read: that ask covers every write, which the stand-down switched off
+if (PLUGIN_ONLY) process.exit(0);
 const unread = scan.unread.slice();
 if (scan.aliasUnreadAt >= 0) unread.push({ at: scan.aliasUnreadAt, why: 'a git alias it could not read', path: null });
 for (const u of unread) {
