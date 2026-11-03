@@ -855,24 +855,32 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     than the project's, on a detached HEAD, under the temp dir or the harness scratch root is scratch and needs no receipt
     - the staged scan still runs (audit 2026-10-11 SD16, 2ca8e8ee).
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
-    what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).
+    what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks); the docs root
+    and the data root's `state/` and `statistics/` are no project there either, as they are not in the commit's count
+    (E-batch ab-HO3: a data root inside a manifest-owning folder read its own ledger rows as a second project).
     Every commit, trivial or not, first gets a scan of the lines it ADDS (the index, plus what `-a` or a
     chained `git add` takes in; a commit NAMING paths, the working tree of those paths - alone under
     `--only`, on top of the index under `--include`; at most 2MB, a binary file or one past the cap
     skipped, and past the total the scan stops reading but keeps its hits): a conflict marker, a debugger, a focused test (a comment-only line and an ordinary call such as `fit(...)` never count), a
     credential-shaped literal or a hidden character (`hidden-chars.js`, the lint's class; a byte-0 BOM
     passes, and so does a joiner or direction mark a script needs) blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
-    through one ask and `<data root>/state/approvals/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
+    through one ask and `<data root>/state/approvals/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`). A message-only
+    amend (`--amend --only` or `-o`, no path, no `-a`) takes nothing from the index, so nothing staged is scanned or
+    counted (E-batch U26a).
     What was untracked when the change started (`docs-session.js`'s record, below - the one this session's first start
     named in `untracked-session-<sid>`, else the HEAD-keyed one, else the newest) is not the change: it
     leaves the receipt's `spec:` count and the trivial bar, and a `git add` whose own dry run would stage one of
     those paths without naming it (`-A`, `.`, `:/`, a directory, a glob) blocks until `<data root>/state/approvals/UNTRACKED-ALLOW`
     lists it (a path, a directory ending in `/`, or `*`) - pilot 3's ~150 harness files drove 19 denials and one sweep.
+    Both ALLOW receipts are read by `hook-prelude.js readReceiptFile` (under 8h, written after the session began, a
+    `session:` line naming the call's session), and each denial prints the lines to write, `session:` first (E-batch
+    E1-6 / O1: another session's answer opened this one's sweep and scan).
     The receipt's `spec:` count is measured on what the commit takes in - the scan's set, each add and commit path placed
     where its own git call runs (the cwd, a cd, its `-C`) as a `:(top)` pathspec (2.1.6 H2: on the whole tree, narrowing a
     commit never helped) - and on the whole tree when the command does not spell that set out (a path word the shell
     expands, an add fed by `xargs` or `--pathspec-from-file`, an interactive add or commit, `git $C`, a chained `git rm` /
-    `git stash pop`) or its named paths resolve to nothing while the tree is dirty. The trivial bar is cumulative per
+    `git stash pop`) or its named paths resolve to nothing while the tree is dirty - the spec denial then names the word
+    it could not read (E-batch U26c: `git add -- ${=G1}` read as 'takes in 64' with no reason given). The trivial bar is cumulative per
     SESSION (review M2): this commit's set plus the session's earlier commits the guard itself let through as trivial -
     its ledger `<data root>/state/sessions/trivial-<session>`, one row per trivial pass (the HEAD it was made on, its files and
     churn), counted while any of its files still differs between the session start and HEAD - so an amend or a rebase
@@ -899,7 +907,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     open the PR) to the PUSH-GATE; a negation before or after the verb ('don't push', 'no need to commit', 'commit is
     not needed'), a stop ('hold off on the push'), a deferral (a wait on CI defers a push, a release or a ship, never a
     merge: 'merge it once CI is green' consents), the user keeping the act ('I'll push it myself') or a
-    statement about the verb refuses it, and only its own gate. Opening a pull request ('open the PR') is
+    statement about the verb refuses it, and only its own gate; 'commit' leading a noun ('commit messages', 'at commit
+    description') is the noun and neither consents nor refuses (E-batch U26b). Opening a pull request ('open the PR') is
     consent; a question, a negation or the PR's description / template / page is not (H3).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `SubagentHandback` - the output-scorer seal, below; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
@@ -1764,8 +1773,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). Every publish
     the gate allows, the push half off included, is ledgered in `<data root>/state/forge/ACTS-<session>.jsonl` under the
     REPOSITORY's root (`forge.js ledgerRoot` - a worktree and its main checkout share one), a `git push` one row per
-    ref it names (`forge.js pushTargets`), each with its `tool_use_id`; the watch trusts a row once its PostToolUse
-    confirmed it.
+    ref it names (`forge.js pushTargets`), and every other publish act of the same command a row of its own with its
+    own concept (`forge.js classifyCommand`; E-batch fn-9: `git push && gh pr merge 4` ledgered the push alone), each
+    with its `tool_use_id`; the watch trusts a row once its PostToolUse confirmed it.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
     a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,

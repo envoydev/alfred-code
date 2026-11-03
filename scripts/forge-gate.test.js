@@ -226,6 +226,18 @@ test('with the push half off, what it lets through is still ledgered', () => {
   assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref]), [['change.merge', null], ['branch.write', 'main']]);
 });
 
+// fn-9: a command that pushes and then merges is two acts, and the ref watch reads both - the merge rode along unledgered
+// behind the push.
+test('fn-9: git push && gh pr merge ledgers both acts', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  receipt(dir, headOf(dir));
+  const r = run(dir, bash('git push origin main && gh pr merge 4 --squash'));
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref || a.change]), [['branch.write', 'main'], ['change.merge', '4']]);
+});
+
 test('a push from a worktree is ledgered where the main checkout\'s ref watch reads', () => {
   const { dir, git } = pushRepo();
   const wt = path.join(path.dirname(dir), 'wt');

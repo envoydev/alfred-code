@@ -257,6 +257,29 @@ test('guard-ungated-commit: plain top-level folders are not projects - only a fo
   assert.match(gated.stderr, /scripts|stack/, 'names them');
 });
 
+// ab-HO3: the push scope leaves out what an act never commits - the docs root, and the data root's state/ and statistics/,
+// as commitSet() does. A data root inside a manifest-owning folder read its own ledger rows as a second project.
+test('ab-HO3: the push scope skips the data root state as it skips the docs root', () => {
+  const { dir, git } = pushRepo();
+  const env = { ALFRED_CODE_DATA_PATH: 'tools/.alfred' };
+  const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
+  put('tools/package.json', '{}\n');
+  put('apps/auth/a.ts', forty());
+  git('add', '-A'); git('commit', '-qm', 'seed tools'); git('push', '-q');
+  put('apps/auth/a.ts', `${forty()}\nmore\n`);
+  put('tools/.alfred/state/sessions/trivial-x', 'row\n');
+  put('tools/.alfred/statistics/hook-blocks/x.jsonl', '{}\n');
+  git('add', '-A'); git('commit', '-qm', 'auth fix, the ledger rows ride along');
+  const receipt = () => put('tools/.alfred/state/approvals/PUSH-GATE', pushReceipt(headOf(dir), { scope: null }));
+  receipt();
+  const r = gateFull(dir, 'git push', env);
+  assert.equal(r.status, 0, `state/ and statistics/ name no project: ${r.stderr.slice(0, 300)}`);
+  put('tools/cli.js', 'x\n');
+  git('add', 'tools/cli.js'); git('commit', '-qm', 'tools change');
+  receipt();
+  assert.equal(gateIn(dir, 'git push', env), 2, 'a real change under tools/ is a second project');
+});
+
 test('guard-ungated-commit: a pure docs diff, and a NOT RUN probe, are not scope-gated at all', () => {
   const { dir, git } = pushRepo();
   fs.mkdirSync(path.join(dir, '.alfred', 'docs', 'architecture'), { recursive: true });
@@ -404,6 +427,73 @@ test('guard-ungated-commit: a hidden character on an added line blocks, a byte-0
   fs.mkdirSync(path.dirname(allow), { recursive: true });
   fs.writeFileSync(allow, 'late.js:1\n');
   assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 0, 'the receipt naming the hit opens it');
+});
+
+// O1 (inventory A): STAGED-SCAN-ALLOW is read by hook-prelude.js readReceiptFile - a `session:` line naming the call's
+// session - so another session's 'Commit it as is' never opens this one's scan.
+test('O1: STAGED-SCAN-ALLOW counts only for the session it names', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-o1-'));
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test'); git('config', 'commit.gpgsign', 'false');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n');
+  git('add', '-A'); git('commit', '-qm', 'seed');
+  fs.writeFileSync(path.join(dir, 'late.js'), `const s = 'x${String.fromCodePoint(0x202E)}y';\n`);
+  git('add', 'late.js');
+  const at = (session_id) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', session_id, tool_input: { command: 'git commit -m late' }, transcript_path: REVIEWED },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  const allow = path.join(dir, '.alfred', 'state', 'approvals', 'STAGED-SCAN-ALLOW');
+  fs.mkdirSync(path.dirname(allow), { recursive: true });
+  fs.writeFileSync(allow, 'session: another-session\nlate.js:1\n');
+  assert.equal(at('o1').status, 2, 'another session\'s receipt opens nothing');
+  fs.writeFileSync(allow, 'session: o1\nlate.js:1\n');
+  assert.equal(at('o1').status, 0, 'this session\'s receipt opens the scan');
+  fs.writeFileSync(allow, 'late.js:1\n');
+  const r = at('o1');
+  assert.equal(r.status, 2, 'a receipt naming no session is shut');
+  assert.match(r.stderr, /\n  session: o1\n  late\.js:1\n/, 'the denial names the lines to write, its session first');
+});
+
+// U26a (usage audit 2026-11-03): `git commit --amend --only` with no path and no -a rewrites the message alone - git takes
+// nothing from the index - so a staged hit is not this act's.
+test('U26a: a message-only amend --only judges no staged file', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-u26a-'));
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test'); git('config', 'commit.gpgsign', 'false');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n');
+  git('add', '-A'); git('commit', '-qm', 'seed');
+  fs.writeFileSync(path.join(dir, 'late.js'), `const s = 'x${String.fromCodePoint(0x202E)}y';\n`);
+  git('add', 'late.js');
+  assert.equal(gateIn(dir, 'git commit --amend --only -F -'), 0, 'the message alone takes nothing staged in');
+  assert.equal(gateIn(dir, 'git commit --amend -o -m "a better message"'), 0, '-o is --only');
+  const r = gateFull(dir, 'git commit --amend -F -');
+  assert.equal(r.status, 2, 'without --only the amend takes the index in');
+  assert.match(r.stderr, /late\.js:1 - a hidden character/, '... and scans it');
+  assert.equal(gateIn(dir, 'git commit --amend --only -F - late.js'), 2, 'a named path is taken in and scanned');
+});
+
+// U26b (usage audit 2026-11-03, 75b9108a L329): 'commit' as the first half of a noun ('commit messages', 'commit description')
+// neither consents nor refuses - the audit's quote opened 'Commit now' and was refused for a 'not' before 'at commit description'.
+test('U26b: a noun use of commit neither consents nor refuses', () => {
+  const dir = scratchRepo();
+  const commit = (words) => {
+    writeReceipt(dir, 'COMMIT-GATE', ['VERIFIED the checkpoint', `authorized: "${words}"`, `head: ${headOf(dir)}`, 'spec: 3 files', 'live-probe: NOT RUN - fixture', FMT].join('\n') + '\n');
+    return gateIn(dir, 'git commit -am x');
+  };
+  assert.equal(commit('Commit now but edit commit messages not to have this tab movement at commit description'), 0, 'the audit quote');
+  assert.equal(commit('edit commit messages'), 2, 'a noun alone is no consent');
+  assert.equal(commit('fix the commit message, do not commit yet'), 2, 'a refused verb still refuses');
+  assert.equal(commit('commit it, the commit hash can change'), 0, 'a verb beside a noun use');
+});
+
+// U26c (usage audit 2026-11-03, 75b9108a L345): `git add -- ${=G1}` names its paths through a zsh split the gate cannot read
+// before the command runs, so the commit is counted on the whole tree - by design - and the denial now names that word.
+test('U26c: a path word built at run time counts the whole tree, and the denial names it', () => {
+  const dir = scratchRepo();
+  writeReceipt(dir, 'COMMIT-GATE', ['VERIFIED the checkpoint', 'authorized: "commit it"', `head: ${headOf(dir)}`, 'spec: 1 file', 'live-probe: NOT RUN - fixture', FMT].join('\n') + '\n');
+  const r = gateFull(dir, 'G1=$(echo a.txt)\ngit add -- ${=G1} && git commit -q -F m.txt');
+  assert.equal(r.status, 2, 'the set is unknown before it runs');
+  assert.match(r.stderr, /spec: claims 1 file\(s\) but this commit takes in \d+/);
+  assert.match(r.stderr, /\$\{=G1\}/, 'the denial names the word it could not read');
 });
 
 // ---------------------------------------------------------------------------------------------

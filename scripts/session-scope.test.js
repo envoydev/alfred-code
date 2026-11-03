@@ -174,15 +174,41 @@ test('UNTRACKED-ALLOW opens the sweep for the paths the user named, and only tho
     try {
         p.write('harness/one.txt', 'h\n'); p.write('harness/two.txt', 'h\n');
         p.start('s6');
-        p.flow('UNTRACKED-ALLOW', 'harness/one.txt\n');
+        p.flow('UNTRACKED-ALLOW', 'session: s6\nharness/one.txt\n'); // E1-6: the session it answers
         const partial = p.bash('s6', 'git add -A');
         assert.strictEqual(partial.status, 2);
         assert.match(partial.stderr, /harness\/two\.txt/);
         assert.doesNotMatch(partial.stderr, /  harness\/one\.txt/, 'the named path is no longer listed');
-        p.flow('UNTRACKED-ALLOW', 'harness/\n');
+        p.flow('UNTRACKED-ALLOW', 'session: s6\nharness/\n');
         assert.strictEqual(p.bash('s6', 'git add -A').status, 0, 'a directory line covers what is under it');
-        p.flow('UNTRACKED-ALLOW', '*\n');
+        p.flow('UNTRACKED-ALLOW', 'session: s6\n*\n');
         assert.strictEqual(p.bash('s6', 'git add .').status, 0);
+    } finally { p.rm(); }
+});
+
+// E1-6 (inventory A): UNTRACKED-ALLOW is read by hook-prelude.js readReceiptFile - a `session:` line naming the call's
+// session - so another session's answer never opens this one's sweep.
+test('E1-6: UNTRACKED-ALLOW counts only for the session it names', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('e16');
+        p.flow('UNTRACKED-ALLOW', 'session: another-session\n*\n');
+        assert.strictEqual(p.bash('e16', 'git add -A').status, 2, 'another session\'s receipt opens nothing');
+        p.flow('UNTRACKED-ALLOW', 'session: e16\n*\n');
+        assert.strictEqual(p.bash('e16', 'git add -A').status, 0, 'this session\'s receipt opens the sweep');
+    } finally { p.rm(); }
+});
+
+test('E1-6: an old receipt with no session line asks again', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('e16b');
+        p.flow('UNTRACKED-ALLOW', '*\n');
+        const r = p.bash('e16b', 'git add -A');
+        assert.strictEqual(r.status, 2, 'a receipt naming no session is shut');
+        assert.match(r.stderr, /\n  session: e16b\n/, 'the denial\'s receipt lines start with this session');
     } finally { p.rm(); }
 });
 
@@ -196,7 +222,7 @@ test('the receipt\'s spec count and the trivial-diff bar leave the pre-existing 
         p.flow('COMMIT-GATE', ['VERIFIED the rounding fix', 'authorized: "commit it"', `head: ${head}`, 'spec: 1 file - src/a.cs', 'live-probe: NOT RUN - test', 'format: npx prettier --check - clean over 1 staged file', 'findings: none'].join('\n') + '\n');
         // 2.1.6 H2: the count is what the commit takes in, so the sweep that takes the harness files in is the case -
         // the user allowed it, and they still are not the change
-        p.flow('UNTRACKED-ALLOW', '*\n');
+        p.flow('UNTRACKED-ALLOW', 'session: s7\n*\n');
         const r = p.bash('s7', 'git add -A && git commit -m fix');
         assert.strictEqual(r.status, 0, r.stderr);
         p.dropRecords();

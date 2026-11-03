@@ -348,15 +348,25 @@ function ledgerPublish(match, dir) {
       else rows.push(...targets.map((ref) => ({ ref })));
     }
     if (!rows.length) rows = [{ ref: null }];
+    // fn-9: the command's other publish acts (`git push && gh pr merge 4`) are rows of their own, each with its own concept
+    if (forgeLib.classifyCommand) {
+      let more = [];
+      try { more = forgeLib.classifyCommand(command, gitCwd, { parsed }); } catch { more = []; }
+      for (const a of more) {
+        if (a && a.strength === 'known' && forgeLib.PUBLISH.has(a.concept)) rows.push({ ref: a.ref || null, concept: a.concept, change: a.change, head: a.head, armed: a.armed });
+      }
+    }
   }
   let ledger = dir;
   try { ledger = forgeLib.ledgerRoot(dir) || dir; } catch { /* the act's own repo */ }
   const seen = new Set();
   for (const row of rows) {
-    const key = `${row.ref}|${!!row.all}`;
+    const concept = row.concept || f.concept || forgeLib.CONCEPTS.BRANCH;
+    const key = `${concept}|${row.ref}|${!!row.all}|${row.change || ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    forgeLib.recordAct(ledger, payload.session_id, { concept: f.concept || forgeLib.CONCEPTS.BRANCH, change: f.change, ref: row.ref, head, all: row.all, armed: f.armed, tool_use_id: payload.tool_use_id });
+    forgeLib.recordAct(ledger, payload.session_id, { concept, change: row.concept ? row.change : f.change, ref: row.ref, head: row.head || head, all: row.all,
+      armed: row.concept ? row.armed : f.armed, tool_use_id: payload.tool_use_id });
   }
 }
 if (!PUSH_GATE_ON) {
@@ -554,7 +564,7 @@ function projectOf(f) {
   return ownsManifest(parts[0]) ? parts[0] : null;
 }
 // The projects a PUBLISH is taking out: the commits ahead of upstream, not the working tree (a
-// push's spec already draws that distinction). Docs-root files are excluded the same way
+// push's spec already draws that distinction). Docs-root and data-root state files are excluded the same way
 // commitSet() excludes them - the receipt lives there and names no project of its own.
 // A FIRST push has no upstream to diff against, and the scope check read no project at all (audit 2026-10-08): its
 // commits are the ones no remote branch holds yet.
@@ -565,9 +575,14 @@ function pushTouchedProjects() {
     try { files = git('log --name-only --format= HEAD --not --remotes').split('\n').filter(Boolean); } catch { files = []; }
   }
   const pre = docsPrefix();
+  // ab-HO3: what an act never commits is no project either - the data root's state/ and statistics/ beside the docs root
+  // (ownPrefixes, the set commitSet() leaves out): a data root in a manifest-owning folder read its ledger rows as one.
+  let own = [];
+  try { own = ownPrefixes(gitTop || root); } catch { own = []; }
   const out = new Set();
   for (const f of files) {
-    if (pre && f.replace(/\\/g, '/').startsWith(pre)) continue;
+    const rel = f.replace(/\\/g, '/');
+    if ((pre && rel.startsWith(pre)) || own.some((p) => rel.startsWith(p))) continue;
     const p = projectOf(f);
     if (p) out.add(p);
   }
@@ -674,6 +689,9 @@ const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|
 const MERGE_VERB = /^merge/i;
 const USER_KEEPS = /\bmyself\b/i;
 const NOUN_BEFORE = /\b(?:the|a|an|this|that|my|your|its|our|last|first|previous|next)\s+$/i;
+// U26b (usage audit 2026-11-03): 'commit' leading a noun ('commit messages', 'at commit description') is the noun, never the act -
+// a 'not' earlier in its clause refused 'Commit now but edit commit messages not to have ... at commit description'.
+const NOUN_AFTER = /^\s+(?:messages?|descriptions?|titles?|subjects?|bod(?:y|ies)|hash(?:es)?|histor(?:y|ies)|logs?|ids?|shas?|summar(?:y|ies)|texts?|lines?|lists?|graph|range|author)\b/i;
 const ACT_BEFORE = /\b(?:do|make|create|go ahead with|proceed with|run|finish|approve)\s+(?:the|a|an|this|that|your)\s+$/i;
 const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b/i;
 const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later)[^\p{L}\p{N}]*$/iu;
@@ -712,6 +730,7 @@ function consentIn(text, gate) {
       const before = clean.slice(a, m.index);
       const after = clean.slice(m.index + m[0].length, z);
       if ((NOUN_BEFORE.test(before) && !ACT_BEFORE.test(before)) || WHY_CLAUSE.test(clause)) continue;
+      if (/^commit$/i.test(m[0].trim()) && NOUN_AFTER.test(after)) continue;
       const nk = boundAfter(bounds, z);
       const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
       const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
@@ -1224,9 +1243,13 @@ function judgeReceipt(body, opts) {
   const claimed = (opts && opts.countAgainstTree) ? /(\d+)\s*files?\b/i.exec(spec) : null;
   if (claimed) {
     let actual = 0;
-    try { actual = commitSet().count; } catch { actual = 0; }
+    let opaque = '';
+    try { const cs = commitSet(); actual = cs.count; opaque = cs.opaqueWord || ''; } catch { actual = 0; }
     if (actual && Number(claimed[1]) < actual) {
-      r.problem = `spec: claims ${claimed[1]} file(s) but this commit takes in ${actual} (the index, plus what -a, a chained git add or the paths it names add) - review the rest, or narrow what this act commits`;
+      // U26c: a path word built when the command runs (`${=G1}`, `$F`) cannot be read here, so the count is the whole tree
+      const how = opaque ? ` - \`${opaque.slice(0, 60)}\` is built when the command runs, so the gate counts the whole uncommitted tree; name the paths literally`
+        : ' (the index, plus what -a, a chained git add or the paths it names add)';
+      r.problem = `spec: claims ${claimed[1]} file(s) but this commit takes in ${actual}${how} - review the rest, or narrow what this act commits`;
       return r;
     }
   }
@@ -1552,23 +1575,21 @@ function lineFinding(file, text, lineNo) {
   return '';
 }
 // A `<data root>/state/approvals/<name>` ALLOW receipt's lines (the pre-2.8.0 flow/ still read) - the USER's answer to a
-// block, this session's own, under 8h. `write` is where a denial says to put one.
+// block, read by hook-prelude.js readReceiptFile: under 8h, written after the session began, and a `session:` line naming
+// this call's session when the call names one (E1-6 / O1: another session's answer opened this one's sweep and scan).
+// `write` is where a denial says to put one; `shut` the sentence a denial adds when a receipt is there but not honoured.
 function allowLines(name) {
   const file = receiptRead(name);
   const write = receiptWrite(name);
-  try {
-    const st = fs.statSync(file);
-    let sessionStartMs = 0;
-    try {
-      const tr = fs.statSync(String(payload.transcript_path || ''));
-      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs <= 8 * 60 * 60 * 1000 && !(sessionStartMs && st.mtimeMs < sessionStartMs)) {
-      return { file, write, lines: fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) };
-    }
-  } catch { /* absent or unreadable - nothing allowed */ }
-  return { file, write, lines: [] };
+  let r = null;
+  try { r = prelude().readReceiptFile(file, payload); } catch { r = null; }
+  let shut = '';
+  try { shut = prelude().receiptShutText(r, path.relative(root, file).split(path.sep).join('/')); } catch { shut = ''; }
+  return { file, write, lines: r && r.live ? r.lines : [], shut };
 }
+// The lines a denial tells the model to write, its `session:` line first (hook-prelude.js receiptLinesText).
+const receiptLines = (lines) => { try { return prelude().receiptLinesText(payload, lines); } catch { return lines.map((l) => `  ${l}\n`).join(''); } };
+function prelude() { return require('./hook-prelude.js'); }
 
 // --- a git add that sweeps in what the session did not make --------------------------------------
 // Pilot 3: ~150 files the harness left untracked before the session began were committed by a close's `git add`, and
@@ -1619,11 +1640,12 @@ if (addCalls.length) {
       (swept.length > 15 ? `  ... and ${swept.length - 15} more\n` : '') +
       `They are not this change (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}). Stage the change's own\n` +
       `paths by name instead - git add <path> ... When the user named these files as part of this change, write\n` +
-      `${rel('UNTRACKED-ALLOW')} with one path (a directory ending in /, or *) per line and retry the SAME command;\n` +
+      `${rel('UNTRACKED-ALLOW')} with these lines (one path per line; a directory ending in /, or *) and retry the SAME command -\n` +
+      receiptLines(swept.slice(0, 15)) +
       `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
       `  'Stage only this session's paths (Recommended)'\n` +
       `  'Stage them too' - the user adds these files to the change\n` +
-      `It is honoured for this session only, under 8h.\n`,
+      `It is honoured for this session only, under 8h.\n` + allowLines('UNTRACKED-ALLOW').shut,
     );
     process.exit(2);
   }
@@ -1649,7 +1671,7 @@ function commitScope() {
   const placeAll = (dir, words, into) => {
     for (const w of words) {
       const p = place(dir, w);
-      if (p === null) scope.unknown = true;
+      if (p === null) { scope.unknown = true; if (!scope.opaqueWord && /[$`]/.test(w)) scope.opaqueWord = w; }
       into.push(p === null ? w : p);
     }
   };
@@ -1658,6 +1680,8 @@ function commitScope() {
     scope.dryRun = flags.has('--dry-run');
     scope.amend = flags.has('--amend');
     scope.tracked = flags.has('-a') || flags.has('--all') || flags.has('--pathspec-from-file');
+    // U26a: `--amend --only` (or -o) with no path and no -a rewrites the message alone - git takes nothing from the index
+    scope.messageOnly = scope.amend && (flags.has('--only') || flags.has('-o')) && !paths.length && !scope.tracked;
     if (flags.has('-p') || flags.has('--patch') || flags.has('--interactive')) scope.unknown = true;
     if (paths.length) {
       placeAll(callDir(commitMatch.call), paths, scope.commitPaths);
@@ -1695,6 +1719,7 @@ function measure(scope) {
   const keep = (f) => f && !own.some((p) => f.startsWith(p));
   const run = (args) => execFileSync(...gitSafe(['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
   const tracked = new Map();
+  if (scope && scope.messageOnly) return { top, tracked, untracked: [], count: 0 }; // U26a: the message alone
   const numstat = (base, paths) => {
     const f = run([...base, '--numstat', '-z', ...(paths.length ? ['--', ...paths] : [])]).split('\0');
     for (let i = 0; i < f.length; i++) {
@@ -1741,10 +1766,11 @@ function commitSet() {
   const moved = calls.some((c) => c.at < commitMatch.index && INDEX_MOVER.has(c.sub));
   const scope = commitMatch.opaque || moved ? null : commitScope();
   let set = measure(scope && !scope.unknown ? scope : null);
-  if (scope && !scope.unknown && !set.count && (scope.paths.length || scope.commitPaths.length)) {
+  if (scope && !scope.unknown && !scope.messageOnly && !set.count && (scope.paths.length || scope.commitPaths.length)) {
     const tree = measure(null);
     if (tree.count) set = tree;
   }
+  set.opaqueWord = scope && scope.unknown && scope.opaqueWord ? scope.opaqueWord : '';
   commitSetCache = set;
   return set;
 }
@@ -1912,7 +1938,7 @@ function headerName(raw) {
 }
 function stagedFindings() {
   const scope = commitScope();
-  if (scope.dryRun) return [];
+  if (scope.dryRun || scope.messageOnly) return [];
   const out = [];
   let budget = SCAN_LIMIT;
   const top = gitTop || root;
@@ -2015,7 +2041,7 @@ function stagedFindings() {
   const found = stagedFindings();
   // 'Commit it as is' is the USER's answer, honoured through its own receipt: one `file`, `file:line`
   // or `*` per line; this session's own, under 8h.
-  const { write: allowFile, lines: allow } = allowLines('STAGED-SCAN-ALLOW');
+  const { write: allowFile, lines: allow, shut: allowShut } = allowLines('STAGED-SCAN-ALLOW');
   const open = found.filter((f) => !(allow.includes('*') || allow.includes(f.file) || allow.includes(`${f.file}:${f.line}`)));
   if (open.length) {
     global.BLOCK_DETAIL = { branch: 'staged-scan', count: open.length };
@@ -2028,8 +2054,9 @@ function stagedFindings() {
       `for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
       `  'Remove it and stage again (Recommended)'\n` +
       `  'Commit it as is' - the user keeps the line on purpose\n` +
-      `On 'Commit it as is', write ${allowRel} with one \`file:line\` per kept hit and retry the SAME\n` +
-      `command. It is honoured for this session only, under 8h.\n`,
+      `On 'Commit it as is', write ${allowRel} with these lines (one \`file:line\` per kept hit) and retry the SAME\n` +
+      `command -\n` + receiptLines(open.slice(0, 15).map((f) => `${f.file}:${f.line}`)) +
+      `It is honoured for this session only, under 8h.\n` + allowShut,
     );
     process.exit(2);
   }
