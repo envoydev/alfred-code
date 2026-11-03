@@ -136,7 +136,7 @@ test('every clause that names a Seats line reads the newest one, not any', () =>
 test('the AUTO waiver writes the root stamp at its absolute path', () => {
     const waiver = /\*\*Autonomy waiver \(AUTO\)\.\*\*[^\n]*(?:\n(?!\n)[^\n]*)*/.exec(read('stack/skills/task-solve/SKILL.md'));
     assert.ok(waiver, 'the waiver paragraph');
-    assert.ok(squash(waiver[0]).includes('write `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL`, first line `AUTO'), squash(waiver[0]).slice(0, 300));
+    assert.ok(squash(waiver[0]).includes('write `<project root>/<data root>/state/approvals/APPROVAL`, first line `AUTO'), squash(waiver[0]).slice(0, 300));
     assert.ok(squash(read('stack/skills/task-solve/references/step-mechanics.md')).includes("The waiver's root stamp, its `AUTO` first line"), 'the pointer still names it');
 });
 

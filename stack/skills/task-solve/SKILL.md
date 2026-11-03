@@ -82,7 +82,7 @@ Next: <its first move> -> <the steps left>.
 ````
 
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
-recommended without asking me'), never self-authorize silently - write `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL`,
+recommended without asking me'), never self-authorize silently - write `<project root>/<data root>/state/approvals/APPROVAL`,
 first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived, and take each stop's recommended option; the
 pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
 
