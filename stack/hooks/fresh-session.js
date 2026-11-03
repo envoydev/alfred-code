@@ -661,6 +661,44 @@ function readRateOf(id) {
   const key = modelKey(id, Object.keys(CACHE_READ_RATES));
   return key ? CACHE_READ_RATES[key] : OTHER_READ_RATE;
 }
+// D8 - the seats' family tier and price multiples. A family word sits INSIDE an id, so `modelKey` (a whole key at an
+// id boundary) cannot find it; `modelFamily` reads it and needs `claude` in the id, so a bare alias reads as unknown.
+const MODEL_TIER = Object.freeze({ haiku: 1, sonnet: 2, opus: 3, fable: 4, mythos: 4 });
+const SEAT_IDS = Object.freeze({ sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5' });
+const SEAT_COLUMNS = ['input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output'];
+const SEAT_PRICE = Object.freeze({
+  'claude-sonnet-5-5': Object.freeze({ input: 2, cache_write_5m: 2.5, cache_write_1h: 4, cache_read: 0.1, output: 10 }),
+  'claude-opus-5-5': Object.freeze({ input: 4, cache_write_5m: 5, cache_write_1h: 8, cache_read: 0.2, output: 20 }),
+  'claude-fable-5-1': Object.freeze({ input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 0.25, output: 50 }),
+  'claude-mythos-5-1': Object.freeze({ input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 0.25, output: 50 }),
+});
+function modelFamily(id) {
+  const s = String(id || '').toLowerCase();
+  if (!s.includes('claude')) return null;
+  const m = /(?:^|[-.])(haiku|sonnet|opus|fable|mythos)(?=$|[-.@:[])/.exec(s);
+  return m ? m[1] : null;
+}
+function priceMultiple(heavyId, lightId) {
+  const keys = Object.keys(SEAT_PRICE);
+  const hk = modelKey(heavyId, keys);
+  const lk = modelKey(lightId, keys);
+  if (!hk || !lk) return null;
+  const ratios = SEAT_COLUMNS.map((c) => Math.round(1000 * SEAT_PRICE[hk][c] / SEAT_PRICE[lk][c]) / 1000)
+    .map((r) => Number(r.toFixed(2)));
+  const lo = Math.min(...ratios);
+  const hi = Math.max(...ratios);
+  return lo === hi ? `${lo}x` : `${lo}x-${hi}x`;
+}
+function seatsFacts(id) {
+  const family = modelFamily(id);
+  if (!family) return null;
+  const tier = MODEL_TIER[family];
+  return {
+    id, family, tier,
+    multiple: priceMultiple(id, SEAT_IDS.sonnet),
+    designers: tier > MODEL_TIER.opus ? priceMultiple(id, SEAT_IDS.opus) : null,
+  };
+}
 // ALFRED_CODE_FRESH_SESSION_PAYBACK: a whole number from 0 to 1000; anything else is 30, and 0 lets no offer pay.
 function paybackOf(env = process.env) {
   const raw = envOf(env, 'FRESH_SESSION_PAYBACK');
@@ -1018,7 +1056,7 @@ function stopOfferCtx(p = payload) {
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
   tableWindow, recordSessionModel, knownWindow, ctxThreshold, coldFloor, firstUsage, worthResuming, contextNow,
-  RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
+  RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, modelFamily, MODEL_TIER, SEAT_IDS, SEAT_PRICE, priceMultiple, seatsFacts, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
   verdictRow, verdictProbe,
   AFTER_HOURS_FOLLOW, CACHE_LIFE_MS, IDLE_WAIT_FALLBACK_MS, afterHoursOf, CACHE_LIFE_READERS, hostOf, cacheLifeOf, idleWait, gapText,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
