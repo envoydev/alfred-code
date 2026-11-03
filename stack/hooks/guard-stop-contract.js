@@ -366,7 +366,13 @@ function proseAsk(text) {
 // fresh session' (hooks review 2026-10-16): with negated done words read as negations (NEGATED_DONE_RE), 'The full gate
 // passed ... Nothing is committed; the diff stays uncommitted for your review' and the resume close printed with no fresh
 // pick had read as done only through their 'Nothing is committed'.
-const DONE_RE = /\b(done|complete[d]?|finished|committed|landed|green|all tests pass|ready|(?:gate|checks?|suite|tests?|build|review|verification|lint|ci)\s+(?:(?:has|have|all)\s+)?passed|saved for a fresh session|(?<!\b(?:not|nothing|never)(?: (?:yet|is|was|been|has been|got))? )(?<!\bun-?)pushed)\b/i;
+// `complete` inside 'auto-complete' names a feature, not a report (retune 3.7.1: a report about a merge's 'arm
+// auto-complete' read as a done step and held a wait on three running reports). A first-person perfect or past of a work
+// verb ('I've written the fix', 'I added the audit line') is the judge's 'a file written, a fix landed': with the when /
+// once frame and a quoted label read for what they are (FUTURE_DONE_RE, QUOTED_SPAN_RE), the done half lost the accidental
+// done words that had carried such closes - C15's measured stall (390aebcb) among them. Over the whole corpus the verbs
+// hold 24 closes the old reading passed, about 13 of them stalls by the judge's criteria.
+const DONE_RE = /\b(done|(?<!\bauto-)complete[d]?|finished|committed|landed|green|all tests pass|ready|(?:gate|checks?|suite|tests?|build|review|verification|lint|ci)\s+(?:(?:has|have|all)\s+)?passed|saved for a fresh session|(?<!\b(?:not|nothing|never)(?: (?:yet|is|was|been|has been|got))? )(?<!\bun-?)pushed|(?:I|we)(?:(?:'ve|\u2019ve| have)\s+(?:now\s+|just\s+|also\s+)?(?:written|fixed|added|updated|made|applied|implemented|changed|built|wired|created|rewritten)|\s+(?:just\s+|also\s+|then\s+)?(?:wrote|fixed|added|updated|applied|implemented|changed|built|wired|created|rewrote)))\b/i;
 // `next steps?`: the plural is what a mandated close header actually reads ('Next steps:'), and the
 // singular-only pattern let every card carrying it past the gate (measured: the doneClose check
 // could not fire on the one shape it was written for). `when you say so` is the same hand-back the
@@ -381,17 +387,34 @@ const DONE_RE = /\b(done|complete[d]?|finished|committed|landed|green|all tests 
 // 390aebcb, 458953b8), and the run-state words a close uses for its own seats ('Three agents are still building',
 // 0498718d - a wait like 'still running', see RUNNING_ITEM_RE).
 // ENGLISH ONLY (deep hooks review 2026-10-16, the user's ruling): the Ukrainian halves decided 4 things in 4 weeks, 2 of them
-// false blocks. A close in any other language is not judged here - its neutral signals (a closing '?', the ask rule, the
-// background registry) still are - and the markers this hook reads stay English whatever language the answer is in
-// (alfred-interaction.md).
-const PENDING_RE = /\b(not pushed|nothing pushed|awaiting|waiting (on|for)|still (?:running|building|working|going)|pending your|next steps?|(?:what|that|which|still) remains?|remains? (?:to|open|pending|outstanding|undone|unpushed|uncommitted)|left to do|yet to|whenever you|when you'?re ready|(when|whenever|once) you say so|un-?pushed|not (?:yet )?(?:run|verified)(?=\**\s*[:\u2013-])|(?<!\bI )never ran|still open|still held for (?:your )?review|(?<!\bno )(?<!\bzero )open items?|put off)\b/i;
+// false blocks. A close in any other language is not judged here - its neutral signals (the close labels, a closing '?',
+// the ask rule, the background registry) still are, in the main block - and the markers this hook reads stay English
+// whatever language the answer is in (alfred-interaction.md).
+// 'that / which remains' is pending only where it opens a clause ('- that remains before the PR') or follows a work noun
+// ('the steps that remain'): after any other noun it is a relative clause describing a state (retune 3.7.1: 'the 4 GB limit
+// that remains is marked' held an explainer page's close).
+// Retune 3.7.1 widened the half with two owed items a finished-sounding close left (2 corpus closes held right, both
+// passed): a found issue left 'not fixed' ('Review: one minor issue, not fixed'), and a check 'still red' after the work.
+// 'it / this / they never ran' describes old code ('the condition was inverted, so it never ran'), never an open check.
+const PENDING_RE = /\b(not pushed|nothing pushed|awaiting|waiting (on|for)|still (?:running|building|working|going)|pending your|next steps?|(?:what|still) remains?|(?<=(?:^|[.;:!?\n]\s*|\s[-\u2013]\s))(?:that|which) remains?|(?:work|steps?|items?|tasks?|things?|parts?|pieces?|bits?|fix(?:es)?|changes?|todos?) (?:that|which) remains?|remains? (?:to|open|pending|outstanding|undone|unpushed|uncommitted)|left to do|yet to|whenever you|when you'?re ready|(when|whenever|once) you say so|un-?pushed|not (?:yet )?(?:run|verified)(?=\**\s*[:\u2013-])|(?<!\b(?:I|it|this|they) )never ran|still open|still held for (?:your )?review|(?<!\bno )(?<!\bzero )open items?|put off|(?:issues?|findings?|bugs?|problems?|defects?|gaps?)\b[^.\n;:]{0,40}?\b(?:not|never|left un|still un) ?fixed|(?:checks?|tests?|specs?|suites?|builds?|ci|gates?)\b[^.\n;:]{0,30}?\bstill (?:red|failing|broken))\b/i;
 // A done word under a negation reports nothing done (hooks review 2026-10-16: 5 of 20 sampled done-close blocks read
 // 'Nothing is committed', 'isn't committed', 'nothing gets pushed', 'Nothing is committed or pushed' as a done report -
 // DONE_RE's own lookbehind guards only `pushed`, after a short list). Blanked on the DONE half alone (doneProse): the
 // pending half keeps 'not pushed', which is its item ('Committed, not pushed' stays a stall).
 const DONE_WORDS = 'committed|pushed|merged|landed|done|finished|complete[d]?|ready|green|passed';
 const NEGATED_DONE_RE = new RegExp(`\\b(?:not|nothing|never|neither|nor|(?:is|are|was|were|has|have|had|did|do|does|wo)n['\u2019]t|before anything)\\b(?:\\s+[\\w'\u2019]+){0,2}?\\s+(?:${DONE_WORDS})\\b(?:\\s+(?:or|nor|and)\\s+(?:${DONE_WORDS})\\b)?`, 'gi');
-const doneProse = (text) => text.replace(NEGATED_DONE_RE, ' ');
+// The retune of 3.7.1 (the user's ruling: keep the regex, cover more; a labelled corpus of real closes, counts in
+// docs/stop-done-regex-v2-evidence.md). A done word in a FUTURE or CONDITIONAL frame reports nothing done: a hand-off
+// whose only done word sat in 'tell me when it's done', 'once the CI run is green', 'before stamping Completed' or 'I'll
+// mark the task done' was held as a done close (5 corpus closes, each a wait or a hand-off with no step done). The frame
+// runs to the clause's end - punctuation stops it, so 'after the fix, the suite passed' still reports.
+const FUTURE_DONE_RE = new RegExp(String.raw`\b(?:when(?:ever)?|once|after|until|till|before|if|as soon as)\s+(?:[\w'\u2019.-]+\s+){0,5}?(?:${DONE_WORDS})\b|\b(?:I(?:'ll|\u2019ll| will| would|'d)|we(?:'ll| will)|then)\s+(?:then\s+)?(?:mark|stamp|set|flag|move|call)\b[^.\n;]{0,60}?\b(?:${DONE_WORDS})\b`, 'gi');
+// ...and one about work before this turn ('its run finished green long ago, so it needs nothing') reports nothing done here.
+const EARLIER_DONE_RE = new RegExp(String.raw`\b(?:${DONE_WORDS})\b(?:\s+[\w'\u2019-]+){0,2}?\s+(?:long ago|earlier(?: today| on)?|yesterday|last (?:night|week|time|session))\b`, 'gi');
+// ...and a done word inside single quotes is a label or quoted output, not the close's own report (a picked option
+// 'Wait for green, then push' read as a green report). An apostrophe inside a word opens no quote.
+const QUOTED_SPAN_RE = /(?<![\w'\u2019])'[^'\n]{1,200}'(?![\w'\u2019])/g;
+const doneProse = (text) => text.replace(QUOTED_SPAN_RE, ' ').replace(NEGATED_DONE_RE, ' ').replace(FUTURE_DONE_RE, ' ').replace(EARLIER_DONE_RE, ' ');
 // DONE_RE and PENDING_RE judge PROSE, and three measured false positives came from reading
 // something else. A block costs the whole turn, so the two halves are tested against a SCRUBBED
 // copy of the close:
@@ -605,7 +628,9 @@ function liveBackgroundWork() {
 // implementer as the running noun, or a waiter that wakes the session. Read ONLY when liveBackgroundWork()
 // answers null - a readable transcript with nothing out keeps the measured stall ('done, and the X is still
 // running') blocking whatever it is called.
-const RUNNING_NOUN_RE = /\b(?:agents?|reviews?|reviewers?|implementers?)\b[^.\n]{0,40}\b(?:(?:still |now |currently )?(?:running|executing|in progress|queued)|(?:still |currently )(?:building|working)|in the background|backgrounded)\b/i;
+// Retune 3.7.1: the seats and checks a close names as running are the same work ('Seat B ... is still running', 'The backend
+// Measurements check is still running', 'The idle-compaction audit is running' - 4 corpus closes held with no registry).
+const RUNNING_NOUN_RE = /\b(?:agents?|reviews?|reviewers?|implementers?|seats?|subagents?|forks?|workers?|verifiers?|designers?|analy[sz]ers?|checks?|checkers?|suites?|audits?|scans?|matrix|loops?|builds?|jobs?)\b[^.\n]{0,40}\b(?:(?:still |now |currently )?(?:running|executing|in progress|queued)|(?:still |currently )(?:building|working)|in the background|backgrounded)\b/i;
 const WAKE_RE = /\b(?:wakes? me|(?:when|once|as soon as) (?:it|they|either|both|each) (?:reports?|lands?|finish(?:es)?|completes?))\b/i;
 // The close is a status line over that work only when every pending item it states is a WAIT on running work -
 // 'still running', 'waiting on / for', 'awaiting' - and none is a step (a next step, what remains, what is left, a
@@ -627,17 +652,23 @@ const APPROVAL_WORDS = /\b(?:approval|allow|go-?ahead|sign-?off|confirmation|dec
 // seat's fixes and checks are its work too ('Still waiting on the libs/ui fixes and the cheat check', hooks review
 // 2026-10-16, 899bc83d); a seat set's checkers and a background poll's daemon too ('Still waiting on 5 of the 9
 // checkers', 'waiting on the Docker daemon' over a running poll - audit 2026-10-20 C02, a2920886, a09fc7d6)
-const WORK_WORDS = /\b(?:forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|fix(?:es)?|checks?|checkers?|daemons?|it|its|them|their)\b/i;
+const WORK_WORDS = /\b(?:tracks?|forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|fix(?:es)?|checks?|checkers?|daemons?|it|its|them|their)\b/i;
 const RUNNING_ITEM_RE = /^(?:still (?:running|building|working|going))$/i;
 // A hand-back needs no pending word (re-verify 2 R2-B1): 'Push when you approve', 'I need your go-ahead', 'awaiting a
 // review from you', 'waiting for it to be approved', 'Confirm and I push' each hand the next act to a person. The
 // real closes' own disclaimer ('Nothing needs your decision') is scrubbed first, and so is a negated one ('not your call').
-const NO_HANDBACK_RE = /\b(?:nothing|no (?:[\w-]+ )?(?:decision|input|action|answer)s?)(?: (?:else|more))? (?:needs?|requires?|is (?:needed|required|pending|owed) (?:from|of|on)|(?:is |are )?wait(?:s|ing)? (?:on|for)) (?:you|your)\b[^.\n;]*|\b(?:not|never) (?:your|the user'?s) (?:call|decision|choice)\b/gi;
+// Retune 3.7.1: so is a FUTURE stop gated on work in flight ('Once the plan passes, I'll stop for your approval' over a
+// running reviewer, 1 sampled close) - the ask is announced for a later turn, not handed over in this one.
+const NO_HANDBACK_RE = /\b(?:once|when|after|as soon as)\b[^.\n;]{1,80}?,?\s*I(?:'ll|\u2019ll| will) (?:stop|pause|come back|return|ask)(?: you)?(?: once)? (?:for|to ask for|with|to)\b[^.\n;]*|\b(?:nothing|no (?:[\w-]+ )?(?:decision|input|action|answer)s?)(?: (?:else|more))? (?:needs?|requires?|is (?:needed|required|pending|owed) (?:from|of|on)|(?:is |are )?wait(?:s|ing)? (?:on|for)) (?:you|your)\b[^.\n;]*|\b(?:not|never) (?:your|the user'?s) (?:call|decision|choice)\b/gi;
 // A possessive is a hand-back only before an APPROVAL noun that heads its phrase (re-verify 3 R3-m3): 'your test
 // suite', 'your input handling' and 'your review checklist' name the project's things, 'your approval to push' asks.
 // 'by the user' asks only after an approval passive ('approved by the user', never 'requested by the user'), and a
 // sentence-initial 'Confirm' / 'Pick' only as a word ('Pick-up of task 4' reports).
-const PERSON_ASK_RE = /\b(?:your|the user'?s)\s+(?:[\w-]+\s+){0,2}?(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|choice|pick|permission|feedback|instructions?|say-?so|word|call|signal|nod|look|move|turn|court)\b(?!\s+(?!(?:to|before|on|for|and|or|so|then|is|was|are|were|first|here|now|please|in|at|from|with|by|if|when|once|after|of|i)\b)[a-z])|\byour (?:own|manual)\s+[\w-]+|\b(?:for|after|pending|until) your (?:review|look|check|test(?:ing)?)\b|\bfrom (?:you|the user)\b|\b(?:approved|confirmed|signed off|reviewed|decided|authori[sz]ed|accepted|ok'?e?d) by (?:you|the user)\b|\b(?:when(?:ever)?|once|if|after|until|as soon as) you(?:'ve| have)? (?:approve|confirm|decide|say|choose|pick|review|sign|give|agree|check|test|ok|look|read|see)\w*|\bwhen(?:ever)? you(?:'re| are) ready\b|\bsay the word\b|(?:^|[.!;:]\s+|\n\s*)(?:please\s+)?(?:confirm|approve|decide|choose|pick)(?![-\w])|\byou (?:need to|have to|should|can|may|must) (?:approve|confirm|decide|review|sign|check|test|run|merge|push)\b|\bto be (?:approved|reviewed|confirmed|signed off)\b|\b(?:them|it) to (?:approve|sign|confirm|review)\b|\bI need (?:your|you|a|an|the) (?:[\w-]+ )?(?:approval|go-?ahead|sign-?off|confirmation|decision|answer|ok|okay|input)\b/i;
+// Retune 3.7.1: 'your own <noun>' hands back only an act ('your own run / check / test'), never a thing ('your own login no
+// longer plays the sound', 'Your own hooks ... survived' - 2 corpus closes held), and an approval noun heading a label
+// ('**Your new instruction:** recorded') is a record, not an ask (1 close); so is one after 'following' / 'per' / 'given'
+// ('Following your answer (...), managers and admins see the same list' held a finished run - 1 close).
+const PERSON_ASK_RE = /(?<!\b(?:following|per|given|using|based on|according to)\s+)\b(?:your|the user'?s)\s+(?:[\w-]+\s+){0,2}?(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|choice|pick|permission|feedback|instructions?|say-?so|word|call|signal|nod|look|move|turn|court)\b(?!\s+(?!(?:to|before|on|for|and|or|so|then|is|was|are|were|first|here|now|please|in|at|from|with|by|if|when|once|after|of|i)\b)[a-z])(?![*_]*\s*:)|\byour manual\s+[\w-]+|\byour own\s+(?:[\w-]+\s+)?(?:runs?|checks?|tests?|testing|verification|reviews?|calls?|decisions?|steps?|actions?)\b(?![*_]*\s*:)|\b(?:for|after|pending|until) your (?:review|look|check|test(?:ing)?)\b|\bfrom (?:you|the user)\b|\b(?:approved|confirmed|signed off|reviewed|decided|authori[sz]ed|accepted|ok'?e?d) by (?:you|the user)\b|\b(?:when(?:ever)?|once|if|after|until|as soon as) you(?:'ve| have)? (?:approve|confirm|decide|say|choose|pick|review|sign|give|agree|check|test|ok|look|read|see)\w*|\bwhen(?:ever)? you(?:'re| are) ready\b|\bsay the word\b|(?:^|[.!;:]\s+|\n\s*)(?:please\s+)?(?:confirm|approve|decide|choose|pick)(?![-\w])|\byou (?:need to|have to|should|can|may|must) (?:approve|confirm|decide|review|sign|check|test|run|merge|push)\b|\bto be (?:approved|reviewed|confirmed|signed off)\b|\b(?:them|it) to (?:approve|sign|confirm|review)\b|\bI need (?:your|you|a|an|the) (?:[\w-]+ )?(?:approval|go-?ahead|sign-?off|confirmation|decision|answer|ok|okay|input)\b/i;
 // A pending act handed over in the imperative or the infinitive (re-verify 3 R3-m2): a clause that OPENS on the act
 // verb, followed by what the act takes ('Push once you have looked it over', 'Merge when ready'), is the user's to do -
 // the model's own future is 'I push'. A compound noun ('Merge
@@ -651,15 +682,62 @@ const PAST_REPORT_CLAUSE = /(?:^|(?<=[.!?;:,\n]\s*)|(?<=\s[-–]\s))\s*(?:(?:I|w
 // the picked label as a commit handed to the user. A line naming decisions AND a past verb opens the record, and the
 // list items under it are blanked up to the first line that is not one. A heading still owing them ('Decisions to be
 // made:', 'Decisions still open, made by you:') opens none.
-const DECISION_RECORD_RE = /^[ \t]*(?=[^\n]*(?:\b(?:decisions?|choices?|answers?)\b))(?=[^\n]*(?:\b(?:made|taken|picked|chosen|answered|settled)\b))(?![^\n]*(?:\b(?:to be|to make|still|pending|open|needs?|needed|waiting|left|owed|remaining|by you|your)\b))[^\n]*\n(?:[ \t]*(?:[-*•]|\d+[.)])[^\n]*(?:\n|$))+/gimu;
+// Retune 3.7.1: the auto-mode closes' own headings name the record without both words ('Auto-mode answers:', 'Picked
+// automatically (auto-mode):', 'Questions taken on the recommended option while you were away:'), and a picked 'Next step ->
+// close' under them held a finished run (2 corpus closes) - so an auto-answer word beside an auto marker opens one too.
+const DECISION_RECORD_RE = /^[ \t]*(?=[^\n]*(?:\b(?:decisions?|choices?|answers?|questions?)\b[^\n]*\b(?:made|taken|took|picked|chosen|chose|answered|settled)\b|\b(?:made|taken|took|picked|chosen|chose|answered|settled)\b[^\n]*\b(?:decisions?|choices?|answers?|questions?)\b|\b(?:auto-?mode|automatically|auto)\b[^\n]*\b(?:answers?|answered|picked|picks|chose|chosen|took|taken)\b|\b(?:answers?|answered|picked|picks|chose|chosen|took|taken)\b[^\n]*\b(?:auto-?mode|automatically|auto)\b))(?![^\n]*(?:\b(?:to be|to make|still|pending|open|needs?|needed|waiting|left|owed|remaining|by you|your)\b))[^\n]*\n(?:[ \t]*(?:[-*\u2022]|\d+[.)])[^\n]*(?:\n|$))+/gimu;
+// ...and the same record held INLINE on one labelled line ('- **Answered automatically under auto-mode:** build in this
+// session, ..., commit now', 1 corpus close): the label names the record, the picks follow its colon.
+const DECISION_RECORD_LINE_RE = /^[ \t]*(?:[-*+\u2022][ \t]+|\d+[.)][ \t]+)?(?:\*\*|__)?(?=[^:\n]*(?:\b(?:auto-?mode|automatically|auto)\b[^:\n]*\b(?:answers?|answered|picked|picks|chose|chosen|took|taken)\b|\b(?:answers?|answered|picked|picks|chose|chosen|took|taken)\b[^:\n]*\b(?:auto-?mode|automatically|auto)\b))(?![^:\n]*\b(?:to be|to make|still|pending|open|needs?|needed|waiting|left|owed|remaining|by you|your)\b)[^:\n]{1,80}:[^\n]*/gim;
+const blankRecords = (t) => t.replace(DECISION_RECORD_RE, (m) => m.replace(/[^\n]/g, ' '))
+  .replace(DECISION_RECORD_LINE_RE, (m) => ' '.repeat(m.length));
+// What the pending half reads no further (retune 3.7.1, each from corpus closes the regex held and the labels release):
+//   - open items carried over from before this turn ('Still open from earlier: ... not pushed', 'These remain open from
+//     before:' over a list) - a record of a state this turn did not create (2 closes);
+//   - an item the user chose to leave ('... are unpushed, as you asked', 'which is what you chose') (1 close);
+//   - an open item set for a later session ('Still open: next session, read the log to confirm the nightly restart') (1);
+//   - a list item another party owns ('Task 7, which waits for <name>'s numbers') or the user's own checks named as such
+//     ('Your own checks: ...'), and a bare 'Still open:' heading left with no item under it (1);
+//   - a 'Not run:' / 'Not verified:' line that says why the check cannot run here or need not ('with a live seat in a
+//     real session', 'covered by tests instead', 'a billed A/B') - a scope record, not a step the turn could take now (2
+//     closes; 'Not run: the card's manual check against the local backend' gives no such reason and stays an item).
+//   - the diff held for the user's review (DIFF_HOLD_RE, below) - the tree's standing state, the judge's own release (7
+//     sampled closes held on it alone, each over a finished run).
+const NOT_RUN_SPAN_RE = /\bnot (?:yet )?(?:run|verified)\**\s*[:\u2013-][^\n]*/gi;
+const CANNOT_RUN_HERE_RE = /\b(?:real|live) (?:session|seat|device|phone|hardware)s?\b|\bon (?:a |the )?real (?:device|phone)\b|\bbilled\b|\bpaid\b|\bcovered by\b|\binstead\b|\bby design\b|\bon (?:Windows|Linux|macOS)\b|\bon this machine\b|\bcan(?:'|\u2019|no)t\b|\bunavailable\b|\bnot available\b|\bout of scope\b/i;
+const CARRIED_OPEN_RE = /^[^\n]*\b(?:still open|(?:remains?|stays?) open|open|left)\s+from\s+(?:earlier|before|an? (?:earlier|previous) \w+|the (?:last|previous|earlier) \w+)\b[^\n]*(?:\n[ \t]*(?:[-*+\u2022]|\d+[.)])[^\n]*)*/gim;
+const USER_CHOSE_RE = /[^.\n;]*\b(?:as you (?:asked|chose|wanted|said|decided|instructed|requested)|(?:which|that) is what you (?:chose|asked for|wanted|picked|decided)|per your (?:instruction|request|choice|answer)|at your request)\b[^.\n;]*/gi;
+const LATER_ITEM_RE = /^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__)?(?:still open|open|next|leftovers?|still to do|to do)(?:\*\*|__)?[ \t]*:(?:\*\*|__)?[ \t]*(?:in |at )?(?:the |a )?(?:next|later|following|tomorrow'?s?) session\b[^\n]*/gim;
+const OTHERS_ITEM_RE = /\bwaits? (?:on|for) (?!you\b|your\b|me\b|my\b|the user\b)(?:[a-z][\w.-]*'s\b|the (?:customer|client|vendor|owner|backend|designer|ops)\b)|^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*|__)?your own (?:[\w-]+ )?(?:checks?|tests?|runs?)(?:\*\*|__)?\s*:/i;
+const OPEN_HEADING_RE = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(?:still open|open items?|still to do|left to do|remaining)(?:\*\*|__)?\s*:(?:\*\*|__)?\s*$/i;
+const LIST_ITEM_RE = /^\s*(?:[-*+\u2022]|\d+[.)])\s+/;
+function blankOthersItems(text) {
+  const lines = text.split('\n');
+  const out = lines.map((l) => (LIST_ITEM_RE.test(l) && OTHERS_ITEM_RE.test(l) ? ' '.repeat(l.length) : l));
+  for (let i = 0; i < out.length; i += 1) {
+    if (!OPEN_HEADING_RE.test(out[i])) continue;
+    let j = i + 1;
+    while (j < lines.length && LIST_ITEM_RE.test(lines[j]) && lines[j].search(/\S/) > lines[i].search(/\S/)) j += 1;
+    if (j === i + 1) while (j < lines.length && LIST_ITEM_RE.test(lines[j])) j += 1;
+    if (j > i + 1 && out.slice(i + 1, j).every((l) => !l.trim())) out[i] = ' '.repeat(out[i].length);
+  }
+  return out.join('\n');
+}
+const blankLines = (m) => m.replace(/[^\n]/g, ' ');
+function pendingProse(text) {
+  return blankOthersItems(blankRecords(text).replace(DIFF_HOLD_RE, blankLines).replace(CARRIED_OPEN_RE, blankLines)
+    .replace(LATER_ITEM_RE, blankLines).replace(USER_CHOSE_RE, blankLines)
+    .replace(NOT_RUN_SPAN_RE, (m) => (CANNOT_RUN_HERE_RE.test(m) ? blankLines(m) : m)));
+}
 function handsBack(closeTail) {
   const t = closeTail.replace(NO_HANDBACK_RE, ' ').replace(NOTHING_PENDING_RE, ' ');
   return HANDBACK_RE.test(t) || PERSON_ASK_RE.test(t) || OPEN_ACT_RE.test(t);
 }
 // What a forward read leaves out: a parenthetical aside records a call already made ('not run (your call,
 // environment-sensitive)'), a past report clause, a record of decisions taken.
-const blankPast = (closeTail) => closeTail.replace(/\([^()\n]*\)/g, (m) => ' '.repeat(m.length))
-  .replace(PAST_REPORT_CLAUSE, (m) => ' '.repeat(m.length)).replace(DECISION_RECORD_RE, (m) => m.replace(/[^\n]/g, ' '));
+const blankPastClauses = (closeTail) => closeTail.replace(/\([^()\n]*\)/g, (m) => ' '.repeat(m.length))
+  .replace(PAST_REPORT_CLAUSE, (m) => ' '.repeat(m.length));
+const blankPast = (closeTail) => blankRecords(blankPastClauses(closeTail)).replace(DIFF_HOLD_RE, (m) => ' '.repeat(m.length));
 // The pending half of a done close also takes a FUTURE-frame hand-back with no pending word ('Push when you approve',
 // 'The push is yours'), never a past report (re-verify 3 R3-M2).
 function handsBackAhead(closeTail) {
@@ -695,6 +773,7 @@ function itemIsAWait(closeTail, m) {
 // such condition ('The review agent is queued; next step is task 5.') stays a stall, as review B2 measured.
 const DIFF_HOLD_RE = /\b(?:the |this |that |your )?(?:diff|change|changes|work|tree)\b[^.\n;]{0,40}?\b(?:stays?|is|are|remains?|kept|left|held)\s+(?:\w+\s+)?(?:uncommitted\s+)?(?:for|pending) (?:your|the user'?s) review\b|\b(?:still )?held for (?:your |the user'?s )?review\b|\buncommitted for your review\b/gi;
 const GATED_STEP_RE = /\b(?:once|when|after|as soon as)\s+(?:the\s+|its\s+|their\s+)?(?:[\w-]+\s+){0,2}?(?:agents?|seats?|reviewers?|verifiers?|implementers?|builds?|runs?|suites?|jobs?|ci|pipelines?|workers?|forks?|it|they|each|both)\s+(?:is |are |has |have )?(?:done|finish(?:es|ed)?|complete[sd]?|reports?|reported|lands?|landed|returns?|returned|green)\b/i;
+const AFTER_WAIT_RE = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(?:after that|after this|after which|then|once (?:that|those|they|it)(?:'s| is| are)? (?:done|in))\b/i;
 function sentenceAt(text, index) {
   const before = text.slice(0, index);
   const from = Math.max(before.lastIndexOf('.'), before.lastIndexOf('\n'), before.lastIndexOf('!'), before.lastIndexOf(';')) + 1;
@@ -703,18 +782,26 @@ function sentenceAt(text, index) {
 }
 function ownWorkRunning(closeTail, tail) {
   const held = closeTail.replace(DIFF_HOLD_RE, ' ');
-  if (handsBack(held)) return false;
-  const items = pendingItems(held);
+  // the forward read, as the done half's own: a parenthetical aside or a past report is no hand-back over the work in
+  // flight ('(the routing fix already shipped, so only the default flip is yours)' beside three running fix agents -
+  // retune 3.7.1), and the items are the ones the done half reads (pendingProse keeps every index)
+  if (handsBackAhead(held)) return false;
+  const items = pendingItems(pendingProse(held));
   // only the hold line stood for 'pending' - with nothing else named, the close reports on the work in flight
   const holdOnly = held !== closeTail && items.length === 0;
   // ...and an item whose own sentence names the wait it is held behind ('Not run: the integration suite, waiting on the
   // Docker daemon' over a running poll - audit 2026-10-20 C02, a09fc7d6) is that wait's status, not a step of its own
   const waitIn = (m) => items.some((o) => o !== m && itemIsAWait(held, o) && sentenceAt(held, o.index) === sentenceAt(held, m.index));
-  const waits = items.length > 0 && items.every((m) => itemIsAWait(held, m) || GATED_STEP_RE.test(sentenceAt(held, m.index)) || waitIn(m));
+  // ...and a sentence opening 'After that' / 'Then' after a named wait is that wait's sequel ('Waiting on three fix
+  // agents ... After that: the full npm test, one fresh review, then the push' - retune 3.7.1, 1 corpus close)
+  const afterWait = (m) => AFTER_WAIT_RE.test(sentenceAt(held, m.index)) && items.some((o) => o.index < m.index && itemIsAWait(held, o));
+  const waits = items.length > 0 && items.every((m) => itemIsAWait(held, m) || GATED_STEP_RE.test(sentenceAt(held, m.index)) || waitIn(m) || afterWait(m));
   if (!holdOnly && !waits) return false;
   const live = liveBackgroundWork();
   if (live === true) return true;
-  if (live === null) return RUNNING_NOUN_RE.test(tail) || (BACKGROUND_RE.test(tail) && WAKE_RE.test(tail));
+  // With the registry and the transcript unread, the close's own named wait on work is taken at its word, as the judge
+  // takes it ('I'm waiting for its sign-off' from a resumed verifier seat, 'Waiting on three fix agents' - retune 3.7.1).
+  if (live === null) return RUNNING_NOUN_RE.test(tail) || (BACKGROUND_RE.test(tail) && WAKE_RE.test(tail)) || items.some((m) => itemIsAWait(held, m));
   return false;
 }
 // An ANSWER to the user's own question is no stall when what it lists as open belongs to somebody else or was deferred
@@ -1201,6 +1288,42 @@ function fencedPasteShown(t) {
   const re = /(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n[ \t]*\1/g;
   for (let m = re.exec(String(t || '')); m; m = re.exec(String(t || ''))) if (m[2].trim()) return true;
   return false;
+}
+// No transcript to read this turn (none named, or gone): the transcript-backed exemptions cannot see an answer or a pick,
+// so the two that have a text form - a `Deferred by you:` line, the resume hand-off - take the close at its word.
+function turnUnread() {
+  const p = payload.transcript_path;
+  if (!p) return true;
+  try { fs.statSync(p); return false; } catch { return true; }
+}
+// The resume hand-off's own words: `/clear`, or a fresh or new session or chat to paste the block into.
+const RESUME_HANDOFF_RE = /\/clear\b|\b(?:fresh|new) (?:session|chat|conversation)\b/i;
+
+// --- a close in another language (retune 3.7.1) --------------------------------------------
+// The share of a text's letters in the Latin script, over prose only: fenced blocks, code spans, links and paths are
+// dropped first, since a path or an identifier is Latin in any reply language. Under 40 letters there is no reading
+// (null). Below NEUTRAL_LATIN_SHARE the close is read on its neutral signals alone - 0.7 mirrors the prelude's 30% rule.
+const NEUTRAL_LATIN_SHARE = 0.7;
+function latinShare(text) {
+  const prose = String(text || '').replace(/(`{3,}|~{3,})[\s\S]*?(?:\1|$)/g, ' ').replace(/`[^`\n]*`/g, ' ')
+    .replace(/\b[a-z][\w+.-]*:\/\/\S+/gi, ' ').replace(/(?:[\w.~-]*[/\\])+[\w.-]+/g, ' ');
+  const letters = prose.match(/\p{L}/gu) || [];
+  if (letters.length < 40) return null;
+  return letters.filter((c) => /\p{Script=Latin}/u.test(c)).length / letters.length;
+}
+// The fixed close labels (alfred-interaction.md keeps them English in any reply language), bold or list-marked.
+const LABEL_HEAD = String.raw`^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+|\|[ \t]*)?(?:\*\*|__)?`;
+const LABEL_TAIL = String.raw`(?:\*\*|__)?[ \t]*:(?:\*\*|__)?[ \t]*`;
+const RESULT_LABEL_RE = new RegExp(String.raw`${LABEL_HEAD}Result${LABEL_TAIL}\S`, 'im');
+// `Not run:` / `Left for you:` with a value that is not `none` (mode-auto-run's close: `Left for you: ... | none`).
+const OWED_LABEL_RE = new RegExp(String.raw`${LABEL_HEAD}(?:Not run|Left for you)${LABEL_TAIL}(?![*_]*(?:none|nothing|n/?a|-)[*_.]*[ \t]*$)\S`, 'im');
+// task-solve's `Progress:  <N> of <M> steps` (an `N/M` spelling too) - the one piece of run state that is all digits.
+const PROGRESS_RE = new RegExp(String.raw`${LABEL_HEAD}Progress${LABEL_TAIL}(\d+)\s*(?:of|/)\s*(\d+)`, 'im');
+function progressOf(text) {
+  const m = String(text || '').match(PROGRESS_RE);
+  if (!m) return null;
+  const n = Number(m[1]), total = Number(m[2]);
+  return total > 0 && n <= total ? { n, m: total } : null;
 }
 // 'Deferred by you:' (the pinned contract with validate's close): the line names an item the user deferred through an
 // ask, so it is nothing owed - but only when an ask answered in THIS turn carries a deferral in its ANSWER (a picked
@@ -2190,13 +2313,15 @@ if (payload.hook_event_name === 'Stop') {
   // - the cross-track contract with validate's close (audit 2026-10-11 SD10: 'Acknowledge and defer' was answered at the
   // run's own credential ask, the close listed the rotation as still owed, and the block forced a 142k restate, sessions
   // 6288ad94 and 757a4ac0). Without such an answer in the turn the line is judged like any other.
-  const deferredLines = DEFERRED_BY_YOU_RE.test(tail) && deferAnsweredThisTurn();
+  // With no transcript to read (a replay, a harness that sends none), the mandated line is taken at its word - the
+  // judge's own reading (retune 3.7.1: 'Deferred by you: committing ..., until you have reviewed it' held a close).
+  const deferredLines = DEFERRED_BY_YOU_RE.test(tail) && (deferAnsweredThisTurn() || turnUnread());
   const closeText = deferredLines ? tail.split('\n').filter((l) => !DEFERRED_BY_YOU_LINE_RE.test(l)).join('\n') : tail;
   const closeTail = closeProse(closeText);
   // The pending half reads no QUOTED output (audit 2026-10-20 H9, 7ec6c7db: '15f00b6c (not pushed)' quoted git's own line
   // and held the close): a single-quoted span, and a parenthetical right after a sha or a code span, are what an earlier
   // step printed, never the close's own item. Only that half - a hand-back is still read in them.
-  const pendingTail = closeProse(closeText.replace(QUOTED_OUTPUT_RE, ' '));
+  const pendingTail = closeProse(pendingProse(closeText).replace(QUOTED_OUTPUT_RE, ' '));
   // The phrase list only ever covered the shapes MEASURED in the corpus, so an ordinary
   // decision question ('What's the deploy target?', 'Which one should we go with?') walked
   // straight past it (reproduced). A turn that ends on a question and hands nothing to a tool is
@@ -2206,8 +2331,28 @@ if (payload.hook_event_name === 'Stop') {
   // ...but a question ABOUT something already settled, or a rhetorical aside mid-report, is not a
   // stop: require the question to be the turn's last word, which the tests above already encode.
   const closeDone = doneProse(closeWhole);
-  const doneBase = DONE_RE.test(closeDone)
-    && (PENDING_RE.test(pendingTail) || handsBackAhead(closeTail)) && !/\?/.test(tail);
+  // A close in ANOTHER LANGUAGE (retune 3.7.1, the user's ruling: no non-English text in plugin code) is read on
+  // language-neutral signals only: the close labels the stack keeps in English in any reply language
+  // (alfred-interaction.md - `Result:`, `Progress:`, `Not run:`, `Left for you:`, `Deferred by you:`) and the close's
+  // shape. Done is a `Result:` line or a `Progress: N of M` with N past 0; owed is a `Progress:` short of M, a `Not run:`
+  // or a `Left for you:` line. A close carrying none of them passes - a stated limit, not a miss to fix with a word list.
+  // `Leftovers:` alone is no signal: read as owed, it would hold 5 corpus closes in another language that the labels
+  // release, each listing the user's own manual steps and live checks.
+  const neutral = (latinShare(prose.slice(-16 * 1024)) ?? 1) < NEUTRAL_LATIN_SHARE;
+  const progress = progressOf(closeText);
+  const labelDone = RESULT_LABEL_RE.test(closeText) || (!!progress && progress.n > 0);
+  const labelOwed = (!!progress && progress.n < progress.m) || OWED_LABEL_RE.test(closeText);
+  // The diff held for the user's review is the tree's standing state, not a hand-back (the judge's own release; retune
+  // 3.7.1: 7 sampled closes held on 'the diff stays uncommitted for your review' alone) - blanked before closeProse, whose
+  // negation read ('Nothing is committed - the diff is waiting ...') would otherwise leave its 'for your review' behind.
+  // A step gated on work that reports ('I will finish the run once it reports') is owed when the registry shows nothing
+  // running (6ed392a5: the same close is status 3s after a verifier launched, and a stall once the registry is empty).
+  // The question test is shape alone there too: only a close ENDING on '?' asked it (a '?' inside a list of inputs the
+  // close still owes is no ask the prose-ask branch can read in that language - 1 corpus close, 'Progress: 20 of 21').
+  const doneBase = neutral
+    ? labelDone && labelOwed && !/\?["')\]*_]*\s*$/.test(tail.trim())
+    : DONE_RE.test(closeDone) && (PENDING_RE.test(pendingTail) || handsBackAhead(closeProse(closeText.replace(DIFF_HOLD_RE, blankLines)))
+      || (GATED_STEP_RE.test(closeTail) && liveBackgroundWork() === false)) && !/\?/.test(tail);
   // Each exemption below is named, and the first that fires on a close the base test held writes one `mode: probe`,
   // `kind: done-close-exempt` row naming it (audit 2026-10-20 H9: the exemptions wrote nothing, so a change to one -
   // C03 - could not be measured). The order and the short circuit are the old chain's.
@@ -2232,6 +2377,9 @@ if (payload.hook_event_name === 'Stop') {
     ['background-waiter', () => !handed && BACKGROUND_RE.test(tail) && WAITER_RE.test(tail)],
     // ...and a close that says the run itself has nothing pending is finished, not stalled.
     ['nothing-pending', () => nothingPending(tail, closeTail)],
+    // ...and a close in another language, with work this session launched still out in the registry or the transcript:
+    // the English wait words cannot read it, so the work itself decides (retune 3.7.1).
+    ['neutral-live-work', () => neutral && liveBackgroundWork() === true],
     // ...and a close over work this session launched that is still out, named as running or waited on, is a
     // status line (2.1.6 H4) - read late, since it is the one test that opens the transcript.
     ['own-work-running', () => ownWorkRunning(closeTail, tail)],
@@ -2240,6 +2388,9 @@ if (payload.hook_event_name === 'Stop') {
     // done + pending, and the resume block was forced out again at 132.4k) - audit 2026-10-10 C15.
     ['answers-others-open', () => answersOthersOpen(closeTail)],
     ['fresh-picked', () => freshPickedThisTurn()],
+    // ...and, with no transcript to show the pick, a close that IS the hand-off: a fenced paste block naming `/clear` or a
+    // fresh session (retune 3.7.1: 4 corpus closes, each after the pick; a readable transcript with no pick still holds).
+    ['resume-unread', () => turnUnread() && fencedPasteShown(text) && RESUME_HANDOFF_RE.test(prose)],
     // ...and an answer to a request for information from a turn that changed nothing (audit 2026-10-11 SD10, 2ca8e8ee;
     // the read-only survey and the typed question of audit 2026-10-20 C03 ride it).
     ['answers-info-request', () => answersInfoRequest(closeTail)],

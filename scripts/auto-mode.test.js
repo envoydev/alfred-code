@@ -8,6 +8,7 @@
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
+const { foreignWords } = require('./hook-test-env'); // another script's text, generated from code points
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -504,7 +505,7 @@ test('auto-mode asks: every question marking one Recommended option is answered 
         ['Ship it?', 'Ship v2.5.0 (Recommended)'], ['A token leaked. Rotate?', 'Rotate it now (Recommended)'], ['Diverged. Reset?', 'Reset the branch to origin/main (Recommended)'],
         ['Drop the test database?', 'Drop it (Recommended)'],
         // an ask the English list cannot read waits too (deep hooks review 2026-10-16, the script rule)
-        ['Що далі?', 'Запушити гілку (Recommended)'], ['Що далі?', 'Оновити документацію (Recommended)']])
+        ...[[51, 52], [53, 54]].map(([q, l]) => [`${foreignWords(2, q)}?`, `${foreignWords(2, l)} (Recommended)`])])
         assert.strictEqual(answered(ask(p, 'a1', [q(question, [label, 'Not now'])])), null, `waits: ${label}`);
     for (const [question, label] of [['Fix the issue now?', 'Fix it (Recommended)'], ['Drop the unused import?', 'Drop it (Recommended)'], ['Dead code found.', 'Remove the dead code (Recommended)']])
         assert.ok(answered(ask(p, 'a1', [q(question, [label, 'Not now'])])), `answered, a local act: ${label}`);

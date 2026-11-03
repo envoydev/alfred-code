@@ -95,4 +95,17 @@ function reviewedTranscript(dir, rows = [])
     return file;
 }
 
-module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, reviewedTranscript, REVIEW_ROW, STACK_KEY, SESSION_KEYS };
+// Text in another script, for a suite judging a reply the hooks cannot read as English (the user's ruling of 2026-11-03:
+// no non-English words in plugin code or its tests). `count` pseudo-words of lower-case Cyrillic letters (U+0430 to
+// U+044F), built from code points on a fixed seed: a run repeats, and no word of any language sits in the source.
+function foreignWords(count, seed = 1)
+{
+    let s = (seed >>> 0) || 1;
+    const next = () => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return s >>> 16; };
+    const words = [];
+    for (let i = 0; i < count; i += 1)
+        words.push(String.fromCodePoint(...Array.from({ length: 3 + (next() % 6) }, () => 0x0430 + (next() % 32))));
+    return words.join(' ');
+}
+
+module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS };
