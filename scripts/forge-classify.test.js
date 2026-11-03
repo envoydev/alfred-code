@@ -221,3 +221,64 @@ test('a skipped sub-group word never reaches a publish verb - a script runner\'s
   assert.strictEqual(conceptOf(sh('gh pr frobnicate merge 3')), 'change.merge', 'an unknown verb on a change request still asks');
   assert.strictEqual(forge.classify(sh('gh pr frobnicate merge 3')).strength, 'unknown');
 });
+
+// ---- E-batch fn-1 / fn-4 / fn-10a / fn-10b -----------------------------------------------------------------------------
+test('fn-1: a browser code runner is no pipeline write', () => {
+  assert.strictEqual(forge.classify({ tool_name: 'mcp__pw__browser_run_code_unsafe', tool_input: { code: 'x' } }), null);
+  assert.strictEqual(forge.classify({ tool_name: 'mcp__x__code_run', tool_input: { code: 'x' } }), null);
+  // a pipeline tool that runs a pipeline is still one
+  assert.strictEqual(conceptOf({ tool_name: 'mcp__ci__run_pipeline', tool_input: { project: 'o/r' } }), forge.CONCEPTS.PIPELINE);
+});
+
+test('fn-4: only a heredoc fed to an interpreter is scanned', () => {
+  const MERGE_CALL = "fetch('https://api.github.com/repos/o/r/pulls/1/merge', { method: 'PUT' })";
+  const bash = (command) => forge.classify({ tool_name: 'Bash', tool_input: { command }, cwd: os.tmpdir() });
+  assert.strictEqual(bash(`cat <<EOF > notes.md\n${MERGE_CALL}\nEOF\nnode -e "console.log(1)"`), null, 'a body cat writes to a file is text, an interpreter elsewhere or not');
+  assert.strictEqual(bash(`cat > notes.md <<'EOF'\n${MERGE_CALL}\nEOF\npython3 -c 'print(1)'`), null);
+  for (const command of [`node <<'JS'\n${MERGE_CALL}\nJS`, `cat <<EOF | node\n${MERGE_CALL}\nEOF`, `node <<< "${MERGE_CALL}"`, `node -e "${MERGE_CALL}"`]) {
+    const r = bash(command);
+    assert.ok(r && r.concept === forge.CONCEPTS.MERGE && r.strength === 'known', `${command.split('\n')[0]}: ${JSON.stringify(r)}`);
+  }
+});
+
+test('fn-10a: gh api -F query=@file is a hidden body', () => {
+  const bash = (command) => forge.classify({ tool_name: 'Bash', tool_input: { command }, cwd: os.tmpdir() });
+  for (const command of ['gh api graphql -F query=@q.graphql', 'gh api graphql --field query=@q.graphql', 'gh api graphql --field=query=@q.graphql']) {
+    const r = bash(command);
+    assert.ok(r && r.strength === 'unknown' && r.concept !== forge.CONCEPTS.READ, `${command}: ${JSON.stringify(r)}`);
+  }
+  // a raw field is a literal string, and a visible query reads
+  assert.strictEqual(bash('gh api graphql -f query=@q.graphql').concept, forge.CONCEPTS.READ);
+  assert.strictEqual(bash("gh api graphql -F query='query { viewer { login } }'").concept, forge.CONCEPTS.READ);
+});
+
+test('fn-10b: curl -K reads its config', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-curlrc-'));
+  try {
+    const bash = (command, cwd = dir) => forge.classify({ tool_name: 'Bash', tool_input: { command }, cwd });
+    fs.writeFileSync(path.join(dir, 'merge.cfg'), '# the merge\nurl = "https://api.github.com/repos/o/r/pulls/1/merge"\nrequest = PUT\nsilent\n');
+    fs.writeFileSync(path.join(dir, 'auth.cfg'), 'header = "Authorization: token x"\n');
+    fs.writeFileSync(path.join(dir, 'other.cfg'), 'url https://example.com/x\n-X POST\n');
+    for (const command of ['curl -K merge.cfg', 'curl --config merge.cfg', 'curl --config=merge.cfg', 'curl -Kmerge.cfg']) {
+      const r = bash(command);
+      assert.ok(r && r.concept === forge.CONCEPTS.MERGE && r.strength === 'known', `${command}: ${JSON.stringify(r)}`);
+    }
+    assert.strictEqual(bash('curl -K auth.cfg https://api.github.com/repos/o/r/pulls/1').concept, forge.CONCEPTS.READ, 'a config of headers leaves the visible call as it is');
+    assert.strictEqual(bash('curl -K other.cfg'), null, 'a config naming no forge call is no forge call');
+    assert.strictEqual(bash('cd sub && curl -K ../merge.cfg', dir).concept, forge.CONCEPTS.MERGE, 'read from where the call runs');
+    fs.mkdirSync(path.join(dir, 'sub'));
+    assert.strictEqual(bash('cd sub && curl -K ../merge.cfg', dir).concept, forge.CONCEPTS.MERGE, 'read from where the call runs');
+    // unreadable, stdin, and the 64KB cap: at it the file is read, over it the call is an ask
+    for (const command of ['curl -K missing.cfg', 'curl -K - https://api.github.com/repos/o/r/pulls/1']) {
+      const r = bash(command);
+      assert.ok(r && r.strength === 'unknown', `${command}: ${JSON.stringify(r)}`);
+    }
+    const line = 'url = "https://api.github.com/repos/o/r/pulls/1/merge"\nrequest = PUT\n';
+    fs.writeFileSync(path.join(dir, 'at.cfg'), line + '#'.repeat(65536 - line.length - 1) + '\n');
+    assert.strictEqual(fs.statSync(path.join(dir, 'at.cfg')).size, 65536);
+    assert.deepStrictEqual([bash('curl -K at.cfg').concept, bash('curl -K at.cfg').strength], [forge.CONCEPTS.MERGE, 'known'], 'at the cap');
+    fs.writeFileSync(path.join(dir, 'over.cfg'), line + '#'.repeat(65537 - line.length - 1) + '\n');
+    const over = bash('curl -K over.cfg');
+    assert.ok(over && over.strength === 'unknown' && /64KB/.test(over.why), `over the cap: ${JSON.stringify(over)}`);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

@@ -1821,7 +1821,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     branch write on every transport and `preferences-session.js` holds the first one; a forge noun with no known verb is
     `unknown` (an ask, a deny when unattended). On the MCP route a branch, tag, file or release word counts only on a
     FORGE-SHAPED server (repo coordinates in the input, a forge word in the key with no local `repo_path`, or launched as
-    a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). Every publish
+    a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). E-batch fn-1 /
+    fn-4 / fn-10: a tool whose name holds `run` beside `code` (`browser_run_code_unsafe`) is no pipeline act; inline code is
+    read only where an interpreter runs it - its `-e` / `-c` string, a heredoc or here-string of its own stage or one an
+    earlier stage of its pipe passes on, never the whole command (`cat <<EOF > notes.md` beside a `node -e` is text); `gh
+    api -F <key>=@<file>` is a hidden body; curl's `-K` / `--config` file is read (64KB, from where the call runs) and
+    parsed with the call, one it cannot read or past the cap making the call `unknown`; and a bare `@` refspec is `HEAD`
+    (`pushTargets`). A not-checked reason over 160 characters keeps git's END, the text after its last `: ` (fn-2). Every publish
     the gate allows, the push half off included, is ledgered in `<data root>/state/forge/ACTS-<session>.jsonl` under the
     REPOSITORY's root (`forge.js ledgerRoot` - a worktree and its main checkout share one), a `git push` one row per
     ref it names (`forge.js pushTargets`), and every other publish act of the same command a row of its own with its

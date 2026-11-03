@@ -516,6 +516,26 @@ test('a push names the refs it writes', () => {
   assert.strictEqual(forge.pushTargets(['--tags'], cur), null);
 });
 
+test('fn-10c: a bare @ refspec is HEAD', () => {
+  const cur = repo(null);
+  spawnSync('git', ['-C', cur, 'checkout', '-q', '-b', 'feat/at']);
+  assert.deepStrictEqual(forge.pushTargets(['origin', '@'], cur), forge.pushTargets(['origin', 'HEAD'], cur));
+  assert.deepStrictEqual(forge.pushTargets(['origin', '@'], cur), ['feat/at']);
+  assert.deepStrictEqual(forge.pushTargets(['origin', '+@'], cur), ['feat/at']);
+  assert.deepStrictEqual(forge.pushTargets(['origin', '@:release'], cur), ['release']);
+});
+
+test('fn-2: the not-checked reason keeps the tail of git\'s line', () => {
+  const cur = repo(null);
+  const far = path.join(TMP, 'a'.repeat(100), 'b'.repeat(100), 'c'.repeat(100), 'missing.git');
+  const r = forge.lsRemote(cur, far);
+  assert.strictEqual(r.ok, false);
+  assert.ok(far.length > 300);
+  assert.match(r.reason, /does not appear to be a git repository$/, r.reason);
+  assert.ok(r.reason.length <= 161, `${r.reason.length}: ${r.reason}`);
+  assert.doesNotMatch(r.reason, /^fatal:/);
+});
+
 // --- what an act explains: the ref it aims at, or one landing - never every move --------------------------------------
 test('an act at a head covers only the ref it aims at', () => {
   const w = watchRepo();
