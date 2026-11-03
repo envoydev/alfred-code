@@ -676,3 +676,18 @@ does not record as the stack's. An empty list now reads as unset, plan files onl
 writes `autoUpdate: true` on its entry in your account's `settings.json`, a no writes `false` so no project asks
 again. An install already initialised is not asked by this update: turn it on under `/plugin` > Marketplaces > the
 stack's marketplace > Enable auto-update. `/alfred-code:update` still moves this project's own copies.
+
+## after 3.6.0 - a guard is switched off only with your answer, and a path you type opens writes
+
+A settings write that switches a protective guard off - `ALFRED_CODE_HOOKS_OFF` naming one, or `disableAllHooks` -
+now asks first, whatever route it takes: an edit, a shell redirect, or a copy, move, link or extract that lands a
+settings file. Content the guard cannot read before it lands asks too. With the plugin installed, a settings entry
+that wires a hand-copied twin of a stack guard also asks.
+
+An absolute path you type in your own message opens writes to it for the session: a file opens that file, a folder
+what is under it. A folder that holds the project opens nothing. In the discard guard's ask, picking the revert now
+counts as the allow.
+
+`/alfred-code:status` and update flag `claude-hud` below 0.15.0. The stop contract still holds a close that reports a
+step done and leaves the next one pending as a statement; a model-judged version of that check is built but held.
+Nothing to do by hand.
