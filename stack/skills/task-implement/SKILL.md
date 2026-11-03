@@ -59,6 +59,7 @@ Before reading the plan, load `habits-plan-writing` (the Skill tool) - the card 
    - 'Hand it to a resolver seat' - <the seat>
    - 'Stop' - the task stays red in the plan
    ```
+   On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. It marks the resolver seat where the roster has one.
 4. **Close the task honestly** - the per-task completion gate is `habits-done-gate`'s rule, carried here so no load stands between it and the tick: run the acceptance command after the last edit and quote its output before any done word. Run it, then tick the task `DONE` with its evidence line - the acceptance command's own quoted output - in the plan file, append the task's judgment calls to the plan's `## Decisions` ledger (choice + precedent, per the bar), and refresh the plan's one-line resume note (next task + any mid-task state). The file, not the chat, is what a compacted or fresh session resumes from - it must never be more than one task stale. Then the next task. Partial is stated as partial. A task whose acceptance criterion is a RUN that has not happened yet - an integration pass, a manual try, a suite the gate deferred - stays `IN_PROGRESS` with a `needs: <the run>` line; 'code complete, builds' is not DONE. A task stamped `FAILED` ends the turn with ONE ask before any further run or edit - a 'reported to the user' line in the plan with no ask behind it is the measured failure:
 
    ```ask
@@ -144,6 +145,7 @@ All tasks green (<the suite command>). Who reviews the diff?
 - 'task-verify-code in-session (Recommended)' - inline, the single-chat form of the verifier seat
 - 'The <stack>-verifier seat' - dispatched, isolated, on its frontmatter model
 ```
+On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. A diff `task-solve` sizes `small` stays in-session.
 
 Report against the plan, one line per task - `task | status (DONE / deferred / revised) | evidence (the green command and what it proved)` - then the suite + the review result, the `## Decisions` ledger by its entry count (never re-pasted), and anything deferred or revised with its reason. The vertical is complete: design (`task-design`) -> audit (`task-verify-plan`) -> build (this) -> review (`task-verify-code` / `<stack>-verifier`) - one session, every step inspectable.
 

@@ -16,6 +16,7 @@ Audit this plan in this chat or through the <stack>-verifier seat? This chat: th
 - 'Audit this plan in this chat (Recommended)' - the five passes below, inline, nothing dispatched
 - 'Dispatch the <stack>-verifier seat' - the same passes in an isolated subagent, on its frontmatter model
 ```
+On a heavy session (a `Seats:` line in context, or a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark.
 
 A mode the run already picked is inherited, never re-asked - with ONE boundary: the cross-task orchestrator's plan gate always runs the five passes in-session whatever the run mode, because the plan is already in that session's context and its protocol says so (the inherited-mode dispatch applies only to this skill's own single-chat chain).
 
