@@ -244,6 +244,12 @@ nothing here - no record reaches it, and no registered marketplace serves it fro
 nothing; `unreached: unknown` adds the line under the table (measured: a project's settings enabled a plugin
 whose only record was another project's, and the session searched for its tools three times).
 
+Then the safe floor - `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/plugins.js" floor .` judges each row against the
+`floor` its `meta/stack-manifest.json` plugin row carries (claude-hud: 0.15.0, two HIGH advisories). Each `!! <spec>
+<version> is under its safe floor ...` line marks that row's health `!! under safe floor <floor>` and goes under the
+table verbatim, its update command in the close; a `floor: <spec> ... not judged` line goes under the table as it is;
+`floor: none` adds nothing, and `floor: unknown` adds its line.
+
 **Environment** - the install's knobs, one row each. The variables come from ONE
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/variables.js" show --root .` - `<KEY>=<value> (<source>)` per key, the source
 `own` (this project's `.variables`), `from <rel>` (a workspace member's), `settings.local.json` or `default` - and its

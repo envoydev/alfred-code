@@ -362,8 +362,8 @@ the card as the user's to run - only when they want that server again.
 ## after 2.10.1 - grade before release: the output scorer
 
 A designer's plan file, a diagnoser's root-cause verdict and an inline plan can be graded by a fresh, read-only
-`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It is OFF by
-default: `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
+`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It was seeded OFF
+until 3.6.0 (the section after 3.6.0 says what changed): `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
 `ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
 outputs (a csv; empty means all three). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
 stack - `/habits-explain-topic /mode-output-scorer <request>` - grades that one request's output even while it is off,
@@ -658,3 +658,20 @@ An approval receipt now opens a gate only after you answered the guard's ask wit
 each denial prints the exact lines. A receipt left from an older release does not open anything: the next denial asks
 again. Under auto-run a guard's security ask always takes its safe option and lists the act for you in the close.
 Nothing to do by hand.
+
+## after 3.6.0 - the output scorer is on, for designer plans only
+
+The output scorer is now on by default: `ALFRED_CODE_SCORER=1` and `ALFRED_CODE_SCORER_OUTPUTS=designer-plan`, so a
+designer's plan file is graded before it is released, a root-cause verdict and an inline plan are not. Where a plan
+file was written, scored plans won 14 of 15 pairs; inline plans lost 3 of 3. This update moves the stack's own old
+seeds - `0` and the empty list - to the new ones and prints `reset to 1 (the old stack seed 0)` and `reset to
+designer-plan (the old stack seed empty)`; a value you set yourself stays, and so does a `0` or an empty list the stamp
+does not record as the stack's. To keep it off, set `ALFRED_CODE_SCORER=0` in `/alfred-code:configure`'s environment
+area.
+
+## after 3.6.0 - init offers Claude Code's auto-update for the stack's marketplace
+
+`/alfred-code:init` now asks once per account whether Claude Code may update the stack's marketplace by itself: a yes
+writes `autoUpdate: true` on its entry in your account's `settings.json`, a no writes `false` so no project asks
+again. An install already initialised is not asked by this update: turn it on under `/plugin` > Marketplaces > the
+stack's marketplace > Enable auto-update. `/alfred-code:update` still moves this project's own copies.

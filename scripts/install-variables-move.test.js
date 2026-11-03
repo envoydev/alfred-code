@@ -28,6 +28,10 @@ const UNSEEDED = require('../meta/environment.json').env.filter((r) => r.seed ==
 const SEEDED = CATALOG.filter((k) => !SETTINGS_KEYS.includes(k) && !UNSEEDED.includes(k));
 const MOVED_LINE = /variables: (\d+) keys moved to \.alfred\/\.variables - a teammate on 2\.12\.0 or older reads none of them until they update; a downgrade needs them put back in \.claude\/settings\.json by hand/;
 
+// B1 of the 2026-11-03 usage audit: an update moves the stack's own old scorer seeds (meta/migrations.json reseeds);
+// every other value an older install holds is carried across unchanged.
+const reseeded = (env) => { const out = { ...env }; for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to; return out; };
+
 const exportOf = releaseExport;
 // The steps of an update over `tag`: that release installs, this tree updates.
 const over = (tag, n) => ({
@@ -169,21 +173,14 @@ for (const scope of ['project', 'user', 'local'])
             }),
         });
         const [before, after, again] = steps;
-        // A reseed this release ships (meta/migrations.json clear_settings_env - since 2.12.0, the idle wait's 2 moving to
-        // cache, usage audit 2026-11-03 U16) changes the stack's own old seed on purpose; every other value is unchanged.
-        const reseeded = (key, value) => { const r = RESEEDS.find(([k, bad]) => k === key && bad === value); return r ? r[2] : value; };
-        const expected = Object.fromEntries(Object.entries(before.effective).map(([k, v]) => [k, reseeded(k, v)]));
-        assert.ok(Object.keys(expected).some((k) => expected[k] !== before.effective[k]), 'v2.12.0 seeded a value this release reseeds');
-        assert.deepStrictEqual(after.effective, expected, outs[1]);
+        assert.deepStrictEqual(after.effective, reseeded(before.effective), outs[1]);
+        assert.deepStrictEqual([after.effective.ALFRED_CODE_SCORER, after.effective.ALFRED_CODE_SCORER_OUTPUTS], ['1', 'designer-plan'], 'the old scorer seeds moved');
         assert.deepStrictEqual(catalogIn(after.env).filter((k) => !SETTINGS_KEYS.includes(k)), [], JSON.stringify(after.env));
-        for (const key of SEEDED) assert.strictEqual(after.vars[key], reseeded(key, before.env[key]), `${key} did not move unchanged`);
+        const want = reseeded(before.env);
+        for (const key of SEEDED) assert.strictEqual(after.vars[key], want[key], `${key} did not move unchanged`);
         const moved = Object.entries(before.ledger[file] || {}).filter(([k]) => SEEDED.includes(k));
         assert.ok(moved.length > 0, 'v2.12.0 ledgered its seeds');
-        for (const [key, hash] of moved)
-        {
-            const want = reseeded(key, before.env[key]) === before.env[key] ? hash : stampLib.valueHash(reseeded(key, before.env[key]));
-            assert.strictEqual((after.ledger['.variables'] || {})[key], want, `${key}'s ledger row did not follow it`);
-        }
+        for (const [key, hash] of moved) assert.strictEqual((after.ledger['.variables'] || {})[key], want[key] === before.env[key] ? hash : stampLib.valueHash(want[key]), `${key}'s ledger row did not follow it`);
         for (const [key] of moved) assert.ok(!Object.hasOwn(after.ledger[file] || {}, key), `${key} is still ledgered under ${file}`);
         assert.strictEqual(after.ignored, scope === 'local' ? 0 : 1);
         if (scope !== 'local') assert.match(after.dataIgnore, /^!\/\.variables$/m, 'the data root\'s own file re-includes .variables');
@@ -204,10 +201,10 @@ test('AC8: an update over a v2.12.0 export whose own .gitignore line .alfred/ ig
         prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.alfred/\n'),
         each: (repo) => ({ settings: readOr(path.join(repo, '.claude', 'settings.json')), vars: fs.existsSync(varsFile(repo)) }),
     });
-    // byte-identical but for a reseed this release ships (the idle wait's old seed 2 to cache, U16), done in place
-    const reseedText = (text) => RESEEDS.reduce((t, [key, bad, to]) => t.replace(`"${key}": "${bad}"`, `"${key}": "${to}"`), text);
-    assert.notStrictEqual(reseedText(steps[0].settings), steps[0].settings, 'v2.12.0 seeded a value this release reseeds');
-    assert.strictEqual(steps[1].settings, reseedText(steps[0].settings), outs[1]);
+    // byte-identical but for the two old scorer seeds the update moves (B1)
+    const before = JSON.parse(steps[0].settings);
+    before.env = reseeded(before.env);
+    assert.strictEqual(steps[1].settings, `${JSON.stringify(before, null, 2)}\n`, outs[1]);
     assert.strictEqual(steps[1].vars, false, 'a .variables was written under an ignored data root');
     assert.match(outs[1], /!! variables: \.alfred\/\.variables is ignored by \.gitignore:1 - the keys are kept in settings\.json/, outs[1]);
     assert.doesNotMatch(outs[1], MOVED_LINE);

@@ -318,6 +318,8 @@ test('Windows + Git Bash (MSYSTEM): the setup.md:199 sort -V line, node in forwa
     applyHud(plan);
     assert.strictEqual(read(dir, 'settings.json').statusLine.command, SORT_V_ROOT_FOR('C:/Program Files/nodejs/node.exe'));
     assert.ok(!fs.existsSync(path.join(dir, 'plugins', 'claude-hud', 'statusline.mjs')), 'no launcher under Git Bash');
+    // PL-06: claude-hud 0.15.0's refresh note - short intervals with several sessions fail on Windows Git Bash, 30 s or more.
+    assert.strictEqual(read(dir, 'settings.json').statusLine.refreshInterval, 30, 'the win32 interval of the catalog row');
     const again = planHud({ configDir: dir, ...opts });
     assert.strictEqual(again.statusLine.state, 'current');
     assert.strictEqual(again.changes, 0);
@@ -706,6 +708,7 @@ test('Windows cmd route: a launcher already at <account>/plugins/claude-hud/stat
     assert.strictEqual(p2.changes, 2 + 13);
     applyHud(p2);
     assert.strictEqual(fs.readFileSync(path.join(fresh, 'plugins', 'claude-hud', 'statusline.mjs'), 'utf8'), LAUNCHER);
+    assert.strictEqual(read(fresh, 'settings.json').statusLine.refreshInterval, 30, 'PL-06: 30 on win32, the cmd route too');
 });
 
 // Audit 2026-11-03 PL-11: claude-hud 0.15.0 needs node >=22.18.0 (package.json engines); on an older node its status line

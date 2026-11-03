@@ -51,6 +51,18 @@ test('session-inspector is listed from alfred-mods, pinned to a release tag and 
     assert.ok([...require('./install/plugins.js').foreignEntries(ROOT)].includes('session-inspector'));
 });
 
+// SYS-07 of the 2026-11-03 system audit: preferred-tools floated on `ref: main` with no sha, so the catalog served
+// whatever landed on that branch next. It is pinned like session-inspector: the branch it tracks plus the commit
+// reviewed, and every entry from outside this repo carries a full sha (lint check 49 fails one without).
+test('preferred-tools is pinned to a reviewed commit beside its branch, and every foreign entry carries a full sha', () => {
+    const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    const entry = mp.plugins.find((x) => x.name === 'preferred-tools');
+    assert.ok(entry, 'the preferred-tools entry');
+    assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/preferred-tools', ref: 'main', sha: '33f60bf31df899e3f33d7a0d20c2646d35b1830c' });
+    for (const p of mp.plugins.filter(foreignEntry))
+        assert.match(String(p.source.sha || ''), /^[0-9a-f]{40}$/, `${p.name} is pinned to a full commit`);
+});
+
 test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'alfred-code');
@@ -1501,6 +1513,11 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     assert.strictEqual(firstOption(cascade, 'Update the <n> project\\(s\\) below this one as well\\? <each project\'s rel>'), 'Yes, update them too (Recommended)');
     assert.strictEqual(firstOption(cascade, 'Join these installed projects'), 'Join as children (Recommended)');
     assert.strictEqual(firstOption(refBody('init-bootstrap'), 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
+    // U01 of the 2026-11-03 usage audit: the auto-update ask rides step 4's call, and each answer is one script call.
+    const boot = refBody('init-bootstrap');
+    assert.strictEqual(firstOption(boot, 'Let Claude Code keep the stack up to date by itself\\?'), 'Turn it on (Recommended)');
+    assert.match(boot, /On step 2's `auto-update: ask` line, the same call carries one more question/);
+    assert.match(boot, /'Turn it on' runs `node "\$TMP\/repo\/scripts\/install\/marketplace-autoupdate\.js" --apply --root \.` and 'Leave it off' the\s+same with `--decline`/);
     const child = refBody('init-child');
     assert.strictEqual(firstOption(child, 'Where should the stack\'s plugins be enabled in this child'), 'local (Recommended)');
     assert.strictEqual(firstOption(child, 'Ignore these machine-local paths in this clone'), '.git/info/exclude (Recommended)');

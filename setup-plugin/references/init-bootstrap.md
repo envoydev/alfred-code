@@ -26,6 +26,9 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 - `capture: capture-awareness <topic> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - one row per
   awareness part in its fixed order, each only when the install lists the skill AND the part's seat (`project`,
   `related-projects` and `agents` have none, and run whenever the skill is installed - each decides from disk).
+- `auto-update: ask <key>` - Claude Code's auto-update for the stack's marketplace, which nothing on this account has
+  answered yet; step 4 asks it. `auto-update: on|off for <key> (<where>)` and `auto-update: not asked - <why>` are said
+  in one line and ask nothing.
 - `instructions-both: ask` - a joined child with a CLAUDE.md above it, while the account loads only one of the two
   files there; step 4 asks it. `instructions-both: not asked - ...` is said in one line and asks nothing.
 
@@ -91,6 +94,17 @@ Load CLAUDE.md and AGENTS.md both, in every project of this account? A parent fo
 'Load both' runs `node "$TMP/repo/scripts/workspace.js" account-instructions --root . --apply` and 'Leave it' the same
 with `--decline` - report its `instructions-both:` line verbatim.
 
+On step 2's `auto-update: ask` line, the same call carries one more question:
+
+```ask
+Let Claude Code keep the stack up to date by itself? Auto-update for the <key> marketplace is off on this account.
+- 'Turn it on (Recommended)' - `autoUpdate: true` on its entry in the account's settings.json: the core's hooks and agents update in the background from the next session, and /alfred-code:update still moves this project's copies
+- 'Leave it off' - `autoUpdate: false` is written there, so no project of this account asks again; /alfred-code:update stays the only way
+```
+
+'Turn it on' runs `node "$TMP/repo/scripts/install/marketplace-autoupdate.js" --apply --root .` and 'Leave it off' the
+same with `--decline` - report its `auto-update:` line verbatim. Neither touches another marketplace or key.
+
 - **Custom navigation:** read `$TMP/repo/stack/skills/capture-preferences/references/tools-area.md` (through Bash) and follow it inline for the navigation job alone - its step 4 asks navigation's question only, even with one server candidate, since the user chose Custom - start to finish, its `lint` and `order` included.
 - **Custom memory:** follow the same file for the memory job alone, the same way, then run `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --memory custom` - the mode is written only by the call below, so this previews what custom would use. A memory line saying `no memory tool is reachable` means nothing would hold the lessons: apply `default` instead and say `No memory tool is ranked and reachable, so memory stays native (Claude's default place).`
 - **Apply:** a memory answer other than the `memory:` line's mode is ONE call - `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --memory <mode>` (`default` or `custom`) - whose `ALFRED_CODE_MEMORY` and `autoMemoryEnabled` lines are reported verbatim; it applies from the next session. The same answer is no call, and so is 'Agent decides'.
@@ -130,7 +144,7 @@ too. Its one line goes in the card.
 
 **The card restates the OUTCOME of every step** - one line each, in step order: each machine item
 (installed, failed with its reason, skipped, blocked with its fix), each capture (ran and what it wrote, done, skipped
-and why), the modes, as `memory: <default | custom> · navigation: <the stack's order | yours>`, AGENTS.md (created, improved or skipped,
+and why), the modes, as `memory: <default | custom> · navigation: <the stack's order | yours>`, step 4's `auto-update:` line, AGENTS.md (created, improved or skipped,
 with the check's last line), then the `initialised:` line. Then the
 user's own next steps as suggestions, each with its one reason: a restart when step 3 installed a language server
 binary; `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card
@@ -160,7 +174,7 @@ is answered by the run itself, never AskUserQuestion, by one rule:
   it. A multi-select ask takes the options its question names as the default, a destructive one left out.
 - Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
   not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
-  installs, memory, navigation, both instruction files, AGENTS.md) - apply exactly those, never re-judge them; an ask with no line is one step 4
+  installs, memory, navigation, both instruction files, auto-update, AGENTS.md) - apply exactly those, never re-judge them; an ask with no line is one step 4
   does not put.
 - The stack's files are read through the Bash tool, never the Read tool (above): outside the working
   directory the Read tool asks first, and here nobody answers.

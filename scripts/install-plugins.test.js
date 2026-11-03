@@ -1835,6 +1835,69 @@ test('unreachedPlugins: a plugin the settings switch on with no record reaching 
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });
 
+// PL-04 of the 2026-11-03 plugins audit: claude-hud below 0.15.0 is inside GHSA-f7gq-pcm8-rxr4 and GHSA-25hg-g83m-4w35
+// (both HIGH, fixed in 0.15.0), and a third-party marketplace does not auto-update. The safe floor is DATA - a manifest
+// plugin row's `floor` - and floorLines judges every row of the listing against it: under it is a `!!` line naming the
+// advisories and the update command at the row's own scope; at or past it, a plugin with no floor, or a version that
+// is no x.y.z, is no `!!` (the last said as not judged).
+test('floorLines: a plugin under its manifest floor is flagged with !!, its advisories and its update command; nothing else is', () =>
+{
+    const floors = P.pluginFloors(ROOT);
+    assert.deepStrictEqual(floors['claude-hud@claude-hud'] && floors['claude-hud@claude-hud'].version, '0.15.0', 'the floor is read from meta/stack-manifest.json');
+    const row = (version, scope = 'user', id = 'claude-hud@claude-hud') => { const [name, marketplace] = id.split('@'); return { name, marketplace, version, scope, enabled: true }; };
+    const under = P.floorLines({ rows: [row('0.12.1')], floors });
+    assert.strictEqual(under.length, 1, under.join('\n'));
+    assert.match(under[0], /^!! claude-hud@claude-hud 0\.12\.1 is under its safe floor 0\.15\.0 - GHSA-f7gq-pcm8-rxr4, GHSA-25hg-g83m-4w35 \(HIGH\): .+ - update it: claude plugin update claude-hud@claude-hud --scope user$/);
+    assert.match(P.floorLines({ rows: [row('0.14.9', 'project')], floors })[0], /--scope project$/, 'the row\'s own scope');
+    for (const v of ['0.15.0', '0.15.1', '0.16.0', '1.0.0']) assert.deepStrictEqual(P.floorLines({ rows: [row(v)], floors }), [], `${v} is at or past the floor`);
+    assert.deepStrictEqual(P.floorLines({ rows: [row('0.1.0', 'user', 'typescript-lsp@claude-plugins-official')], floors }), [], 'a plugin with no floor');
+    assert.deepStrictEqual(P.floorLines({ rows: [row('0.1.0', 'user', 'claude-hud@elsewhere')], floors }), [], 'another marketplace\'s claude-hud is another plugin');
+    assert.deepStrictEqual(P.floorLines({ rows: [row('?')], floors }), ['floor: claude-hud@claude-hud ? - not a version, so the safe floor 0.15.0 is not judged'], 'an unreadable version is said, never flagged');
+    assert.strictEqual(P.floorLines({ rows: [row('0.12.1', 'user'), row('0.12.1', 'project')], floors }).length, 2, 'one line per scope it sits at');
+    assert.deepStrictEqual(P.floorLines({ rows: [row('0.12.1')], floors: {} }), [], 'no floor data, no judgement');
+});
+
+// The CLI /alfred-code:status calls: `plugins.js floor [projectRoot] [--listing <file>]`.
+test('plugins.js floor: one line per row under its floor, `floor: none` when there is none, unknown on an unreadable listing', () =>
+{
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'floor-'));
+    try
+    {
+        const project = path.join(work, 'proj');
+        fs.mkdirSync(project, { recursive: true });
+        const file = path.join(work, 'listing.json');
+        const cli = () => execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'install', 'plugins.js'), 'floor', project, '--listing', file], { encoding: 'utf8' });
+        fs.writeFileSync(file, JSON.stringify([
+            { id: 'claude-hud@claude-hud', version: '0.12.1', scope: 'user', enabled: true },
+            { id: 'alfred-code@envoydev', version: '3.6.0', scope: 'project', projectPath: project, enabled: true },
+            { id: 'claude-hud@claude-hud', version: '0.11.0', scope: 'local', projectPath: path.join(work, 'other'), enabled: true },
+        ]));
+        const out = cli().trim().split('\n');
+        assert.strictEqual(out.length, 1, out.join('\n'));
+        assert.match(out[0], /^!! claude-hud@claude-hud 0\.12\.1 is under its safe floor 0\.15\.0 - /, 'another project\'s record is left out');
+        fs.writeFileSync(file, JSON.stringify([{ id: 'claude-hud@claude-hud', version: '0.15.0', scope: 'user', enabled: true }]));
+        assert.strictEqual(cli().trim(), 'floor: none');
+        fs.writeFileSync(file, 'not json');
+        assert.strictEqual(cli().trim(), 'floor: unknown - the plugin listing could not be read');
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
+});
+
+// The update command's half: after its plugin pass, a row still under its floor (the update did not move it - offline,
+// a managed row) is said with `!!`; one the pass left at or past the floor says nothing.
+test('seed update: a claude-hud still under its safe floor after the plugin pass is flagged; one at the floor is not (PL-04)', POSIX_ONLY, () =>
+{
+    const LINE = /!! claude-hud@claude-hud 0\.12\.1 is under its safe floor 0\.15\.0 - GHSA-f7gq-pcm8-rxr4, GHSA-25hg-g83m-4w35 \(HIGH\)/;
+    const listing = (v) => JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.6.0', scope: 'project', enabled: true }, { id: 'claude-hud@claude-hud', version: v, scope: 'user', enabled: true }]);
+    const old = seedRun(['install', 'update'], HUD_SELECTION, { plugins: listing('0.12.1') });
+    assert.match(old.outs[1], LINE, old.outs[1]);
+    assert.strictEqual((old.outs[1].match(/is under its safe floor/g) || []).length, 1, 'said once');
+    const safe = seedRun(['install', 'update'], HUD_SELECTION, { plugins: listing('0.15.0') });
+    assert.doesNotMatch(safe.outs[1], /is under its safe floor/, safe.outs[1]);
+});
+
 // audit 2026-10-14 PL14, measured on 2.1.300: a plugin a REGISTERED marketplace lists with a relative-path source loads
 // from the marketplace copy with no install record, and with its only record another project's (its SessionStart hook
 // fired, `plugin list` empty); a marketplace declared only in project settings loaded nothing. Such a plugin is reached.

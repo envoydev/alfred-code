@@ -416,6 +416,42 @@
    },
    "why": "2.10.1 ships no MCP server, so there is no memory model to pre-warm; nothing reads the switch.",
    "then": "nothing - the key is gone; add a server back with its line from stack/mcp/original-mcps.json"
+  },
+  {
+   "id": "scorer-seeded-on",
+   "since": "3.6.1",
+   "detect": {
+    "settings_env_value": {
+     "key": "ALFRED_CODE_SCORER",
+     "equals": "0"
+    }
+   },
+   "remove": [],
+   "clear_settings_env": {
+    "key": "ALFRED_CODE_SCORER",
+    "when_value": "0",
+    "to": "1"
+   },
+   "why": "the output scorer is on by default (the user's ruling, B1 of the 2026-11-03 usage audit): where a plan file was written, scored plans won 14 of 15 pairs (docs/habits-scorer-evidence.md). The stack's old off seed moves to on; a 0 the user set stays",
+   "then": "nothing - set ALFRED_CODE_SCORER to 0 in /alfred-code:configure's environment area to turn it off"
+  },
+  {
+   "id": "scorer-outputs-designer-plan",
+   "since": "3.6.1",
+   "detect": {
+    "settings_env_value": {
+     "key": "ALFRED_CODE_SCORER_OUTPUTS",
+     "equals": ""
+    }
+   },
+   "remove": [],
+   "clear_settings_env": {
+    "key": "ALFRED_CODE_SCORER_OUTPUTS",
+    "when_value": "",
+    "to": "designer-plan"
+   },
+   "why": "the scorer on by default grades designer plan files only: inline plans lost 3 of 3 scored pairs (docs/habits-scorer-evidence.md). The stack's old seed, empty (all three outputs), moves to designer-plan; a list the user set stays",
+   "then": "nothing - list more outputs in ALFRED_CODE_SCORER_OUTPUTS, or empty it for all three"
   }
  ]
 }

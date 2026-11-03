@@ -241,7 +241,8 @@ wins 4 or more tasks and off at most 1.
   - The judge logged in under its own config, read the project files, and was refused Bash by `dontAsk`.
   - The plain prompt fired the plan skill in 11 of 12 runs; the order-lookup on run is the miss.
 - **Following the spec:** `ALFRED_CODE_SCORER` stays seeded `0`. Turning it on by default is the user's separate
-  ruling.
+  ruling. (Superseded 2026-11-03: the user ruled it seeded `1` with `ALFRED_CODE_SCORER_OUTPUTS=designer-plan` - B1
+  of the usage audit; an update moves the stack's old `0` seed to `1`, a `0` the user set stays.)
 
 ## The A/B, phase 2: three runs per task (2026-10-25)
 
@@ -293,7 +294,8 @@ The result:
   - The scorer makes plan files safer to apply and easier to build, at about 9 times the cost.
   - The inline-plan route is the weak spot. A plain 'write an implementation plan' request with scoring on should
     reach the plan skill and its plan file every time, not 15 times in 18.
-  - `ALFRED_CODE_SCORER` stays seeded `0`. Turning it on by default is the user's ruling.
+  - `ALFRED_CODE_SCORER` stays seeded `0`. Turning it on by default is the user's ruling. (Superseded 2026-11-03: seeded
+    `1` for designer plans only, B1 of the usage audit - the plan-file pairs, not the inline ones.)
 
 ## Fixes, phase 3: stack modes (2026-10-28)
 

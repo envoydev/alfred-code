@@ -1513,6 +1513,10 @@ function installPlugins(ctx)
             after: () => (ctx.pluginsAfter = readListing()),
         });
         hudLine();
+        // PL-04 of the 2026-11-03 plugins audit: a plugin the pass left under its safe floor (the manifest row's `floor` -
+        // an offline refresh, a managed row) is said, `!!`, with its advisories and the update that moves it.
+        for (const line of plugins.floorLines({ rows: ctx.pluginsAfter || [], floors: plugins.pluginFloors(ctx.source.dir) }))
+            ctx.log(`  ${line}`);
         for (const row of ctx.dropEntries || [])
         {
             const spec = `${row.name}@${row.marketplace}`;

@@ -823,7 +823,7 @@ test('settings-writer: uninstall takes the seeded scorer rows back and keeps one
     fs.mkdirSync(path.join(dir, '.claude'));
     const first = writer(dir);
     const data = read(dir);
-    assert.deepStrictEqual([data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_LEVEL], ['0', '80'], 'the install seeded them');
+    assert.deepStrictEqual([data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_LEVEL], ['1', '80'], 'the install seeded them (on since B1 of the 2026-11-03 usage audit)');
     data.env.ALFRED_CODE_SCORER_ROUNDS = '6';
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
     settings.removeManagedSettings({ claudeDir: path.join(dir, '.claude'), ledger: throughStamp(first.managed) });

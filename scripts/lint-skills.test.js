@@ -626,6 +626,14 @@ test('check 28: a verified note copied from another plugin is a finding', () => 
     assert.strictEqual(wrongPlugin.length, 1, wrongPlugin.join('\n'));
     assert.match(wrongPlugin[0], /opening with 'claude-hud <version>'/);
     assert.strictEqual(lintPluginSettings(row('0.8.0'), roster).length, 1, 'a bare version does not say which plugin');
+
+    // PL-06: an `on_platform` row changes a value the target already sets, on a platform Node names - never a new key
+    // (it would carry no why) and never a misspelt platform (it would silently never apply).
+    const plat = (on) => ({ plugins: { 'claude-hud': { verified: 'claude-hud 0.15.0 - src/schema.ts', scope: 'account', targets: [{ file: 'settings.json', settings: { statusLine: { refreshInterval: 5 } }, why: { statusLine: 'x' }, on_platform: on }] } } });
+    assert.deepStrictEqual(lintPluginSettings(plat({ win32: { statusLine: { refreshInterval: 30 } } }), roster), []);
+    assert.ok(lintPluginSettings(plat({ windows: { statusLine: { refreshInterval: 30 } } }), roster).some((f) => /on_platform names 'windows'/.test(f)));
+    assert.ok(lintPluginSettings(plat({ win32: { statusLine: { padding: 2 } } }), roster).some((f) => /on_platform\.win32 sets 'statusLine\.padding', which its settings do not/.test(f)));
+    assert.ok(lintPluginSettings(plat([1]), roster).some((f) => /on_platform must be an object/.test(f)));
 });
 
 // 35b. The load verb can come AFTER the name, and only a back-reference makes it a directive.
@@ -793,8 +801,18 @@ test('check 49: the live file is clean, and a stale RETIRED alias, a renames key
 
     // An entry fetched from outside the repo is the marketplace's own; a hand entry inside the repo is still drift.
     const foreign = liveMarketplace();
-    foreign.plugins.push({ name: 'other-tool', source: { source: 'github', repo: 'envoydev/other-tool' }, description: 'x' });
+    foreign.plugins.push({ name: 'other-tool', source: { source: 'github', repo: 'envoydev/other-tool', ref: 'main', sha: '0123456789abcdef0123456789abcdef01234567' }, description: 'x' });
     assert.deepStrictEqual(lintMarketplaceEntries(foreign), [], 'an object-sourced entry is not the placement\'s');
+    // SYS-07 of the 2026-11-03 system audit: an outside source floating on a branch serves whatever lands there next,
+    // so every one is pinned to its full commit - a missing, short or non-hex sha is a finding.
+    for (const sha of [undefined, '33f60bf', 'not-a-sha-not-a-sha-not-a-sha-not-a-sha!', 42])
+    {
+        const loose = liveMarketplace();
+        const source = { source: 'github', repo: 'envoydev/other-tool', ref: 'main' };
+        if (sha !== undefined) source.sha = sha;
+        loose.plugins.push({ name: 'other-tool', source, description: 'x' });
+        assert.ok(lintMarketplaceEntries(loose).some((f) => /other-tool is fetched from outside this repo with no 40-hex `sha`/.test(f)), `a foreign source with sha ${JSON.stringify(sha)} is a finding`);
+    }
     const inside = liveMarketplace();
     inside.plugins.push({ name: 'stray', source: './stray', description: 'x' });
     assert.ok(lintMarketplaceEntries(inside).some((f) => /carries stray, which the placement does not produce/.test(f)), 'a relative-path hand entry is a finding');

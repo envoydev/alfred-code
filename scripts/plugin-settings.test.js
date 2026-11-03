@@ -280,3 +280,37 @@ test('all rows match: nothing to offer', () =>
     const one = report(['x'], { x: [{ file: 'settings.json', exists: true, rows: [...rows, { key: 'd', status: 'missing', want: 1 }] }] }, {});
     assert.match(one.text.split('\n').pop(), /^plugin-settings: 1 to add, 0 already set differently/);
 });
+
+// PL-06 of the 2026-11-03 plugins audit: claude-hud 0.15.0's own refresh note (src/schema.ts NOTES, 'refresh') says short
+// intervals with several sessions fail on Windows Git Bash (`add_item ... failed, errno 1`) - 'use 30 s or more'. A
+// target's `on_platform` row is merged over its `settings` on that platform only, so the catalog states 30 on win32 and
+// 5 everywhere else, and a platform no row names takes the plain settings.
+test('on_platform: a value is merged over the settings on that platform only', () =>
+{
+    const entry = { targets: [{ file: 'settings.json', requires_path: 'statusLine', settings: { statusLine: { refreshInterval: 5 } }, on_platform: { win32: { statusLine: { refreshInterval: 30 } } } }] };
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: 'hud' } }));
+    const want = (platform) => planFor(entry, dir, {}, platform)[0].rows.map((r) => [r.key, r.want, r.status]);
+    assert.deepStrictEqual(want('win32'), [['statusLine.refreshInterval', 30, 'missing']]);
+    assert.deepStrictEqual(want('darwin'), [['statusLine.refreshInterval', 5, 'missing']]);
+    assert.deepStrictEqual(want('linux'), [['statusLine.refreshInterval', 5, 'missing']]);
+    assert.deepStrictEqual(planFor(entry, dir)[0].rows[0].want, process.platform === 'win32' ? 30 : 5, 'the default is the machine the plan runs on');
+    // Applied on win32: 30 lands; a user's own value is still theirs (add-only), reported as a difference.
+    applyTargets(planFor(entry, dir, {}, 'win32'), false);
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).statusLine.refreshInterval, 30);
+    assert.deepStrictEqual(want('darwin'), [['statusLine.refreshInterval', 5, 'differs']], 'a 30 already there is kept off Windows too');
+    assert.deepStrictEqual(want('win32'), [['statusLine.refreshInterval', 30, 'match']], 'a re-run on Windows changes nothing');
+    // The settings object itself is never changed by a plan - the next platform reads the plain value.
+    assert.deepStrictEqual(entry.targets[0].settings, { statusLine: { refreshInterval: 5 } });
+});
+
+test('the shipped claude-hud row: refreshInterval 30 on win32, 5 elsewhere, its why citing 0.15.0 src/schema.ts', () =>
+{
+    const t = CATALOG.plugins['claude-hud'].targets.find((x) => x.file === 'settings.json');
+    assert.deepStrictEqual(t.settings, { statusLine: { refreshInterval: 5 } });
+    assert.deepStrictEqual(t.on_platform, { win32: { statusLine: { refreshInterval: 30 } } });
+    assert.match(t.why.statusLine, /0\.15\.0/);
+    assert.match(t.why.statusLine, /src\/schema\.ts/);
+    assert.match(t.why.statusLine, /Git Bash/);
+    assert.doesNotMatch(t.why.statusLine, /README/, 'the README Auto-Refresh section is gone in 0.15.0');
+});

@@ -858,6 +858,17 @@ test('pruneOnJoin keeps an installer answer off the catalog default (--auto-comp
     assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_AUTO_COMPACT=1\n');
 });
 
+// B1 of the 2026-11-03 usage audit: the scorer's old seeds (0, empty) are a reseed's old values, so a joiner still holding
+// them at their ledger hash drops them like any seed - the workspace's value reaches it; a 0 typed over the new seed stays.
+test('pruneOnJoin drops an old stack seed a reseed migration names (the scorer\'s 0 and empty list), keeps one typed over the new seed', () =>
+{
+    const H = stampLib.valueHash;
+    const old = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER=${H('0')},.variables:ALFRED_CODE_SCORER_OUTPUTS=${H('')}\n`, git: true, vars: 'ALFRED_CODE_SCORER=0\nALFRED_CODE_SCORER_OUTPUTS=\n' } });
+    assert.deepStrictEqual(ws.pruneOnJoin(old('p'), { env: ON, log: () => {} }), { dropped: ['ALFRED_CODE_SCORER', 'ALFRED_CODE_SCORER_OUTPUTS'], own: [] });
+    const typed = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER=${H('1')}\n`, git: true, vars: 'ALFRED_CODE_SCORER=0\n' } });
+    assert.deepStrictEqual(ws.pruneOnJoin(typed('p'), { env: ON, log: () => {} }), { dropped: [], own: ['ALFRED_CODE_SCORER'] });
+});
+
 test('keepOnLeave writes each value read through the chain into the child\'s file, a seed with its ledger row; with the parent gone it names the keys that read their defaults', () =>
 {
     const H = stampLib.valueHash;

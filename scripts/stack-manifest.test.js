@@ -87,6 +87,15 @@ test('stack-manifest: a plugin from a third-party marketplace names the source i
     assert.strictEqual(claudeHud.marketplace, 'jarrodwatts/claude-hud');
     // 2.2.0: an optional pick (the user's ruling of 2026-10-06), so an active catalog row - no longer parked.
     assert.notStrictEqual(claudeHud.active, false, 'claude-hud is a pick, not a parked core companion');
+    // PL-04 of the 2026-11-03 plugins audit: the safe floor is data on the row - status and update flag a row under it.
+    assert.deepStrictEqual(claudeHud.floor && claudeHud.floor.version, '0.15.0');
+    assert.deepStrictEqual(claudeHud.floor.advisories, ['GHSA-f7gq-pcm8-rxr4', 'GHSA-25hg-g83m-4w35']);
+    assert.ok(typeof claudeHud.floor.why === 'string' && claudeHud.floor.why.length > 20, 'the floor says why');
+    for (const r of m.plugins.filter((x) => x.floor))
+    {
+        assert.match(r.floor.version, /^\d+\.\d+\.\d+$/, `${r.id}: a floor is an x.y.z version`);
+        assert.ok(Array.isArray(r.floor.advisories) && r.floor.advisories.every((a) => /^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$/.test(a)), `${r.id}: each advisory is a GHSA id`);
+    }
 });
 
 // The seed (scripts/install/manifest.js) is the ONE Node reader of the six lists - this proves it

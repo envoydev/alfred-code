@@ -518,13 +518,20 @@ function editVariablesLedger(projectRoot, change)
     stamp.markLine(file, 'managed-env', stamp.renderLedger({ env })[0].slice('managed-env: '.length));
 }
 
-// A stack seed: the value still at its managed-env ledger hash AND the catalog default - an installer answer off the
-// default (`--auto-compact on`, a walk's value) is ledgered the same way and is the project's own (D5).
-let catalogDefaults = null;
+// A stack seed: the value still at its managed-env ledger hash AND the catalog default, or an old seed a reseed migration
+// moves (the update would reset it anyway - the scorer's 0 and empty list, B1 of the 2026-11-03 usage audit) - an
+// installer answer off the default (`--auto-compact on`, a walk's value) is ledgered the same way and is the project's own (D5).
+let catalogSeeds = null;
 function isSeed(key, value, rows)
 {
-    catalogDefaults ||= new Map(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'meta', 'environment.json'), 'utf8')).env.map((r) => [r.key, String(r.default ?? '')]));
-    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && catalogDefaults.get(key) === String(value);
+    if (!catalogSeeds)
+    {
+        const meta = path.join(__dirname, '..', '..', 'meta');
+        const reseed = require('./env-migrations.js').envMigrations(JSON.parse(fs.readFileSync(path.join(meta, 'migrations.json'), 'utf8'))).reseed;
+        catalogSeeds = new Map(JSON.parse(fs.readFileSync(path.join(meta, 'environment.json'), 'utf8')).env
+            .map((r) => [r.key, [r.default ?? '', ...reseed.filter(([k]) => k === r.key).map(([, bad]) => bad)].map(String)]));
+    }
+    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && (catalogSeeds.get(key) || []).includes(String(value));
 }
 
 // A join's prune (D5): every stack seed (isSeed) in the joiner's `.variables` leaves (with its row) and the members'
@@ -1623,5 +1630,5 @@ module.exports = {
     readPlan, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
-    releaseChildren, leaveParent, managedSettingsFile, checkLoads,
+    releaseChildren, leaveParent, managedSettingsFile, checkLoads, writeLike,
 };

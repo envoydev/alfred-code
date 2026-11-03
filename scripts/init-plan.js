@@ -23,6 +23,10 @@
 //     never a Skill call. An existing output is done - re-capturing is the user's call, later. The library copy in
 //     .claude/skills wins over the plugin's.
 //
+//   auto-update: ask <key> | on|off for <key> (<where>) | not asked - <why>
+//     Claude Code's auto-update for the stack's marketplace (install/marketplace-autoupdate.js): `ask` while nothing on
+//     this account has answered it - step 4's call carries the question, once per account, since a no is written too.
+//
 //   unattended: <question> -> <choice>
 //     Only with ALFRED_CODE_UNATTENDED=1: the answer to each ask init itself owns, after the plan -
 //     the recommended option unless it is destructive or needs a person (references/init-bootstrap.md, 'Unattended').
@@ -37,6 +41,7 @@ const rt = require('./install/runtime.js');  // R105: every external command thr
 const REPO = path.join(__dirname, '..');
 const { resolveDocsRoot } = require(path.join(REPO, 'scripts', 'install', 'copy.js'));
 const { planHud, resolveConfigDir } = require(path.join(REPO, 'scripts', 'hud-statusline.js'));
+const autoUpdateLib = require(path.join(REPO, 'scripts', 'install', 'marketplace-autoupdate.js'));
 
 const HUD_ITEM = 'claude-hud status line + compact layout';
 
@@ -59,7 +64,7 @@ const probes = {
     file: (p) => fs.existsSync(p),
 };
 
-function plan({ inv, root, platform = process.platform, env = process.env, probe = probes, pluginRoot = '' })
+function plan({ inv, root, platform = process.platform, env = process.env, probe = probes, pluginRoot = '', managedFile })
 {
     const machine = [];
     const add = (what, state, detail = '') => machine.push({ what, state, detail });
@@ -110,13 +115,15 @@ function plan({ inv, root, platform = process.platform, env = process.env, probe
     // D5 (workspace layering): a joined child with a CLAUDE.md on its path, asked once per account.
     const ws = require('./install/workspace.js');
     const instructionsBoth = ws.instructionsBothState({ projectRoot: root, env, ...ws.accountPaths(env) });
-    return { machine, captures, instructionsBoth };
+    const autoUpdate = autoUpdateLib.autoUpdateState({ projectRoot: root, env, managedFile });
+    return { machine, captures, instructionsBoth, autoUpdate };
 }
 
-function render({ machine, captures, instructionsBoth })
+function render({ machine, captures, instructionsBoth, autoUpdate })
 {
     const lines = machine.map(({ what, state, detail }) => (state === 'present' ? `machine: ${what} - present` : `machine: ${what} - ${state}: ${detail}`));
     for (const { skill, topic, state, detail } of captures) lines.push(`capture: ${skill} ${topic} - ${state}: ${detail}`);
+    if (autoUpdate) lines.push(autoUpdateLib.stateLine(autoUpdate));
     const both = require('./install/workspace.js').instructionsBothLine(instructionsBoth);
     if (both) lines.push(both);
     const count = (s) => machine.filter((m) => m.state.startsWith(s)).length;
@@ -140,7 +147,7 @@ function modesOf(root)
     catch { return { memory: 'default', ownNavigation: false }; }
 }
 
-function unattended({ machine, captures, instructionsBoth, memory = 'default', ownNavigation = false })
+function unattended({ machine, captures, instructionsBoth, autoUpdate, memory = 'default', ownNavigation = false })
 {
     const lines = [];
     const take = machine.filter((m) => m.state === 'missing').map((m) => m.what);
@@ -152,6 +159,8 @@ function unattended({ machine, captures, instructionsBoth, memory = 'default', o
     if (!ownNavigation) lines.push("unattended: Navigation in files? -> Agent decides, the stack's order (Recommended)");
     lines.push('unattended: AGENTS.md -> fill it in (Recommended)');
     if (instructionsBoth === 'ask') lines.push('unattended: instructions-both -> load');
+    // A setting where none was: adding, never destructive (references/init-bootstrap.md, 'Unattended').
+    if (autoUpdate && autoUpdate.state === 'ask') lines.push('unattended: auto-update -> Turn it on (Recommended)');
     return lines;
 }
 

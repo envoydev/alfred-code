@@ -422,11 +422,25 @@ function lintPluginSettings(catalog, pluginRoster)
             {
                 if (!((t.why || {})[group])) out.push(`plugin-settings.json '${name}' target '${t.file}' changes '${group}' with no \`why\` - a recommendation the user cannot weigh is not one`);
             }
+            // PL-06: an `on_platform` row changes, on one Node platform, a value `settings` already sets - so its why
+            // covers it; a misspelt platform would silently never apply, a new key would carry no why.
+            if (t.on_platform === undefined) continue;
+            if (!t.on_platform || typeof t.on_platform !== 'object' || Array.isArray(t.on_platform)) { out.push(`plugin-settings.json '${name}' target '${t.file}' on_platform must be an object of platform -> settings`); continue; }
+            const { leaves } = require('./plugin-settings.js');
+            const own = new Set(leaves(t.settings).map(([k]) => k));
+            for (const [platform, over] of Object.entries(t.on_platform))
+            {
+                if (!NODE_PLATFORMS.includes(platform)) out.push(`plugin-settings.json '${name}' target '${t.file}' on_platform names '${platform}', which is no Node process.platform (${NODE_PLATFORMS.join(', ')}) - it would never apply`);
+                for (const [key] of leaves(over && typeof over === 'object' ? over : {}))
+                    if (!own.has(key)) out.push(`plugin-settings.json '${name}' target '${t.file}' on_platform.${platform} sets '${key}', which its settings do not - a platform row only changes a value the target already sets, so its why covers it`);
+            }
         }
     }
 
     return out;
 }
+// The values Node's process.platform takes (nodejs.org/api/process.html#processplatform).
+const NODE_PLATFORMS = ['aix', 'darwin', 'freebsd', 'linux', 'openbsd', 'sunos', 'win32', 'android'];
 
 // Pure, like lintEvidenceCatalog: readFile is injected for testability.
 function lintSharedRules(registry, readFile)
@@ -1306,8 +1320,9 @@ const SETUP_ASK_TEMPLATES = {
     'setup-plugin/commands/uninstall.md': 2,
     'setup-plugin/commands/status.md': 1,
     // +2: step 4's memory and navigation asks (spec P1 + P2, 2026-10-24). +1: the account's both-instruction-files ask
-    // in a joined child (workspace layering, 2026-10-26).
-    'setup-plugin/references/init-bootstrap.md': 4,
+    // in a joined child (workspace layering, 2026-10-26). +1: the marketplace auto-update ask, once per account (U01 of the
+    // 2026-11-03 usage audit).
+    'setup-plugin/references/init-bootstrap.md': 5,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's
     // detection confirm and its dispute follow-up, which was asked in plain text (audit 2026-10-21 commands T2-08).
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).
@@ -3334,9 +3349,13 @@ function lintMarketplaceEntries(liveIn)
     const generated = new Set(wanted.map(e => e.name));
     if (live && Object.prototype.hasOwnProperty.call(live, 'renames'))
         findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands an install with no hooks and no skills (docs/plugin-cli-evidence.md S11, S16); update migrates a renamed id instead - run `npm run marketplace`');
-    // An MCP server entry has its own check (53: the stack ships none).
+    // An MCP server entry has its own check (53: the stack ships none). An entry from OUTSIDE this repo is the
+    // marketplace's, never the placement's - but it is pinned to a full commit (SYS-07 of the 2026-11-03 system audit:
+    // preferred-tools floated on `ref: main`, so the catalog served whatever landed on that branch next).
     for (const p of live.plugins || [])
     {
+        if (p && require('./install/plugins.js').foreignEntry(p) && !/^[0-9a-f]{40}$/.test(typeof p.source.sha === 'string' ? p.source.sha : ''))
+            findings.push(`marketplace.json entry ${p.name} is fetched from outside this repo with no 40-hex \`sha\` - pin the commit you reviewed beside its \`ref\` (session-inspector's shape), or the catalog serves whatever lands on that ref next`);
         if (!p || generated.has(p.name) || build.mcpEntry(p) || require('./install/plugins.js').foreignEntry(p)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);

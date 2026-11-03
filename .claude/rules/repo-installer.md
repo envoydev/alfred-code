@@ -28,13 +28,17 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     /alfred-code:init again'; `installed` / `initialised` runs the BOOTSTRAP phase (`references/init-bootstrap.md`) - the
     one-time set-up in the new session (`init-plan.js`: the machine installs behind one ask, `stamp.js mark` dating the stamp's
     `initialised:` line - Claude's own memory is left as it is - the captures, the AGENTS.md fill through
-    `habits-adjust-agents-md`). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
+    `habits-adjust-agents-md`, and once per account Claude Code's auto-update for the stack's marketplace - U01 of the
+    2026-11-03 usage audit: `install/marketplace-autoupdate.js` reads it in the docs' order (a settings file's
+    `extraKnownMarketplaces` entry, the highest file's whole, then `known_marketplaces.json`, then off; the DISABLE_* env
+    switches), and the answer writes `autoUpdate` true or false on the stack's entry in the ACCOUNT settings.json alone, a
+    no too so no later init asks). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
     settings value would apply over a launcher's) runs init's bootstrap with nobody answering (the install phase
     refuses it): each ask takes its
     Recommended option unless it is destructive (loses or replaces what the project or account owns - a
     claude-hud `refresh` line) or needs a person (typed text, a restart), then the option that changes
     nothing, one `unattended: <question> -> <choice>` line each (init-bootstrap.md 'Unattended'; `init-plan.js`
-    prints the bootstrap's own four answers, `update-preflight.js` prints `unattended: on` for update's asks). Init
+    prints the bootstrap's own five answers, `update-preflight.js` prints `unattended: on` for update's asks). Init
     reads the stack's files through the Bash tool, never the Read tool, which asks before a read outside
     the working directory. `/alfred-code:update`
     refreshes and prunes from the stamp compare (its ONE ask offers what the release ADDED -
@@ -46,7 +50,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     the walk it shares with init's install phase (`setup-plugin/references/walk.md`), `/alfred-code:status` (read-only, no snapshot: general info, a
     health column from the CLI's own error fields plus a `not installed for this project` row per `plugins.js unreached`
     line - a plugin the settings switch on that no install record reaches, another project's record left out (usage
-    audit 2026-10-10) - usage from `analyze-usage.js --inventory`, plus the
+    audit 2026-10-10) - and a `!!` health per row under its safe floor (`plugins.js floor`: a `meta/stack-manifest.json`
+    plugin row's `floor` - claude-hud 0.15.0, two HIGH advisories; update logs the same line after its plugin pass,
+    PL-04 of the 2026-11-03 plugins audit) - usage from `analyze-usage.js --inventory`, plus the
     install's always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/alfred-code:validate`
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
