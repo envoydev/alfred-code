@@ -458,3 +458,21 @@ test('AG02: every verifier carries the direct-dispatch carve-out beside the rubr
     assert.strictEqual(rules()['verifier-direct-dispatch'].owner.file, 'stack/agents/aspnet-verifier.md');
     for (const c of copiesOf('verifier-direct-dispatch')) assert.ok(squash(readRel(c.file)).includes(squash(c.marker)), `${c.file}: the marker`);
 });
+
+test('ab-Q5: the analyzer reads the sibling\'s data root first', () =>
+{
+    const line = squash(body('related-project-analyzer')).match(/\*\*first_read\*\*[^\n]*?(?= 4\. \*\*seam\*\*)/);
+    assert.ok(line, 'the first_read item is there');
+    assert.match(line[0], /ALFRED_CODE_DATA_PATH/, 'names the key that moves the data root');
+    assert.match(line[0], /default `\.alfred`/, 'names the default');
+    assert.doesNotMatch(line[0], /`\.alfred\/docs\/awareness\//, 'the exact path is no longer hard-coded under .alfred');
+});
+
+test('ab-P4: the footprint names statistics/', () =>
+{
+    const doc = readRel('docs/install-footprint.md');
+    const row = doc.split('\n').find((l) => l.startsWith('- **`.alfred/`**'));
+    assert.ok(row, 'the data root row is there');
+    assert.match(row, /`state\/`/, 'the hooks\' state folder is named');
+    assert.match(row, /`statistics\/`/, 'the ledgers folder is named');
+});
