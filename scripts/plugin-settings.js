@@ -115,9 +115,21 @@ function setLeaf(obj, dotted, value)
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+// A target's settings as they apply on `platform`: its `on_platform[<platform>]` leaves (a Node `process.platform`
+// name) merged over `settings`, both left as they are. Audit 2026-11-03 PL-06: claude-hud 0.15.0 asks for a refresh
+// interval of 30 s or more on Windows Git Bash, where a short one fails with several sessions open.
+function settingsFor(t, platform = process.platform)
+{
+    const over = t.on_platform && typeof t.on_platform === 'object' && !Array.isArray(t.on_platform) ? t.on_platform[platform] : null;
+    if (!over || typeof over !== 'object') return t.settings;
+    const merged = JSON.parse(JSON.stringify(t.settings || {}));
+    for (const [key, value] of leaves(over)) setLeaf(merged, key, value);
+    return merged;
+}
+
 // The delta for one plugin: every catalog leaf classified against what is on disk - or, for a file
-// named in `overlay`, against the doc a caller is about to write there.
-function planFor(entry, configDir, overlay = {})
+// named in `overlay`, against the doc a caller is about to write there. `platform` picks a target's `on_platform` row.
+function planFor(entry, configDir, overlay = {}, platform = process.platform)
 {
     const targets = [];
     for (const t of entry.targets || [])
@@ -133,7 +145,7 @@ function planFor(entry, configDir, overlay = {})
         }
         else
         {
-            for (const [key, want] of leaves(t.settings))
+            for (const [key, want] of leaves(settingsFor(t, platform)))
             {
                 const have = current ? atPath(current, key) : undefined;
                 // `chosen_by`: another path whose presence means the user already chose this key
@@ -296,7 +308,7 @@ function main(argv)
     return 0;
 }
 
-module.exports = { planFor, applyTargets, backupOnce, report, leaves, atPath, setLeaf, readDoc, readJson, main };
+module.exports = { planFor, settingsFor, applyTargets, backupOnce, report, leaves, atPath, setLeaf, readDoc, readJson, main };
 
 if (require.main === module)
 {

@@ -1,8 +1,8 @@
 {
- "_comment": "Recommended per-PLUGIN settings, offered as an apply-or-skip substep of the guided walks' plugin layer and read by scripts/plugin-settings.js; /alfred-code:init applies the claude-hud row through scripts/hud-statusline.js, after the statusLine it gates. A plugin ships its own defaults; this catalog holds only the keys THIS stack has a reason to change, each with a `why` a user can weigh. Row shape: `verified` (the exact plugin version + file the keys were read from - a key the plugin does not read is a silent no-op, so never add one from memory), `scope` (`account` when the plugin's config file is account-level whichever scope the plugin was installed at), and `targets[]` - `file` (path relative to the ACCOUNT config dir: CLAUDE_CONFIG_DIR, else ~/.claude), `settings` (the object to deep-merge), `why` (per top-level key group), the optional `requires_path` (dotted path that must already exist in the target, else the target is skipped - a patch to a block the plugin's own setup writes must not invent that block), and the optional `chosen_by` (key -> another dotted path whose presence means the user already chose that key, so it is reported and kept). The script only ADDS missing keys by default: a value the user already chose is reported as a difference and kept unless they explicitly pick replace.",
+ "_comment": "Recommended per-PLUGIN settings, offered as an apply-or-skip substep of the guided walks' plugin layer and read by scripts/plugin-settings.js; /alfred-code:init applies the claude-hud row through scripts/hud-statusline.js, after the statusLine it gates. A plugin ships its own defaults; this catalog holds only the keys THIS stack has a reason to change, each with a `why` a user can weigh. Row shape: `verified` (the exact plugin version + file the keys were read from - a key the plugin does not read is a silent no-op, so never add one from memory), `scope` (`account` when the plugin's config file is account-level whichever scope the plugin was installed at), and `targets[]` - `file` (path relative to the ACCOUNT config dir: CLAUDE_CONFIG_DIR, else ~/.claude), `settings` (the object to deep-merge), `why` (per top-level key group), the optional `requires_path` (dotted path that must already exist in the target, else the target is skipped - a patch to a block the plugin's own setup writes must not invent that block), the optional `chosen_by` (key -> another dotted path whose presence means the user already chose that key, so it is reported and kept), and the optional `on_platform` (a Node `process.platform` name -> leaves merged over `settings` on that platform only; each changes a value `settings` already sets, so its `why` covers it - lint 28). The script only ADDS missing keys by default: a value the user already chose is reported as a difference and kept unless they explicitly pick replace.",
  "plugins": {
   "claude-hud": {
-   "verified": "claude-hud 0.15.0 - src/config.ts DEFAULT_CONFIG (key names + shipped defaults: every key below present - lineLayout, showSeparators, the eight display keys, gitStatus.showAheadBehind and showFileStats), mergeConfig and migrateLegacyLayout (a legacy layout key migrated only while lineLayout is absent), src/schema.ts DESCRIPTIONS (lineLayout `compact` is the single-line layout; showSeparators draws its rule in compact only) and its refresh hint (refreshInterval on the statusLine entry in settings.json), collector.mjs claudePaths (configPath <config dir>/plugins/claude-hud/config.json); first read on 0.8.0; 0.12.0 added display.showAgentEffort (default false, not set here); 0.15.0 moved the config from dist/config.js to src/config.ts and replaced commands/setup.md and configure.md with one `hud` skill",
+   "verified": "claude-hud 0.15.0 - src/config.ts DEFAULT_CONFIG (key names + shipped defaults: every key below present - lineLayout, showSeparators, the eight display keys, gitStatus.showAheadBehind and showFileStats), mergeConfig and migrateLegacyLayout (a legacy layout key migrated only while lineLayout is absent), src/schema.ts DESCRIPTIONS (lineLayout `compact` is the single-line layout; showSeparators draws its rule in compact only) and its NOTES 'refresh' text (refreshInterval on the statusLine entry in settings.json; 30 s or more on Windows Git Bash with several sessions), collector.mjs claudePaths (configPath <config dir>/plugins/claude-hud/config.json); first read on 0.8.0; 0.12.0 added display.showAgentEffort (default false, not set here); 0.15.0 moved the config from dist/config.js to src/config.ts and replaced commands/setup.md and configure.md with one `hud` skill",
    "scope": "account",
    "targets": [
     {
@@ -40,11 +40,18 @@
      "file": "settings.json",
      "requires_path": "statusLine",
      "why": {
-      "statusLine": "Claude Code re-runs the statusline only on events (a message, /compact, a mode change, a rate-limit reset, a cache expiry), so every time-based field (usage reset countdown, session duration) freezes while a session is idle; claude-hud's README asks for a refreshInterval to keep them ticking, and 5s is the interval 0.8.0 suggested"
+      "statusLine": "Claude Code re-runs the statusline only on events (a message, /compact, a mode change, a rate-limit reset, a prompt-cache expiry), so every time-based field (usage reset countdown, session duration) freezes while a session is idle; claude-hud 0.15.0's own refresh note (src/schema.ts NOTES, 'refresh') asks for a refreshInterval to keep them ticking - 5 s, the interval 0.8.0 suggested, and 30 s on Windows (on_platform win32), where the same note says short intervals with several sessions open fail under Git Bash ('add_item ... failed, errno 1') and to 'use 30 s or more'"
      },
      "settings": {
       "statusLine": {
        "refreshInterval": 5
+      }
+     },
+     "on_platform": {
+      "win32": {
+       "statusLine": {
+        "refreshInterval": 30
+       }
       }
      }
     }

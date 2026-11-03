@@ -626,6 +626,14 @@ test('check 28: a verified note copied from another plugin is a finding', () => 
     assert.strictEqual(wrongPlugin.length, 1, wrongPlugin.join('\n'));
     assert.match(wrongPlugin[0], /opening with 'claude-hud <version>'/);
     assert.strictEqual(lintPluginSettings(row('0.8.0'), roster).length, 1, 'a bare version does not say which plugin');
+
+    // PL-06: an `on_platform` row changes a value the target already sets, on a platform Node names - never a new key
+    // (it would carry no why) and never a misspelt platform (it would silently never apply).
+    const plat = (on) => ({ plugins: { 'claude-hud': { verified: 'claude-hud 0.15.0 - src/schema.ts', scope: 'account', targets: [{ file: 'settings.json', settings: { statusLine: { refreshInterval: 5 } }, why: { statusLine: 'x' }, on_platform: on }] } } });
+    assert.deepStrictEqual(lintPluginSettings(plat({ win32: { statusLine: { refreshInterval: 30 } } }), roster), []);
+    assert.ok(lintPluginSettings(plat({ windows: { statusLine: { refreshInterval: 30 } } }), roster).some((f) => /on_platform names 'windows'/.test(f)));
+    assert.ok(lintPluginSettings(plat({ win32: { statusLine: { padding: 2 } } }), roster).some((f) => /on_platform\.win32 sets 'statusLine\.padding', which its settings do not/.test(f)));
+    assert.ok(lintPluginSettings(plat([1]), roster).some((f) => /on_platform must be an object/.test(f)));
 });
 
 // 35b. The load verb can come AFTER the name, and only a back-reference makes it a directive.

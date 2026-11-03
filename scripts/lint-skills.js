@@ -422,11 +422,25 @@ function lintPluginSettings(catalog, pluginRoster)
             {
                 if (!((t.why || {})[group])) out.push(`plugin-settings.json '${name}' target '${t.file}' changes '${group}' with no \`why\` - a recommendation the user cannot weigh is not one`);
             }
+            // PL-06: an `on_platform` row changes, on one Node platform, a value `settings` already sets - so its why
+            // covers it; a misspelt platform would silently never apply, a new key would carry no why.
+            if (t.on_platform === undefined) continue;
+            if (!t.on_platform || typeof t.on_platform !== 'object' || Array.isArray(t.on_platform)) { out.push(`plugin-settings.json '${name}' target '${t.file}' on_platform must be an object of platform -> settings`); continue; }
+            const { leaves } = require('./plugin-settings.js');
+            const own = new Set(leaves(t.settings).map(([k]) => k));
+            for (const [platform, over] of Object.entries(t.on_platform))
+            {
+                if (!NODE_PLATFORMS.includes(platform)) out.push(`plugin-settings.json '${name}' target '${t.file}' on_platform names '${platform}', which is no Node process.platform (${NODE_PLATFORMS.join(', ')}) - it would never apply`);
+                for (const [key] of leaves(over && typeof over === 'object' ? over : {}))
+                    if (!own.has(key)) out.push(`plugin-settings.json '${name}' target '${t.file}' on_platform.${platform} sets '${key}', which its settings do not - a platform row only changes a value the target already sets, so its why covers it`);
+            }
         }
     }
 
     return out;
 }
+// The values Node's process.platform takes (nodejs.org/api/process.html#processplatform).
+const NODE_PLATFORMS = ['aix', 'darwin', 'freebsd', 'linux', 'openbsd', 'sunos', 'win32', 'android'];
 
 // Pure, like lintEvidenceCatalog: readFile is injected for testability.
 function lintSharedRules(registry, readFile)

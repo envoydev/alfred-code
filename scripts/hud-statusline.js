@@ -464,10 +464,11 @@ function rowTargets(plan, overlay = {})
     const lineFile = path.basename(plan.settingsFile);
     const own = plan.settingsFile !== path.join(plan.configDir, 'settings.json');
     const pick = (keep) => ({ ...plan.entry, targets: (plan.entry.targets || []).filter((t) => (t.file === 'settings.json') === keep) });
+    // The plan's platform picks each target's `on_platform` row (PL-06: claude-hud's refresh interval on Windows).
     const targets = own
-        ? [...planFor(pick(false), plan.configDir, overlay),
-            ...planFor({ ...pick(true), targets: pick(true).targets.map((t) => ({ ...t, file: lineFile })) }, path.dirname(plan.settingsFile), overlay)]
-        : planFor(plan.entry, plan.configDir, overlay);
+        ? [...planFor(pick(false), plan.configDir, overlay, plan.platform),
+            ...planFor({ ...pick(true), targets: pick(true).targets.map((t) => ({ ...t, file: lineFile })) }, path.dirname(plan.settingsFile), overlay, plan.platform)]
+        : planFor(plan.entry, plan.configDir, overlay, plan.platform);
     return targets.map((t) => (plan.statusLine.state === 'foreign' && t.file === lineFile
         ? { ...t, rows: [], skipped: 'the statusLine is not claude-hud\'s - no refresh interval is added to it' }
         : t));
