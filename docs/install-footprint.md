@@ -50,6 +50,8 @@ At install:
 
 At every session start: the enabled plugins load, an LSP plugin starts its language server, and the hooks run. No package is downloaded or launched by the stack.
 
+At every turn's end in the main session: the stop judge, one call to Claude Code's background model (Haiku by default; measured `claude-haiku-5-5`) through its own `prompt` hook (its text is `stack/hooks/stop-judge-prompt.txt`), reads the closing message and sends the turn back once when it reports a step done and leaves a next action owed and unasked. That call's wait is added to every turn's end, and it is billed to the account the session runs on. `ALFRED_CODE_HOOKS_OFF` cannot reach it, since a prompt hook runs no stack code: `disableAllHooks` in a settings file, or disabling the `alfred-code` plugin, turns it off with every other hook.
+
 Nothing else executes from the package itself. The package itself is six command bodies, one skill (the `/alfred-code` router; none ships a script), forty-five agents, seventeen references and twenty hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the eighteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
 
 ## What you install by hand
@@ -66,4 +68,4 @@ The whole per-message floor - Claude Code's own prompt and tools, every plugin's
 - **`enabledPlugins`** - one key for each plugin the project keeps; `alfred-code@envoydev` always, `claude-hud@claude-hud` when you keep it.
 - **`allowManagedHooksOnly`** - silently disables all eighteen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
 
-`ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off.
+`ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off - every one but the stop judge (see What runs).

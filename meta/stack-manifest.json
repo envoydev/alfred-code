@@ -795,6 +795,16 @@
     },
     {
       "file": "guard-stop-contract.js",
+      "matcher": "@Stop",
+      "event": "",
+      "type": "prompt",
+      "prompt": "stop-judge-prompt.txt",
+      "timeout": 30,
+      "active": false,
+      "note": "THE STOP JUDGE (audit 2026-10-30 HK-22): a prompt hook beside the stop contract on Stop - one call to Claude Code's background model (Haiku) per main-session Stop reads the closing message and sends the turn back once when it reports a step done and leaves a next action owed and unasked, released when stop_hook_active is true. It replaced the contract's regex done-close hold: a replay of 18 such blocks found 13 wrong, the judge got 14 to 16 of 18 right over three runs (A/B 2026-11-03). No `model` key: the hook evaluator sends an alias as written, and `haiku` failed every live call (lint check 48b). Its text is stop-judge-prompt.txt, the one home a later host adapter reads. Parked (active: false) because the copy route wires command hooks alone; the plugin route carries it inline. ALFRED_CODE_HOOKS_OFF cannot reach it - a prompt hook runs no stack code; disableAllHooks or disabling the plugin turns it off with the rest."
+    },
+    {
+      "file": "guard-stop-contract.js",
       "matcher": "@SubagentStop",
       "event": "",
       "note": "SubagentStop: hold ONCE a subagent that stops on a wait nobody will end (a first-person 'I'll wait for...' close or its own ScheduleWakeup call) while it started no background work of its own - the parent's history is not its situation (field report: a fork dropped its whole brief this way)"

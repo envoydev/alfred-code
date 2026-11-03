@@ -3212,6 +3212,24 @@ function repoTextFiles(root = ROOT)
     return files;
 }
 
+// 48b. A `prompt` hook (audit 2026-10-30 HK-22, the stop judge) runs no file, so the launcher shape below does not apply:
+// it needs a model (the default is whatever Claude Code uses for background work), a timeout and the `$ARGUMENTS`
+// placeholder, on an event that runs one (code.claude.com/docs/en/hooks, 'Prompt-based hooks'). Its TEXT is held to the
+// prompt file through the generated block - an entry edited by hand reads as stale.
+function lintPromptHook(entry, event)
+{
+    const out = [];
+    const { PROMPT_EVENTS, modelAlias } = require('./build-marketplace.js');
+    if (!PROMPT_EVENTS.has(event)) out.push(`the core wires a prompt hook on ${event} - ${event} takes no prompt hook.`);
+    // A prompt hook's `model` reaches the API as written (measured 2026-11-03: `haiku` failed every stop-judge call), so it
+    // is left out (Claude Code's background model) or a full id.
+    if (entry.model !== undefined && (typeof entry.model !== 'string' || !entry.model.trim())) out.push(`the core's ${event} prompt hook names an empty model - leave the key out.`);
+    else if (modelAlias(entry.model)) out.push(`the core's ${event} prompt hook names the model alias '${entry.model}', which reaches the API as written and fails - leave the key out or name a full model id.`);
+    if (!Number.isInteger(entry.timeout) || entry.timeout < 1) out.push(`the core's ${event} prompt hook carries no timeout.`);
+    if (!/(^|[^\\])\$ARGUMENTS/.test(String(entry.prompt || ''))) out.push(`the core's ${event} prompt hook carries no $ARGUMENTS - the hook input would land after its answer format.`);
+    return out;
+}
+
 // 48. The stack hooks ride the CORE entry (2.0.0, 'Fold into core'), GENERATED from the manifest's
 // own hooks[] wiring table, so the plugin route and the settings.json route cannot drift while both
 // exist. A matcher edited in one place and not the other is exactly the bug this catches: the copied
@@ -3244,10 +3262,15 @@ function lintHooksEntry(liveIn)
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
     const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'agent-cap.js', 'session-status.js']);
     const wired = new Set();
-    for (const blocks of Object.values(stack))
+    for (const [event, blocks] of Object.entries(stack))
         for (const block of blocks)
             for (const entry of block.hooks)
             {
+                if (entry.type === 'prompt')
+                {
+                    out.push(...lintPromptHook(entry, event));
+                    continue;
+                }
                 // The launcher shape is part of the contract: a bare script path needs the exec
                 // bit, which git carries into the plugin cache as committed, and never runs on Windows.
                 const m = String(entry.command).match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)"/);
@@ -3461,6 +3484,7 @@ module.exports = {
     lintWorkflows,
     lintPluginPlacement,
     lintHooksEntry,
+    lintPromptHook,
     lintMcpEntries,
     lintMcpToolNames,
     lintStaleMcpToolNames,

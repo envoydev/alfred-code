@@ -150,11 +150,23 @@ test('guard-protected-force-push / guard-catastrophic-rm: heredoc bodies are dat
   assert.equal(bash('guard-catastrophic-rm.js', 'rm -rf ~'), 2);
 });
 
+// Audit 2026-10-30 HK-22: the regex DONE half holds nothing - the stop judge (a `prompt` hook, stack/hooks/stop-judge-prompt.txt)
+// decides a done close, and the command hook passes it with one `stop-judge` probe row naming the reading.
+function judgedStop(name, text) {
+  const dir = fs.mkdtempSync(path.join(TMP, 'judge-'));
+  const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-stop-contract.js')], {
+    input: JSON.stringify({ hook_event_name: 'Stop', session_id: name, cwd: dir, transcript_path: transcript(name, [assistantRow(name, text)]) }),
+    encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  const file = path.join(dir, '.alfred', 'statistics', 'hook-blocks', `${name}.jsonl`);
+  const rows = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+  return { status: r.status, judged: rows.some((x) => x.mode === 'probe' && x.exempt === 'stop-judge') };
+}
+
 test('guard-stop-contract: a decision question in ordinary words is still a stop', () => {
   const q = transcript('q', [assistantRow('m1', "Two options exist for the deploy target: staging or prod. What's the deploy target?")]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: q }), 2);
-  const done = transcript('done', [assistantRow('m2', 'Done. Not pushed yet - the branch is ready whenever you are.')]);
-  assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: done }), 2, 'declarative step-done close');
+  assert.deepEqual(judgedStop('done', 'Done. Not pushed yet - the branch is ready whenever you are.'), { status: 0, judged: true },
+    'a declarative step-done close is the stop judge\'s to hold, never the regex\'s');
 });
 
 test('guard-stop-contract: an offer whose object is a DOTTED PATH is still a stop', () => {
@@ -189,8 +201,8 @@ test('guard-stop-contract: a suggestion close that says nothing is pending on th
     + 'Nothing is pending on this run - these are yours to run when you choose.';
   const sug = transcript('sug', [assistantRow('m6', card)]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: sug }), 0, 'the disclaimer line makes the close a finished one');
-  const bare = transcript('bare', [assistantRow('m7', card.replace(/\n\nNothing is pending[^\n]*$/, ''))]);
-  assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: bare }), 2, 'the same card without the line is the measured stall');
+  assert.deepEqual(judgedStop('bare', card.replace(/\n\nNothing is pending[^\n]*$/, '')), { status: 0, judged: true },
+    'the same card without the line is the measured stall - handed to the stop judge (HK-22)');
 });
 
 test('guard-stop-contract: a credential shape in a tool result demands the rotate ask - unless the user allowed the read this session', () => {
@@ -4044,15 +4056,18 @@ test('guard-stop-contract: the three block shapes the audit reproduced', () => {
     assert.equal(close('All 12 files are done. The integration half (~6-7 min) is still running and will notify on completion.').status, 0, 'a verb plus a waiter is a status line');
     assert.equal(close('All 12 files are done. The integration half (~6-7 min) is still executing and will notify on completion.').status, 0, '... and a synonym of the verb does not decide a block');
     assert.equal(close('The fix is committed and pushed. Tests are still running in CI.').status, 0, 'the job-noun form still passes');
-    assert.equal(close('The refactor is done. Pushing it is the next step, whenever you are ready.').status, 2, 'a real stall still blocks');
+    assert.equal(close('The refactor is done. Pushing it is the next step, whenever you are ready.').status, 0, 'a real stall is the stop judge\'s to hold (HK-22)');
 
     // 3. The ledger row names the BRANCH and what matched. A block whose cause cannot be
     //    reconstructed cannot be tuned - this audit hit that wall three times.
     // the H9 `done-close-exempt` probe rows (audit 2026-10-20) sit beside the blocks - a block row is what this counts
-    const rows = fs.readFileSync(path.join(ledger, '.alfred', 'statistics', 'hook-blocks', 'shapes.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.mode !== 'probe');
-    assert.deepEqual(rows.map((r) => r.detail.branch), ['prose-ask', 'prose-ask', 'prose-ask', 'done-close'], 'each block names its branch');
+    const all = fs.readFileSync(path.join(ledger, '.alfred', 'statistics', 'hook-blocks', 'shapes.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const rows = all.filter((r) => r.mode !== 'probe');
+    assert.deepEqual(rows.map((r) => r.detail.branch), ['prose-ask', 'prose-ask', 'prose-ask'], 'each block names its branch');
     assert.match(rows[0].detail.matched, /your call/, 'and the substring that fired it');
-    assert.match(rows[3].detail.matched, /done \+ next step/, '... both halves, for the two-part branch');
+    const judge = all.filter((r) => r.mode === 'probe' && r.exempt === 'stop-judge');
+    assert.equal(judge.length, 1, 'the done close the regex reads writes one stop-judge probe row (HK-22)');
+    assert.match(judge[0].detail.matched, /done \+ next step/, '... naming both halves, for the two-part reading');
 });
 
 test('guard-stop-contract: a credential the USER pasted demands the rotate ask too', () => {

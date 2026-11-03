@@ -23,7 +23,19 @@ let seq = 0;
 const logEnv = () => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')) });
 // In-process (hook-inprocess.js); the ask runs below stay spawned, so the process boundary stays tested here too.
 const { runHook } = require('./hook-inprocess');
-const run = (payload) => runHook(path.basename(HOOK), { session_id: `s${++seq}`, ...payload }, { env: logEnv() });
+const run = (payload) => {
+  const input = { session_id: `s${++seq}`, ...payload };
+  return { ...runHook(path.basename(HOOK), input, { env: logEnv() }), sid: input.session_id };
+};
+// HK-22 (audit 2026-10-30): the regex DONE half holds nothing now - the stop judge, a prompt hook on the same Stop
+// (stack/hooks/stop-judge-prompt.txt), decides a 'done, next step pending' close. A close the regex still reads that way
+// passes with one `done-close-exempt` probe row naming `stop-judge`, which is what `judged` reads.
+const sessionRows = (sid) => {
+  try { return fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); }
+  catch { return []; }
+};
+const judged = (r) => r.status === 0 && sessionRows(r.sid).some((x) => x.kind === 'done-close-exempt' && x.exempt === 'stop-judge');
+const JUDGE_PROMPT = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'stop-judge-prompt.txt'), 'utf8');
 const transcript = (rows) => {
   const p = path.join(TMP, `t${++seq}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
@@ -51,20 +63,19 @@ test('C15: the offer shapes the audit measured unheld are stops', () => {
 });
 
 test('C15: the done half reads a push, the pending half reads a check never run and an open item', () => {
-  assert.strictEqual(close("I pushed the change to origin/develop.\n\n- Not run: the card's manual check against the local backend.").status, 2, '458953b8 L220');
-  assert.strictEqual(close("I added the audit line to each plan; it is marked 'probably done on the server'. The only open item is the rate-limit check, which never ran, and closing port 8080 is still put off. Your invite diff is still held for review.").status, 2, '390aebcb L776: the user asked 5.5 minutes later whether it had started');
+  assert.ok(judged(close("I pushed the change to origin/develop.\n\n- Not run: the card's manual check against the local backend.")), '458953b8 L220');
+  assert.ok(judged(close("I added the audit line to each plan; it is marked 'probably done on the server'. The only open item is the rate-limit check, which never ran, and closing port 8080 is still put off. Your invite diff is still held for review.")), '390aebcb L776: the user asked 5.5 minutes later whether it had started');
   const r = close('Pushed to develop. The only open item is the device check.');
-  assert.strictEqual(r.status, 2);
+  assert.ok(judged(r));
   // the neighbours stay clean
   assert.strictEqual(close('Nothing was pushed. The tree is clean and the suite is green.').status, 0, "'not / nothing pushed' is no push report");
   assert.strictEqual(close("The live-run probe was not run (your call, environment-sensitive). Everything else is committed.").status, 0, "a retrospective 'was not run' records a decision");
   assert.strictEqual(close('Done - all seven cards are built and pushed. No open items.').status, 0, "'no open items'");
 });
 
-test("C15: 'nothing pending on my side' is no exit while the close names the user's own run, and the escape says so", () => {
+test("C15: 'nothing pending on my side' is no exit while the close names the user's own run - it goes to the judge", () => {
   const r = close("Both cards are done. Nothing is pending on my side - the two open items wait on the customer's ids and on your device run.");
-  assert.strictEqual(r.status, 2, 'ecea6d56: the user came back 25 minutes later to ask why the device check was theirs');
-  assert.match(r.stderr, /A deferred item either side still owes/);
+  assert.ok(judged(r), 'ecea6d56: the user came back 25 minutes later to ask why the device check was theirs');
   assert.strictEqual(close('Done - the reload ran and the capture is current. Nothing is pending on this run - these are yours to run when you choose.').status, 0, 'the pinned suggestion-card line still closes cleanly');
 });
 
@@ -81,18 +92,18 @@ test('C15: under live work the mandated hold line, a gated step, a resumed seat 
   // 0498718d: three implementer seats running
   const building = 'Boards, team and clients (tasks 19-21) are done. Three agents are still building: orders, profile and the chat list. Only tasks 4-5 remain to start, once the orders agent is done with the translation files.';
   assert.strictEqual(over([typed('go')], building, { background_tasks: running }).status, 0, 'a step gated on the running work');
-  assert.strictEqual(over([typed('go')], building, { background_tasks: [] }).status, 2, 'with nothing running it is a stall');
-  assert.strictEqual(over([typed('go')], 'Task 4 is done. The review agent is queued; next step is task 5.', { background_tasks: running }).status, 2,
+  assert.ok(judged(over([typed('go')], building, { background_tasks: [] })), 'with nothing running it is a stall');
+  assert.ok(judged(over([typed('go')], 'Task 4 is done. The review agent is queued; next step is task 5.', { background_tasks: running })),
     'review B2: an ungated next step stays a stall under live work');
   // 6ed392a5: the mandated hold line, 3s after an async verifier launched
   const gate = 'The full gate passed with the fixes in, and the same reviewer is now checking just those fixes. I will finish the run once it reports. Nothing is committed; the diff stays uncommitted for your review.';
   assert.strictEqual(over([typed('go')], gate, { background_tasks: running }).status, 0, 'the hold line is the state of the tree, not the next act');
-  assert.strictEqual(over([typed('go')], gate, { background_tasks: [] }).status, 2, 'with nothing running the hold still asks about the commit');
+  assert.ok(judged(over([typed('go')], gate, { background_tasks: [] })), 'with nothing running the hold still asks about the commit');
   // 05c925e9: a SendMessage resumed the verifier, the close waits on its sign-off
   const signoff = "The six review fixes are built and green. I've sent the fix delta to the same verifier seat and I'm waiting for its sign-off. Nothing is pending from you right now.";
   assert.strictEqual(over([typed('go')], signoff, { background_tasks: running }).status, 0, "the running seat's own sign-off is a wait");
-  assert.strictEqual(over([typed('go')], 'Build is done; the verifier is reviewing the diff and I am waiting on its report. The copy there waits on your allow at the close ask.',
-    { background_tasks: running }).status, 2, "05c925e9: 'your allow' is a decision the live work cannot excuse");
+  assert.ok(judged(over([typed('go')], 'Build is done; the verifier is reviewing the diff and I am waiting on its report. The copy there waits on your allow at the close ask.',
+    { background_tasks: running })), "05c925e9: 'your allow' is a decision the live work cannot excuse");
   // bba03dad: an armed CI watch ends with its run
   const ci = "I'm waiting for develop CI run 375 on the branch head. Once it goes green I fast-forward staging; a background watch tells me when the run finishes.";
   assert.strictEqual(over([typed('go')], ci, { background_tasks: [{ id: 'b2', type: 'shell', status: 'running', command: 'gh run watch 375 --exit-status' }] }).status, 0, 'gh run watch');
@@ -102,17 +113,17 @@ test('C15: under live work the mandated hold line, a gated step, a resumed seat 
 test("C15: an answer to the user's own question listing others' or deferred items passes; the fresh-ask close passes", () => {
   const answer = "No, the backend needs nothing new; every earlier card is done or deliberately deferred.\n\n- **Still open but deferred:** item 7, pointing the store consoles at the new webhook paths. You said that comes later.\n- **Waiting on the customer:** the client ids for staging sign-in.";
   assert.strictEqual(over([typed('Is there something we need to pass for backend?')], answer).status, 0, 'f450ea64: a ~136k restate of the same facts');
-  assert.strictEqual(over([typed('wrap up the backend side')], answer).status, 2, 'not an answer to a question: the stall shape holds');
-  assert.strictEqual(over([typed('Anything left?')], 'Done. Waiting on the customer for the ids, and the next step is task 5.').status, 2, "the model's own step still blocks");
+  assert.ok(judged(over([typed('wrap up the backend side')], answer)), 'not an answer to a question: the stall shape holds');
+  assert.ok(judged(over([typed('Anything left?')], 'Done. Waiting on the customer for the ids, and the next step is task 5.')), "the model's own step still blocks");
   // 69dbed46: the user picked the fresh session; the mandated close read 'committed' + 'next steps'
   const fresh = [typed('continue'), call('ask1', 'AskUserQuestion', { questions: [{ question: 'Resume?', options: [{ label: 'Resume in a fresh session (Recommended)' }, { label: 'Continue here' }] }] }),
     result('ask1', 'Your questions have been answered: "Resume?"="Resume in a fresh session (Recommended)"'), ...work(4)];
   const resume = 'Result: state is saved for a fresh session. Nothing is committed or pushed.\n\n1. Type `/clear`.\n2. Paste:\n\n```text\n/task-solve plans/x.md - resume at step 4\n```\n\nNext steps: T1 src work, then T2 to T7.';
   assert.strictEqual(over(fresh, resume).status, 0, 'the close the fresh-session answer asked for');
-  assert.strictEqual(over([typed('continue'), ...work(4)], resume).status, 2, 'the same close with no such answer is the stall');
+  assert.ok(judged(over([typed('continue'), ...work(4)], resume)), 'the same close with no such answer is the stall');
   const offeredOnly = [typed('continue'), call('ask2', 'AskUserQuestion', { questions: [{ question: 'Next?', options: [{ label: 'Commit now (Recommended)' }, { label: 'Resume in a fresh session' }] }] }),
     result('ask2', 'Your questions have been answered: "Next?"="Commit now (Recommended)"'), ...work(4)];
-  assert.strictEqual(over(offeredOnly, resume).status, 2, 'an ask that only offered the fresh session, answered another way, is no pick');
+  assert.ok(judged(over(offeredOnly, resume)), 'an ask that only offered the fresh session, answered another way, is no pick');
 });
 
 test('resume block (the user\'s ruling, 2026-10-15): a fresh-session pick closes with the paste text in a fenced block, held once without it', () => {
@@ -230,11 +241,12 @@ test('C15: the ask branch counts typed turns on the live branch, and push as git
 
 // Audit 2026-10-10 C18, 0824440b: the commit / publish ask carried three different recommended options across three
 // homes - the denial among them ('so it is never the recommended next move') - and the user overrode the mark 3 of 3.
-test('C18: the done-close denial sends a commit or publish choice to the checkpoint\'s own ask and mark', () => {
-  const r = close('Pushed the cards to develop. The only open item is the device check.');
-  assert.strictEqual(r.status, 2);
-  assert.match(r.stderr, /habits-commit-checkpoint's own ask, marked as its template marks it/);
-  assert.doesNotMatch(r.stderr, /never the recommended/, 'the denial sets no mark of its own');
+// Since HK-22 the stop judge writes the reason: it names ONE ask with the recommended option marked and fixes no mark of
+// its own, so a commit or publish choice keeps the mark its own ask's template sets.
+test('C18: the judge that replaced the done-close denial sets no mark of its own on a commit or publish choice', () => {
+  assert.ok(judged(close('Pushed the cards to develop. The only open item is the device check.')));
+  assert.match(JUDGE_PROMPT, /put the pending decision through ONE AskUserQuestion call with the options you have in mind, the recommended one marked/);
+  assert.doesNotMatch(JUDGE_PROMPT, /never the recommended|\(Recommended\)/, 'the judge names no option to mark');
 });
 
 // Audit 2026-10-11 SD10 - the pinned 'Deferred by you:' contract (validate's close, T3): an item the user deferred through
@@ -250,19 +262,19 @@ test('SD10: a Deferred by you line is nothing owed only after an ask answered th
   assert.strictEqual(over(turn('Acknowledge and defer (Recommended)'), done + `- **${line.replace(':', ':**')}`).status, 0, 'a bulleted, bold spelling too');
   assert.strictEqual(over(turn('Later'), done + line).status, 0, "'Later' defers");
   const owed = over(turn('Acknowledge and defer (Recommended)'), done + 'Still owed from you: the credential cleanup, which you deferred.');
-  assert.strictEqual(owed.status, 2, 'the same item stated as owed is still a stall');
-  assert.match(owed.stderr, /opening 'Deferred by you:'/, 'and the denial names the route');
-  assert.strictEqual(over(turn('Rotate now (Recommended)'), done + line).status, 2, 'an answer that deferred nothing opens no line');
-  assert.strictEqual(over([...asked(`e${seq}`, 'Acknowledge and defer'), typed('and the rest?'), ...work(4)], done + line).status, 2, 'a deferral answered in an earlier turn is not this one');
-  assert.strictEqual(over(turn('Acknowledge and defer (Recommended)'), done + line + '\nNext step: push when you approve.').status, 2, 'a hand-back on another line still blocks');
-  assert.strictEqual(over([typed('go'), ...work(4)], done + line).status, 2, 'no ask at all: the line is judged as written');
+  assert.ok(judged(owed), 'the same item stated as owed is still a stall');
+  assert.match(JUDGE_PROMPT, /An open item sits on a line opening 'Deferred by you:'/, 'and the judge reads the same contract');
+  assert.ok(judged(over(turn('Rotate now (Recommended)'), done + line)), 'an answer that deferred nothing opens no line');
+  assert.ok(judged(over([...asked(`e${seq}`, 'Acknowledge and defer'), typed('and the rest?'), ...work(4)], done + line)), 'a deferral answered in an earlier turn is not this one');
+  assert.ok(judged(over(turn('Acknowledge and defer (Recommended)'), done + line + '\nNext step: push when you approve.')), 'a hand-back on another line still blocks');
+  assert.ok(judged(over([typed('go'), ...work(4)], done + line)), 'no ask at all: the line is judged as written');
 });
 
 // d9035363: an ask answered one call back settled ITS question, not the new action the close hands the user.
 test("SD10: an answer just given does not exempt a close handing the user a new run-and-report action", () => {
   const turn = () => [typed('go'), ...asked(`p${seq}`, 'I will pull first'), ...work(1)];
   const close1 = "The answer was 'I will pull first', and the clone is still at abc1234 (1.2.0). Run the pull, then tell me when it's done.\n\n- Once the head moves, I'll start both analyzer seats.";
-  assert.strictEqual(over(turn(), close1).status, 2, 'the measured close: the 2.1.8 guard blocked it and the ask took one click');
+  assert.ok(judged(over(turn(), close1)), 'the measured close: the 2.1.8 guard blocked it and the ask took one click');
   assert.strictEqual(over(turn(), 'Committed. Tell me when you want it pushed.').status, 0, 'a wait on the decision just made stays exempt');
   assert.strictEqual(over(turn(), "Done - the answer is recorded and nothing else is owed.").status, 0, 'a plain acknowledgement stays exempt');
 });
@@ -273,17 +285,17 @@ test('SD10: an answer to a request for information from a read-only turn is no d
   const survey = (prompt, extra) => { const id = `g${seq}`; return [typed(prompt), call(id, 'Bash', { command: 'git branch --show-current; git log --oneline -4 | cat; git stash list 2>/dev/null' }), result(id, 'tasks/t3'), ...(extra || [])]; };
   assert.strictEqual(over(survey('Show me order of stashed to merge as sentences not table'), answer).status, 0, 'the measured answer');
   assert.strictEqual(over(survey('what is left to merge?'), answer).status, 0, 'a question prompt too');
-  assert.strictEqual(over(survey('merge them in order'), answer).status, 2, 'an instruction is no request for information');
+  assert.ok(judged(over(survey('merge them in order'), answer)), 'an instruction is no request for information');
   const id = `x${seq}`;
-  assert.strictEqual(over(survey('Show me the order', [call(id, 'Edit', { file_path: 'a.cs', old_string: 'a', new_string: 'b' }), result(id, 'ok')]), answer).status, 2, 'a turn that edited a file');
+  assert.ok(judged(over(survey('Show me the order', [call(id, 'Edit', { file_path: 'a.cs', old_string: 'a', new_string: 'b' }), result(id, 'ok')]), answer)), 'a turn that edited a file');
   // a substitution is judged as the command it runs (audit 2026-10-20 C03): `git log $(cat ref)` reads, this one changes
   for (const command of ['git stash pop', 'git commit -qm wip', 'git branch t4', 'git status > state.txt', 'git log $(git stash pop)', 'npm install', 'sed -i s/a/b/ f.txt', 'find . -name x -delete']) {
     const k = `y${seq}`;
-    assert.strictEqual(over(survey('Show me the order', [call(k, 'Bash', { command }), result(k, 'ok')]), answer).status, 2, `a changing call: ${command}`);
+    assert.ok(judged(over(survey('Show me the order', [call(k, 'Bash', { command }), result(k, 'ok')]), answer)), `a changing call: ${command}`);
   }
-  assert.strictEqual(over(survey('Show me the order'), answer + "\n\nI'll start on ticket 4 next.").status, 2, 'the model\'s own next move');
-  assert.strictEqual(over(survey('Show me the order'), answer + '\n\nPush when you approve.').status, 2, 'an approval hand-back');
-  assert.strictEqual(over(survey('what is left?'), 'Ticket 3 is committed. The next step is the ticket 4 branch.').status, 2, 'a pending step, not a reported state');
+  assert.ok(judged(over(survey('Show me the order'), answer + "\n\nI'll start on ticket 4 next.")), 'the model\'s own next move');
+  assert.ok(judged(over(survey('Show me the order'), answer + '\n\nPush when you approve.')), 'an approval hand-back');
+  assert.ok(judged(over(survey('what is left?'), 'Ticket 3 is committed. The next step is the ticket 4 branch.')), 'a pending step, not a reported state');
 });
 
 // 2ca8e8ee: 'wait until the earlier ticket is merged' rested on a day-old read and one `git status --short`.
@@ -360,7 +372,7 @@ test('hooks review: a negated done word reports nothing done, and a negated unpu
     ['I pushed the fix. The optional tidy-up is still waiting for your yes or no.', 'row 8: right, and stays'],
     ['Nothing broke and everything is committed. Push when you approve.', 'a negation that is not about the done word'],
     ['Tests are not failing anymore, all green. Waiting for your review.', 'a negated failure is still a green report'],
-  ]) assert.strictEqual(close(text).status, 2, why);
+  ]) assert.ok(judged(close(text)), why);
 });
 
 test('hooks review: a read-only answer to a question that names nothing pending is no done-close stall, whatever hand-back phrase it carries', () => {
@@ -376,11 +388,11 @@ test('hooks review: a read-only answer to a question that names nothing pending 
   const edited = () => { const id = `e${seq}`; return [call(id, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b' }), result(id, 'ok')]; };
   const row4 = "Reconnect the connector: open its settings and sign in again. Tell me when that's done and I'll read the ticket.";
   assert.strictEqual(over(asked('I enabled it, what is next?', edited()), row4).status, 0, 'a typed question is answered even after an edit (the ruling of 2026-10-20, C03)');
-  assert.strictEqual(over(asked('I enabled it, show me what is next', edited()), row4).status, 2, 'a show-request whose turn changed a file is judged');
-  assert.strictEqual(over(asked('reconnect it for me'), row4).status, 2, 'an instruction is no question');
-  assert.strictEqual(over(asked('what is left?'), 'Committed. The push is pending your approval.').status, 2, 'a pending item keeps the hand-back veto');
-  for (const text of ['All done and committed. Up to you if we push today.', 'Committed on develop. Your call on the push.'])
-    assert.strictEqual(over(asked('what is the status?'), text).status, 2, `a decision handed over in prose still blocks: ${text}`);
+  assert.ok(judged(over(asked('I enabled it, show me what is next', edited()), row4)), 'a show-request whose turn changed a file is judged');
+  assert.ok(judged(over(asked('reconnect it for me'), row4)), 'an instruction is no question');
+  assert.ok(judged(over(asked('what is left?'), 'Committed. The push is pending your approval.')), 'a pending item keeps the hand-back veto');
+  assert.ok(judged(over(asked('what is the status?'), 'All done and committed. Up to you if we push today.')), 'a decision handed over in prose goes to the judge');
+  assert.strictEqual(over(asked('what is the status?'), 'Committed on develop. Your call on the push.').status, 2, 'and one worded as a prose ask still blocks');
 });
 
 // The two single-row causes the sample left (hooks review 2026-10-16, rows 11 and 19): a wait on the running seats' FIXES
@@ -388,9 +400,9 @@ test('hooks review: a read-only answer to a question that names nothing pending 
 test("hooks review: a wait on running seats' fixes and checks is status; a record of decisions taken is no hand-off", () => {
   const fixes = 'The admin and chat fixes landed. Lint and typecheck pass. Still waiting on the `libs/ui` fixes and the cheat check; the final full gate runs after both report.';
   assert.strictEqual(over([typed('go')], fixes, { background_tasks: running }).status, 0, 'row 11: the seats are still running');
-  assert.strictEqual(over([typed('go')], fixes, { background_tasks: [] }).status, 2, 'with nothing running it is a stall');
+  assert.ok(judged(over([typed('go')], fixes, { background_tasks: [] })), 'with nothing running it is a stall');
   assert.strictEqual(over([typed('go')], 'Тести пройшли, готово. Ще чекаю на виправлення від агента.', { background_tasks: running }).status, 0, 'a wait in another language is not judged');
-  assert.strictEqual(over([typed('go')], 'The fixes landed. Still waiting for your check of the login page.', { background_tasks: running }).status, 2,
+  assert.ok(judged(over([typed('go')], 'The fixes landed. Still waiting for your check of the login page.', { background_tasks: running })),
     "'your check' is the user's, whatever runs");
   const record = (heading, items) => `I finished the conformance check and committed the fixes. All checks passed.\n\n${heading}\n${items}`;
   for (const [text, why] of [
@@ -401,7 +413,7 @@ test("hooks review: a wait on running seats' fixes and checks is status; a recor
   for (const [text, why] of [
     [record('Decisions to be made:', '- Push: push it when you approve.'), 'decisions still owed'],
     [record('Decisions auto-mode made for you:', '- Commit: commit now.') + '\n\nPush it when you are ready.', 'a hand-off after the record'],
-  ]) assert.strictEqual(close(text).status, 2, why);
+  ]) assert.ok(judged(close(text)), why);
 });
 
 // Audit 2026-10-20 C03 (8a1fb350 L2223): a typed question answered from survey loops - `for f in $(find ...); do
@@ -426,23 +438,22 @@ test('C03: an answer to a typed question is no done-close stall, read-only or no
   ]) {
     // the user's ruling of 2026-10-20: a typed question is answered whatever the turn wrote (feb34e2b sed-edited cards)
     assert.strictEqual(over([prompt, ...bash(command)], answer).status, 0, `a write under a typed question: ${command}`);
-    assert.strictEqual(over([typed('show me the unfinished cards'), ...bash(command)], answer).status, 2, `a write under a show-request stays judged: ${command}`);
+    assert.ok(judged(over([typed('show me the unfinished cards'), ...bash(command)], answer)), `a write under a show-request stays judged: ${command}`);
   }
-  assert.strictEqual(over([typed('fix the cards'), ...bash('for f in a b; do echo $f; done')], answer).status, 2, 'an instruction is no question');
+  assert.ok(judged(over([typed('fix the cards'), ...bash('for f in a b; do echo $f; done')], answer)), 'an instruction is no question');
   const sed = bash("sed -i '' 's|^status: OPEN$|status: DONE|' card.md");
-  assert.strictEqual(over([typed('can you mark the cards done?'), ...sed], answer).status, 2, 'a request worded as a question is an instruction');
-  assert.strictEqual(over([typed('Could you close them?'), ...sed], answer).status, 2, 'its capitalised form too');
+  assert.ok(judged(over([typed('can you mark the cards done?'), ...sed], answer)), 'a request worded as a question is an instruction');
+  assert.ok(judged(over([typed('Could you close them?'), ...sed], answer)), 'its capitalised form too');
   assert.strictEqual(over([typed('cards look stale.\nis that the only task left?'), ...sed], answer).status, 0, 'the question on the last line counts');
-  assert.strictEqual(over([typed('is that the only task left? then fix it'), ...sed], answer).status, 2, 'a question followed by an instruction is not');
-  assert.strictEqual(over([prompt, ...sed], answer + "\n\nI'll mark the parity card next.").status, 2, 'the model\'s own next move still vetoes');
-  assert.strictEqual(over([prompt, ...sed], 'Two cards marked done. The next step is the parity card.').status, 2, 'a pending step still vetoes');
+  assert.ok(judged(over([typed('is that the only task left? then fix it'), ...sed], answer)), 'a question followed by an instruction is not');
+  assert.ok(judged(over([prompt, ...sed], answer + "\n\nI'll mark the parity card next.")), 'the model\'s own next move still vetoes');
+  assert.ok(judged(over([prompt, ...sed], 'Two cards marked done. The next step is the parity card.')), 'a pending step still vetoes');
 });
 
-test("C03: the done-close escape says a step the model can do itself is done, not asked", () => {
+test("C03: the judge says a step the model can do itself is done, not asked", () => {
   // unquoted: a single-quoted span of earlier output is no pending item since audit 2026-10-20 H9
-  const r = close("Pushed to develop as abc123.\n\n- Leftovers: none. The block I printed earlier still says def456 is not pushed, so fix that line if you already pasted it.");
-  assert.strictEqual(r.status, 2);
-  assert.match(r.stderr, /An owed action\nthat is yours and needs no decision \(a reprint, a re-run, a step a tool you hold can do\) is\ndone in this turn, never asked/);
+  assert.ok(judged(close("Pushed to develop as abc123.\n\n- Leftovers: none. The block I printed earlier still says def456 is not pushed, so fix that line if you already pasted it.")));
+  assert.match(JUDGE_PROMPT, /or, when the owed step is yours and needs no decision, do it now/);
 });
 
 // Audit 2026-10-20 C45: a value only the user can type ('tell me the farm id' after their own login) is asked in prose -
@@ -470,14 +481,31 @@ test("C02: a '/dev/null' poll is finite live work, checkers and a daemon are wor
     'a09fc7d6 L896: the poll ends, and its notice wakes the session');
   assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('npm test > out.log 2>/dev/null; sleep 1') }).status, 0, 'a suite redirected to /dev/null is finite');
   // the hold is kept for what it exists for
-  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: [] }).status, 2, 'nothing out: the wait is a stall');
-  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('npm run dev 2>/dev/null') }).status, 2, 'a dev server never ends, /dev/null or not');
-  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('bin/dev') }).status, 2, "a 'bin/dev' launcher is still a server");
+  assert.ok(judged(over([typed('go')], dockerWait, { background_tasks: [] })), 'nothing out: the wait is a stall');
+  assert.ok(judged(over([typed('go')], dockerWait, { background_tasks: poll('npm run dev 2>/dev/null') })), 'a dev server never ends, /dev/null or not');
+  assert.ok(judged(over([typed('go')], dockerWait, { background_tasks: poll('bin/dev') })), "a 'bin/dev' launcher is still a server");
   const checkers = 'The Common checker is done. It found no serious problems. Still waiting on 5 of the 9 checkers.';
   assert.strictEqual(over([typed('go')], checkers, { background_tasks: running }).status, 0, 'a2920886 L519');
-  assert.strictEqual(over([typed('go')], checkers, { background_tasks: [] }).status, 2, 'with no checker running it is a stall');
-  assert.strictEqual(over([typed('go')], 'Build is done. Not run: the e2e suite. Waiting on the verifier agent.', { background_tasks: running }).status, 2,
+  assert.ok(judged(over([typed('go')], checkers, { background_tasks: [] })), 'with no checker running it is a stall');
+  assert.ok(judged(over([typed('go')], 'Build is done. Not run: the e2e suite. Waiting on the verifier agent.', { background_tasks: running })),
     "a 'Not run:' item in its own sentence is still a step");
+});
+
+// HK-22 (audit 2026-10-30): a replay of 18 done-close blocks found 13 wrong, and a Haiku judge with the shipped prompt
+// got 16 of the 18 right (A/B 2026-11-03). The regex half is retired behind the exemption rows: a close it reads as done
+// with a next step pending passes with one `stop-judge` row, and the halves it shares nothing with still hold.
+test('HK-22: the regex done half holds nothing - a close it reads passes with one stop-judge row, the prose ask still holds', () => {
+  const r = close('Pushed to develop. The only open item is the device check.');
+  assert.strictEqual(r.status, 0, 'the stop judge decides this close, not the regex');
+  assert.strictEqual(r.stderr, '', 'no reason is fed back');
+  assert.deepStrictEqual(sessionRows(r.sid).map((x) => [x.mode, x.kind, x.exempt]), [['probe', 'done-close-exempt', 'stop-judge']], 'one probe row, no block row');
+  assert.ok(!judged(close('Done - all seven cards are built and pushed. No open items.')), 'a close the regex reads as finished names no judge');
+  const ask = close('Pushed to develop. Want me to open the PR?');
+  assert.strictEqual(ask.status, 2, 'a decision question in prose is still the contract\'s own hold');
+  assert.match(ask.stderr, /decision-shaped question in prose/);
+  // An exemption that fires first still names itself, so the old rates stay comparable.
+  assert.deepStrictEqual(sessionRows(close('Pushed the fix. Nothing is pending on this run - these are yours to run when you choose.').sid)
+    .filter((x) => x.kind === 'done-close-exempt').map((x) => x.exempt), ['nothing-pending']);
 });
 
 // Audit 2026-10-20 H9: the done-close exemptions wrote no row, so a change to one (C03) could not be measured - each that
@@ -488,8 +516,8 @@ test('H9: quoted output is no pending item, a real one still holds, and an exemp
   assert.strictEqual(close('Committed as 15f00b6c (not pushed). The suite is green.').status, 0, '7ec6c7db: git\'s own line, quoted');
   assert.strictEqual(close("Committed the fix; the log printed 'still running' before the retry. The suite is green.").status, 0, 'a single-quoted span');
   assert.strictEqual(close('Committed `a1b2c3d` (awaiting CI upstream). The suite is green.').status, 0, 'a parenthetical after a code span');
-  assert.strictEqual(close('Committed as 15f00b6c (not pushed). The push is still unpushed - run it when you\'re ready.').status, 2, 'a real pending item beside the quote still holds');
-  assert.strictEqual(close('Committed as 15f00b6c. Not pushed yet - next step is the push.').status, 2, 'the same words outside a quote hold');
+  assert.ok(judged(close('Committed as 15f00b6c (not pushed). The push is still unpushed - run it when you\'re ready.')), 'a real pending item beside the quote still holds');
+  assert.ok(judged(close('Committed as 15f00b6c. Not pushed yet - next step is the push.')), 'the same words outside a quote hold');
   const sid = `h9-${process.pid}`;
   const r = run({ hook_event_name: 'Stop', session_id: sid, last_assistant_message: 'Pushed the fix. Nothing is pending on this run - these are yours to run when you choose.' });
   assert.strictEqual(r.status, 0, 'the pinned nothing-pending close passes');

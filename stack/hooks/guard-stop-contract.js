@@ -361,6 +361,9 @@ function proseAsk(text) {
 // un-taken, stated as fact. Measured in 4 projects - the user answers it with 'are you
 // finished?' after 2-22 minutes, so the shape is a stop, not a status line. Both halves must
 // hit: something finished, and something still pending on the user or on a running job.
+// Since audit 2026-10-30 HK-22 this reading HOLDS nothing: the stop judge, a `prompt` hook on the same Stop, decides the
+// close, and the regex only writes a probe row naming it (DONE_JUDGE) and keeps the offer off a close it reads as owed.
+const DONE_JUDGE = 'stop-judge';
 // `pushed` (audit 2026-10-10 C15, 458953b8: 'I pushed the change to origin/develop ... Not run: the card's manual check'
 // read no done word) - a negated or un- form is no report of one. A check that `passed` and the resume close's 'saved for a
 // fresh session' (hooks review 2026-10-16): with negated done words read as negations (NEGATED_DONE_RE), 'The full gate
@@ -2510,27 +2513,18 @@ if (payload.hook_event_name === 'Stop') {
     breadcrumb('Stop: an AskUserQuestion was just answered or declined - not re-asking');
     process.exit(0);
   }
+  // The DONE half is RETIRED behind the exemption rows (audit 2026-10-30 HK-22): a replay of 18 done-close blocks found 13
+  // wrong, and a Haiku judge with the shipped prompt got 14 to 16 of the 18 right over three runs (A/B 2026-11-03). That judge now ships as a
+  // `prompt` hook on the same Stop (`stack/hooks/stop-judge-prompt.txt`, the manifest's prompt row), so this half holds
+  // nothing - two holds of one close would feed two reasons back. A close the regex still reads as done with a next step
+  // pending writes one `done-close-exempt` row naming the judge - the rate the old block is compared on - and passes. The
+  // regex reading stays for what it still decides: the offer above waits for a close it reads as clean, and the prose ask
+  // below still holds a close that also reads as done.
   if (doneClose && !proseAsk(tail)) {
-    blockDetail('done-close', `${(closeDone.match(DONE_RE) || [])[0]} + ${(closeTail.match(PENDING_RE) || [])[0] || handBackText(closeTail)}`);
-    process.stderr.write(
-      'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
-      'rather than asked. Measured across four projects: that close draws a literal "are you\n' +
-      'finished?" from the user 2-22 minutes later. Per alfred-interaction.md, put the pending decision (continue or stop,\n' +
-      'which deliverable next) through ONE AskUserQuestion call with the options you already\n' +
-      'have in mind, recommended one marked. An uncommitted diff is held for the user\'s review:\n' +
-      'a commit waits for their own word (GIT-PREFERENCES.md), and a commit or publish choice is\n' +
-      'habits-commit-checkpoint\'s own ask, marked as its template marks it - one mark in every\n' +
-      'home (audit 2026-10-10 C18, 0824440b: three homes marked three options, the user\n' +
-      'overrode the mark 3 of 3 times). A deferred item either side still owes - a check the user runs, an id\n' +
-      'someone sends, a step put off - is pending: it goes in the ask, never under a\n' +
-      '\'nothing pending\' line - except an item the user deferred through an ask answered this\n' +
-      'turn, which goes on its own line opening \'Deferred by you:\' and is not owed. An owed action\n' +
-      'that is yours and needs no decision (a reprint, a re-run, a step a tool you hold can do) is\n' +
-      // audit 2026-10-20 C03: 7ec6c7db asked 'Reprint the block?', 1b432dd2 offered only user-side options
-      'done in this turn, never asked. Only when\n' +
-      'nothing at all is owed, say so in one line with no open next action and stop.',
-    );
-    process.exit(2);
+    ledgerRow({ tool: '', mode: 'probe', kind: 'done-close-exempt', exempt: DONE_JUDGE,
+      reason: `probe: a done close with a pending item passed - ${DONE_JUDGE}`,
+      detail: { exempt: DONE_JUDGE, matched: `${(closeDone.match(DONE_RE) || [])[0]} + ${(closeTail.match(PENDING_RE) || [])[0] || handBackText(closeTail)}` } });
+    process.exit(0);
   }
   blockDetail(proseAsk(tail) ? 'prose-ask' : 'ends-on-question',
     proseAskMatch(tail) || tail.trim().slice(-80));

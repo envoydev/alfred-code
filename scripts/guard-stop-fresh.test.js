@@ -58,29 +58,42 @@ const logEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtem
 // hook reads first - no transcript needed for the phrase cases.
 // In-process (hook-inprocess.js): this file's ~400 closes cost 65.7s spawned, 14.6s here. The runIn calls below stay spawned.
 const { runHook } = require('./hook-inprocess');
-const close = (text, extra) => runHook('guard-stop-contract.js',
-  { hook_event_name: 'Stop', last_assistant_message: text, ...(extra || {}) }, { env: logEnv() });
+// HK-22 (audit 2026-10-30): the regex DONE half holds nothing now - a close it reads as done with a step pending passes
+// this hook and is the stop judge's (a prompt hook on the same Stop), with one probe row naming it. `hold` is 2 when this
+// hook held the close OR handed it to the judge, so the corpus cases below keep reading what the stack holds; `status`
+// stays the hook's own exit. The ledger is read only past what it held before the call.
+const LEDGER = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks');
+const ledgerSizes = () => { try { return new Map(fs.readdirSync(LEDGER).map((f) => [f, fs.statSync(path.join(LEDGER, f)).size])); } catch { return new Map(); } };
+const judgeRowSince = (before) => [...ledgerSizes().keys()].some((f) => {
+  const buf = fs.readFileSync(path.join(LEDGER, f));
+  return buf.subarray(before.get(f) || 0).toString('utf8').includes('"exempt":"stop-judge"');
+});
+const close = (text, extra) => {
+  const before = ledgerSizes();
+  const r = runHook('guard-stop-contract.js', { hook_event_name: 'Stop', last_assistant_message: text, ...(extra || {}) }, { env: logEnv() });
+  return { ...r, hold: r.status === 2 || (r.status === 0 && judgeRowSince(before)) ? 2 : 0 };
+};
 
 // ---------------------------------------------------------------------------------------------
 // 1. stop-phrase-gaps - seven measured closes the decision-in-prose regexes did not see
 // ---------------------------------------------------------------------------------------------
 test('guard-stop-contract: the offer shapes the corpus measured unheld are stops', () => {
   // Each string is the measured close (or its load-bearing clause), each with the stall it cost.
-  assert.equal(close("The permission is the only thing missing. Say 'allowed' and I continue.").status, 2,
+  assert.equal(close("The permission is the only thing missing. Say 'allowed' and I continue.").hold, 2,
     "a QUOTED say-token: 5 unheld asks in one session while the user's anger escalated");
-  assert.equal(close("Ready when you are - say 'go' and I run it.").status, 2, "the same token in single quotes");
-  assert.equal(close('Everything is staged and ready to commit when you say so.').status, 2,
+  assert.equal(close("Ready when you are - say 'go' and I run it.").hold, 2, "the same token in single quotes");
+  assert.equal(close('Everything is staged and ready to commit when you say so.').hold, 2,
     "'ready to commit when you say so' - 2h20m idle, then a 146.8k re-cache");
-  assert.equal(close('The plan holds. If you say yes I start on task 3.').status, 2, "'if you say yes'");
-  assert.equal(close("Say yes and I'll build it, or tell me the objection is acceptable noise.").status, 2,
+  assert.equal(close('The plan holds. If you say yes I start on task 3.').hold, 2, "'if you say yes'");
+  assert.equal(close("Say yes and I'll build it, or tell me the objection is acceptable noise.").hold, 2,
     "'Say yes and I\\'ll build it' - 52s later the user asked 'Have you implemented?'");
-  assert.equal(close("When the log looks right, tell me to push and I'll run the push gate first.").status, 2,
+  assert.equal(close("When the log looks right, tell me to push and I'll run the push gate first.").hold, 2,
     "'tell me to push' - the next user turn was the correction 'Do it by your own'");
-  assert.equal(close('Check the output above, then tell me. From there I drive task 4.').status, 2,
+  assert.equal(close('Check the output above, then tell me. From there I drive task 4.').hold, 2,
     "a bare 'then tell me' - the user asked 'Why you stopped?' 5 minutes later");
-  assert.equal(close('- Do it by hand in the dashboard.\n- Or let me do it: give the connection a token with write scope.').status, 2,
+  assert.equal(close('- Do it by hand in the dashboard.\n- Or let me do it: give the connection a token with write scope.').hold, 2,
     'a bulleted two-path offer with no question mark');
-  assert.equal(close('Migration complete.\n\nNext steps:\n1. Reload the session.\n2. Re-run the capture.').status, 2,
+  assert.equal(close('Migration complete.\n\nNext steps:\n1. Reload the session.\n2. Re-run the capture.').hold, 2,
     "'Next steps' PLURAL - PENDING_RE read only the singular, so the mandated close header escaped it");
 });
 
@@ -101,19 +114,19 @@ test('guard-stop-contract: the widened shapes do not fire on a close that asks n
 // 2. stop-false-positive - five measured blocks on closes that held no question
 // ---------------------------------------------------------------------------------------------
 test('guard-stop-contract: a code span, a path and a negation are not a pending decision', () => {
-  assert.equal(close("The endpoint list is unchanged: `/health/ready` and `/health/live` both answer 200; the deploy is done and the tree is clean.").status, 0,
+  assert.equal(close("The endpoint list is unchanged: `/health/ready` and `/health/live` both answer 200; the deploy is done and the tree is clean.").hold, 0,
     "'ready' inside the path /health/ready is not a readiness claim - measured one forced round trip");
-  assert.equal(close('Task 3 is done. Nothing I started is still running, and the tree is clean.').status, 0,
+  assert.equal(close('Task 3 is done. Nothing I started is still running, and the tree is clean.').hold, 0,
     "'still running' inside its own NEGATION - the most expensive false positive in the collection, ~1.01M tokens");
-  assert.equal(close('The suite is green and nothing is left to do here - no jobs are queued and no background work is pending.').status, 0,
+  assert.equal(close('The suite is green and nothing is left to do here - no jobs are queued and no background work is pending.').hold, 0,
     'the same negation in its other spellings');
-  assert.equal(close("The live-run probe was not run (your call, environment-sensitive) so its 11 checks are unverified. Everything else is committed.").status, 0,
+  assert.equal(close("The live-run probe was not run (your call, environment-sensitive) so its 11 checks are unverified. Everything else is committed.").hold, 0,
     "a retrospective '(your call, <more words>)' - measured 298k cache-read and ~6 minutes for one retry");
 
   // ... and the shapes that MUST still block, so the fix did not buy the passes with a hole.
-  assert.equal(close('The refactor is done. Pushing it is the next step, whenever you are ready.').status, 2, 'a real stall still blocks');
-  assert.equal(close('Both work - your call which one ships.').status, 2, 'a live `your call` is still an offer');
-  assert.equal(close('Task 3 is done. The seeder I started is still running, and nothing reports back on it.').status, 2,
+  assert.equal(close('The refactor is done. Pushing it is the next step, whenever you are ready.').hold, 2, 'a real stall still blocks');
+  assert.equal(close('Both work - your call which one ships.').hold, 2, 'a live `your call` is still an offer');
+  assert.equal(close('Task 3 is done. The seeder I started is still running, and nothing reports back on it.').hold, 2,
     'the same sentence WITHOUT the negation is the stall the branch exists for');
 });
 
@@ -160,29 +173,29 @@ test('guard-stop-contract: a main-session close over its own live background wor
 test('audit 2026-10-08: the Stop payload\'s background_tasks registry is read before the lagging transcript', () => {
   // code.claude.com/docs/en/hooks 'Stop input': present when the task registry is reachable, empty when nothing is in flight
   const over = (name, rows, tasks) => close(WAITING_CLOSE, { transcript_path: transcript(name, [...rows, assistantRow(`${name}-close`, WAITING_CLOSE)]), background_tasks: tasks });
-  assert.equal(over('bt-sub', fgBash, [{ id: 't1', type: 'subagent', status: 'running', description: 'review', agent_type: 'general-purpose' }]).status, 0,
+  assert.equal(over('bt-sub', fgBash, [{ id: 't1', type: 'subagent', status: 'running', description: 'review', agent_type: 'general-purpose' }]).hold, 0,
     'a running subagent the transcript has not caught up with');
-  assert.equal(over('bt-shell', fgBash, [{ id: 't2', type: 'shell', status: 'running', description: 'tests', command: 'npm test' }]).status, 0, 'a finite shell');
-  assert.equal(over('bt-server', fgBash, [{ id: 't3', type: 'shell', status: 'running', description: 'dev', command: 'npm run dev' }]).status, 2, 'a server never reports back');
-  assert.equal(over('bt-done', fgBash, [{ id: 't4', type: 'subagent', status: 'completed', description: 'review' }]).status, 2, 'a settled task is no live work');
-  assert.equal(over('bt-empty', [...fgBash, ...asyncAgent('toolu_bt5', 'b5')], []).status, 2, 'an empty registry outranks a launch the transcript still shows open');
-  assert.equal(over('bt-none', [...fgBash, ...asyncAgent('toolu_bt6', 'b6')], undefined).status, 0, 'with no registry the transcript decides, as before');
+  assert.equal(over('bt-shell', fgBash, [{ id: 't2', type: 'shell', status: 'running', description: 'tests', command: 'npm test' }]).hold, 0, 'a finite shell');
+  assert.equal(over('bt-server', fgBash, [{ id: 't3', type: 'shell', status: 'running', description: 'dev', command: 'npm run dev' }]).hold, 2, 'a server never reports back');
+  assert.equal(over('bt-done', fgBash, [{ id: 't4', type: 'subagent', status: 'completed', description: 'review' }]).hold, 2, 'a settled task is no live work');
+  assert.equal(over('bt-empty', [...fgBash, ...asyncAgent('toolu_bt5', 'b5')], []).hold, 2, 'an empty registry outranks a launch the transcript still shows open');
+  assert.equal(over('bt-none', [...fgBash, ...asyncAgent('toolu_bt6', 'b6')], undefined).hold, 0, 'with no registry the transcript decides, as before');
 });
 
 test('guard-stop-contract: the same closes with no live background work of their own still block (2.1.6 H4)', () => {
   // the measured case the branch exists for is untouched: done, a next action, nothing out to wake the session
-  assert.equal(closeOver('h4-none-a', fgBash, WAITING_CLOSE).status, 2, 'nothing launched');
-  assert.equal(closeOver('h4-none-b', fgBash, RUNNING_CLOSE).status, 2, 'nothing launched, and the running words alone decide nothing');
+  assert.equal(closeOver('h4-none-a', fgBash, WAITING_CLOSE).hold, 2, 'nothing launched');
+  assert.equal(closeOver('h4-none-b', fgBash, RUNNING_CLOSE).hold, 2, 'nothing launched, and the running words alone decide nothing');
   const ended = [...asyncAgent('toolu_ag2', 'd4e5f6'), notice('<task-id>d4e5f6</task-id>\n<tool-use-id>toolu_ag2</tool-use-id>\n<status>completed</status>\n<summary>Agent finished</summary>')];
-  assert.equal(closeOver('h4-ended', ended, RUNNING_CLOSE).status, 2, 'the agent reported already');
+  assert.equal(closeOver('h4-ended', ended, RUNNING_CLOSE).hold, 2, 'the agent reported already');
   const absorbedEnd = [...bgBash('toolu_bg2', 'bq1'), absorbed('<task-id>bq1</task-id>\n<tool-use-id>toolu_bg2</tool-use-id>\n<status>completed</status>')];
-  assert.equal(closeOver('h4-absorbed', absorbedEnd, WAITING_CLOSE).status, 2, 'a completion absorbed mid-turn counts as arrived');
+  assert.equal(closeOver('h4-absorbed', absorbedEnd, WAITING_CLOSE).hold, 2, 'a completion absorbed mid-turn counts as arrived');
   const expired = [...monitor('toolu_mo2', 'bk88'), notice('<task-id>bk88</task-id>\n<event>[Monitor expired after 30m with 1 event delivered. Re-arm it if you still need the watch.]</event>')];
-  assert.equal(closeOver('h4-expired', expired, WAITING_CLOSE).status, 2, 'an expired Monitor watches nothing');
+  assert.equal(closeOver('h4-expired', expired, WAITING_CLOSE).hold, 2, 'an expired Monitor watches nothing');
   const sync = launchRows('toolu_sy1', 'Agent', { description: 'x', prompt: 'x', subagent_type: 'general-purpose' }, 'The review found two issues.', { status: 'completed' });
-  assert.equal(closeOver('h4-sync', sync, RUNNING_CLOSE).status, 2, 'a foreground agent returned its report inline');
+  assert.equal(closeOver('h4-sync', sync, RUNNING_CLOSE).hold, 2, 'a foreground agent returned its report inline');
   // live work beside a hand-back to the USER is still a pending decision: the close must name the running work
-  assert.equal(closeOver('h4-handback', asyncAgent('toolu_ag3', 'g7'), 'The refactor is done. Pushing it is the next step, whenever you are ready.').status, 2,
+  assert.equal(closeOver('h4-handback', asyncAgent('toolu_ag3', 'g7'), 'The refactor is done. Pushing it is the next step, whenever you are ready.').hold, 2,
     'a stall on the user is not excused by an agent running elsewhere');
 });
 
@@ -190,18 +203,18 @@ test('guard-stop-contract: work inherited from an earlier session makes the set 
   // Measured: the orchestrating session was a hand-off - its agents were launched in the session before, and their
   // notices arrived in this transcript naming ids it never launched. What else is still out cannot be read here.
   const inherited = [...fgBash, notice('<task-id>a69ff4</task-id>\n<tool-use-id>toolu_elsewhere</tool-use-id>\n<status>completed</status>')];
-  assert.equal(closeOver('h4-inh-a', inherited, RUNNING_CLOSE).status, 0, "the running close: 'review is now running', 'when either reports'");
-  assert.equal(closeOver('h4-inh-b', inherited, 'Task 3 is done. The seeder I started is still running, and nothing reports back on it.').status, 2,
+  assert.equal(closeOver('h4-inh-a', inherited, RUNNING_CLOSE).hold, 0, "the running close: 'review is now running', 'when either reports'");
+  assert.equal(closeOver('h4-inh-b', inherited, 'Task 3 is done. The seeder I started is still running, and nothing reports back on it.').hold, 2,
     'the measured stall still blocks');
 });
 
 test('guard-stop-contract: with no transcript to read, the running noun and the waiter decide (2.1.6 H4)', () => {
-  assert.equal(close(RUNNING_CLOSE).status, 0, "'review is now running' and 'I continue when either reports'");
-  assert.equal(close('Task 5 is done. Two agents are still running.').status, 0, 'agents as the running noun');
-  assert.equal(close('Task 5 is done. The implementer is still executing; its report wakes me.').status, 0, 'a waiter that wakes the session');
-  assert.equal(close('Task 5 is done. Group B is still running; I pick it up when it lands.').status, 0, "'when it lands' as the waiter");
-  assert.equal(close('Task 3 is done. The seeder I started is still running, and nothing reports back on it.').status, 2, 'the measured stall still blocks');
-  assert.equal(close('The refactor is done. Pushing it is the next step, whenever you are ready.').status, 2, 'and so does the hand-back');
+  assert.equal(close(RUNNING_CLOSE).hold, 0, "'review is now running' and 'I continue when either reports'");
+  assert.equal(close('Task 5 is done. Two agents are still running.').hold, 0, 'agents as the running noun');
+  assert.equal(close('Task 5 is done. The implementer is still executing; its report wakes me.').hold, 0, 'a waiter that wakes the session');
+  assert.equal(close('Task 5 is done. Group B is still running; I pick it up when it lands.').hold, 0, "'when it lands' as the waiter");
+  assert.equal(close('Task 3 is done. The seeder I started is still running, and nothing reports back on it.').hold, 2, 'the measured stall still blocks');
+  assert.equal(close('The refactor is done. Pushing it is the next step, whenever you are ready.').hold, 2, 'and so does the hand-back');
 });
 
 // 2.1.6 review B2 / m3: live work excused ANY close that said 'running' or 'waiting' - 21 of 27 true stalls passed under
@@ -251,7 +264,7 @@ const STATES = {
 test('guard-stop-contract: every review stall blocks in every transcript state (2.1.6 review B2)', () => {
   const passed = [];
   for (const [state, rows] of Object.entries(STATES)) {
-    for (const [id, text] of REVIEW_STALLS) if (closeOver(`b2-${id}-${state}`, rows(), text).status !== 2) passed.push(`${id}/${state}`);
+    for (const [id, text] of REVIEW_STALLS) if (closeOver(`b2-${id}-${state}`, rows(), text).hold !== 2) passed.push(`${id}/${state}`);
   }
   assert.deepStrictEqual(passed, [], 'a stall passed');
 });
@@ -259,20 +272,20 @@ test('guard-stop-contract: every review stall blocks in every transcript state (
 test('guard-stop-contract: the real status closes pass over the session\'s own live work, and only there (2.1.6 review B2, m3)', () => {
   const want = { none: 2, agent: 0, dev: 2, monitor: 0, ended: 2, resumed: 0 };
   for (const [state, status] of Object.entries(want)) {
-    assert.equal(closeOver(`p1-${state}`, STATES[state](), RUNNING_CLOSE).status, status, `the running close, ${state}`);
-    assert.equal(closeOver(`p2-${state}`, STATES[state](), WAITING_CLOSE).status, status, `the waiting close, ${state}`);
+    assert.equal(closeOver(`p1-${state}`, STATES[state](), RUNNING_CLOSE).hold, status, `the running close, ${state}`);
+    assert.equal(closeOver(`p2-${state}`, STATES[state](), WAITING_CLOSE).hold, status, `the waiting close, ${state}`);
   }
   // the big window holds no launch: unknown, and the words decide - the running close names a review running
-  assert.equal(closeOver('p1-big', STATES.big(), RUNNING_CLOSE).status, 0, 'the running close, a window past its launch');
+  assert.equal(closeOver('p1-big', STATES.big(), RUNNING_CLOSE).hold, 0, 'the running close, a window past its launch');
   for (const [state, rows] of Object.entries(STATES)) {
-    for (const [id, text] of REVIEW_STATUS) assert.equal(closeOver(`${id}-${state}`, rows(), text).status, 0, `${id}, ${state}`);
+    for (const [id, text] of REVIEW_STATUS) assert.equal(closeOver(`${id}-${state}`, rows(), text).hold, 0, `${id}, ${state}`);
   }
 });
 
 test('guard-stop-contract: a background dev server or watcher is no work that reports back (2.1.6 review B2)', () => {
   for (const command of ['npm run dev', 'npx vite serve', 'npm start', 'tsc --watch', 'ng serve', 'vite preview', 'tail -f app.log']) {
     const rows = launchRows('toolu_w1', 'Bash', { command, run_in_background: true }, 'Command running in background with ID: bw1.', { backgroundTaskId: 'bw1' });
-    assert.equal(closeOver(`dev-${command.replace(/\W+/g, '-')}`, rows, RUNNING_CLOSE).status, 2, command);
+    assert.equal(closeOver(`dev-${command.replace(/\W+/g, '-')}`, rows, RUNNING_CLOSE).hold, 2, command);
   }
 });
 
@@ -306,7 +319,7 @@ const RV_STATES = {
 test('guard-stop-contract: a hand-back waits on a person whatever else runs, and a server is no work that ends (2.1.6 re-verify N-B2)', () => {
   const passed = [];
   for (const [state, rows] of Object.entries(RV_STATES)) {
-    for (const [id, text] of REVERIFY_STALLS) if (closeOver(`nb2-${id}-${state}`, rows(), text).status !== 2) passed.push(`${id}/${state}`);
+    for (const [id, text] of REVERIFY_STALLS) if (closeOver(`nb2-${id}-${state}`, rows(), text).hold !== 2) passed.push(`${id}/${state}`);
   }
   assert.deepStrictEqual(passed, [], 'a stall passed');
 });
@@ -314,8 +327,8 @@ test('guard-stop-contract: a wait on the session\'s own running work is still a 
   const live = ['agent', 'tests', 'monitor', 'resumed'];
   const idle = { none: () => fgBash, dotnet: RV_STATES.dotnet, compose: RV_STATES.compose, uvicorn: RV_STATES.uvicorn, hugo: RV_STATES.hugo };
   for (const [id, text] of [...REVERIFY_STATUS, ['P1', RUNNING_CLOSE], ['P2', WAITING_CLOSE]]) {
-    for (const state of live) assert.equal(closeOver(`st-${id}-${state}`, RV_STATES[state](), text).status, 0, `${id} under ${state}`);
-    for (const [state, rows] of Object.entries(idle)) assert.equal(closeOver(`st-${id}-${state}`, rows(), text).status, 2, `${id} with only ${state}`);
+    for (const state of live) assert.equal(closeOver(`st-${id}-${state}`, RV_STATES[state](), text).hold, 0, `${id} under ${state}`);
+    for (const [state, rows] of Object.entries(idle)) assert.equal(closeOver(`st-${id}-${state}`, rows(), text).hold, 2, `${id} with only ${state}`);
   }
 });
 
@@ -368,9 +381,9 @@ test('guard-stop-contract: 25 closes in 14 states - a hand-back blocks whatever 
   const wrong = [];
   for (const [state, rows] of Object.entries(R2_STATES)) {
     const live = state === 'agent' || state === 'tests';
-    for (const [id, text] of R2_HANDBACKS) if (closeOver(`r2-${id}-${state.replace(/\W+/g, '-')}`, rows(), text).status !== 2) wrong.push(`${id}/${state} passed`);
+    for (const [id, text] of R2_HANDBACKS) if (closeOver(`r2-${id}-${state.replace(/\W+/g, '-')}`, rows(), text).hold !== 2) wrong.push(`${id}/${state} passed`);
     for (const [id, text] of R2_STATUS) {
-      const status = closeOver(`r2-${id}-${state.replace(/\W+/g, '-')}`, rows(), text).status;
+      const status = closeOver(`r2-${id}-${state.replace(/\W+/g, '-')}`, rows(), text).hold;
       if (status !== (live ? 0 : 2)) wrong.push(`${id}/${state} ${status === 0 ? 'passed' : 'blocked'}`);
     }
   }
@@ -409,8 +422,8 @@ test('guard-stop-contract: a done close handing the next act back blocks in all 
   const wrong = [];
   for (const [state, rows] of Object.entries(R2_STATES)) {
     const tag = state.replace(/\W+/g, '-');
-    for (const [id, text] of R3_DONE_HANDBACKS) if (closeOver(`r3-${id}-${tag}`, rows(), text).status !== 2) wrong.push(`${id}/${state} passed`);
-    for (const [id, text] of R3_PAST_REPORTS) if (closeOver(`r3-${id}-${tag}`, rows(), text).status !== 0) wrong.push(`${id}/${state} blocked`);
+    for (const [id, text] of R3_DONE_HANDBACKS) if (closeOver(`r3-${id}-${tag}`, rows(), text).hold !== 2) wrong.push(`${id}/${state} passed`);
+    for (const [id, text] of R3_PAST_REPORTS) if (closeOver(`r3-${id}-${tag}`, rows(), text).hold !== 0) wrong.push(`${id}/${state} blocked`);
   }
   assert.deepStrictEqual(wrong, [], `${wrong.length} of 56 cells wrong`);
 });
@@ -419,7 +432,7 @@ test('guard-stop-contract: a hand-back in any of 10 wordings blocks under live w
   for (const state of ['agent', 'tests', 'none']) {
     for (const [id, text] of R3_HANDBACK_WORDS) {
       const close = `Task 3 is done and the review agent is still running. ${text}.`;
-      if (closeOver(`r3-${id}-${state}`, R2_STATES[state](), close).status !== 2) wrong.push(`${id}/${state} passed`);
+      if (closeOver(`r3-${id}-${state}`, R2_STATES[state](), close).hold !== 2) wrong.push(`${id}/${state} passed`);
     }
   }
   assert.deepStrictEqual(wrong, [], `${wrong.length} of 30 cells wrong`);
@@ -457,8 +470,8 @@ test('guard-stop-contract: a finished answer signing off with an offer passes, a
   const wrong = [];
   for (const [state, rows] of Object.entries(R2_STATES)) {
     const tag = state.replace(/\W+/g, '-');
-    for (const [id, text] of R4_SIGN_OFFS) if (closeOver(`r4-${id}-${tag}`, rows(), text).status !== 0) wrong.push(`${id}/${state} blocked`);
-    for (const [id, text] of R4_STILL_HANDBACKS) if (closeOver(`r4-${id}-${tag}`, rows(), text).status !== 2) wrong.push(`${id}/${state} passed`);
+    for (const [id, text] of R4_SIGN_OFFS) if (closeOver(`r4-${id}-${tag}`, rows(), text).hold !== 0) wrong.push(`${id}/${state} blocked`);
+    for (const [id, text] of R4_STILL_HANDBACKS) if (closeOver(`r4-${id}-${tag}`, rows(), text).hold !== 2) wrong.push(`${id}/${state} passed`);
   }
   assert.deepStrictEqual(wrong, [], `${wrong.length} cells wrong`);
 });
@@ -467,26 +480,26 @@ test('guard-stop-contract: the done half is read over the whole close (2.1.6 re-
   const pad = (n) => ' The migration notes are in the plan file.'.repeat(n);
   for (const n of [30, 40, 60, 300]) {
     const text = `Task 3 is done.${pad(n)} Next step: push when you say so.`;
-    assert.equal(closeOver(`r3-win-${n}`, fgBash, text).status, 2, `a done claim ${text.length} characters up`);
+    assert.equal(closeOver(`r3-win-${n}`, fgBash, text).hold, 2, `a done claim ${text.length} characters up`);
   }
 });
 
 // A consuming project's sessions (2026-09-28), each close verbatim or its load-bearing clause.
 test('guard-stop-contract: a bare \'remains\' is a status, only its pending forms are a step (8b5dcb1a)', () => {
-  assert.equal(close('Done - `playwright-chrome` removed from `.mcp.json` and `enabledMcpjsonServers`; only `sentry` remains.').status, 0,
+  assert.equal(close('Done - `playwright-chrome` removed from `.mcp.json` and `enabledMcpjsonServers`; only `sentry` remains.').hold, 0,
     'what is left installed is no pending step');
-  assert.equal(close('Done. The push remains to be done.').status, 2, "'remains to be done' is pending");
-  assert.equal(close('Task 3 is done. What remains is the docs update.').status, 2, "'what remains' is pending");
-  assert.equal(close('Lint is green. That still remains open: the migration.').status, 2, "'remains open' is pending");
+  assert.equal(close('Done. The push remains to be done.').hold, 2, "'remains to be done' is pending");
+  assert.equal(close('Task 3 is done. What remains is the docs update.').hold, 2, "'what remains' is pending");
+  assert.equal(close('Lint is green. That still remains open: the migration.').hold, 2, "'remains open' is pending");
 });
 
 test('guard-stop-contract: a wait on forks, subagents or workers is a wait on work (177c5743)', () => {
   const text = 'Packages page audit done. Plan at `confluence-packages-update.md` (5 tasks). Waiting on the other 3 forks (stale-archive triage, extension-bundling page, Guide).';
-  assert.equal(closeOver('fork-live', asyncAgent('toolu_fk1', 'af1'), text).status, 0, 'the measured close, its forks still out');
-  assert.equal(closeOver('fork-sub', asyncAgent('toolu_fk2', 'af2'), 'Task 2 is done. Waiting on the two subagents.').status, 0, 'subagents');
-  assert.equal(closeOver('fork-wrk', asyncAgent('toolu_fk3', 'af3'), 'Task 2 is done. Waiting for the workers to report.').status, 0, 'workers');
-  assert.equal(closeOver('fork-none', fgBash, text).status, 2, 'nothing out - the same close is a stall');
-  assert.equal(closeOver('fork-hb', asyncAgent('toolu_fk4', 'af4'), 'All 7 plans are done, waiting on your go-ahead.').status, 2,
+  assert.equal(closeOver('fork-live', asyncAgent('toolu_fk1', 'af1'), text).hold, 0, 'the measured close, its forks still out');
+  assert.equal(closeOver('fork-sub', asyncAgent('toolu_fk2', 'af2'), 'Task 2 is done. Waiting on the two subagents.').hold, 0, 'subagents');
+  assert.equal(closeOver('fork-wrk', asyncAgent('toolu_fk3', 'af3'), 'Task 2 is done. Waiting for the workers to report.').hold, 0, 'workers');
+  assert.equal(closeOver('fork-none', fgBash, text).hold, 2, 'nothing out - the same close is a stall');
+  assert.equal(closeOver('fork-hb', asyncAgent('toolu_fk4', 'af4'), 'All 7 plans are done, waiting on your go-ahead.').hold, 2,
     'the hand-back beside a live fork still blocks (177c5743 L587)');
 });
 
@@ -494,10 +507,10 @@ test('guard-stop-contract: a queued notice has not ended the work, the delivered
   const body = '<task-id>aq1</task-id>\n<tool-use-id>toolu_q1</tool-use-id>\n<status>completed</status>\n<summary>Agent finished</summary>';
   const enqueue = { type: 'queue-operation', operation: 'enqueue', content: `<task-notification>\n${body}\n</task-notification>` };
   const text = 'Localisation audit done. Last Phase 2 fork still running, nothing pending on your end.';
-  assert.equal(closeOver('q-enq', [...asyncAgent('toolu_q1', 'aq1'), enqueue], text).status, 0, 'queued, not yet delivered');
-  assert.equal(closeOver('q-dlv', [...asyncAgent('toolu_q1', 'aq1'), enqueue, notice(body)], text).status, 2, 'delivered - the fork is done');
+  assert.equal(closeOver('q-enq', [...asyncAgent('toolu_q1', 'aq1'), enqueue], text).hold, 0, 'queued, not yet delivered');
+  assert.equal(closeOver('q-dlv', [...asyncAgent('toolu_q1', 'aq1'), enqueue, notice(body)], text).hold, 2, 'delivered - the fork is done');
   const removed = { type: 'queue-operation', operation: 'remove', content: `<task-notification>\n${body}\n</task-notification>` };
-  assert.equal(closeOver('q-rm', [...asyncAgent('toolu_q1', 'aq1'), removed], text).status, 2, 'any other queue operation still delivers');
+  assert.equal(closeOver('q-rm', [...asyncAgent('toolu_q1', 'aq1'), removed], text).hold, 2, 'any other queue operation still delivers');
 });
 
 // ---------------------------------------------------------------------------------------------

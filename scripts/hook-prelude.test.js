@@ -30,7 +30,7 @@ const wiring = (file, { quoted = true } = {}) =>
     const hooks = {};
     for (const [event, blocks] of Object.entries(coreEntry().hooks))
         for (const block of blocks)
-            if (block.hooks.some((h) => h.command.includes(`/${file}"`)))
+            if (block.hooks.some((h) => String(h.command || '').includes(`/${file}"`)))   // the stop judge's prompt hook has no command (HK-22)
                 (hooks[event] = hooks[event] || []).push({ ...(block.matcher ? { matcher: block.matcher } : {}), hooks: [{ type: 'command', command, timeout: 10 }] });
     return JSON.stringify({ hooks });
 };
@@ -229,7 +229,7 @@ function scopes({ project } = {})
 const dispatcher = require('../stack/hooks/shell-guards.js');
 function coreCommand(file)
 {
-    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).map((h) => h.command);
+    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).filter((h) => h.type === 'command').map((h) => h.command);   // the stop judge launches nothing (HK-22)
     const own = all.find((c) => c.includes(`/stack/hooks/${file}`));
     if (own) return own;
     // A shell guard with no launch of its own runs inside the dispatcher: fire it there, alone.
