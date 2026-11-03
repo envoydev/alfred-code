@@ -1421,9 +1421,11 @@ function installSkillsAndAgents(ctx)
 }
 
 // C17 / B seam: what a copy-route copy holds - the shipped text, with a seat's `alfred-code:<skill>` preloads bare on the
-// FULL copy route, since no core plugin serves that spelling there. Null when nothing changes - every plugin route.
+// FULL copy route, since no core plugin serves that spelling there (null on every plugin route), and a skill's SKILL.md
+// approval stamp path written back as `${CLAUDE_PROJECT_DIR}` on every route (library.renderSkillFile).
 function copyRender(ctx, kind)
 {
+    if (kind === 'skill') return (text, rel) => library.renderSkillFile(rel, text);
     if (kind !== 'agent' || mcp.corePluginOn(ctx.routes)) return null;
     return (text) => copy.respellPreloads(text, CORE);
 }

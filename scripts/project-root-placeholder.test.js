@@ -4,6 +4,8 @@
 // substitutions'); a reference file is read as literal text, and Cursor or Codex substitute nothing anywhere. So skill
 // prose names `<project root>`, which the model fills in on every host. A fenced command block is the one exception: its
 // command also passes `${CLAUDE_SESSION_ID}`, so it is bound to Claude Code until the multi-host adapter (D5) rewrites it.
+// The installer writes a SKILL.md's approval stamp path back as `${CLAUDE_PROJECT_DIR}` in the Claude Code copy
+// (install/library.js renderSkillFile, pinned in install-library.test.js), so an install holds the text 3.7.1 shipped.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
