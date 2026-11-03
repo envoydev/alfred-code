@@ -557,6 +557,53 @@ test('guard-stop-contract: a fresh-session ask answered this turn is not asked a
     answer('t7', 'Continue here')), 0, "the hook's own feedback row is no typed prompt");
 });
 
+// Usage audit 2026-11-03 U13: an offer declined while a plan cycle closed held the next scope at the full carry - the
+// 1.5x step since the decline outlived the cycle it was made in. After a plan's Completed stamp a declined offer counts as
+// spent only until the next typed turn; that turn's clean close past the trigger re-offers once, then the step applies.
+test('guard-stop-contract: after a Completed stamp and a typed turn, a declined offer is re-made once (usage audit 2026-11-03 U13)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const floor = assistantRow('pc-floor', 'the first turn', { cache_creation_input_tokens: 20000 });
+  const completed = { type: 'assistant', message: { id: 'm-done', content: [{ type: 'tool_use', id: 'toolu_done', name: 'Edit',
+    input: { file_path: path.join(TMP, 'proj', '.alfred', 'docs', 'work', 'plans', 'export.md'), old_string: 'Resume: next task 3', new_string: 'Resume: done\n\nCompleted: 2026-11-03' } }] } };
+  const edited = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_done', content: 'The file has been updated.' }] } };
+  const ask = (id, ctx) => ({ type: 'assistant', message: { id: `m-${id}`, usage: { cache_read_input_tokens: ctx }, content: [{ type: 'tool_use', id, name: 'AskUserQuestion',
+    input: { questions: [{ question: 'Continue here or resume fresh?', header: 'Session', multiSelect: false,
+      options: [{ label: 'Resume in a fresh session (Recommended)', description: 'x' }, { label: 'Continue here', description: 'y' }] }] } }] } });
+  const declined = (id) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id,
+    content: 'Your questions have been answered: "Continue here or resume fresh?"="Continue here". You can now continue with these answers in mind.' }] } });
+  const closeAt = (id, ctx) => assistantRow(id, 'The docs page is written and linked from the index.', { cache_read_input_tokens: ctx });
+  const stop = (tp, env) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp }, { env: env || logEnv() });
+  const cycle = [floor, typed('build the export'), completed, edited, ask('toolu_a1', 400000), declined('toolu_a1')];
+
+  // the declined offer, then a typed turn: re-made once though 450k is under 1.5x of 400k
+  const env = logEnv();
+  const rows = [...cycle, typed('now the docs page'), closeAt('pc-c1', 450000)];
+  const tp = transcript('pc-reoffer', rows);
+  const first = stop(tp, env);
+  assert.equal(first.status, 2, 'the next turn past the trigger re-offers once');
+  assert.match(first.stderr, /The work in this turn is finished/);
+  assert.match(first.stderr, /'Resume in a fresh session \(Recommended\)'/);
+  // declined again, and the next typed turn falls back to the 1.5x step
+  fs.writeFileSync(tp, [...rows, ask('toolu_a2', 452000), declined('toolu_a2'), typed('and the readme'), closeAt('pc-c2', 470000)].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  assert.equal(stop(tp, env).status, 0, 'the second decline in the same cycle: the 1.5x step again');
+  fs.writeFileSync(tp, [...rows, typed('and the readme'), closeAt('pc-c3', 480000)].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  assert.equal(stop(tp, env).status, 0, 'the re-offer is spent for the cycle: 480k under 1.5x of the 450k block');
+  assert.equal(fs.readFileSync(path.join(env.ALFRED_CODE_HOOK_LOG_DIR, `guard-stop-fresh-${tp.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.cycle`), 'utf8').trim() !== '', true,
+    'the marker names the stamp the re-offer was spent on');
+
+  assert.equal(stop(transcript('pc-same', [...cycle, closeAt('pc-c4', 450000)])).status, 0, 'the same turn as the decline: no re-offer');
+  assert.equal(stop(transcript('pc-none', [floor, typed('build the export'), ask('toolu_a3', 400000), declined('toolu_a3'), typed('now the docs page'), closeAt('pc-c5', 450000)])).status, 0,
+    'no Completed stamp: the 1.5x step');
+  assert.equal(stop(transcript('pc-after', [floor, typed('build the export'), completed, edited, typed('now the docs page'), ask('toolu_a4', 400000), declined('toolu_a4'),
+    typed('and the readme'), closeAt('pc-c6', 450000)])).status, 0, 'a fresh-session choice made after the typed turn stands');
+  assert.equal(stop(transcript('pc-under', [...cycle, typed('now the docs page'), closeAt('pc-c7', 170000)])).status, 0, 'under the trigger: no offer');
+  // the Stop's own block declined before the stamp counts the same way
+  const blockEnv = logEnv();
+  const tb = transcript('pc-block', [floor, typed('build the export'), completed, edited, typed('now the docs page'), closeAt('pc-c8', 450000)]);
+  fs.writeFileSync(path.join(blockEnv.ALFRED_CODE_HOOK_LOG_DIR, `guard-stop-fresh-${tb.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.blocked`), '400000');
+  assert.equal(stop(tb, blockEnv).status, 2, "the Stop's own block at 400k, then the stamp and a typed turn: re-offered once");
+});
+
 test('guard-stop-contract: the fresh-session offer waits while work this session launched is out (audit 2026-10-10 C09)', () => {
   // bba03dad: the offer said 'the work in this turn is finished' 3s after a verifier launched; the resume was picked,
   // the seat killed after one message and re-dispatched later.
@@ -853,6 +900,14 @@ test('guard-stop-contract: a long or idle run offers the fresh session before th
   assert.equal(ctxOf(askIn(rows('ask-short', 1, 120000), oneQ)), '', 'a one-hour session is left alone');
   assert.equal(ctxOf(askIn(rows('ask-off', 5, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }))), '',
     '0 on the hours knob switches the route off');
+  // Usage audit 2026-11-03 U16: the knob's default follows the prompt cache for the idle offer, and this clock note keeps
+  // its own 2h then - the session span would otherwise meet a 5m cache life on nearly every ask. An hour count sets it.
+  assert.equal(ctxOf(askIn(rows('ask-follow', 1, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'cache' }))), '',
+    'the follow word: a one-hour session is still left alone');
+  assert.match(ctxOf(askIn(rows('ask-follow-3', 3, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'cache' }))), /3\.0h/,
+    'and three hours still offers');
+  assert.match(ctxOf(askIn(rows('ask-half', 1, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0.5' }))), /1\.0h/,
+    'an explicit 0.5 sets the clock route too');
   // The recoverable-share rule owns this route too: a carry that is mostly the install's own floor
   // buys nothing by resuming, however long the session has been open.
   const floorBound = transcript('ask-floorbound', [

@@ -171,14 +171,21 @@ function compactHoldFile() {
 // THE ASK-GAP ARM (audit 2026-10-20 C49, 8a1fb350): an ask answered after a long idle never reached the idle-gap offer -
 // that route reads the gap since the last reply at a TYPED prompt, and here the gap sat inside the ask (posted 01:09,
 // answered 05:57); the first call after it re-cached ~170k and 52 messages ran at 198-244k. So a changing call whose
-// newest answered AskUserQuestion waited `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` or more leaves the idle route's hold,
-// once per ask (a marker naming its tool_use id). The common case pays one 256KB tail read and a substring test.
+// newest answered AskUserQuestion waited the idle wait or more leaves the idle route's hold, once per ask (a marker naming
+// its tool_use id). The wait is the cache life the ask's own reply wrote (fresh-session.js idleWait, usage audit 2026-11-03
+// U16 - 5m, 1h, else one hour), unless `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` names an hour count. The common case pays
+// one 256KB tail read and a substring test; the engine loads only once an answered ask is found.
+function idleWaitOf(usage) {
+  try {
+    const eng = require(nodePath.join(__dirname, 'fresh-session.js'));
+    return eng.idleWait(usage, process.env, eng.hostOf(payload));
+  } catch { return null; }   // no engine beside this hook: every offer is off anyway
+}
 function askGapArm() {
   try {
-    const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
-    const hours = Number.isNaN(n) || n < 0 ? 2 : n;
+    if (parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS')) === 0) return null;   // the route off: no read at all
     const p = payload.transcript_path;
-    if (!(hours > 0) || !p || payload.agent_id) return null;
+    if (!p || payload.agent_id) return null;
     const size = fs.statSync(p).size;
     const start = Math.max(0, size - 256 * 1024);
     const fd = fs.openSync(p, 'r');
@@ -192,9 +199,9 @@ function askGapArm() {
       if (line.includes('"AskUserQuestion"') && line.includes('"assistant"')) {
         try {
           const o = JSON.parse(line);
-          const use = o.type === 'assistant' && Array.isArray(o.message && o.message.content)
+          const use = o.type === 'assistant' && !o.isSidechain && Array.isArray(o.message && o.message.content)
             && o.message.content.find((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion');
-          if (use) { ask = { id: String(use.id || ''), at: Date.parse(o.timestamp || '') }; answeredAt = NaN; }
+          if (use) { ask = { id: String(use.id || ''), at: Date.parse(o.timestamp || ''), usage: o.message.usage || null }; answeredAt = NaN; }
         } catch { /* the window's cut first line */ }
       } else if (ask && ask.id && line.includes('"tool_result"') && line.includes(ask.id)) {
         try {
@@ -205,17 +212,40 @@ function askGapArm() {
       }
     }
     if (!ask || !ask.id || !Number.isFinite(ask.at) || !Number.isFinite(answeredAt)) return null;
-    const gapH = (answeredAt - ask.at) / 3600000;
-    if (gapH < hours) return null;
+    const gapMs = answeredAt - ask.at;
+    const wait = idleWaitOf(ask.usage);
+    if (!wait || !(wait.ms > 0) || gapMs < wait.ms) return null;
     const key = String(p || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
     const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-askgap-${key}.armed`);
     try { if (fs.readFileSync(marker, 'utf8').trim() === ask.id) return null; } catch { /* not armed for this ask */ }
-    return { id: ask.id, gapH: Math.round(gapH * 10) / 10, marker };
+    return { id: ask.id, gapH: Math.round(gapMs / 360000) / 10, gapMs, wait, marker };
+  } catch { return null; }
+}
+// THE TICK HOLD (usage audit 2026-11-03 U13): past the trigger the offer waited for a Stop, and a build that ticks its
+// plan card by card emits none between tasks - so the next task ran at the full carry, and the offer came only at the
+// close. A main-session edit that ticks a plan card DONE is judged here: past the trigger, with tasks still open, no other
+// card in flight and the verdict paying, it leaves the hold (route 'tick'), and the NEXT task's first change is put to the
+// user - the plan's Resume line already holds the cursor. The common case pays a path test and one regex.
+const PLAN_FILE_RE = /(?:^|[\\/])plans[\\/][^\\/]+\.md$/i;
+const STATUS_RE = /^\s*[-*]\s*\**status\**\s*:\s*\**\s*`?([A-Za-z_]+)/im;
+const DONE_LINE_RE = /^\s*[-*]\s*\**status\**\s*:\s*\**\s*`?DONE\b/im;
+function tickCall() {
+  try {
+    if (payload.agent_id || !/^(?:Edit|MultiEdit|Write)$/.test(String(payload.tool_name || ''))) return null;
+    const input = payload.tool_input || {};
+    const file = typeof input.file_path === 'string' ? input.file_path : '';
+    if (!PLAN_FILE_RE.test(file)) return null;
+    const added = payload.tool_name === 'Write' ? input.content
+      : payload.tool_name === 'Edit' ? input.new_string
+      : Array.isArray(input.edits) ? input.edits.map((e) => (e && typeof e.new_string === 'string' ? e.new_string : '')).join('\n') : '';
+    if (typeof added !== 'string' || !DONE_LINE_RE.test(added)) return null;
+    return { file: nodePath.resolve(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), file) };
   } catch { return null; }
 }
 const ASK_GAP = IS_HOLD_CALL && !IS_SKILL_CALL ? askGapArm() : null;
+const TICK = IS_HOLD_CALL && !IS_SKILL_CALL ? tickCall() : null;
 // The common case - no hold pending - leaves before anything else is read.
-if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !fs.existsSync(compactHoldFile())) process.exit(0);
+if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !TICK && !fs.existsSync(compactHoldFile())) process.exit(0);
 if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact', 'PostModelSwitch'].includes(EVENT)) process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
@@ -252,9 +282,13 @@ function paysAt(route, ctx) {
   if (row) ledgerRow(row);
   return !!v.pays;
 }
-// The idle compaction's line (fresh-session.js idleCompaction): no full context caused it, so nothing is offered.
-const IDLE_NOTE = "This session was compacted while idle - Claude Code's idle compaction, about an hour after the last reply, "
-  + 'before the prompt cache expired - not because the context filled up, so no fresh session is offered. Continue the work from the summary.';
+// The idle compaction's line (fresh-session.js idleCompaction): no full context caused it, so nothing is offered. Claude
+// Code compacts an idle conversation only while it is on the one-hour cache (code.claude.com/docs/en/prompt-caching,
+// 'Compacting the conversation'), so this line and the idle-gap offer's one-hour wait (U16) meet the same gap: the
+// compaction comes first, and the offer reads no context past it.
+const IDLE_NOTE = "This session was compacted while idle - Claude Code's idle compaction, which runs on the one-hour prompt cache "
+  + 'about an hour after the last reply, before that cache expired - not because the context filled up, so no fresh session is offered. '
+  + 'Continue the work from the summary.';
 // COMPACT INSTEAD's one line, said at the compaction start and at the first orchestration run of a session.
 const COMPACT_NOTE = 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1): past its '
   + "window's trigger the session compacts and the work goes on from the summary.";
@@ -304,17 +338,22 @@ function compactHold() {
   try { hold = JSON.parse(fs.readFileSync(compactHoldFile(), 'utf8')); } catch { return; }
   if (payload.agent_id || !hold || typeof hold !== 'object') return;
   const idle = hold.route === 'idle';
+  const tick = hold.route === 'tick';
+  // the tick route: the plan's own edits pass - its Resume line and Decisions ledger are written after the tick
+  if (tick && /^(?:Write|Edit|MultiEdit)$/.test(String(payload.tool_name || '')) && samePath((payload.tool_input || {}).file_path, hold.plan)) return;
   if (/^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || '')) && writesNothing((payload.tool_input || {}).command)) return;
-  const kind = idle ? 'idle-hold' : 'compact-hold';
+  const kind = idle ? 'idle-hold' : tick ? 'tick-hold' : 'compact-hold';
   const release = (outcome, detail) => {
     try { fs.unlinkSync(compactHoldFile()); } catch { /* already gone */ }
-    ledgerRow({ mode: 'probe', kind, reason: `probe: ${idle ? 'idle-gap' : 'post-compaction'} hold released - ${outcome}`, detail: { outcome, ...(detail || {}) } });
+    ledgerRow({ mode: 'probe', kind, reason: `probe: ${idle ? 'idle-gap' : tick ? 'plan-tick' : 'post-compaction'} hold released - ${outcome}`, detail: { outcome, ...(detail || {}) } });
   };
   const since = Number(hold.size) || 0;
   if (Date.now() - (Date.parse(hold.at) || 0) > 12 * 3600 * 1000) return release('stale');
   if (unattended(payload)) return release('unattended');
   if (fresh.askAnsweredSince(since)) return release('asked');
   if (shortStepSince(since)) return release('single-short-step');
+  // the Stop branch blocked at this carry or past it since the tick: the offer was made at the close
+  if (tick && Number(hold.ctx) > 0 && typeof fresh.stopOfferCtx === 'function' && fresh.stopOfferCtx() >= Number(hold.ctx)) return release('offered-at-stop');
   const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
   const floor = fresh.coldFloor();
   if (!(ctx > 0)) return;
@@ -323,12 +362,31 @@ function compactHold() {
   try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1 })); } catch { /* the cap still ends it */ }
   global.BLOCK_DETAIL = { branch: kind, ctx, floor };
   const pay = fresh.payText(ctx, fresh.freshVerdict(ctx));
+  if (tick) {
+    // the Resume line as the plan holds it NOW - the build rewrites it after the tick, and that edit passes
+    let resume = String(hold.resume || '');
+    try { resume = resumeLine(fs.readFileSync(String(hold.plan), 'utf8')) || resume; } catch { /* the line read at the tick */ }
+    process.stderr.write(
+      `Held once: plan task '${hold.task}' was just ticked DONE in ${relPlan(hold.plan)}, and the next task is a clean point\n`
+      + `to resume from. ${pay}\n`
+      + `The plan's Resume line is the cursor a fresh session picks up from${resume ? ` (now: '${resume}')` : ''} - keep it naming\n`
+      + `the next task; an edit to the plan passes. Before the next task's first change, put the choice to the user as ONE\n`
+      + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready\n`
+      + `resume block naming the plan), or continue here. If the remaining work is a single short step, say so in one line -\n`
+      + `'single short step: <what>' - and retry this call.`,
+    );
+    process.exit(2);
+  }
   if (idle) {
+    // the gap as the offer printed it: minutes under an hour since the wait follows the cache (U16), a hold an older
+    // release wrote carrying only its hours
+    const gap = Number(hold.gapMs) > 0 && typeof fresh.gapText === 'function' ? fresh.gapText(Number(hold.gapMs))
+      : Number(hold.gapH) ? `${Number(hold.gapH)}h` : 'past its wait';
     process.stderr.write(
       (hold.via === 'ask'
-        ? `Held once: this session's last ask waited ${Number(hold.gapH) || 'over the set'}h for its answer and its prompt cache went cold; the turns since have re-written it, so the choice\n`
+        ? `Held once: this session's last ask waited ${gap} for its answer and its prompt cache went cold; the turns since have re-written it, so the choice\n`
           + `is priced as from now, and it has not been put to the user yet. ${pay}\n`
-        : `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn and its prompt cache went cold; the turns since have re-written it, so the choice\n`
+        : `Held once: this session sat idle ${gap} before this turn and its prompt cache went cold; the turns since have re-written it, so the choice\n`
           + `is priced as from now, and the one offered at the prompt has not been put to the user yet. ${pay}\n`)
       + `Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
       + `'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready resume\n`
@@ -355,28 +413,113 @@ function armAskGap() {
   const last = lastReply();
   const u = (last && last.usage) || {};
   const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
-  const detail = { gapH: ASK_GAP.gapH, ctx, floor: fresh.coldFloor(), via: 'ask-answer' };
+  const detail = { gapH: ASK_GAP.gapH, ctx, floor: fresh.coldFloor(), via: 'ask-answer', wait: ASK_GAP.wait.from, waitMin: Math.round(ASK_GAP.wait.ms / 60000) };
   if (!(ctx > 0) || !paysAt('ask-gap', ctx)) return;
   if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail }); return; }
   try {
     if (fs.existsSync(compactHoldFile())) return;
-    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', gapH: ASK_GAP.gapH }));
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', gapH: ASK_GAP.gapH, gapMs: ASK_GAP.gapMs }));
   } catch { return; }
   ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the idle hold armed by an ask answered after a long gap', detail });
+}
+// The tick hold's helpers: the plan's cards by their `### Task <n>` heading, each with its status word and whether a
+// `needs:` line parks it on a run; the text an Edit, MultiEdit or Write leaves (null when an edit matches nothing);
+// the Resume line; the plan's path as the project names it.
+function planCards(text) {
+  const cards = new Map();
+  for (const part of String(text || '').split(/^(?=#{2,4}[ \t]+Task\b)/m)) {
+    const head = /^#{2,4}[ \t]+(Task\b[^\r\n]*)/.exec(part);
+    if (!head) continue;
+    const body = part.slice(head[0].length).split(/^#{1,6}[ \t]/m)[0];   // to the next heading, never the ledger after it
+    const status = STATUS_RE.exec(body);
+    if (!status) continue;
+    const id = /^Task\s+([\w.-]+)/i.exec(head[1]);
+    cards.set(id ? id[1].toLowerCase() : head[1].trim(), { title: head[1].trim(), status: status[1].toUpperCase(), parked: /^\s*[-*]\s*\**needs\**\s*:/im.test(body) });
+  }
+  return cards;
+}
+function planAfter(before, tool, input) {
+  if (tool === 'Write') return typeof input.content === 'string' ? input.content : null;
+  const edits = tool === 'Edit' ? [input] : Array.isArray(input.edits) ? input.edits : null;
+  if (!edits) return null;
+  let text = before;
+  for (const e of edits) {
+    if (!e || typeof e.old_string !== 'string' || typeof e.new_string !== 'string' || !e.old_string || !text.includes(e.old_string)) return null;
+    text = e.replace_all ? text.split(e.old_string).join(e.new_string) : text.replace(e.old_string, () => e.new_string);
+  }
+  return text;
+}
+const resumeLine = (text) => { const m = /^Resume:[ \t]*([^\r\n]*)/m.exec(String(text || '')); return m ? m[1].trim().slice(0, 200) : ''; };
+function relPlan(file) {
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  const rel = nodePath.relative(root, String(file || ''));
+  return (rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel : String(file || '')).split(nodePath.sep).join('/');
+}
+function samePath(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const norm = (f) => { const r = nodePath.resolve(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), f); return process.platform === 'win32' ? r.toLowerCase() : r; };
+  return norm(a) === norm(b);
+}
+// The carry the tick hold last armed at: its own offer is spent, so the next tick waits for the carry to grow by the
+// engine's re-offer step, as the Stop branch's own offer does.
+function tickOfferFile() {
+  const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-tick-${key}.ctx`);
+}
+const tickOfferCtx = () => { try { return parseInt(fs.readFileSync(tickOfferFile(), 'utf8'), 10) || 0; } catch { return 0; } };
+// The tick arm, judged on the edit that writes the tick (PreToolUse: the plan on disk is the text before it). No arm on
+// the last task (the finish step and the Stop's close come next), a plan the edit closes with Completed:, a card still in
+// flight (another IN_PROGRESS card not parked on a run - a seat building it), the offers off, a carry at or under the
+// trigger or under the re-offer step since the last offer of any route, or a resume that would not pay back. Nobody at the
+// terminal - a live AUTO waiver included - logs the skip instead. A standing hold is kept.
+function armTick() {
+  let before;
+  try { const st = fs.statSync(TICK.file); if (!st.isFile() || st.size > 2 * 1024 * 1024) return; before = fs.readFileSync(TICK.file, 'utf8'); } catch { return; }
+  const after = planAfter(before, payload.tool_name, payload.tool_input || {});
+  if (after === null) return;
+  const was = planCards(before);
+  const now = planCards(after);
+  const ticked = [...now].filter(([id, c]) => c.status === 'DONE' && was.has(id) && was.get(id).status !== 'DONE');
+  if (!ticked.length) return;
+  const open = [...now.values()].filter((c) => c.status !== 'DONE');
+  if (!open.length || /^Completed:/m.test(after)) return;
+  if ([...was].some(([id, c]) => c.status === 'IN_PROGRESS' && !c.parked && now.has(id) && now.get(id).status !== 'DONE')) return;
+  if (FRESH_OFF) return;
+  const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
+  const trigger = ctxThreshold();
+  if (trigger === null || !(ctx > trigger)) return;
+  const since = Math.max(typeof fresh.stopOfferCtx === 'function' ? fresh.stopOfferCtx() : 0,
+    typeof fresh.freshAskAnsweredCtx === 'function' ? fresh.freshAskAnsweredCtx() : 0, tickOfferCtx());
+  if (since && ctx < since * (Number(fresh.REOFFER_GROWTH) || 1.5)) return;
+  if (!paysAt('tick', ctx)) return;
+  const task = ticked[0][1].title;
+  const detail = { ctx, trigger, task, plan: relPlan(TICK.file), open: open.length };
+  if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'tick-offer', reason: UNATTENDED_SKIP, detail }); return; }
+  try { fs.writeFileSync(tickOfferFile(), String(ctx)); } catch { /* the next tick re-judges */ }
+  try {
+    if (fs.existsSync(compactHoldFile())) return;
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'tick', plan: TICK.file, ctx, task, resume: resumeLine(after) }));
+    sweepOffers();
+  } catch { return; }
+  ledgerRow({ mode: 'probe', kind: 'tick-offer', reason: 'probe: the tick hold armed - a plan task ticked DONE past the trigger', detail });
 }
 if (IS_HOLD_CALL && !IS_SKILL_CALL) {
   if (ASK_GAP) armAskGap();
   compactHold();
+  if (TICK) armTick();
   process.exit(0);
 }
 
 // THE IDLE-GAP ROUTE (audit 2026-10-10 C09, ca65b406): a next-day prompt after 19h02m idle re-cached 262.7k and ran 14
 // messages at 289.9k with no fresh-session offer - the clock route lives only in the stop contract's AskUserQuestion
-// note, and that resume asked nothing. So the prompt that ENDS a gap of `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (the
-// clock route's own knob: default 2, `0` off) since the last reply injects the offer, once per gap, when a resume
-// pays back with the cache warm (the engine's verdict) - this message re-writes the context either way, so the choice is
-// priced as from now. A harness notice is no
-// return, a seat has no user, and nobody at the terminal gets one row instead.
+// note, and that resume asked nothing. So the prompt that ENDS an idle gap past the wait since the last reply injects the
+// offer, once per gap, when a resume pays back with the cache warm (the engine's verdict) - this message re-writes the
+// context either way, so the choice is priced as from now. The wait is the cache life that last reply wrote (fresh-session.js
+// idleWait, usage audit 2026-11-03 U16: 5m or 1h, else one hour), unless `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` names
+// an hour count (`0` off) - the knob seeded 2 waited past the cache on every route. A harness notice is no return, a seat
+// has no user, and nobody at the terminal gets one row instead. Claude Code's idle compaction (the one-hour cache only,
+// about an hour after the last reply) lands inside the same gap: the context past it is unknown, so no offer follows it.
+// The last reply is the main conversation's - a sidechain row is a seat's, which neither ends the gap nor sets the life.
 function lastReply() {
   try {
     const p = payload.transcript_path;
@@ -392,7 +535,7 @@ function lastReply() {
       if (!line.includes('"assistant"')) continue;
       try {
         const o = JSON.parse(line);
-        if (o.type !== 'assistant' || !o.message || o.message.model === '<synthetic>') continue;
+        if (!o || o.type !== 'assistant' || o.isSidechain || !o.message || o.message.model === '<synthetic>') continue;
         const at = Date.parse(o.timestamp || '');
         if (!Number.isNaN(at)) last = { at, usage: o.message.usage || (last && last.usage) || null };
       } catch { /* the window's cut first line */ }
@@ -402,14 +545,14 @@ function lastReply() {
 }
 function idleGapOffer() {
   if (payload.agent_id || FRESH_OFF) return;
-  const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
-  const hours = Number.isNaN(n) || n < 0 ? 2 : n;
-  if (!(hours > 0)) return;
+  if (parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS')) === 0) return;   // the route off: no read at all
   if (harnessPrompt(payload.prompt)) return;
   const last = lastReply();
   if (!last || !last.usage) return;
-  const gapH = (Date.now() - last.at) / 3600000;
-  if (gapH < hours) return;
+  const wait = typeof fresh.idleWait === 'function' ? fresh.idleWait(last.usage, process.env, fresh.hostOf(payload)) : null;
+  const gapMs = Date.now() - last.at;
+  if (!wait || !(wait.ms > 0) || gapMs < wait.ms) return;
+  const gapH = gapMs / 3600000;
   const u = last.usage;
   const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
   if (!(ctx > 0)) return;
@@ -418,7 +561,7 @@ function idleGapOffer() {
   try { if (fs.readFileSync(marker, 'utf8').trim() === String(last.at)) return; } catch { /* not offered for this gap */ }
   if (!paysAt('idle-gap', ctx)) return;
   const floor = fresh.coldFloor();
-  const detail = { gapH: Math.round(gapH * 10) / 10, ctx, floor };
+  const detail = { gapH: Math.round(gapH * 10) / 10, ctx, floor, wait: wait.from, waitMin: Math.round(wait.ms / 60000) };
   if (unattended(payload)) {
     ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail });
     return;
@@ -432,7 +575,7 @@ function idleGapOffer() {
   // call passes it. A compaction hold already standing is kept.
   try {
     if (!fs.existsSync(compactHoldFile())) {
-      fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', gapH: detail.gapH }));
+      fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', gapH: detail.gapH, gapMs }));
     }
   } catch { /* no hold - the injection below still goes out */ }
   sweepOffers();
@@ -440,7 +583,7 @@ function idleGapOffer() {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `This session sat idle ${gapH.toFixed(1)}h since its last reply; this message has already re-written `
+      additionalContext: `This session sat idle ${fresh.gapText(gapMs)} since its last reply; this message has already re-written `
         + `the context, so the choice is priced as from now: ${fresh.payText(ctx, fresh.freshVerdict(ctx))} If this prompt starts `
         + `or continues work, first put the choice to the user as ONE `
         + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the `

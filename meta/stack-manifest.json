@@ -791,7 +791,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth, and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-run stamp naming this session, while the run's marker (`state/sessions/AUTO-RUN-<session>`) stands, a Stop is sent back to the run until its close deletes the marker - never the stamp, which only --mode-auto-run-off ends - held again only after a tool call (the Stop chain's workSince), and at most 49 times per marker: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth - and once more after a plan's Completed stamp and a typed turn, whatever the growth, unless a fresh-session choice was answered since that turn (usage audit 2026-11-03 U13) - and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-run stamp naming this session, while the run's marker (`state/sessions/AUTO-RUN-<session>`) stands, a Stop is sent back to the run until its close deletes the marker - never the stamp, which only --mode-auto-run-off ends - held again only after a tool call (the Stop chain's workSince), and at most 49 times per marker: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
     },
     {
       "file": "guard-stop-contract.js",
@@ -839,7 +839,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
-      "note": "the idle-gap offer: the prompt that ends a gap past ALFRED_CODE_FRESH_SESSION_AFTER_HOURS (the clock route's knob, default 2, 0 off) since the last reply injects the fresh-session ask once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). A harness notice, a seat and nobody at the terminal get no offer"
+      "note": "the idle-gap offer: the prompt that ends a gap past the idle wait since the last reply - the prompt cache life that reply wrote, 5m or 1h, else 1h; ALFRED_CODE_FRESH_SESSION_AFTER_HOURS, default cache, an hour count overriding and 0 off (usage audit 2026-11-03 U16) - injects the fresh-session ask once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). A harness notice, a seat and nobody at the terminal get no offer"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -857,7 +857,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "the post-compaction hold on an edit - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
+      "note": "the post-compaction hold on an edit, and the TICK HOLD (usage audit 2026-11-03 U13): a main-session edit that ticks a plan card DONE past the trigger - tasks still open, no other card in flight, the carry past the re-offer step since the last offer, a resume that pays - holds the next task's first change for the fresh-session ask naming the plan and its Resume line, the plan's own edits passing; nobody at the terminal (a live AUTO waiver included) logs the skip - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
     },
     {
       "file": "guard-fresh-session-start.js",

@@ -233,16 +233,21 @@ function paysAt(route, ctx) {
 // branch, which blocks). Context is not the only thing that makes a resume worth it: 63.5% of the
 // audited collection's cache-read was paid under the 1M window's own trigger, and the flows' stop
 // contracts already say 'spans hours, or resumes after an idle gap' - as prose, which slipped in 3
-// of 3 bundles that tested it. Hours, not tokens, and `0` switches this route off. Not seeded by
-// the installers: the trigger NUMBERS are the user's ruling and this one is deliberately an
-// override, not a setting, until the block rate says what it should be.
+// of 3 bundles that tested it. Hours, not tokens, and `0` switches this route off. Since the idle
+// offer's wait follows the prompt cache (usage audit 2026-11-03 U16, fresh-session.js idleWait), the
+// knob's default is 'follow the cache' - and this route keeps its own 2h then: it judges how long the
+// SESSION has been open as well as its longest gap, and a 5m cache life would put the note on nearly
+// every ask. An explicit hour count still sets both routes.
+const CLOCK_HOURS = 2;
 const FRESH_AFTER_HOURS = (() => {
-  const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
-  return Number.isNaN(n) || n < 0 ? 2 : n;
+  const n = typeof fresh.afterHoursOf === 'function' ? fresh.afterHoursOf()
+    : (() => { const v = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS')); return Number.isNaN(v) || v < 0 ? null : v; })();
+  return n === null ? CLOCK_HOURS : n;
 })();
 
-// How far the context must grow before the fresh-session offer is made again (see below).
-const REOFFER_GROWTH = 1.5;
+// How far the context must grow before the fresh-session offer is made again (see below) - the engine's, shared with the
+// tick hold (usage audit 2026-11-03 U13).
+const REOFFER_GROWTH = typeof fresh.REOFFER_GROWTH === 'number' ? fresh.REOFFER_GROWTH : 1.5;
 // `/clear` is NOT in this list. It matched the token quoted as report CONTENT - a turn merely
 // describing session hygiene ('every <=130k session opened with `/clear` + resumed from a file')
 // silenced the offer at PEAK context (A/B replay: with the token exit 0, with the same sentence in
@@ -2455,7 +2460,11 @@ if (payload.hook_event_name === 'Stop') {
     // The last offer is this hook's own block OR the newest fresh-session ask answered in any turn (audit 2026-10-11
     // SD11, 7f8803eb): the choice made one typed turn back is not re-asked before the carry grows past the step.
     const since = Math.max(lastBlockCtx(), typeof fresh.freshAskAnsweredCtx === 'function' ? fresh.freshAskAnsweredCtx() : 0);
-    if (since && ctx < since * REOFFER_GROWTH) {
+    // THE POST-CYCLE RE-OFFER (usage audit 2026-11-03 U13): an offer declined while a plan cycle closed held the next
+    // scope at the full carry, the step since the decline outliving the cycle. After the plan's `Completed:` stamp a
+    // declined offer counts as spent only until the next typed turn: that turn's clean close re-offers once per stamp.
+    const cycle = since && ctx < since * REOFFER_GROWTH ? postCycleReoffer() : null;
+    if (since && ctx < since * REOFFER_GROWTH && !cycle) {
       breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} has not grown ${REOFFER_GROWTH}x since ${since}`);
       process.exit(0);
     }
@@ -2471,7 +2480,10 @@ if (payload.hook_event_name === 'Stop') {
       process.exit(0);
     }
     recordBlockCtx(ctx);
-    blockDetail('fresh-session', `ctx ${ctx} > trigger ${_fresh_at}`);
+    // any offer made after the stamp and a typed turn spends that cycle's one re-offer
+    markCycleOffered();
+    if (cycle) breadcrumb(`Stop: fresh-session offer re-made once after the plan's Completed stamp and a typed turn, ctx ${ctx} under ${REOFFER_GROWTH}x since ${since}`);
+    blockDetail(cycle ? 'fresh-session-post-cycle' : 'fresh-session', `ctx ${ctx} > trigger ${_fresh_at}`);
     process.stderr.write(
       // The old text claimed a resume 'costs roughly a tenth' - a ratio no measurement held, which reached users verbatim
       // inside the option descriptions they then acted on. State the absolute numbers instead, the ones the model can
@@ -2580,7 +2592,32 @@ function lastBlockCtx() {
 function recordBlockCtx(ctx) {
   try { fs.writeFileSync(blockStateFile(), String(ctx)); } catch { /* never let state break the gate */ }
 }
+// The post-cycle re-offer's facts (usage audit 2026-11-03 U13): a plan's `Completed:` stamp with a typed turn after it
+// (flowState), no re-offer made for that stamp yet (the `.cycle` marker beside the block record holds the stamp's byte
+// offset), and no fresh-session choice answered after that typed turn - one made since stands. Returns the stamp's offset
+// as a string, or null.
+function postCycleReoffer() {
+  try {
+    const f = flowState();
+    if (f.completed === null || !f.typedAfter) return null;
+    if (readCycleMarker() === String(f.completed)) return null;
+    const ask = typeof fresh.freshAskAnswered === 'function' ? fresh.freshAskAnswered() : { at: -1 };
+    if (ask.at > f.typedAfterAt) return null;
+    return String(f.completed);
+  } catch { return null; }
+}
+// function declarations, never consts: the Stop branch above runs before this line is reached
+function cycleMarkerFile() { return blockStateFile().replace(/\.blocked$/, '.cycle'); }
+function readCycleMarker() { try { return fs.readFileSync(cycleMarkerFile(), 'utf8').trim(); } catch { return ''; } }
+function markCycleOffered() {
+  try {
+    const f = flowState();
+    if (f.completed !== null && f.typedAfter) fs.writeFileSync(cycleMarkerFile(), String(f.completed));
+  } catch { /* never let state break the gate */ }
+}
 function blockStateFile() {
+  // the engine names it (fresh-session.js stopOfferFile), so the tick hold reads the same record
+  if (typeof fresh.stopOfferFile === 'function') return fresh.stopOfferFile(payload);
   const os = require('os');
   const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
