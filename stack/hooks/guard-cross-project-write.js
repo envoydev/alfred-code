@@ -371,15 +371,19 @@ function memoryBlock(what, shown, hit) {
   );
   process.exit(2);
 }
-// A PATH THE USER TYPED (usage audit 2026-11-03 U20, the user's ruling): an ABSOLUTE path in a turn the user typed this
-// session opens writes under its folder - a folder as written, a file's own folder (an existing file, else a last name
-// with an extension) - so a write the user named in their own words is not asked again (1e53bc45: a 6,338-token body
-// generated twice; e95004e7: a 7m44s wait). Read from the transcript where the write is judged (hook-prelude.js
-// typedTurnTexts / typedPaths), never from a file the model writes (HK-03), and only once a write would otherwise be
-// denied. The containment rule holds as for a receipt root: a folder holding the project opens nothing, and a typed FILE
-// whose folder holds it opens that one file (`~/.zshrc`). A relative path, `~user`, a path in tool output, a harness row
-// or the model's text opens nothing; the user accepted that a path inside text they pasted counts. The transcript itself
-// stays shut (recordAt runs first).
+// A PATH THE USER TYPED (usage audit 2026-11-03 U20, the user's ruling: 'an absolute path in your typed message allows
+// writes under that folder'): an ABSOLUTE path in a turn the user typed this session opens writes - a typed FOLDER
+// under itself, a typed FILE that one file only (review fix pass run B m5: `~/.ssh/config` opened all of `~/.ssh`) - so a
+// write the user named in their own words is not asked again (1e53bc45: a 6,338-token body generated twice; e95004e7: a
+// 7m44s wait). File or folder is read off the disk: a trailing separator is a folder, an existing path is what it is,
+// and a MISSING one is a file when its last name has an extension or is a dotfile (`r.md`, `.zshrc`) and a folder when
+// it has neither (`out/gen`) - the narrower reading wins a doubt, so a typed `notes.d` that does not exist yet opens only
+// itself, never writes under it. Read from the
+// transcript where the write is judged (hook-prelude.js typedTurnTexts / typedPaths), never from a file the model writes
+// (HK-03), and only once a write would otherwise be denied. The containment rule holds as for a receipt root: a typed
+// folder holding the project opens nothing. A relative path, `~user`, a path in tool output, a harness row or the model's
+// text opens nothing; the user accepted that a path inside text they pasted counts. The transcript itself stays shut
+// (recordAt runs first).
 let typedRoots = null;
 function typedAllowed(t) {
   if (typedRoots === null) {
@@ -392,10 +396,9 @@ function typedAllowed(t) {
           let st = null;
           try { st = fs.statSync(at); } catch { st = null; }
           const base = path.basename(at);
-          const isFile = !p.slash && (st ? !st.isDirectory() : /.\.[A-Za-z0-9]{1,10}$/.test(base));
-          const dir = isFile ? path.dirname(at) : at;
-          if (inside(ROOT, dir)) { if (isFile) typedRoots.push({ file: at }); continue; }
-          typedRoots.push({ dir });
+          const isFile = !p.slash && (st ? !st.isDirectory() : /^\.[^.]|.\.[A-Za-z0-9]{1,10}$/.test(base));
+          if (isFile) { typedRoots.push({ file: at }); continue; }
+          if (!inside(ROOT, at)) typedRoots.push({ dir: at });
         }
       }
     } catch { typedRoots = []; }
