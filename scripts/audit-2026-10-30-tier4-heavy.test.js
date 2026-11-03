@@ -46,3 +46,52 @@ test('SKD-04: csharp keeps its opening line - the project-config clause is pinne
     assert.match(JSON.parse(read('meta/shared-rules.json')).rules['project-config-outranks-conventions']._note, /says so in its own opening so a seat that loaded only that skill still knows/);
 });
 
+// AG-15: the designers' opus/xhigh pin rests on 'design mistakes are the most expensive to unwind', an assertion; the
+// reasoners' owed A/B was on record and the designers' was not. The candidate records it beside theirs - no pin moves.
+test('AG-15: the designers\' owed sonnet/xhigh A/B is recorded beside the reasoners\'', () =>
+{
+    const routing = squash(read('stack/skills/task-solve-cross/references/model-routing.md'));
+    const para = routing.slice(routing.indexOf('The house pins land'), routing.indexOf('One caveat on the Escalate-when column'));
+    assert.match(para, /no A\/B against a sonnet pin/, 'the reasoners\' line stays');
+    assert.match(para, /The designers' opus\/xhigh pin is asserted the same way and owes the same A\/B: one sonnet\/xhigh designer arm against the opus\/xhigh pin on the same trio task/);
+    assert.match(para, /the verifier's punch-list findings traced to the design/, 'the arm names its metric');
+    const catalog = squash(read('.claude/rules/repo-catalog.md'));
+    assert.match(catalog, /the A\/B the designer and reasoner pins still lack/);
+    for (const seat of fs.readdirSync(path.join(ROOT, 'stack/agents')).filter((f) => f.endsWith('-solution-designer.md')))
+        assert.match(read(`stack/agents/${seat}`), /^model: opus$/m, `${seat}: the candidate moves no pin`);
+});
+
+// AG-07: the implementers' external-API docs check restates alfred-quality-gates.md's outside-world line in six unmanaged,
+// drifted copies (four implementers had none). The candidate pins one wording in shared-rules.json and brings all ten to
+// it; the navigation parenthetical (a restatement of alfred-navigation.md's tool order) is cut to the rule pointer.
+const SEATS = fs.readdirSync(path.join(ROOT, 'stack/agents')).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
+const IMPLEMENTERS = SEATS.filter((s) => s.endsWith('-implementer'));
+const DOCS_CHECK = 'is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified';
+
+test('AG-07: one registered docs-check wording, carried by all ten implementers', () =>
+{
+    assert.strictEqual(IMPLEMENTERS.length, 10);
+    const entry = JSON.parse(read('meta/shared-rules.json')).rules['implementer-external-api-docs-check'];
+    assert.ok(entry, 'the registry entry');
+    assert.strictEqual(entry.owner.file, 'stack/rules/alfred-quality-gates.md');
+    assert.ok(squash(read(entry.owner.file)).includes(entry.owner.marker), 'the owner marker is the rule\'s own line');
+    assert.deepStrictEqual(entry.sites.map((s) => s.file).sort(), IMPLEMENTERS.map((s) => `stack/agents/${s}.md`).sort());
+    for (const site of entry.sites) assert.strictEqual(site.marker, DOCS_CHECK, site.file);
+    for (const s of IMPLEMENTERS)
+    {
+        const body = squash(read(`stack/agents/${s}.md`));
+        assert.strictEqual(body.split(DOCS_CHECK).length - 1, 1, `${s}: the line once`);
+        assert.doesNotMatch(body, /never recalled - a recalled tag|resolve its signatures against the library's current docs \(|is resolved against the (library's )?current docs through/, `${s}: a drifted copy left`);
+    }
+});
+
+test('AG-07: no seat restates the navigation tool order; each still points at the navigation rule', () =>
+{
+    const PAREN = /\(`LSP` - `workspaceSymbol` for a symbol, `findReferences` for its callers, `documentSymbol` for a file's outline - then a scoped grep, reported as name-matched\)|\(`LSP` `workspaceSymbol`, `findReferences`, then a scoped grep\)/;
+    for (const s of SEATS)
+    {
+        const body = squash(read(`stack/agents/${s}.md`));
+        assert.doesNotMatch(body, PAREN, `${s}: the parenthetical`);
+        if (/the navigation tools your start line orders/.test(body)) assert.match(body, /`\.claude\/rules\/alfred-navigation\.md`/, `${s}: the pointer`);
+    }
+});

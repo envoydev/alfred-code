@@ -15,5 +15,8 @@ action, on top of this baseline, and that rule's list is the authority on what t
 action, not two competing ones (an Angular or Ionic `.component.ts` edit is the case that collides
 here).
 
+Writing or changing a `*.test.ts` / `*.spec.ts` outside Angular loads the skill covering plain TS/JS
+tests in the same action, before the first test edit lands, where installed.
+
 Skip a load when it is already in context (some seats preload them); conventions are the source of
 truth, not recall. Skip one-line tweaks.

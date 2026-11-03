@@ -149,3 +149,12 @@ test('RU-13: alfred-security keeps the secret invariants and points at the guard
 // habits-root-cause and each router down to one line naming its seats, a red .NET build dispatched the resolver as often
 // (7 of 7 each arm) but loaded habits-root-cause - now the only home of the contract stop and the status-less return - in
 // 6 of 14 runs against 9 of 14. The routers keep their full text; rule-prose and flow-skill-prose pin it there.
+
+test('SKS-03: typescript-conventions sends a plain *.test.ts / *.spec.ts edit to the test skill, described not named', () =>
+{
+    const rule = read('stack', 'rules', 'typescript-conventions.md');
+    const flat = rule.replace(/\s+/g, ' ');
+    assert.ok(flat.includes('Writing or changing a `*.test.ts` / `*.spec.ts` outside Angular loads the skill covering plain TS/JS tests in the same action, before the first test edit lands, where installed.'), flat);
+    assert.doesNotMatch(rule, /ts-js-testing/, 'not guaranteed beside the rule, so described (lint 25/26)');
+    assert.match(read('docs', 'alfred-code.html'), /\["typescript-conventions", "[^"]*", "[^"]*\*\.test\.ts[^"]*"\]/, 'the inventory row says so');
+});
