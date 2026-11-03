@@ -52,3 +52,65 @@ test('the old forced-INLINE texts are gone from their files', () => {
     ];
     for (const [file, old] of gone) assert.ok(!squash(read(file)).includes(old), `${file} still holds: ${old}`);
 });
+
+// Row 12's point is the cross flow's plan gate; the audited skill, task-verify-plan, carries the one line saying it runs the passes where that protocol says.
+const ALSO_EDITED = { 12: ['task-verify-plan'] };
+test('every row has its point and its text', () => {
+    assert.deepStrictEqual([...new Set(POINTS.map((p) => p.row))].sort((a, b) => a - b), [...new Set(ROWS.map((r) => r.row))].sort((a, b) => a - b));
+    for (const r of ROWS) {
+        const point = POINTS.find((p) => p.row === r.row);
+        assert.ok(point.text.includes(r.skill) || (ALSO_EDITED[r.row] || []).includes(r.skill), `row ${r.row}: ${r.skill} is named in "${point.text}"`);
+    }
+});
+
+test('every clause is conditioned', () => {
+    for (const r of ROWS.filter((x) => x.kind === 'clause')) {
+        const n = r.needle.toLowerCase();
+        assert.ok(n.includes('on a heavy session') || n.includes('serial seats'), `row ${r.row} clause is not conditioned: ${r.needle.slice(0, 70)}`);
+        if (r.needle.includes('load `habits-execution-strategy` with the Skill tool'))
+            assert.ok(r.needle.includes('a `Seats:` line in context, or a system-prompt model above Sonnet'), `row ${r.row}: the load carries the heavy-session condition`);
+    }
+    for (const r of ROWS.filter((x) => x.row === 14)) assert.ok(r.needle.includes('any other keeps the no-ask path'), `row 14 ${r.skill} keeps the no-ask path`);
+});
+
+// What Sonnet pays: the clause text every sonnet session loads with these skills, bounded. The strategy file's base size is a literal.
+const STRATEGY_BASE_CHARS = 13673;
+test('what Sonnet pays', () => {
+    assert.ok(BULLET.length <= 1450, `bullet is ${BULLET.length}`);
+    const clauses = ROWS.filter((r) => r.kind === 'clause').map((r) => r.needle.length);
+    for (const n of clauses) assert.ok(n <= 330, `a clause is ${n} characters`);
+    const mean = clauses.reduce((a, b) => a + b, 0) / clauses.length;
+    assert.ok(mean <= 260, `clause mean ${mean}`);
+    const perRow = {};
+    for (const r of ROWS) perRow[r.row] = (perRow[r.row] || 0) + r.needle.length;
+    const growth = fs.statSync(path.join(ROOT, STRATEGY)).size - STRATEGY_BASE_CHARS;
+    console.log(`# D8 cost: bullet ${BULLET.length}; strategy growth ${growth} bytes; ${clauses.length} clauses, total ${clauses.reduce((a, b) => a + b, 0)}, mean ${Math.round(mean)}; per row ${JSON.stringify(perRow)}`);
+});
+
+// Asks D8 leaves alone (spec 3.3, 'Already seat-first' and 'Not a chat-or-seat choice'): first line and marked label,
+// read once from the branch base and written as literals. Never reads git at run time.
+const UNTOUCHED = [
+    { file: 'stack/skills/capture-awareness/SKILL.md', firstLine: "Run the seat parts through their analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/architecture.md', firstLine: "First architecture capture across <the modules>. Characterize them through the architecture-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/project-code-style.md', firstLine: "First style capture across <the languages>. Characterize them through the code-style-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/related-projects.md', firstLine: "Characterize <the siblings> through the related-project-analyzer seats, one per sibling, or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/SKILL.md', firstLine: "Run the chosen parts through their analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/architecture-quality.md', firstLine: "Hunt the weaknesses and strengths of <the modules> through the architecture-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/code-quality.md', firstLine: "Judge <the modules> through the code-quality-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/test-coverage-quality.md', firstLine: "Analyze <the measured surfaces> through the test-coverage-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-preferences/references/tools-area.md', firstLine: "May agents use <server>?", recommended: "Main session only (Recommended)" },
+    { file: 'stack/skills/habits-execution-strategy/SKILL.md', firstLine: "This task fits <the flow>: <what it adds for THIS task>. Start it, or proceed here directly?", recommended: "Start <the flow's slash command> (Recommended)" },
+    { file: 'stack/skills/habits-execution-strategy/SKILL.md', firstLine: "The plan needs <N> seats / reaches <the scope past the request>. Run the trimmed plan?", recommended: "Run the trimmed plan (Recommended)" },
+    { file: 'stack/skills/mode-output-scorer/SKILL.md', firstLine: "The <output> scored <S>/100 (level <n>); the next revision can reach at most <ceiling> - <the needs line, or nothing closable left>. How should it go on?", recommended: "Answer the open decisions (Recommended)" },
+    { file: 'stack/skills/task-implement/SKILL.md', firstLine: "<task> FAILED: <why>.", recommended: "Stop and report (Recommended)" },
+    { file: 'stack/skills/task-implement/SKILL.md', firstLine: "Both write routes refused the approval stamp: <the refusal>.", recommended: "Retry the stamp (Recommended)" },
+    { file: 'stack/skills/loop-code-quality/SKILL.md', firstLine: "Both write routes refused the approval stamp: <the refusal>.", recommended: "Retry the stamp (Recommended)" }
+];
+test('the asks D8 leaves alone keep their marks', () => {
+    for (const u of UNTOUCHED) {
+        const blocks = [...read(u.file).matchAll(/```ask\n([\s\S]*?)```/g)].map((m) => m[1].split('\n'));
+        const marked = blocks.filter((b) => b[0].trim() === u.firstLine).some((b) => b.some((l) => /^\s*- '/.test(l) && l.includes(`'${u.recommended}'`)));
+        assert.ok(marked, `${u.file}: the ask "${u.firstLine.slice(0, 60)}" still marks '${u.recommended}'`);
+    }
+    assert.ok(UNTOUCHED.length >= 14);
+});
