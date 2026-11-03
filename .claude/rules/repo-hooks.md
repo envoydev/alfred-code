@@ -934,10 +934,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     'above' that no fence since the typed turn shows (`ASK_ABOVE_RE`, reworded to 'the resume block, printed after this
     answer'); and, with no mechanical fix, an option
     telling the user to type into Other (`OTHER_RE`, module scope - lint check 61 reads that one line and fails a shipped
-    ask template it matches, audit 2026-10-20 C01: 14 template lines in 10 skills taught the wording this denies), a single-select question without exactly one '(Recommended)' listed first (an
-    unmarked one whose text says why none is recommended passes), and - off auto-mode and with offers on - a new cycle's
+    ask template it matches, audit 2026-10-20 C01: 14 template lines in 10 skills taught the wording this denies), or a
+    question or header saying so (usage audit 2026-11-03 U11), the denial's pick example quoting the ask's own first two
+    labels; a single-select question without exactly one '(Recommended)' listed first (an
+    unmarked one whose text says why none is recommended passes); a question whose 'Recommended:' clause shares no word
+    with the marked option while another option's LABEL does (a word in another option's description decides nothing,
+    U05); and - off auto-mode and with offers on - a new cycle's
     first ask with no fresh option after a typed prompt followed this session's plan `Completed:` stamp (once per stamp;
-    audit 2026-10-10 C08 / C09 / C26); a question shaped as an approval (approve, as shown, is ready, post / file /
+    audit 2026-10-10 C08 / C09 / C26), an ask opening work only - a flow stop's `Result:` field, or an option naming a
+    plan, task-solve, task-design, an approval or a new scope; a plain question after the cycle is none (U09); a question shaped as an approval (approve, as shown, is ready, post / file /
     publish / send this) with no chat text since the user's last typed turn that carries its subject - 200 characters or
     more naming its noun (audit 2026-10-11, session 2ca8e8ee: a staged plan and a ticket comment approved unseen) - the
     noun being the approval verb's own object (a pronoun or 'as shown' points back to the nearest phrase not after a
@@ -1005,7 +1010,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     on my side' line naming the user's own run is no exit; under live work the mandated 'uncommitted for your review'
     line and a step gated on the running work ('once the agent is done') are status, a resumed seat's 'its sign-off' is
     a wait, 'your allow' is a hand-back, and a `gh run watch` ends. An answer to the user's own question listing only a
-    third party's or deferred items passes, and so does the close after a fresh-session ask answered this turn. The
+    third party's or deferred items passes, and so does the close after a fresh-session ask answered this turn. A
+    confirm-ask with a negation earlier in its clause ('I couldn't confirm whether ...') is a report, no ask; and a prose
+    question after this turn's two newest asks were both refused by a hook (`askRefusedThisTurn`: error results, neither
+    an answer nor the user's rejection) stands with one `prose-after-refused-ask` probe row - one refusal is a fixable ask
+    and still holds (U06; the C15 offer shapes stay stops). The
     ask branch's typed-turn count follows the live `parentUuid` chain, and its stale-scope note counts `push` only in a
     git shape. Audit 2026-10-11 SD10: a line opening `Deferred by you:` is nothing owed when an ask answered THIS turn
     carries a deferral in its answer (the pinned contract with validate's close; with no such answer it is judged as

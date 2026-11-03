@@ -106,7 +106,7 @@ The write needs no second ask when the user asked for it; a run the user did not
 outline it would write, then asks through ONE AskUserQuestion:
 
 ```ask
-Write <file> from the outline above (<N> sections, facts from step 3)?
+Write <file> from the outline in this reply (<N> sections, facts from step 3)?
 - 'Write it (Recommended)' - <file> is written with those sections, each fact from step 3
 - 'Skip' - nothing is written
 ```
@@ -150,7 +150,7 @@ Either way the report names every file written with its line count.
    ONE AskUserQuestion:
 
    ```ask
-   Apply these changes to <the files>? <N> additions and <N> verified fixes rest on facts read this run; <N> check fixes are heuristic - read each diff above.
+   Apply these changes to <the files>? <N> additions and <N> verified fixes rest on facts read this run; <N> check fixes are heuristic - read each diff in this reply.
    - 'Apply the additions and verified fixes (Recommended)' - every line backed by a fact or a target confirmed on disk
    - 'Also apply the check fixes' - the heuristic rows too, each one read first
    - 'Apply some' - I ask which changes next, in plain text; a check row named 'keep' gets the keep marker
@@ -163,10 +163,10 @@ Either way the report names every file written with its line count.
    ruled correct by the run itself - in this shape:
 
    ```ask
-   Apply the <N> check fixes to <the files>? Each is a heuristic row that can be correct text the check could not resolve - read each diff above.
+   Apply the <N> check fixes to <the files>? Each is a heuristic row that can be correct text the check could not resolve - read each diff in this reply.
    - 'Skip (Recommended)' - nothing is written; the rows come back on the next run
    - 'Keep the lines as written for good' - each flagged line ends with the keep marker, and no later run raises it
-   - 'Apply the check fixes' - every diff above is written
+   - 'Apply the check fixes' - every diff in this reply is written
    - 'Apply some' - I ask which changes next, in plain text; only those are written
    ```
 

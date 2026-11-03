@@ -865,3 +865,64 @@ test('scorer seal: the written file passes scorecard grade, and fails with exit 
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('| c1 | yes |', '| c1 | no  |'));
   assert.strictEqual(cli(['grade', file, '--rubric', R100_FILE, '--level', '80']).status, 3);
 });
+
+// Usage audit 2026-11-03 U06: a report of what could not be confirmed read as a confirm-ask; the C15 offer shapes stay stops.
+test('U06: a negated confirm is no decision question', () => {
+  const done = 'Done: the cache layer is rebuilt and the suite is green (412/412).\n\n';
+  for (const neg of ["I couldn't confirm whether the cache was warm.", 'I could not confirm whether the cache was warm.', "I wasn't able to confirm that you had run the migration."])
+    assert.strictEqual(close(`${done}${neg}`).status, 0, neg);
+  assert.strictEqual(close(`${done}Should I push?`).status, 2, 'a decision question still holds');
+  assert.strictEqual(close(`${done}Confirm whether the cache was warm.`).status, 2, 'an un-negated confirm still holds');
+  for (const text of [
+    "The 81 changed files are ready for you to review on develop. Say 'commit' when you want them committed.",
+    'If you want a real confirmation, I can re-check every screen against its frame after CI finishes.',
+    'That would save a few KB per lazy page at most; I can do it if you want.',
+    'I can run that manual check now if you want; it starts the local backend and stops it afterwards.',
+    'Full list in the ledger. I can start the M2 plan for the minor gaps whenever you want.',
+    "I can draft a plan for #9 and #10 next, or go through the 'DIFFERENT' rows and pick the ones worth matching.",
+    'My recommendation is to skip a full triage and do one quick pass over the behaviour rows. Otherwise this parity scope can stop here.',
+  ]) assert.strictEqual(close(`${done}${text}`).status, 2, `C15 after a Done line: ${text}`);
+});
+
+test('U06: a prose close may follow a second refused ask', () => {
+  const ask = (id) => call(id, 'AskUserQuestion', { questions: [{ question: 'Which store?', options: [{ label: 'Redis (Recommended)', description: 'x' }, { label: 'Memory', description: 'y' }] }] });
+  const denied = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text, is_error: true }] } });
+  const HOOK_DENY = 'PreToolUse:AskUserQuestion hook error: [node guard-stop-contract.js]: This ask names an option the user must type into Other.';
+  const USER_NO = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).";
+  const prose = 'The ask was refused twice, so here it is in prose: should I cache in Redis or in memory?';
+  const sid = `u06-${process.pid}`;
+  const ledger = () => { try { return fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  const stop = (rows, id) => run({ hook_event_name: 'Stop', session_id: id || sid, last_assistant_message: prose, transcript_path: transcript([...rows, say(`c${seq}`, prose)]) });
+  const twice = [typed('add caching'), ask('q1'), denied('q1', HOOK_DENY), ask('q2'), denied('q2', HOOK_DENY)];
+  assert.strictEqual(stop(twice).status, 0, 'two hook refusals: the model cannot ask, the prose close stands');
+  assert.deepStrictEqual(ledger().filter((x) => x.kind === 'prose-after-refused-ask').map((x) => x.mode), ['probe']);
+  assert.strictEqual(stop([typed('add caching'), ask('q3'), denied('q3', HOOK_DENY)], `${sid}-one`).status, 2, 'one refusal is a fixable ask: still held');
+  assert.strictEqual(stop([typed('add caching')], `${sid}-none`).status, 2, 'no ask this turn: still held');
+  assert.strictEqual(stop([ask('q4'), denied('q4', HOOK_DENY), typed('add caching'), ask('q5'), denied('q5', HOOK_DENY)], `${sid}-turn`).status, 2,
+    'a refusal before the typed turn is another turn');
+  const userNo = `${sid}-user`;
+  stop([typed('add caching'), ask('q6'), denied('q6', USER_NO), ask('q7'), denied('q7', USER_NO)], userNo);
+  assert.strictEqual(ledger().filter((x) => x.kind === 'prose-after-refused-ask').length, 1, 'the user rejecting the ask is no hook refusal');
+});
+
+// m3 (E-batch): an ask template pointing 'above' at the reply drew the stop contract's pointer check on every shipped run.
+test('m3: no shipped ask template draws a pointer', () => {
+  const src = fs.readFileSync(HOOK, 'utf8');
+  const lit = /^const POINTER_ABOVE_RE = \/(.+)\/([a-z]*);\s*$/m.exec(src);
+  assert.ok(lit, 'the one-line literal is read from the hook');
+  const re = new RegExp(lit[1], lit[2]);
+  const ROOT = path.join(__dirname, '..');
+  let lines = 0;
+  for (const rel of ['setup-plugin/commands/validate.md', 'stack/skills/habits-adjust-agents-md/SKILL.md']) {
+    let inAsk = false;
+    for (const line of fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\n')) {
+      if (/^\s*```ask\s*$/.test(line)) { inAsk = true; continue; }
+      if (inAsk && /^\s*```\s*$/.test(line)) { inAsk = false; continue; }
+      if (inAsk) { lines++; assert.doesNotMatch(line, re, `${rel}: ${line.trim()}`); }
+    }
+  }
+  assert.ok(lines >= 12, `the walk read the ask blocks (${lines} lines)`);
+  for (const old of ['Review the AGENTS.md check rows above?', 'Write <file> from the outline above (<N> sections, facts from step 3)?',
+    '<N> check fixes are heuristic - read each diff above.', 'the check could not resolve - read each diff above.', "'Apply the check fixes' - every diff above is written"])
+    assert.match(old, re, `the old wording is a pointer: ${old}`);
+});

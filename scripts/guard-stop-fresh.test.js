@@ -845,6 +845,35 @@ test('guard-stop-contract: a new cycle after a finished one is sent back once wi
   assert.equal(askIn(transcript('nc-fresh', [...base, next, hot]), withFresh, logEnv()).status, 0, 'an ask carrying the option passes');
 });
 
+// Usage audit 2026-11-03 U05 (ce0b76e6 L1139): 'checks' sat in the OTHER option's description, so a right mark was denied.
+test("guard-stop-contract (U05): the Recommended clause is compared with other options' labels only", () => {
+  const tp = transcript('u05', [assistantRow('u5', 'ok', { cache_read_input_tokens: 900 })]);
+  const q = [{ question: 'The browser opened for the repro is still running. Close it? Recommended: it was opened only for the repro and the checks.',
+    options: [{ label: 'Close the browser (Recommended)', description: 'end its session now' }, { label: 'Keep it open', description: 'Leave it logged in for your own checks' }] }];
+  assert.equal(askIn(tp, q).status, 0, "a word in another option's description decides nothing");
+  const r = askIn(tp, [{ ...q[0], question: 'Close it? Recommended: keep it open for the checks.' }]);
+  assert.equal(r.status, 2, "a clause naming another option's label is still denied");
+  assert.match(r.stderr, /names another option than the one marked/);
+});
+
+// Usage audit 2026-11-03 U09: a plain question after a finished cycle drew the new-cycle deny.
+test('guard-stop-contract (U09): a plain Q&A ask after a Completed: stamp is no new cycle', () => {
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
+  const rows = [{ type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
+    assistantRow('f', 'first', { cache_creation_input_tokens: 40000 }), completed,
+    { type: 'user', message: { role: 'user', content: 'which node do I have here?' } },
+    assistantRow('h', 'Node 24 is installed through nvm.', { cache_read_input_tokens: 362000 })];
+  const plain = [{ question: 'Should I install Node 26.13.0 through nvm now?', options: [{ label: 'Install it now (Recommended)', description: 'nvm install 26.13.0' }, { label: 'Leave it', description: 'stay on 24' }] }];
+  assert.equal(askIn(transcript('u09-plain', rows), plain, logEnv()).status, 0, 'a plain question opens no cycle');
+  for (const [name, opt] of [['plan', { label: 'Write the plan first (Recommended)', description: 'a plan file under docs' }],
+    ['flow', { label: 'Run it through task-solve (Recommended)', description: 'the full cycle' }], ['approve', { label: 'Approve (Recommended)', description: 'build it' }]]) {
+    const r = askIn(transcript(`u09-${name}`, rows), [{ question: 'How next?', options: [opt, { label: 'Stop', description: 'hold' }] }], logEnv());
+    assert.equal(r.status, 2, `an ask naming ${name} still opens a cycle`);
+    assert.match(r.stderr, /add a fresh-session option to this first ask of a new cycle/);
+  }
+});
+
 // ---------------------------------------------------------------------------------------------
 // 4. stop-denial-stale-150k - the denial printed a number that was not this session's trigger
 // ---------------------------------------------------------------------------------------------

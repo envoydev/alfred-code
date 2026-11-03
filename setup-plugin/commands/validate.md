@@ -610,7 +610,7 @@ script installs), and the approver takes the first option (audit 2026-10-11, ses
 listed first and unmarked was taken, and the review of 4 rows that were all false positives cost ~825k):
 
 ```ask
-Review the AGENTS.md check rows above?
+Review the AGENTS.md check rows listed in this reply?
 - 'Leave them (Recommended)' - nothing is written; a row comes back on the next run until its line carries the keep marker
 - 'Review them with /habits-adjust-agents-md' - its improve mode shows every change before writing, and a row you keep gets the keep marker
 ```

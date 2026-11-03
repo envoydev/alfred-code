@@ -340,8 +340,16 @@ const LOOP_ASK_RES = [
   /\b(?:continue|stay|keep going|carry on) here\b[^.\n?]{0,60}\bor\b[^.\n?]{0,40}\b(?:a )?fresh session\b/i,
 ];
 const TYPED_VALUE_RE = /^\s+(?:the |your |its |their )?(?:[\w-]+ ){0,3}?(?:ids?|urls?|links?|paths?|ports?|e-?mails?|(?:ip )?address(?:es)?|hosts?|hostnames?|usernames?|account names?|error (?:messages?|output|lines?)|log lines?)\b(?![^.\n]*\bor\b)/i;
+// A report of what could not be confirmed ('I couldn't confirm whether the cache was warm') asks nothing: a confirm-ask
+// match with a negation earlier in its own clause is skipped (usage audit 2026-11-03 U06). The C15 offer shapes are not.
+const NEGATED_CONFIRM_RE = /\b(?:couldn['’]?t|can['’]?t|cannot|could not|did not|didn['’]?t|wasn['’]?t able to|not able to|unable to)\b/i;
 function proseAskMatch(text) {
-  const m = (text.match(PROSE_ASK_RE) || [])[0] || '';
+  let m = '';
+  for (const mm of text.matchAll(new RegExp(PROSE_ASK_RE.source, 'gi'))) {
+    if (/^confirm\b/i.test(mm[0]) && NEGATED_CONFIRM_RE.test(text.slice(0, mm.index).split(/[.!?;:\n]/).pop())) continue;
+    m = mm[0];
+    break;
+  }
   if (m && /^your call$/i.test(m.trim()) && RETRO_YOUR_CALL_RE.test(text)) return null;
   if (m) return m;
   // 'tell me THE <value>' asks for a value only the user can type - a farm id after their own login - which no option
@@ -1233,6 +1241,37 @@ function askJustAnswered() {
         if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && ANSWER_RESULT_RE.test(resultText(b)))) return true;
         // a Stop hook's own feedback row is the harness speaking, not the user's next turn
         if (isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return false;
+        return undefined;
+      };
+    }, false);
+  } catch {
+    return false;
+  }
+}
+
+// Were this turn's two newest AskUserQuestion calls both refused by a HOOK - an error result that is no answer and no
+// user rejection (ANSWER_RESULT_RE)? One refusal is a fixable ask the model resends; two mean it cannot ask, so the
+// prose-ask hold lets the prose close stand (usage audit 2026-11-03 U06). Read by that hold alone.
+function askRefusedThisTurn() {
+  try {
+    return walkBack(() => {
+      const results = new Map();
+      let refused = 0;
+      return (o) => {
+        if (!o || !o.message) return undefined;
+        const c = o.message.content;
+        if (o.type === 'user') {
+          if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, b);
+          if (isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return false;
+          return undefined;
+        }
+        if (o.type !== 'assistant' || !Array.isArray(c)) return undefined;
+        for (const b of [...c].reverse()) {
+          if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
+          const r = results.get(b.id);
+          if (!r || r.is_error !== true || ANSWER_RESULT_RE.test(resultText(r))) return false;
+          if (++refused >= 2) return true;
+        }
         return undefined;
       };
     }, false);
@@ -2683,6 +2722,10 @@ if (payload.hook_event_name === 'Stop') {
     );
     process.exit(2);
   }
+  if (askRefusedThisTurn()) {
+    ledgerRow({ tool: '', mode: 'probe', kind: 'prose-after-refused-ask', reason: 'probe: two asks this turn refused by a hook, then a prose question - logged, not held' });
+    process.exit(0);
+  }
   blockDetail(proseAsk(tail) ? 'prose-ask' : 'ends-on-question',
     proseAskMatch(tail) || tail.trim().slice(-80));
   // The fresh-session cue used to be the literal '~150k tokens per message' - a number that is only
@@ -2999,7 +3042,14 @@ if (payload.tool_name === 'AskUserQuestion') {
       if (ctxNow > 0 && stale && paysAt('numbers', ctxNow)) numbers = { ctx: ctxNow, floor: coldFloor() };
     }
     // 8. TYPE IT INTO OTHER (OTHER_RE, above).
-    const typeIntoOther = questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => o && OTHER_RE.test(`${o.label || ''} ${o.description || ''}`)));
+    // The question and header too (usage audit 2026-11-03 U11: 'write your own in Other' sat in the question).
+    const otherQ = questions.find((q) => q && (OTHER_RE.test(`${q.question || ''} ${q.header || ''}`)
+      || (Array.isArray(q.options) && q.options.some((o) => o && OTHER_RE.test(`${o.label || ''} ${o.description || ''}`)))));
+    const typeIntoOther = !!otherQ;
+    const pickLabels = (() => {
+      const labels = (otherQ && Array.isArray(otherQ.options) ? otherQ.options : []).map((o) => String((o && o.label) || '').replace(/\s*\(Recommended\)\s*$/i, '').trim()).filter(Boolean);
+      return labels.length >= 2 ? `'${labels[0]}' / '${labels[1]}'` : "'I have them' / 'Someone else owns them' / 'Defer'";
+    })();
     // 9. THE RECOMMENDED MARK (alfred-interaction.md: 'the recommended one marked'). A single-select question with
     // options and none marked '(Recommended)', or more than one, went out in 2 of 11 questions of one session (C26,
     // bda299a8), and the mark goes on the FIRST option (lint check 61's rule for the ask templates). Denied once: a
@@ -3025,15 +3075,23 @@ if (payload.tool_name === 'AskUserQuestion') {
       const marked = q.options.filter((o) => o && /\(Recommended\)/i.test(String(o.label || '')));
       if (!said || marked.length !== 1) return false;
       const want = [...contentWords(said[1])].filter((w) => !STOP_WORDS.has(w));
-      const shares = (o) => { const have = contentWords(`${o.label || ''} ${o.description || ''}`); return want.some((w) => have.has(w)); };
-      return want.length > 0 && !shares(marked[0]) && q.options.some((o) => o && o !== marked[0] && shares(o));
+      // the marked option is read whole; another option by its LABEL alone - a word in its description is no pick
+      // (usage audit 2026-11-03 U05, ce0b76e6: 'checks' in 'Keep it open' - 'for your own checks' denied a right mark)
+      const shares = (o, whole) => { const have = contentWords(whole ? `${o.label || ''} ${o.description || ''}` : `${o.label || ''}`); return want.some((w) => have.has(w)); };
+      return want.length > 0 && !shares(marked[0], true) && q.options.some((o) => o && o !== marked[0] && shares(o, false));
     }).length;
     // 10. A NEW CYCLE IN A FINISHED CYCLE'S CHAT. task-solve: a cycle starting after a finished one in the same session
     // recommends the fresh-session hand-off in its first ask - prose, slipped in bda299a8 (C08, ~2.0M avoidable). A
     // typed prompt after this session's plan was stamped `Completed:`, then an ask with no fresh option and a carry a
     // resume would recover, is that ask.
+    // Only an ask that opens work counts: a flow stop (its `Result:` field) or an option naming a plan,
+    // task-solve, task-design, an approval or a new scope - a plain question after the cycle ('install Node 26 now?') is
+    // no new cycle (usage audit 2026-11-03 U09).
+    const NEW_CYCLE_ASK_RE = /\b(?:plans?|task-solve|task-design|approve|new (?:scope|cycle))\b/i;
+    const opensCycle = questions.some((q) => q && (/\bResult:/.test(String(q.question || ''))
+      || (Array.isArray(q.options) && q.options.some((o) => o && NEW_CYCLE_ASK_RE.test(`${o.label || ''} ${o.description || ''}`)))));
     let newCycle = null;
-    if (!FRESH_OFF && !autoRun && !questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
+    if (opensCycle && !FRESH_OFF && !autoRun && !questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
       const fs2 = flowState();
       if (fs2.flow && fs2.completed !== null && fs2.typedAfter) {
         const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
@@ -3162,7 +3220,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, misMarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove, dropHandoff };
         process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
-          + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
+          + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK (${pickLabels}).` : '')
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
           + (misMarked ? ` Put the mark on the option the question recommends, or reword the question so both say the same pick.` : '')
           + (noReview ? `${noReview.from === 'text' ? '' : ' State the cycle\'s `Size:` on the close - a trivial run has no stop, so a run that stops here is small at least.'} The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')

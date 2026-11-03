@@ -198,3 +198,23 @@ test('full spec: the solve flow states the checklist, runs the check script and 
     }
     assert.match(flat(read('stack/skills/task-solve/SKILL.md')), /`path: merged` you may raise to gated[^.]*never lower\./, 'the model may raise the script\'s verdict to gated, never lower it');
 });
+
+// Usage audit 2026-11-03 U11: 'write your own in Other' in the QUESTION passed the option-only check.
+test('U11: type-into-Other in the question text is denied', () => {
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'u11-'));
+    try {
+        const tp = path.join(dir, 't.jsonl');
+        fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { id: 'a', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: 900 } } }) + '\n');
+        const ask = (q) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-stop-contract.js')], {
+            input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'u11', transcript_path: tp, tool_name: 'AskUserQuestion', tool_input: { questions: [q] } }),
+            encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(dir, 'log-')) },
+        });
+        const opts = [{ label: 'Cache in Redis (Recommended)', description: 'shared across nodes' }, { label: 'Cache in memory', description: 'one node' }];
+        for (const q of [{ question: 'Which cache? Pick one, or write your own in Other.', options: opts }, { question: 'Which cache?', header: 'or via Other', options: opts }]) {
+            const r = ask(q);
+            assert.strictEqual(r.status, 2, `${q.question} / ${q.header || ''}: ${r.stderr}`);
+            assert.match(r.stderr, /'Cache in Redis' \/ 'Cache in memory'/, 'the example names the ask\'s own first two labels');
+        }
+        assert.strictEqual(ask({ question: 'Which cache?', options: opts }).status, 0, 'the same ask without Other passes');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
