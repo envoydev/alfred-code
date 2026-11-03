@@ -134,13 +134,11 @@ test('unattended: a live AUTO waiver of this session is nobody at the terminal (
     fs.rmSync(path.join(flow, 'APPROVAL'), { recursive: true });
     const close = 'T25 done. The next steps wait on T7 and T26.';
     const stop = () => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'auto-s', cwd: root, transcript_path: t.interactive, last_assistant_message: close }, { CLAUDE_PROJECT_DIR: root });
-    const ledger = () => fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'auto-s.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-    // HK-22: at a terminal the close is the stop judge's (a prompt hook on the same Stop) - this hook passes it, one row naming the judge
-    assert.strictEqual(stop().status, 0, 'a person at the terminal: the judge decides');
-    assert.ok(ledger().some((r) => r.mode === 'probe' && r.exempt === 'stop-judge'), 'and the row names it');
+    assert.strictEqual(stop().status, 2, 'a person at the terminal is asked');
     fs.writeFileSync(path.join(flow, 'APPROVAL'), 'AUTO - "take every recommendation"\n');
     assert.strictEqual(stop().status, 0, 'under a live AUTO waiver the close stands');
-    assert.ok(ledger().some((r) => r.mode === 'unattended' && r.kind === 'done-close'), 'and one unattended row records it');
+    const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'auto-s.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.ok(rows.some((r) => r.mode === 'unattended' && r.kind === 'done-close'), 'and one unattended row records it');
     // c6142301: under AUTO a solve-task run asks nothing, so its close is where the three fields are held
     const closeOn = (text, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: `auto-f${++n}`, cwd: root, transcript_path: cycle, last_assistant_message: text, ...extra }, { CLAUDE_PROJECT_DIR: root }).status;
     assert.strictEqual(closeOn('All seven cards are built and verified.'), 2, 'a waived close with no fields is held once');
@@ -162,24 +160,13 @@ test('unattended: a last row longer than the first read window is still read who
 // ---------------------------------------------------------------------------------------------
 test('guard-stop-contract: print mode holds no prose question and no pending close; interactive still does', () =>
 {
-    const ask = 'Both work. Which one should we ship?';
-    const t = transcripts(ask);
-    const stop = (tp, text) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: `pm${++n}`, transcript_path: tp, last_assistant_message: text });
-    assert.strictEqual(stop(t.print, ask).status, 0, `print mode: ${ask}`);
-    assert.strictEqual(stop(t.interactive, ask).status, 2, `terminal: ${ask}`);
-    for (const k of UNREADABLE) assert.strictEqual(stop(t[k], ask).status, 2, `${k} transcript: ${ask}`);
-    // HK-22: the pending close is the stop judge's (a prompt hook, which cannot tell print mode) - this hook holds it
-    // nowhere, and names the judge in one row where a person may be at the terminal
-    const pending = 'The refactor is done. Pushing it is the next step, whenever you are ready.';
-    const p = transcripts(pending);
-    const rows = (sid) => fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-    const printed = stop(p.print, pending);
-    assert.strictEqual(printed.status, 0, `print mode: ${pending}`);
-    assert.deepStrictEqual(rows(`pm${n}`).map((r) => [r.mode, r.kind]), [['unattended', 'done-close']], 'print mode: one unattended row, no judge row');
-    for (const k of ['interactive', ...UNREADABLE])
+    for (const text of ['Both work. Which one should we ship?', 'The refactor is done. Pushing it is the next step, whenever you are ready.'])
     {
-        assert.strictEqual(stop(p[k], pending).status, 0, `${k} transcript: ${pending}`);
-        assert.ok(rows(`pm${n}`).some((r) => r.exempt === 'stop-judge'), `${k} transcript: the row names the judge`);
+        const t = transcripts(text);
+        const stop = (tp) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: text }).status;
+        assert.strictEqual(stop(t.print), 0, `print mode: ${text}`);
+        assert.strictEqual(stop(t.interactive), 2, `terminal: ${text}`);
+        for (const k of UNREADABLE) assert.strictEqual(stop(t[k]), 2, `${k} transcript: ${text}`);
     }
 });
 

@@ -143,19 +143,19 @@ test('the core carries every stack hook inline, its own two first in each event'
 // call ('There's an issue with the selected model (haiku)', a non-blocking error - the judge never ran; measured in a live
 // `claude -p` session 2026-11-03), and a pinned id breaks on a provider whose Haiku carries another id. With none, Claude
 // Code runs its background model - Haiku on every provider (claude-haiku-5-5 on the Anthropic API, measured).
-test('HK-22: the core carries the stop judge as one prompt hook on Stop - the prompt file\'s text, no model alias', () => {
+test('HK-22: the stop judge is HELD - its prompt row is validated and left unwired, the regex done check decides', () => {
+    // The user's ruling of 2026-11-03 ('hold judge, keep regex'): a prompt hook runs no stack prelude, so it would judge
+    // every repo the plugin is enabled in. The row stays, held, so the day it ships is one key.
     const core = coreEntry();
-    const prompts = Object.entries(core.hooks).flatMap(([event, groups]) => groups.flatMap((g) => g.hooks
-        .filter((h) => h.type === 'prompt').map((h) => ({ event, matcher: g.matcher, ...h }))));
+    const prompts = Object.values(core.hooks).flat().flatMap((g) => g.hooks).filter((h) => h.type === 'prompt');
+    assert.deepStrictEqual(prompts, [], 'no prompt hook rides the core while the judge is held');
     const text = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'stop-judge-prompt.txt'), 'utf8').trim();
-    assert.deepStrictEqual(prompts, [{ event: 'Stop', matcher: undefined, type: 'prompt', prompt: text, timeout: 30 }]);
-    assert.match(text, /\$ARGUMENTS/, 'the hook input lands where the prompt says');
-    assert.match(text, /If `stop_hook_active` is true, answer \{"ok": true\}/, 'a turn already sent back is released - no loop');
+    assert.match(text, /\$ARGUMENTS/, 'the parked prompt still carries the hook input placeholder');
     const stopContract = core.hooks.Stop.flatMap((g) => g.hooks).filter((h) => /guard-stop-contract\.js/.test(h.command || ''));
     assert.strictEqual(stopContract.length, 1, 'the stop contract\'s command hook is wired once');
     const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks.filter((r) => r.type === 'prompt');
-    assert.deepStrictEqual(raw.map((r) => [r.file, r.matcher, r.active]), [['guard-stop-contract.js', '@Stop', false]],
-        'one prompt row, parked (active: false) so the copy route - command hooks only - never wires it twice');
+    assert.deepStrictEqual(raw.map((r) => [r.file, r.matcher, r.active, r.held]), [['guard-stop-contract.js', '@Stop', false, true]],
+        'one prompt row, parked for the copy route and held for the plugin route');
 });
 
 test('HK-22: a prompt row that cannot ship fails the generator loudly', () => {
@@ -174,6 +174,12 @@ test('HK-22: a prompt row that cannot ship fails the generator loudly', () => {
     assert.deepStrictEqual(parseHookWirings(ok).filter((w) => w.type === 'prompt'),
         [{ type: 'prompt', file: 'guard-stop-contract.js', event: 'Stop', prompt: 'Judge $ARGUMENTS', timeout: 30 }]);
     fs.rmSync(ok, { recursive: true, force: true });
+    const held = fixture({ held: true });
+    assert.deepStrictEqual(parseHookWirings(held).filter((w) => w.type === 'prompt'), [], 'a held row wires nothing');
+    fs.rmSync(held, { recursive: true, force: true });
+    const heldBad = fixture({ held: true, model: 'haiku' });
+    assert.throws(() => parseHookWirings(heldBad), /alias 'haiku'/, 'a held row is still validated');
+    fs.rmSync(heldBad, { recursive: true, force: true });
     const pinned = fixture({ model: 'claude-haiku-5-5' });
     assert.strictEqual(parseHookWirings(pinned).find((w) => w.type === 'prompt').model, 'claude-haiku-5-5', 'a full model id passes through');
     fs.rmSync(pinned, { recursive: true, force: true });

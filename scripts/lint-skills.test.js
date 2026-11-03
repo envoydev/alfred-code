@@ -794,11 +794,14 @@ test('check 48: a prompt hook needs a timeout and $ARGUMENTS, no model alias, an
     assert.ok(lintPromptHook({ ...good, timeout: undefined }, 'Stop').some((f) => /no timeout/.test(f)));
     assert.ok(lintPromptHook({ ...good, prompt: 'Judge the close.' }, 'Stop').some((f) => /\$ARGUMENTS/.test(f)));
     assert.ok(lintPromptHook(good, 'SessionStart').some((f) => /SessionStart takes no prompt hook/.test(f)));
+    // The judge is HELD (the user's ruling of 2026-11-03): the live core carries no prompt hook, and one added to the
+    // entry by hand while the row is held is a stale entry.
     const drifted = liveMarketplace();
-    const judge = drifted.plugins.find((p) => p.name === 'alfred-code').hooks.Stop.flatMap((g) => g.hooks).find((h) => h.type === 'prompt');
-    assert.ok(judge, 'the live core carries the stop judge');
-    judge.prompt = judge.prompt.replace('Hold the close', 'Block the close');
-    assert.ok(lintHooksEntry(drifted).some((f) => /core entry's hooks are STALE/.test(f)), 'a prompt edited in the entry and not the file is caught');
+    const stop = drifted.plugins.find((p) => p.name === 'alfred-code').hooks.Stop;
+    assert.ok(!stop.flatMap((g) => g.hooks).some((h) => h.type === 'prompt'), 'the live core carries no prompt hook while the judge is held');
+    const text = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'stack', 'hooks', 'stop-judge-prompt.txt'), 'utf8').trim();
+    stop[0].hooks.push({ type: 'prompt', prompt: text, timeout: 30 });
+    assert.ok(lintHooksEntry(drifted).some((f) => /core entry's hooks are STALE/.test(f)), 'a prompt hook wired by hand while its row is held is caught');
 });
 
 test('check 49: the live file is clean, and a stale RETIRED alias, a renames key or a hooks entry fail', () => {

@@ -273,7 +273,9 @@ function parseHookWirings(sourceDir)
         if (args) wiring.args = args.split(/\s+/);
         out.push(wiring);
     }
-    for (const row of raw.filter(isPrompt)) out.push(promptWiring(row, dir));
+    // A HELD prompt row (`held: true`) is validated and left unwired: the stop judge waits behind the regex done check,
+    // the user's ruling of 2026-11-03 ('hold judge, keep regex') - its file and this route stay for the day it ships.
+    for (const row of raw.filter(isPrompt)) { const w = promptWiring(row, dir); if (row.held !== true) out.push(w); }
     if (!out.length) throw new Error('build-marketplace: the manifest hooks[] parsed to nothing');
     return out;
 }
