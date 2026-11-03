@@ -894,6 +894,9 @@ function isTypedTurn(o) {
 // 'Resume in a fresh session', and after 'Implement' the phase Skill call was denied with the same question. The
 // choice is made either way - 'Continue here' included. A Stop hook's own feedback row is no typed prompt. Fail-open.
 const FRESH_ASK_RE = /(?:fresh session|new session|fresh chat)/i;
+// An AskUserQuestion input that puts the fresh-session choice - the one test every reader of an answered choice makes,
+// the idle ask route's too (review fix pass, run B, M4).
+const isFreshAsk = (input) => FRESH_ASK_RE.test(JSON.stringify(input || {}));
 // Both answer wordings: a picked option, and a free-text one ('The user answered:' - 7 of 12 answers in audit
 // 2026-10-10 session 4f1c2ebb, whose 4-second acknowledgement the Stop branch then blocked).
 const ANSWERED_RE = /^\s*(?:Your questions have been answered:|The user answered:)/;
@@ -923,7 +926,7 @@ function freshAskAnsweredThisTurn() {
       }
       if (o.type !== 'assistant' || !Array.isArray(c)) continue;
       for (const b of c) {
-        if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {}))) return true;
+        if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && isFreshAsk(b.input)) return true;
       }
     }
     return false;
@@ -960,7 +963,9 @@ function freshAskAnswered() {
     const answered = new Map();
     for (let i = rows.length - 1; i >= 0; i--) {
       const line = buf.toString('utf8', rows[i][0], rows[i][1]);
-      if (!line.trim()) continue;
+      // only an answer row or an ask row can matter: the idle prompt route reads this at every prompt past the wait
+      // (review fix pass, run B, M4), so no other row is parsed
+      if (!line.includes('tool_result') && !line.includes('AskUserQuestion')) continue;
       let o;
       try { o = JSON.parse(line); } catch { continue; }
       if (!o || !o.message || !Array.isArray(o.message.content)) continue;
@@ -972,7 +977,7 @@ function freshAskAnswered() {
         continue;
       }
       if (o.type !== 'assistant') continue;
-      const hit = c.find((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {})));
+      const hit = c.find((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && isFreshAsk(b.input));
       if (!hit) continue;
       const u = o.message.usage || {};
       return { ctx: (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0), at: answered.get(hit.id) };
@@ -1018,6 +1023,6 @@ module.exports = {
   AFTER_HOURS_FOLLOW, CACHE_LIFE_MS, IDLE_WAIT_FALLBACK_MS, afterHoursOf, CACHE_LIFE_READERS, hostOf, cacheLifeOf, idleWait, gapText,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   truePoints, compactionFacts, idleCompaction, settleCompactPoints, readWindow,
-  transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, freshAskAnswered, askAnsweredSince,
+  transcriptSize, isTypedTurn, FRESH_ASK_RE, isFreshAsk, freshAskAnsweredThisTurn, freshAskAnsweredCtx, freshAskAnswered, askAnsweredSince,
   REOFFER_GROWTH, stopOfferFile, stopOfferCtx,
 };

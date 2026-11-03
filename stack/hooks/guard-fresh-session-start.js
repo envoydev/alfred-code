@@ -173,13 +173,16 @@ function compactHoldFile() {
 // answered 05:57); the first call after it re-cached ~170k and 52 messages ran at 198-244k. So a changing call whose
 // newest answered AskUserQuestion waited the idle wait or more leaves the idle route's hold, once per ask (a marker naming
 // its tool_use id). The wait is the cache life the ask's own reply wrote (fresh-session.js idleWait, usage audit 2026-11-03
-// U16 - 5m, 1h, else one hour), unless `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` names an hour count. The common case pays
+// U16 - 5m, 1h, else one hour), unless `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` names an hour count. A fresh-session ask
+// is the choice itself, never a new slow ask (review fix pass, run B, M4: with the 5-minute wait, a 'Continue here' given
+// after the wait re-armed the hold it had just answered, and the next change was denied at once). The common case pays
 // one 256KB tail read and a substring test; the engine loads only once an answered ask is found.
+function engineOf() {
+  try { return require(nodePath.join(__dirname, 'fresh-session.js')); } catch { return null; }   // no engine beside this hook: every offer is off anyway
+}
 function idleWaitOf(usage) {
-  try {
-    const eng = require(nodePath.join(__dirname, 'fresh-session.js'));
-    return eng.idleWait(usage, process.env, eng.hostOf(payload));
-  } catch { return null; }   // no engine beside this hook: every offer is off anyway
+  const eng = engineOf();
+  try { return eng ? eng.idleWait(usage, process.env, eng.hostOf(payload)) : null; } catch { return null; }
 }
 function askGapArm() {
   try {
@@ -201,7 +204,7 @@ function askGapArm() {
           const o = JSON.parse(line);
           const use = o.type === 'assistant' && !o.isSidechain && Array.isArray(o.message && o.message.content)
             && o.message.content.find((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion');
-          if (use) { ask = { id: String(use.id || ''), at: Date.parse(o.timestamp || ''), usage: o.message.usage || null }; answeredAt = NaN; }
+          if (use) { ask = { id: String(use.id || ''), at: Date.parse(o.timestamp || ''), usage: o.message.usage || null, input: use.input }; answeredAt = NaN; }
         } catch { /* the window's cut first line */ }
       } else if (ask && ask.id && line.includes('"tool_result"') && line.includes(ask.id)) {
         try {
@@ -212,6 +215,8 @@ function askGapArm() {
       }
     }
     if (!ask || !ask.id || !Number.isFinite(ask.at) || !Number.isFinite(answeredAt)) return null;
+    const eng = engineOf();
+    if (eng && typeof eng.isFreshAsk === 'function' && eng.isFreshAsk(ask.input)) return null;
     const gapMs = answeredAt - ask.at;
     const wait = idleWaitOf(ask.usage);
     if (!wait || !(wait.ms > 0) || gapMs < wait.ms) return null;
@@ -405,8 +410,17 @@ function compactHold() {
   );
   process.exit(2);
 }
-// The ask-gap arm, decided once per ask: offers on, someone at the terminal and a resume worth it leave the idle hold (a
-// standing hold is kept); either way the marker is written, so the next call does not re-read the ask.
+// THE RE-OFFER STEP on both idle routes (review fix pass, run B, M4): the newest fresh-session ask answered in any turn -
+// 'Continue here' included - is the last offer, so neither the prompt route nor the ask route speaks again until the
+// carry has grown fresh-session.js REOFFER_GROWTH past that ask's carry, as the Stop and tick routes wait. With the
+// 5-minute wait (U16) every gap of 5 minutes on a paying carry re-offered, a decline just made included.
+function grownSinceAnswer(ctx) {
+  const since = typeof fresh.freshAskAnsweredCtx === 'function' ? fresh.freshAskAnsweredCtx() : 0;
+  return !(since && ctx < since * (Number(fresh.REOFFER_GROWTH) || 1.5));
+}
+// The ask-gap arm, decided once per ask: offers on, the carry grown past the last answered choice, someone at the
+// terminal and a resume worth it leave the idle hold (a standing hold is kept); either way the marker is written, so the
+// next call does not re-read the ask.
 function armAskGap() {
   try { fs.writeFileSync(ASK_GAP.marker, ASK_GAP.id); } catch { /* a lost marker re-judges the same ask, still once per hold */ }
   if (FRESH_OFF) return;
@@ -414,7 +428,7 @@ function armAskGap() {
   const u = (last && last.usage) || {};
   const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
   const detail = { gapH: ASK_GAP.gapH, ctx, floor: fresh.coldFloor(), via: 'ask-answer', wait: ASK_GAP.wait.from, waitMin: Math.round(ASK_GAP.wait.ms / 60000) };
-  if (!(ctx > 0) || !paysAt('ask-gap', ctx)) return;
+  if (!(ctx > 0) || !grownSinceAnswer(ctx) || !paysAt('ask-gap', ctx)) return;
   if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail }); return; }
   try {
     if (fs.existsSync(compactHoldFile())) return;
@@ -513,7 +527,8 @@ if (IS_HOLD_CALL && !IS_SKILL_CALL) {
 // THE IDLE-GAP ROUTE (audit 2026-10-10 C09, ca65b406): a next-day prompt after 19h02m idle re-cached 262.7k and ran 14
 // messages at 289.9k with no fresh-session offer - the clock route lives only in the stop contract's AskUserQuestion
 // note, and that resume asked nothing. So the prompt that ENDS an idle gap past the wait since the last reply injects the
-// offer, once per gap, when a resume pays back with the cache warm (the engine's verdict) - this message re-writes the
+// offer, once per gap, when a resume pays back with the cache warm (the engine's verdict) and the carry has grown the
+// re-offer step past the newest answered fresh-session ask (grownSinceAnswer, M4) - this message re-writes the
 // context either way, so the choice is priced as from now. The wait is the cache life that last reply wrote (fresh-session.js
 // idleWait, usage audit 2026-11-03 U16: 5m or 1h, else one hour), unless `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` names
 // an hour count (`0` off) - the knob seeded 2 waited past the cache on every route. A harness notice is no return, a seat
@@ -559,7 +574,7 @@ function idleGapOffer() {
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-idle-${key}.offered`);
   try { if (fs.readFileSync(marker, 'utf8').trim() === String(last.at)) return; } catch { /* not offered for this gap */ }
-  if (!paysAt('idle-gap', ctx)) return;
+  if (!grownSinceAnswer(ctx) || !paysAt('idle-gap', ctx)) return;
   const floor = fresh.coldFloor();
   const detail = { gapH: Math.round(gapH * 10) / 10, ctx, floor, wait: wait.from, waitMin: Math.round(wait.ms / 60000) };
   if (unattended(payload)) {
