@@ -478,9 +478,10 @@ test('compact-state: the prompt ending an idle gap past the clock hours is offer
     const ledger = fs.readdirSync(log, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).map((f) => fs.readFileSync(path.join(log, String(f)), 'utf8')).join('')
         + (fs.existsSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks')) ? fs.readdirSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks')).map((f) => fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', f), 'utf8')).join('') : '');
     assert.match(ledger, /"kind":"idle-gap-offer"/, 'one probe row records it');
+    // an explicit hour count overrides the cache life (usage audit 2026-11-03 U16); these rows wrote no split
     const q = project();
-    assert.strictEqual(prompt(q, q.transcript(rows(1.9))).stdout, '', 'under the 2h knob: no offer');
-    assert.match(prompt(q, q.transcript(rows(2.1))).stdout, /sat idle 2\.1h/, 'over it: the offer');
+    assert.strictEqual(prompt(q, q.transcript(rows(1.9)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).stdout, '', 'under an explicit 2h: no offer');
+    assert.match(prompt(q, q.transcript(rows(2.1)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).stdout, /sat idle 2\.1h/, 'over it: the offer');
     const off = project();
     assert.strictEqual(prompt(off, off.transcript(rows(19)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).stdout, '', '0 switches the route off');
     const w = project();
@@ -579,14 +580,323 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
         content: 'Your questions have been answered: "Fresh?"="Continue here"' }] } }) + '\n');
     assert.strictEqual(s.edit().status, 0, 'the fresh-session ask answered releases it');
     assert.strictEqual(s.edit().status, 0, 'and the same long ask never arms it twice');
-    assert.strictEqual(setup(1.9).edit().status, 0, 'under the 2h knob: no hold');
-    assert.strictEqual(setup(2.1).edit().status, 2, 'over it: held');
+    assert.strictEqual(setup(1.9, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).edit().status, 0, 'under an explicit 2h: no hold');
+    assert.strictEqual(setup(2.1, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).edit().status, 2, 'over it: held');
     assert.strictEqual(setup(4.8, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).edit().status, 0, '0 switches it off');
     assert.strictEqual(setup(4.8, { ALFRED_CODE_UNATTENDED: '1' }).edit().status, 0, 'nobody at the terminal: no hold');
     assert.strictEqual(setup(4.8, {}, 100000).edit().status, 0, 'a carry mostly the cold floor: no hold');
     const seat = setup(4.8);
     assert.strictEqual(seat.p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: seat.tp, agent_id: 'seat-1' },
         { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'askgap-')) }).status, 0, 'a seat is never held');
+});
+
+// Usage audit 2026-11-03 U16: the idle offer waited the knob's seeded 2h, past the cache life on every route - a
+// subscription's main conversation caches for 1h, an API key's for 5m (code.claude.com/docs/en/prompt-caching) - so the
+// gap's first message had paid the cold re-write long before anyone was asked. The wait now follows the cache life the
+// last main-conversation reply wrote; no split is the fallback, one hour; an explicit hour count still overrides.
+test('compact-state: the idle wait follows the cache life the last reply wrote (usage audit 2026-11-03 U16)', () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+    const life = (ttl, carry = 289900) => ({ cache_read_input_tokens: carry, cache_creation_input_tokens: 400,
+        ...(ttl ? { cache_creation: { ephemeral_1h_input_tokens: ttl === '1h' ? 400 : 0, ephemeral_5m_input_tokens: ttl === '5m' ? 400 : 0 } } : {}) });
+    const reply = (gapMin, ttl, extra = []) => [{ ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(gapMin + 30) },
+        { ...usageRow('l', life(ttl)), timestamp: ago(gapMin) }, ...extra];
+    const offered = (rows, more = {}) =>
+    {
+        const p = project();
+        const r = p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next card', transcript_path: p.transcript(rows) },
+            { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'wait-')), ...more });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return r.stdout ? startText(r) : '';
+    };
+    assert.strictEqual(offered(reply(4, '5m')), '', '5m cache, 4 minutes idle: still warm, no offer');
+    assert.match(offered(reply(6, '5m')), /sat idle 6 min since its last reply/, '5m cache, 6 minutes idle: the offer');
+    assert.strictEqual(offered(reply(59, '1h')), '', '1h cache, 59 minutes: no offer');
+    assert.match(offered(reply(61, '1h')), /sat idle 1\.0h since its last reply/, '1h cache, 61 minutes: the offer');
+    assert.strictEqual(offered(reply(54, null)), '', 'no split: the one-hour fallback - 54 minutes, no offer');
+    assert.match(offered(reply(66, null)), /sat idle 1\.1h/, 'no split: 66 minutes, the offer');
+    const zero = [{ ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(90) },
+        { ...usageRow('l', { cache_read_input_tokens: 289900, cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 } }), timestamp: ago(30) }];
+    assert.strictEqual(offered(zero), '', 'both splits zero: the fallback - 30 minutes, no offer');
+    assert.strictEqual(offered(reply(114, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }), '', 'an explicit 2 overrides a 5m cache: 1.9h, no offer');
+    assert.match(offered(reply(126, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }), /sat idle 2\.1h/, 'and 2.1h offers');
+    assert.strictEqual(offered(reply(600, '1h'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }), '', '0 is still off');
+    assert.match(offered(reply(6, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'garbage' }), /sat idle 6 min/, 'a garbage value follows the cache');
+    assert.match(offered(reply(6, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'cache' }), /sat idle 6 min/, 'the seed word follows it too');
+    // a seat's row in the main transcript is no main-conversation reply: its 1-minute-old row neither resets the gap
+    // nor sets the life
+    const seatRow = { ...usageRow('s', life('1h')), isSidechain: true, timestamp: ago(1) };
+    assert.match(offered(reply(6, '5m', [seatRow])), /sat idle 6 min/, 'a sidechain row is skipped');
+    // garbage lines among the rows are skipped, never thrown on
+    const p = project();
+    const tp = path.join(p.root, 'transcript.jsonl');
+    fs.writeFileSync(tp, ['{"cut', JSON.stringify(reply(6, '5m')[0]), 'not json', JSON.stringify(reply(6, '5m')[1]), '[1,2]', 'null'].join('\n') + '\n');
+    const g = p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next card', transcript_path: tp }, { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'wait-')) });
+    assert.match(startText(g), /sat idle 6 min/, 'garbage lines are skipped');
+    const ledger = fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8');
+    assert.match(ledger, /"kind":"idle-gap-offer"[^\n]*"wait":"cache"[^\n]*"waitMin":5/, 'the probe row says which wait it took');
+
+    // the ask-gap arm waits the life the ask's own reply wrote
+    const askRows = (gapMin, ttl) => [
+        { ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(gapMin + 60) },
+        { type: 'assistant', timestamp: ago(gapMin + 1), message: { id: 'q', model: 'claude-opus-5-5', usage: life(ttl),
+            content: [{ type: 'tool_use', id: 'toolu_ask1', name: 'AskUserQuestion', input: { questions: [{ question: 'Push now?' }] } }] } },
+        { type: 'user', timestamp: ago(1), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_ask1',
+            content: 'Your questions have been answered: "Push now?"="Push (Recommended)"' }] } },
+    ];
+    const edit = (rows, more = {}) =>
+    {
+        const q = project();
+        const tq = q.transcript(rows);
+        return q.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(q.root, 'a.txt'), old_string: 'a', new_string: 'b' }, transcript_path: tq },
+            { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'wait-ask-')), ...more }, FILES);
+    };
+    assert.strictEqual(edit(askRows(4, '5m')).status, 0, 'a 5m ask answered in 4 minutes: no hold');
+    const held = edit(askRows(6, '5m'));
+    assert.strictEqual(held.status, 2, 'answered in 6 minutes: held');
+    assert.match(held.stderr.replace(/\s+/g, ' '), /last ask waited 6 min for its answer/);
+    assert.strictEqual(edit(askRows(59, '1h')).status, 0, 'a 1h ask answered in 59 minutes: no hold');
+    assert.strictEqual(edit(askRows(61, '1h')).status, 2, 'in 61 minutes: held');
+    assert.strictEqual(edit(askRows(54, null)).status, 0, 'no split: the one-hour fallback');
+    assert.strictEqual(edit(askRows(66, null)).status, 2, 'past it: held');
+    assert.strictEqual(edit(askRows(6, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).status, 0, 'an explicit 2 overrides the cache');
+    assert.strictEqual(edit(askRows(600, '1h'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).status, 0, '0 is off');
+    // Claude Code's idle compaction (the one-hour cache only) between the ask and its answer: the context past it is unknown, no hold
+    const compacted = askRows(66, '1h');
+    compacted.splice(2, 0, { ...boundary('auto', 290000), timestamp: ago(5) });
+    assert.strictEqual(edit(compacted).status, 0, 'an idle compaction inside the gap leaves no hold');
+});
+
+// Review fix pass, run B (M4): since U16 the idle wait follows the cache - 5 minutes on an API key - and the two idle
+// routes kept no decline. A fresh-session ask answered 'Continue here' past the wait read as a NEW slow ask: the next
+// changing call armed the hold again and was denied at once, and the next prompt past the wait offered again, at the
+// carry the user had just declined. Now a fresh-session ask never arms the ask route, and both idle routes wait for the
+// carry to grow REOFFER_GROWTH (1.5x) past the newest answered fresh-session ask, as the Stop and tick routes do.
+test('compact-state: a declined fresh-session ask is not re-offered by the idle routes until the carry grows 1.5x (review fix M4)', () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const SHELL = path.join(HOOKS, 'shell-guards.js');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+    const life5m = (carry) => ({ cache_read_input_tokens: carry, cache_creation_input_tokens: 400,
+        cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 400 } });
+    const floorRow = () => ({ ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(240) });
+    const reply = (id, carry, min) => ({ ...usageRow(id, life5m(carry)), timestamp: ago(min) });
+    const FRESH = { questions: [{ question: 'This session carries ~290k tokens per message. Resume in a fresh session, or continue here?', header: 'Session',
+        multiSelect: false, options: [{ label: 'Resume in a fresh session (Recommended)', description: 'restarts at ~78k' }, { label: 'Continue here', description: 'keeps the carry' }] }] };
+    const PUSH = { questions: [{ question: 'Push now?', header: 'Push', multiSelect: false, options: [{ label: 'Push (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }] };
+    const ask = (id, input, carry, min) => ({ type: 'assistant', timestamp: ago(min), message: { id: `m-${id}`, model: 'claude-opus-5-5', usage: life5m(carry),
+        content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input }] } });
+    const answer = (id, pick, min) => ({ type: 'user', timestamp: ago(min), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id,
+        content: `Your questions have been answered: ${pick}` }] } });
+    const declined = (carry = 290000) => [floorRow(), reply('r0', carry - 1000, 40), ask('toolu_fresh1', FRESH, carry, 30), answer('toolu_fresh1', '"Resume?"="Continue here"', 23)];
+    const world = (rows, more = {}) =>
+    {
+        const p = project();
+        const tp = p.transcript(rows);
+        const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'decline-')), ...more };
+        const via = (hook, tool, input) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp }, env, hook);
+        const edit = () => via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' });
+        const prompt = () => { const r = p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next card', transcript_path: tp }, env); assert.strictEqual(r.status, 0, r.stderr); return r.stdout ? startText(r) : ''; };
+        const add = (...more) => fs.appendFileSync(tp, more.map((r) => JSON.stringify(r)).join('\n') + '\n');
+        const ledger = () => { try { return fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8'); } catch { return ''; } };
+        return { p, tp, env, via, edit, prompt, add, ledger, hold: holdOf({ tmpdir: env.ALFRED_CODE_HOOK_LOG_DIR }, tp) };
+    };
+
+    // THE DECLINE LOOP: the fresh-session ask, answered 'Continue here' 7 minutes on (past the 5-minute wait), is no new
+    // slow ask - the next change goes through and no hold is left.
+    const d = world(declined());
+    assert.strictEqual(d.edit().status, 0, 'the change after a slow decline is not held');
+    assert.ok(!fs.existsSync(d.hold), 'no hold was armed');
+    assert.strictEqual(d.edit().status, 0, 'nor on the call after it');
+    assert.doesNotMatch(d.ledger(), /"kind":"idle-gap-offer"/, 'no ask-route offer row');
+    // the next prompt past the 5-minute wait, at about the carry just declined: no offer
+    d.add(reply('r1', 291000, 7));
+    assert.strictEqual(d.prompt(), '', 'a 7-minute gap at the declined carry is not offered again');
+    // the same gap with no decline before it IS offered - the 5-minute cache's own wait, unchanged
+    const plain = world([floorRow(), reply('r1', 291000, 7)]);
+    assert.match(plain.prompt(), /sat idle 7 min since its last reply/, 'no decline: the 5-minute wait offers');
+
+    // The reviewer's chain: a slow ordinary ask arms the hold, the model puts the fresh-session choice, the user takes
+    // longer than the wait to decline it - the change after it passes, and every call after that too.
+    const c = world([floorRow(), reply('r0', 289000, 40), ask('toolu_push', PUSH, 290000, 30), answer('toolu_push', '"Push now?"="Push (Recommended)"', 23)]);
+    assert.strictEqual(c.edit().status, 2, 'the slow ordinary ask holds the first change');
+    c.add(ask('toolu_fresh1', FRESH, 290500, 22), answer('toolu_fresh1', '"Resume?"="Continue here"', 15));
+    assert.strictEqual(c.edit().status, 0, 'the declined choice releases it');
+    assert.strictEqual(c.edit().status, 0, 'and no new hold comes from the slow decline');
+    assert.strictEqual(c.via(SHELL, 'Bash', { command: 'echo y > b.txt' }).status, 0, 'a writing shell call passes too');
+    assert.ok(!fs.existsSync(c.hold), 'no hold left standing');
+
+    // GROWTH: a later slow ordinary ask under 1.5x the declined carry arms nothing; past it, one hold.
+    const under = world([...declined(), reply('r1', 400000, 12), ask('toolu_push', PUSH, 420000, 10), answer('toolu_push', '"Push now?"="Hold"', 3)]);
+    assert.strictEqual(under.edit().status, 0, '420k is under 1.5x the 290k declined: no hold');
+    assert.doesNotMatch(under.ledger(), /"kind":"idle-gap-offer"/);
+    const over = world([...declined(), reply('r1', 430000, 12), ask('toolu_push', PUSH, 440000, 10), answer('toolu_push', '"Push now?"="Hold"', 3)]);
+    const held = over.edit();
+    assert.strictEqual(held.status, 2, '440k is past 1.5x the 290k declined: held');
+    assert.match(held.stderr.replace(/\s+/g, ' '), /last ask waited 7 min for its answer/);
+    assert.match(over.ledger(), /"kind":"idle-gap-offer"[^\n]*"via":"ask-answer"/, 'one offer row');
+    over.add(answer('toolu_x', '"Fresh?"="Continue here"', 1));
+    assert.strictEqual(over.edit().status, 0, 'an answer releases it');
+    assert.strictEqual(over.edit().status, 0, 'and the same ask never arms it twice');
+    // the exact step: each usage row carries 400 written tokens beside its read, so the declined carry is 290,400 and the
+    // step 435,600 - one under is no hold, at it is held
+    const at = (ctx) => world([...declined(), reply('r1', ctx - 1400, 12), ask('toolu_push', PUSH, ctx - 400, 10), answer('toolu_push', '"Push now?"="Hold"', 3)]).edit().status;
+    assert.strictEqual(at(435599), 0, 'one under the step: no hold');
+    assert.strictEqual(at(435600), 2, 'at the step: held');
+    // the prompt route: under 1.5x no offer, past it one offer, once per gap
+    const pu = world([...declined(), reply('r1', 420000, 7)]);
+    assert.strictEqual(pu.prompt(), '', '420k at the prompt: no offer');
+    assert.ok(!fs.existsSync(pu.hold), 'and no hold');
+    const po = world([...declined(), reply('r1', 440000, 7)]);
+    const offer = po.prompt();
+    assert.match(offer, /sat idle 7 min since its last reply/, '440k at the prompt: the offer');
+    assert.match(offer, /This session carries ~440k tokens per message/);
+    assert.strictEqual(po.prompt(), '', 'once per gap');
+    assert.ok(fs.existsSync(po.hold), 'the offer leaves the idle hold');
+    // a second decline, at 441k, moves the step to the newest answer: 600k waits, 670k is offered
+    const twice = (carry) => [floorRow(), reply('r0', 289000, 120), ask('toolu_fresh1', FRESH, 290000, 110), answer('toolu_fresh1', '"Resume?"="Continue here"', 103),
+        reply('r1', 440000, 60), ask('toolu_fresh2', FRESH, 441000, 50), answer('toolu_fresh2', '"Resume?"="Continue here"', 43), reply('r2', carry, 7)];
+    assert.strictEqual(world(twice(600000)).prompt(), '', '600k is under 1.5x the 441k declined second: no offer');
+    assert.match(world(twice(670000)).prompt(), /~670k tokens per message/, '670k is past it: the offer');
+
+    // A fresh-session ask answered past the wait arms nothing even with no earlier decline - the user just chose.
+    const first = world([floorRow(), reply('r0', 289000, 40), ask('toolu_fresh1', FRESH, 290000, 30), answer('toolu_fresh1', '"Resume?"="Continue here"', 23)]);
+    assert.strictEqual(first.edit().status, 0, 'a slow fresh-session answer is no slow ask');
+
+    // UNATTENDED, unchanged: a slow ordinary ask with no decline writes the unattended row and holds nothing; a prompt past
+    // the wait injects nothing and writes its row.
+    const u = world([floorRow(), reply('r0', 289000, 40), ask('toolu_push', PUSH, 290000, 30), answer('toolu_push', '"Push now?"="Push (Recommended)"', 23)], { ALFRED_CODE_UNATTENDED: '1' });
+    assert.strictEqual(u.edit().status, 0, 'nobody at the terminal: no hold');
+    assert.match(u.ledger(), /"mode":"unattended"[^\n]*"kind":"idle-gap-offer"/, 'the unattended row is written');
+    const up = world([floorRow(), reply('r1', 291000, 7)], { ALFRED_CODE_UNATTENDED: '1' });
+    assert.strictEqual(up.prompt(), '', 'nobody at the terminal: no injection');
+    assert.match(up.ledger(), /"mode":"unattended"[^\n]*"kind":"idle-gap-offer"/);
+});
+
+// Usage audit 2026-11-03 U13: past the trigger, the fresh-session offer waited for a Stop - and a build that ticks its plan
+// card by card emits none between tasks, so the next task ran at the full carry. A tick past the trigger now arms the
+// hold, and the next task's first change is the one put to the user; the plan's Resume line is the cursor.
+test('compact-state: a plan task ticked DONE past the trigger holds the next task\'s first change (usage audit 2026-11-03 U13)', () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const SHELL = path.join(HOOKS, 'shell-guards.js');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const plan = (statuses, resume = 'next task 2') => ['# Export - plan', '', 'Asked: "export the rows"', `Resume: ${resume}`, '', '## Tasks', '',
+        ...statuses.flatMap((s, i) => [`### Task ${i + 1} - slice ${i + 1}`, '', `- status: ${s}`, '- estimate: 10m', ''])].join('\n');
+    const DONE = '- status: DONE (`npm test` - 12 passed)';
+    const setup = ({ statuses = ['IN_PROGRESS', 'TODO', 'TODO'], carry = 450000, floor = 40000, env: more = {}, head = [], mid = [] } = {}) =>
+    {
+        const p = project();
+        const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'tick-')), ...more };
+        const tp = p.transcript([...head, usageRow('f', { cache_creation_input_tokens: floor }), ...mid, usageRow('a', { cache_read_input_tokens: carry })]);
+        const file = path.join(p.root, '.alfred', 'docs', 'work', 'plans', 'export.md');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, plan(statuses));
+        const via = (hook, tool, input, extra = {}) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp, ...extra }, env, hook);
+        // the tick as a build writes it: judged at PreToolUse, then the edit lands
+        const tick = (old = '- status: IN_PROGRESS', next = DONE, extra = {}) =>
+        {
+            const r = via(FILES, 'Edit', { file_path: file, old_string: old, new_string: next }, extra);
+            if (r.status === 0) fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(old, next));
+            return r;
+        };
+        const edit = () => via(FILES, 'Edit', { file_path: path.join(p.root, 'src.js'), old_string: 'a', new_string: 'b' });
+        const ledger = () => { try { return fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8'); } catch { return ''; } };
+        const stopFile = path.join(env.ALFRED_CODE_HOOK_LOG_DIR, `guard-stop-fresh-${tp.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.blocked`);
+        return { p, tp, env, file, via, tick, edit, ledger, stopFile };
+    };
+    const answered = (id, q = 'Fresh?') => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: `Your questions have been answered: "${q}"="Continue here"` }] } });
+
+    const s = setup();
+    assert.strictEqual(s.tick().status, 0, 'the tick itself is never held');
+    assert.strictEqual(s.via(FILES, 'Edit', { file_path: s.file, old_string: 'Resume: next task 2', new_string: 'Resume: next task 2 - nothing mid-task' }).status, 0,
+        "the plan's own edits pass - the Resume line, the Decisions ledger");
+    fs.writeFileSync(s.file, fs.readFileSync(s.file, 'utf8').replace('Resume: next task 2', 'Resume: next task 2 - nothing mid-task'));
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0, 'a reading shell call passes');
+    assert.strictEqual(s.via(FILES, 'Read', { file_path: s.file }).status, 0, 'a read passes');
+    const held = s.edit();
+    assert.strictEqual(held.status, 2, "the next task's first change is held");
+    const said = held.stderr.replace(/\s+/g, ' ');
+    assert.match(said, /plan task 'Task 1 - slice 1' was just ticked DONE in \.alfred\/docs\/work\/plans\/export\.md/);
+    assert.match(said, /\(now: 'next task 2 - nothing mid-task'\)/, 'the Resume line as it stands at the denial');
+    assert.match(said, /~450k tokens per message/);
+    assert.match(said, /A fresh session restarts at ~40k/);
+    assert.match(said, /'Resume in a fresh session \(Recommended\)'/);
+    assert.match(said, /single short step: <what>/);
+    assert.match(s.ledger(), /"kind":"tick-offer"/, 'one probe row records the arm');
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > src.js' }).status, 2, 'a writing shell call is a change too');
+    assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
+    assert.match(s.ledger(), /"kind":"tick-hold"[^\n]*"outcome":"denied-twice"/);
+
+    const a = setup();
+    a.tick();
+    fs.appendFileSync(a.tp, JSON.stringify(answered('q1')) + '\n');
+    assert.strictEqual(a.edit().status, 0, 'an answered ask releases it');
+    const o = setup();
+    o.tick();
+    fs.writeFileSync(o.stopFile, '452000');
+    assert.strictEqual(o.edit().status, 0, 'the Stop made the offer since: released');
+    assert.match(o.ledger(), /"kind":"tick-hold"[^\n]*"outcome":"offered-at-stop"/);
+
+    // every way a build writes the tick
+    const both = setup();
+    both.tick('- status: IN_PROGRESS\n- estimate: 10m\n\n### Task 2 - slice 2\n\n- status: TODO', `${DONE}\n- estimate: 10m\n\n### Task 2 - slice 2\n\n- status: IN_PROGRESS`);
+    assert.strictEqual(both.edit().status, 2, 'a tick that also starts the next card holds');
+    const multi = setup();
+    multi.via(FILES, 'MultiEdit', { file_path: multi.file, edits: [{ old_string: '- status: IN_PROGRESS', new_string: DONE }, { old_string: 'Resume: next task 2', new_string: 'Resume: next task 2 (fresh)' }] });
+    assert.strictEqual(multi.edit().status, 2, 'a MultiEdit tick holds');
+    const write = setup();
+    write.via(FILES, 'Write', { file_path: write.file, content: plan(['DONE (`npm test` - 12 passed)', 'TODO', 'TODO']) });
+    assert.strictEqual(write.edit().status, 2, 'a Write that ticks holds');
+    const parked = setup({ statuses: ['IN_PROGRESS', 'TODO', 'IN_PROGRESS\n- needs: the integration run'] });
+    parked.tick();
+    assert.strictEqual(parked.edit().status, 2, "a card parked on a run (needs:) is no work in flight");
+
+    const none = (label, t, args = []) => { t.tick(...args); assert.strictEqual(t.edit().status, 0, label); return t; };
+    none('under the trigger: no hold', setup({ carry: 300000 }));
+    none('the last task: the finish step is next, no hold', setup({ statuses: ['DONE (x)', 'DONE (x)', 'IN_PROGRESS'] }));
+    none('another card still in flight: no hold', setup({ statuses: ['IN_PROGRESS', 'IN_PROGRESS', 'TODO'] }));
+    none('a tick that closes the plan with Completed: no hold', setup({ statuses: ['DONE (x)', 'IN_PROGRESS', 'TODO'] }), ['- status: IN_PROGRESS', `${DONE}\n\nCompleted: 2026-11-03`]);
+    const un = none('nobody at the terminal: no hold', setup({ env: { ALFRED_CODE_UNATTENDED: '1' } }));
+    assert.match(un.ledger(), /"mode":"unattended"[^\n]*"kind":"tick-offer"/, 'logged, not offered');
+    none('the project compacts instead (AUTO_COMPACT=1): no hold', setup({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }));
+    none('a fresh session would not pay back: no hold', setup({ floor: 420000 }));
+    const auto = setup({ head: [{ type: 'user', message: { role: 'user', content: 'run it overnight' } }] });
+    fs.mkdirSync(auto.p.flow, { recursive: true });
+    fs.writeFileSync(path.join(auto.p.flow, 'APPROVAL'), 'AUTO - "run it overnight"\n');
+    none('a live AUTO waiver: no hold', auto);
+    none("a seat's tick: no hold", setup(), [undefined, undefined, { agent_id: 'seat-1' }]);
+    const grown = setup();
+    fs.writeFileSync(grown.stopFile, '400000');
+    none('the Stop offered at 400k: 450k has not grown 1.5x, no hold', grown);
+    const askRow = { type: 'assistant', message: { id: 'q', model: 'claude-opus-5-5', usage: { cache_read_input_tokens: 400000 },
+        content: [{ type: 'tool_use', id: 'toolu_f1', name: 'AskUserQuestion', input: { questions: [{ question: 'Resume in a fresh session?' }] } }] } };
+    none('a fresh-session ask answered at 400k: no hold before 600k', setup({ mid: [askRow, answered('toolu_f1', 'Resume in a fresh session?')] }));
+    // the tick's own offer counts as spent: the next tick waits for the carry to grow 1.5x
+    const twice = setup({ statuses: ['IN_PROGRESS', 'TODO', 'TODO', 'TODO'] });
+    twice.tick();
+    fs.appendFileSync(twice.tp, JSON.stringify(usageRow('b', { cache_read_input_tokens: 455000 }, 'single short step: none left in this card')) + '\n');
+    assert.strictEqual(twice.edit().status, 0, 'the single-short-step line releases it');
+    none('the next tick at 455k: no hold', twice, ['- status: TODO', DONE]);
+    fs.appendFileSync(twice.tp, JSON.stringify(usageRow('c', { cache_read_input_tokens: 700000 })) + '\n');
+    twice.tick('- status: TODO', DONE);
+    assert.strictEqual(twice.edit().status, 2, 'grown past 1.5x (700k over 450k): held again');
+
+    // missing, empty and garbage input never block, and arm nothing
+    const g = setup();
+    const plans = path.join(g.p.root, '.alfred', 'docs', 'work', 'plans');
+    assert.strictEqual(g.via(FILES, 'MultiEdit', { file_path: g.file, edits: 'garbage' }).status, 0);
+    assert.strictEqual(g.via(FILES, 'Edit', { file_path: path.join(plans, 'gone.md'), old_string: '- status: IN_PROGRESS', new_string: DONE }).status, 0, 'a plan not on disk');
+    assert.strictEqual(g.via(FILES, 'Write', { file_path: path.join(plans, 'new.md'), content: plan(['DONE (x)', 'TODO']) }).status, 0, 'a new plan written with a card DONE');
+    assert.strictEqual(g.via(FILES, 'Edit', { file_path: path.join(g.p.root, 'notes', 'status.md'), old_string: 'x', new_string: DONE }).status, 0, 'a file outside a plans folder');
+    fs.writeFileSync(path.join(plans, 'empty.md'), '');
+    assert.strictEqual(g.via(FILES, 'Write', { file_path: path.join(plans, 'empty.md'), content: DONE }).status, 0, 'an empty plan');
+    assert.strictEqual(g.via(FILES, 'Edit', { file_path: g.file, old_string: 'no such text', new_string: DONE }).status, 0, 'an edit that matches nothing');
+    assert.strictEqual(g.edit().status, 0, 'none of them armed a hold');
+    assert.strictEqual(g.p.run('{not json', {}, FILES).status, 0, 'garbage stdin');
 });
 
 // The cache-aware verdict (spec 2026-10-28, sections 1-3): claude-opus-5-5 reads at 0.05x, the 1h split writes at 2x and

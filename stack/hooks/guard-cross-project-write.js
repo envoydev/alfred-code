@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// PreToolUse gate (matchers: Write + Edit + NotebookEdit + Bash): a session belongs to ONE
+// PreToolUse gate (matchers: Write + Edit + NotebookEdit + Bash, and a filesystem server's four write tools under any
+// registration name - SYS-02, below): a session belongs to ONE
 // project. Work in project A that turns out to need a change in project B - a sibling repo, a
 // consumed package, a related service - is HANDED OFF, never applied: the session writes a task
 // card for B and stops there. Reading and investigating B is untouched (no Read/Grep/Glob
@@ -370,6 +371,41 @@ function memoryBlock(what, shown, hit) {
   );
   process.exit(2);
 }
+// A PATH THE USER TYPED (usage audit 2026-11-03 U20, the user's ruling: 'an absolute path in your typed message allows
+// writes under that folder'): an ABSOLUTE path in a turn the user typed this session opens writes - a typed FOLDER
+// under itself, a typed FILE that one file only (review fix pass run B m5: `~/.ssh/config` opened all of `~/.ssh`) - so a
+// write the user named in their own words is not asked again (1e53bc45: a 6,338-token body generated twice; e95004e7: a
+// 7m44s wait). File or folder is read off the disk: a trailing separator is a folder, an existing path is what it is,
+// and a MISSING one is a file when its last name has an extension or is a dotfile (`r.md`, `.zshrc`) and a folder when
+// it has neither (`out/gen`) - the narrower reading wins a doubt, so a typed `notes.d` that does not exist yet opens only
+// itself, never writes under it. Read from the
+// transcript where the write is judged (hook-prelude.js typedTurnTexts / typedPaths), never from a file the model writes
+// (HK-03), and only once a write would otherwise be denied. The containment rule holds as for a receipt root: a typed
+// folder holding the project opens nothing. A relative path, `~user`, a path in tool output, a harness row or the model's
+// text opens nothing; the user accepted that a path inside text they pasted counts. The transcript itself stays shut
+// (recordAt runs first).
+let typedRoots = null;
+function typedAllowed(t) {
+  if (typedRoots === null) {
+    typedRoots = [];
+    try {
+      const texts = receipts && receipts.typedTurnTexts ? receipts.typedTurnTexts(payload) : [];
+      for (const text of texts) {
+        for (const p of receipts.typedPaths(text, { home: HOME, native: nativePath })) {
+          const at = realish(p.abs);
+          let st = null;
+          try { st = fs.statSync(at); } catch { st = null; }
+          const base = path.basename(at);
+          const isFile = !p.slash && (st ? !st.isDirectory() : /^\.[^.]|.\.[A-Za-z0-9]{1,10}$/.test(base));
+          if (isFile) { typedRoots.push({ file: at }); continue; }
+          if (!inside(ROOT, at)) typedRoots.push({ dir: at });
+        }
+      }
+    } catch { typedRoots = []; }
+  }
+  if (!typedRoots.length) return false;
+  return typedRoots.some((r) => (r.file ? fold(t) === fold(r.file) : inside(t, r.dir)));
+}
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
@@ -379,6 +415,7 @@ function allowed(target) {
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
   if (sameRepoWorktree(t)) return true;
+  if (typedAllowed(t)) return true; // a folder the user typed (U20)
 
   return false;
 }
@@ -511,7 +548,8 @@ function block(what, shown, abs = shown) {
   const other = otherProjectName(abs);
   // The main block names its branch like the unread one below (audit 2026-10-20, the hooks track's minor list: every
   // other row of this guard carried none, so the ledger could not split a file-tool write from a shell one).
-  global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool' : /git write/.test(what) ? 'git-write' : 'shell-write' };
+  global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool'
+    : /^(?:write_file|edit_file|move_file|create_directory) /.test(what) ? 'mcp-file-write' : /git write/.test(what) ? 'git-write' : 'shell-write' };
   const otherRoot = otherProjectRoot(abs);
   // Absolute, the sibling named: the user pastes the hand-off into that repo's session, which finds the card by this path.
   const card = path.resolve(ROOT, docsRoot, 'work', 'cross-project-tasks', `${other}.md`);
@@ -542,6 +580,29 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'Not
   const abs = resolveTarget(String(target));
   if (recordAt(abs, null)) recordBlock(`${tool} of a file`, String(target));
   if (!allowed(abs)) block(`${tool} of a file`, String(target), abs);
+  process.exit(0);
+}
+
+// A filesystem server the user registers writes too (audit 2026-11-03 SYS-02; HK-26 gave the secret guard its read
+// route): `write_file`, `edit_file` and `create_directory` take `path`, `move_file` takes `source` and `destination` - the
+// reference server's schemas (@modelcontextprotocol/server-filesystem, src/filesystem/server.ts in
+// github.com/modelcontextprotocol/servers, read 2026-11-03). Matched by the tool's name under any registration, since the
+// stack ships no server. The server expands a leading `~` (lib.ts validatePath); a relative path is read at the project
+// root, the file tools' anchor. A move takes its source OUT of where it stood, so both ends are judged, as `mv` is - its
+// destination is the new path itself (the server refuses one that exists), a plain write; a field missing or not a
+// string names no target.
+const FS_WRITE_TOOL = /^mcp__.+__(?:write_file|edit_file|move_file|create_directory)$/;
+if (FS_WRITE_TOOL.test(String(tool || ''))) {
+  const verb = String(tool).replace(/^mcp__.+__/, '');
+  const ends = verb === 'move_file'
+    ? [[input.source, `${verb} of a source`, 'remove'], [input.destination, `${verb} to a destination`, null]]
+    : [[input.path, `${verb} of a ${verb === 'create_directory' ? 'folder' : 'file'}`, null]];
+  for (const [p, what, kind] of ends) {
+    if (typeof p !== 'string' || !p.trim()) continue;
+    const abs = resolveTarget(expandTilde(p));
+    if (recordAt(abs, kind)) recordBlock(what, p);
+    if (!allowed(abs)) block(what, p, abs);
+  }
   process.exit(0);
 }
 

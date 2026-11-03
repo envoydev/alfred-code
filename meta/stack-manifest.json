@@ -707,7 +707,7 @@
       "file": "guard-catastrophic-rm.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "block recursive rm (Remove-Item -Recurse and cmd /c rd /s too) of /, ~, $HOME (however spelled - ${HOME:?}, the absolute home path), a Windows drive, the cwd or its parent (. / .. / $(pwd)), the project root or a folder holding it, a bare *, or several top-level dirs at once; and a git discard, forced checkout/switch, stash drop/clear or reflog expire that would destroy work"
+      "note": "block recursive rm (Remove-Item -Recurse and cmd /c rd /s too) of /, ~, $HOME (however spelled - ${HOME:?}, the absolute home path), a Windows drive, the cwd or its parent (. / .. / $(pwd)), the project root or a folder holding it, a bare *, or several top-level dirs at once; and a git discard, forced checkout/switch, stash drop/clear or reflog expire that would destroy work; the DISCARD-ALLOW receipt opens it after the user's answer, and so does the user's pick of the discard in an ask naming every file (audit 2026-11-03 U21)"
     },
     {
       "file": "guard-read-whole-file.js",
@@ -791,7 +791,18 @@
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth, and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-run stamp naming this session, while the run's marker (`state/sessions/AUTO-RUN-<session>`) stands, a Stop is sent back to the run until its close deletes the marker - never the stamp, which only --mode-auto-run-off ends - held again only after a tool call (the Stop chain's workSince), and at most 49 times per marker: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth - and once more after a plan's Completed stamp and a typed turn, whatever the growth, unless a fresh-session choice was answered since that turn (usage audit 2026-11-03 U13) - and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-run stamp naming this session, while the run's marker (`state/sessions/AUTO-RUN-<session>`) stands, a Stop is sent back to the run until its close deletes the marker - never the stamp, which only --mode-auto-run-off ends - held again only after a tool call (the Stop chain's workSince), and at most 49 times per marker: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
+    },
+    {
+      "file": "guard-stop-contract.js",
+      "matcher": "@Stop",
+      "event": "",
+      "type": "prompt",
+      "prompt": "stop-judge-prompt.txt",
+      "timeout": 30,
+      "active": false,
+      "held": true,
+      "note": "THE STOP JUDGE (audit 2026-10-30 HK-22), HELD (`held: true`, the user's ruling of 2026-11-03: hold the judge, keep the regex done check and retune it - nothing wires it, on either route, until the key goes): a prompt hook beside the stop contract on Stop - one call to Claude Code's background model (Haiku) per main-session Stop reads the closing message and sends the turn back once when it reports a step done and leaves a next action owed and unasked, released when stop_hook_active is true. It was built to replace the contract's regex done-close hold (a replay of 18 such blocks found 13 wrong, the judge got 14 to 16 of 18 right over three runs, A/B 2026-11-03); held because a prompt hook runs no stack prelude, so it would judge every repo, set up or not - the regex is retuned instead. No `model` key: the hook evaluator sends an alias as written, and `haiku` failed every live call (lint check 48b). Its text is stop-judge-prompt.txt, the one home a later host adapter reads. Parked (active: false) because the copy route wires command hooks alone; the plugin route would carry it inline once `held` goes. ALFRED_CODE_HOOKS_OFF cannot reach it - a prompt hook runs no stack code; disableAllHooks or disabling the plugin turns it off with the rest."
     },
     {
       "file": "guard-stop-contract.js",
@@ -839,7 +850,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
-      "note": "the idle-gap offer: the prompt that ends a gap past ALFRED_CODE_FRESH_SESSION_AFTER_HOURS (the clock route's knob, default 2, 0 off) since the last reply injects the fresh-session ask once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). A harness notice, a seat and nobody at the terminal get no offer"
+      "note": "the idle-gap offer: the prompt that ends a gap past the idle wait since the last reply - the prompt cache life that reply wrote, 5m or 1h, else 1h; ALFRED_CODE_FRESH_SESSION_AFTER_HOURS, default cache, an hour count overriding and 0 off (usage audit 2026-11-03 U16) - injects the fresh-session ask once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). A harness notice, a seat and nobody at the terminal get no offer"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -857,7 +868,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "the post-compaction hold on an edit - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
+      "note": "the post-compaction hold on an edit, and the TICK HOLD (usage audit 2026-11-03 U13): a main-session edit that ticks a plan card DONE past the trigger - tasks still open, no other card in flight, the carry past the re-offer step since the last offer, a resume that pays - holds the next task's first change for the fresh-session ask naming the plan and its Resume line, the plan's own edits passing; nobody at the terminal (a live AUTO waiver included) logs the skip - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -869,7 +880,7 @@
       "file": "guard-config-protection.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, guard-config-protection in ALFRED_CODE_HOOKS_OFF turns it off"
+      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, guard-config-protection in ALFRED_CODE_HOOKS_OFF turns that half off; a settings write adding a protective guard to ALFRED_CODE_HOOKS_OFF or setting disableAllHooks asks under every stand-down, opened only by the GUARD-OFF-ALLOW security receipt (audit 2026-11-03 SYS-01) - judged on what a copy, move, link or extract into a watched folder lands (unread content asks too), and a new hooks entry wiring a copied twin of a dispatcher or protective guard is a switch-off"
     },
     {
       "file": "guard-config-protection.js",
@@ -878,16 +889,28 @@
       "note": "same gate on the shell routes (an in-place edit, redirect, tee, rm, mv or cp onto the config) - run inside shell-guards.js with the other shell guards"
     },
     {
+      "file": "guard-config-protection.js",
+      "matcher": "^mcp__.+__(write_file|edit_file|move_file)$",
+      "event": "",
+      "note": "same gate on a filesystem server the user registers: write_file judged as a Write over tool_input.path, edit_file as an edit over its edits (a dryRun writes nothing), move_file as a removal of its source and a write of its destination, matched by the tool's name under any registration (audit 2026-11-03 SYS-02)"
+    },
+    {
       "file": "guard-cross-project-write.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card"
+      "note": "one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card; an absolute path the user typed this session opens its folder (audit 2026-11-03 U20)"
     },
     {
       "file": "guard-cross-project-write.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "same gate on the shell routes (redirect, tee, in-place sed/perl, cp/mv, rm/mkdir/chmod, git -C, cd then a write) - run inside shell-guards.js"
+    },
+    {
+      "file": "guard-cross-project-write.js",
+      "matcher": "^mcp__.+__(write_file|edit_file|move_file|create_directory)$",
+      "event": "",
+      "note": "same gate on a filesystem server the user registers: write_file, edit_file and create_directory judged on tool_input.path, move_file on its source and its destination, matched by the tool's name under any registration (audit 2026-11-03 SYS-02)"
     },
     {
       "file": "guard-desktop-exec.js",
@@ -1067,7 +1090,7 @@
   "plugins": [
     {
       "id": "csharp-lsp@claude-plugins-official",
-      "note": "inline Roslyn diagnostics on edit (complements the navigation server nav); needs csharp-ls (dotnet tool install -g csharp-ls, on the .NET 10 SDK since csharp-ls 0.28.0 - /alfred-code:init installs it); pin: the official marketplace entry's version - the package itself is empty, and the server is whatever csharp-ls is on PATH, unpinned"
+      "note": "inline Roslyn diagnostics on edit (complements the LSP navigation tools); needs csharp-ls (dotnet tool install -g csharp-ls, on the .NET 10 SDK since csharp-ls 0.28.0 - /alfred-code:init installs it); pin: the official marketplace entry's version - the package itself is empty, and the server is whatever csharp-ls is on PATH, unpinned"
     },
     {
       "id": "typescript-lsp@claude-plugins-official",
@@ -1076,7 +1099,16 @@
     {
       "id": "claude-hud@claude-hud",
       "note": "statusline HUD - optional since 2.2.0, recommended in every install (meta/recommendations.json always.plugins), at the scope the user picks for it (this project by default; a project-scope one gets its status line in the project's settings.local.json); pin: a third-party marketplace, its plugin.json version - auto-update is off there by default, so the stack's update is what moves it",
-      "marketplace": "jarrodwatts/claude-hud"
+      "marketplace": "jarrodwatts/claude-hud",
+      "floor": {
+        "version": "0.15.0",
+        "advisories": [
+          "GHSA-f7gq-pcm8-rxr4",
+          "GHSA-25hg-g83m-4w35"
+        ],
+        "severity": "HIGH",
+        "why": "a repository's git config (from 0.11.1) or a partial clone's lazy fetch (from 0.0.12) runs commands while the HUD collects git state; published 2026-11-02, fixed in 0.15.0"
+      }
     }
   ],
   "mcps": [],

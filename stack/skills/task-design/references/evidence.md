@@ -13,6 +13,9 @@ while designing.
   after its whole build window - 23.9M cache-read.
 - **An option description is not an ask (design rules, the behaviour-change ask).** A behaviour change named only in
   an option's description was reverted by the user after `Completed`.
+- **A design ask states measured facts (design rules, the behaviour-change ask).** One ask put an unmeasured side
+  effect to the user as today's behaviour; the build found it did not exist, and the task written for it was built,
+  then reverted (usage audit 2026-11-03: up to 9.2M tokens).
 - **The execution mode stays out of the plan (Plan format).** Measured in five bundles: a format
   skill's banner landed in durable plan files recommending a dispatch method the run's own approved mode
   excluded, and a plan file outlives the session that made it, so the wrong

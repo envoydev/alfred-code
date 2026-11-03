@@ -17,7 +17,7 @@ needing a one-time approval; block-level HTML comments stripped, ones inside cod
 `paths` loads at launch at `.claude/CLAUDE.md`'s priority, a path rule when Read, Write or Edit touches a
 matching file or a Bash command that counts as a read (`cat` or `head` on one file) views it, its frontmatter removed (`paths` the only field read; unparseable YAML loads it as pathless).
 The skill listing (`code.claude.com/docs/en/skills`): `description` plus `when_to_use` truncated at 1,536
-characters per entry; a `disable-model-invocation: true` skill's description not in context; `skillOverrides`
+characters per entry (the `skillListingMaxDescChars` default, row below); a `disable-model-invocation: true` skill's description not in context; `skillOverrides`
 `on` / `name-only` / `user-invocable-only` (hidden from the listing, still in the `/` menu) / `off`, absent
 read as `on`. Hooks (`code.claude.com/docs/en/hooks`): matcher values - SessionStart `startup`, `resume`,
 `clear`, `compact`, `fork`; PreCompact `manual`, `auto`; SubagentStart and SubagentStop the agent type
@@ -32,6 +32,24 @@ on SessionStart, SubagentStart, UserPromptSubmit, UserPromptExpansion, PreToolUs
 PostToolUseFailure, PostToolBatch, Stop, SubagentStop and PostModelSwitch; timeouts default to 600 seconds for
 `command` / `http` / `mcp_tool`, 30 for `prompt`, 60 for `agent`, lowered to 30 on UserPromptSubmit,
 PreModelSwitch and PostModelSwitch and to 10 on MessageDisplay.
+
+**OFFICIAL, read 2026-11-03** - `skillListingMaxDescChars` (`code.claude.com/docs/en/settings-reference`,
+`skillListingMaxDescChars`; `code.claude.com/docs/en/skills`, 'Skill descriptions are cut short'): the per-skill
+cap on `description` plus `when_to_use` in the listing, a positive integer of characters, default `1536`, scope
+'Any file'; raising it keeps long descriptions at more context per turn, lowering it fits more skills under
+`skillListingBudgetFraction` (default `0.01` of the window). `scripts/session-surface.js` reads it from the
+fixture's settings (`LISTING_MAX_DESC` the fallback), so the map takes a changed value as it stands.
+The **Project instructions** setting (`code.claude.com/docs/en/memory`, 'Choose which instruction files load';
+`code.claude.com/docs/en/settings-reference`, `pluginConfigs`): which instruction files load, set in `/config`
+or as `pluginConfigs["cc-plugin-agents-md@builtin"].options.instructionFiles` (`agents-md@builtin` before
+v2.1.285, either ID read after), read from the user file, a `--settings` file or managed settings, ignored in
+project and local files - `claude-md-or-agents-md` (the default: `AGENTS.md` only while no `CLAUDE.md`,
+`.claude/CLAUDE.md` or `CLAUDE.local.md` sits on the path), `claude-md-and-agents-md` (each directory's
+`CLAUDE.md` files first, its `AGENTS.md` after, a file already loaded skipped), `claude-md`, and `managed-only`
+(the managed `CLAUDE.md` and auto memory at launch; project, local and user `CLAUDE.md`, `.claude/rules/` and
+every `AGENTS.md` left out, path rules still on demand); absent from `/config` before v2.1.277 or with the
+built-in plugin disabled. The map models the default only (`session-surface.js` `AGENTS_FILES`): a fixture
+account that sets another value has its memory rows reported as off-model, never scored.
 
 **MEASURED in this repo** - the skill listing budget: `skillListingBudgetFraction` of the window in TOKENS,
 counted in characters at four to a token (CLAUDE.md: '39 skills, 19901 chars > 8000 budget' at a 200K window

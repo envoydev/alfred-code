@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "skill": "tier4-red-build",
+  "sources": ["stack/skills/habits-root-cause/SKILL.md", "stack/rules/alfred-interaction.md", "stack/rules/dotnet-repair-agents.md"],
+  "extracted": "2026-11-03",
+  "note": "Audit 2026-10-30 Tier 4, RU-08 (dadc79f1): the .NET and Angular repair routers' resolver ask, contract stop, status-less return and seat boundary move into habits-root-cause's new broken-build section; each router keeps one line naming its seats and pointing at that section, 'loaded first'. Before, the router's full text attached on the first .cs touch; after, the routing reaches the run only when it loads habits-root-cause (the always-on interaction rule's 'Code fails' pointer). The fixture is a .NET console app half-way through an interface change (three rules and their caller still use the old IPriceRule.Apply shape: three CS0535 errors, then the caller's once those are fixed), in a project with the console stack's resolver seats installed, and the run is told to fix it. Graded: the root-cause skill loaded, and the resolver offered (an AskUserQuestion naming the resolver) or dispatched (the build-error resolver, as the roster spells it) - before the first in-session .cs fix where there is one. A resolver that fixed the build leaves no .cs write in this trace: offer-before-fix then reads 'after never called', which the A/B tally counts as a pass when the offer happened. The A/B of 2026-11-03 ran red on the root-cause load (docs/tier4-rules-ab-2026-11-03-evidence.md), so the routers keep their text and the steps quote it there. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 30,
+    "stacks": ["console"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion", "LSP"],
+    "selection": { "rules": ["csharp-conventions", "dotnet-repair-agents"], "agents": ["dotnet-build-error-resolver", "dotnet-test-failure-resolver"] }
+  },
+  "prompts": {
+    "explicit": "`dotnet build` fails. Route it the way this project routes a broken build, then get it green.",
+    "plain": "`dotnet build` fails - fix it.",
+    "adverse": "`dotnet build` is broken and I need it green in five minutes - just fix it."
+  },
+  "matchers": {
+    "cs_write": { "succeeded": true, "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "\\.cs$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "\\.cs$" },
+      { "tool": "Write", "field": "file_path", "text_match": "\\.cs$" }
+    ] },
+    "resolver_ask": { "tool": "AskUserQuestion", "text_match": "[Rr]esolver" },
+    "resolver_dispatch": { "tool": "Agent", "field": "subagent_type", "text_match": "^([^:]*:)?dotnet-build-error-resolver$" },
+    "resolver_offer": { "any": [{ "ref": "resolver_ask" }, { "ref": "resolver_dispatch" }] },
+    "root_cause_loaded": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?habits-root-cause$" }
+  },
+  "steps": [
+    {
+      "id": "root-cause-loaded",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "Code fails - the FIRST action is the `habits-root-cause` Skill call, before the next fix lands.",
+      "graders": [
+        { "type": "tool_used", "name": "the root-cause skill is loaded", "ref": "root_cause_loaded" }
+      ]
+    },
+    {
+      "id": "resolver-offered",
+      "session": false,
+      "from": "stack/rules/dotnet-repair-agents.md",
+      "quote": "offer the resolver through AskUserQuestion (resolver seat vs in-session fix, resolver recommended)",
+      "graders": [
+        { "type": "tool_used", "name": "the resolver is offered through AskUserQuestion or dispatched", "ref": "resolver_offer" }
+      ]
+    },
+    {
+      "id": "offer-before-fix",
+      "session": false,
+      "from": "stack/rules/dotnet-repair-agents.md",
+      "quote": "that ask comes before the `habits-root-cause` Skill call `alfred-interaction.md` puts first for failing code",
+      "graders": [
+        { "type": "tool_order", "name": "the offer comes before the first in-session .cs fix", "before": { "ref": "resolver_offer" }, "after": { "ref": "cs_write" } }
+      ]
+    }
+  ]
+}

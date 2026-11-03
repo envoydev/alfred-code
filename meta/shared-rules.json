@@ -2709,6 +2709,55 @@
         }
       ]
     },
+    "implementer-external-api-docs-check": {
+      "_note": "An external API shape an implementer writes against (a package signature, a vendor contract, an engine behaviour, an image or action tag) is resolved against its current docs through the documentation tools before the write, never from recall - unreachable, said unverified. Owned by the always-on quality-gates rule's outside-world line; restated as one byte-identical clause in all ten implementers because the write step is where a recalled shape enters the code (audit 2026-10-30 AG-07: six unmanaged copies had drifted and four implementers carried none). Tier 4 candidate: its A/B decides whether the copies stay.",
+      "owner": {
+        "file": "stack/rules/alfred-quality-gates.md",
+        "marker": "is checked against the documentation tools the session-start tool order ranks"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "is resolved against its current docs through the documentation tools your start line orders before you write against it, never from recall - unreachable, say it is unverified"
+        }
+      ]
+    },
     "implementer-tree-coexistence": {
       "_note": "Parallel implementer seats share one working tree: no tree-wide git state operations (stash/checkout/restore beyond own files/branch switch/reset) - measured: a seat's stash wiped siblings' in-flight edits. Byte-identical bullet head across all 10 implementers; the stale-base tell tail is per-stack (NuGet-audit codes on .NET, compile/npm-ci tells on TS).",
       "owner": {
@@ -4391,47 +4440,47 @@
       ]
     },
     "convention-rule-load-receipt": {
-      "_note": "The second half of the convention-rule attach contract, restated in every rule that carries [convention-rule-first-action] - the nine convention rules and markdown-docs (audit M66: skill-authoring carried the text unregistered, markdown-docs had no receipt at all; scripts/rule-prose.test.js fails when the two entries list different files): the load is SAID out loud, because an unstated load is indistinguishable from no load in the transcript and in the user's reading alike. Pinned separately because the two halves are edited independently.",
+      "_note": "The second half of the convention-rule attach contract, restated in every rule that carries [convention-rule-first-action] - the nine convention rules and markdown-docs (audit M66: skill-authoring carried the text unregistered, markdown-docs had no receipt at all; scripts/rule-prose.test.js fails when the two entries list different files): the load is SAID out loud, because an unstated load is indistinguishable from no load in the transcript and in the user's reading alike. Pinned separately because the two halves are edited independently. The receipt sentence is followed by the compaction clause in every copy (audit 2026-10-30 RU-09): only csharp said the already-in-context skip ends at a compaction (measured: 23 .cs edits across two post-compaction tails with zero loads, the plan claiming the skill was 'loaded earlier this session'; a compaction carries a loaded skill forward only within a shared budget, the oldest dropped, a long one cut short), so the one clause now rides the receipt marker in all ten - the first-action phrase is followed by a different skill in each file, so its marker has no shared span to carry it.",
       "owner": {
         "file": "stack/rules/csharp-conventions.md",
-        "marker": "the receipt is what makes the load happen"
+        "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
       },
       "sites": [
         {
           "file": "stack/rules/javascript-conventions.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         },
         {
           "file": "stack/rules/typescript-conventions.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         },
         {
           "file": "stack/rules/angular-conventions.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         },
         {
           "file": "stack/rules/angular-styling-conventions.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         },
         {
           "file": "stack/rules/wpf-conventions.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         },
         {
           "file": "stack/rules/winforms-conventions.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         },
         {
           "file": "stack/rules/sql-conventions.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         },
         {
           "file": "stack/rules/devops-conventions.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         },
         {
           "file": "stack/rules/markdown-docs.md",
-          "marker": "the receipt is what makes the load happen"
+          "marker": "the receipt is what makes the load happen. A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget"
         }
       ]
     },

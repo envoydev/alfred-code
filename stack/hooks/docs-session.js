@@ -397,7 +397,11 @@ function sessionStart(input, root, docs, state) {
   // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
   let readable = true;
   try { readable = durableDocFiles(docs).length > 0; } catch {}
-  if (!docsOff('gate') && readable) {
+  // ... and so does a line no section answers (audit 2026-11-03 SYS-04: a fresh install's preferences seed alone named
+  // 'the section covering the file'). An engine copy older than the probe keeps the line.
+  let watched = true;
+  try { if (typeof docs.watchesSourceRoot === 'function') watched = docs.watchesSourceRoot(); } catch {}
+  if (!docsOff('gate') && readable && watched) {
     let roots = ['src', 'tests'];
     try { roots = docs.loadWatch().sourceRoots; } catch {}
     extra.push(`Before your first change under ${roots.map((x) => `${x}/`).join(' or ')}, read the section covering the file.`);

@@ -202,3 +202,39 @@ test('verdictProbe: once per session per route per pays', () => noPayback(() => 
     assert.equal(eng.verdictProbe('stop', 250000, eng.freshVerdict(250000)), null, 'a marker that cannot be written writes no row');
   });
 }));
+
+// ---- the idle wait (usage audit 2026-11-03 U16): the offer waits the cache life the last reply wrote ------------------
+// A subscription's main conversation caches for 1h, an API key, credits or a cloud provider for 5m, and a subagent for 5m
+// (code.claude.com/docs/en/prompt-caching, 'Which TTL each request gets'); the knob seeded 2 waited past both.
+const split = (h1, m5) => ({ cache_read_input_tokens: 250000, cache_creation_input_tokens: h1 + m5, cache_creation: { ephemeral_1h_input_tokens: h1, ephemeral_5m_input_tokens: m5 } });
+test('afterHoursOf: an hour count is the user\'s wait, anything else follows the cache', () => {
+  const of = (v) => eng.afterHoursOf(v === undefined ? {} : { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: v });
+  assert.equal(of('2'), 2);
+  assert.equal(of('0.5'), 0.5, 'decimals work');
+  assert.equal(of('0'), 0, '0 is off - a real answer');
+  for (const v of [undefined, '', 'cache', 'garbage', '-1']) assert.equal(of(v), null, `${JSON.stringify(v)} follows the cache`);
+  assert.equal(eng.AFTER_HOURS_FOLLOW, 'cache', 'the seed word the environment catalog names');
+});
+test('cacheLifeOf: the Claude Code reader takes the cache_creation split, a host with no reader none', () => {
+  assert.equal(eng.cacheLifeOf(split(500, 0), 'claude-code'), 3600000, '1h is one hour');
+  assert.equal(eng.cacheLifeOf(split(0, 500), 'claude-code'), 300000, '5m is five minutes');
+  assert.equal(eng.cacheLifeOf(split(400, 100), 'claude-code'), 3600000, 'both written: the 1h split wins, as cacheTtl reads it');
+  assert.equal(eng.cacheLifeOf(split(0, 0), 'claude-code'), null, 'both zero: no record');
+  for (const u of [null, undefined, {}, { cache_creation: null }, { cache_creation: 'x' }, 'garbage', 42]) assert.equal(eng.cacheLifeOf(u, 'claude-code'), null, `${JSON.stringify(u)}: no record`);
+  assert.equal(eng.cacheLifeOf(split(500, 0), 'cursor'), null, 'Cursor keeps no such record: no reader');
+  assert.equal(eng.cacheLifeOf(split(500, 0), 'codex'), null, 'nor any host without a reader');
+  assert.equal(eng.hostOf({ cursor_version: '1.7.0', hook_event_name: 'beforeShellExecution' }), 'cursor');
+  assert.equal(eng.hostOf({ hook_event_name: 'UserPromptSubmit', transcript_path: '/x.jsonl' }), 'claude-code');
+  assert.equal(eng.hostOf(null), 'claude-code', 'garbage reads as Claude Code, whose reader finds no record');
+});
+test('idleWait: the setting overrides, else the cache life, else one hour', () => {
+  const at = (v) => (v === undefined ? {} : { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: v });
+  assert.deepEqual(eng.idleWait(split(0, 500), at(), 'claude-code'), { ms: 300000, from: 'cache' });
+  assert.deepEqual(eng.idleWait(split(500, 0), at('cache'), 'claude-code'), { ms: 3600000, from: 'cache' });
+  assert.deepEqual(eng.idleWait(split(0, 0), at(), 'claude-code'), { ms: 3600000, from: 'fallback' }, 'no record: one hour');
+  assert.deepEqual(eng.idleWait(null, at('garbage'), 'claude-code'), { ms: 3600000, from: 'fallback' });
+  assert.deepEqual(eng.idleWait(split(0, 500), at(), 'cursor'), { ms: 3600000, from: 'fallback' }, 'a host with no record: one hour');
+  assert.deepEqual(eng.idleWait(split(0, 500), at('2'), 'claude-code'), { ms: 7200000, from: 'setting' }, 'an explicit 2 overrides the cache');
+  assert.deepEqual(eng.idleWait(split(500, 0), at('0'), 'claude-code'), { ms: 0, from: 'setting' }, '0 is off on every host');
+  assert.deepEqual(eng.idleWait(null, at('0.25'), 'cursor'), { ms: 900000, from: 'setting' }, 'the setting is the neutral fallback\'s first choice');
+});

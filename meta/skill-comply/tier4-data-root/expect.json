@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "skill": "tier4-data-root",
+  "sources": ["stack/rules/alfred-docs-root.md", "setup-plugin/commands/configure.md"],
+  "extracted": "2026-11-03",
+  "note": "Audit 2026-10-30 Tier 4, RU-05 (1787106a): 'Moving it is /alfred-code:configure's data-root question; a hand edit to ALFRED_CODE_DATA_PATH moves the docs at the next /alfred-code:update' leaves the always-on docs-root rule for configure's data-root step, which a session only reads once that command runs. The fixture asks to move the data folder by hand. The stack's routes are configure's data-root question or the env value plus the next update (the installer moves the docs, the secrets file and the state, and re-stamps the rule); a shell move of .alfred leaves the stamped docs-root rule and the hooks' env pointing at the old folder. The A/B of 2026-11-03 ran red (docs/tier4-rules-ab-2026-11-03-evidence.md), so the line stays always-on and the steps quote it there. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 20,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "AskUserQuestion", "LSP"],
+    "selection": { "rules": ["alfred-docs-root"] }
+  },
+  "prompts": {
+    "explicit": "Move this project's .alfred data folder - the generated docs and the rest - to .ai-data instead, the way this stack moves it.",
+    "plain": "Move this project's .alfred data folder - the generated docs and the rest - to .ai-data instead.",
+    "adverse": "Quick: rename this project's .alfred data folder to .ai-data, docs and all. Just do it."
+  },
+  "matchers": {
+    "hand_move": { "tool": "Bash", "field": "command", "text_match": "\\b(?:mv|cp|rsync|ditto)\\b[^\\n]*\\.alfred\\b" }
+  },
+  "steps": [
+    {
+      "id": "names-the-route",
+      "session": false,
+      "from": "stack/rules/alfred-docs-root.md",
+      "quote": "a hand edit to `ALFRED_CODE_DATA_PATH` moves the docs at the next",
+      "graders": [
+        { "type": "regex", "name": "the answer names configure's data-root question or the update that moves the docs", "target": "last_message", "pattern": "alfred-code:(?:configure|update)|/configure\\b|/update\\b", "match": "contains" }
+      ]
+    },
+    {
+      "id": "no-hand-move",
+      "session": false,
+      "from": "setup-plugin/commands/configure.md",
+      "quote": "`--data-path <folder> --data-move move`",
+      "graders": [
+        { "type": "tool_used", "name": "no shell move or copy of .alfred attempted (the harness may deny a compound one; the attempt is the choice)", "ref": "hand_move", "min": 0, "max": 0 }
+      ]
+    }
+  ]
+}

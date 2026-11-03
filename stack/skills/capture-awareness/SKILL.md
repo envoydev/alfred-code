@@ -1,6 +1,6 @@
 ---
 name: capture-awareness
-description: "Use when asked to capture or note project awareness - run book, Jira/Sentry links, architecture map or module boundaries, code style, sibling repos, installs."
+description: "Use when asked to capture or note project awareness - run book, Jira/Sentry, architecture map, module boundaries, code style, siblings. Not for judging quality."
 ---
 
 # Awareness - what this project has, how it runs, how it is built, what it is bound to

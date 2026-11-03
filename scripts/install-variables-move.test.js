@@ -20,11 +20,17 @@ const ROOT = path.join(__dirname, '..');
 const SEL = 'skill markdown-style\n';
 const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]);
 const CATALOG = require('../meta/environment.json').env.map((r) => r.key);
+// [key, the stack's old seed, the value it resets to] - the env pass's reseed list
+const RESEEDS = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json')).reseed;
 const SETTINGS_KEYS = ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_HOOKS_OFF'];
 // A `seed: false` row (WORKSPACE, FRESH_SESSION_PAYBACK) is never written into a project, so it never moves either.
 const UNSEEDED = require('../meta/environment.json').env.filter((r) => r.seed === false).map((r) => r.key);
 const SEEDED = CATALOG.filter((k) => !SETTINGS_KEYS.includes(k) && !UNSEEDED.includes(k));
 const MOVED_LINE = /variables: (\d+) keys moved to \.alfred\/\.variables - a teammate on 2\.12\.0 or older reads none of them until they update; a downgrade needs them put back in \.claude\/settings\.json by hand/;
+
+// B1 of the 2026-11-03 usage audit: an update moves the stack's own old scorer seeds (meta/migrations.json reseeds);
+// every other value an older install holds is carried across unchanged.
+const reseeded = (env) => { const out = { ...env }; for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to; return out; };
 
 const exportOf = releaseExport;
 // The steps of an update over `tag`: that release installs, this tree updates.
@@ -167,12 +173,14 @@ for (const scope of ['project', 'user', 'local'])
             }),
         });
         const [before, after, again] = steps;
-        assert.deepStrictEqual(after.effective, before.effective, outs[1]);
+        assert.deepStrictEqual(after.effective, reseeded(before.effective), outs[1]);
+        assert.deepStrictEqual([after.effective.ALFRED_CODE_SCORER, after.effective.ALFRED_CODE_SCORER_OUTPUTS], ['1', 'designer-plan'], 'the old scorer seeds moved');
         assert.deepStrictEqual(catalogIn(after.env).filter((k) => !SETTINGS_KEYS.includes(k)), [], JSON.stringify(after.env));
-        for (const key of SEEDED) assert.strictEqual(after.vars[key], before.env[key], `${key} did not move unchanged`);
+        const want = reseeded(before.env);
+        for (const key of SEEDED) assert.strictEqual(after.vars[key], want[key], `${key} did not move unchanged`);
         const moved = Object.entries(before.ledger[file] || {}).filter(([k]) => SEEDED.includes(k));
         assert.ok(moved.length > 0, 'v2.12.0 ledgered its seeds');
-        for (const [key, hash] of moved) assert.strictEqual((after.ledger['.variables'] || {})[key], hash, `${key}'s ledger row did not follow it`);
+        for (const [key, hash] of moved) assert.strictEqual((after.ledger['.variables'] || {})[key], want[key] === before.env[key] ? hash : stampLib.valueHash(want[key]), `${key}'s ledger row did not follow it`);
         for (const [key] of moved) assert.ok(!Object.hasOwn(after.ledger[file] || {}, key), `${key} is still ledgered under ${file}`);
         assert.strictEqual(after.ignored, scope === 'local' ? 0 : 1);
         if (scope !== 'local') assert.match(after.dataIgnore, /^!\/\.variables$/m, 'the data root\'s own file re-includes .variables');
@@ -193,7 +201,10 @@ test('AC8: an update over a v2.12.0 export whose own .gitignore line .alfred/ ig
         prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.alfred/\n'),
         each: (repo) => ({ settings: readOr(path.join(repo, '.claude', 'settings.json')), vars: fs.existsSync(varsFile(repo)) }),
     });
-    assert.strictEqual(steps[1].settings, steps[0].settings, outs[1]);
+    // byte-identical but for the two old scorer seeds the update moves (B1)
+    const before = JSON.parse(steps[0].settings);
+    before.env = reseeded(before.env);
+    assert.strictEqual(steps[1].settings, `${JSON.stringify(before, null, 2)}\n`, outs[1]);
     assert.strictEqual(steps[1].vars, false, 'a .variables was written under an ignored data root');
     assert.match(outs[1], /!! variables: \.alfred\/\.variables is ignored by \.gitignore:1 - the keys are kept in settings\.json/, outs[1]);
     assert.doesNotMatch(outs[1], MOVED_LINE);

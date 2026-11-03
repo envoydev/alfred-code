@@ -126,7 +126,8 @@ test('machine: a project-scope claude-hud gets its status line in this project\'
     assert.match(r.stdout, /statusLine written - .*in the project \(\.claude\/settings\.local\.json\)/);
     const local = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8'));
     assert.match(local.statusLine.command, /claude-hud/);
-    assert.strictEqual(local.statusLine.refreshInterval, 5, 'the row\'s refresh interval lands beside the line it belongs to');
+    // PL-06: the row's win32 leaf (meta/plugin-settings.json on_platform) - 30 s on Windows, 5 s elsewhere.
+    assert.strictEqual(local.statusLine.refreshInterval, process.platform === 'win32' ? 30 : 5, 'the row\'s refresh interval lands beside the line it belongs to');
     const account = (() => { try { return JSON.parse(fs.readFileSync(path.join(acct, 'settings.json'), 'utf8')); } catch { return {}; } })();
     assert.strictEqual(account.statusLine, undefined, 'the account status line is every project\'s - never written for one project\'s claude-hud');
     assert.ok(fs.existsSync(path.join(acct, 'plugins', 'claude-hud', 'config.json')), 'claude-hud\'s own config stays account-wide');
@@ -436,3 +437,26 @@ test('init-plan prints instructions-both: ask before its last line, and unattend
     assert.ok(!unattended(plan({ inv: INV(), root: project(), env, probe: NONE })).some((l) => l.includes('instructions-both')));
 });
 
+
+// U01 of the 2026-11-03 usage audit: the stack's marketplace auto-update, asked once per account in step 4's call.
+test('init-plan prints the auto-update line before instructions-both, and unattended turns it on only on ask', () =>
+{
+    const { unattended } = require('./init-plan.js');
+    const acct = path.join(TMP, `u01-acct-${seq++}`);
+    fs.mkdirSync(path.join(acct, 'plugins'), { recursive: true });
+    const managedFile = path.join(TMP, 'no-managed', 'managed-settings.json');
+    const env = E({ CLAUDE_CONFIG_DIR: acct });
+    const none = plan({ inv: INV(), root: project(), env, probe: NONE, managedFile });
+    assert.match(lineOf(render(none), /^auto-update:/), /^auto-update: not asked - the stack's marketplace is not registered/);
+    assert.ok(!unattended(none).some((l) => l.includes('auto-update')));
+    fs.writeFileSync(path.join(acct, 'plugins', 'known_marketplaces.json'), JSON.stringify({ envoydev: { source: { source: 'github', repo: 'envoydev/alfred-code' } } }));
+    const asked = plan({ inv: INV(), root: project(), env, probe: NONE, managedFile });
+    const lines = render(asked);
+    assert.ok(lines.includes('auto-update: ask envoydev'), lines.join('\n'));
+    assert.match(lines[lines.length - 1], /^init-plan: /);
+    assert.ok(unattended(asked).includes('unattended: auto-update -> Turn it on (Recommended)'));
+    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ extraKnownMarketplaces: { envoydev: { source: { source: 'github', repo: 'envoydev/alfred-code' }, autoUpdate: false } } }));
+    const answered = plan({ inv: INV(), root: project(), env, probe: NONE, managedFile });
+    assert.match(lineOf(render(answered), /^auto-update:/), /^auto-update: off for envoydev \(/, 'a no is never asked again');
+    assert.ok(!unattended(answered).some((l) => l.includes('auto-update')));
+});

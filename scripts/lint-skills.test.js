@@ -626,6 +626,14 @@ test('check 28: a verified note copied from another plugin is a finding', () => 
     assert.strictEqual(wrongPlugin.length, 1, wrongPlugin.join('\n'));
     assert.match(wrongPlugin[0], /opening with 'claude-hud <version>'/);
     assert.strictEqual(lintPluginSettings(row('0.8.0'), roster).length, 1, 'a bare version does not say which plugin');
+
+    // PL-06: an `on_platform` row changes a value the target already sets, on a platform Node names - never a new key
+    // (it would carry no why) and never a misspelt platform (it would silently never apply).
+    const plat = (on) => ({ plugins: { 'claude-hud': { verified: 'claude-hud 0.15.0 - src/schema.ts', scope: 'account', targets: [{ file: 'settings.json', settings: { statusLine: { refreshInterval: 5 } }, why: { statusLine: 'x' }, on_platform: on }] } } });
+    assert.deepStrictEqual(lintPluginSettings(plat({ win32: { statusLine: { refreshInterval: 30 } } }), roster), []);
+    assert.ok(lintPluginSettings(plat({ windows: { statusLine: { refreshInterval: 30 } } }), roster).some((f) => /on_platform names 'windows'/.test(f)));
+    assert.ok(lintPluginSettings(plat({ win32: { statusLine: { padding: 2 } } }), roster).some((f) => /on_platform\.win32 sets 'statusLine\.padding', which its settings do not/.test(f)));
+    assert.ok(lintPluginSettings(plat([1]), roster).some((f) => /on_platform must be an object/.test(f)));
 });
 
 // 35b. The load verb can come AFTER the name, and only a back-reference makes it a directive.
@@ -771,6 +779,31 @@ test('check 48: a core missing a stack wiring, or a core with no hooks, is a fin
     assert.ok(lintHooksEntry(none).some((f) => /no `alfred-code` entry/.test(f)), 'no core at all is caught');
 });
 
+// HK-22 (audit 2026-10-30): the stop judge is a `prompt` hook - no command, so the launcher shape does not apply; it is
+// held instead to a model, a timeout and the hook input's placeholder, and its text to the prompt file through the
+// generated block (a drifted text is a stale entry).
+test('check 48: a prompt hook needs a timeout and $ARGUMENTS, no model alias, and its text follows the prompt file', () => {
+    const { lintPromptHook, lintHooksEntry } = require('./lint-skills.js');
+    const good = { type: 'prompt', prompt: 'Judge $ARGUMENTS', timeout: 30 };
+    assert.deepStrictEqual(lintPromptHook(good, 'Stop'), [], 'no model: Claude Code\'s background model');
+    assert.deepStrictEqual(lintPromptHook({ ...good, model: 'claude-haiku-5-5' }, 'Stop'), [], 'a full id');
+    // measured 2026-11-03: the hook evaluator sends the field as written, and `haiku` failed every call
+    for (const alias of ['haiku', 'sonnet', 'opus', 'fable', 'best', 'default', 'opusplan', 'opus[1m]', ' Haiku '])
+        assert.ok(lintPromptHook({ ...good, model: alias }, 'Stop').some((f) => /model alias/.test(f)), alias);
+    assert.ok(lintPromptHook({ ...good, model: '' }, 'Stop').some((f) => /empty model/.test(f)));
+    assert.ok(lintPromptHook({ ...good, timeout: undefined }, 'Stop').some((f) => /no timeout/.test(f)));
+    assert.ok(lintPromptHook({ ...good, prompt: 'Judge the close.' }, 'Stop').some((f) => /\$ARGUMENTS/.test(f)));
+    assert.ok(lintPromptHook(good, 'SessionStart').some((f) => /SessionStart takes no prompt hook/.test(f)));
+    // The judge is HELD (the user's ruling of 2026-11-03): the live core carries no prompt hook, and one added to the
+    // entry by hand while the row is held is a stale entry.
+    const drifted = liveMarketplace();
+    const stop = drifted.plugins.find((p) => p.name === 'alfred-code').hooks.Stop;
+    assert.ok(!stop.flatMap((g) => g.hooks).some((h) => h.type === 'prompt'), 'the live core carries no prompt hook while the judge is held');
+    const text = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'stack', 'hooks', 'stop-judge-prompt.txt'), 'utf8').trim();
+    stop[0].hooks.push({ type: 'prompt', prompt: text, timeout: 30 });
+    assert.ok(lintHooksEntry(drifted).some((f) => /core entry's hooks are STALE/.test(f)), 'a prompt hook wired by hand while its row is held is caught');
+});
+
 test('check 49: the live file is clean, and a stale RETIRED alias, a renames key or a hooks entry fail', () => {
     const { lintMarketplaceEntries } = require('./lint-skills.js');
     assert.deepStrictEqual(lintMarketplaceEntries(liveMarketplace()), [], 'the live file is clean');
@@ -793,8 +826,18 @@ test('check 49: the live file is clean, and a stale RETIRED alias, a renames key
 
     // An entry fetched from outside the repo is the marketplace's own; a hand entry inside the repo is still drift.
     const foreign = liveMarketplace();
-    foreign.plugins.push({ name: 'other-tool', source: { source: 'github', repo: 'envoydev/other-tool' }, description: 'x' });
+    foreign.plugins.push({ name: 'other-tool', source: { source: 'github', repo: 'envoydev/other-tool', ref: 'main', sha: '0123456789abcdef0123456789abcdef01234567' }, description: 'x' });
     assert.deepStrictEqual(lintMarketplaceEntries(foreign), [], 'an object-sourced entry is not the placement\'s');
+    // SYS-07 of the 2026-11-03 system audit: an outside source floating on a branch serves whatever lands there next,
+    // so every one is pinned to its full commit - a missing, short or non-hex sha is a finding.
+    for (const sha of [undefined, '33f60bf', 'not-a-sha-not-a-sha-not-a-sha-not-a-sha!', 42])
+    {
+        const loose = liveMarketplace();
+        const source = { source: 'github', repo: 'envoydev/other-tool', ref: 'main' };
+        if (sha !== undefined) source.sha = sha;
+        loose.plugins.push({ name: 'other-tool', source, description: 'x' });
+        assert.ok(lintMarketplaceEntries(loose).some((f) => /other-tool is fetched from outside this repo with no 40-hex `sha`/.test(f)), `a foreign source with sha ${JSON.stringify(sha)} is a finding`);
+    }
     const inside = liveMarketplace();
     inside.plugins.push({ name: 'stray', source: './stray', description: 'x' });
     assert.ok(lintMarketplaceEntries(inside).some((f) => /carries stray, which the placement does not produce/.test(f)), 'a relative-path hand entry is a finding');

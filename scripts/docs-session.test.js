@@ -1566,6 +1566,32 @@ test('a provisional orientation is pushed with its stale warning, and with no se
   } finally { r.rm(); }
 });
 
+// Audit 2026-11-03 SYS-04: a fresh install's docs root is the preferences seed alone - under a 'git' declaration, never
+// committed - and its start block said 'Versioning mismatch' and 'read the section covering the file' with no section to
+// read. Both go; a section covering a source root brings the gate line back, and a doc committed then taken out of the
+// index brings the mismatch back.
+test('the installer\'s own seed reads no mismatch and no gate line; a covering section and a real mismatch still do', () => {
+  const GIT = { ALFRED_CODE_DOCS_VERSIONING: 'git' };
+  const r = repo({ tracked: true, files: { 'src/Api/Refund.cs': 'x\n' } });
+  try {
+    r.write('.claude/docs/preferences/watch.json', '{}\n');
+    r.write('.claude/docs/preferences/GIT-PREFERENCES.md', section('commits', '', 'Commit only on the user\'s word.'));
+    const fresh = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, GIT));
+    assert.doesNotMatch(fresh, /Versioning mismatch/, 'a seed never committed is not committed yet');
+    assert.doesNotMatch(fresh, /Before your first change/, 'no section watches a source root');
+    assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', source: 'compact', session_id: sid() }, GIT)), /Versioning mismatch|Before your first change/, 'nor at a compaction');
+    r.write('.claude/docs/architecture/references/notes.md', section('readme', 'README.md', 'The readme is the entry.'));
+    assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, GIT)), /Before your first change/, 'a section covering no source root is no gate either');
+    r.write('.claude/docs/architecture/references/patterns.md', PATTERNS);
+    assert.match(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, GIT)), /Before your first change under src\/ or tests\//, 'a section covering src/ brings it back');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'docs');
+    r.git('rm', '-r', '-q', '--cached', '.claude/docs');
+    r.git('commit', '-qm', 'untrack docs');
+    assert.match(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, GIT)), /Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git/, 'committed, then diverged: still said');
+  } finally { r.rm(); }
+});
+
 test('a captured orientation carries no provisional warning', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
   try {

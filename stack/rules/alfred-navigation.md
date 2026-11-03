@@ -10,7 +10,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - A shell read (`cat`, `sed`, `head`, `awk`, python, a heredoc) is the same read under the same rules. Only a plain one-file view (`cat`, `head`, `tail`, `sed -n`, `grep`, no pipe or redirect) attaches path-scoped rules; a shell write never does, so the read guard names the governing rule on the first shell write.
 - Never fetch what is already in context, by any route - no repeat symbol lookup, no second read of an unchanged file or range; re-check an edit at the edited range only.
 - No docs block at session start: say so once and navigate from code.
-- What the STACK does or wants is read from its own artifacts - the owning command's doc for a reconcile, the rule or hook that reads a setting for what it does - never guessed by hand-comparing files.
+- What the stack does or wants is read from its own artifacts - the owning command's doc for a reconcile, the rule or hook that reads a setting for what it does - never guessed by hand-comparing files.
 
 ## Locating symbols
 
@@ -21,7 +21,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - Edits go through Edit / Write, the tools the edit hooks watch; of a navigation server's own edit tools only a symbol rename or a safe delete is used.
 - A large JSON / YAML / lock / fixture file is queried (a `node -e` projection - Git for Windows ships no `jq` - or `grep -n`, then a ranged Read), never read whole.
 - A large file is outlined first (`documentSymbol`: its symbols and their line ranges), then read by range. `documentSymbol` takes ONE file, never a directory - list the directory first.
-- An EMPTY reference result for a symbol that plausibly has callers is suspect (a multi-tsconfig monorepo hides cross-lib callers): cross-check with a grep before saying 'no callers'.
+- An empty reference result for a symbol that plausibly has callers is suspect (a multi-tsconfig monorepo hides cross-lib callers): cross-check with a grep before saying 'no callers'.
 
 ## Compact Instructions
 
@@ -32,7 +32,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 <!-- Kept in this file, not split into a rule of its own: these lines govern the same reads and writes as the sections above, and a separate pathless rule would add only frontmatter and a heading (HTML comments are stripped before injection, so this note costs nothing). -->
 
 - A splice (`sed -i`, an in-place python or perl replace) is for a mechanical rename across many sites, never an edit Edit / Write can make; it counts its anchor first and replaces only when the count is the one it expects.
-- Read `$?` on the very next line, with `set -o pipefail` before a pipe (bash and zsh both honour it; `${PIPESTATUS[0]}` reads empty in zsh); never `<cmd> || echo none`, which launders a failure into an empty result. A scan used as evidence of ABSENCE runs a must-match positive control in the same call, and resolves its tool absolutely or checks it with `type` first.
+- Read `$?` on the very next line, with `set -o pipefail` before a pipe (bash and zsh both honour it; `${PIPESTATUS[0]}` reads empty in zsh); never `<cmd> || echo none`, which launders a failure into an empty result. A scan used as evidence of absence runs a must-match positive control in the same call, and resolves its tool absolutely or checks it with `type` first.
 - Scratch code goes outside the tracked tree (the session scratchpad or the OS temp dir), or into a gitignored dir inside the repo when an ESM script must import the project's `node_modules`. An interrupted compound write may already have run - check the target before trusting the rejection.
 
 ## When the target is ambiguous

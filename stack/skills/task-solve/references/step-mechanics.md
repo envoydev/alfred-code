@@ -55,6 +55,9 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
+- **The hand-written stamp goes LAST.** Step 6 deletes it only after the close stop's ask is answered, or after
+  the close printed when nothing is pending - never before the ask. With the stamp gone the hooks read the session
+  as attended, so the ask waits for a user who is away (usage audit 2026-11-03: deleted first, a close ask sat 3.8 hours).
 - **Under auto-run an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
   the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
 - **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
@@ -64,8 +67,9 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   `Result:` / `Progress:` / `Leftovers:` lines, and the close its receipts: they are the user's first sight of the run.
 - **The fresh-session numbers are this stop's.** The stop-contract hook injects the carry and the cold floor at each
   stop; a figure injected at an earlier stop is stale (e6a68237 quoted a 74-minute-old 192k while the request carried
-  284.5k). An idle gap is the clock route's `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (default 2): the prompt that
-  ends it is offered the fresh session by the hook, and the next ask lists it.
+  284.5k). An idle gap is the clock route's `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (default `cache`: the prompt
+  cache's own life - 5 min or 1 h, else 1 h; an explicit hour count overrides): the prompt that ends it is offered the
+  fresh session by the hook, and the next ask lists it.
 
 ## Agents-mode dispatch - step 4
 
@@ -137,6 +141,12 @@ only name a review that ran. Point it at the plan file - its task cards and `## 
 Deviations and findings become a punch list routed back to step 4 - and the fix delta gets the SAME
 reviewer again before anything is stamped: a punch-list fix is unreviewed code. Then the body's
 `Conformance:` stamp.
+
+**The findings ask's mark.** 'Fix now' keeps the mark while a BLOCKER or MATERIAL is open in the
+request's area - the code this diff changed, or a behaviour the `Asked:` line names - under AUTO too:
+deferring it ships the defect the user came to have fixed (usage audit 2026-11-03: a run marked 'Close
+now' over an in-area MATERIAL, and the user had to push back). The mark moves to 'Close now' only when
+every open finding is MINOR or outside that area. With nothing open, the stop is the step-done ask.
 
 ## The step-6 notes purge
 

@@ -308,9 +308,11 @@ test('C08 C09 9a4ef375#3 c6142301#2 c6142301#6 e6a68237#6 0d070bcc#6 (skill half
     assert.match(mech, /fresh-session option is never taken, since nobody is there to paste the resume block/);
     assert.match(mech, /Every stop still prints its `Result:` \/ `Progress:` \/ `Leftovers:` lines, and the close its receipts/);
     assert.match(mech, /a figure injected at an earlier stop is stale/);
-    assert.match(mech, /An idle gap is the clock route's `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` \(default 2\)/);
+    // U16 (usage audit 2026-11-03): the idle wait follows the prompt cache's life unless an hour count is set
+    assert.match(mech, /An idle gap is the clock route's `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` \(default `cache`: the prompt cache's own life - 5 min or 1 h, else 1 h; an explicit hour count overrides\)/);
+    assert.doesNotMatch(mech, /\(default 2\)/, 'the 2h seed is gone');
     const t = flat(skill('task-solve'));
-    assert.match(t, /or resumes after a 2h\+ idle gap, the fresh-session resume IS one of the next ask's options/);
+    assert.match(t, /or resumes after an idle gap past the cache, the fresh-session resume IS one of the next ask's options/);
     assert.match(t, /quote THIS stop's, or say they are unmeasured/);
     assert.match(t, /`references\/step-mechanics\.md` holds the rest/, 'the AUTO paragraph points at the mechanics');
 });

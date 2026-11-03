@@ -262,8 +262,12 @@ function shellReadTarget(cmd) {
 // node_modules/@nx/jest/...` as a whole-suite test run (audit 2026-10-10, session f10cb06a) - a runner named as an
 // argument is not a run.
 const RUNNER_PATH = String.raw`(?:[\w.@~$/\\-]*[/\\])?`;
+// A suite file run straight under node is a test run: a consuming project's 66 `node <suite>.test.cjs` runs read as 0
+// and 7 backed green claims as unverified (usage audit 2026-11-03 U02). Node's own flags may come first (`node
+// --test-concurrency=1 --test`), except a syntax check or an eval, which runs no suite.
+const NODE_FLAGS = String.raw`(?:(?!(?:-c|--check|-e|--eval|-p|--print)(?![\w-]))-[\w-]+(?:=\S+)?\s+)*`;
 const CHECK_RES = {
-  test: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+test|(?:npm|pnpm|yarn)\s+(?:run\s+)?test\S*|jest|vitest|mocha|playwright\s+test|ng\s+test|pytest|python3?\s+-m\s+pytest|go\s+test|cargo\s+test|node\s+--test|mvn\s+test|gradlew?\s+test|phpunit)(?![\w.-])`),
+  test: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+test|(?:npm|pnpm|yarn)\s+(?:run\s+)?test\S*|jest|vitest|mocha|playwright\s+test|ng\s+test|pytest|python3?\s+-m\s+pytest|go\s+test|cargo\s+test|node\s+${NODE_FLAGS}(?:--test|[\w.@~$/\\-]+\.test\.[cm]?js)|mvn\s+test|gradlew?\s+test|phpunit)(?![\w.-])`),
   build: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+(?:build|publish)|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:build|typecheck|type-check)\S*|ng\s+build|tsc|vue-tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradlew?\s+(?:build|assemble))(?![\w.-])`),
   // A formatter CHECK is a lint (`prettier --check` reads, `--write` rewrites), and so is one of the stack's own
   // read-only checkers: `agents-md-check: clean` was a claim the scorecard could not see (audit 2026-10-10, 65abb00a).

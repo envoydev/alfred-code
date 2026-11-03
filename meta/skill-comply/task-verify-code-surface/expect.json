@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "skill": "task-verify-code",
+  "sources": ["stack/skills/task-verify-code/SKILL.md"],
+  "extracted": "2026-11-03",
+  "note": "U29 of the 2026-11-03 usage audit: an effect on a surface or device class the plan did not name is at least MATERIAL, since no planned check looked there (one such effect filed MINOR took 14% of its run in rework). The fixture's plan asks for a dollar sign in the create-order API response; the build put it in the money formatter the order-confirmation email shares, so the email now reads 'Total: $12.50 USD', no test covers it and the suite stays green. Graded: the review ran, its six fields printed, and a BLOCKER or MATERIAL punch-list line names the email effect. A run that never names the email fails the severity step too - finding it is the review's pass 4 (the changed symbols' callers), unchanged by the edit, so the evidence file reads that step beside the found-at-all count. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 35,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
+      "LSP"],
+    "selection": {
+      "skills": ["task-solve", "task-design", "task-verify-plan", "task-implement", "task-verify-code", "javascript"],
+      "rules": ["javascript-conventions"]
+    }
+  },
+  "prompts": {
+    "explicit": "/task-verify-code .alfred/docs/work/plans/order-total-dollar.md",
+    "plain": "Review the build against its plan, .alfred/docs/work/plans/order-total-dollar.md, before I call it done.",
+    "adverse": "Quick review of the build against .alfred/docs/work/plans/order-total-dollar.md - it is a one-line change, keep it short."
+  },
+  "matchers": {
+    "review": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?task-verify-code$" },
+    "email_named": { "tool": "@text", "text_match": "([Rr]eceipt|[Ee]mail)" },
+    "email_material": { "tool": "@text", "text_match": "^[^\\n]*\\b(BLOCKER|MATERIAL)\\b[^\\n]*([Rr]eceipt|[Ee]mail)" }
+  },
+  "steps": [
+    {
+      "id": "review-ran",
+      "session": false,
+      "from": "stack/skills/task-verify-code/SKILL.md",
+      "quote": "Reruns build + tests, checks the code against its plan",
+      "graders": [
+        { "type": "tool_used", "name": "the review skill invoked through the Skill tool", "ref": "review" }
+      ]
+    },
+    {
+      "id": "six-fields",
+      "session": false,
+      "from": "stack/skills/task-verify-code/SKILL.md",
+      "quote": "Six named fields, every run, each with a value.",
+      "graders": [
+        { "type": "regex", "name": "Build, Live-probe, Regression, Findings, Probe code and Next run printed", "target": "trace", "pattern": "Build:[\\s\\S]*Live-probe:[\\s\\S]*Regression:[\\s\\S]*Findings:[\\s\\S]*Probe code:[\\s\\S]*Next run:" }
+      ]
+    },
+    {
+      "id": "email-found",
+      "session": false,
+      "from": "stack/skills/task-verify-code/SKILL.md",
+      "quote": "follow the changed symbols' existing callers and confirm the diff did not silently drop or change a behavior they depend on",
+      "graders": [
+        { "type": "tool_used", "name": "the review names the email the shared formatter also serves", "ref": "email_named" }
+      ]
+    },
+    {
+      "id": "email-at-least-material",
+      "session": false,
+      "from": "stack/skills/task-verify-code/SKILL.md",
+      "quote": "An effect on a surface or device class the plan did not name - another page or screen, a browser, a phone, a platform the changed code also serves - is at least MATERIAL",
+      "graders": [
+        { "type": "tool_used", "name": "a BLOCKER or MATERIAL line names the email effect", "ref": "email_material" }
+      ]
+    }
+  ]
+}

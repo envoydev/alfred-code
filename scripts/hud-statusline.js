@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 // hud-statusline.js - claude-hud arrives CONFIGURED: /alfred-code:init's claude-hud item, made
-// deterministic instead of a model walk through claude-hud's own /claude-hud:setup.
+// deterministic instead of a model walk through claude-hud's own setup (/claude-hud:hud from 0.15.0,
+// /claude-hud:setup before).
 //
 //   node scripts/hud-statusline.js [--config-dir <dir>] [--project <dir>] [--catalog <file>]
 //
@@ -11,12 +12,14 @@
 // local-scope row naming `--project`, and no user-scope row): `<project>/.claude/settings.local.json`, since the
 // command names this machine's node. claude-hud's own config.json is account-wide either way.
 //   1. the settings file's `statusLine` - the command claude-hud 0.8.0's setup writes for a Node runtime: the
-//      first `node` on PATH as found (setup's `command -v node`), in the bash sort -V form - on Windows
-//      too when Git Bash is there, else the cmd.exe line and its launcher.
+//      first `node` on PATH as found (setup's `command -v node`), in the bash sort -V form, its cache glob under
+//      the plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR, else <account>/plugins) - on Windows too when Git Bash is
+//      there, else the cmd.exe line and its launcher.
 //      No statusLine: written. claude-hud's own line in a current shape: left as it is. claude-hud's
 //      line in a stale shape (a pinned version path, the old PowerShell wrapper, a runtime that is
 //      gone): its command refreshed, every other key kept. A line that is NOT claude-hud's: kept and
-//      reported with the /claude-hud:setup line, never replaced and never given a refresh interval.
+//      reported with claude-hud's own setup route for the cached version, never replaced and never given a
+//      refresh interval. The node written is checked against the newest cached version's engines.node; a miss is said.
 //   2. the claude-hud row of meta/plugin-settings.json (the Compact layout among it), through
 //      plugin-settings.js - after the statusLine, because the row's refresh interval needs that block.
 // claude-hud not installed, or switched off by the user: one skip line, nothing written. An account
@@ -26,19 +29,27 @@
 // a fallback to the environment's account.
 //
 // The shapes below are claude-hud 0.8.0's (commands/setup.md; MIT, Copyright (c) 2026 Jarrod Watts),
-// kept byte for byte so a line /claude-hud:setup wrote reads as current here, and ours there. claude-hud 0.11
-// (0.11.2's scripts/setup.mjs `buildCommand`) writes a launcher line instead - the runtime and a copy of its
+// kept byte for byte so a line /claude-hud:setup wrote reads as current here; the line written differs from 0.8.0's
+// sort -V form only in its plugins root (SORT_V_ROOT), and claude-hud's own install takes any line naming it as its own.
+// claude-hud 0.11 (0.11.2's scripts/setup.mjs `buildCommand`) writes a launcher line instead - the runtime and a copy of its
 // statusline.mjs at <account>/plugins/claude-hud/ (POSIX), a statusline.cmd shim there (Git Bash), or the same cmd.exe
 // line as 0.8.0 (PowerShell) - and those read as current too, so /alfred-code:init never rewrites a line claude-hud's
 // own setup just wrote (audit 2026-10-14, PL7: two writers of one key, each undoing the other). Re-read on 0.12.0 (audit
 // 2026-10-20b): scripts/setup.mjs and scripts/statusline.mjs are unchanged since 0.11.2, and dist/index.js still exports
-// the `main` the launcher below calls; 0.12.1 leaves both scripts byte for byte.
+// the `main` the launcher below calls; 0.12.1 leaves both scripts byte for byte. Re-read on 0.15.0 (audit 2026-11-03):
+// setup.mjs and commands/ are gone - its `hud` skill runs install.mjs, whose three lines (POSIX launcher, Git Bash shim,
+// PowerShell cmd.exe) are the 0.11 ones above; dist/index.js is a stub re-exporting hud.mjs's `main`, which runs itself
+// when dist/index.js is the entry, so the sort -V line still renders; its launcher reads a moved plugins root (0.14.2).
 const fs = require('node:fs');
 const path = require('node:path');
+// R105 / M6: an external command starts through runtime.js, the one Windows-safe spawn (a node.cmd shim resolves there).
+const { spawnCommand } = require('./install/runtime.js');
 
 const { accountDir } = require('./install/stamp.js');
 const { parseJson } = require('./install/json-file.js');
 const { planFor, applyTargets, backupOnce, report, readDoc } = require('./plugin-settings.js');
+// The plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR, else <account>/plugins) - one home, beside lsp-coverage.js, its other reader.
+const { pluginsRoot, movedRoot } = require('../stack/skills/capture-preferences/scripts/plugins-root.js');
 
 const HUD = 'claude-hud';
 const CATALOG = path.join(__dirname, '..', 'meta', 'plugin-settings.json');
@@ -46,20 +57,27 @@ const CATALOG = path.join(__dirname, '..', 'meta', 'plugin-settings.json');
 // The Node shape for a bash-run status line (setup.md:199): the marketplace-aware cache glob, the
 // newest version by `sort -V`, COLUMNS exported, `exec` with no second `bash -c` layer.
 const SORT_V = 'cols=${COLUMNS:-}; case "$cols" in ""|*[!0-9]*) cols=$(stty size 2>/dev/null </dev/tty | awk \'{print $2}\');; esac; case "$cols" in ""|*[!0-9]*) cols=120;; esac; export COLUMNS=$(( cols > 4 ? cols - 4 : 1 )); plugin_dir=$(ls -1d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-hud/*/ 2>/dev/null | sort -V | tail -1); exec "{RUNTIME_PATH}" "${plugin_dir}{SOURCE}"';
+// The form this script WRITES: SORT_V with the plugins root resolved the way Claude Code resolves it, so the line still
+// finds the cache when CLAUDE_CODE_PLUGIN_CACHE_DIR moves it (code.claude.com/docs/en/plugins/loading, 'Find plugins on
+// disk'); claude-hud's own launcher reads the variable the same way since 0.14.2. SORT_V itself is read, never written.
+const SORT_V_ROOT = SORT_V.replace('"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/', '"${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"/cache/');
 // What /claude-hud:setup itself writes on macOS / Linux (setup.md:185 node, :180 bun) - read as
 // current there, never written here.
 const AWK_NODE = 'bash -c \'cols=${COLUMNS:-}; case "$cols" in ""|*[!0-9]*) cols=$(stty size 2>/dev/null </dev/tty | awk \'"\'"\'{print $2}\'"\'"\');; esac; case "$cols" in ""|*[!0-9]*) cols=120;; esac; export COLUMNS=$(( cols > 4 ? cols - 4 : 1 )); plugin_dir=$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-hud/*/ 2>/dev/null | awk -F/ \'"\'"\'{ print $(NF-1) "\\t" $(0) }\'"\'"\' | grep -E \'"\'"\'^[0-9]+\\.[0-9]+\\.[0-9]+[[:space:]]\'"\'"\' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec "{RUNTIME_PATH}" "${plugin_dir}{SOURCE}"\'';
 const AWK_BUN = AWK_NODE.replace('exec "{RUNTIME_PATH}" "', 'exec "{RUNTIME_PATH}" --env-file /dev/null "');
 // Windows (setup.md:369, the cmd path per :375-377): the launcher below, through the absolute cmd.exe.
 const CMD = '{CMD_PATH} /d /s /c ""{RUNTIME_PATH}" "{WRAPPER_PATH}""';
-const SHAPES = { sortV: SORT_V, awkNode: AWK_NODE, awkBun: AWK_BUN, cmd: CMD };
+const SHAPES = { sortV: SORT_V, sortVRoot: SORT_V_ROOT, awkNode: AWK_NODE, awkBun: AWK_BUN, cmd: CMD };
+// The bash shapes whose cache glob ignores a moved plugins root: current only while nothing moves it.
+const ROOT_BLIND = [SORT_V, AWK_NODE, AWK_BUN];
 // claude-hud 0.11's own lines (setup.mjs buildCommand), read as current, never written here: POSIX quotes the runtime and
 // the launcher in single quotes (a quote inside as '\''), Bun adding --env-file /dev/null; Git Bash runs the shim.
 const LAUNCHER_POSIX_RE = /^'((?:[^']|'\\'')+)'( --env-file \/dev\/null)? '((?:[^']|'\\'')+)'$/;
 const LAUNCHER_GITBASH = 'exec "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/claude-hud/statusline.cmd"';
 const unquote = (word) => word.split("'\\''").join("'");
 
-// The Windows launcher, `<account>/plugins/claude-hud/statusline.mjs` (setup.md:237-293).
+// The Windows launcher, `<account>/plugins/claude-hud/statusline.mjs` (setup.md:237-293), reading a moved plugins root
+// as claude-hud 0.14.2's own scripts/statusline.mjs does.
 const LAUNCHER = String.raw`import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -70,7 +88,9 @@ const width = Number.isFinite(envColumns) && envColumns > 0 ? envColumns : 120;
 process.env.COLUMNS = String(Math.max(1, width - 4));
 
 const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-const cacheDir = path.join(claudeDir, 'plugins', 'cache');
+// CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root, the cache in its cache/ folder.
+const pluginsDir = (process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR || '').trim() || path.join(claudeDir, 'plugins');
+const cacheDir = path.join(pluginsDir, 'cache');
 
 function versionParts(value) {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(value);
@@ -210,10 +230,11 @@ function expected({ platform, configDir, runtime, env, exists, bash })
 {
     // Where claude-hud 0.11's own setup puts its launcher (and, under Git Bash, its statusline.cmd shim).
     const hudDir = path.join(configDir, 'plugins', HUD);
+    const rootMoved = Boolean(movedRoot(env || {}));
     if (platform !== 'win32' || bash)
     {
         const node = platform === 'win32' ? runtime.replace(/\\/g, '/') : runtime;
-        return { shell: 'bash', command: fill(SORT_V, { RUNTIME_PATH: node, SOURCE: 'dist/index.js' }), launcher: null, hudDir };
+        return { shell: 'bash', command: fill(SORT_V_ROOT, { RUNTIME_PATH: node, SOURCE: 'dist/index.js' }), launcher: null, hudDir, rootMoved };
     }
     const wrapper = path.win32.join(configDir, 'plugins', HUD, 'statusline.mjs');
     return {
@@ -221,6 +242,7 @@ function expected({ platform, configDir, runtime, env, exists, bash })
         command: fill(CMD, { CMD_PATH: cmdPath(env, exists), RUNTIME_PATH: runtime, WRAPPER_PATH: wrapper }),
         launcher: { file: path.join(configDir, 'plugins', HUD, 'statusline.mjs'), wrapper },
         hudDir,
+        rootMoved,
     };
 }
 
@@ -245,8 +267,10 @@ function classify(statusLine, { platform, want, exists })
     const win = platform === 'win32';
     // Windows takes node only (setup.md:128, :153), never the awk form (setup.md:194), and only the
     // form of the shell that will run it: a bash line cannot run without Git Bash, a cmd line under it.
-    const shapes = !win ? [[SORT_V, 'dist/index.js'], [AWK_NODE, 'dist/index.js'], [AWK_BUN, 'src/index.ts']]
-        : want.shell === 'bash' ? [[SORT_V, 'dist/index.js']] : [[CMD, '']];
+    // A root-blind glob finds no claude-hud while CLAUDE_CODE_PLUGIN_CACHE_DIR moves the root - stale then, like a gone runtime.
+    const shapes = (!win ? [[SORT_V_ROOT, 'dist/index.js'], [SORT_V, 'dist/index.js'], [AWK_NODE, 'dist/index.js'], [AWK_BUN, 'src/index.ts']]
+        : want.shell === 'bash' ? [[SORT_V_ROOT, 'dist/index.js'], [SORT_V, 'dist/index.js']] : [[CMD, '']])
+        .filter(([shape]) => !(want.rootMoved && ROOT_BLIND.includes(shape)));
     // claude-hud 0.11's launcher lines: this account's own launcher copy, on disk, and (POSIX) a runtime that is.
     const hudDir = want.hudDir || '';
     if (hudDir && !win)
@@ -289,9 +313,10 @@ const projectOff = (project, id) => ['settings.local.json', 'settings.json']
 // (the version dirs the launcher accepts, setup.md:250 and :277). The user's OFF wins. `scope` is where its
 // status line goes: `user` for a user-scope row (every project), `project` for a project- or local-scope row
 // naming `project` alone - a row of another project serves nothing here.
-function hudInstall(configDir, settings, project)
+function hudInstall(configDir, settings, project, env = process.env)
 {
-    const reg = readJsonFile(path.join(configDir, 'plugins', 'installed_plugins.json'));
+    const root = pluginsRoot(env, configDir);
+    const reg = readJsonFile(path.join(root, 'installed_plugins.json'));
     const rows = (reg && reg.plugins && typeof reg.plugins === 'object') ? reg.plugins : {};
     const ids = Object.keys(rows).filter((id) => id.split('@')[0] === HUD && Array.isArray(rows[id]) && rows[id].length);
     const none = project ? 'claude-hud is not installed for this project or this account' : 'claude-hud is not installed in this account';
@@ -302,7 +327,7 @@ function hudInstall(configDir, settings, project)
     const scope = userIds.some((id) => enabled[id] !== false) ? 'user'
         : projectIds.some((id) => !projectOff(project, id)) ? 'project' : null;
     if (!scope) return { ok: false, why: projectIds.length ? 'claude-hud is switched off for this project' : 'claude-hud is switched off in this account' };
-    const cache = path.join(configDir, 'plugins', 'cache');
+    const cache = path.join(root, 'cache');
     let versions = [];
     try
     {
@@ -312,12 +337,52 @@ function hudInstall(configDir, settings, project)
             try { names = fs.readdirSync(path.join(cache, market, HUD)); }
             catch { continue; }
             for (const v of names)
-                if (/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(v) && fs.existsSync(path.join(cache, market, HUD, v, 'dist', 'index.js'))) versions.push(v);
+                if (/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(v) && fs.existsSync(path.join(cache, market, HUD, v, 'dist', 'index.js'))) versions.push({ version: v, dir: path.join(cache, market, HUD, v) });
         }
     }
     catch { versions = []; }
     if (!versions.length) return { ok: false, why: `${none} (registered, but its plugin cache holds no version to run)` };
-    return { ok: true, scope };
+    // The newest, as every launcher picks it: the one whose package.json the runtime check reads.
+    const newest = versions.reduce((a, b) => (below(parts(a.version), parts(b.version)) ? b : a));
+    return { ok: true, scope, newest };
+}
+
+const parts = (v) => String(v).split(/[.+-]/).slice(0, 3).map(Number);
+const below = (a, b) => { for (let i = 0; i < 3; i += 1) if (a[i] !== b[i]) return a[i] < b[i]; return false; };
+
+// claude-hud's own setup route for the newest cached version: from 0.15.0 its one `hud` skill ('/hud replaces
+// /claude-hud:setup and /claude-hud:configure', CHANGELOG 0.15.0), which as a plugin skill answers to /claude-hud:hud
+// (code.claude.com/docs/en/skills); /claude-hud:setup before.
+const setupRoute = (newest) => (newest && !below(parts(newest.version), [0, 15, 0]) ? '/claude-hud:hud' : '/claude-hud:setup');
+
+// The version a runtime answers: this process's own in-process, any other asked with `--version`.
+function versionOf(runtime)
+{
+    if (runtime === process.execPath) return process.versions.node;
+    const r = spawnCommand(runtime, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    const m = /^v?(\d+\.\d+\.\d+)/.exec(String((r && r.stdout) || '').trim());
+    return m ? m[1] : null;
+}
+
+// The node the run writes against the floor the newest cached claude-hud states - package.json `engines.node`, '>=22.18.0'
+// since 0.15.0, whose status line prints an upgrade line on an older node. null when it holds or no floor is stated; a
+// miss, or a floor this script cannot read, as the line applyHud prints and the note init's plan carries.
+function runtimeCheck({ runtime, newest, runtimeVersion })
+{
+    const pkg = newest && readJsonFile(path.join(newest.dir, 'package.json'));
+    const range = pkg && pkg.engines && typeof pkg.engines.node === 'string' ? pkg.engines.node.trim() : '';
+    if (!range) return null;
+    const who = `claude-hud ${newest.version}`;
+    const floor = /^>=\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(range);
+    if (!floor) return { line: `hud: runtime not checked - ${who} asks for node '${range}', a range this script does not read`, note: `${who}'s node range '${range}' not checked` };
+    const version = runtimeVersion(runtime);
+    if (!version) return { line: `hud: runtime not checked - ${runtime} --version printed no version; ${who} needs node ${range}`, note: `node version unknown; ${who} needs ${range}` };
+    if (!below(parts(version), floor.slice(1, 4).map((n) => Number(n || 0)))) return null;
+    return {
+        // 0.15.0's skill points the line at a newer node it finds; setup before it writes the node it runs on.
+        line: `hud: runtime too old - ${runtime} is node ${version}; ${who} needs node ${range} (its package.json engines), so its status line prints an upgrade line instead of the HUD - put a newer node first on PATH and run this again${setupRoute(newest) === '/claude-hud:hud' ? ', or let /claude-hud:hud point the line at one' : ''}`,
+        note: `node ${version} is under ${who}'s ${range}`,
+    };
 }
 
 function resolveConfigDir({ flag, env = process.env })
@@ -352,11 +417,11 @@ function addsNote(targets)
 
 // Everything the run would do, nothing written. `item` is init-plan's machine line state: skip,
 // blocked, missing, refresh (a claude-hud line of a stale shape will be replaced) or present.
-function planHud({ configDir, project, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog })
+function planHud({ configDir, project, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog, runtimeVersion = versionOf })
 {
     const accountFile = path.join(configDir, 'settings.json');
     const account = readDoc(accountFile);
-    const install = hudInstall(configDir, account.doc, project);
+    const install = hudInstall(configDir, account.doc, project, env);
     const own = install.ok && install.scope === 'project';
     const settingsFile = own ? path.join(project, '.claude', 'settings.local.json') : accountFile;
     const settings = own ? readDoc(settingsFile) : account;
@@ -373,14 +438,20 @@ function planHud({ configDir, project, platform = process.platform, env = proces
     plan.statusLine = { ...classify(statusLine, { platform, want, exists }), command: want.command, launcher: want.launcher };
     plan.entry = (catalog || readJsonFile(CATALOG) || { plugins: {} }).plugins[HUD] || { targets: [] };
     plan.writesLine = ['absent', 'stale'].includes(plan.statusLine.state);
+    // One writer per file (audit 2026-11-03 PL-10): claude-hud's own `hud install` (0.15.0 install.mjs) copies its
+    // scripts/statusline.mjs to this same path, and its hud.mjs reads no launcher's text - so a launcher already there,
+    // whoever wrote it, is left as it is, and only a missing one is written.
+    plan.writesLauncher = plan.writesLine && Boolean(want.launcher) && !exists(want.launcher.file);
+    // Only a runtime this run writes is checked; a line left as it is names its own.
+    plan.runtimeMiss = plan.writesLine ? runtimeCheck({ runtime, newest: install.newest, runtimeVersion }) : null;
     // The row as it lands AFTER the statusLine write, which its refresh interval is gated on.
     plan.targets = rowTargets(plan, plan.writesLine ? { [path.basename(settingsFile)]: { ...(settings.doc || {}), statusLine: lineAfter(settings.doc, want.command) } } : {});
-    plan.changes = (plan.writesLine ? 1 : 0) + (plan.writesLine && want.launcher ? 1 : 0)
+    plan.changes = (plan.writesLine ? 1 : 0) + (plan.writesLauncher ? 1 : 0)
         + plan.targets.reduce((n, t) => n + (t.skipped ? 0 : t.rows.filter((r) => r.status === 'missing').length), 0);
-    const note = addsNote(plan.targets);
+    const note = [addsNote(plan.targets), plan.runtimeMiss && plan.runtimeMiss.note].filter(Boolean).join('; ');
     if (plan.changes) plan.item = { state: plan.statusLine.state === 'stale' ? 'refresh' : 'missing', detail: null, note };
     else if (plan.statusLine.state === 'foreign')
-        plan.item = { state: 'skip', detail: `the ${plan.where} statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; /claude-hud:setup replaces it` };
+        plan.item = { state: 'skip', detail: `the ${plan.where} statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; ${setupRoute(install.newest)} replaces it` };
     else plan.item = { state: 'present', detail: '' };
     return plan;
 }
@@ -393,10 +464,11 @@ function rowTargets(plan, overlay = {})
     const lineFile = path.basename(plan.settingsFile);
     const own = plan.settingsFile !== path.join(plan.configDir, 'settings.json');
     const pick = (keep) => ({ ...plan.entry, targets: (plan.entry.targets || []).filter((t) => (t.file === 'settings.json') === keep) });
+    // The plan's platform picks each target's `on_platform` row (PL-06: claude-hud's refresh interval on Windows).
     const targets = own
-        ? [...planFor(pick(false), plan.configDir, overlay),
-            ...planFor({ ...pick(true), targets: pick(true).targets.map((t) => ({ ...t, file: lineFile })) }, path.dirname(plan.settingsFile), overlay)]
-        : planFor(plan.entry, plan.configDir, overlay);
+        ? [...planFor(pick(false), plan.configDir, overlay, plan.platform),
+            ...planFor({ ...pick(true), targets: pick(true).targets.map((t) => ({ ...t, file: lineFile })) }, path.dirname(plan.settingsFile), overlay, plan.platform)]
+        : planFor(plan.entry, plan.configDir, overlay, plan.platform);
     return targets.map((t) => (plan.statusLine.state === 'foreign' && t.file === lineFile
         ? { ...t, rows: [], skipped: 'the statusLine is not claude-hud\'s - no refresh interval is added to it' }
         : t));
@@ -427,13 +499,14 @@ function applyHud(plan, run = {})
     }
     if (plan.writesLine)
     {
-        if (sl.launcher)
+        if (plan.writesLauncher)
         {
             fs.mkdirSync(path.dirname(sl.launcher.file), { recursive: true });
             fs.writeFileSync(sl.launcher.file, LAUNCHER);
             lines.push(`hud: launcher written - ${sl.launcher.file}`);
             changes += 1;
         }
+        else if (sl.launcher) lines.push(`hud: launcher kept - ${sl.launcher.file} is there already`);
         const doc = plan.settings.doc || {};
         doc.statusLine = lineAfter(doc, sl.command);
         fs.mkdirSync(path.dirname(plan.settingsFile), { recursive: true });
@@ -442,9 +515,10 @@ function applyHud(plan, run = {})
             ? `hud: statusLine written - claude-hud's own shape for this platform${plan.where === 'account' ? '' : `, in the ${plan.where} - claude-hud is installed for this project`}`
             : 'hud: statusLine refreshed - the claude-hud line had a stale shape; its other keys kept');
         changes += 1;
+        if (plan.runtimeMiss) lines.push(plan.runtimeMiss.line);
     }
     else if (sl.state === 'current') lines.push('hud: statusLine current - left as it is');
-    else lines.push(`hud: statusLine kept - it is not claude-hud's (source: ${sl.label}); /claude-hud:setup replaces it, backing yours up first`);
+    else lines.push(`hud: statusLine kept - it is not claude-hud's (source: ${sl.label}); ${setupRoute(plan.install.newest)} replaces it, backing yours up first`);
 
     // Re-planned after the statusLine write: the row's refresh interval is gated on that block.
     const targets = rowTargets(plan);
@@ -494,7 +568,7 @@ function main(argv, { env = process.env, out = (s) => process.stdout.write(s) } 
     return res.code;
 }
 
-module.exports = { SHAPES, LAUNCHER, fill, classify, expected, sourceLabel, gitBash, nodeOnPath, hudInstall, resolveConfigDir, planHud, applyHud, parseArgs, main };
+module.exports = { SHAPES, LAUNCHER, fill, classify, expected, sourceLabel, gitBash, nodeOnPath, versionOf, hudInstall, resolveConfigDir, planHud, applyHud, parseArgs, main };
 
 if (require.main === module)
 {

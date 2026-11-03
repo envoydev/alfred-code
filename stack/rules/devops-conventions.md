@@ -8,6 +8,7 @@ load `devops`: the FIRST action after this rule attaches is that Skill call, bef
 when it is already in context (the devops seats preload it); conventions are the source of truth, not
 recall. Name the skill you loaded, or say it was already in context - the receipt is what makes the
 load happen.
+A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget.
 
 Covers Dockerfiles, compose files, GitHub Actions workflows and actions, Azure Pipelines, GitLab CI,
 `deploy*.sh` / `deploy*.ps1` and env templates (`.env.example`, `*.env.template`) - the delivery

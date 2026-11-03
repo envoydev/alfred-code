@@ -68,12 +68,21 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
             assert.strictEqual(row.validate.min, 0, `${row.key} accepts 0 - the hook reads it as off, not as invalid`);
             assert.strictEqual(row.validate.off, '0', `${row.key} documents 0 as its off switch`);
         }
-        // an hour count (the idle-gap offer) takes decimals; 0 is its off switch
+        // an hour count (the idle-gap offer) takes decimals; 0 is its off switch. Its default may be the word the row's
+        // `follow` names instead (usage audit 2026-11-03 U16: `cache`, the wait the prompt cache's own life sets) - the
+        // one word the hook reads as no hour count, which the engine's AFTER_HOURS_FOLLOW spells
         if (row.validate.type === 'hours')
         {
             const n = Number(row.default);
-            assert.ok(Number.isFinite(n) && n >= 0, `${row.key} default is a non-negative hour count`);
+            assert.ok((Number.isFinite(n) && n >= 0) || (row.validate.follow && row.default === row.validate.follow),
+                `${row.key} default is a non-negative hour count, or the follow word its validate names`);
             assert.strictEqual(row.validate.off, '0', `${row.key} documents 0 as its off switch`);
+            if (row.validate.follow)
+            {
+                const eng = require('../stack/hooks/fresh-session.js');
+                assert.strictEqual(row.validate.follow, eng.AFTER_HOURS_FOLLOW, `${row.key} follows the word the engine spells`);
+                assert.strictEqual(eng.afterHoursOf({ [row.key]: row.validate.follow }), null, `${row.key}: the follow word reads as no hour count`);
+            }
         }
         if (row.validate.type === 'window')
         {

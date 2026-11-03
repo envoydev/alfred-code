@@ -5,8 +5,8 @@ Read at Phase 0. Build every map below before scoring; edit nothing in the repo.
 1. **Fix the awareness checklist first,** before any map is read, one per profile from its marker files
    (`scripts/profile-fixture.js` `MARKERS`): the tech the markers name; the build, test and lint commands
    the markers carry (`package.json` scripts, `dotnet build` / `dotnet test` for a project file); the docs
-   root; the three locked servers and the navigation rule (find a symbol through the server, never a
-   whole-file read); the house do-nots a first turn can break (commit only on the user's word, no
+   root; the navigation tool order (a symbol through the `LSP` tool, then a scoped grep, never a
+   whole-file read; a vendor's page through `WebFetch` - no MCP server ships since 2.10.1); the house do-nots a first turn can break (commit only on the user's word, no
    whole-file read, no secret read by value). Seven to ten facts per profile, written to `RESULTS/checklist.md` now.
 2. **Install the fixtures.** One per profile, from this working tree:
    `node scripts/profile-fixture.js <profile> <WORKDIR>` - it exports the tree once, registers the export

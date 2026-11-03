@@ -56,7 +56,9 @@ const logEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtem
 
 // A close is judged from the harness's own `last_assistant_message` field, which is what the live
 // hook reads first - no transcript needed for the phrase cases.
-const close = (text, extra) => runIn('guard-stop-contract.js',
+// In-process (hook-inprocess.js): this file's ~400 closes cost 65.7s spawned, 14.6s here. The runIn calls below stay spawned.
+const { runHook } = require('./hook-inprocess');
+const close = (text, extra) => runHook('guard-stop-contract.js',
   { hook_event_name: 'Stop', last_assistant_message: text, ...(extra || {}) }, { env: logEnv() });
 
 // ---------------------------------------------------------------------------------------------
@@ -555,6 +557,53 @@ test('guard-stop-contract: a fresh-session ask answered this turn is not asked a
     answer('t7', 'Continue here')), 0, "the hook's own feedback row is no typed prompt");
 });
 
+// Usage audit 2026-11-03 U13: an offer declined while a plan cycle closed held the next scope at the full carry - the
+// 1.5x step since the decline outlived the cycle it was made in. After a plan's Completed stamp a declined offer counts as
+// spent only until the next typed turn; that turn's clean close past the trigger re-offers once, then the step applies.
+test('guard-stop-contract: after a Completed stamp and a typed turn, a declined offer is re-made once (usage audit 2026-11-03 U13)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const floor = assistantRow('pc-floor', 'the first turn', { cache_creation_input_tokens: 20000 });
+  const completed = { type: 'assistant', message: { id: 'm-done', content: [{ type: 'tool_use', id: 'toolu_done', name: 'Edit',
+    input: { file_path: path.join(TMP, 'proj', '.alfred', 'docs', 'work', 'plans', 'export.md'), old_string: 'Resume: next task 3', new_string: 'Resume: done\n\nCompleted: 2026-11-03' } }] } };
+  const edited = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_done', content: 'The file has been updated.' }] } };
+  const ask = (id, ctx) => ({ type: 'assistant', message: { id: `m-${id}`, usage: { cache_read_input_tokens: ctx }, content: [{ type: 'tool_use', id, name: 'AskUserQuestion',
+    input: { questions: [{ question: 'Continue here or resume fresh?', header: 'Session', multiSelect: false,
+      options: [{ label: 'Resume in a fresh session (Recommended)', description: 'x' }, { label: 'Continue here', description: 'y' }] }] } }] } });
+  const declined = (id) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id,
+    content: 'Your questions have been answered: "Continue here or resume fresh?"="Continue here". You can now continue with these answers in mind.' }] } });
+  const closeAt = (id, ctx) => assistantRow(id, 'The docs page is written and linked from the index.', { cache_read_input_tokens: ctx });
+  const stop = (tp, env) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp }, { env: env || logEnv() });
+  const cycle = [floor, typed('build the export'), completed, edited, ask('toolu_a1', 400000), declined('toolu_a1')];
+
+  // the declined offer, then a typed turn: re-made once though 450k is under 1.5x of 400k
+  const env = logEnv();
+  const rows = [...cycle, typed('now the docs page'), closeAt('pc-c1', 450000)];
+  const tp = transcript('pc-reoffer', rows);
+  const first = stop(tp, env);
+  assert.equal(first.status, 2, 'the next turn past the trigger re-offers once');
+  assert.match(first.stderr, /The work in this turn is finished/);
+  assert.match(first.stderr, /'Resume in a fresh session \(Recommended\)'/);
+  // declined again, and the next typed turn falls back to the 1.5x step
+  fs.writeFileSync(tp, [...rows, ask('toolu_a2', 452000), declined('toolu_a2'), typed('and the readme'), closeAt('pc-c2', 470000)].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  assert.equal(stop(tp, env).status, 0, 'the second decline in the same cycle: the 1.5x step again');
+  fs.writeFileSync(tp, [...rows, typed('and the readme'), closeAt('pc-c3', 480000)].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  assert.equal(stop(tp, env).status, 0, 'the re-offer is spent for the cycle: 480k under 1.5x of the 450k block');
+  assert.equal(fs.readFileSync(path.join(env.ALFRED_CODE_HOOK_LOG_DIR, `guard-stop-fresh-${tp.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.cycle`), 'utf8').trim() !== '', true,
+    'the marker names the stamp the re-offer was spent on');
+
+  assert.equal(stop(transcript('pc-same', [...cycle, closeAt('pc-c4', 450000)])).status, 0, 'the same turn as the decline: no re-offer');
+  assert.equal(stop(transcript('pc-none', [floor, typed('build the export'), ask('toolu_a3', 400000), declined('toolu_a3'), typed('now the docs page'), closeAt('pc-c5', 450000)])).status, 0,
+    'no Completed stamp: the 1.5x step');
+  assert.equal(stop(transcript('pc-after', [floor, typed('build the export'), completed, edited, typed('now the docs page'), ask('toolu_a4', 400000), declined('toolu_a4'),
+    typed('and the readme'), closeAt('pc-c6', 450000)])).status, 0, 'a fresh-session choice made after the typed turn stands');
+  assert.equal(stop(transcript('pc-under', [...cycle, typed('now the docs page'), closeAt('pc-c7', 170000)])).status, 0, 'under the trigger: no offer');
+  // the Stop's own block declined before the stamp counts the same way
+  const blockEnv = logEnv();
+  const tb = transcript('pc-block', [floor, typed('build the export'), completed, edited, typed('now the docs page'), closeAt('pc-c8', 450000)]);
+  fs.writeFileSync(path.join(blockEnv.ALFRED_CODE_HOOK_LOG_DIR, `guard-stop-fresh-${tb.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.blocked`), '400000');
+  assert.equal(stop(tb, blockEnv).status, 2, "the Stop's own block at 400k, then the stamp and a typed turn: re-offered once");
+});
+
 test('guard-stop-contract: the fresh-session offer waits while work this session launched is out (audit 2026-10-10 C09)', () => {
   // bba03dad: the offer said 'the work in this turn is finished' 3s after a verifier launched; the resume was picked,
   // the seat killed after one message and re-dispatched later.
@@ -851,6 +900,14 @@ test('guard-stop-contract: a long or idle run offers the fresh session before th
   assert.equal(ctxOf(askIn(rows('ask-short', 1, 120000), oneQ)), '', 'a one-hour session is left alone');
   assert.equal(ctxOf(askIn(rows('ask-off', 5, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }))), '',
     '0 on the hours knob switches the route off');
+  // Usage audit 2026-11-03 U16: the knob's default follows the prompt cache for the idle offer, and this clock note keeps
+  // its own 2h then - the session span would otherwise meet a 5m cache life on nearly every ask. An hour count sets it.
+  assert.equal(ctxOf(askIn(rows('ask-follow', 1, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'cache' }))), '',
+    'the follow word: a one-hour session is still left alone');
+  assert.match(ctxOf(askIn(rows('ask-follow-3', 3, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: 'cache' }))), /3\.0h/,
+    'and three hours still offers');
+  assert.match(ctxOf(askIn(rows('ask-half', 1, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0.5' }))), /1\.0h/,
+    'an explicit 0.5 sets the clock route too');
   // The recoverable-share rule owns this route too: a carry that is mostly the install's own floor
   // buys nothing by resuming, however long the session has been open.
   const floorBound = transcript('ask-floorbound', [
@@ -1117,6 +1174,39 @@ test('guard-stop-contract: a solve-task stop MBs after its slash marker is still
   assert.equal(ctxOf(askIn(far, inline)), '', 'inline fields after a sentence boundary count');
 });
 
+// Usage audit 2026-11-03 U08: every ask after the cycle closed and the user typed on carried the three-field note (6 of 6
+// in one session). Past the cycle no ask is a flow stop until a new cycle's marker.
+test('guard-stop-contract (U08): no flow field notes past a completed cycle and a typed turn, until a new cycle\'s marker', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-11-03-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-11-03' } }] } };
+  const cycle = [marker, assistantRow('d', 'Design done.', { cache_read_input_tokens: 900 }), completed];
+  const after = typed('what does the retry setting do now?');
+  const reply = assistantRow('r', 'It retries three times, then fails the job.', { cache_read_input_tokens: 900 });
+  assert.equal(ctxOf(askIn(transcript('u08-past', [...cycle, after, reply]), oneQ)), '', 'an ask past the cycle is no stop - no fields, no receipts');
+  // the cycle's own close, before any typed turn, is still a stop and still told
+  assert.match(ctxOf(askIn(transcript('u08-close', [...cycle, reply]), oneQ)), /THREE named fields[\s\S]*notes purged/, 'the close ask before a typed turn keeps its notes');
+  // a new cycle's marker re-arms them - typed, or the flow's Skill call
+  assert.match(ctxOf(askIn(transcript('u08-typed-marker', [...cycle, after, reply, marker, assistantRow('d2', 'Design done.', { cache_read_input_tokens: 900 })]), oneQ)),
+    /THREE named fields/, 'a typed /task-solve after the stamp opens a new cycle');
+  const skill = { type: 'assistant', message: { id: 'sk', content: [{ type: 'tool_use', id: 'sk1', name: 'Skill', input: { skill: 'alfred-code:task-solve' } }] } };
+  assert.match(ctxOf(askIn(transcript('u08-skill-marker', [...cycle, after, skill, assistantRow('d3', 'Design done.', { cache_read_input_tokens: 900 })]), oneQ)),
+    /THREE named fields/, "the flow's Skill call after the stamp opens a new cycle");
+  // the review of 2026-11-03: new scope re-enters at step 1 through task-design (task-solve SKILL.md), never task-solve
+  // itself, so a step skill called after the typed turn is the new cycle too - its first stop owes the fields and Size:
+  for (const step of ['alfred-code:task-design', 'task-verify-plan', 'alfred-code:task-implement']) {
+    const call = { type: 'assistant', message: { id: `st-${step}`, content: [{ type: 'tool_use', id: `st1-${step}`, name: 'Skill', input: { skill: step } }] } };
+    const ctx = ctxOf(askIn(transcript(`u08-step-${step.replace(/\W/g, '')}`, [...cycle, typed('now also add the retry setting'), call, assistantRow('d4', 'Design done.', { cache_read_input_tokens: 900 })]), oneQ));
+    assert.match(ctx, /THREE named fields/, `${step} after new scope opens the next cycle`);
+    if (step.endsWith('task-design')) assert.match(ctx, /`Size: /, "the new cycle's first stop owes its Size line");
+  }
+  // a step skill called BEFORE the typed turn is the closed cycle's own, never a re-arm
+  const late = { type: 'assistant', message: { id: 'st-old', content: [{ type: 'tool_use', id: 'st-old1', name: 'Skill', input: { skill: 'task-verify-code' } }] } };
+  assert.equal(ctxOf(askIn(transcript('u08-step-before', [marker, assistantRow('d5', 'Design done.', { cache_read_input_tokens: 900 }), late, completed, after, reply]), oneQ)), '',
+    'a step call inside the finished cycle re-arms nothing');
+});
+
 test('guard-stop-contract: an answer a few calls back is still just answered, in either wording (audit 2026-10-10 C01)', () => {
   const answer = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
   const ask = (id) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: oneQ } }], usage: { cache_read_input_tokens: 900 } } });
@@ -1290,6 +1380,93 @@ test('guard-stop-contract (C45): a referent approval is judged on what was shown
   const agree = [{ ...mis[0], options: [{ label: 'Alpha site after the deploy (Recommended)', description: 'safe' }, { label: 'Swap the scripts on production', description: 'fast' }] }];
   assert.equal(askIn(tp, agree).status, 0, 'mark and question agree');
   assert.equal(askIn(tp, [{ ...mis[0], question: 'Where do we verify? Recommended: a quick look first.' }]).status, 0, 'a question naming no option decides nothing');
+});
+
+// Usage audit 2026-11-03 U04: the noun came from any clause of the ask, so four asks over a shown subject were denied
+// and one pointer at nothing shown passed. Each measured shape, paraphrased, both ways.
+test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own object, a quote counts as shown, a pointer above needs shown text', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const toolRow = (id) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `tu-${id}`, name: 'Read', input: { file_path: 'a.md' } }] } });
+  const ask = (question, labels) => [{ question, options: (labels || ['Post both (Recommended)', 'Change them first']).map((label, i) => ({ label, description: `option ${i + 1}` })) }];
+  const over = (name, rows, questions, env) => askIn(transcript(`u04-${name}`, [typed('draft the two sub-tasks'), ...rows]), questions, env);
+  const drafts = 'Draft 1 - Upgrade the import service to the new parser.\nScope: the reader, the mapper and the two tests that cover them.\n\n'
+    + 'Draft 2 - Filter the loaded fields by the role of the signed-in user.\nScope: the query builder and its unit test, nothing in the page itself.\n';
+  assert.ok(drafts.length >= 200 && !/description/i.test(drafts), 'the fixture shows the drafts and never the side clause noun');
+  const status = 'Both are saved in the work folder, nothing posted.';
+
+  // shape 1: the verb's object is 'the 2 drafts'; a side clause names a description the chat never showed
+  const side = ask('Post the 2 drafts as sub-tasks of the parent ticket, in order? I recommend posting them as shown; after that comes the proposed parent description, also not posted.');
+  assert.equal(over('side-shown', [toolRow('a1'), assistantRow('a2', drafts)], side).status, 0, 'the drafts are shown - the side clause noun is not the subject');
+  const sideBlind = over('side-blind', [toolRow('a3'), assistantRow('a4', status)], side);
+  assert.equal(sideBlind.status, 2, 'a status line shows no draft');
+  assert.match(sideBlind.stderr, /an approval of the drafts the chat has not shown since the user's last message/);
+  assert.match(sideBlind.stderr, /re-send this same ask unchanged/, 'the denial says the fix is a re-send of the same ask');
+
+  // shape 2: 'shown above' over the shown drafts
+  const above = ask('Post the 2 drafts shown above as sub-tasks, in order? I recommend posting them as shown, because every note is settled.');
+  assert.equal(over('above-shown', [toolRow('b1'), assistantRow('b2', drafts)], above).status, 0, "'shown above' over shown drafts");
+
+  // shape 3: the drafts ride the ask's own message, which the transcript has not written yet when the hook fires
+  const env = logEnv();
+  const lag = over('above-lag', [toolRow('c1')], above, env);
+  assert.equal(lag.status, 2, 'the hook cannot see the message in flight');
+  assert.match(lag.stderr, /can lag the message in flight[\s\S]*re-send the ask unchanged now/, 'the denial names the lag and the re-send');
+  assert.equal(over('above-lag', [toolRow('c1')], above, env).status, 0, 're-sent unchanged, it passes - once per ask text');
+  assert.equal(over('above-lag-ondisk', [toolRow('c2'), assistantRow('c3', drafts)], above).status, 0, 'the same ask with the text on disk passes');
+
+  // shape 4: 'send it' inside a clause about something else is no approval; one addressed to the user still is
+  const symptom = [{ question: 'What goes wrong with capitals while typing on the phone? The phone capitalises a sentence start itself, and the page may send it differently than a typed Shift.',
+    options: [{ label: 'A capital comes out lowercase (Recommended)', description: 'x' }, { label: 'A lowercase letter comes out capital', description: 'y' }] }];
+  assert.equal(over('symptom', [toolRow('d1')], symptom).status, 0, "the page's 'send it' approves nothing");
+  for (const q of ['Send it to the customer?', 'Shall I send it to the customer now?', 'Please approve the plan so I can start?'])
+    assert.equal(over(`send-${q.length}`, [toolRow('d2')], ask(q, ['Yes (Recommended)', 'Hold'])).status, 2, `still an approval over nothing: ${q}`);
+
+  // shape 5: the comment the write adds is quoted in the ask itself
+  const allow = ['Allow the write (Recommended)', 'I will add it myself'];
+  const quoted = ask("Adding the comment above the reload function edits a file outside this project, so the guard needs your OK. Allow this one write? The line: '# Reset the agent to the configured keys only, passphrases from the keychain'.", allow);
+  assert.equal(over('quoted', [toolRow('e1')], quoted).status, 0, 'a quoted line is shown');
+  for (const [name, text] of [['backtick', 'Allow this one write? The line: `# Reset the agent to the configured keys only`.'], ['double', 'Allow this one write? The line: "# Reset the agent to the configured keys only".']])
+    assert.equal(over(`quoted-${name}`, [toolRow('e2')], ask(`Adding the comment above the reload function edits a file outside this project. ${text}`, allow)).status, 0, `a ${name} quote is shown too`);
+  assert.equal(over('reworded', [toolRow('e3')], ask('Adding the comment above the reload function edits a file outside this project, so the guard needs your OK for this one write. Allow it?', allow)).status, 2,
+    'reworded with no quote, the comment is unshown');
+  assert.equal(over('label-quote', [toolRow('e4')], ask("Adding the comment above the reload function edits a file outside this project. Pick 'Allow the write' to go on?", allow)).status, 2,
+    'a quoted option label shows nothing');
+
+  // shape 6 (the wrong pass): a pointer at 'the five groups above' when the chat shows no group
+  const groups = ask('Commit the five groups above locally in ticket order, or hold while you read the diffs? Nothing leaves this machine either way.', ['Hold - I read them first (Recommended)', 'Commit now']);
+  const pointer = over('groups-blind', [toolRow('f1'), assistantRow('f2', status)], groups);
+  assert.equal(pointer.status, 2, 'a pointer at groups nobody was shown');
+  assert.match(pointer.stderr, /a pointer at the groups above that the chat has not shown since the user's last message/);
+  const listed = 'Group 1 - the parser upgrade, three files.\nGroup 2 - the role filter, two files.\nGroup 3 - the retry policy, one file.\nGroup 4 - the page copy, four files.\nGroup 5 - the test fixtures, six files, all under the shared folder.\n';
+  assert.ok(listed.length >= 200);
+  assert.equal(over('groups-shown', [toolRow('f3'), assistantRow('f4', listed)], groups).status, 0, 'the groups are listed in the chat');
+  // its neighbour, 'are ready' over groups kept in files the chat never showed, stays denied
+  assert.equal(over('ready', [toolRow('f5')], ask('All five groups are ready for your review in the patch files. Commit them locally in ticket order now, or hold?', ['Hold (Recommended)', 'Commit now'])).status, 2,
+    "'are ready' over unshown groups");
+
+  // 'above' as a preposition points at nothing; a pointer naming no known noun needs SHOWN_MIN of chat text
+  assert.equal(over('preposition', [toolRow('g1')], ask('Raise the limit above 5 retries for the import job?', ['Raise it (Recommended)', 'Keep it'])).status, 0, "'above 5' is a preposition");
+  const values = ask('Use the values above for the next run, or change them first?', ['Use them (Recommended)', 'Change them']);
+  const short = over('values-short', [toolRow('g2'), assistantRow('g3', status)], values);
+  assert.equal(short.status, 2, 'under SHOWN_MIN nothing is shown');
+  assert.match(short.stderr, /a pointer at something above that the chat has not shown/);
+  assert.equal(over('values-long', [toolRow('g4'), assistantRow('g5', listed)], values).status, 0, 'over SHOWN_MIN the pointer has text to point at');
+
+  // the review of 2026-11-03: a quote shows the subject only as the approval's own object - in its clause, or a sentence
+  // that presents it ('The line: ...') - never an incidental command span in another sentence
+  for (const q of ['Approve the plan? Its last step is `git push origin develop`.', 'Approve the plan? Its last step is: `git push origin develop`.',
+    'Commit the five groups above locally in ticket order? Each one runs `npm run lint` first.'])
+    assert.equal(over(`incidental-${q.length}`, [toolRow('h1'), assistantRow('h2', status)], ask(q, ['Hold (Recommended)', 'Go'])).status, 2, `an incidental code span shows nothing: ${q}`);
+  assert.equal(over('own-clause', [toolRow('h3'), assistantRow('h4', status)], ask('Post the comment "Fixed in 1.2, the retry now waits for the lock" on the ticket?', ['Post it (Recommended)', 'Hold'])).status, 0,
+    "a quote in the approval's own clause is shown");
+  assert.equal(over('presented', [toolRow('h5'), assistantRow('h6', status)], ask('Post this reply? The reply: "Thanks, the fix ships in the next patch release".', ['Post it (Recommended)', 'Hold'])).status, 0,
+    'a sentence that only presents the quote shows it');
+  // ... and 'above' is a pointer only after a noun phrase or 'as noted', never in a comparison, nor at the asks just answered
+  for (const q of ['Keep the retry delay above zero for the import job?', 'Raise the limit above what the docs allow?', 'Is an above-average timeout fine for this job?',
+    'Is there anything about how the project runs that the questions above did not cover?', 'Keep the cache size above or below the old default?'])
+    assert.equal(over(`compare-${q.length}`, [toolRow('i1'), assistantRow('i2', status)], ask(q, ['Yes (Recommended)', 'No'])).status, 0, `no pointer: ${q}`);
+  assert.equal(over('noted-above', [toolRow('i3'), assistantRow('i4', status)], ask('Apply the fix as noted above, then rerun the suite?', ['Apply it (Recommended)', 'Hold'])).status, 2,
+    "'as noted above' still points at text the chat must show");
 });
 
 test('guard-stop-contract: a /mode-auto-run run that reads the installed solve flow owes its receipts; nothing else marks one (2026-10-25)', () => {

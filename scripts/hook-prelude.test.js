@@ -30,7 +30,7 @@ const wiring = (file, { quoted = true } = {}) =>
     const hooks = {};
     for (const [event, blocks] of Object.entries(coreEntry().hooks))
         for (const block of blocks)
-            if (block.hooks.some((h) => h.command.includes(`/${file}"`)))
+            if (block.hooks.some((h) => String(h.command || '').includes(`/${file}"`)))   // the stop judge's prompt hook has no command (HK-22)
                 (hooks[event] = hooks[event] || []).push({ ...(block.matcher ? { matcher: block.matcher } : {}), hooks: [{ type: 'command', command, timeout: 10 }] });
     return JSON.stringify({ hooks });
 };
@@ -229,7 +229,7 @@ function scopes({ project } = {})
 const dispatcher = require('../stack/hooks/shell-guards.js');
 function coreCommand(file)
 {
-    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).map((h) => h.command);
+    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).filter((h) => h.type === 'command').map((h) => h.command);   // the stop judge launches nothing (HK-22)
     const own = all.find((c) => c.includes(`/stack/hooks/${file}`));
     if (own) return own;
     // A shell guard with no launch of its own runs inside the dispatcher: fire it there, alone.
@@ -1076,17 +1076,27 @@ test('scorer parses: the level, the run cap and the outputs list', () => {
     for (const [v, want] of [['1', 1], ['10', 10], ['3', 3], ['0', 3], ['11', 3], ['abc', 3], ['', 3], [undefined, 3], ['2.5', 3]])
         assert.strictEqual(scorerRounds({ ALFRED_CODE_SCORER_ROUNDS: v }), want, `rounds ${v}`);
     const all = ['designer-plan', 'root-cause', 'inline-plan'];
-    for (const [v, outputs, ignored] of [[undefined, all, []], ['', all, []], ['designer-plan,root-cause', ['designer-plan', 'root-cause'], []],
-        [' Root-Cause , inline-plan', ['root-cause', 'inline-plan'], []], ['topic-explainer', all, ['topic-explainer']],
+    // B1 (2026-11-03): unset, empty or a list naming no valid output is the catalog default, plan files only (an empty
+    // value is unset - the ruling of the run B follow-ups); all three names grade every output
+    assert.deepStrictEqual(scorerOutputs({}), { outputs: ['designer-plan'], ignored: [] }, 'no key at all');
+    for (const [v, outputs, ignored] of [[undefined, ['designer-plan'], []], [null, ['designer-plan'], []], ['', ['designer-plan'], []], [' , ', ['designer-plan'], []],
+        ['designer-plan,root-cause,inline-plan', all, []], ['designer-plan,root-cause', ['designer-plan', 'root-cause'], []],
+        [' Root-Cause , inline-plan', ['root-cause', 'inline-plan'], []], ['topic-explainer', ['designer-plan'], ['topic-explainer']],
+        ['foo,Foo,bar', ['designer-plan'], ['foo', 'bar']],
         ['foo,root-cause', ['root-cause'], ['foo']], ['inline-plan,designer-plan,inline-plan', ['designer-plan', 'inline-plan'], []]])
         assert.deepStrictEqual(scorerOutputs({ ALFRED_CODE_SCORER_OUTPUTS: v }), { outputs, ignored }, `outputs ${v}`);
 });
 
 test('scorerState: env, the flag file, a garbage file, and every switch that makes it unusable (AC13, AC20)', () => {
     assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', scorerOn)), { usable: true, on: true, source: 'env' });
-    assert.strictEqual(scorerState(scorerRoot, 's1', scorerBase).on, false);
+    // B1 (2026-11-03): an unset or empty switch is the catalog default, on; only an explicit value but 1 is off
+    for (const v of [undefined, ''])
+        assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', { ...scorerBase, ALFRED_CODE_SCORER: v })), { usable: true, on: true, source: 'env' }, `switch ${v}`);
+    assert.deepStrictEqual(scorerState(scorerRoot, 's1', scorerBase).outputs, ['designer-plan'], 'unset outputs: plan files only');
+    for (const v of ['0', 'yes', ' 2 '])
+        assert.strictEqual(scorerState(scorerRoot, 's1', { ...scorerBase, ALFRED_CODE_SCORER: v }).on, false, `switch ${v}`);
     scorerWrite(scorerFile(scorerRoot, 's2', scorerBase), 'on\nat: x\n');
-    assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's2', scorerBase)), { usable: true, on: true, source: 'flag' });
+    assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's2', { ...scorerBase, ALFRED_CODE_SCORER: '0' })), { usable: true, on: true, source: 'flag' }, 'on beats env off');
     scorerWrite(scorerFile(scorerRoot, 's3', scorerBase), 'off\nat: x\n');
     assert.strictEqual(scorerState(scorerRoot, 's3', scorerOn).on, false, 'off beats env');
     scorerWrite(scorerFile(scorerRoot, 's4', scorerBase), 'garbage');

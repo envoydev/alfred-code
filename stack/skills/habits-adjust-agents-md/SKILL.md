@@ -1,6 +1,6 @@
 ---
 name: habits-adjust-agents-md
-description: "Use when an AGENTS.md or CLAUDE.md is written or updated - an unfilled seeded one, a stale one, a part needing its own. Not for skills or rules."
+description: "Use when asked to fill in or update AGENTS.md or CLAUDE.md, or one is written - an unfilled seed, a stale one, a part needing its own. Not for skills or rules."
 ---
 
 # Adjust AGENTS.md - create or improve a project's instruction file
@@ -63,8 +63,9 @@ it, and it is improved in place with every change shown first, never overwritten
 template. A project's own `CLAUDE.md` is improved as it stands and never renamed here (the name ask of configure or update renames) - say in
 the report that Claude Code (2.1.277 or later) reads an AGENTS.md itself only while no CLAUDE.md or
 CLAUDE.local.md sits beside or above it, so with both files the CLAUDE.md wins, and an
-`@AGENTS.md` import from it keeps both loading, or the user sets Project instructions to
-'claude-md-and-agents-md' in `/config`. Never the same facts written twice.
+`@` import of the AGENTS.md from it keeps both loading - it resolves from the importing file, so
+`@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside it - or the user sets Project
+instructions to 'claude-md-and-agents-md' in `/config`. Never the same facts written twice.
 
 ## 3. Gather the facts - read, never guessed
 
@@ -73,9 +74,10 @@ Every fact a section states comes from a file that states it, in this order:
 1. **The first-look scan** - `node "<stack>/scripts/scan-evidence.js" --orientation --root .` prints the
    stack, the modules, the build / test / run commands and the entry points, read from the manifests.
    It is the map; do not re-derive it by reading source.
-2. **The architecture docs** when `capture-awareness`'s architecture part has run (`<docs-path>/awareness/ARCHITECTURE-AWARENESS.md`):
-   the docs hook already pushes its orientation into every session, so sections 1 and 6 point at it
-   and keep only what it lacks.
+2. **The awareness docs** when `capture-awareness` has run: the docs hook pushes the architecture part's
+   orientation, and the awareness rule imports the project part's `PROJECT-INFO-AWARENESS.md` and
+   `RUN-AND-DEBUG-AWARENESS.md` into every session, so sections 1-4 and 6 point at them and keep only what
+   they lack (the template's outline names it); with the docs kept out of git they are written in full.
 3. **Setup** - the SDK pins (`global.json`, `.nvmrc`, `engines`, `<TargetFramework>`), the compose
    file or container package a test run needs, and the env var NAMES a test reads (`appsettings.*.json`,
    the test fixtures, a CI workflow's `env:` block) - names only; a credential is read for presence,

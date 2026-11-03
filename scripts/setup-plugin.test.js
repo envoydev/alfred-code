@@ -51,6 +51,18 @@ test('session-inspector is listed from alfred-mods, pinned to a release tag and 
     assert.ok([...require('./install/plugins.js').foreignEntries(ROOT)].includes('session-inspector'));
 });
 
+// SYS-07 of the 2026-11-03 system audit: preferred-tools floated on `ref: main` with no sha, so the catalog served
+// whatever landed on that branch next. It is pinned like session-inspector: the branch it tracks plus the commit
+// reviewed, and every entry from outside this repo carries a full sha (lint check 49 fails one without).
+test('preferred-tools is pinned to a reviewed commit beside its branch, and every foreign entry carries a full sha', () => {
+    const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    const entry = mp.plugins.find((x) => x.name === 'preferred-tools');
+    assert.ok(entry, 'the preferred-tools entry');
+    assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/preferred-tools', ref: 'main', sha: '33f60bf31df899e3f33d7a0d20c2646d35b1830c' });
+    for (const p of mp.plugins.filter(foreignEntry))
+        assert.match(String(p.source.sha || ''), /^[0-9a-f]{40}$/, `${p.name} is pinned to a full commit`);
+});
+
 test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'alfred-code');
@@ -1501,6 +1513,11 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     assert.strictEqual(firstOption(cascade, 'Update the <n> project\\(s\\) below this one as well\\? <each project\'s rel>'), 'Yes, update them too (Recommended)');
     assert.strictEqual(firstOption(cascade, 'Join these installed projects'), 'Join as children (Recommended)');
     assert.strictEqual(firstOption(refBody('init-bootstrap'), 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
+    // U01 of the 2026-11-03 usage audit: the auto-update ask rides step 4's call, and each answer is one script call.
+    const boot = refBody('init-bootstrap');
+    assert.strictEqual(firstOption(boot, 'Let Claude Code keep the stack up to date by itself\\?'), 'Turn it on (Recommended)');
+    assert.match(boot, /On step 2's `auto-update: ask` line, the same call carries one more question/);
+    assert.match(boot, /'Turn it on' runs `node "\$TMP\/repo\/scripts\/install\/marketplace-autoupdate\.js" --apply --root \.` and 'Leave it off' the\s+same with `--decline`/);
     const child = refBody('init-child');
     assert.strictEqual(firstOption(child, 'Where should the stack\'s plugins be enabled in this child'), 'local (Recommended)');
     assert.strictEqual(firstOption(child, 'Ignore these machine-local paths in this clone'), '.git/info/exclude (Recommended)');
@@ -1699,4 +1716,17 @@ test('the capture-quality history entry tells an account-file override to be re-
     const entry = history.slice(at, next < 0 ? undefined : next).replace(/\s+/g, ' ');
     assert.match(entry, /`~\/\.claude\/settings\.json`/, 'the account file named');
     assert.match(entry, /by hand/, 'the re-key is the user\'s');
+});
+
+// validate's INVALID rows are judged by the model from validate.md's prose against each catalog row's `validate` shape,
+// so a row whose shape names a `follow` word (the idle wait's `cache`, U16 of the 2026-11-03 usage audit) must find that
+// word named valid there - else the value this release seeds lists as INVALID and its fix writes the hour count back.
+test('validate: a catalog row\'s follow word is valid, named in the INVALID rule beside the hour count', () => {
+    const rows = require('../meta/environment.json').env.filter((r) => r.validate && r.validate.follow);
+    assert.ok(rows.some((r) => r.key === 'ALFRED_CODE_FRESH_SESSION_AFTER_HOURS' && r.validate.follow === 'cache'), 'the idle wait follows the cache');
+    const rule = /- \*\*INVALID\*\*[\s\S]*?never a finding\./.exec(cmdBody('validate'));
+    assert.ok(rule, 'validate.md carries the INVALID rule');
+    const text = flat(rule[0]);
+    assert.match(text, /an hour count that is no non-negative number and not the row's `follow` word/, 'the hour shape accepts the follow word');
+    for (const row of rows) assert.ok(text.includes(`\`${row.validate.follow}\``), `${row.key}: '${row.validate.follow}' is named valid in the INVALID rule`);
 });

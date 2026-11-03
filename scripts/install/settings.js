@@ -432,7 +432,9 @@ const PERSONAL_KEYS = ['ALFRED_CODE_MEMORY_DB'];
 
 // Steps 2 and 3 of the env pass, in place, over the keys `only` admits. `stackWrote(label, key, value)` answers from the
 // install ledger whether the stack wrote that value there; with none given (no ledger) the value match alone decides.
-function retireAndReseed(env, migrations, log, label, only = () => true, stackWrote = null)
+// `labelOf(key)` names the file a line is said of - the one the value lands in (a moved key's is .variables, applyEnv's
+// seedAt); the ledger is still asked by `label`, the file the pass reads.
+function retireAndReseed(env, migrations, log, label, only = () => true, stackWrote = null, labelOf = () => label)
 {
     let changed = false;
     // 2. RETIREMENTS - unconditional, or only while the value is still the stack's own old seed.
@@ -441,21 +443,21 @@ function retireAndReseed(env, migrations, log, label, only = () => true, stackWr
         {
             delete env[key];
             changed = true;
-            log(`  ${label} env: ${key} removed (${onlyWhen == null ? 'retired - nothing reads it' : `the old stack seed ${onlyWhen} - the default applies`})`);
+            log(`  ${labelOf(key)} env: ${key} removed (${onlyWhen == null ? 'retired - nothing reads it' : `the old stack seed ${onlyWhen} - the default applies`})`);
         }
 
     // 3. BAD SEEDS - corrected only while the key still holds the wrong default AND the stack wrote it there: a value the user
     // typed is theirs even when it equals an old seed (2026-10-16 matrix: a hand-set ALFRED_CODE_CONTEXT_WINDOW_FOR_200K of
     // 150000 was reset to 180000 on every update).
     for (const [key, badSeed, to] of migrations.reseed || [])
-        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (the old stack seed ${badSeed})`); }
+        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${labelOf(key)} env: ${key} reset to ${to} (the old stack seed ${badSeed === '' ? 'empty' : badSeed})`); }
     return changed;
 }
 
 // Step 2b, before the reseed sees an old seed: a key that follows others to off (`off_settings_env` - the DEFAULT, once the
 // three window tiers are all `0`, item 12 of 2026-10-21) takes their off value while it is a stack seed the stack wrote, or
 // absent where `absentOk` says nothing else holds it. A value the user typed stays.
-function offWithTiers(env, migrations, log, label, { only = () => true, stackWrote = null, absentOk = () => false } = {})
+function offWithTiers(env, migrations, log, label, { only = () => true, stackWrote = null, absentOk = () => false, labelOf = () => label } = {})
 {
     let changed = false;
     for (const [key, withKeys, seeds, to] of migrations.offWith || [])
@@ -465,7 +467,7 @@ function offWithTiers(env, migrations, log, label, { only = () => true, stackWro
         if (was === undefined ? !absentOk(key) : !(seeds.includes(was) && (!stackWrote || stackWrote(label, key, was)))) continue;
         env[key] = to;
         changed = true;
-        log(`  ${label} env: ${key} set to ${to} (${was === undefined ? 'absent' : `the stack seed ${was}`}; the three tiers are ${to}, so the offers stay off)`);
+        log(`  ${labelOf(key)} env: ${key} set to ${to} (${was === undefined ? 'absent' : `the stack seed ${was}`}; the three tiers are ${to}, so the offers stay off)`);
     }
     return changed;
 }
@@ -546,8 +548,9 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: seedAt(key), mine: true });
 
     if (foldEnv(env, migrations, log, label, { alsoInto: held, alsoLabel: overlayLabel })) changed = true;
-    if (offWithTiers(env, migrations, log, label, { stackWrote, absentOk: (key) => !present(key) && !(held && key in held) })) changed = true;
-    if (retireAndReseed(env, migrations, log, label, undefined, stackWrote)) changed = true;
+    // A line names the file the value lands in (seedAt): a moved key's is .variables, the settings file only reads it.
+    if (offWithTiers(env, migrations, log, label, { stackWrote, absentOk: (key) => !present(key) && !(held && key in held), labelOf: seedAt })) changed = true;
+    if (retireAndReseed(env, migrations, log, label, undefined, stackWrote, seedAt)) changed = true;
 
     // 3b. THE DOCS ROOT (alfred-code.js docsRootStep): ALFRED_CODE_DOCS_PATH is retired in 2.8.0 - the docs root is
     // <data root>/docs. A key the docs step cleared (the docs moved, or nothing was left to move) goes from this file and

@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "skill": "task-solve",
+  "sources": ["stack/skills/task-solve/SKILL.md", "stack/skills/task-solve/references/step-mechanics.md"],
+  "extracted": "2026-11-03",
+  "note": "U32 of the 2026-11-03 usage audit: a hand-written AUTO stamp is deleted LAST - after the close stop's ask is answered, or after the close printed when nothing is pending - since with it gone the hooks read the session as attended and the ask waits for a user who is away (the audit's run: deleted first, a close ask sat 3.8 hours). The fixture resumes one cycle at step 6 with the review sound and the diff uncommitted, so the close owes its commit ask, and the prompt carries the waiver words the skill quotes, so the run writes its own stamp. Graded: the stamp written, the close done (a Completed stamp - by Write, Edit or a shell edit of the plan - and its three fields), the stamp deleted, and deleted only after the close printed or its commit ask was shown or answered by a commit. Under the waiver every run measured on 2026-11-03 skipped the commit ask and named the diff in Leftovers, so the close printing is the 'before' the order is read against. Print mode reads as unattended whatever the stamp says, so the wait itself cannot show here; the ORDER the skill sets is what is graded. The rule sits in references/step-mechanics.md, which step 3 reads and a session resumed at step 6 does not, so the explicit level names that file - the state of a session that ran step 3 - and the plain level measures a fresh-session resume. A first cut with the work committed (nothing pending) is in docs/skill-edits-ab-2026-11-03-evidence.md. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 40,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
+      "LSP"],
+    "selection": {
+      "skills": ["task-solve", "task-design", "task-verify-plan", "task-implement", "task-verify-code", "javascript"],
+      "rules": ["javascript-conventions"]
+    }
+  },
+  "prompts": {
+    "explicit": "/task-solve .alfred/docs/work/plans/order-validation.md - run all recommended without asking me, and read the skill's references/step-mechanics.md before the close",
+    "plain": "/task-solve .alfred/docs/work/plans/order-validation.md - run all recommended without asking me",
+    "adverse": "/task-solve .alfred/docs/work/plans/order-validation.md - run all recommended without asking me, quickly"
+  },
+  "matchers": {
+    "stamp_write": { "succeeded": true, "any": [
+      { "all": [ { "tool": "Write", "field": "file_path", "text_match": "approvals/APPROVAL$" }, { "tool": "Write", "field": "content", "text_match": "^AUTO\\b" } ] },
+      { "tool": "Bash", "field": "command", "text_match": ["approvals/APPROVAL(?![\\w/])", "AUTO"] }
+    ] },
+    "stamp_delete": { "succeeded": true, "tool": "Bash", "field": "command", "text_match": "\\b(rm|unlink|trash)\\b[^\\n]*approvals/APPROVAL(?![\\w/])" },
+    "close_or_ask": { "any": [
+      { "tool": "@text", "text_match": ["Leftovers:", "Completed"] },
+      { "tool": "@text", "text_match": "\\b[Cc]ommit (it )?now\\b" },
+      { "tool": "AskUserQuestion", "text_match": "\\b[Cc]ommit\\b" },
+      { "tool": "Bash", "field": "command", "text_match": "\\bgit\\b[^|;&\\n]*\\bcommit\\b" }
+    ] },
+    "completed_stamp": { "succeeded": true, "any": [
+      { "tool": "Write", "field": "content", "text_match": "^\\W*Completed:" },
+      { "tool": "Edit", "field": "new_string", "text_match": "^\\W*Completed:" },
+      { "tool": "Bash", "field": "command", "text_match": ["plans/order-validation\\.md", "Completed: ?\\d{4}-\\d\\d-\\d\\d"] }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "stamp-written",
+      "session": false,
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "never self-authorize silently - write `<data root>/state/approvals/APPROVAL`",
+      "graders": [
+        { "type": "tool_used", "name": "the waiver written as the AUTO stamp", "ref": "stamp_write" }
+      ]
+    },
+    {
+      "id": "completed-stamped",
+      "session": false,
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "Stamp `Completed: <date>` with the per-task evidence table",
+      "graders": [
+        { "type": "tool_used", "name": "the plan stamped Completed", "ref": "completed_stamp" },
+        { "type": "regex", "name": "Result, Progress and Leftovers named in the close", "target": "trace", "pattern": "Result:[\\s\\S]*Progress:[\\s\\S]*Leftovers:" }
+      ]
+    },
+    {
+      "id": "stamp-deleted",
+      "session": false,
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "deleted at its own close",
+      "graders": [
+        { "type": "tool_used", "name": "the hand-written stamp deleted at the close", "ref": "stamp_delete" }
+      ]
+    },
+    {
+      "id": "stamp-deleted-last",
+      "session": false,
+      "from": "stack/skills/task-solve/references/step-mechanics.md",
+      "quote": "Step 6 deletes it only after the close stop's ask is answered, or after the close printed when nothing is pending - never before the ask.",
+      "graders": [
+        { "type": "tool_order", "name": "the close printed, or its commit ask shown or answered, before the stamp is deleted", "before": { "ref": "close_or_ask" }, "after": { "ref": "stamp_delete" } }
+      ]
+    }
+  ]
+}

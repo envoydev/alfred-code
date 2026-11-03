@@ -331,10 +331,12 @@ test('mode texts: the Stop hold stderr and the auto-input note name the run mark
     assert.strictEqual(context(sub(p, 'x1', '/task-solve B', t)), '', 'a typed family command gets no auto-input note');
     const contract = context(expand(p, 'x1', '/task-solve B', t));
     assert.match(contract, /^auto-run is ON for this \/task-solve run/, 'it gets the contract');
-    assert.match(contract, /a guard's security ask \(a credential shown, work discarded, a write outside the project, a desktop launch\) is never auto-run's to allow: take its safe option and list the act for the user in the close/,
-        'the four security asks stay the user\'s (audit 2026-10-30 fix #6)');
+    // the five security asks (audit 2026-10-30 fix #6; the fifth, the config guard's ask before a settings write that
+    // switches a protective guard off, since SYS-01 of the 2026-11-03 system audit)
+    assert.match(contract, /a guard's security ask \(a credential shown, work discarded, a write outside the project, a desktop launch, a protective guard switched off\) is never auto-run's to allow: take its safe option and list the act for the user in the close/,
+        'the five security asks stay the user\'s');
     const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-auto-run', 'SKILL.md'), 'utf8');
-    assert.match(skill.replace(/\s+/g, ' '), /A guard's security ask - a credential shown, work discarded, a write outside the project, a desktop launch - is never auto-run's to allow/,
+    assert.match(skill.replace(/\s+/g, ' '), /A guard's security ask - a credential shown, work discarded, a write outside the project, a desktop launch, a protective guard switched off - is never auto-run's to allow/,
         'the skill says it too');
     fs.rmSync(marker(p, 'x1'));
     assert.doesNotMatch(context(sub(p, 'x1', 'another remark', t)), /auto-run stays ON/, 'no run open, no note');
@@ -823,7 +825,7 @@ test('settings-writer: uninstall takes the seeded scorer rows back and keeps one
     fs.mkdirSync(path.join(dir, '.claude'));
     const first = writer(dir);
     const data = read(dir);
-    assert.deepStrictEqual([data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_LEVEL], ['0', '80'], 'the install seeded them');
+    assert.deepStrictEqual([data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_LEVEL], ['1', '80'], 'the install seeded them (on since B1 of the 2026-11-03 usage audit)');
     data.env.ALFRED_CODE_SCORER_ROUNDS = '6';
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
     settings.removeManagedSettings({ claudeDir: path.join(dir, '.claude'), ledger: throughStamp(first.managed) });

@@ -518,13 +518,20 @@ function editVariablesLedger(projectRoot, change)
     stamp.markLine(file, 'managed-env', stamp.renderLedger({ env })[0].slice('managed-env: '.length));
 }
 
-// A stack seed: the value still at its managed-env ledger hash AND the catalog default - an installer answer off the
-// default (`--auto-compact on`, a walk's value) is ledgered the same way and is the project's own (D5).
-let catalogDefaults = null;
+// A stack seed: the value still at its managed-env ledger hash AND the catalog default, or an old seed a reseed migration
+// moves (the update would reset it anyway - the scorer's 0 and empty list, B1 of the 2026-11-03 usage audit) - an
+// installer answer off the default (`--auto-compact on`, a walk's value) is ledgered the same way and is the project's own (D5).
+let catalogSeeds = null;
 function isSeed(key, value, rows)
 {
-    catalogDefaults ||= new Map(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'meta', 'environment.json'), 'utf8')).env.map((r) => [r.key, String(r.default ?? '')]));
-    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && catalogDefaults.get(key) === String(value);
+    if (!catalogSeeds)
+    {
+        const meta = path.join(__dirname, '..', '..', 'meta');
+        const reseed = require('./env-migrations.js').envMigrations(JSON.parse(fs.readFileSync(path.join(meta, 'migrations.json'), 'utf8'))).reseed;
+        catalogSeeds = new Map(JSON.parse(fs.readFileSync(path.join(meta, 'environment.json'), 'utf8')).env
+            .map((r) => [r.key, [r.default ?? '', ...reseed.filter(([k]) => k === r.key).map(([, bad]) => bad)].map(String)]));
+    }
+    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && (catalogSeeds.get(key) || []).includes(String(value));
 }
 
 // A join's prune (D5): every stack seed (isSeed) in the joiner's `.variables` leaves (with its row) and the members'
@@ -1348,16 +1355,36 @@ function instructionsBothLine(state)
     return null;
 }
 
+// The file a write through `file` lands on: `file` itself, or the end of its chain of links, each link read from its own
+// folder's REAL place as the OS reads it (a relative `..` under a linked folder) - a dangling end included, which the
+// write then makes. A loop throws ELOOP before anything is written.
+function linkTarget(file)
+{
+    let at = file;
+    for (let hop = 0; hop < 40; hop++)
+    {
+        let st;
+        try { st = fs.lstatSync(at); } catch { return at; }
+        if (!st.isSymbolicLink()) return at;
+        at = path.resolve(fs.realpathSync(path.dirname(at)), fs.readlinkSync(at));
+    }
+    throw Object.assign(new Error(`${file}: too many levels of symbolic links`), { code: 'ELOOP' });
+}
+
 // The file written back in its own shape: the indent of its first indented line, its line ending, its BOM - through a
-// temp file beside it and a rename.
+// temp file beside it and a rename. A LINK is written through, never replaced (review fix pass, run B, m7: a dotfiles
+// link at the account settings.json became a plain file): the temp file and the rename go to the link's real file, in
+// that file's own folder. Every writer here is an account settings.json writer - D5's apply and remove, and the
+// auto-update answer (marketplace-autoupdate.js).
 function writeLike(file, text, data)
 {
     const indentLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l));
     const indent = indentLine ? indentLine.match(/^[ \t]+/)[0] : '  ';
     const eol = text.includes('\r\n') ? '\r\n' : '\n';
     const body = `${text.startsWith('\uFEFF') ? '\uFEFF' : ''}${JSON.stringify(data, null, indent).split('\n').join(eol)}${eol}`;
-    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-    try { fs.writeFileSync(tmp, body); fs.renameSync(tmp, file); }
+    const target = linkTarget(file);
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    try { fs.writeFileSync(tmp, body); fs.renameSync(tmp, target); }
     catch (e) { try { fs.rmSync(tmp, { force: true }); } catch { /* nothing to clean */ } throw e; }
 }
 
@@ -1623,5 +1650,5 @@ module.exports = {
     readPlan, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
-    releaseChildren, leaveParent, managedSettingsFile, checkLoads,
+    releaseChildren, leaveParent, managedSettingsFile, checkLoads, writeLike,
 };

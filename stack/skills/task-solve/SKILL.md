@@ -14,8 +14,7 @@ run-time load.
 
 ## When to use
 
-- The whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable) -> done-gate.
-- Not the dispatched multi-agent flow (task-solve-cross), not greenfield, and not a one-line edit.
+- One task in this chat - not the dispatched multi-agent flow (task-solve-cross), not greenfield, not a one-line edit.
 
 ## State - the plan file is truth and cursor
 
@@ -72,7 +71,7 @@ text and END THE TURN.
 
 **The fresh-session resume.** A fresh session (`/clear`) resumes from the plan file alone, with
 zero re-work. Once the cycle has crossed the install's
-fresh-session trigger (400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other), spans hours, or resumes after a 2h+ idle gap, the fresh-session resume IS one of the next ask's
+fresh-session trigger (400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other), spans hours, or resumes after an idle gap past the cache, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes. Below all three (a new cycle's first ask and the compaction stop aside), no ask
 carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess.
 The stop-contract hook injects the two measured numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
@@ -209,8 +208,15 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`) - INVOKE the reviewer chosen at the step-4 stop, and
    re-review each punch-list fix, by the step mechanics' conformance rules. Stamp
    `Conformance: <verdict> - <reviewer>, <the pass that cleared the last fix delta>`; the stop's
-   `Result:` carries the review's named fields as it emitted them. *Stop.*
-6. **CLOSE** - apply any fixes the step-5 review handed back, then the done gate
+   `Result:` carries the review's named fields as it emitted them. *Stop* - an open finding's ask:
+
+   ```ask
+   <The review's `Findings:` line, quoted>; open in the request's area: <each BLOCKER / MATERIAL | none>. Fix first?
+   - 'Fix now (Recommended)' - back to step 4, then the same reviewer on the fix delta
+   - 'Close now - defer the findings' - each one named in Leftovers
+   ```
+
+6. **CLOSE** - the done gate
    (load `habits-done-gate` - each acceptance criterion, and each Verify or Done-when bullet of a
    card the ask cited, demonstrated by a run this session, quoted). Stamp `Completed: <date>` with the per-task evidence table - it
    closes this plan file - and name the `## Decisions` ledger by its entry count, never re-pasted. Purge the notes - `node .claude/hooks/handoff.js purge <feature>` - then the purge count (`references/step-mechanics.md`).
@@ -223,7 +229,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 
    ```ask
    The feature is done and verified; the diff is uncommitted. Commit it on this machine?
-   - 'Commit now (Recommended)' - runs `habits-commit-checkpoint` in full, then commits
+   - 'Commit now (Recommended)' - runs `habits-commit-checkpoint` in full, formatter included, then commits
    - 'Hold - review the diff first' - nothing is committed; the diff stays as it is
    ```
 
@@ -245,7 +251,6 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    - 'Push now' - the checkpoint's publish half takes this answer as its confirmation
    ```
 
-   A picked commit runs the checkpoint whole, formatter included.
    New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan file (a stamped file
    is a record, never appended to) - re-enter step 1, or state in one `ungated: <why>` line that the
    work runs outside the cycle; never build it on a casual 'yes, add it'. A change a sibling repo must
@@ -262,4 +267,3 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 - Never dispatch a seat the user did not choose at a stop - dispatch is explicit-only house-wide.
 - Never keep cycle state only in chat or a note: a stamp, tick or cursor not in the plan file does
   not exist.
-- Never re-run a stamped step on resume; pick up at the cursor.

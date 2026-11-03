@@ -362,10 +362,10 @@ the card as the user's to run - only when they want that server again.
 ## after 2.10.1 - grade before release: the output scorer
 
 A designer's plan file, a diagnoser's root-cause verdict and an inline plan can be graded by a fresh, read-only
-`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It is OFF by
-default: `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
+`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It was seeded OFF
+until 3.6.0 (the section after 3.6.0 says what changed): `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
 `ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
-outputs (a csv; empty means all three). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
+outputs (a csv; list all three names to grade every output). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
 stack - `/habits-explain-topic /mode-output-scorer <request>` - grades that one request's output even while it is off,
 an explainer answer, a ticket, an upgrade plan or a pick included. An output that cannot reach the level is withheld and
 the user decides: answer the open decisions, accept it marked, one more revision, or keep it withheld.
@@ -657,4 +657,37 @@ An approval receipt now opens a gate only after you answered the guard's ask wit
 `CROSS-WRITE-ALLOW`, `CONFIG-EDIT-ALLOW` and `DESKTOP-EXEC-ALLOW` also need a `session:` line naming the session, and
 each denial prints the exact lines. A receipt left from an older release does not open anything: the next denial asks
 again. Under auto-run a guard's security ask always takes its safe option and lists the act for you in the close.
+Nothing to do by hand.
+
+## after 3.6.0 - the output scorer is on, for designer plans only
+
+The output scorer is now on by default: `ALFRED_CODE_SCORER=1` and `ALFRED_CODE_SCORER_OUTPUTS=designer-plan`, so a
+designer's plan file is graded before it is released, a root-cause verdict and an inline plan are not. Where a plan
+file was written, scored plans won 14 of 15 pairs; inline plans lost 3 of 3. This update moves the stack's own old
+seeds - `0` and the empty list - to the new ones and prints `reset to 1 (the old stack seed 0)` and `reset to
+designer-plan (the old stack seed empty)`; a value you set yourself stays, and so does a `0` or an empty list the stamp
+does not record as the stack's. An empty list now reads as unset, plan files only: list all three names
+(`designer-plan,root-cause,inline-plan`) to grade every output. To keep it off, set `ALFRED_CODE_SCORER=0` in
+`/alfred-code:configure`'s environment area.
+
+## after 3.6.0 - init offers Claude Code's auto-update for the stack's marketplace
+
+`/alfred-code:init` now asks once per account whether Claude Code may update the stack's marketplace by itself: a yes
+writes `autoUpdate: true` on its entry in your account's `settings.json`, a no writes `false` so no project asks
+again. An install already initialised is not asked by this update: turn it on under `/plugin` > Marketplaces > the
+stack's marketplace > Enable auto-update. `/alfred-code:update` still moves this project's own copies.
+
+## after 3.6.0 - a guard is switched off only with your answer, and a path you type opens writes
+
+A settings write that switches a protective guard off - `ALFRED_CODE_HOOKS_OFF` naming one, or `disableAllHooks` -
+now asks first, whatever route it takes: an edit, a shell redirect, or a copy, move, link or extract that lands a
+settings file. Content the guard cannot read before it lands asks too. With the plugin installed, a settings entry
+that wires a hand-copied twin of a stack guard also asks.
+
+An absolute path you type in your own message opens writes to it for the session: a file opens that file, a folder
+what is under it. A folder that holds the project opens nothing. In the discard guard's ask, picking the revert now
+counts as the allow.
+
+`/alfred-code:status` and update flag `claude-hud` below 0.15.0. The stop contract still holds a close that reports a
+step done and leaves the next one pending as a statement; a model-judged version of that check is built but held.
 Nothing to do by hand.

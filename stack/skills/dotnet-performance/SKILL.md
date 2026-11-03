@@ -1,6 +1,6 @@
 ---
 name: dotnet-performance
-description: "Use when a .NET type sits on a hot path or picking a serialization format - struct vs class, Span, ValueTask, JSON vs Protobuf. Not for 'my app is slow'."
+description: "Use when a .NET type is on a hot path or picking a serialization format - struct vs class, Span, ValueTask, JSON/Protobuf. Not for slow apps, benchmarks, dumps."
 ---
 
 # dotnet-performance (decision layer)

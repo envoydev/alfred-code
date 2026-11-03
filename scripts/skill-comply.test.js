@@ -617,7 +617,10 @@ test('an output-scorer trace grades the seat, the script\'s next before the plan
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
-    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-solve']);
+    // The task-* fixtures beside task-solve are the 2026-11-03 usage audit's A/Bs (U28-U32), one edited step each.
+    // The tier4-* fixtures are the 2026-10-30 audit's Tier 4 rule A/Bs (RU-05 to RU-20), each bound to its fixture.
+    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
+        'tier4-compaction', 'tier4-data-root', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -673,8 +676,9 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.ok(!fs.existsSync(out), 'a dry run writes nothing');
         const lines = r.out.split('\n');
         const billed = lines.filter((l, i) => lines[i - 1] === '# billed: one nested model session');
-        assert.strictEqual(billed.length, 27);
-        assert.match(r.out, /9 skill\(s\) x 3 level\(s\) = 27 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
+        const runs = sc.listSkills().length * 3;
+        assert.strictEqual(billed.length, runs);
+        assert.ok(r.out.includes(`${sc.listSkills().length} skill(s) x 3 level(s) = ${runs} billed nested session(s), each capped at --max-budget-usd 1.5`));
         assert.match(lines.slice(3).find((l) => !l.startsWith('#') && l !== 'set -e'), /clean-export\.js/, 'the source is exported first when none is handed in');
         for (const b of billed)
         {
@@ -686,13 +690,13 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         }
         assert.ok(billed.every((b) => !/mcp__/.test(b)), 'no fixture allows a stack server tool - the stack ships none');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
-        assert.strictEqual(installs.length, 27);
+        assert.strictEqual(installs.length, runs);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
         // The scaffold's commit leaves ~300 loose objects, past git's loose-objects threshold (100), so an
         // unconfigured project starts a DETACHED `git maintenance run --auto` that is still packing into
         // .git/objects when the run is deleted (reproduced: ENOTEMPTY, a tmp_pack left behind).
         const inits = lines.filter((l) => / init -q/.test(l));
-        assert.strictEqual(inits.length, 27);
+        assert.strictEqual(inits.length, runs);
         for (const i of inits) assert.match(i, / init -q && git -C \S+ config maintenance\.auto false$/, 'a throwaway project runs no background maintenance');
         // bash parses the whole plan without running any of it
         const script = path.join(dir, 'plan.sh');

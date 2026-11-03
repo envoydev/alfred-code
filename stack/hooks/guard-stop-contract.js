@@ -233,16 +233,21 @@ function paysAt(route, ctx) {
 // branch, which blocks). Context is not the only thing that makes a resume worth it: 63.5% of the
 // audited collection's cache-read was paid under the 1M window's own trigger, and the flows' stop
 // contracts already say 'spans hours, or resumes after an idle gap' - as prose, which slipped in 3
-// of 3 bundles that tested it. Hours, not tokens, and `0` switches this route off. Not seeded by
-// the installers: the trigger NUMBERS are the user's ruling and this one is deliberately an
-// override, not a setting, until the block rate says what it should be.
+// of 3 bundles that tested it. Hours, not tokens, and `0` switches this route off. Since the idle
+// offer's wait follows the prompt cache (usage audit 2026-11-03 U16, fresh-session.js idleWait), the
+// knob's default is 'follow the cache' - and this route keeps its own 2h then: it judges how long the
+// SESSION has been open as well as its longest gap, and a 5m cache life would put the note on nearly
+// every ask. An explicit hour count still sets both routes.
+const CLOCK_HOURS = 2;
 const FRESH_AFTER_HOURS = (() => {
-  const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
-  return Number.isNaN(n) || n < 0 ? 2 : n;
+  const n = typeof fresh.afterHoursOf === 'function' ? fresh.afterHoursOf()
+    : (() => { const v = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS')); return Number.isNaN(v) || v < 0 ? null : v; })();
+  return n === null ? CLOCK_HOURS : n;
 })();
 
-// How far the context must grow before the fresh-session offer is made again (see below).
-const REOFFER_GROWTH = 1.5;
+// How far the context must grow before the fresh-session offer is made again (see below) - the engine's, shared with the
+// tick hold (usage audit 2026-11-03 U13).
+const REOFFER_GROWTH = typeof fresh.REOFFER_GROWTH === 'number' ? fresh.REOFFER_GROWTH : 1.5;
 // `/clear` is NOT in this list. It matched the token quoted as report CONTENT - a turn merely
 // describing session hygiene ('every <=130k session opened with `/clear` + resumed from a file')
 // silenced the offer at PEAK context (A/B replay: with the token exit 0, with the same sentence in
@@ -1241,19 +1246,115 @@ const APPROVAL_ASK_RE = /\b(?:approve|as shown|shown above|(?:is|are) ready|(?:p
 // literal on one line): the stack's own templates taught 'say what changes in Other' and every flow paid one denied round
 // trip per run (audit 2026-10-20 C01, fabea019, 7c1af769).
 const OTHER_RE = /\b(?:in|into|via|through|using) (?:the )?['‘’]?Other\b|\btype (?:it|them|\w+) (?:in|into)\b[^.]{0,20}\bOther\b/;
-const SUBJECT_RE = /\b(?:this|these|the|that)\s+(?:[\w-]+\s+){0,3}?(plan|comment|draft|message|reply|description|summary|ticket|issue|changes?|diff|patch|stages?|spec|design|report|wording|version|email|note|edits?|post)\b/i;
+// The things an approval names, plurals included (audit 2026-11-03 U04, 1e53bc45: 'the 2 drafts' named none, so the noun
+// came from a later clause - 'the proposed ... description' - and an ask over drafts the chat showed was denied twice;
+// 75b9108a: 'groups' named none, so 'Commit the five groups above' passed over a chat that showed no group).
+const SUBJECT_NOUN = String.raw`(?:plan|comment|draft|message|description|ticket|issue|change|diff|stage|spec|design|report|wording|version|email|note|edit|post|group|commit)s?|patch(?:es)?|repl(?:y|ies)|summar(?:y|ies)`;
+const SUBJECT_PHRASE = String.raw`\b(?:this|these|the|that|those|all|both|each|my|your|our)\s+(?:[\w.-]+\s+){0,3}?(${SUBJECT_NOUN})\b`;
 const SHOWN_MIN = 200;
+// 'above' as a pointer at earlier text: after a noun phrase ('the five groups above', 'the drafts shown above') or 'as
+// noted' - never a comparison ('above zero', 'above what the docs allow', 'above-average', 'above or below'), 'above 5' or
+// 'above the line' (the review of 2026-11-03: every 'above' had read as a pointer, a shipped template's among them).
+const POINTER_ABOVE_RE = /\b(?:(?:the|these|those|this|that|all|each|both|every)\s+(?:[\w.-]+\s+){1,4}?|as\s+(?:noted|stated|shown|listed|described|mentioned|discussed|written|printed|quoted|said)\s+)above\b(?!-|\s+(?:the|a|an|this|that|these|those|it|its|them|their|our|your|my|all|any|or|and|what|zero|one|two|three|four|five|six|seven|eight|nine|ten|twenty|fifty|hundred|average|normal|expected|\d)\b)/i;
+// A pointer at the asks just answered or at this ask's own options shows the user nothing new to read.
+const ASKED_HEAD_RE = /^(?:questions?|answers?|options?|choices?|asks?)$/i;
+const POINTER_VERB_RE = /\s+(?:shown|listed|printed|written|quoted|described|drafted|proposed)\s*$/i;
+// Text the ask QUOTES - a fenced block, a code span, double or curly quotes, or single quotes whose opening one follows no
+// letter (an apostrophe inside 'it's' stays in the span).
+const QUOTED_RE = /```[\s\S]*?```|`[^`\n]+`|"[^"\n]+"|“[^”\n]+”|‘[^’\n]+’|(?<![\w'])'(?:[^'\n]|'(?=\w))+'(?!\w)/g;
+const stemOf = (w) => String(w).toLowerCase().replace(/ies$/, 'y').replace(/(?<=(?:s|x|ch|sh))es$/, '').replace(/s$/, '');
+// The nearest phrase a pronoun or 'as shown' points back at - never one after a preposition ('sub-tasks of the parent
+// ticket' places the drafts, it is not what is approved).
+const lastPhrase = (t) => {
+  let noun = null;
+  const s = String(t);
+  for (const m of s.matchAll(new RegExp(SUBJECT_PHRASE, 'gi')))
+    if (!/\b(?:of|in|into|to|for|from|on|onto|with|under|at|by|about|after|before|than|under)\s+$/i.test(s.slice(0, m.index))) noun = m[1];
+  return noun;
+};
+const clauseStart = (t, at, commas) => { let s = 0; for (const m of t.slice(0, at).matchAll(commas ? /[.?!;:\n,(]|\s-\s/g : /[.?!;:\n]|\s-\s/g)) s = m.index + m[0].length; return s; };
+// A verb addressed to the user or said by the assistant - an imperative opening its clause, or one after 'I' / 'we' /
+// 'you', a modal asking it, 'please', 'then', 'to' - is an approval; 'the page may send it differently' is a symptom (b2aa04d4).
+function addressed(t, at) {
+  const lead = t.slice(clauseStart(t, at, true), at).trim().toLowerCase();
+  return lead === '' || /\b(?:please|then|and|or|now|so|i|i'll|i'd|we|we'll|let's|you|to)$/.test(lead)
+    || /\b(?:i|we|you)\s+(?:will|can|could|should|would|shall|may|might)$/.test(lead) || /\b(?:shall|should|can|could|may|do)\s+(?:i|we)$/.test(lead);
+}
+// The thing an approval names, from the approval verb's OWN object (U04): after 'approve' / 'post ...', or before 'as
+// shown' / 'shown above' / 'is ready' / '<the thing> above' in the same clause; a pronoun object ('posting them as
+// shown') takes the nearest thing named before it. { noun } or null when the text holds no addressed approval.
+function approvalSubject(t) {
+  for (const m of t.matchAll(new RegExp(APPROVAL_ASK_RE.source, 'gi'))) {
+    const word = m[0].toLowerCase();
+    if (/^(?:approve|post|file|publish|send)\b/.test(word)) {
+      if (!addressed(t, m.index)) continue;
+      const after = t.slice(m.index + /^\w+/.exec(m[0])[0].length);
+      const end = after.search(/[.?!;:\n]/);
+      const rest = end < 0 ? after : after.slice(0, end);
+      const obj = new RegExp(`^\\s+${SUBJECT_PHRASE}`, 'i').exec(rest);
+      if (obj) return { noun: obj[1], at: m.index };
+      return { noun: /^\s+(?:it|them|this|these|that|those)\b/i.test(rest) || !rest.trim() ? lastPhrase(t.slice(0, m.index)) : null, at: m.index };
+    }
+    if (/^(?:as shown|shown above|(?:is|are) ready)$/.test(word)) {
+      const start = clauseStart(t, m.index);
+      return { noun: lastPhrase(t.slice(start, m.index)) || lastPhrase(t.slice(0, start)), at: m.index };
+    }
+    const head = /([\w-]+)\s+above$/i.exec(m[0]);
+    return { noun: head && new RegExp(`^(?:${SUBJECT_NOUN})$`, 'i').test(head[1]) ? head[1] : null, at: m.index };
+  }
+  return null;
+}
+// A question pointing at something 'above' needs the chat to show it (U04, 75b9108a): the thing named right before the
+// pointer, when it is one the list knows, else only the length. The resume-block pointer is check 14's.
+function pointerSubject(t) {
+  const s = String(t).replace(ASK_ABOVE_RE, (x) => ' '.repeat(x.length));
+  for (const m of s.matchAll(new RegExp(POINTER_ABOVE_RE.source, 'gi'))) {
+    const at = m.index + m[0].toLowerCase().lastIndexOf('above');
+    const head = /([\w-]+)$/.exec(s.slice(0, at).replace(POINTER_VERB_RE, '').trimEnd());
+    if (head && ASKED_HEAD_RE.test(head[1])) continue;
+    return { noun: head && new RegExp(`^(?:${SUBJECT_NOUN})$`, 'i').test(head[1]) ? head[1] : null, pointer: true, at };
+  }
+  return null;
+}
 // Read on the QUESTION only: an 'Approve' option label is the solve-task approval stop, whose own contract prints the
-// audited plan before it (and whose receipts are notes).
+// audited plan before it (and whose receipts are notes). A quote of three words or more that is no option's label and no
+// pointer is the subject shown in the ask itself (U04, ce0b76e6: the comment line quoted whole was denied as unseen).
+// Known ceiling (U04, measured on 1e53bc45 and b2aa04d4): the transcript is written asynchronously and lags the message in
+// flight (code.claude.com/docs/en/hooks, transcript_path), so text the SAME message prints before its ask is not on disk
+// here - the denial says to re-send the ask unchanged, which the once-per-text marker passes.
 function approvalOverNothingShown(questions) {
-  const text = questions.map((q) => String((q && q.question) || '')).join('\n');
-  if (!APPROVAL_ASK_RE.test(text)) return null;
+  const raw = questions.map((q) => String((q && q.question) || '')).join('\n');
+  const labels = new Set(questions.flatMap((q) => (q && Array.isArray(q.options) ? q.options : [])
+    .map((o) => String((o && o.label) || '').replace(/\s*\(Recommended\)/i, '').trim().toLowerCase())));
+  const quotes = [...raw.matchAll(QUOTED_RE)];
+  const text = quotes.reduce((s, m) => s.slice(0, m.index) + ' '.repeat(m[0].length) + s.slice(m.index + m[0].length), raw);
+  const subject = approvalSubject(text) || pointerSubject(text);
+  if (!subject) return null;
+  const shows = (q) => { const s = q.replace(/^(?:```[^\n]*\n?|[`"“‘'])|(?:```|[`"”’'])$/g, '').trim(); return s.length >= 12 && s.split(/\s+/).length >= 3 && !/\b(?:above|below|shown|listed)\b/i.test(s) && !labels.has(s.toLowerCase()); };
+  // Only a quote that IS the approval's object (the review of 2026-11-03: any code span anywhere passed 'Approve the plan?
+  // Its last step is `git push`'): one inside the approval's own clause, or one its sentence only presents ('The line:
+  // ...', at most three words beside it). Bounds are read on `text`, where every quote is blanked, so a stop inside one
+  // splits nothing.
+  const at = Number.isInteger(subject.at) ? subject.at : -1;
+  const ownClause = (m) => {
+    if (at < 0) return false;
+    const from = clauseStart(text, at, true);
+    const stop = text.slice(at).search(/[.?!;:\n,(]|\s-\s/);
+    return m.index >= from && m.index < (stop < 0 ? text.length : at + stop);
+  };
+  const presented = (m) => {
+    let from = 0;
+    for (const x of text.slice(0, m.index).matchAll(/[.?!\n]/g)) from = x.index + 1;
+    const stop = text.slice(m.index + m[0].length).search(/[.?!\n]/);
+    const around = text.slice(from, stop < 0 ? text.length : m.index + m[0].length + stop);
+    return around.split(/\s+/).filter((w) => /\w/.test(w)).length <= 3;
+  };
+  if (quotes.some((m) => shows(m[0]) && (ownClause(m) || presented(m)))) return null;
   const shown = shownSinceTyped();
   if (shown === null) return null; // no typed turn to read back to: unknown, never a denial
-  const noun = (SUBJECT_RE.exec(text) || [])[1];
-  const stem = noun ? noun.toLowerCase().replace(/(?:es|s)$/, '') : null;
-  const carries = shown.trim().length >= SHOWN_MIN && (!stem || new RegExp(`\\b${stem.replace(/\s+/g, '\\s+')}`, 'i').test(shown));
-  return carries ? null : { noun: noun || null, shown: shown.trim().length };
+  const verdict = { noun: subject.noun || null, shown: shown.trim().length, pointer: !!subject.pointer };
+  if (verdict.shown < SHOWN_MIN) return verdict;
+  return !subject.noun || new RegExp(`\\b${stemOf(subject.noun)}`, 'i').test(shown) ? null : verdict;
 }
 
 function deferAnsweredThisTurn() {
@@ -2359,7 +2460,11 @@ if (payload.hook_event_name === 'Stop') {
     // The last offer is this hook's own block OR the newest fresh-session ask answered in any turn (audit 2026-10-11
     // SD11, 7f8803eb): the choice made one typed turn back is not re-asked before the carry grows past the step.
     const since = Math.max(lastBlockCtx(), typeof fresh.freshAskAnsweredCtx === 'function' ? fresh.freshAskAnsweredCtx() : 0);
-    if (since && ctx < since * REOFFER_GROWTH) {
+    // THE POST-CYCLE RE-OFFER (usage audit 2026-11-03 U13): an offer declined while a plan cycle closed held the next
+    // scope at the full carry, the step since the decline outliving the cycle. After the plan's `Completed:` stamp a
+    // declined offer counts as spent only until the next typed turn: that turn's clean close re-offers once per stamp.
+    const cycle = since && ctx < since * REOFFER_GROWTH ? postCycleReoffer() : null;
+    if (since && ctx < since * REOFFER_GROWTH && !cycle) {
       breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} has not grown ${REOFFER_GROWTH}x since ${since}`);
       process.exit(0);
     }
@@ -2375,7 +2480,10 @@ if (payload.hook_event_name === 'Stop') {
       process.exit(0);
     }
     recordBlockCtx(ctx);
-    blockDetail('fresh-session', `ctx ${ctx} > trigger ${_fresh_at}`);
+    // any offer made after the stamp and a typed turn spends that cycle's one re-offer
+    markCycleOffered();
+    if (cycle) breadcrumb(`Stop: fresh-session offer re-made once after the plan's Completed stamp and a typed turn, ctx ${ctx} under ${REOFFER_GROWTH}x since ${since}`);
+    blockDetail(cycle ? 'fresh-session-post-cycle' : 'fresh-session', `ctx ${ctx} > trigger ${_fresh_at}`);
     process.stderr.write(
       // The old text claimed a resume 'costs roughly a tenth' - a ratio no measurement held, which reached users verbatim
       // inside the option descriptions they then acted on. State the absolute numbers instead, the ones the model can
@@ -2484,7 +2592,32 @@ function lastBlockCtx() {
 function recordBlockCtx(ctx) {
   try { fs.writeFileSync(blockStateFile(), String(ctx)); } catch { /* never let state break the gate */ }
 }
+// The post-cycle re-offer's facts (usage audit 2026-11-03 U13): a plan's `Completed:` stamp with a typed turn after it
+// (flowState), no re-offer made for that stamp yet (the `.cycle` marker beside the block record holds the stamp's byte
+// offset), and no fresh-session choice answered after that typed turn - one made since stands. Returns the stamp's offset
+// as a string, or null.
+function postCycleReoffer() {
+  try {
+    const f = flowState();
+    if (f.completed === null || !f.typedAfter) return null;
+    if (readCycleMarker() === String(f.completed)) return null;
+    const ask = typeof fresh.freshAskAnswered === 'function' ? fresh.freshAskAnswered() : { at: -1 };
+    if (ask.at > f.typedAfterAt) return null;
+    return String(f.completed);
+  } catch { return null; }
+}
+// function declarations, never consts: the Stop branch above runs before this line is reached
+function cycleMarkerFile() { return blockStateFile().replace(/\.blocked$/, '.cycle'); }
+function readCycleMarker() { try { return fs.readFileSync(cycleMarkerFile(), 'utf8').trim(); } catch { return ''; } }
+function markCycleOffered() {
+  try {
+    const f = flowState();
+    if (f.completed !== null && f.typedAfter) fs.writeFileSync(cycleMarkerFile(), String(f.completed));
+  } catch { /* never let state break the gate */ }
+}
 function blockStateFile() {
+  // the engine names it (fresh-session.js stopOfferFile), so the tick hold reads the same record
+  if (typeof fresh.stopOfferFile === 'function') return fresh.stopOfferFile(payload);
   const os = require('os');
   const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
@@ -2655,6 +2788,10 @@ if (payload.tool_name === 'AskUserQuestion') { try { settleAskFixed(); } catch {
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   let askFixed = null;
+  // Set right before the denial's exit inside the try below. A real process never returns from process.exit, but a
+  // runner whose exit throws (shell-guards.js runGuard, the suites' in-process runner, scripts/hook-inprocess.js)
+  // would have the fail-open catch swallow it and run the hook on - so the catch lets that throw through.
+  let denied = false;
   try {
     // Build the ask's text from its FIELDS. JSON.stringify would introduce double quotes of its
     // own and make the house-voice check fire on every ask ever made.
@@ -2863,7 +3000,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         if (compactFresh) reasons.push('a fresh-session option, while this project compacts instead (ALFRED_CODE_AUTO_COMPACT=1)');
         if (noReview) reasons.push(noReview.from === 'text' ? 'a small solve-task close whose `Result:` line has no `review:` field'
           : `a solve-task close that states no \`Size:\` (this cycle's ${noReview.from === 'floor' ? `spec-check \`size floor:\` is ${noReview.size}` : `\`Size:\` was ${noReview.size}`}) and whose \`Result:\` line has no \`review:\` field`);
-        if (blind) reasons.push(`an approval of ${blind.noun ? `the ${blind.noun}` : 'something'} the chat has not shown since the user's last message`);
+        if (blind) reasons.push(`${blind.pointer ? 'a pointer at' : 'an approval of'} ${blind.noun ? `the ${blind.noun}` : 'something'} ${blind.pointer ? 'above that ' : ''}the chat has not shown since the user's last message`);
         if (numbers) reasons.push(`a fresh-session option with no measured number (this session carries ${k(numbers.ctx)} per message now)`);
         if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
         if (unmarked) reasons.push(`${unmarked} question(s) without exactly one option marked '(Recommended)', listed first`);
@@ -2878,11 +3015,12 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
           + (misMarked ? ` Put the mark on the option the question recommends, or reword the question so both say the same pick.` : '')
           + (noReview ? `${noReview.from === 'text' ? '' : ' State the cycle\'s `Size:` on the close - a trivial run has no stop, so a run that stops here is small at least.'} The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
-          + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
+          + (blind ? ` The user answers on what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask names'} in your reply text first (the stages, the draft as it will be posted, the edit made), then re-send this same ask unchanged - a reworded ask is judged again. If your reply already shows it (this hook reads a transcript that can lag the message in flight) or it sits in a file the user has open, re-send the ask unchanged now.` : '')
           + (newCycle ? ` A finished cycle closed in this chat, so add a fresh-session option to this first ask of a new cycle - ${fresh.payText(newCycle.ctx, fresh.freshVerdict(newCycle.ctx))} Also state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
           + (dropHandoff ? ` ${notPay}${leftAlone ? ` A question left with one option is no question: take that option${leftAlone.options[0] ? ` - '${String(leftAlone.options[0].label || '')}' -` : ''} and drop the question.` : ''}` : '')
           + (mechanical && resend.length ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : '', dropHandoff ? 'the fresh-session hand-off dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(resend, null, 1)}\n` : '\n'));
+        denied = true;
         process.exit(2);
       }
       else if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
@@ -2969,7 +3107,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         'cannot be unsent, and the ask just answered did not settle its rotation. Before this turn ' +
         'closes, ask whether to rotate it now - name the key and its shape only, never the value.');
     }
-  } catch { /* fail-open: an injection is never worth breaking an ask over */ }
+  } catch (err) { if (denied) throw err; /* fail-open: an injection is never worth breaking an ask over */ }
 
   if (notes.length || askFixed) {
     process.stdout.write(JSON.stringify({
@@ -3068,6 +3206,11 @@ function flowFieldNotes(questions, askText, turnText) {
   const notes = [];
   const flow = flowState();
   if (!flow.flow) return notes;
+  // Past the cycle: the plan is stamped `Completed:` and the user typed since, so an ask now is no stop of the flow until a
+  // new cycle's marker - a typed /task-solve or the flow's Skill call - or a flow step's Skill call after that typed turn
+  // (new scope re-enters at task-design) re-arms the notes (usage audit 2026-11-03 U08: 6 of 6 post-cycle asks in one
+  // session carried the three-field note; the review of 2026-11-03: a step call is the new cycle too).
+  if (flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed) && !(flow.stepAt > flow.typedAfterAt)) return notes;
   if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
     notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
       + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '
@@ -3237,6 +3380,16 @@ function flowLine(line, at, state) {
       }
     } catch { /* a cut row */ }
   }
+  // Where a flow STEP's Skill call sits (the review of 2026-11-03): new scope after `Completed:` re-enters at step 1
+  // through task-design (task-solve SKILL.md), never task-solve itself, so a step call after the typed turn re-arms
+  // the stop notes (flowFieldNotes) as the flow's own marker does.
+  if (isAssistant && line.includes('"tool_use"') && /task-(?:design|verify-plan|implement|verify-code)/.test(line)) {
+    try {
+      for (const b of JSON.parse(line).message.content || []) {
+        if (b && b.type === 'tool_use' && b.name === 'Skill' && /(?:^|:)(?:alfred-)?task-(?:design|verify-plan|implement|verify-code)$/.test(String((b.input || {}).skill || ''))) state.stepAt = at;
+      }
+    } catch { /* a cut row */ }
+  }
   // Where this cycle's plan gate ran - its approval quotes the gate's `Passes:` line (flowReceiptsOwed).
   if (isAssistant && line.includes('task-verify-plan') && line.includes('"tool_use"')) {
     try {
@@ -3394,18 +3547,19 @@ function flowState() {
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
     firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1,
     sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1,
-    autoCmd: false };
+    autoCmd: false, stepAt: -1 };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 8, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 9, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
       // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37), v7
-      // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1)
-      if (kept && kept.v === 8 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1), v9
+      // where a flow step's Skill call sits (the review of 2026-11-03)
+      if (kept && kept.v === 9 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {

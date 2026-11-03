@@ -978,17 +978,22 @@ function sedTargets(argv) {
 const WRITE_REDIRS = new Set(['>', '>>', '>|', '&>', '&>>', '<>']);
 // `>&word` is `&>word` unless the word is a descriptor (`>&2`, `>&-`).
 const isFileRedir = (r) => r.target && (WRITE_REDIRS.has(r.op) || (r.op === '>&' && !/^(?:\d+|-)$/.test(r.target.raw)));
-// The target words of one command word, as { raw, index, what, verb }: `raw` dequoted, `index` where the command word
-// (or the redirect) stands.
-function writesOf(cmd, c, out) {
+// The target words of one command word, as { raw, index, what, verb, argv }: `raw` dequoted, `index` where the command
+// word (or the redirect) stands, `argv` the command's own words (a copy's sources, an extract's archive - the config
+// guard reads what a copy or extract LANDS through `copyPlan` / `tarPlan` / `unzipPlan`). `opts.landing` also reports an
+// extract with no destination as one into the working folder (`.`), which only a caller asking for it reads.
+function writesOf(cmd, c, out, opts = {}) {
   const index = cmd.words[c.at].s;
   const name = c.name;
   const lower = name.toLowerCase();
   const verb = name === 'rimraf' ? 'rm' : name;
-  const push = (raw, what, v = verb) => out.push({ raw, index, what, verb: v });
+  const push = (raw, what, v = verb) => out.push({ raw, index, what, verb: v, argv: c.argv });
   const plain = (a) => a && !a.startsWith('-');
   if (name === 'tee') {
     for (const a of c.argv) if (plain(a)) push(a, 'a `tee` write');
+  } else if (name === 'sponge') {
+    // moreutils' `sponge [-a] <file>` soaks its stdin and writes the file (review fix pass run B M1: `jq ... f | sponge f`)
+    for (const a of c.argv) if (plain(a)) push(a, 'a `sponge` write');
   } else if (name === 'sed') {
     // in-place edits: every file operand, not just the last - `sed -i 's/a/b/' ../other/f x`
     for (const a of sedTargets(c.argv)) if (a) push(a, 'an in-place edit');
@@ -1033,7 +1038,9 @@ function writesOf(cmd, c, out) {
     }
     for (const t of gitDestinations(call)) push(t, 'a git write in another checkout', 'git');
   } else {
-    for (const t of verbDestinations(lower, c.argv)) push(t, 'a download, extract or patch destination');
+    const dests = verbDestinations(lower, c.argv);
+    for (const t of dests) push(t, 'a download, extract or patch destination');
+    if (opts.landing && !dests.length && extractsHere(lower, c.argv)) push('.', 'an extract into the working folder');
   }
 }
 
@@ -1081,16 +1088,40 @@ function verbDestinations(verb, argv) {
 // tar: an extract writes under `-C <dir>`; a create, append or update writes its archive (`-f <file>`, or the word an
 // old-style cluster's `f` takes: `tar czf out.tgz src`). A listing writes nothing.
 function tarDestinations(argv) {
+  const { mode, archive, dirs } = tarPlan(argv);
   const out = [];
+  if (mode === 'x') out.push(...dirs.filter(Boolean));
+  if ('cru'.includes(mode) && mode && archive && archive !== '-') out.push(archive);
+  return out;
+}
+// One tar call's grammar: { mode ('x', 'c', 'r', 'u', 't' or ''), archive (null when it reads stdin or a tape), dirs (each
+// `-C`), strip (`--strip-components`), renamed (`--transform` / `--xform` / bsdtar's `-s` - names the reader cannot
+// follow), absolute (`-P` / `--absolute-names`) }. GNU tar opens the archive where the shell stands, before any `-C`.
+const TAR_VALUE_LONG = ['--directory', '--file', '--strip-components', '--transform', '--xform', '--exclude', '--exclude-from', '--files-from',
+  '--use-compress-program', '--owner', '--group', '--mode', '--mtime', '--newer', '--after-date', '--format', '--blocking-factor', '--record-size',
+  '--label', '--volno-file', '--to-command', '--checkpoint-action', '--suffix', '--rsh-command', '--index-file', '--level', '--listed-incremental'];
+function tarPlan(argv) {
   let mode = '';
   let archive = null;
   const dirs = [];
+  let strip = 0;
+  let renamed = false;
+  let absolute = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const long = /^--(extract|get|create|append|update|list|diff|compare|delete)$/.exec(a);
     if (long) { mode = { extract: 'x', get: 'x', create: 'c', append: 'r', update: 'u', list: 't' }[long[1]] || mode; continue; }
-    const lv = longValue(argv, i, ['--directory', '--file']);
-    if (lv) { if (a.startsWith('--directory')) dirs.push(lv.value); else archive = lv.value; i += lv.skip; continue; }
+    if (a === '--absolute-names') { absolute = true; continue; }
+    const lv = longValue(argv, i, TAR_VALUE_LONG);
+    if (lv) {
+      const opt = a.replace(/=.*$/, '');
+      if (opt === '--directory') dirs.push(lv.value);
+      else if (opt === '--file') archive = lv.value;
+      else if (opt === '--strip-components') strip = /^\d+$/.test(String(lv.value)) ? Number(lv.value) : -1;
+      else if (opt === '--transform' || opt === '--xform') renamed = true;
+      i += lv.skip;
+      continue;
+    }
     if (a.startsWith('--')) continue;
     // the first word may be an old-style cluster with no dash (`xzf`, `czf`)
     const cluster = a.startsWith('-') ? a.slice(1) : (i === 0 && /^[A-Za-z]+$/.test(a) ? a : null);
@@ -1098,17 +1129,118 @@ function tarDestinations(argv) {
     for (let k = 0; k < cluster.length; k++) {
       const ch = cluster[k];
       if ('xcrutd'.includes(ch) && !mode) mode = ch === 'd' ? 't' : ch;
-      if (ch === 'f' || ch === 'C') {
+      if (ch === 'P') absolute = true;
+      if (ch === 'f' || ch === 'C' || ch === 's') {
         const rest = cluster.slice(k + 1);
         const v = a.startsWith('-') && rest ? rest : argv[++i];
-        if (ch === 'f') archive = v; else dirs.push(v);
+        if (ch === 'f') archive = v; else if (ch === 'C') dirs.push(v); else renamed = true;
         break;
       }
     }
   }
-  if (mode === 'x') out.push(...dirs.filter(Boolean));
-  if ('cru'.includes(mode) && mode && archive && archive !== '-') out.push(archive);
-  return out;
+  return { mode, archive: archive && archive !== '-' ? archive : null, dirs: dirs.filter(Boolean), strip, renamed, absolute };
+}
+// unzip [opts] <archive> [members] [-x excluded] [-d dir]: { archive, dir, junk (`-j`: every entry lands by its last name),
+// extracts (false for a listing, a test or a print to stdout) }.
+function unzipPlan(argv) {
+  let archive = null;
+  let dir = null;
+  let junk = false;
+  let extracts = true;
+  let excluding = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '-d') { dir = argv[++i] || null; excluding = false; continue; }
+    if (/^-d./.test(a)) { dir = a.slice(2); continue; }
+    if (a === '-x') { excluding = true; continue; }
+    if (a === '-P') { i++; continue; }
+    if (a.startsWith('-') && a.length > 1) {
+      excluding = false;
+      if (/[lvtzZpc]/.test(a.slice(1))) extracts = false;
+      if (a.slice(1).includes('j')) junk = true;
+      continue;
+    }
+    if (excluding) continue;
+    if (archive === null) archive = a;
+  }
+  return { archive, dir, junk, extracts };
+}
+// An extract with no destination of its own writes into the working folder.
+function extractsHere(verb, argv) {
+  if (verb === 'tar' || verb === 'bsdtar' || verb === 'gtar') { const t = tarPlan(argv); return t.mode === 'x' && !t.dirs.length; }
+  if (verb === 'unzip') { const z = unzipPlan(argv); return z.extracts && !z.dir && Boolean(z.archive); }
+  return false;
+}
+// One copy, move, link or install call's grammar (GNU and BSD): { sources, dest, intoDir (`-t` named the folder),
+// fileDest (`-T`: the destination is the file itself), recursive, parents (`--parents`, rsync's `-R`: the source's
+// path as written is kept under the folder), symbolic (`ln -s`) }. A value option's word is never an operand.
+const COPY_VALUE_SHORT = { cp: 'S', mv: 'S', ln: 'S', install: 'mogSt', rsync: 'eBfMT@' };
+const COPY_VALUE_LONG = new Set(['--suffix', '--target-directory', '--mode', '--owner', '--group', '--strip-program', '--exclude', '--include',
+  '--filter', '--rsh', '--rsync-path', '--files-from', '--exclude-from', '--include-from', '--backup-dir', '--chmod', '--chown', '--usermap',
+  '--groupmap', '--link-dest', '--compare-dest', '--copy-dest', '--partial-dir', '--temp-dir', '--log-file', '--log-file-format',
+  '--out-format', '--password-file', '--port', '--timeout', '--contimeout', '--bwlimit', '--max-size', '--min-size', '--max-delete',
+  '--block-size', '--compress-level', '--skip-compress', '--modify-window', '--info', '--debug', '--iconv', '--checksum-choice',
+  '--compress-choice', '--sockopts', '--address', '--protocol', '--outbuf', '--stop-after', '--stop-at', '--remote-option']);
+function copyPlan(verb, argv) {
+  const operands = [];
+  let tdir = null;
+  let fileDest = false;
+  let recursive = verb === 'mv';
+  let parents = false;
+  let symbolic = false;
+  const valueShort = COPY_VALUE_SHORT[verb] || '';
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--') { operands.push(...argv.slice(i + 1)); break; }
+    if (a.startsWith('--')) {
+      const name = a.replace(/=.*$/, '');
+      const inline = a.includes('=') ? a.slice(a.indexOf('=') + 1) : null;
+      if (name === '--target-directory') tdir = inline !== null ? inline : argv[++i];
+      else if (name === '--no-target-directory') fileDest = true;
+      else if (name === '--recursive' || name === '--archive') recursive = true;
+      else if (name === '--parents' || name === '--relative') parents = true;
+      else if (name === '--symbolic') symbolic = true;
+      else if (COPY_VALUE_LONG.has(name) && inline === null) i++;
+      continue;
+    }
+    if (a.length < 2 || a[0] !== '-') { operands.push(a); continue; }
+    for (let k = 1; k < a.length; k++) {
+      const ch = a[k];
+      if (ch === 't' && verb !== 'rsync') { tdir = k < a.length - 1 ? a.slice(k + 1) : argv[++i]; break; }
+      if (valueShort.includes(ch)) { if (k === a.length - 1) i++; break; }
+      if (ch === 'T' && verb !== 'rsync') fileDest = true;
+      if ('rRa'.includes(ch) && (verb === 'cp' || verb === 'rsync')) { recursive = true; if (ch === 'R' && verb === 'rsync') parents = true; }
+      if (ch === 's' && verb === 'ln') symbolic = true;
+    }
+  }
+  if (tdir) return { sources: operands, dest: tdir, intoDir: true, fileDest: false, recursive, parents, symbolic };
+  const dest = operands.length >= 2 ? operands.pop() : (verb === 'ln' && operands.length === 1 ? '.' : null);
+  return { sources: operands, dest, intoDir: operands.length > 1, fileDest, recursive, parents, symbolic };
+}
+// PowerShell's Copy-Item / Move-Item: -Path / -LiteralPath (a comma list) or the first positional is the source,
+// -Destination or the second positional the destination; -Recurse copies a folder's contents.
+const PS_COPY = new Set(['copy-item', 'cpi', 'copy', 'move-item', 'mi', 'move']);
+function psCopyPlan(verb, words) {
+  const sources = [];
+  let dest = null;
+  let recursive = /^m/.test(String(verb).toLowerCase());
+  const positional = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (!w) continue;
+    if (!w.startsWith('-')) { positional.push(w); continue; }
+    const colon = w.indexOf(':');
+    const name = (colon === -1 ? w.slice(1) : w.slice(1, colon)).toLowerCase();
+    const value = colon === -1 ? null : w.slice(colon + 1);
+    const take = () => (value !== null ? value : words[++i]);
+    if (['path', 'literalpath', 'lp', 'pspath'].includes(name)) sources.push(...String(take() || '').split(',').filter(Boolean));
+    else if (name === 'destination') dest = take() || null;
+    else if (name === 'recurse') recursive = true;
+    else if (PS_VALUE_PARAMS.has(name) && value === null) i++;
+  }
+  if (!sources.length && positional.length) sources.push(...String(positional.shift()).split(',').filter(Boolean));
+  if (dest === null && positional.length) dest = positional.shift();
+  return { sources, dest, intoDir: false, fileDest: false, recursive, parents: false, symbolic: false };
 }
 // patch [options] [originalfile [patchfile]]: the file it patches, `-o <out>`, `-r <rejects>`, and `-d <dir>`, where
 // every file the patch names is written.
@@ -2727,7 +2859,7 @@ function scanShell(rawCommand, opts = {}) {
       if (isFileRedir(r)) targets.push({ raw: dequote(r.target.raw), index: r.at, what: 'a shell redirection', verb: '>' });
     }
     for (const c of cmd.cands) {
-      writesOf(cmd, c, targets);
+      writesOf(cmd, c, targets, opts);
       if (c.name === 'git') {
         // a bare `git <mutating>` after a `cd` out of tree writes THAT checkout - the same event as `git -C <dir>`
         const call = gitCallOf(cmd, c);
@@ -2754,7 +2886,7 @@ function scanShell(rawCommand, opts = {}) {
     for (const sc of carried) {
       if (run.budget.over()) { run.unread.push({ at: sc.at, why: run.budget.why, path: null }); continue; }
       const u0 = run.unread.length;
-      const inner = scanShell(sc.text, { cwd: sc.cwd || null, files, aliases: opts.aliases, depth: depth + 1, run, path: sc.path || null });
+      const inner = scanShell(sc.text, { cwd: sc.cwd || null, files, aliases: opts.aliases, landing: opts.landing, depth: depth + 1, run, path: sc.path || null });
       for (let u = u0; u < run.unread.length; u++) run.unread[u] = { at: sc.at, why: run.unread[u].why, path: run.unread[u].path || sc.path || null };
       const verbatim = sc.mapped && inner.command.length === sc.text.length;
       const place = verbatim ? (i) => sc.at + i : (i) => sc.at + (i + 1) / (inner.command.length + 2);
@@ -2781,4 +2913,4 @@ function enclosingEnd(P, at, closesOf) {
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
-  shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings };
+  shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan, COPY_VERBS };

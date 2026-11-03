@@ -51,7 +51,7 @@ test('one skill, five parts: the model may load it, and the fresh-session guard 
     assert.doesNotMatch(front, /disable-model-invocation/, 'a description match loads it (spec 1.5)');
     // the 2026-10-30 billed probe: 'note where our Jira and Sentry live' hand-edited the resources doc and one 'document the
     // module boundaries' answered from the map, neither loading this skill - so both are named triggers
-    assert.match(front, /^description: "Use when asked to capture or note project awareness - run book, Jira\/Sentry links, architecture map or module boundaries, code style, sibling repos, installs\."$/m);
+    assert.match(front, /^description: "Use when asked to capture or note project awareness - run book, Jira\/Sentry, architecture map, module boundaries, code style, siblings\. Not for judging quality\."$/m);
     assert.deepStrictEqual(fs.readdirSync(path.join(DIR, 'references')).sort(), REFS, 'the five parts and the moved references');
     const text = body();
     for (const part of PARTS)

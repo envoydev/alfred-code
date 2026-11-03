@@ -210,6 +210,24 @@
    "then": "nothing - set ALFRED_CODE_HISTORY between 1 and 10 for more or fewer sessions, 0 for none"
   },
   {
+   "id": "idle-wait-follows-the-cache",
+   "since": "3.7.0",
+   "detect": {
+    "settings_env_value": {
+     "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
+     "equals": "2"
+    }
+   },
+   "remove": [],
+   "clear_settings_env": {
+    "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
+    "when_value": "2",
+    "to": "cache"
+   },
+   "why": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS is the idle-gap offer's wait (usage audit 2026-11-03 U16). The old seed 2 waited past the prompt cache on every route - 1 hour on a subscription, 5 minutes on an API key - so the gap's first message had already paid the cold re-write before the offer came. The stack's own seed moves to cache, which waits the life the last reply wrote; a 2 the user typed stays",
+   "then": "nothing - set an hour count for a fixed wait, 0 to turn the idle offer off"
+  },
+  {
    "id": "docs-block-switch-folded",
    "since": "2.9.0",
    "detect": {
@@ -398,6 +416,42 @@
    },
    "why": "2.10.1 ships no MCP server, so there is no memory model to pre-warm; nothing reads the switch.",
    "then": "nothing - the key is gone; add a server back with its line from stack/mcp/original-mcps.json"
+  },
+  {
+   "id": "scorer-seeded-on",
+   "since": "3.7.0",
+   "detect": {
+    "settings_env_value": {
+     "key": "ALFRED_CODE_SCORER",
+     "equals": "0"
+    }
+   },
+   "remove": [],
+   "clear_settings_env": {
+    "key": "ALFRED_CODE_SCORER",
+    "when_value": "0",
+    "to": "1"
+   },
+   "why": "the output scorer is on by default (the user's ruling, B1 of the 2026-11-03 usage audit): where a plan file was written, scored plans won 14 of 15 pairs (docs/habits-scorer-evidence.md). The stack's old off seed moves to on; a 0 the user set stays",
+   "then": "nothing - set ALFRED_CODE_SCORER to 0 in /alfred-code:configure's environment area to turn it off"
+  },
+  {
+   "id": "scorer-outputs-designer-plan",
+   "since": "3.7.0",
+   "detect": {
+    "settings_env_value": {
+     "key": "ALFRED_CODE_SCORER_OUTPUTS",
+     "equals": ""
+    }
+   },
+   "remove": [],
+   "clear_settings_env": {
+    "key": "ALFRED_CODE_SCORER_OUTPUTS",
+    "when_value": "",
+    "to": "designer-plan"
+   },
+   "why": "the scorer on by default grades designer plan files only: inline plans lost 3 of 3 scored pairs (docs/habits-scorer-evidence.md). The stack's old seed, empty (all three outputs before 3.7.0, the seed since), moves to designer-plan; a list the user set stays",
+   "then": "nothing - list all three names in ALFRED_CODE_SCORER_OUTPUTS to grade every output"
   }
  ]
 }

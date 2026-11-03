@@ -172,6 +172,35 @@ test('declared local versioning keeps the branch overlay although the docs are c
   } finally { r.rm(); }
 });
 
+// Audit 2026-11-03 SYS-04: the installer's own seed - a 'git' declaration beside a GIT-PREFERENCES.md nobody committed
+// yet - read as a mismatch at every start and compaction. Docs not committed YET are no disagreement; a root git ignores,
+// or docs history holds and the index no longer does, still are.
+test('a git declaration over docs never committed is not committed yet - an ignored root or docs taken out of the index is a mismatch', () => {
+  const GIT = { ALFRED_CODE_DOCS_VERSIONING: 'git' };
+  const r = repo({ tracked: true });
+  try {
+    r.write('.claude/docs/preferences/watch.json', '{}\n');
+    r.write('.claude/docs/preferences/GIT-PREFERENCES.md', section('commits', '', 'Commit only on the user\'s word.'));
+    const fresh = r.cli(['status'], undefined, GIT).stdout;
+    assert.match(fresh, /^mode: git \(declared by ALFRED_CODE_DOCS_VERSIONING/m);
+    assert.doesNotMatch(fresh, /Versioning mismatch/, 'a seed never committed is not committed yet');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'docs');
+    assert.doesNotMatch(r.cli(['status'], undefined, GIT).stdout, /Versioning mismatch/, 'committed: they agree');
+    r.git('rm', '-r', '-q', '--cached', '.claude/docs');
+    r.git('commit', '-qm', 'untrack docs');
+    assert.match(r.cli(['status'], undefined, GIT).stdout, /^Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git/m,
+      'committed once, then taken out of the index: the disagreement is real');
+  } finally { r.rm(); }
+  const ignored = repo({ tracked: true });
+  try {
+    ignored.write('.gitignore', '.claude/docs/\n');
+    ignored.write('.claude/docs/preferences/watch.json', '{}\n');
+    ignored.write('.claude/docs/preferences/GIT-PREFERENCES.md', section('commits', '', 'Commit only on the user\'s word.'));
+    assert.match(ignored.cli(['status'], undefined, GIT).stdout, /^Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'git'/m, 'never committed, but git ignores the root: it can never be');
+  } finally { ignored.rm(); }
+});
+
 // Task 14 / whole-branch review finding 2: the committed-docs probe knows every DOMAIN, not architecture/ alone.
 // A project documented only in code-style/ (or decisions/, or related-projects/) is an ordinary shape - a
 // watch.json is what makes a domain and nothing requires architecture/ to be one. Probing architecture/ alone read

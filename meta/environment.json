@@ -67,9 +67,9 @@
     },
     {
       "key": "ALFRED_CODE_SCORER",
-      "default": "0",
+      "default": "1",
       "ask": false,
-      "what": "mode-output-scorer: `1` grades each automatic output (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scorer` seat before it is released, and holds it until it meets the level or the user accepts it; `0` (the seed) is off. `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a task, capture, loop, issue or mode command override it for the session (off wins when both are typed), and a typed `/<producer> /mode-output-scorer <request>` stack grades that one request even while it is off.",
+      "what": "mode-output-scorer: `1` (the seed) grades each automatic output ALFRED_CODE_SCORER_OUTPUTS names (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scorer` seat before it is released, and holds it until it meets the level or the user accepts it; `0` is off. Seeded on since 2026-11-03 (scored plan files won 14 of 15 pairs, inline plans lost 3 of 3 - docs/habits-scorer-evidence.md); an update moves the stack's old `0` seed to `1` (migrations.json `scorer-seeded-on`), and a `0` you set stays. `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a task, capture, loop, issue or mode command override it for the session (off wins when both are typed), and a typed `/<producer> /mode-output-scorer <request>` stack grades that one request even while it is off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -91,9 +91,9 @@
     },
     {
       "key": "ALFRED_CODE_SCORER_OUTPUTS",
-      "default": "",
+      "default": "designer-plan",
       "ask": false,
-      "what": "mode-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. Empty (the seed) means all three; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
+      "what": "mode-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. `designer-plan` (the seed) grades plan files only, the output the scorer measurably improved; unset, empty or a list naming none of the three reads as the seed - list all three names to grade every output; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
       "validate": {
         "type": "csv",
         "values": [
@@ -239,12 +239,13 @@
     },
     {
       "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
-      "default": "2",
+      "default": "cache",
       "ask": false,
-      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends a gap of this many HOURS since the last reply (or since an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). Decimals work (`0.5`); `0` turns the idle offer off. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
+      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends an idle gap since the last reply (or an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a fresh session pays back with the cache warm - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). `cache` (the default) waits the prompt cache's own life, read from the last reply: 5 minutes on an API key, credits or a cloud provider, 1 hour on a subscription, and 1 hour where the host records none (usage audit 2026-11-03 U16 - the old seed 2 waited past both, so the gap's first message had already paid the cold re-write). An hour count instead is a fixed wait; decimals work (`0.5`); `0` turns the idle offer off. The stop contract's clock note keeps 2 hours under `cache`. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
       "validate": {
         "type": "hours",
-        "off": "0"
+        "off": "0",
+        "follow": "cache"
       }
     },
     {

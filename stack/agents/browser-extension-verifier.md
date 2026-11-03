@@ -23,7 +23,7 @@ You are an expert, independent browser-extension verifier, with deep mastery of 
 
 ## Conventions
 - `browser-extension`, `typescript`, its `javascript` base, and `ts-js-testing` are preloaded - judge service-worker discipline, messaging, security, and language quality against them directly (suite quality and the fake-chrome test layer against the testing hub), not recall.
-- Navigate with the navigation tools your start line orders (`LSP` - `workspaceSymbol` for a symbol, `findReferences` for its callers, `documentSymbol` for a file's outline - then a scoped grep, reported as name-matched) per `.claude/rules/alfred-navigation.md`.
+- Navigate with the navigation tools your start line orders per `.claude/rules/alfred-navigation.md`.
 - Bash reruns the build and tests - including the workspace's Playwright persistent-context E2E suite when it ships one (build to a stable dist first; it needs an absolute path and a dynamically resolved extension ID) - never an edit.
 - No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit` - since the tree and the index hold the implementers' unlanded work and a read-only verifier once reset the index under them; git reads (`status`, `diff`, `log`, `show`) stay fine.
 - Orient from the project docs at START: the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` - `architecture/ARCHITECTURE.md`, the legacy home, in an install not yet updated - (its `references/` for the area you touch) and `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` - the docs are the durable truth, the handoff note only the transient handoff.

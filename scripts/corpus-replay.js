@@ -82,6 +82,14 @@ const ROUTES = [
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
     pattern: '^mcp__.+__(read_file|read_text_file|read_multiple_files)$',
     tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['read_file', 'read_text_file', 'read_multiple_files'].map((t) => `mcp__${s}__${t}`)) },
+  // The same server's write tools (audit 2026-11-03 SYS-02): the cross-project guard on all four, the config guard on the
+  // three that change a file's text.
+  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', deny: true,
+    pattern: '^mcp__.+__(write_file|edit_file|move_file|create_directory)$',
+    tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['write_file', 'edit_file', 'move_file', 'create_directory'].map((t) => `mcp__${s}__${t}`)) },
+  { hook: 'guard-config-protection.js', event: 'PreToolUse', deny: true,
+    pattern: '^mcp__.+__(write_file|edit_file|move_file)$',
+    tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['write_file', 'edit_file', 'move_file'].map((t) => `mcp__${s}__${t}`)) },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the

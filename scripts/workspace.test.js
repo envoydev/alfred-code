@@ -596,6 +596,84 @@ test('apply keeps every other key value-equal and keeps the indent, CRLF and BOM
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(fresh.configDir, 'settings.json'), 'utf8')), { pluginConfigs: { 'cc-plugin-agents-md@builtin': { options: { instructionFiles: 'claude-md-and-agents-md' } } } });
 });
 
+// Review fix pass, run B (m7): a dotfiles link at the account settings.json became a plain file - the temp file was renamed
+// over the LINK. writeLike, the one writer of the account file (D5's apply and remove, the auto-update answer), writes the
+// link's real file instead, still a temp file and a rename in that file's own folder.
+test('writeLike writes through a symlink: the link stays, the real file gets the text', { skip: process.platform === 'win32' && 'links need privileges on Windows' }, () =>
+{
+    const at = tree({ 'acct': {}, 'dots/real': {}, 'linked-acct-target': {} });
+    const real = path.join(at('dots/real'), 'settings.json');
+    const write = (file, data, text = '{\n  "a": 1\n}\n') => ws.writeLike(file, text, data);
+    const tmpsIn = (...dirs) => dirs.flatMap((d) => fs.readdirSync(d)).filter((n) => n.endsWith('.tmp'));
+    // an absolute link
+    fs.writeFileSync(real, '{\n  "a": 1\n}\n');
+    const link = path.join(at('acct'), 'settings.json');
+    fs.symlinkSync(real, link);
+    write(link, { a: 1, b: 2 });
+    assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the link stays a link');
+    assert.strictEqual(fs.readlinkSync(link), real);
+    assert.strictEqual(fs.readFileSync(real, 'utf8'), '{\n  "a": 1,\n  "b": 2\n}\n');
+    assert.deepStrictEqual(tmpsIn(at('acct'), at('dots/real')), [], 'no temp file left');
+    // a chain of two links, the second relative
+    const hop = path.join(at('dots'), 'hop.json');
+    fs.symlinkSync(path.join('real', 'settings.json'), hop);
+    const chained = path.join(at('acct'), 'chained.json');
+    fs.symlinkSync(hop, chained);
+    write(chained, { c: 3 });
+    assert.ok(fs.lstatSync(chained).isSymbolicLink() && fs.lstatSync(hop).isSymbolicLink(), 'both links stay');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(real, 'utf8')), { c: 3 });
+    // a relative link inside a linked folder resolves from the folder's REAL place, as the OS reads it
+    const linkedDir = path.join(at('acct'), 'linked');
+    fs.symlinkSync(at('linked-acct-target'), linkedDir);
+    fs.writeFileSync(path.join(at('linked-acct-target'), '..', 'beside.json'), '{}\n');
+    fs.symlinkSync(path.join('..', 'beside.json'), path.join(linkedDir, 'settings.json'));
+    write(path.join(linkedDir, 'settings.json'), { d: 4 });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(at('linked-acct-target'), '..', 'beside.json'), 'utf8')), { d: 4 });
+    assert.ok(fs.lstatSync(path.join(linkedDir, 'settings.json')).isSymbolicLink());
+    // a dangling link: its target is made, the link kept - as a plain write through it would
+    const dangling = path.join(at('acct'), 'dangling.json');
+    const absent = path.join(at('dots/real'), 'absent.json');
+    fs.symlinkSync(absent, dangling);
+    write(dangling, { e: 5 });
+    assert.ok(fs.lstatSync(dangling).isSymbolicLink());
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(absent, 'utf8')), { e: 5 });
+    // a loop is refused, every link left as it was
+    const l1 = path.join(at('acct'), 'loop1.json');
+    const l2 = path.join(at('acct'), 'loop2.json');
+    fs.symlinkSync(l2, l1);
+    fs.symlinkSync(l1, l2);
+    assert.throws(() => write(l1, { f: 6 }), (e) => e.code === 'ELOOP');
+    assert.ok(fs.lstatSync(l1).isSymbolicLink() && fs.lstatSync(l2).isSymbolicLink(), 'the loop is untouched');
+    // a plain file is written as before
+    const plain = path.join(at('acct'), 'plain.json');
+    fs.writeFileSync(plain, '{}\n');
+    write(plain, { g: 7 });
+    assert.ok(fs.lstatSync(plain).isFile());
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(plain, 'utf8')), { g: 7 });
+    assert.deepStrictEqual(tmpsIn(at('acct'), at('dots/real'), at('dots')), [], 'no temp file left anywhere');
+});
+
+test('D5 apply and remove keep a symlinked account settings.json a link', { skip: process.platform === 'win32' && 'links need privileges on Windows' }, () =>
+{
+    const f = d5();
+    const realDir = path.join(path.dirname(f.configDir), 'dotfiles');
+    fs.mkdirSync(realDir, { recursive: true });
+    fs.mkdirSync(f.configDir, { recursive: true });
+    const real = path.join(realDir, 'settings.json');
+    const text = '{\n    "model": "opus",\n    "env": {\n        "X": "1"\n    }\n}\n';
+    fs.writeFileSync(real, text);
+    const link = path.join(f.configDir, 'settings.json');
+    fs.symlinkSync(real, link);
+    const { written, hash } = ws.applyAccountInstructions({ configDir: f.configDir });
+    assert.strictEqual(written, true);
+    assert.ok(fs.lstatSync(link).isSymbolicLink(), 'apply keeps the link');
+    const data = JSON.parse(fs.readFileSync(real, 'utf8'));
+    assert.strictEqual(data.pluginConfigs['cc-plugin-agents-md@builtin'].options.instructionFiles, 'claude-md-and-agents-md');
+    assert.deepStrictEqual(ws.removeAccountInstructions({ configDir: f.configDir, hash }), { removed: true });
+    assert.ok(fs.lstatSync(link).isSymbolicLink(), 'remove keeps the link');
+    assert.strictEqual(fs.readFileSync(real, 'utf8'), text, 'the real file is back to its bytes');
+});
+
 test('a value the user set is never replaced; garbage JSON is refused and named', () =>
 {
     for (const id of ['cc-plugin-agents-md@builtin', 'agents-md@builtin'])
@@ -856,6 +934,17 @@ test('pruneOnJoin keeps an installer answer off the catalog default (--auto-comp
     const got = ws.pruneOnJoin(at('p'), { env: ON, log: () => {} });
     assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_HISTORY'], own: ['ALFRED_CODE_AUTO_COMPACT'] });
     assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_AUTO_COMPACT=1\n');
+});
+
+// B1 of the 2026-11-03 usage audit: the scorer's old seeds (0, empty) are a reseed's old values, so a joiner still holding
+// them at their ledger hash drops them like any seed - the workspace's value reaches it; a 0 typed over the new seed stays.
+test('pruneOnJoin drops an old stack seed a reseed migration names (the scorer\'s 0 and empty list), keeps one typed over the new seed', () =>
+{
+    const H = stampLib.valueHash;
+    const old = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER=${H('0')},.variables:ALFRED_CODE_SCORER_OUTPUTS=${H('')}\n`, git: true, vars: 'ALFRED_CODE_SCORER=0\nALFRED_CODE_SCORER_OUTPUTS=\n' } });
+    assert.deepStrictEqual(ws.pruneOnJoin(old('p'), { env: ON, log: () => {} }), { dropped: ['ALFRED_CODE_SCORER', 'ALFRED_CODE_SCORER_OUTPUTS'], own: [] });
+    const typed = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER=${H('1')}\n`, git: true, vars: 'ALFRED_CODE_SCORER=0\n' } });
+    assert.deepStrictEqual(ws.pruneOnJoin(typed('p'), { env: ON, log: () => {} }), { dropped: [], own: ['ALFRED_CODE_SCORER'] });
 });
 
 test('keepOnLeave writes each value read through the chain into the child\'s file, a seed with its ledger row; with the parent gone it names the keys that read their defaults', () =>
