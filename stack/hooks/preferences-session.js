@@ -782,6 +782,9 @@ function gitWrites(command, cwd) {
   for (const c of read.calls || []) {
     if (c.opaque) return true;
     if (!c.sub) continue;
+    // U19a: an apply that touches only the working tree is an edit, not a git write; --index, --cached and --3way (which
+    // implies --index) write the index.
+    if (c.sub === 'apply' && !c.argv.some((a) => /^(?:--index|--cached|--3way|-3)$/.test(a))) continue;
     if (shellReader.gitMutates(c.sub, c.argv)) return true;
     if (c.sub === 'branch' && c.argv.some((a) => !a.startsWith('-')) && !c.argv.some((a) => BRANCH_LIST.test(a))) return true;
     if (c.sub === 'worktree' && c.argv[0] === 'add' && c.argv.some((a) => /^-[bB]/.test(a))) return true;

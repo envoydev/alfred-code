@@ -1319,7 +1319,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `write_file` / `edit_file` / `create_directory` by `path` and `move_file` on both its `source` and `destination`, under any
     registration name - audit 2026-11-03 SYS-02, the write half of HK-26; one more node start on those calls only) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
-    `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
+    `cp`/`mv` destination, `rm`/`unlink`/`shred`/`trash`/`trash-put`/`mkdir`/`chmod` (E1-2c), `git -C <other>` mutating, `cd <other>` then a write);
     the change goes to a task card under `<docs-path>/work/cross-project-tasks/`. Reading stays open. A shell path is
     anchored at the payload's `cwd` (the Bash tool's persisted cwd, as the rm and config guards read it; a missing,
     relative or vanished one is the project root), a file-tool path at the project root (audit 2026-10-08). Session
@@ -1570,7 +1570,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `Scope:` through the script's own `scopeOf`, one reader since review 2026-10-23, so the two cannot drift); a glob aimed at the wrong EXISTING folder no script can
     judge, so `preferences.js reach` shows what each `Scope:` takes (count, file types, three paths - the capture reports
     it; the capture asks the user to confirm each new glob's reach) and `lint` and every update name a `Check:` that measures files its `Scope:` does not reach (`reachIn`, `docs.mismatchLines` through the capture's `scopeMismatches`) - and the FIRST git write (`shell-writes.js` `gitMutates`, plus a branch, tag or worktree branch made by
-    name, `gh pr merge` / `create`, `gh release create` / `edit` / `delete`, and text naming git that `gitText` could not read)
+    name, `gh pr merge` / `create`, `gh release create` / `edit` / `delete`, and text naming git that `gitText` could not read; a `git apply` without `--index` / `--cached` / `--3way` writes only the tree and draws no hold - U19a)
     until `GIT-PREFERENCES.md` was, read live with its `<!-- locked: <key> -->` entries first as the SEED states them (an
     edited copy is named, never handed over as locked). The denial HANDS THE DOCS OVER, so a retry is all it costs; both
     holds share ONE room when one command triggers both, git first (`INLINE_CAP` 7,000 of pasted text, the names of what was

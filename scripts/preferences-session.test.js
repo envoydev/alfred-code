@@ -180,6 +180,21 @@ test('a branch or tag made, a gh merge and a git write behind a wrapper count; r
     finally { p.rm(); }
 });
 
+// U19a (inventory A): `git apply` without --index / --cached writes only the working tree, like an editor would, so it
+// draws no git-preferences hold; with either flag it writes the index and still does.
+test('U19a: git apply without --index or --cached is no git write', () =>
+{
+    const p = project();
+    try
+    {
+        for (const cmd of ['git apply -R p.patch', 'git apply p.patch', 'git apply --check p.patch'])
+            assert.ok(!denied(p.hook(bash(cmd, sid()))), cmd);
+        for (const cmd of ['git apply --index p.patch', 'git apply --cached p.patch', 'git apply -R --index p.patch', 'git apply --3way p.patch', 'git apply -3 p.patch'])
+            assert.ok(denied(p.hook(bash(cmd, sid()))), cmd);
+    }
+    finally { p.rm(); }
+});
+
 test('exempt targets pass: outside the project, the hooks\' state and statistics, the preferences folder, .claude and .git; a plan waits', () =>
 {
     const p = project();

@@ -6387,3 +6387,16 @@ test('audit 2026-10-30 HK-03 / HK-16: the two bounds the receipts brought - a re
   assert.equal(at(0), true, 'at it: the newline before the row is the window\'s first byte');
   assert.equal(at(1), false, 'one byte over: the row\'s start is cut, so it is no whole row');
 });
+
+// E1-2c (inventory A): the cross-project guard judges the other removal verbs like rm.
+test('E1-2c: the cross-project guard judges unlink of an outside file', () => {
+  assert.equal(xpBash(`rm ${path.join(XP_OTHER, 'f.txt')}`), 2, 'rm, the reference');
+  assert.equal(xpBash(`unlink ${path.join(XP_OTHER, 'f.txt')}`), 2, 'unlink outside');
+  assert.equal(xpBash(`shred -u ${path.join(XP_OTHER, 'f.txt')}`), 2, 'shred outside');
+  assert.equal(xpBash(`trash ${path.join(XP_OTHER, 'f.txt')}`), 2, 'trash outside');
+  // A temp root that holds the project is dropped from the scratch list (this test's project sits in one), so the temp
+  // case is pinned as 'unlink is judged exactly as rm', whatever the root's verdict.
+  const tmpX = path.join(os.tmpdir(), 'x');
+  assert.equal(xpBash(`unlink ${tmpX}`), xpBash(`rm ${tmpX}`), 'unlink in the temp dir is judged as rm is');
+  assert.equal(xpBash('unlink build/old.txt'), 0, 'unlink inside the project passes');
+});
