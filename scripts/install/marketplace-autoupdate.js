@@ -194,6 +194,7 @@ module.exports = { autoUpdateState, stateLine, applyAutoUpdate, OFF_ENV, FORCE_E
 
 if (require.main === module)
 {
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
     const argv = process.argv.slice(2);
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
     const modes = ['--check', '--apply', '--decline'].filter((m) => argv.includes(m));

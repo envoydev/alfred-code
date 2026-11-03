@@ -1600,6 +1600,12 @@ test('settings-writer: the scorer reseed moves the old seed where .variables hol
         const { logs } = write(file, { migrations: REAL_MIGRATIONS, variablesFile: varsAt, ledger: { prior, releaseHooks: [] } });
         const values = require('./install/variables.js').read(varsAt).values;
         assert.deepStrictEqual([values.ALFRED_CODE_SCORER, values.ALFRED_CODE_SCORER_OUTPUTS], want, `${label}: ${logs.filter((m) => /SCORER/.test(m)).join(' | ')}`);
+        // the reseed line names the file the value lands in - .variables, never the settings file the pass reads it through
+        const reset = logs.filter((m) => / reset to /.test(m));
+        if (want[0] === '1')
+            assert.deepStrictEqual(reset, ['  .variables env: ALFRED_CODE_SCORER reset to 1 (the old stack seed 0)',
+                '  .variables env: ALFRED_CODE_SCORER_OUTPUTS reset to designer-plan (the old stack seed empty)'], logs.join('\n'));
+        else assert.deepStrictEqual(reset, [], label);
     }
 });
 test('the scorer catalog rows: seed 1 and designer-plan; the old seeds are reseeds, not former_defaults', () =>

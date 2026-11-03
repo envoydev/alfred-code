@@ -23,6 +23,10 @@ const ROOT_SEL = 'skill javascript\nrule alfred-security\nrule alfred-navigation
 const X = 'sqlite';   // outside the closure of the root's always rules (markdown-docs pulls markdown-style and docs-as-code)
 const OWN = 'npm';
 const SC = 'ALFRED_CODE_SCORER';
+// [key, the stack's old seed, the value it resets to] - the env pass's reseed list (meta/migrations.json): an update moves
+// the stack's own old seeds (U16's idle wait, B1's scorer pair), and every other value an older install holds stays.
+const RESEEDS = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json')).reseed;
+const reseeded = (env) => { const out = { ...env }; for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to; return out; };
 
 const at = (work, rel = '.') => path.join(work, 'ws', ...(rel === '.' ? [] : rel.split('/')));
 // The workspace is on by default since 3.0.0 (D9); every case here still pins it, so a launch 0 in the caller's env cannot freeze it - the kill-switch cases at 0.
@@ -229,7 +233,7 @@ test('env: the root\'s ALFRED_CODE_SCORER=1 reaches a local-scope child through 
 
 // AC14's env half, Review Focus 7: a 2.12.0 tree with the switch at 1 - the root and a local-scope child installed by that
 // release, the child holding the root's values as copies and one key of its own - updated by this tree, root first.
-test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file, copies leave its settings, the own-env line goes, HOOKS_OFF keeps only the child\'s entries, every effective value unchanged, and the parent\'s guard-ungated-commit:push still stands down there (AC14)', skipWithout('v2.12.0'), () =>
+test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file, copies leave its settings, the own-env line goes, HOOKS_OFF keeps only the child\'s entries, every effective value unchanged but the release\'s reseeds, and the parent\'s guard-ungated-commit:push still stands down there (AC14)', skipWithout('v2.12.0'), () =>
 {
     const old = releaseExport('v2.12.0');
     const oldWs = old && require(path.join(old, 'scripts', 'install', 'workspace.js'));
@@ -261,7 +265,7 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
     assert.strictEqual(before.local[SC], '1', `v2.12.0 copied the root's value: ${r.outs[1]}`);
     assert.strictEqual(before.local[OFF], 'guard-ungated-commit:push,docs-session:gate', r.outs[2]);
     assert.ok(before.ownEnv.split(',').includes(LEVEL), `v2.12.0 recorded the child's own value: ${before.ownEnv}`);
-    assert.deepStrictEqual(after.effective, before.effective, r.outs[4]);
+    assert.deepStrictEqual(after.effective, reseeded(before.effective), r.outs[4]);
     assert.strictEqual(after.vars[LEVEL], '95', 'the own-env key landed in the child\'s file');
     assert.ok(!Object.hasOwn(after.vars, SC), 'a copy never lands in the child\'s file');
     assert.deepStrictEqual(Object.keys(after.local).filter((k) => k.startsWith('ALFRED_CODE_') && k !== 'ALFRED_CODE_DATA_PATH' && k !== OFF), [], JSON.stringify(after.local));
