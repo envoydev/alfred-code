@@ -5,6 +5,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+const { foreignWords } = require('./hook-test-env'); // another script's text, generated from code points
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -175,7 +176,9 @@ test("C15: the done-close row names the hand-back, never 'undefined'", () => {
   const root = process.env.CLAUDE_PROJECT_DIR;
   const sid = 'ledger-c15';
   spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: sid, hook_event_name: 'Stop',
-    last_assistant_message: 'The catch-up is committed on develop. Still uncommitted: the 10-file push-routing diff, held for your review.' }), encoding: 'utf8', env: logEnv() });
+    // Retune 3.7.1: a diff held for review alone is the tree's state and releases (the judge's rule; this session's own close
+    // in the labelled corpus releases), so the row is read off a close whose hand-back carries no pending word.
+    last_assistant_message: 'The catch-up is committed on develop. The push is yours when you approve it.' }), encoding: 'utf8', env: logEnv() });
   const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   const row = rows.find((r) => /done-close/.test(JSON.stringify(r)));
   assert.ok(row, 'a done-close row');
@@ -262,7 +265,12 @@ test('SD10: a Deferred by you line is nothing owed only after an ask answered th
 test("SD10: an answer just given does not exempt a close handing the user a new run-and-report action", () => {
   const turn = () => [typed('go'), ...asked(`p${seq}`, 'I will pull first'), ...work(1)];
   const close1 = "The answer was 'I will pull first', and the clone is still at abc1234 (1.2.0). Run the pull, then tell me when it's done.\n\n- Once the head moves, I'll start both analyzer seats.";
-  assert.strictEqual(over(turn(), close1).status, 2, 'the measured close: the 2.1.8 guard blocked it and the ask took one click');
+  // Retune 3.7.1: the measured close reports no step done - 'when it's done' is the user's pull, which the user said
+  // they would run - so the done half no longer reads it (the judge's release; the labelled corpus's two closes of this
+  // shape release). The veto this test pins is kept on the same hand-off after a step that did finish.
+  assert.strictEqual(over(turn(), close1).status, 0, 'no step done this turn: the pull is the user\'s, announced in the answer');
+  const close2 = "The config fix is committed. Run the pull, then tell me when it's done.\n\n- Once the head moves, I'll start both analyzer seats.";
+  assert.strictEqual(over(turn(), close2).status, 2, 'a finished step handing the user a new run-and-report action stays held');
   assert.strictEqual(over(turn(), 'Committed. Tell me when you want it pushed.').status, 0, 'a wait on the decision just made stays exempt');
   assert.strictEqual(over(turn(), "Done - the answer is recorded and nothing else is owed.").status, 0, 'a plain acknowledgement stays exempt');
 });
@@ -352,8 +360,8 @@ test('hooks review: a negated done word reports nothing done, and a negated unpu
     ['You do not need to be present for each round: nothing gets pushed until the last one. Your auto instruction covers the rest.', "row 12: 'gets'"],
     ["Added it as a task in the open-items file. That file isn't committed. The order that matters: confirm a deploy works first.", "row 10: 'isn't committed'"],
     ['Nothing is left to implement, and nothing is unpushed or uncommitted. Develop CI is green.', 'row 3: the pending side'],
-    ['Зміни у файлі, ще не закомічено. Скажи, якщо треба запушити.', 'a close in another language is not judged (English only, 2026-10-16)'],
-    ['Закомітив. Ще не запушено - чекаю на твоє рішення.', '... a done word beside a pending one included'],
+    [`${foreignWords(4, 11)}, ${foreignWords(3, 12)}. ${foreignWords(5, 13)}.`, 'a close in another language with no close label is not judged (English only, 2026-10-16)'],
+    [`${foreignWords(1, 14)}. ${foreignWords(3, 15)} - ${foreignWords(4, 16)}.`, '... whatever its words say'],
   ]) assert.strictEqual(close(text).status, 0, why);
   for (const [text, why] of [
     ['Committed on develop, 1 ahead of origin, not pushed. Next: /clear, then paste the block.', 'row 2: right, and stays'],
@@ -374,7 +382,9 @@ test('hooks review: a read-only answer to a question that names nothing pending 
     [asked('you want me to start the invoker?'), "Yes - it needs to come from you. Run the start command in a terminal.\n\nReady when the terminal shows 'listening'. Then: /clear and paste the block.", 'row 18'],
   ]) assert.strictEqual(over(rows, text).status, 0, why);
   const edited = () => { const id = `e${seq}`; return [call(id, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b' }), result(id, 'ok')]; };
-  const row4 = "Reconnect the connector: open its settings and sign in again. Tell me when that's done and I'll read the ticket.";
+  // Retune 3.7.1: 'when that's done' is the user's future step, no done report, so the judged form leads with a step the
+  // turn did finish - the veto under test is the edit's, not the done half's.
+  const row4 = "I updated the connector scope. Reconnect the connector: open its settings and sign in again. Tell me when that's done and I'll read the ticket.";
   assert.strictEqual(over(asked('I enabled it, what is next?', edited()), row4).status, 0, 'a typed question is answered even after an edit (the ruling of 2026-10-20, C03)');
   assert.strictEqual(over(asked('I enabled it, show me what is next', edited()), row4).status, 2, 'a show-request whose turn changed a file is judged');
   assert.strictEqual(over(asked('reconnect it for me'), row4).status, 2, 'an instruction is no question');
@@ -389,14 +399,14 @@ test("hooks review: a wait on running seats' fixes and checks is status; a recor
   const fixes = 'The admin and chat fixes landed. Lint and typecheck pass. Still waiting on the `libs/ui` fixes and the cheat check; the final full gate runs after both report.';
   assert.strictEqual(over([typed('go')], fixes, { background_tasks: running }).status, 0, 'row 11: the seats are still running');
   assert.strictEqual(over([typed('go')], fixes, { background_tasks: [] }).status, 2, 'with nothing running it is a stall');
-  assert.strictEqual(over([typed('go')], 'Тести пройшли, готово. Ще чекаю на виправлення від агента.', { background_tasks: running }).status, 0, 'a wait in another language is not judged');
+  assert.strictEqual(over([typed('go')], `${foreignWords(4, 21)}. ${foreignWords(6, 22)}.`, { background_tasks: running }).status, 0, 'a wait in another language is not judged');
   assert.strictEqual(over([typed('go')], 'The fixes landed. Still waiting for your check of the login page.', { background_tasks: running }).status, 2,
     "'your check' is the user's, whatever runs");
   const record = (heading, items) => `I finished the conformance check and committed the fixes. All checks passed.\n\n${heading}\n${items}`;
   for (const [text, why] of [
     [record('Decisions auto-mode made for you:', '- Scope: re-audit, then build the gaps.\n- Commit: commit now.\n- Leftover services: shut down.'), 'row 19'],
     [record('**Choices taken:**', '1. Commit: commit now.\n2. Push: push later.'), 'a numbered record'],
-    [record('Рішення, які auto-mode ухвалив за тебе:', '- Коміт: закомітити зараз.'), 'a record in another language is not judged'],
+    [record(`${foreignWords(3, 31)} auto-mode ${foreignWords(2, 32)}:`, `- ${foreignWords(1, 33)}: ${foreignWords(2, 34)}.`), 'a record in another language is not judged'],
   ]) assert.strictEqual(close(text).status, 0, why);
   for (const [text, why] of [
     [record('Decisions to be made:', '- Push: push it when you approve.'), 'decisions still owed'],
@@ -496,6 +506,83 @@ test('H9: quoted output is no pending item, a real one still holds, and an exemp
   const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
   const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((x) => x.kind === 'done-close-exempt');
   assert.deepStrictEqual(rows.map((x) => [x.mode, x.exempt]), [['probe', 'nothing-pending']]);
+});
+
+// --- Retune 3.7.1 (the user's ruling of 2026-11-03: hold the stop judge, keep the regex, cover more cases). A labelled
+// corpus of real closes, read on the judge's own criteria (stack/hooks/stop-judge-prompt.txt), set each change below; each
+// fixture paraphrases a corpus close with its names replaced. The counts are in docs/stop-done-regex-v2-evidence.md.
+test('retune 3.7.1: the done half reads no future, earlier or quoted done word, and takes a first-person report of the work', () => {
+  for (const [text, why] of [
+    ['The PR has auto-complete armed. Waiting on the three review reports.', "'auto-complete' names a feature"],
+    ["Run the migration, then tell me when it's done.", "'when it's done' is the user's step, still ahead"],
+    ["I'll mark the card done after the review. Next step: the review.", 'a done stamp announced for later'],
+    ['The schema change was committed yesterday; the next step is the client update.', 'a step done in an earlier session'],
+    ["The card is marked 'done on the server'. The only open item is the device check.", 'a done word quoted from the card'],
+  ]) assert.strictEqual(close(text).status, 0, why);
+  for (const [text, why] of [
+    ['The schema change is committed; the next step is the client update.', 'the same step done this turn'],
+    ["I've written the fix. Approve the checks and I'll run the suite.", 'a first-person perfect is a done report'],
+    ['I added the audit line to each plan. The only open item is the rate-limit check.', '... and so is a first-person past'],
+  ]) assert.strictEqual(close(text).status, 2, why);
+});
+
+test('retune 3.7.1: the pending half reads records, items owned elsewhere and the held diff as status, and two owed items more', () => {
+  for (const [text, why] of [
+    ['Done - the 4 GB limit that remains is documented in the guide.', "'that remains' after a plain noun describes a state"],
+    ['Fixed: the condition was inverted, so it never ran. All tests pass and it is committed.', "'it never ran' is the old code"],
+    ['Committed, following your answer. The tree is clean.', 'a past answer is no hand-back'],
+    ['I finished the run and committed it.\n\n- **Answered automatically under auto-mode:** review in this session, commit now.', 'an inline record of picks taken'],
+    ['I finished the run and committed it.\n\nAuto-mode answers:\n- Next step: close the cycle.\n- Commit: commit now.', 'an auto-mode record heading'],
+    ['Committed the fix.\n\nStill open from earlier: the staging deploy, not pushed.', 'an item carried from before this turn'],
+    ['Committed locally; the 3 commits are unpushed, as you asked.', 'an item the user chose to leave'],
+    ['Committed.\n\nStill open: next session, read the log to confirm the nightly restart.', 'an item set for a later session'],
+    ["Committed.\n\nStill open:\n- Task 7, which waits for Dana's numbers.\n- Your own checks: the device run.", "items another party or the user's own checks own"],
+    ['Committed. Not run: the live check, which needs a real device.', "a 'Not run:' line saying why it cannot run here"],
+    ['I fixed the parser. Nothing is committed - the diff is waiting for your review.', 'the diff held for review is the tree, not a hand-back'],
+    ["I fixed all six findings. Round 1 is with a fresh reviewer now. Once the plan passes, I'll stop for your approval.", 'a stop announced for when the work in flight reports'],
+  ]) assert.strictEqual(close(text).status, 0, why);
+  for (const [text, why] of [
+    ['Done. Review: one minor issue, not fixed.', "a found issue left 'not fixed'"],
+    ['Committed. One check is still red: the parity test.', "a check 'still red'"],
+    ['Done - the steps that remain are the client wiring and the docs.', "'that remain' after a work noun"],
+    ['Committed. The rate-limit check never ran.', "an open check that 'never ran'"],
+    ['Committed. Not run: the manual check against the local backend.', "a 'Not run:' item with no reason stays an item"],
+    ['I fixed all six findings. Push it when you approve.', 'a hand-back in this turn'],
+  ]) assert.strictEqual(close(text).status, 2, why);
+});
+
+test('retune 3.7.1: with no transcript to read, a named wait on work, the mandated line and the resume hand-off are taken at their word', () => {
+  // no transcript_path and no background_tasks: the replay's shape, and a harness that sends neither
+  const wait = 'Committed the first batch. Waiting on three fix agents. After that: one fresh review of everything unpushed, then the push.';
+  assert.strictEqual(close(wait).status, 0, 'a wait on named work, and the sequel after it');
+  assert.strictEqual(close(wait, { background_tasks: [] }).status, 2, 'an empty registry outranks the words');
+  const deferred = 'The validate run is finished and the AGENTS.md fix is applied.\n\nDeferred by you: the credential cleanup - delete the two keys from the project settings when you choose.';
+  assert.strictEqual(close(deferred).status, 0, "a 'Deferred by you:' line with no transcript to check it against");
+  assert.strictEqual(over([typed('go'), ...work(2)], deferred).status, 2, '... and with one holding no deferring answer, the line is judged as written');
+  const resume = 'The plan is saved for a fresh session; the next step is task 4. In the project folder type /clear, then paste:\n\n```\nResume the plan at task 4.\n```';
+  assert.strictEqual(close(resume).status, 0, 'the resume hand-off, with no transcript to show the pick');
+  assert.strictEqual(over([typed('go'), ...work(2)], resume).status, 2, '... while a readable transcript with no pick still holds it');
+});
+
+test('retune 3.7.1: a close in another language is read on its English close labels and its shape alone', () => {
+  const fw = foreignWords;
+  const labelled = (progress, extra = '') => `**Result:** ${fw(5, 61)} - \`docs/plan.md\`\n**Progress:** ${progress}\n**Leftovers:** none\n\n${fw(8, 62)}.${extra}`;
+  assert.strictEqual(close(labelled('20 of 21 steps')).status, 2, 'a Result line and a run short of its last step: a step done, the next owed');
+  assert.strictEqual(close(labelled('21 of 21 steps')).status, 0, 'the last step done: nothing owed that the labels can show');
+  assert.strictEqual(close(labelled('20 of 21 steps', `\n1. ${fw(3, 63)}\n2. ${fw(2, 64)}?\n\n${fw(5, 65)}.`)).status, 2,
+    "a '?' inside the list of inputs it still owes is no closing question");
+  assert.doesNotMatch(close(labelled('20 of 21 steps', `\n\n${fw(4, 66)}?`)).stderr, /reports the step done/, "a close ending on '?' is the ask branch's");
+  assert.strictEqual(close(`Result: ${fw(4, 67)}\nLeft for you: ${fw(3, 68)}\n\n${fw(6, 69)}.`).status, 2, "a 'Left for you:' line naming an item");
+  assert.strictEqual(close(`Result: ${fw(4, 67)}\nLeft for you: none\n\n${fw(6, 69)}.`).status, 0, "... and naming none");
+  assert.strictEqual(close(`Result: ${fw(4, 70)}\nNot run: ${fw(3, 71)}\n\n${fw(6, 72)}.`).status, 2, "a 'Not run:' line");
+  assert.strictEqual(close(`Result: ${fw(4, 75)}\nLeftovers: ${fw(4, 76)}\n\n${fw(6, 77)}.`).status, 0, "'Leftovers:' alone is no signal");
+  assert.strictEqual(close(`${fw(7, 73)}. ${fw(9, 74)}.`).status, 0, 'no close label: a stated limit, never a word list');
+  assert.strictEqual(close(labelled('3 of 6 steps'), { background_tasks: running }).status, 0, 'work this session launched still out');
+  assert.strictEqual(close(labelled('3 of 6 steps'), { background_tasks: [] }).status, 2, '... and with none out, the labels hold');
+  assert.strictEqual(close(labelled('2 of 5 steps', ' `npm run lint` `scripts/a.js` src/app/main.ts https://example.com/docs/page')).status, 2,
+    'code spans, paths and links are Latin in any language, so the share is read over prose alone');
+  assert.strictEqual(close('Result: the parser fix - src/parse.ts\nProgress: 2 of 5 steps\nLeftovers: none\n\nAll tests pass and nothing else is owed.').status, 0,
+    'an English close keeps the English reading');
 });
 
 // --- the scorer backstop (mode-output-scorer, spec 5.9): a cycle that released an output the scorer owes a grade for,
