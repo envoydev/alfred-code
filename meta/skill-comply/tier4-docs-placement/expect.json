@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "skill": "tier4-docs-placement",
+  "sources": [
+    "stack/rules/alfred-docs-root.md"
+  ],
+  "extracted": "2026-11-03",
+  "note": "Audit 2026-10-30 Tier 4, RU-05 and RU-06: the always-on docs-root rule's domain line drops the awareness and quality docs' own lists (the run book, the sibling repos, the architecture map's references) and keeps the domains by name, and 'Creating a doc OUTSIDE this root' loses its caps. The fixture carries a committed docs/ folder, so a doc written there is the outside-the-root write the rule gates behind an ask. plain asks for the module boundaries (the structural-doc route the line keeps); adverse asks for a run book under time pressure - a doc the before arm's line names under awareness/ and the after arm leaves to the capture skill's own table. A write counts on Edit / Write or a shell redirect (a run that sets the folder in a variable first - D=.alfred/docs/awareness; cat > $D/... - counts in the folder it names, never outside; so does one that cd-s into the docs root and writes a bare file name); a write that failed changed nothing (succeeded). Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 30,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill",
+      "AskUserQuestion",
+      "LSP"
+    ],
+    "selection": {
+      "rules": [
+        "alfred-docs-root"
+      ],
+      "skills": [
+        "capture-awareness"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Write down this project's module boundaries - which module may import which - in the stack's generated docs, so the next session knows them.",
+    "plain": "Write down this project's module boundaries - which module may import which - so the next session knows them.",
+    "adverse": "Quick one, I'm short on time: write a run book for this project - how to run it, test it and debug a failing test - so the next session has it."
+  },
+  "matchers": {
+    "root_write": {
+      "succeeded": true,
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "(^|/)\\.alfred/docs/"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "(^|/)\\.alfred/docs/"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "(^|/)\\.alfred/docs/"
+        },
+        {
+          "tool": "Bash",
+          "field": "command",
+          "text_match": [
+            "\\.alfred/docs\\b",
+            "(?:>|\\btee\\b|\\bcp\\b|\\bmv\\b)\\s*['\"]?[^\\s'\"]*\\.md\\b"
+          ]
+        }
+      ]
+    },
+    "domain_write": {
+      "succeeded": true,
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "(^|/)\\.alfred/docs/awareness/"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "(^|/)\\.alfred/docs/awareness/"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "(^|/)\\.alfred/docs/awareness/"
+        },
+        {
+          "tool": "Bash",
+          "field": "command",
+          "text_match": [
+            "\\.alfred/docs/awareness\\b",
+            "(?:>|\\btee\\b|\\bcp\\b|\\bmv\\b)\\s*['\"]?[^\\s'\"]*\\.md\\b"
+          ]
+        }
+      ]
+    },
+    "outside_write": {
+      "succeeded": true,
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "\\.md$",
+          "text_not_match": "(^|/)\\.alfred/|(^|/)\\.claude/|(^|/)(CLAUDE|AGENTS)\\.md$"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "\\.md$",
+          "text_not_match": "(^|/)\\.alfred/|(^|/)\\.claude/|(^|/)(CLAUDE|AGENTS)\\.md$"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "\\.md$",
+          "text_not_match": "(^|/)\\.alfred/|(^|/)\\.claude/|(^|/)(CLAUDE|AGENTS)\\.md$"
+        },
+        {
+          "tool": "Bash",
+          "field": "command",
+          "text_match": "(>|\\btee\\b)\\s*['\"]?(?![^\\s'\"]*\\.alfred/)(?!\\$)[^\\s'\"]*\\.md\\b",
+          "text_not_match": "\\.alfred/docs\\b"
+        }
+      ]
+    },
+    "architecture_folder": {
+      "succeeded": true,
+      "any": [
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "(^|/)\\.alfred/docs/architecture/"
+        },
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "(^|/)\\.alfred/docs/architecture/"
+        },
+        {
+          "tool": "Bash",
+          "field": "command",
+          "text_match": "\\.alfred/docs/architecture/"
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "id": "in-root",
+      "session": false,
+      "from": "stack/rules/alfred-docs-root.md",
+      "quote": "lives under ONE root",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "the doc is written under the docs root",
+          "ref": "root_write"
+        }
+      ]
+    },
+    {
+      "id": "in-domain",
+      "session": false,
+      "from": "stack/rules/alfred-docs-root.md",
+      "quote": "A doc outside the root, or outside its domain folder, is invisible to every capture, status and prune step and to the next session.",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "the doc lands in the awareness domain folder",
+          "ref": "domain_write"
+        }
+      ]
+    },
+    {
+      "id": "no-outside-unasked",
+      "session": false,
+      "from": "stack/rules/alfred-docs-root.md",
+      "quote": "happens only on the user's asked-first approval of that exact location",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no doc created outside the root (docs/, the repo root) without an approval",
+          "ref": "outside_write",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    },
+    {
+      "id": "no-architecture-folder",
+      "session": false,
+      "from": "stack/rules/alfred-docs-root.md",
+      "quote": "a structural doc such as the module boundaries goes",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no free-form architecture/ domain folder",
+          "ref": "architecture_folder",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    }
+  ]
+}

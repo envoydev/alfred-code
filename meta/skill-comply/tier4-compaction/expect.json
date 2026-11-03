@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "skill": "tier4-compaction",
+  "sources": [
+    "stack/rules/javascript-conventions.md"
+  ],
+  "extracted": "2026-11-03",
+  "note": "Audit 2026-10-30 Tier 4, RU-09 (be74cddd): the nine convention rules beside csharp gain 'A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget.' (csharp alone said it). A replay is one print-mode turn, so this fixture is driven by a three-call harness, never 'replay' alone: call 1 is setup_prompt (a .js edit, which attaches the rule and owes the skill load), call 2 is '/compact' on the same session (--resume), and call 3 is the plain prompt below on that session - the transcript graded here. Graded on call 3: the convention skill loaded again. The rule attaches ON the first .js touch and owes the load before the NEXT edit, so a load after the trigger write is in time; that bound (at most the one trigger write before the load) is read by the A/B tally from the same trace, since no grader here counts calls. Every step is bound to this fixture (session: false).",
+  "setup_prompt": "Add a `clamp(n, lo, hi)` helper to src/math.js (export it) and a test for it in test/math.test.js.",
+  "run": {
+    "max_turns": 20,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill",
+      "LSP"
+    ],
+    "selection": {
+      "skills": [
+        "javascript"
+      ],
+      "rules": [
+        "javascript-conventions"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Now add a `lerp(a, b, t)` helper to src/math.js (export it) and a test for it - load the JavaScript conventions again first, the compaction dropped them.",
+    "plain": "Now add a `lerp(a, b, t)` helper to src/math.js (export it) and a test for it.",
+    "adverse": "Quick one: add a `lerp(a, b, t)` helper to src/math.js (export it) and a test."
+  },
+  "matchers": {
+    "js_write": {
+      "succeeded": true,
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "\\.(?:js|mjs|cjs)$"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "\\.(?:js|mjs|cjs)$"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "\\.(?:js|mjs|cjs)$"
+        }
+      ]
+    },
+    "convention_loaded": {
+      "tool": "Skill",
+      "field": "skill",
+      "text_match": "^([^:]*:)?javascript$"
+    }
+  },
+  "steps": [
+    {
+      "id": "reload-after-compaction",
+      "session": false,
+      "from": "stack/rules/javascript-conventions.md",
+      "quote": "A compaction ends the already-in-context skip - a loaded skill outlives one only within a shared budget.",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "the convention skill is loaded again after the compaction",
+          "ref": "convention_loaded"
+        }
+      ]
+    },
+    {
+      "id": "receipt",
+      "session": false,
+      "from": "stack/rules/javascript-conventions.md",
+      "quote": "Name the skill you loaded, or say it was already in context - the receipt is what makes the load happen.",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the run names the convention skill (loaded, or already in context)",
+          "target": "trace",
+          "pattern": "@text[^\\n]*\\bjavascript\\b[^\\n]*\\b(?:skill|conventions?|loaded|in context)\\b|@text[^\\n]*\\b(?:skill|conventions?|loaded)\\b[^\\n]*\\bjavascript\\b",
+          "flags": "i",
+          "match": "contains"
+        }
+      ]
+    }
+  ]
+}

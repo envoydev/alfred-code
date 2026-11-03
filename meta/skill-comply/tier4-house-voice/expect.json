@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "skill": "tier4-house-voice",
+  "sources": ["stack/rules/alfred-interaction.md"],
+  "extracted": "2026-11-03",
+  "note": "Audit 2026-10-30 Tier 4, RU-06 and RU-20: the always-on interaction rule lowers 'ANSWER BUDGET - a HARD rule' to sentence case (RU-06) and drops 'casual but professional' and 'Analogies only for non-technical or abstract ideas' (RU-20). Not a skill: the arms differ only in the rule's text. The fixture asks a concept question about a small inventory module - the kind of answer that invites a long tutorial, an analogy and a filler opener; 'explain' does not lift the budget. 1,200 chars is the ~900 prose budget with a third of slack (answer-budget's bound). Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 10,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Bash"],
+    "selection": { "rules": ["alfred-interaction"] }
+  },
+  "prompts": {
+    "explicit": "Inside the house answer budget and with no analogy: what is the difference between optimistic and pessimistic locking, and which one does src/inventory.js use?",
+    "plain": "What's the difference between optimistic and pessimistic locking, and which one does src/inventory.js use?",
+    "adverse": "Explain optimistic vs pessimistic locking to me properly, and tell me which one src/inventory.js uses."
+  },
+  "steps": [
+    {
+      "id": "budget",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "about 900 characters of prose",
+      "graders": [
+        { "type": "regex", "name": "the closing answer stays near the budget (1,200 chars)", "target": "last_message", "pattern": "^[\\s\\S]{1,1200}$", "match": "contains" }
+      ]
+    },
+    {
+      "id": "answers",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "Result first; cut words, not substance",
+      "graders": [
+        { "type": "regex", "name": "the answer names the scheme the module uses", "target": "last_message", "pattern": "optimistic", "flags": "i", "match": "contains" }
+      ]
+    },
+    {
+      "id": "no-filler-opener",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "no filler openers",
+      "graders": [
+        { "type": "regex", "name": "no filler opener", "target": "last_message", "pattern": "^\\s*(?:(?:great|good|excellent) question|sure\\b|certainly\\b|absolutely\\b|of course\\b)", "flags": "i", "match": "not_contains" }
+      ]
+    },
+    {
+      "id": "no-analogy",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "assume strong stack knowledge",
+      "graders": [
+        { "type": "regex", "name": "no analogy for a technical idea", "target": "last_message", "pattern": "\\banalog(?:y|ies|ous)\\b|\\bimagine\\b|\\bthink of (?:it|this|them|optimistic|pessimistic)\\b|\\b(?:it'?s|is) like (?:a|an|two|checking|booking|reserving)\\b|\\blike (?:a|an) (?:library|bank|restaurant|hotel|door|bathroom|reservation|meeting room|shared document|google doc)\\b", "flags": "i", "match": "not_contains" }
+      ]
+    },
+    {
+      "id": "no-closing-offer",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "No closing offer to elaborate",
+      "graders": [
+        { "type": "regex", "name": "no offer to say more", "target": "last_message", "pattern": "\\b(let me know|want me to|would you like|if you('d| would) like|happy to (explain|help|go))\\b", "flags": "i", "match": "not_contains" }
+      ]
+    },
+    {
+      "id": "no-em-dash",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "No em-dashes - single dashes.",
+      "graders": [
+        { "type": "regex", "name": "no em- or en-dash in the answer", "target": "last_message", "pattern": "[\\u2014\\u2013]", "match": "not_contains" }
+      ]
+    }
+  ]
+}
