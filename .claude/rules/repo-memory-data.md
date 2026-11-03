@@ -81,7 +81,9 @@ The stores and what each holds, where the docs root and the data root live, and 
   root it was stamped with. The launch environment is never read.
 - **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
-  checkDataPath`) - holds the docs (`<root>/docs`), the hooks' state and ledgers (`<root>/state`, `<root>/statistics`,
+  checkDataPath`; every hook reads a relative value it refuses as `.alfred` - a hand-set `.` had put `statistics/` and
+  `state/` in the project root - and keeps an absolute one, a test harness's scratch: `layout.js dataRoot`, pinned as
+  `data-root-reader`, run C) - holds the docs (`<root>/docs`), the hooks' state and ledgers (`<root>/state`, `<root>/statistics`,
   `stack/hooks/layout.js`), the stack's variables (`<root>/.variables`, 3.0.0: every catalog `ALFRED_CODE_*` key but
   `DATA_PATH` and the guard key `HOOKS_OFF`, which stay in the settings files; written by the installer and
   `scripts/variables.js set`, ledgered as `.variables` rows; tracked by git at project and user scope, whose

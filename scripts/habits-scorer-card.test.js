@@ -364,9 +364,23 @@ test('sc-7: the ask at the cap says the cap is reached', () => {
     assert.match(out[0], /^ask-continue /);
     assert.strictEqual(out[1], 'Ceiling: 100/100 (level 80) - the run cap is reached');
     const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'SKILL.md'), 'utf8');
-    assert.match(skill, /the next revision can reach at most <ceiling> - <the needs line, the run cap is reached, or nothing closable left>/);
     const s = start('c7b'); fs.writeFileSync(s['score-file'], card100(60));                          // no unmet check tagged: nothing closable
     assert.deepStrictEqual(next('c7b').slice(0, 2), [`ask-continue ${s.id} recommend accept`, 'Ceiling: 60/100 (level 80) - nothing closable left']);
+});
+// E-batch minor (Task 8's ruling): a stall with closable points left said 'nothing closable left'; the line names why the
+// loop stopped whenever the ceiling sits above the score and no decision caps it
+test('the stall ask names the stall, and a ceiling under 5 above the total says so', () => {
+    graded('st1', { total: 60 }); assert.strictEqual(next('st1')[0], 'revise');
+    graded('st1', { total: 62 });
+    const out = next('st1');
+    assert.match(out[0], /^ask-continue /);
+    assert.strictEqual(out[1], 'Ceiling: 100/100 (level 80) - the last revision rose by under 5');
+    const s = start('st2');
+    const tags = {}; for (let n = 79; n <= 81; n++) tags[`c${n}`] = '[closable]';
+    fs.writeFileSync(s['score-file'], card100(78, [], { tags }));
+    assert.deepStrictEqual(next('st2').slice(0, 2), [`ask-continue ${s.id} recommend accept`, 'Ceiling: 81/100 (level 80) - under 5 points closable']);
+    const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'SKILL.md'), 'utf8');
+    assert.match(skill, /the next revision can reach at most <ceiling> - <the needs line, why it stopped, or nothing closable left>/);
 });
 test('next --auto: revise first at the cap with a BLOCKER, then keep; accept with no BLOCKER; never answer (AC26, R19)', () => {
     for (const t of [50, 52, 53]) graded('u1', { total: t, blocker: true, ceiling: 70 });

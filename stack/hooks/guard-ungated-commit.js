@@ -24,7 +24,10 @@
 // gate (a leftover stamp silently authorized later, unrelated runs).
 const fs = require('fs');
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 // 2.8.0 layout (layout.js, copied beside this hook): receipts in <data root>/state/approvals/, session scratch in
 // state/sessions/, the session records in state/history/; null on an older copy route, which keeps the pre-2.8.0 paths.
 let layout = null;
@@ -1649,6 +1652,9 @@ if (addCalls.length) {
     global.BLOCK_DETAIL = { branch: 'untracked-sweep', count: swept.length };
     const rel = (name) => path.relative(root, receiptWrite(name)).split(path.sep).join('/');
     const record = preExistingRecord();
+    // Past 15 paths the receipt is the top folders that hold them (a root file stays a path), printed whole: 15 lines of a
+    // longer list left the retry denied again for the rest (E-batch M7).
+    const sweepLines = swept.length > 15 ? [...new Set(swept.map((f) => (f.includes('/') ? `${f.split('/')[0]}/` : f)))] : swept;
     process.stderr.write(
       `Blocked: this git add stages ${swept.length} path(s) that were untracked before this change started -\n` +
       `${swept.slice(0, 15).map((f) => `  ${f}`).join('\n')}\n` +
@@ -1656,7 +1662,7 @@ if (addCalls.length) {
       `They are not this change (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}). Stage the change's own\n` +
       `paths by name instead - git add <path> ... When the user named these files as part of this change, write\n` +
       `${rel('UNTRACKED-ALLOW')} with these lines (one path per line; a directory ending in /, or *) and retry the SAME command -\n` +
-      receiptLines(swept.slice(0, 15)) +
+      receiptLines(sweepLines) +
       `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
       `  'Stage only this session's paths (Recommended)'\n` +
       `  'Stage them too' - the user adds these files to the change\n` +
@@ -2061,6 +2067,8 @@ function stagedFindings() {
   if (open.length) {
     global.BLOCK_DETAIL = { branch: 'staged-scan', count: open.length };
     const allowRel = path.relative(root, allowFile).split(path.sep).join('/');
+    // Past 15 hits the receipt names each file once, printed whole (E-batch M7: 15 lines left the rest denied on the retry).
+    const scanLines = open.length > 15 ? [...new Set(open.map((f) => f.file))] : open.map((f) => `${f.file}:${f.line}`);
     process.stderr.write(
       `Blocked: the commit adds what must never land -\n${open.slice(0, 15).map((f) => `  ${f.file}:${f.line} - ${f.hit}`).join('\n')}\n` +
       (open.length > 15 ? `  ... and ${open.length - 15} more\n` : '') +
@@ -2069,8 +2077,8 @@ function stagedFindings() {
       `for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
       `  'Remove it and stage again (Recommended)'\n` +
       `  'Commit it as is' - the user keeps the line on purpose\n` +
-      `On 'Commit it as is', write ${allowRel} with these lines (one \`file:line\` per kept hit) and retry the SAME\n` +
-      `command -\n` + receiptLines(open.slice(0, 15).map((f) => `${f.file}:${f.line}`)) +
+      `On 'Commit it as is', write ${allowRel} with these lines (one \`file:line\` per kept hit, past 15 one \`file\` per\n` +
+      `file) and retry the SAME command -\n` + receiptLines(scanLines) +
       `It is honoured for this session only, under 8h.\n` + allowShut,
     );
     process.exit(2);

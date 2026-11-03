@@ -60,15 +60,15 @@
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`"
+          "marker": "envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`"
+          "marker": "envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`"
         },
         {
           "file": "stack/hooks/docs.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`"
+          "marker": "envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`"
         },
         {
           "file": "stack/hooks/docs-session.js",
@@ -3875,7 +3875,6 @@
           "file": "stack/agents/wpf-verifier.md",
           "marker": "report the view checks as UNVERIFIED with the reason"
         },
-
         {
           "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "a native screen nothing observed is never a silent pass"
@@ -7890,28 +7889,88 @@
       "_note": "The data root, ALFRED_CODE_DATA_PATH relative to the project or .alfred - one reading in the hooks' layout.js and every script that writes under it without the hooks beside it (2.8.0 layout).",
       "owner": {
         "file": "stack/hooks/layout.js",
-        "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+        "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
       },
       "sites": [
         {
           "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
           "file": "stack/skills/task-solve/scripts/spec-check.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
           "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
           "file": "setup-plugin/hooks/guard-layer-table.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
           "file": "stack/skills/mode-output-scorer/scripts/scorecard.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/docs.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-answer.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-catastrophic-rm.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-config-protection.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-cross-project-write.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-desktop-exec.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-fresh-session-start.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-protected-force-push.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-read-whole-file.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-secret-value.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-stop-contract.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-unapproved-dispatch.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-ungated-commit.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/history.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/instrument-tool-usage.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         }
       ]
     },

@@ -6474,4 +6474,11 @@ test('E1-2c: the cross-project guard judges unlink of an outside file', () => {
   const tmpX = path.join(os.tmpdir(), 'x');
   assert.equal(xpBash(`unlink ${tmpX}`), xpBash(`rm ${tmpX}`), 'unlink in the temp dir is judged as rm is');
   assert.equal(xpBash('unlink build/old.txt'), 0, 'unlink inside the project passes');
+  // E-batch M6: an allowed root that does NOT hold the project - the temp root's place on a real machine - proves the pass
+  const scratch = fs.mkdtempSync(path.join(TMP, 'xp-scratch-'));
+  const inScratch = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: scratch } }).status;
+  assert.equal(inScratch(`unlink ${path.join(scratch, 'f.txt')}`), 0, 'unlink in an allowed root apart from the project passes');
+  assert.equal(inScratch(`shred -u ${path.join(scratch, 'f.txt')}`), 0, 'and so does shred');
+  assert.equal(inScratch(`unlink ${path.join(XP_OTHER, 'f.txt')}`), 2, 'while the sibling project stays blocked');
 });

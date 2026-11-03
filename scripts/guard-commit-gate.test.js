@@ -453,6 +453,32 @@ test('O1: STAGED-SCAN-ALLOW counts only for the session it names', () => {
   assert.match(r.stderr, /\n  session: o1\n  late\.js:1\n/, 'the denial names the lines to write, its session first');
 });
 
+// E-batch M7: the scan's denial printed 15 receipt lines, so 20 kept hits were denied again on the retry.
+test('M7: past 15 scan hits the printed receipt lines cover every one', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-m7-'));
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test'); git('config', 'commit.gpgsign', 'false');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n');
+  git('add', '-A'); git('commit', '-qm', 'seed');
+  const hit = `const s = 'x${String.fromCodePoint(0x202E)}y';\n`;
+  fs.writeFileSync(path.join(dir, 'one.js'), hit.repeat(12));
+  fs.writeFileSync(path.join(dir, 'two.js'), hit.repeat(9));
+  git('add', 'one.js', 'two.js');
+  const at = () => runIn('guard-ungated-commit.js', { tool_name: 'Bash', session_id: 'm7', tool_input: { command: 'git commit -m kept' }, transcript_path: REVIEWED },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  const r = at();
+  assert.equal(r.status, 2);
+  const m = /retry the SAME\s+command -\n((?:  .*\n)+)/.exec(r.stderr);
+  assert.ok(m, 'the receipt lines are printed');
+  const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+  assert.equal(lines[0], 'session: m7');
+  const allow = path.join(dir, '.alfred', 'state', 'approvals', 'STAGED-SCAN-ALLOW');
+  fs.mkdirSync(path.dirname(allow), { recursive: true });
+  fs.writeFileSync(allow, lines.join('\n') + '\n');
+  const retry = at();
+  assert.doesNotMatch(retry.stderr, /must never land/, `the printed lines open the scan: ${retry.stderr.slice(0, 300)}`);
+});
+
 // U26a (usage audit 2026-11-03): `git commit --amend --only` with no path and no -a rewrites the message alone - git takes
 // nothing from the index - so a staged hit is not this act's.
 test('U26a: a message-only amend --only judges no staged file', () => {

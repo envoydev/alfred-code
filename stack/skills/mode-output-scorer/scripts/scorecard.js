@@ -90,7 +90,7 @@ function envOf(env, suffix)
     return value === '' ? undefined : value;
 }
 // data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
-const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
 
 class Stop extends Error {
   constructor(code, message) { super(message); this.code = code; }
@@ -545,9 +545,10 @@ function runNext(args) {
     const r = why ? orig : rev;
     return { round: r, line: `Fix: ${why ? `not kept - ${why}` : `kept - ${rev.open.length} of ${orig.open.length} MATERIAL left`} - release the draft at ${r.draft}` };
   };
-  // at the cap a ceiling above the score is the cap's doing, never 'nothing closable left' (sc-7)
-  const withheld = (r, capReached = false) => [
-    `Ceiling: ${r.ceiling}/100 (level ${level}) - ${r.needs.length ? r.needs.join('; ') : capReached && r.ceiling > r.value ? 'the run cap is reached' : 'nothing closable left'}`,
+  // A ceiling above the score with no decision capping it says why the loop stopped - the run cap (sc-7), a stall, a ceiling
+  // under the level or too few points closable - never 'nothing closable left' (E-batch minor: a stall said it).
+  const withheld = (r, stopped = '') => [
+    `Ceiling: ${r.ceiling}/100 (level ${level}) - ${r.needs.length ? r.needs.join('; ') : stopped && r.ceiling > r.value ? stopped : 'nothing closable left'}`,
     `Findings: ${r.blocked.length} BLOCKER, ${r.open.length} MATERIAL`,
     `Scored: ${r.value}/100 (level ${level}) - NOT PASSED after ${runs} run(s) - withheld at ${r.draft}`,
   ];
@@ -627,7 +628,9 @@ function runNext(args) {
         else choice = bought ? 'keep' : 'revise';
         const mark = `asked ${best.id} ${action}`;
         if (log.newest !== mark) fs.appendFileSync(ctx.logFile, `${mark}\n`);
-        out.push(`${action} ${best.id} recommend ${choice}`, ...withheld(best, used >= cap));
+        const stopped = used >= cap ? 'the run cap is reached' : !gained ? `the last revision rose by under ${STALL}`
+          : last.ceiling < level ? 'the ceiling is under the level' : `under ${STALL} points closable`;
+        out.push(`${action} ${best.id} recommend ${choice}`, ...withheld(best, stopped));
       }
     }
   }

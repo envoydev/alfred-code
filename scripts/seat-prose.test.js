@@ -465,6 +465,7 @@ test('ab-Q5: the analyzer reads the sibling\'s data root first', () =>
     assert.ok(line, 'the first_read item is there');
     assert.match(line[0], /ALFRED_CODE_DATA_PATH/, 'names the key that moves the data root');
     assert.match(line[0], /default `\.alfred`/, 'names the default');
+    assert.match(line[0], /`\.claude\/settings\.local\.json` wins/, 'M9: says which file wins when both set the key');
     assert.doesNotMatch(line[0], /`\.alfred\/docs\/awareness\//, 'the exact path is no longer hard-coded under .alfred');
 });
 

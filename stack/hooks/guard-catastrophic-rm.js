@@ -69,7 +69,10 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 
 // The reader every git guard shares (heredoc bodies are data there, carried scripts are shell). A copy that runs before
 // it lands fails open like every gate here (the parity test's copy set), rather than judging with a second, weaker reader.

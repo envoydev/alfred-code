@@ -97,7 +97,7 @@ if (!['AskUserQuestion', 'Bash'].includes(payload.tool_name) || !payload.transcr
 // root's statistics/ (2.8.0, stack/hooks/layout.js; this plugin's hooks ship apart from it, so the reader is inline).
 // Best-effort; a repo never set up gets none.
 // data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
-const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
 const blocksFile = () => path.join(path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), dataRoot(), 'statistics', 'hook-blocks'),
   `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
 const appendRow = (row) => {
@@ -455,7 +455,7 @@ function unpasted(rows) {
       if (o.type === 'assistant' && b.type === 'tool_use' && b.name === 'AskUserQuestion') askIds.add(b.id);
       // an ask that errored or timed out decided nothing, so the walk goes on past it (E-batch ws-1)
       if (o.type === 'assistant' && b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.id !== ownId
-          && b.id in results && !results[b.id].includes(MARKER) && !errored.has(b.id)) {
+          && b.id in results && !results[b.id].includes(MARKER) && !errored.has(b.id) && !askTimedOut(results[b.id])) {
         stop = true;   // an answered ask: a new decision point
         break;
       }

@@ -50,7 +50,10 @@ if (require.main === module) {
   } catch { /* an install without the prelude runs the hook unchanged */ }
   if (off) process.exit(0);
 }
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 
 // The tools under any registration (the tool-type match, no-MCP spec N6).
 const WIN_APP = /^mcp__.+__App$/;

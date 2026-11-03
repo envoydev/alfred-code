@@ -2627,6 +2627,20 @@ test('U36: a section that covered no code is outgrown once files are added', () 
     assert.match(t.cli(['stale']).stdout, /^\S*oldest - no covers line, 1 file\(s\) added since/m, 'one of the newest two, it is');
   } finally { t.rm(); }
 });
+// E-batch M8: in an active repo every added file listed every coverless section - a near-permanent SessionStart line. U36's
+// claim is folders arriving, so only an added file whose TOP-LEVEL folder the stamp's tree lacked counts.
+test('M8: a coverless section is outgrown by a new top-level folder, never by files added to folders it already had', () => {
+  const bare = (id, sha) => `## ${id}\n<!-- id: ${id} -->\n<!-- captured: ${sha} -->\nNo covers.\n`;
+  const r = repo({ files: { 'README.md': 'x\n', 'src/a.ts': 'export {};\n' } });
+  try {
+    const s0 = r.git('rev-parse', '--short', 'HEAD');
+    r.write('.claude/docs/architecture/ARCHITECTURE.md', `# Map\n\n${bare('overview', s0)}`);
+    r.write('src/b.ts', 'export {};\n'); r.write('CHANGELOG.md', 'c\n'); r.git('add', 'src/b.ts', 'CHANGELOG.md'); r.git('commit', '-qm', 'more of the same');
+    assert.match(r.cli(['stale']).stdout, /no section has been outgrown/, 'a file in a folder the stamp had, or at the root, is no new module');
+    r.write('lib/c.ts', 'export {};\n'); r.git('add', 'lib/c.ts'); r.git('commit', '-qm', 'a new folder');
+    assert.match(r.cli(['stale']).stdout, /^\S*overview - no covers line, 1 file\(s\) added since [0-9a-f]+: lib\/c\.ts \(no-covers-new-files\)$/m, 'the new top-level folder is');
+  } finally { r.rm(); }
+});
 test('outgrown skips a recomputed domain', () => {
   const r = repo({ files: { 'src/a.cs': 'class A {}\n' } });
   try {

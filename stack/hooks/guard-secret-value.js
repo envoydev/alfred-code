@@ -62,7 +62,10 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
 // (npm run lint fails when the two differ), matched case-insensitively so `apiKey` and `API_KEY`
@@ -1059,10 +1062,7 @@ function maskFormatText(text, file, mask, count) {
 // --with-sensitive, which puts them in that command's environment and masks each one's EXACT text in its output - an
 // encoded, split or reversed print is not caught, so this is leak protection, never a wall against a deliberate read.
 // The data root as the settings name it: relative and `..`-free, else `.alfred`.
-function dataRootRel() {
-  const raw = String(envOf(process.env, 'DATA_PATH') || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  return raw && !pathMod.isAbsolute(raw) && !raw.split('/').includes('..') ? raw : '.alfred';
-}
+function dataRootRel() { return dataRoot(); }
 // A `.secrets` is the store when it sits directly in a folder whose path ends in the data root (`.alfred/.secrets`, a
 // custom root's `var/data/.secrets`) - by the path as written, a diff header's or a walk's line included, or by its real
 // path. A project's own `.secrets` beside its sources is not. In any letter case (final review 2026-10-25 C2): a

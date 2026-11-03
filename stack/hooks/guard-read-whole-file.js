@@ -12,7 +12,10 @@
 // not a dump, and passes. exit 2 = block (stderr fed back); exit 0 = allow.
 const fs = require('fs');
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 const os = require('os');
 const pathMod = require('path');
 // The judging budget (review M3 of 2.1.6), its thresholds in this one place. It counts WORK, never time, so a
@@ -294,7 +297,7 @@ function smallLiteralLoop(list) {
 // of them hands the model a remedy that errors - measured twice, when the stack's navigation server skipped them: the
 // denial named it for a `.claude/...` path and the redirect the model made from it failed. The ranged read is the remedy.
 const UNINDEXED = /(?:^|[\\/])\.(?:claude|serena|playwright)(?:[\\/]|$)/;
-const dataRootEnv = () => String(envOf(process.env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+const dataRootEnv = () => dataRoot();
 const underDataRoot = (p) =>
 {
   const root = dataRootEnv();

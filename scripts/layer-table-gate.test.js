@@ -106,6 +106,13 @@ test('ws-1: an errored ask does not end the walk-back', () => {
   assert.ok(voided(r), r.stdout);
   assert.match(r.out.reason, /agents table ran but its output is not in your message/);
 });
+// E-batch M5: the idle timeout closes an ask with no error flag - its text is the only sign (ruling S3) - so the paste
+// check walks past it too, as the next-step check already did.
+test('M5: an ask the idle timeout closed does not end the walk-back', () => {
+  const r = runPost([...UNPASTED(), call('e1', 'AskUserQuestion', ask), result('e1', 'No response after 300s - the user may be away from keyboard. Continue.', false)]);
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /agents table ran but its output is not in your message/);
+});
 
 // E-batch ws-2: the Bash next-step denial reads 'the agents table ran, but no answered question' - it named the table, so
 // three of them spent the void valve before any ask was voided. Only the asks' own voids count.

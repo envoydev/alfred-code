@@ -186,6 +186,29 @@ test('UNTRACKED-ALLOW opens the sweep for the paths the user named, and only tho
     } finally { p.rm(); }
 });
 
+// E-batch M7: past 15 swept paths the denial listed 15 receipt lines, so the retry was denied again for the rest. The lines
+// it prints, written as told, open the retry whatever the count.
+const printedReceipt = (stderr) => {
+    const m = /retry the SAME (?:command|call)[^\n]*\n((?:  .*\n)+)/.exec(stderr);
+    return m ? m[1].split('\n').map((l) => l.trim()).filter(Boolean) : [];
+};
+test('M7: past 15 swept paths the printed receipt lines cover every one', () => {
+    const p = project();
+    try {
+        for (let i = 0; i < 20; i += 1) p.write(`harness/f${i}.txt`, 'h\n');
+        for (let i = 0; i < 3; i += 1) p.write(`loose${i}.txt`, 'h\n');
+        p.start('m7');
+        const r = p.bash('m7', 'git add -A');
+        assert.strictEqual(r.status, 2);
+        const lines = printedReceipt(r.stderr);
+        assert.strictEqual(lines[0], 'session: m7', 'the session line first');
+        assert.ok(lines.length <= 16, `a short list: ${lines.length} lines`);
+        p.flow('UNTRACKED-ALLOW', lines.join('\n') + '\n');
+        const retry = p.bash('m7', 'git add -A');
+        assert.strictEqual(retry.status, 0, `the printed lines open the retry: ${retry.stderr.slice(0, 300)}`);
+    } finally { p.rm(); }
+});
+
 // E1-6 (inventory A): UNTRACKED-ALLOW is read by hook-prelude.js readReceiptFile - a `session:` line naming the call's
 // session - so another session's answer never opens this one's sweep.
 test('E1-6: UNTRACKED-ALLOW counts only for the session it names', () => {
