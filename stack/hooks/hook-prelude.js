@@ -279,16 +279,77 @@ function yieldToCopiedTwin(hook, env, call)
     const hooksDir = path.join(root, '.claude', 'hooks');
     if (path.resolve(__dirname) === path.resolve(hooksDir)) return false;   // the copy itself, under an inherited plugin root
     const target = (COPIED_PREFIX + wanted + '.js').toLowerCase();
-    const twins = ['settings.json', 'settings.local.json'].flatMap((name) => wiredEntries(path.join(root, '.claude', name))).filter(({ command }) =>
+    let twins = ['settings.json', 'settings.local.json'].flatMap((name) => wiredEntries(path.join(root, '.claude', name))).filter(({ command }) =>
     {
         const clean = command.replace(/"/g, '').trim().toLowerCase();
         return clean === target || clean.startsWith(target + ' ');
     });
+    const session = call && typeof call.session === 'string' && call.session ? call.session : callSession;
+    // A repo merely opened with no twin gets no snapshot (nothing is written there); a set-up repo takes it on the first
+    // call even with none wired, so the call that plants a twin has already fixed the session's wiring.
+    const atStart = session && (twins.length || !neverSetUp(source)) ? twinSnapshot(root, session, source) : null;
+    if (atStart) twins = twins.filter((t) => atStart.has(twinKey(t)));
     if (!twins.length) return false;
     try { if (!fs.statSync(path.join(hooksDir, `${wanted}.js`)).isFile()) return false; }
     catch { return false; }
     const rows = pluginRowsOf(wanted, call);
     return rows.length > 0 && rows.every((row) => covers(twins.filter((t) => t.event === row.event).map((t) => t.matcher), row.matcher));
+}
+
+// E1-3: a twin is one wired when the SESSION BEGAN. Claude Code reads its hooks at session start, so a copied file and
+// its entry written later (a `--with-sensitive` write, a stray edit) run nothing this session - and yielding to them stood
+// every plugin guard down with nobody judging. `twins-<session>.json` under the data root's sessions folder holds the
+// `event|matcher|command` key of each copied entry wired then: the fresh-session hook writes it on SessionStart (startup,
+// resume, clear, fork), else the first call that names the session does (exclusive create - a SessionStart hook switched
+// off, at the cost that a twin written before that call counts). Unreadable or unwritable: null, and today's yield holds.
+// A dispatcher names its session once (`useSession`), so every guard it runs in-process is narrowed by it too.
+let callSession;
+function useSession(id) { callSession = typeof id === 'string' && id ? id : undefined; }
+const twinKey = (t) => `${t.event}|${t.matcher}|${t.command}`;
+const twinMemo = new Map();
+const twinFileOf = (root, sessionId, env) => (layout && root && sessionId ? layout.statePath(root, 'sessions', `twins-${safeSession(sessionId)}.json`, env) : null);
+function writeTwinSnapshot(root, sessionId, env = process.env, { exclusive = false } = {})
+{
+    const file = twinFileOf(root, sessionId, env);
+    if (!file) return false;
+    twinMemo.delete(file);
+    const keys = [...new Set(['settings.json', 'settings.local.json'].flatMap((name) => wiredEntries(path.join(root, '.claude', name)))
+        .filter(({ command }) => command.replace(/"/g, '').trim().toLowerCase().startsWith(COPIED_PREFIX.toLowerCase())).map(twinKey))];
+    try
+    {
+        const dir = path.dirname(file);
+        fs.mkdirSync(dir, { recursive: true });
+        sweepStale(dir, 'twins-');
+        if (exclusive) { fs.writeFileSync(file, JSON.stringify(keys), { flag: 'wx' }); return true; }
+        const tmp = `${file}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(keys));
+        fs.renameSync(tmp, file);
+        return true;
+    }
+    catch { return false; }
+}
+function twinSnapshot(root, sessionId, env = process.env)
+{
+    const file = twinFileOf(root, sessionId, env);
+    if (!file) return null;
+    if (twinMemo.has(file)) return twinMemo.get(file);
+    const read = () =>
+    {
+        const keys = JSON.parse(fs.readFileSync(file, 'utf8'));
+        return Array.isArray(keys) && keys.every((k) => typeof k === 'string') ? new Set(keys) : null;
+    };
+    let wired = null;
+    try { wired = read(); }
+    catch (e)
+    {
+        if (e && e.code === 'ENOENT')
+        {
+            writeTwinSnapshot(root, sessionId, env, { exclusive: true });
+            try { wired = read(); } catch { wired = null; }
+        }
+    }
+    twinMemo.set(file, wired);
+    return wired;
 }
 
 const CORE_PLUGIN = 'alfred-code';
@@ -873,9 +934,10 @@ function typedWordsOrStart(file, words)
     let auto = false;
     let found = false;
     const asks = new Set();
+    // E1-1 (inventory A): read to the end - a typed off flag after the words or the answer ends the waiver, as it ends the
+    // hook's own stamp, and the words typed again after it start it again.
     linesWith(file, ['"type":"user"', ANSWER_NEEDLE, ASK_NEEDLE], (line) =>
     {
-        if (found) return;
         if (line.includes(ASK_NEEDLE)) for (const id of askCallIds(rowOf(line))) asks.add(id);
         if (isTypedCandidate(line))
         {
@@ -883,6 +945,7 @@ function typedWordsOrStart(file, words)
             if (!text) return;
             const ev = autoEventOf(text);
             if (ev) auto = ev === 'on';
+            if (ev === 'off') { found = false; return; }
             const tagged = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(text);
             const asLine = tagged ? `/${tagged[1]} ${(/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || ''}` : '';
             if ([text, asLine].some((t) => t && normWords(t).toLowerCase().includes(want))) found = true;
@@ -1856,4 +1919,4 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };

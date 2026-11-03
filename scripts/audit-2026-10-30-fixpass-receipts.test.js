@@ -212,3 +212,16 @@ test('FA-4: an answer counts only as the result of an AskUserQuestion call in th
   assert.equal(hand([typed('go'), asked('Start AUTO here (Recommended)', 'mcp__forms__collect')]), false, 'Start AUTO here under another tool\'s id');
   assert.equal(hand([typed('go'), asked('Start AUTO here (Recommended)')]), true, 'twin: the AskUserQuestion answer');
 });
+
+// E1-1 (inventory A): a hand-written waiver (`AUTO - "<the user's words>"`, no session line) is proven by those words typed in
+// the session, or a 'Start AUTO here' answer - and a typed off flag after either ends it, as it ends the hook's own stamp.
+test('E1-1: a typed off flag after the words ends a hand-written waiver', () => {
+  const WORDS = 'run all recommended without asking me';
+  const hand = (rows) => { const p = project('e11').write(rows); fs.writeFileSync(p.gate, `AUTO - "${WORDS}"\n`); return live(p, 'any-session'); };
+  const off = command('task-solve', '--mode-auto-run-off');
+  assert.equal(hand([typed(WORDS)]), true, 'the words alone (the reference)');
+  assert.equal(hand([typed(WORDS), off]), false, 'an off row after the words ends the waiver');
+  assert.equal(hand([typed(WORDS), off, typed(WORDS)]), true, 'the words typed again after it start it again');
+  assert.equal(hand([typed('go'), asked('Start AUTO here (Recommended)'), off]), false, 'an off row after the Start AUTO here answer ends it');
+  assert.equal(hand([off, typed(WORDS)]), true, 'an off row before the words changes nothing');
+});

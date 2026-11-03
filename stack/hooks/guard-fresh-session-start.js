@@ -280,6 +280,12 @@ fresh.use(payload);
 // 2026-10-21 G3, 77 of 77 compacted seats in transcripts): the model, the snapshot pointer, the hold and the offer are
 // the main session's, so none of them is written or said there.
 if (EVENT === 'SessionStart' && payload.agent_id) process.exit(0);
+// E1-3: the copied twins wired as this session begins - a twin written later is not yielded to (hook-prelude.js
+// writeTwinSnapshot). A compaction is the same session and wiring, so its start leaves the file.
+if (EVENT === 'SessionStart' && String(payload.source || '') !== 'compact' && payload.session_id) {
+  try { require('./hook-prelude.js').writeTwinSnapshot(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), String(payload.session_id)); }
+  catch { /* an install without the prelude keeps today's yield */ }
+}
 if (EVENT === 'SessionStart' || EVENT === 'PostModelSwitch') {
   fresh.recordSessionModel(EVENT === 'PostModelSwitch' ? payload.to_model : payload.model);
   if (EVENT === 'PostModelSwitch' || String(payload.source || '') !== 'compact') process.exit(0);

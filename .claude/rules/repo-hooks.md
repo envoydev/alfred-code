@@ -28,7 +28,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   HK-02: an entry naming the twin under matcher `Nothing`, no file on disk, stood both dispatchers down): the copied file
   on disk and entries covering every plugin row the run stands for (the event, a matcher firing on each of the row's
   tools; the core entry's rows from the plugin root's `marketplace.json`, a guard run in-process by the plugin's
-  dispatcher that dispatcher's row, the file dispatcher per call); a repo never set up (no install
+  dispatcher that dispatcher's row, the file dispatcher per call), and only entries wired when the SESSION BEGAN (E1-3:
+  Claude Code reads its hooks at start, so a twin written mid-session ran nothing while the plugin copy stood down) -
+  `<data root>/state/sessions/twins-<session>.json`, the `event|matcher|command` keys written by the fresh-session hook on
+  SessionStart (startup, resume, clear, fork; a compaction keeps it), else by the first call naming the session in a
+  set-up repo, or the first finding a twin in a repo never set up (exclusive create - the residual: a twin written before
+  that call counts). Both dispatchers read `session_id` before their check and `useSession` it, so every guard they run
+  in-process is narrowed; a hook run as its own process, a call naming no session and an unreadable or unwritable
+  snapshot yield as before; a repo never set up with no twin gets no read and no write; a repo never set up (no install
   record in it, any folder between it and its git top level (a monorepo package with its own install), the top itself -
   never a repo kept at the home directory, for the installer's `gitRoot` as much as the hooks, seam m3 - or - for a git
   worktree - its main checkout, so a worktree of an
@@ -325,8 +332,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   contract answered its own SHOW ask and the secret receipt opened) - so a Skill-route start more than 5MB of work after
   its typed prompt runs attended; a stamp missing the line, or over another session's row, is dead. A HAND-WRITTEN one
   (no `session:`) is live only when its quoted words (8 characters or more, case-insensitive) appear in a turn the user
-  typed, or the user answered 'Start AUTO here' to an AskUserQuestion with auto-run off - never a Skill call alone (125ms
-  on 200MB; memoised per stamp mtime and transcript size).
+  typed, or the user answered 'Start AUTO here' to an AskUserQuestion with auto-run off - never a Skill call alone - and
+  no typed row turning auto-run off follows them (E1-1: a later typed match makes it live again) (125ms on 200MB;
+  memoised per stamp mtime and transcript size).
   - `guard-protected-force-push.js` - blocks force-push to protected branches. It reads the command through
     `shell-writes.js`'s `gitText` (below), so a push counts past a wrapper (`timeout 60`, `env A=1`, `nohup`), in an
     `if` / `for` body, `bash -c '...'`, a heredoc or here-string into a shell, `eval`, a script file and a git alias
