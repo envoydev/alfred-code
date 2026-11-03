@@ -1247,9 +1247,12 @@ const OTHER_RE = /\b(?:in|into|via|through|using) (?:the )?['‘’]?Other\b|\bt
 const SUBJECT_NOUN = String.raw`(?:plan|comment|draft|message|description|ticket|issue|change|diff|stage|spec|design|report|wording|version|email|note|edit|post|group|commit)s?|patch(?:es)?|repl(?:y|ies)|summar(?:y|ies)`;
 const SUBJECT_PHRASE = String.raw`\b(?:this|these|the|that|those|all|both|each|my|your|our)\s+(?:[\w.-]+\s+){0,3}?(${SUBJECT_NOUN})\b`;
 const SHOWN_MIN = 200;
-// 'above' as a pointer at earlier text - never 'above 5' or 'above the line' - and the words that may sit between it and
-// the thing it points at ('the drafts shown above').
-const POINTER_ABOVE_RE = /\babove\b(?!\s+(?:the|a|an|this|that|these|those|it|its|them|their|our|your|my|\d))/i;
+// 'above' as a pointer at earlier text: after a noun phrase ('the five groups above', 'the drafts shown above') or 'as
+// noted' - never a comparison ('above zero', 'above what the docs allow', 'above-average', 'above or below'), 'above 5' or
+// 'above the line' (the review of 2026-11-03: every 'above' had read as a pointer, a shipped template's among them).
+const POINTER_ABOVE_RE = /\b(?:(?:the|these|those|this|that|all|each|both|every)\s+(?:[\w.-]+\s+){1,4}?|as\s+(?:noted|stated|shown|listed|described|mentioned|discussed|written|printed|quoted|said)\s+)above\b(?!-|\s+(?:the|a|an|this|that|these|those|it|its|them|their|our|your|my|all|any|or|and|what|zero|one|two|three|four|five|six|seven|eight|nine|ten|twenty|fifty|hundred|average|normal|expected|\d)\b)/i;
+// A pointer at the asks just answered or at this ask's own options shows the user nothing new to read.
+const ASKED_HEAD_RE = /^(?:questions?|answers?|options?|choices?|asks?)$/i;
 const POINTER_VERB_RE = /\s+(?:shown|listed|printed|written|quoted|described|drafted|proposed)\s*$/i;
 // Text the ask QUOTES - a fenced block, a code span, double or curly quotes, or single quotes whose opening one follows no
 // letter (an apostrophe inside 'it's' stays in the span).
@@ -1284,15 +1287,15 @@ function approvalSubject(t) {
       const end = after.search(/[.?!;:\n]/);
       const rest = end < 0 ? after : after.slice(0, end);
       const obj = new RegExp(`^\\s+${SUBJECT_PHRASE}`, 'i').exec(rest);
-      if (obj) return { noun: obj[1] };
-      return { noun: /^\s+(?:it|them|this|these|that|those)\b/i.test(rest) || !rest.trim() ? lastPhrase(t.slice(0, m.index)) : null };
+      if (obj) return { noun: obj[1], at: m.index };
+      return { noun: /^\s+(?:it|them|this|these|that|those)\b/i.test(rest) || !rest.trim() ? lastPhrase(t.slice(0, m.index)) : null, at: m.index };
     }
     if (/^(?:as shown|shown above|(?:is|are) ready)$/.test(word)) {
       const start = clauseStart(t, m.index);
-      return { noun: lastPhrase(t.slice(start, m.index)) || lastPhrase(t.slice(0, start)) };
+      return { noun: lastPhrase(t.slice(start, m.index)) || lastPhrase(t.slice(0, start)), at: m.index };
     }
     const head = /([\w-]+)\s+above$/i.exec(m[0]);
-    return { noun: head && new RegExp(`^(?:${SUBJECT_NOUN})$`, 'i').test(head[1]) ? head[1] : null };
+    return { noun: head && new RegExp(`^(?:${SUBJECT_NOUN})$`, 'i').test(head[1]) ? head[1] : null, at: m.index };
   }
   return null;
 }
@@ -1300,10 +1303,13 @@ function approvalSubject(t) {
 // pointer, when it is one the list knows, else only the length. The resume-block pointer is check 14's.
 function pointerSubject(t) {
   const s = String(t).replace(ASK_ABOVE_RE, (x) => ' '.repeat(x.length));
-  const m = POINTER_ABOVE_RE.exec(s);
-  if (!m) return null;
-  const head = /([\w-]+)$/.exec(s.slice(0, m.index).replace(POINTER_VERB_RE, '').trimEnd());
-  return { noun: head && new RegExp(`^(?:${SUBJECT_NOUN})$`, 'i').test(head[1]) ? head[1] : null, pointer: true };
+  for (const m of s.matchAll(new RegExp(POINTER_ABOVE_RE.source, 'gi'))) {
+    const at = m.index + m[0].toLowerCase().lastIndexOf('above');
+    const head = /([\w-]+)$/.exec(s.slice(0, at).replace(POINTER_VERB_RE, '').trimEnd());
+    if (head && ASKED_HEAD_RE.test(head[1])) continue;
+    return { noun: head && new RegExp(`^(?:${SUBJECT_NOUN})$`, 'i').test(head[1]) ? head[1] : null, pointer: true, at };
+  }
+  return null;
 }
 // Read on the QUESTION only: an 'Approve' option label is the solve-task approval stop, whose own contract prints the
 // audited plan before it (and whose receipts are notes). A quote of three words or more that is no option's label and no
@@ -1320,7 +1326,25 @@ function approvalOverNothingShown(questions) {
   const subject = approvalSubject(text) || pointerSubject(text);
   if (!subject) return null;
   const shows = (q) => { const s = q.replace(/^(?:```[^\n]*\n?|[`"“‘'])|(?:```|[`"”’'])$/g, '').trim(); return s.length >= 12 && s.split(/\s+/).length >= 3 && !/\b(?:above|below|shown|listed)\b/i.test(s) && !labels.has(s.toLowerCase()); };
-  if (quotes.some((m) => shows(m[0]))) return null;
+  // Only a quote that IS the approval's object (the review of 2026-11-03: any code span anywhere passed 'Approve the plan?
+  // Its last step is `git push`'): one inside the approval's own clause, or one its sentence only presents ('The line:
+  // ...', at most three words beside it). Bounds are read on `text`, where every quote is blanked, so a stop inside one
+  // splits nothing.
+  const at = Number.isInteger(subject.at) ? subject.at : -1;
+  const ownClause = (m) => {
+    if (at < 0) return false;
+    const from = clauseStart(text, at, true);
+    const stop = text.slice(at).search(/[.?!;:\n,(]|\s-\s/);
+    return m.index >= from && m.index < (stop < 0 ? text.length : at + stop);
+  };
+  const presented = (m) => {
+    let from = 0;
+    for (const x of text.slice(0, m.index).matchAll(/[.?!\n]/g)) from = x.index + 1;
+    const stop = text.slice(m.index + m[0].length).search(/[.?!\n]/);
+    const around = text.slice(from, stop < 0 ? text.length : m.index + m[0].length + stop);
+    return around.split(/\s+/).filter((w) => /\w/.test(w)).length <= 3;
+  };
+  if (quotes.some((m) => shows(m[0]) && (ownClause(m) || presented(m)))) return null;
   const shown = shownSinceTyped();
   if (shown === null) return null; // no typed turn to read back to: unknown, never a denial
   const verdict = { noun: subject.noun || null, shown: shown.trim().length, pointer: !!subject.pointer };
@@ -3146,9 +3170,10 @@ function flowFieldNotes(questions, askText, turnText) {
   const flow = flowState();
   if (!flow.flow) return notes;
   // Past the cycle: the plan is stamped `Completed:` and the user typed since, so an ask now is no stop of the flow until a
-  // new cycle's marker - a typed /task-solve or the flow's Skill call - re-arms the notes (usage audit 2026-11-03 U08:
-  // 6 of 6 post-cycle asks in one session carried the three-field note).
-  if (flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed)) return notes;
+  // new cycle's marker - a typed /task-solve or the flow's Skill call - or a flow step's Skill call after that typed turn
+  // (new scope re-enters at task-design) re-arms the notes (usage audit 2026-11-03 U08: 6 of 6 post-cycle asks in one
+  // session carried the three-field note; the review of 2026-11-03: a step call is the new cycle too).
+  if (flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed) && !(flow.stepAt > flow.typedAfterAt)) return notes;
   if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
     notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
       + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '
@@ -3318,6 +3343,16 @@ function flowLine(line, at, state) {
       }
     } catch { /* a cut row */ }
   }
+  // Where a flow STEP's Skill call sits (the review of 2026-11-03): new scope after `Completed:` re-enters at step 1
+  // through task-design (task-solve SKILL.md), never task-solve itself, so a step call after the typed turn re-arms
+  // the stop notes (flowFieldNotes) as the flow's own marker does.
+  if (isAssistant && line.includes('"tool_use"') && /task-(?:design|verify-plan|implement|verify-code)/.test(line)) {
+    try {
+      for (const b of JSON.parse(line).message.content || []) {
+        if (b && b.type === 'tool_use' && b.name === 'Skill' && /(?:^|:)(?:alfred-)?task-(?:design|verify-plan|implement|verify-code)$/.test(String((b.input || {}).skill || ''))) state.stepAt = at;
+      }
+    } catch { /* a cut row */ }
+  }
   // Where this cycle's plan gate ran - its approval quotes the gate's `Passes:` line (flowReceiptsOwed).
   if (isAssistant && line.includes('task-verify-plan') && line.includes('"tool_use"')) {
     try {
@@ -3475,18 +3510,19 @@ function flowState() {
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
     firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1,
     sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1,
-    autoCmd: false };
+    autoCmd: false, stepAt: -1 };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 8, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 9, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
       // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37), v7
-      // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1)
-      if (kept && kept.v === 8 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1), v9
+      // where a flow step's Skill call sits (the review of 2026-11-03)
+      if (kept && kept.v === 9 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {

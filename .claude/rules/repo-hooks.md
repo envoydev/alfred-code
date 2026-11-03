@@ -901,8 +901,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     publish / send this) with no chat text since the user's last typed turn that carries its subject - 200 characters or
     more naming its noun (audit 2026-10-11, session 2ca8e8ee: a staged plan and a ticket comment approved unseen) - the
     noun being the approval verb's own object (a pronoun or 'as shown' points back to the nearest phrase not after a
-    preposition), quoted text in the ask counting as shown and an option label not, a pointer saying 'above' needing the
-    200 characters too ('above 5' is no pointer), and the denial saying to re-send the ask unchanged (usage audit
+    preposition), a quote in the ask counting as shown only as the approval's object - in its own clause, or in a sentence
+    that only presents it, three words or fewer beside it - and an option label never, 'above' a pointer only after a noun
+    phrase or 'as noted' (never a comparison - 'above zero', 'above-average', 'above or below' - nor the questions or
+    options of the asks themselves) needing the 200 characters too, and the denial saying to re-send the ask unchanged (usage audit
     2026-11-03 U04: 4 of 5 measured denials were of asks shown in full; the transcript can lag the ask's own message at
     PreToolUse, so text in that message costs one re-send); and a
     small solve-task close whose `Result:` line has no `review:` field (session 5984019e) - a close stating no `Size:` is
@@ -911,8 +913,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     source edit this cycle and never where task-design / verify-plan / implement ran or a plan file was read or written
     (audit 2026-10-20 C37, 4a210c3c). The solve-task FLOW STOP FIELDS note reads the whole transcript once per session
     for the flow's marker (`guard-stop-flow-*` keeps how far it read), says nothing once the plan is stamped `Completed:`
-    and a typed turn followed until a typed /task-solve or the flow's Skill call re-arms it (usage audit 2026-11-03 U08: 6
-    of 6 post-cycle asks drew notes), and accepts a field opening a sentence inside a
+    and a typed turn followed until a typed /task-solve, the flow's Skill call or a step skill called after that turn
+    (`task-design` / `-verify-plan` / `-implement` / `-verify-code`: new scope re-enters at task-design) re-arms it (usage
+    audit 2026-11-03 U08: 6 of 6 post-cycle asks drew notes), and accepts a field opening a sentence inside a
     one-line question; the same read places the stop, so the note also names a RECEIPT the stop owes and left out - `Size:`
     at a cycle's first stop (no ask answered since its marker or its new-scope prompt, an opening fresh hand-off excepted),
     `mechanics: read` at the approval (an 'Approve' option), `memories purged:` at the close (no ask answered since the

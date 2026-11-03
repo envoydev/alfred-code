@@ -1138,6 +1138,18 @@ test('guard-stop-contract (U08): no flow field notes past a completed cycle and 
   const skill = { type: 'assistant', message: { id: 'sk', content: [{ type: 'tool_use', id: 'sk1', name: 'Skill', input: { skill: 'alfred-code:task-solve' } }] } };
   assert.match(ctxOf(askIn(transcript('u08-skill-marker', [...cycle, after, skill, assistantRow('d3', 'Design done.', { cache_read_input_tokens: 900 })]), oneQ)),
     /THREE named fields/, "the flow's Skill call after the stamp opens a new cycle");
+  // the review of 2026-11-03: new scope re-enters at step 1 through task-design (task-solve SKILL.md), never task-solve
+  // itself, so a step skill called after the typed turn is the new cycle too - its first stop owes the fields and Size:
+  for (const step of ['alfred-code:task-design', 'task-verify-plan', 'alfred-code:task-implement']) {
+    const call = { type: 'assistant', message: { id: `st-${step}`, content: [{ type: 'tool_use', id: `st1-${step}`, name: 'Skill', input: { skill: step } }] } };
+    const ctx = ctxOf(askIn(transcript(`u08-step-${step.replace(/\W/g, '')}`, [...cycle, typed('now also add the retry setting'), call, assistantRow('d4', 'Design done.', { cache_read_input_tokens: 900 })]), oneQ));
+    assert.match(ctx, /THREE named fields/, `${step} after new scope opens the next cycle`);
+    if (step.endsWith('task-design')) assert.match(ctx, /`Size: /, "the new cycle's first stop owes its Size line");
+  }
+  // a step skill called BEFORE the typed turn is the closed cycle's own, never a re-arm
+  const late = { type: 'assistant', message: { id: 'st-old', content: [{ type: 'tool_use', id: 'st-old1', name: 'Skill', input: { skill: 'task-verify-code' } }] } };
+  assert.equal(ctxOf(askIn(transcript('u08-step-before', [marker, assistantRow('d5', 'Design done.', { cache_read_input_tokens: 900 }), late, completed, after, reply]), oneQ)), '',
+    'a step call inside the finished cycle re-arms nothing');
 });
 
 test('guard-stop-contract: an answer a few calls back is still just answered, in either wording (audit 2026-10-10 C01)', () => {
@@ -1384,6 +1396,22 @@ test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own obje
   assert.equal(short.status, 2, 'under SHOWN_MIN nothing is shown');
   assert.match(short.stderr, /a pointer at something above that the chat has not shown/);
   assert.equal(over('values-long', [toolRow('g4'), assistantRow('g5', listed)], values).status, 0, 'over SHOWN_MIN the pointer has text to point at');
+
+  // the review of 2026-11-03: a quote shows the subject only as the approval's own object - in its clause, or a sentence
+  // that presents it ('The line: ...') - never an incidental command span in another sentence
+  for (const q of ['Approve the plan? Its last step is `git push origin develop`.', 'Approve the plan? Its last step is: `git push origin develop`.',
+    'Commit the five groups above locally in ticket order? Each one runs `npm run lint` first.'])
+    assert.equal(over(`incidental-${q.length}`, [toolRow('h1'), assistantRow('h2', status)], ask(q, ['Hold (Recommended)', 'Go'])).status, 2, `an incidental code span shows nothing: ${q}`);
+  assert.equal(over('own-clause', [toolRow('h3'), assistantRow('h4', status)], ask('Post the comment "Fixed in 1.2, the retry now waits for the lock" on the ticket?', ['Post it (Recommended)', 'Hold'])).status, 0,
+    "a quote in the approval's own clause is shown");
+  assert.equal(over('presented', [toolRow('h5'), assistantRow('h6', status)], ask('Post this reply? The reply: "Thanks, the fix ships in the next patch release".', ['Post it (Recommended)', 'Hold'])).status, 0,
+    'a sentence that only presents the quote shows it');
+  // ... and 'above' is a pointer only after a noun phrase or 'as noted', never in a comparison, nor at the asks just answered
+  for (const q of ['Keep the retry delay above zero for the import job?', 'Raise the limit above what the docs allow?', 'Is an above-average timeout fine for this job?',
+    'Is there anything about how the project runs that the questions above did not cover?', 'Keep the cache size above or below the old default?'])
+    assert.equal(over(`compare-${q.length}`, [toolRow('i1'), assistantRow('i2', status)], ask(q, ['Yes (Recommended)', 'No'])).status, 0, `no pointer: ${q}`);
+  assert.equal(over('noted-above', [toolRow('i3'), assistantRow('i4', status)], ask('Apply the fix as noted above, then rerun the suite?', ['Apply it (Recommended)', 'Hold'])).status, 2,
+    "'as noted above' still points at text the chat must show");
 });
 
 test('guard-stop-contract: a /mode-auto-run run that reads the installed solve flow owes its receipts; nothing else marks one (2026-10-25)', () => {
