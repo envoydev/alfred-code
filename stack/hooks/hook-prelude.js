@@ -470,7 +470,7 @@ function autoStampLive(input, env)
 // - readReceiptFile: the lines (no blank, `#` or `session:` line) and whether the file is live for THIS call - under 8h,
 //   not older than the transcript (a birthtime equal to the ctime is a filesystem's fallback, unknown) and, where the call
 //   names its session, carrying a `session: <id>` line naming it (HK-16; the secret guard's rule since audit 2026-10-08).
-// - receiptAnswered: for the four SECURITY receipts (SECRET-READ, DISCARD, DESKTOP-EXEC, CROSS-WRITE) the transcript must
+// - receiptAnswered: for the five SECURITY receipts (SECRET-READ, DISCARD, DESKTOP-EXEC, CROSS-WRITE, GUARD-OFF) the transcript must
 //   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label - the
 //   result of an AskUserQuestion call in this transcript, never an `answers`-shaped result of another tool (FA-4) - and
 //   given while auto-run was off - judged at the answer's place: a typed family command whose leading run turns auto-run
@@ -676,6 +676,121 @@ function receiptShutText(r, rel)
     return `The receipt at ${rel} is not honoured: ${r.why}.` + (r.autoRun
         ? ' Under auto-run this gate is a hard stop: it opens only on the user\'s own answer, given with auto-run off (`--mode-auto-run-off`).'
         : ' Rewrite it only on a fresh answer.') + '\n';
+}
+
+// THE USER'S OWN WORDS AND ANSWERS, read where a guard decides (usage audit 2026-11-03 U20 / U21, the user's rulings). One
+// pass over this session's transcript: each turn the user TYPED (typedRowText - never a tool result, a meta row, a
+// compaction summary, a sidechain or a harness prompt), with the text the harness lays inside such a row cut out (a
+// reminder or an IDE note it appends, a typed command's own name and message line, a `!` command's output), and each
+// AskUserQuestion answer that is the result of an AskUserQuestion call in the same file (FA-4), with whether auto-run was
+// on when it was given (the typed flag rows, receiptAnswered's read). Only the transcript decides, so no file the model
+// writes can (HK-03). No transcript: null. Kept per file size and mtime within one process.
+const USER_NEEDLE = '"type":"user"';
+const HARNESS_SPANS_RE = /<(system-reminder|command-name|command-message|bash-stdout|bash-stderr|local-command-stdout|local-command-stderr|local-command-caveat|ide_[a-z_]+)\b[^>]*>[\s\S]*?<\/\1>/g;
+const turnsRead = new Map();
+function userTurns(input)
+{
+    const payload = input && typeof input === 'object' ? input : {};
+    const tp = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
+    let st = null;
+    try { st = tp ? fs.statSync(tp) : null; } catch { st = null; }
+    if (!st || !st.isFile()) return null;
+    const sid = typeof payload.session_id === 'string' ? payload.session_id : '';
+    const key = `${tp}\0${sid}\0${st.size}\0${st.mtimeMs}`;
+    if (turnsRead.has(key)) return turnsRead.get(key);
+    const typed = [];
+    const asks = new Map();
+    const answers = [];
+    let auto = false;
+    linesWith(tp, [USER_NEEDLE, ASK_NEEDLE], (line, at) =>
+    {
+        if (line.includes(ASK_NEEDLE))
+        {
+            const row = rowOf(line);
+            const c = row && row.type === 'assistant' && row.message && row.message.content;
+            if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && typeof b.id === 'string')
+                asks.set(b.id, b.input && Array.isArray(b.input.questions) ? b.input.questions : []);
+            return;
+        }
+        if (isTypedCandidate(line))
+        {
+            const row = rowOf(line);
+            const text = typedRowText(row);
+            if (!text) return;
+            const ev = autoEventOf(text);
+            if (ev) auto = ev === 'on';
+            if (sid && row.sessionId && row.sessionId !== sid) return;
+            typed.push({ at, text: text.replace(HARNESS_SPANS_RE, ' ') });
+            return;
+        }
+        if (!line.includes(ANSWER_NEEDLE) || !line.includes('"toolUseResult"')) return;
+        const row = rowOf(line);
+        const result = row && row.toolUseResult;
+        if (!result || typeof result !== 'object' || !result.answers || typeof result.answers !== 'object' || askTimedOut(result)) return;
+        answers.push({ at, ids: resultIds(row), answers: result.answers, auto });
+    });
+    const answered = answers.filter((a) => a.ids.some((id) => asks.has(id))).map((a) => ({ ...a, questions: a.ids.flatMap((id) => asks.get(id) || []) }));
+    const out = { typed, answered };
+    turnsRead.set(key, out);
+    return out;
+}
+// The texts of the turns the user typed in this session, oldest first; [] with no transcript.
+function typedTurnTexts(input)
+{
+    const t = userTurns(input);
+    return t ? t.typed.map((r) => r.text) : [];
+}
+// Each question of an AskUserQuestion answered after the user's newest typed turn, oldest first: { question, header,
+// answer, chosen: [{ label, description }] (the options picked - a free-text answer is its own label), auto }. A
+// timed-out ask is no answer. [] with no transcript.
+function asksAnsweredSinceTyped(input)
+{
+    const t = userTurns(input);
+    if (!t) return [];
+    const since = t.typed.length ? t.typed[t.typed.length - 1].at : -1;
+    const out = [];
+    for (const a of t.answered)
+    {
+        if (a.at <= since) continue;
+        for (const [question, given] of Object.entries(a.answers))
+        {
+            const q = a.questions.find((x) => x && typeof x.question === 'string' && normLabel(x.question) === normLabel(question)) || {};
+            const parts = new Set([String(given), ...String(given).split(/,\s*/)].map(normLabel).filter(Boolean));
+            const options = Array.isArray(q.options) ? q.options.filter((o) => o && typeof o.label === 'string') : [];
+            const chosen = options.filter((o) => parts.has(normLabel(o.label))).map((o) => ({ label: o.label, description: typeof o.description === 'string' ? o.description : '' }));
+            out.push({ question: String(question), header: typeof q.header === 'string' ? q.header : '', answer: String(given),
+                chosen: chosen.length ? chosen : [{ label: String(given), description: '' }], auto: a.auto });
+        }
+    }
+    return out;
+}
+// The ABSOLUTE paths a typed text names (U20): a POSIX `/a/b`, a `~/` path (expanded with `home`), and on win32 a drive
+// path (`C:\a`, `C:/a`), a UNC path and a Git Bash mount path (`native` translates it first - shell-writes.js
+// nativePath). Quoted (a space kept) or bare; brackets, sentence punctuation and a `:<line>[:<col>]` suffix dropped;
+// never a URL's path (`https://h/p`), a relative path or a bare root. [{ abs, slash }] - `slash` when written with a
+// trailing separator, so a folder.
+function typedPaths(text, { platform = process.platform, home = homeDir(), native = (s) => s } = {})
+{
+    const P = platform === 'win32' ? path.win32 : path.posix;
+    const ABS = platform === 'win32' ? /^(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]|\/[^/\s])/ : /^\/[^/\s]/;
+    const out = new Map();
+    const take = (word) =>
+    {
+        let s = String(word).trim().replace(/^[([{<]+/, '').replace(/[)\]}>.,;:!?]+$/, '').replace(/:\d+(?::\d+)?$/, '');
+        if (s === '~' || /^~[\\/]/.test(s)) { if (!home) return false; s = P.join(home, s.slice(1)); }
+        else if (!ABS.test(s)) return false;
+        const slash = /[\\/]$/.test(s);
+        let abs;
+        try { abs = P.resolve(String(native(s))); } catch { return false; }
+        if (abs === P.parse(abs).root) return false;
+        const seen = out.get(abs);
+        out.set(abs, { abs, slash: Boolean(slash || (seen && seen.slash)) });
+        return true;
+    };
+    let rest = String(text || '');
+    rest = rest.replace(/(["'`])([^"'`\n]+?)\1/g, (m, q, inner) => (take(inner) ? ' ' : m));
+    for (const w of rest.split(/[\s"'`=,;|*]+/)) take(w);
+    return [...out.values()];
 }
 
 // The AUTO stamp's proof (HK-03). A stamp the start hook wrote names its session and records the transcript's size when
@@ -1729,4 +1844,4 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };

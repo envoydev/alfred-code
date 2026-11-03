@@ -33,17 +33,18 @@ const path = require('path');
 // this hook running - envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+// The stand-downs are read here and applied after the guard switch-off half (SYS-01, below), which holds under every one
+// of them. R86: a repo never set up gets no block row from that half.
+let off = false;
+let unsetRepo = false;
 if (require.main === module) {
-  let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     off = prelude.standDown('guard-config-protection');
+    unsetRepo = prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
-  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
-  if (off) process.exit(0);
 }
-if (envOf(process.env, 'CONFIG_PROTECT') === '0') process.exit(0);
 
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
@@ -97,10 +98,9 @@ const unq = (s) => String(s).replace(/^["']|["']$/g, '');
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
 if (!payload || typeof payload !== 'object') process.exit(0);
-// GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+// GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - read here, applied after SYS-01 below.
 let cursorOff = false;
 try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
-if (cursorOff) process.exit(0);
 
     // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
     // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -116,7 +116,7 @@ if (cursorOff) process.exit(0);
         const exit = process.exit.bind(process);
         process.exit = (code) =>
         {
-            if (code === 2)
+            if (code === 2 && !unsetRepo)
             {
                 try
                 {
@@ -718,6 +718,13 @@ function inPlaceWeakens(command, abs, keyed) {
   let before = '';
   try { before = fs.readFileSync(abs, 'utf8'); } catch { return false; }
   if (!keyPairs(before, keyed)) return false;
+  const edited = sedApplied(command, before);
+  if (!edited || !edited.applied || keyPairs(before, keyed) === keyPairs(edited.text, keyed)) return false;
+  return !(keyed === KEYED[1] ? onlyTightens(before, edited.text, keyed) : tsOnlyTightens(before, edited.text, keyed));
+}
+// The text every `s` script the command carries leaves of `before` ({ text, applied } - applied counts the scripts), or
+// null when one cannot be compiled. inPlaceWeakens above and the guard switch-off half (SYS-01) read an in-place edit so.
+function sedApplied(command, before) {
   const ere = /(?:^|\s)-(?:[a-zA-Z]*[Er][a-zA-Z]*)\b/.test(command) || /\bperl\b/.test(command);
   const toJs = (re) => (ere ? re : re.replace(/\\([(){}+?|])|([(){}+?|])/g, (m, esc, bare) => (esc ? esc : `\\${bare}`)));
   const repl = (r) => r.replace(/\\(\d)|\\&|&|\$/g, (m, d) => (d ? `$${d}` : m === '\\&' ? '&' : m === '&' ? '$&' : '$$'));
@@ -735,7 +742,7 @@ function inPlaceWeakens(command, abs, keyed) {
         pat = new RegExp(toJs(m[4]), `${m[6].includes('g') ? 'g' : ''}${/[iI]/.test(m[6]) ? 'i' : ''}`);
         const at = (a) => (a === undefined ? null : /^\d+$/.test(a) ? Number(a) : a === '$' ? Infinity : new RegExp(toJs(a.slice(1, -1))));
         from = at(m[1]); to = at(m[2]);
-      } catch { return false; }
+      } catch { return null; }
       const lines = text.split('\n');
       let inRange = false;
       const hit = (spec, i, line) => (typeof spec === 'number' ? (spec === Infinity ? i === lines.length - 1 : i + 1 === spec) : spec.test(line));
@@ -749,8 +756,7 @@ function inPlaceWeakens(command, abs, keyed) {
       applied += 1;
     }
   }
-  if (!applied || keyPairs(before, keyed) === keyPairs(text, keyed)) return false;
-  return !(keyed === KEYED[1] ? onlyTightens(before, text, keyed) : tsOnlyTightens(before, text, keyed));
+  return { text, applied };
 }
 function judgeShell() {
   let command = String((payload.tool_input || {}).command || '');
@@ -826,12 +832,6 @@ function judgeFsServer() {
   return judgeFileTool({ file_path: abs, edits });
 }
 
-// SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list; a
-// copy that runs before that module lands judges the file tools alone.
-const hit = FS_WRITE_TOOL.test(String(payload.tool_name || '')) ? judgeFsServer()
-  : shell && shell.isShellTool(payload.tool_name) ? judgeShell() : judgeFileTool();
-if (!hit) process.exit(0);
-
 // Both sides as REAL paths: the same file spelled through a symlinked root read as outside and passed (audit 2026-10-08).
 // A file not created yet resolves through its deepest existing folder, the rest re-attached: left as spelled, a short 8.3
 // parent (RUNNER~1) or a symlinked one read as outside a root that resolved long, and a new shadowing config passed (3.6.0 CI).
@@ -846,20 +846,245 @@ const real = (p) => {
     dir = up;
   }
 };
-const rel = path.relative(real(ROOT), real(hit.abs)).split(path.sep).join('/');
-if (rel.startsWith('..') || path.isAbsolute(rel)) process.exit(0); // outside the project - the cross-project guard owns it
-
 // 2.8.0: an ALLOW receipt lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one is still read for the
 // 2.x line, and is the only path when layout.js is not beside this file.
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+// The receipt reader (hook-prelude.js). No prelude, no reader: every receipt here reads shut.
+let receipts = null;
+try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
+
+// ---- SYS-01 (system audit 2026-11-03, BLOCKER): a write that switches a PROTECTIVE guard off --------------------------
+// The hooks read their off-list (the HOOKS_OFF csv) from the settings `env` (hook-prelude.js GATE 1: layout.js applies the project's
+// settings.local.json and settings.json at every hook start, and Claude Code hands each hook the env of the user, project,
+// local - the repository root's since 2.1.211 - and managed files), and Claude Code's `disableAllHooks: true` stands every
+// hook down. So a write adding the rm, secret, force-push or desktop exec guard (hook-prelude.js PROTECTIVE) to the csv, or
+// setting disableAllHooks, stood that guard down from the next call on, and no guard judged it (replayed under
+// bypassPermissions). Such a write is denied with ONE ask on every route this guard covers - a file tool and a filesystem
+// server judged on the file it leaves, a shell write on the JSON it carries (a heredoc body, a quoted literal, a copied
+// file) and by name for the rest, an in-place sed applied in memory - and GUARD-OFF-ALLOW is a SECURITY receipt
+// (hook-prelude.js securityReceipt: this session's, under 8h, after the user's own 'Allow this guard switch-off' to this
+// denial with auto-run off). It runs before every stand-down - the csv (naming this guard first would open the protective
+// ones), `minimal`, a repo never set up (no block row there, R86), a Cursor payload, the old CONFIG_PROTECT=0. Removing a
+// guard from the list, or any other key, passes. Not read: `.variables` (layout.js never reads HOOKS_OFF there, D7) and a
+// workspace member's files (they hand a child `<hook>:<part>` entries only, and no protective guard has a part). Ceilings:
+// a path or a value the shell computes, a runtime script that builds the JSON, and a plugin disabled in `enabledPlugins`.
+const PROTECTIVE_GUARDS = (() => { try { return [...receipts.PROTECTIVE]; } catch { return ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec']; } })();
+const RENAMED_HOOKS = (receipts && receipts.HOOK_RENAMED) || {};
+// The key as envOf spells every stack setting: the prefix, then the suffix.
+const HOOKS_OFF_SUFFIX = 'HOOKS_OFF';
+const HOOKS_OFF_KEY = `ALFRED_CODE_${HOOKS_OFF_SUFFIX}`;
+const GUARD_OFF = 'GUARD-OFF-ALLOW';
+const GUARD_OFF_LABEL = 'Allow this guard switch-off';
+const HOME_DIR = (() => { try { return require('os').homedir() || ''; } catch { return process.env.HOME || ''; } })();
+const foldCase = (p) => (process.platform === 'win32' ? String(p).toLowerCase() : String(p));
+const under = (dir, file) => { const r = path.relative(dir, file); return r !== '' && !r.startsWith('..') && !path.isAbsolute(r) ? r.split(path.sep).join('/') : null; };
+const shownAs = (file) => { const r = real(file); const inRoot = under(real(ROOT), r); if (inRoot) return inRoot; const inHome = HOME_DIR ? under(real(HOME_DIR), r) : null; return inHome ? `~/${inHome}` : r; };
+let watched = null;
+// The settings file `abs` is, as { abs, shown }, or null: the project's two, the repository root's local one Claude Code
+// reads for a sub-folder or a worktree (layout.js localSettingsFile), the account's, the managed file and its drop-ins.
+function settingsAt(abs) {
+  if (!watched) {
+    watched = { files: new Map(), dropIns: null };
+    const add = (file) => { if (file) watched.files.set(foldCase(real(file)), shownAs(file)); };
+    add(path.join(ROOT, '.claude', 'settings.json'));
+    add(path.join(ROOT, '.claude', 'settings.local.json'));
+    try { add(layout && layout.localSettingsFile(ROOT)); } catch { /* no repository */ }
+    const account = process.env.CLAUDE_CONFIG_DIR || (HOME_DIR ? path.join(HOME_DIR, '.claude') : '');
+    if (account) add(path.join(account, 'settings.json'));
+    try {
+      const managed = layout && layout.managedSettingsFile(process.platform);
+      if (managed) { add(managed); watched.dropIns = foldCase(real(path.join(path.dirname(managed), 'managed-settings.d'))); }
+    } catch { /* no managed path */ }
+  }
+  const r = real(abs);
+  const shown = watched.files.get(foldCase(r));
+  if (shown) return { abs: r, shown };
+  if (watched.dropIns && /\.json$/i.test(r) && foldCase(path.dirname(r)) === watched.dropIns) return { abs: r, shown: r };
+  return null;
+}
+const readOr = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
+const offEntry = (e) => { const n = String(e).trim().toLowerCase().replace(/\.js$/, ''); return RENAMED_HOOKS[n] || n; };
+// What a settings text switches off - { off: the protective guards its csv names, all: disableAllHooks is true } - read
+// as JSON (a BOM, comments and trailing commas forgiven), or null when it is no object.
+function offState(text) {
+  const src = String(text == null ? '' : text).replace(/^\uFEFF/, '');
+  let data = null;
+  for (const t of [src, stripJsonComments(src).replace(/,(\s*[}\]])/g, '$1')]) { try { data = JSON.parse(t); break; } catch { data = null; } }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const env = data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
+  const csv = Object.hasOwn(env, HOOKS_OFF_KEY) && env[HOOKS_OFF_KEY] != null ? String(env[HOOKS_OFF_KEY]) : '';
+  return { off: new Set(csv.split(',').map(offEntry).filter((n) => PROTECTIVE_GUARDS.includes(n))), all: data.disableAllHooks === true };
+}
+// A text that is no settings object (a fragment, a command, a script) by what it names: a guard's name as a word, and
+// `disableAllHooks` unless set false.
+function namedState(text) {
+  const s = String(text || '');
+  return { off: new Set(PROTECTIVE_GUARDS.filter((n) => new RegExp(`(?<![\\w-])${n}(?:\\.js)?(?![\\w-])`, 'i').test(s))),
+    all: /disableAllHooks/.test(s) && !/disableAllHooks["'\\\s]*[:=]\s*["']?false\b/i.test(s) };
+}
+const NOTHING_OFF = { off: new Set(), all: false };
+const stateOf = (text) => (text == null ? NOTHING_OFF : offState(text) || namedState(text));
+const merged = (states) => ({ off: new Set(states.flatMap((s) => [...s.off])), all: states.some((s) => s.all) });
+const switchedOff = (file, before, after) => {
+  const added = [...after.off].filter((n) => !before.off.has(n));
+  return added.length || (after.all && !before.all) ? { ...file, added, all: after.all && !before.all } : null;
+};
+function guardOffFile(given) {
+  const ti = given || payload.tool_input || {};
+  const target = ti.file_path || ti.notebook_path;
+  if (typeof target !== 'string' || !target) return null;
+  const file = settingsAt(resolveIn(target));
+  if (!file) return null;
+  const beforeText = readOr(file.abs);
+  const before = stateOf(beforeText);
+  if (typeof ti.content === 'string') return switchedOff(file, before, stateOf(ti.content));
+  if (typeof ti.new_source === 'string') return switchedOff(file, before, namedState(ti.new_source));
+  const change = beforeText == null ? null : appliedChange(ti, file.abs);
+  if (change && change.applied) return switchedOff(file, before, stateOf(change.after));
+  // An edit Claude Code may still apply another way (its quote normalisation): judged on what it adds, by name.
+  const edits = Array.isArray(ti.edits) ? ti.edits : [ti];
+  return switchedOff(file, before, namedState(edits.map((e) => (e && typeof e.new_string === 'string' ? e.new_string : '')).join('\n')));
+}
+function guardOffFs() {
+  const ti = payload.tool_input || {};
+  const verb = String(payload.tool_name).replace(/^mcp__.+__/, '');
+  if (verb === 'move_file') {
+    const dest = fsPath(ti.destination);
+    const file = dest && settingsAt(dest);
+    if (!file) return null;
+    const source = fsPath(ti.source);
+    return switchedOff(file, stateOf(readOr(file.abs)), stateOf(source ? readOr(source) : null));
+  }
+  const abs = fsPath(ti.path);
+  if (!abs) return null;
+  if (verb === 'write_file') return typeof ti.content === 'string' ? guardOffFile({ file_path: abs, content: ti.content }) : null;
+  if (ti.dryRun === true || !Array.isArray(ti.edits) || !ti.edits.length) return null;
+  return guardOffFile({ file_path: abs, edits: ti.edits.map((e) => ({ old_string: e && typeof e.oldText === 'string' ? e.oldText : '', new_string: e && typeof e.newText === 'string' ? e.newText : '' })) });
+}
+// What a shell write can carry into a file: each JSON object it holds (a heredoc body, a quoted literal) read as settings,
+// each existing file it names (a copy's source, a script - at most 16, 1MB each; never a settings file itself) read as
+// settings or by name, and the rest of its text by name.
+function carriedState(command, scan) {
+  const states = [];
+  let text = command;
+  const blank = (a, b) => { text = text.slice(0, a) + text.slice(a, b).replace(/[^\n]/g, ' ') + text.slice(b); };
+  let docs = [];
+  try { docs = shell.heredocsOf(command); } catch { docs = []; }
+  for (const h of docs) {
+    const st = offState(command.slice(h.bodyStart, h.bodyEnd));
+    if (st) { states.push(st); blank(h.bodyStart, h.bodyEnd); }
+  }
+  let spans = [];
+  try { spans = shell.quotedSpans(shell.blankHeredocs(command)); } catch { spans = []; }
+  for (const [a, b] of spans) {
+    const inner = command.slice(a + 1, b - 1);
+    if (!/^\s*\{/.test(inner)) continue;
+    const st = offState(command[a] === '"' ? inner.replace(/\\(["\\$`])/g, '$1') : inner);
+    if (st) { states.push(st); blank(a, b); }
+  }
+  const norm = (t) => nativePath(shell.unquote(t));
+  let read = 0;
+  for (const m of shell.blankHeredocs(text).matchAll(/'[^']*'|"(?:[^"\\]|\\.)*"|[^\s;&|<>()]+/g)) {
+    if (read >= 16) break;
+    const word = shell.unquote(m[0]);
+    if (!word || /^-/.test(word) || /[$`*?]/.test(word)) continue;
+    let anchor = CWD;
+    try { anchor = shell.anchorAt(scan.cds, m.index, CWD, norm) || CWD; } catch { anchor = CWD; }
+    const abs = path.resolve(anchor, nativePath(word.replace(/^~(?=[\\/])/, HOME_DIR || '~')));
+    let st = null;
+    try { st = fs.statSync(abs); } catch { st = null; }
+    if (!st || !st.isFile() || st.size > 1024 * 1024 || settingsAt(abs)) continue;
+    read += 1;
+    states.push(stateOf(readOr(abs)));
+  }
+  states.push(namedState(text));
+  return merged(states);
+}
+function guardOffShell() {
+  if (!shell) return null;
+  let command = String((payload.tool_input || {}).command || '');
+  if (/^PowerShell$/i.test(String(payload.tool_name || ''))) command = command.replace(/\\/g, '/');
+  if (!command.trim()) return null;
+  let scan;
+  try { scan = shell.scanShell(command, { cwd: CWD }); } catch { return null; }
+  const norm = (t) => nativePath(shell.unquote(t));
+  let carried = null;
+  for (const t of scan.targets) {
+    if (t.verb === 'rm') continue; // a removal switches nothing off
+    const raw = scan.expandVars(String(t.raw || ''), t.index);
+    if (!raw || shell.isVar(raw) || !/\.json$/i.test(raw)) continue;
+    const anchor = shell.anchorAt(scan.cds, t.index, CWD, norm);
+    const spelled = nativePath(raw.replace(/^~(?=[\\/])/, HOME_DIR || '~'));
+    if (anchor === null && !path.isAbsolute(spelled)) continue;
+    const file = settingsAt(path.resolve(anchor || CWD, spelled));
+    if (!file) continue;
+    const beforeText = readOr(file.abs);
+    const before = stateOf(beforeText);
+    if (t.what === 'an in-place edit' && beforeText != null) {
+      const edited = sedApplied(command, beforeText);
+      if (edited && edited.applied) {
+        const hit = switchedOff(file, before, stateOf(edited.text));
+        if (hit) return hit;
+        continue;
+      }
+    }
+    if (!carried) carried = carriedState(command, scan);
+    const hit = switchedOff(file, before, carried);
+    if (hit) return hit;
+  }
+  return null;
+}
+function guardOffDenial(off) {
+  const receiptFile = layout ? layout.findState(ROOT, 'approvals', GUARD_OFF) : path.resolve(ROOT, docsRootEnv(), 'flow', GUARD_OFF);
+  const heldOff = receipts && receipts.securityReceipt ? receipts.securityReceipt(receiptFile, payload, { marker: GUARD_OFF, labels: [GUARD_OFF_LABEL] }) : null;
+  if (heldOff && heldOff.live && (heldOff.lines.includes('*') || heldOff.lines.includes(off.shown) || heldOff.lines.includes(off.abs))) return;
+  const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', GUARD_OFF) : receiptFile).split(path.sep).join('/');
+  const what = [...(off.added.length ? [`adds ${off.added.join(', ')} to ${HOOKS_OFF_KEY}`] : []), ...(off.all ? ['sets disableAllHooks: true'] : [])].join(' and ');
+  const names = off.all ? 'every hook' : off.added.join(', ');
+  global.BLOCK_DETAIL = { branch: 'guard-off', file: off.shown, guards: off.added, all: off.all };
+  process.stderr.write(
+    `Blocked: this write to ${off.shown} ${what}, which stands ${off.all ? 'every hook' : off.added.length > 1 ? 'those guards' : 'that guard'} down from the next call on.\n` +
+    `The protective guards stop what cannot be undone (a recursive rm or a discard, a credential read, a force push, a\n` +
+    `desktop exec), so switching one off is the user's call, never the model's. End this turn with ONE AskUserQuestion,\n` +
+    `in this order -\n` +
+    `  'Keep the guards on (Recommended)' - leave the setting as it is\n` +
+    `  '${GUARD_OFF_LABEL}' - the user wants ${names} off\n` +
+    `On '${GUARD_OFF_LABEL}', write the receipt ${receiptRel} with exactly these lines and retry the SAME call:\n` +
+    (receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, [off.shown]) : `  ${off.shown}\n`) +
+    `It counts only after the user's own answer to this denial, never one auto-run gave, for this session, under 8h.\n` +
+    `Removing a guard from the list, or any other key, passes.\n` +
+    (receipts && receipts.receiptShutText ? receipts.receiptShutText(heldOff, receiptRel) : ''),
+  );
+  process.exit(2);
+}
+{
+  let switched = null;
+  try {
+    switched = FS_WRITE_TOOL.test(String(payload.tool_name || '')) ? guardOffFs()
+      : shell && shell.isShellTool(payload.tool_name) ? guardOffShell() : guardOffFile();
+  } catch { switched = null; /* a judge that throws leaves the call to the rest of the guard */ }
+  if (switched) guardOffDenial(switched);
+}
+
+// The stand-downs read at the top, applied now (outside any try: the shell-guard dispatcher runs this file in-process,
+// where a catch would swallow the exit).
+if (off || cursorOff) process.exit(0);
+if (envOf(process.env, 'CONFIG_PROTECT') === '0') process.exit(0);
+
+// SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list; a
+// copy that runs before that module lands judges the file tools alone.
+const hit = FS_WRITE_TOOL.test(String(payload.tool_name || '')) ? judgeFsServer()
+  : shell && shell.isShellTool(payload.tool_name) ? judgeShell() : judgeFileTool();
+if (!hit) process.exit(0);
+
+const rel = path.relative(real(ROOT), real(hit.abs)).split(path.sep).join('/');
+if (rel.startsWith('..') || path.isAbsolute(rel)) process.exit(0); // outside the project - the cross-project guard owns it
+
 const receipt = layout ? layout.findState(ROOT, 'approvals', 'CONFIG-EDIT-ALLOW') : path.resolve(ROOT, docsRootEnv(), 'flow', 'CONFIG-EDIT-ALLOW');
 // A workflow receipt, not a security one (the plan's HK-03 ruling): no answer binding, but this session's own (HK-16,
 // hook-prelude.js readReceiptFile) - a `session:` line naming the call's session, under 8h, not older than the transcript.
-// No prelude, no reader: shut.
-let receipts = null;
-try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
-const held = receipts && receipts.readReceiptFile ? receipts.readReceiptFile(receipt, payload) : null;
+const held =receipts && receipts.readReceiptFile ? receipts.readReceiptFile(receipt, payload) : null;
 const allowed = Boolean(held && held.live) && (held.lines.includes('*') || held.lines.some((l) => l === rel || l === path.basename(rel)));
 if (allowed) process.exit(0);
 

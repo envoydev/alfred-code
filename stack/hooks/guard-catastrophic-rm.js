@@ -814,6 +814,52 @@ function readLoss(plan, run, gitCwd, opAborted = false)
     }];
 }
 
+// THE USER'S PICK IN THE MODEL'S OWN ASK (usage audit 2026-11-03 U21, the user's ruling): DISCARD-ALLOW also opens on an
+// AskUserQuestion answered since the user's newest typed message, auto-run off, whose question names every file the
+// discard loses (its path, its name, or a folder of it spelled with a `/`) and whose picked option discards - a discard
+// verb in the picked label or its description, or a yes to a question asking the discard; a keep, skip or negated pick
+// is none (e95004e7: a revert picked by label was asked again twice, then done with Edit). Read from the transcript
+// alone (hook-prelude.js asksAnsweredSinceTyped: an answer is the result of an AskUserQuestion call in it - FA-4), never
+// from a file (HK-03). A stash entry is named as `stash@{N}`; an object or reflog loss (`*`) opens only through the receipt.
+const DISCARD_VERB = /\b(?:discard|revert|restore|reset|undo|roll\s?-?back|throw\s+(?:it\s+|them\s+)?away|drop|delete|remove|wipe|clean)\w*/i;
+const KEEP_WORD = /\b(?:keep|don'?t|do\s+not|not|no|never|skip|cancel|leave)\b/i;
+const YES_LABEL = /^\s*(?:yes|y|ok|okay|sure|go\s+ahead|do\s+it|proceed|confirm(?:ed)?|approve[d]?)\b/i;
+const discards = (s) => DISCARD_VERB.test(String(s || '')) && !KEEP_WORD.test(String(s || ''));
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function namesTarget(text, target)
+{
+    const t = String(target).replace(/\\/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, '');
+    if (!t) return false;
+    const parts = t.split('/');
+    const candidates = new Set([t, parts[parts.length - 1]]);
+    for (let i = 1; i < parts.length; i++)
+    {
+        const dir = parts.slice(0, i).join('/');
+        candidates.add(`${dir}/`);
+        if (dir.includes('/')) candidates.add(dir);
+    }
+    const hay = String(text).replace(/\\/g, '/');
+    return [...candidates].some((c) => c && new RegExp(`(?:^|[^A-Za-z0-9_.\\-])${escapeRe(c)}(?=$|[^A-Za-z0-9_\\-]|\\.(?![A-Za-z0-9]))`, 'i').test(hay));
+}
+function pickedInAsk(prelude, payload, targets)
+{
+    try
+    {
+        if (!prelude || !prelude.asksAnsweredSinceTyped || !targets.length || targets.some((f) => f === '*')) return false;
+        for (const a of prelude.asksAnsweredSinceTyped(payload))
+        {
+            if (a.auto) continue;
+            const picks = a.chosen.filter((c) => discards(c.label) || discards(c.description)
+                || (YES_LABEL.test(c.label) && !KEEP_WORD.test(c.label.replace(YES_LABEL, '')) && discards(a.question)));
+            if (!picks.length) continue;
+            const text = [a.question, a.header, ...picks.flatMap((c) => [c.label, c.description])].join('\n');
+            if (targets.every((f) => namesTarget(text, f))) return true;
+        }
+    }
+    catch { /* an unreadable transcript opens nothing */ }
+    return false;
+}
+
 function main()
 {
     let payload;
@@ -1082,7 +1128,7 @@ function main()
             if (!held || !held.live) return false;
             if (held.lines.includes('*')) return true;
             return targets.length > 0 && targets.every((f) => f !== '*' && held.lines.some((l) => l === f || f.startsWith(`${l}/`)));
-        })();
+        })() || pickedInAsk(receipts, payload, targets);
 
         if (!allowed)
         {
@@ -1123,7 +1169,10 @@ function main()
                 `and delete the receipt once the discard ran (a \`*\` left in place opens every discard for 8h):\n` +
                 write +
                 `It counts only after the user's own 'Discard it' to this denial - never one auto-run gave - for this\n` +
-                `session, under 8h. Nothing to lose passes this gate untouched.\n` + shut,
+                `session, under 8h. Nothing to lose passes this gate untouched.\n` +
+                `An ask of your own the user answered since their last message, naming every file above and picking the\n` +
+                `discard, opens it too - retry the SAME command. Reverting these files with Edit or Write instead is the same\n` +
+                `discard: it needs that same answer first.\n` + shut,
             );
             process.exit(2);
         }

@@ -301,11 +301,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   THE RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings): every one is read by ONE reader,
   `hook-prelude.js readReceiptFile` - under 8h, written after the session began, and, where the call names its session,
   holding a `session: <id>` line naming it - and each denial prints the exact lines to write, the session line first
-  (`receiptLinesText`). The four SECURITY receipts (`SECRET-READ-ALLOW`, `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`,
-  `DESKTOP-EXEC-ALLOW`) count only through `securityReceipt` / `receiptAnswered`: this session's transcript must hold an
+  (`receiptLinesText`). The five SECURITY receipts (`SECRET-READ-ALLOW`, `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`,
+  `DESKTOP-EXEC-ALLOW`, `GUARD-OFF-ALLOW` - the last since the system audit of 2026-11-03, SYS-01) count only through
+  `securityReceipt` / `receiptAnswered`: this session's transcript must hold an
   AskUserQuestion answered after that guard's last denial (an `is_error` tool result naming the receipt) with the
   guard's own allow label ('Show or use the value this session ...', 'Discard it', 'Allow ... for this session', 'Allow
-  the browser code runner / the desktop Shell / this executable this session'), and given while auto-run was off,
+  the browser code runner / the desktop Shell / this executable this session', 'Allow this guard switch-off'), and given while auto-run was off,
   judged at the answer's position by the typed `modeFlags` rows - deleting the stamp or typing the off flag afterwards
   opens nothing, and no file the model can write decides it. An answer counts only as the result of an AskUserQuestion
   call in the same transcript (its `tool_use_id`; the final review of 2026-10-30 FA-4: an `answers`-shaped result under
@@ -314,7 +315,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `securityReceipt` with the guard's SHOW label (FA-3: its session line and age alone silenced the rotation ask). A seat's denial is anchored at its time in the seat
   transcript (the payload's `agent_transcript_path`, else `<session>/subagents/agent-<agent_id>.jsonl`), the answer read
   in the main one after it. A timed-out ask is no answer. With no transcript on disk (a CLI run) the old time rule
-  stands; with no prelude the four and `CONFIG-EDIT-ALLOW` read shut. `CONFIG-EDIT-ALLOW` is a workflow gate: session
+  stands; with no prelude the five and `CONFIG-EDIT-ALLOW` read shut. `CONFIG-EDIT-ALLOW` is a workflow gate: session
   and time only. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
   when a whole typed row turning auto-run on (`modeFlags` family + on, or the tagged `/mode-auto-run` row) of this
   session sits within 5MB either side of that offset, read by position (64KB first; 5ms on a 200MB transcript), AND no
@@ -378,6 +379,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     runtime's recursive delete (`shutil.rmtree`, `fs.rmSync` recursive, `File::Path` rmtree, `rimraf`,
     `[IO.Directory]::Delete` with `true`) of the home, project or cwd blocks - of a build folder it passes. A 'discard it' answer
     is honoured via `<data root>/state/approvals/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`), a security receipt (THE RECEIPTS above).
+    Usage audit 2026-11-03 U21 (the user's ruling): the discard also opens on the model's OWN ask - an AskUserQuestion
+    answered since the user's last typed message (`hook-prelude.js asksAnsweredSinceTyped`: FA-4's `tool_use_id` rule, no
+    timed-out ask, none answered under auto-run) whose question, header and chosen option together name EVERY target (the
+    path, its basename or a folder of it spelled with a `/`, at a name boundary, so `ba.txt` is not `a.txt`) and whose
+    pick is the discard - a discard verb (discard, revert, restore, reset, undo, roll back, throw away, drop, delete,
+    remove, wipe, clean) with no keep word (keep, don't, not, no, never, skip, cancel, leave) in the chosen label or in
+    its description, or a yes to a question asking the discard. A typed message after the answer, a free-text answer
+    naming no discard, model prose and any file (an `answers.json` included) open nothing, and a `*` loss (a reflog expire,
+    a prune) never opens this way. The denial says an Edit or Write revert of the same files is the same discard and
+    needs that answer first.
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). THRESHOLD is 400 lines, and the range cap and every shell span
     rule bind only above it (200 before the deep hooks review 2026-10-16, the user's ruling: 485 of 590 sized blocks in
@@ -1237,6 +1248,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Its `interpreter-write` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16 (622 rows nobody
     read); the denial is cut to the ask and its three options (1,553 to ~600 fixed chars).
     The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the answer rows every receipt reads could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is denied with no receipt or allowance route (`recordAt`, branch `transcript`); memory, `settings.json`, a Read, a grep and a copy OUT stay open.
+    A PATH THE USER TYPED (usage audit 2026-11-03 U20, the user's ruling): an ABSOLUTE path in a turn the user typed this
+    session opens writes under its folder - a folder for itself and below, a file for its own folder - read from the
+    transcript at decision time (`hook-prelude.js typedTurnTexts` / `typedPaths`; no receipt, since a file the model can
+    write is no consent, HK-03, and the read runs only on a call about to be denied). `~/` is expanded, a Windows drive,
+    UNC or Git Bash mount spelling is read through `nativePath`, quotes, a trailing slash or comma and a `:line` suffix
+    are dropped, and the compare is a real-path prefix at a separator (`reportsx` is not `reports`). A relative path, a
+    URL, the model's own text, a tool result, a compaction summary, a sidechain or `isMeta` row and a harness prompt
+    (`typedRowText`) open nothing; a typed folder that HOLDS the project opens nothing, and a typed FILE whose folder holds
+    it opens that one file only (`~/.zshrc` never opens the home). The record rule above still wins.
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route + a filesystem
     server's `write_file` as a Write, `edit_file` as an edit over its `oldText` / `newText` (a `dryRun` writes nothing) and
     `move_file` as a removal of its source and of a config its destination would replace, a new destination's shadowing
@@ -1274,6 +1294,23 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     A lockfile, a migration, the central
     package file and a solution file are a recorded DECLINE (2.1.5 M13, in its header): legitimate work edits each, and
     whether a migration was applied lives in a database no hook reads.
+    THE GUARD SWITCH-OFF (system audit 2026-11-03 SYS-01, BLOCKER): a write that adds a PROTECTIVE guard (the rm, secret,
+    force-push or desktop exec guard; its old name too, `HOOK_RENAMED`) to `ALFRED_CODE_HOOKS_OFF` in a settings `env`, or
+    sets `disableAllHooks: true`, is denied with ONE ask ('Keep the guards on (Recommended)' / 'Allow this guard
+    switch-off'), opened only by `GUARD-OFF-ALLOW`, a security receipt (THE RECEIPTS above; a line naming the file as shown,
+    its real path or `*`). Watched files: the project's `.claude/settings.json` and `settings.local.json`, the repository
+    root's `settings.local.json` (`layout.js localSettingsFile`, Claude Code 2.1.211+), the account's `settings.json`
+    (`CLAUDE_CONFIG_DIR`, else `~/.claude`), the managed file and its `managed-settings.d/*.json`. Judged on every route:
+    a file tool and a filesystem server on the file they leave (JSONC, a BOM and trailing commas forgiven; a fragment or
+    an Edit Claude Code may still apply another way by the names it adds), a shell write to a watched file on the JSON it
+    carries (a heredoc body, a quoted object, an existing non-settings file it names - at most 16, 1MB each, a copy's source
+    or a `jq` filter's input) and on the guard names in the rest, an in-place `sed` applied in memory, a `move_file` on its
+    source. It runs BEFORE every stand-down - the csv (one naming this guard first would open the protective ones), the
+    `minimal` profile, a Cursor payload, `CONFIG_PROTECT=0` and a repo never set up, which writes no block row (R86).
+    Removing a guard from the list, a guard already listed and any other key pass. Not read: `.variables` (layout.js never
+    reads the off-list there, D7) and a workspace member's files (they hand down `<hook>:<part>` entries only, and no
+    protective guard has a part). Ceilings: a path or value the shell computes, a runtime script that builds the JSON,
+    and a plugin switched off in `enabledPlugins`.
   - `guard-desktop-exec.js` (PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any
     registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
     (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server
