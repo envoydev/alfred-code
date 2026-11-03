@@ -666,3 +666,21 @@ test('H7: a find naming one file is sized like a cat of it; -iname is the same i
   }
   assert.equal(at('find src -iname "*.ts" | xargs cat').status, 2, 'a glob is still the sweep');
 });
+
+// U25 (inventory A): a group `{ ...; }` or subshell `( ... )` redirected into a file copies what it prints - the same as
+// `cat a > b` - and the segment loop cut the group at its own `;`, so the cat inside it read as a dump.
+test('U25: a redirected group or subshell is a copy', () => {
+  const dir = capDir();
+  fs.writeFileSync(path.join(dir, 'big.html'), linesOf(60000, 'html'));
+  const sh = (command) => run(READ, { tool_name: 'Bash', tool_input: { command }, session_id: sid(), cwd: dir },
+    { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }).status;
+  for (const c of ['{ echo a; cat big.html; } > out.txt', '( echo a; cat big.html ) > out.txt', '{ echo a; cat big.html; } >> out.txt',
+    '( echo a; cat big.html ) >> out.txt', '{ echo a; cat big.html; } 1> out.txt', '{ echo a; cat big.html; } &> out.txt',
+    'cd . && { echo a; cat big.html; } > out.txt',
+    // matrix find: a segment cut after `&&` starts with the space before the group's `{` or `(`
+    'cd . && { cat big.html; } &> out.txt', 'true && { cat big.html; } > out.txt', 'true; ( cat big.html ) > out.txt', '{ cat big.html; } > out.txt'])
+    assert.equal(sh(c), 0, c);
+  for (const c of ['{ echo a; cat big.html; }', '( echo a; cat big.html )', '{ cat big.html; } | cat', '{ cat big.html; } > /dev/stdout',
+    '{ cat big.html; } >&2', '{ echo a; cat big.html; } 2> err.txt', '{ cat big.html; } > out.txt; cat big.html', '( cat big.html ) > /dev/tty'])
+    assert.equal(sh(c), 2, c);
+});

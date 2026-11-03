@@ -418,7 +418,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a runtime body as its script. A verb that prints a whole file under another name is size-gated like `cat` (nl, tac,
     sort, base64, xxd, `dd if=`, a copy onto `/dev/stdout`, curl `file://`, vim's print, `look ''`, an identity sed /
     awk / `perl -p`, grep with an empty pattern, a read loop echoing every line, perl's handle read, php's
-    `file_get_contents` / `readfile`); a bounded run, or one into a file, is not. A verb, `;` or `|` inside a quoted string is
+    `file_get_contents` / `readfile`); a bounded run, or one into a file, is not - and a group or subshell redirected to a
+    file copies (U25: `{ echo a; cat big.html; } > out.txt` was cut at its own `;`; a terminal device or `>&2` still
+    prints). A verb, `;` or `|` inside a quoted string is
     text (`grep -c 'cat -n' f` runs no cat), unless a shell runs the string (a shell's `-c`, `eval`, `watch`, a stage piped
     into `sh`), and pairing stops trusting quotes after a comment's apostrophe; `echo "$(cat f)"` prints what its
     substitution read, an assignment of one does not. Only a gated file over the threshold
