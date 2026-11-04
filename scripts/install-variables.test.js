@@ -258,6 +258,26 @@ test('the write is a rename - no reader sees a partial file (Review Focus 4)', (
     assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=7\n');
 });
 
+// W1 (burn-down 2026-11-04, Windows CI 41861527066): a holder may spend the whole rename budget (retryMs, a reader
+// blocking the rename) before it lets go, and the waiter gave up at that same budget - 'locked' while the holder was
+// alive. The waiter now outlasts one full hold and the next writer's re-take.
+test('a waiter outlasts a live holder that spends its whole rename budget (W1)', (t) =>
+{
+    const { dir } = sandbox(t);
+    const root = project(dir);
+    put(varsOf(root), 'ALFRED_CODE_HISTORY=5\n');
+    put(`${varsOf(root)}.lock`, '');
+    let clock = 0;
+    const sleep = (ms) => { clock += ms; if (clock >= 2500) fs.rmSync(`${varsOf(root)}.lock`, { force: true }); };
+    assert.deepStrictEqual(variables.write(varsOf(root), { ALFRED_CODE_HISTORY: '6' }, { now: () => clock, sleep }), { changed: true });
+    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=6\n');
+    // A holder that never lets go is still reported, once the wait is spent.
+    put(`${varsOf(root)}.lock`, '');
+    clock = 0;
+    assert.deepStrictEqual(variables.write(varsOf(root), { ALFRED_CODE_HISTORY: '7' }, { now: () => clock, sleep: (ms) => { clock += ms; } }), { changed: false, why: 'locked' });
+    assert.ok(clock >= 6000 && clock < 6100, `the wait is three rename budgets: ${clock}`);
+});
+
 test('set writes under the moved root (Review Focus 2)', (t) =>
 {
     const { dir, env } = sandbox(t);
