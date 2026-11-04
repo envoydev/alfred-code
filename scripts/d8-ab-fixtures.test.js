@@ -14,7 +14,7 @@ const NO_ACCEPTANCE = new Set(['t4']);
 
 test('every task.json loads and is complete', () =>
 {
-    assert.deepStrictEqual(fx.list(), ['probe', 't1', 't4', 't7']);
+    assert.deepStrictEqual(fx.list(), ['probe', 't1', 't2', 't3', 't4', 't7']);
     for (const id of fx.list())
     {
         const t = fx.loadTask(id);
@@ -109,6 +109,30 @@ test('acceptance counts the passed tests from Vitest and dotnet output', () =>
     assert.strictEqual(fx.acceptanceResult(0, 'No test matches the given testcase filter', task), false);
     assert.strictEqual(fx.acceptanceResult(0, 'Passed!  - Failed:     0, Passed:     4', task), true);
     assert.strictEqual(fx.acceptanceResult(1, 'Passed!  - Failed:     0, Passed:     4', task), false);
+});
+
+test('ingestLog is deterministic and near 300 KB', () =>
+{
+    const a = fx.ingestLog({ seed: 1101, lines: 4200 });
+    const b = fx.ingestLog({ seed: 1101, lines: 4200 });
+    assert.strictEqual(fx.sha256(a), fx.sha256(b));
+    const bytes = Buffer.byteLength(a);
+    assert.ok(bytes >= 280000 && bytes <= 320000, `${bytes} bytes`);
+    const rows = a.split('\n').filter(Boolean);
+    assert.strictEqual(rows.length, 4200);
+    const quoted = rows.filter((l) => /^\S+Z,[^,]+,"[^"]*,[^"]*",/.test(l));
+    assert.ok(quoted.length >= 60, `${quoted.length} quoted-comma lines`);
+    const warns = rows.filter((l) => / WARN skipped line \d+: amount not a number$/.test(l));
+    assert.strictEqual(warns.length, quoted.length, 'one WARN line per split record');
+    for (const w of warns)
+    {
+        const n = Number(/skipped line (\d+)/.exec(w)[1]);
+        assert.ok(quoted.includes(rows[n - 1]), `WARN line ${w} names the record it skipped`);
+    }
+    assert.notStrictEqual(fx.sha256(fx.ingestLog({ seed: 1102, lines: 4200 })), fx.sha256(a));
+    const t3 = fx.loadTask('t3');
+    assert.deepStrictEqual(t3.generate, [{ kind: 'ingestLog', path: 'logs/ingest-2026-11-01.log', seed: 1101, lines: 4200 }]);
+    assert.ok(!fx.layout('t3').some((e) => e.rel.startsWith('logs/')), 'the log is generated, never tracked');
 });
 
 test('a red acceptance counts only when its tests ran and failed', () =>

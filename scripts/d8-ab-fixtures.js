@@ -231,7 +231,66 @@ function generate(task, project)
     }
     return written;
 }
-const GENERATORS = {};
+// A small seeded PRNG (mulberry32), so a log is the same bytes on every machine.
+function prng(seed)
+{
+    let a = seed >>> 0;
+    return () =>
+    {
+        a = (a + 0x6D2B79F5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+const PLAIN_REGIONS = ['Airport', 'Central', 'Downtown', 'Harbor', 'Lakeside', 'South', 'West'];
+const COMMA_REGIONS = ['North, East', 'Old Town, Center', 'South, West'];
+
+// t3's nightly ingest log: the job's own INFO lines, one CSV record per sale (timestamp, order id, region, kind, amount,
+// currency, store, terminal), and - right after each record whose region is quoted because it holds a comma - the
+// app's `WARN skipped line <n>: amount not a number`, where its split-on-every-comma parser lost the record. About 2%
+// of the records are quoted, and the closing totals leave those three regions out. `lines` is the file's line count.
+function ingestLog({ seed, lines })
+{
+    const rand = prng(seed);
+    const pick = (list) => list[Math.floor(rand() * list.length)];
+    const pad = (n, w) => String(n).padStart(w, '0');
+    const iso = (ms) => new Date(ms).toISOString().replace('.000Z', 'Z');
+    let at = Date.UTC(2026, 10, 1, 0, 0, 0);
+    const out = [`${iso(at)} INFO ingest started: business day 2026-11-01`];
+    const footer = 2 + PLAIN_REGIONS.length;
+    const totals = new Map(PLAIN_REGIONS.map((r) => [r, 0]));
+    let records = 0;
+    let skipped = 0;
+    while (out.length < lines - footer)
+    {
+        at += (1 + Math.floor(rand() * 9)) * 1000;
+        const room = lines - footer - out.length;
+        const quoted = room >= 2 && rand() < 0.021;
+        const region = quoted ? pick(COMMA_REGIONS) : pick(PLAIN_REGIONS);
+        const kind = rand() < 0.05 ? 'REFUND' : 'ORDER';
+        const cents = 500 + Math.floor(rand() * 29500);
+        const fields = [iso(at), `ord-${100001 + records}`, quoted ? `"${region}"` : region, kind, (cents / 100).toFixed(2), 'USD',
+            `store-${pad(1 + Math.floor(rand() * 40), 2)}`, `t-${pad(1 + Math.floor(rand() * 12), 2)}`];
+        out.push(fields.join(','));
+        records++;
+        if (quoted)
+        {
+            out.push(`${iso(at)} WARN skipped line ${out.length}: amount not a number`);
+            skipped++;
+        }
+        else totals.set(region, totals.get(region) + (kind === 'REFUND' ? -cents : cents));
+    }
+    at += 1000;
+    out.push(`${iso(at)} INFO ingest finished: ${records} records, ${skipped} skipped`);
+    out.push(`${iso(at)} INFO totals for ${PLAIN_REGIONS.length} regions`);
+    for (const r of PLAIN_REGIONS) out.push(`${iso(at)} INFO total ${r}: ${(totals.get(r) / 100).toFixed(2)}`);
+    return `${out.join('\n')}\n`;
+}
+
+const GENERATORS = { ingestLog };
 
 function git(project, args)
 {
@@ -376,4 +435,4 @@ function main(argv)
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { FIXTURES, JUDGE_EXCLUDES, GENERATORS, list, loadTask, layout, walk, steps, runLine, passedCount, failedCount, acceptanceResult, toolEnv, gitignoreLines, buildFixture, checkFixture, sha256, main };
+module.exports = { FIXTURES, JUDGE_EXCLUDES, GENERATORS, ingestLog, list, loadTask, layout, walk, steps, runLine, passedCount, failedCount, acceptanceResult, toolEnv, gitignoreLines, buildFixture, checkFixture, sha256, main };
