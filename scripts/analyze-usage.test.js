@@ -1219,6 +1219,10 @@ test('U02: a loop over test files, node "$f", and ssh', () => {
   for (const cmd of ['node "$f"', 'for f in src/*.js; do node "$f"; done', "ssh host 'ls -la'", 'echo ssh host npm test', 'for f in a.test.js; do cat "$f"; done']) {
     assert.deepStrictEqual(tests(cmd), [], cmd);
   }
+  // O4 (burn-down 2026-11-04): ssh joins its unquoted words into the remote command, so `ssh host npm test` runs it too;
+  // an option that takes a value keeps it (`-p 2222`, `-i key`), a flag does not (`-v`)
+  for (const cmd of ['ssh host npm test', 'ssh -p 2222 -v ci@box npm run test', 'ssh -i ~/.ssh/k -p2222 box node --test']) assert.strictEqual(tests(cmd).length, 1, cmd);
+  for (const cmd of ['ssh host ls -la', 'ssh -v host', 'ssh -p 2222 box cat test.log']) assert.deepStrictEqual(tests(cmd), [], cmd);
 });
 
 // Usage audit 2026-11-03 U03: every free-text turn after a no-tool end_turn was an unheld-stop candidate, flow or not, and

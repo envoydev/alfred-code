@@ -428,6 +428,9 @@ const REDIRECT_TARGET_G = /(?:^|[^<>&\d])(?:\d?>>?|&>>?)\s*([^\s<>&;|]+)/g;
 const LOOP_TEST_G = /(?:^|[\s;&|(])for\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)/g;
 const NODE_VAR_RE = new RegExp(String.raw`^${RUNNER_PATH}node\s+${NODE_FLAGS}("?)\$\{?([A-Za-z_]\w*)\}?\1(?![\w.-])`);
 const SSH_REMOTE_RE = /^ssh\s+(?:-[\w-]+(?:\s+(?!["'])\S+)?\s+)*?[^\s"'-]\S*\s+("|')([\s\S]*)\1\s*$/;
+// O4 (burn-down 2026-11-04): ssh joins unquoted words into the remote command too. ssh's options that take a value
+// (`-p 2222`, `-i key`, `-p2222`) keep it; any other option is a flag, so the first bare word after them is the host.
+const SSH_BARE_RE = /^ssh\s+(?:(?:-[bcDEeFIiJLlmOopQRSWw](?:\s+|(?=\S))\S+|-[\w-]+)\s+)*[^\s"'-]\S*\s+([^\s"'][\s\S]*)$/;
 function classifyChecks(cmdCode, cmdShell, bindings) {
   const found = new Map();
   const logs = [];
@@ -446,6 +449,8 @@ function classifyChecks(cmdCode, cmdShell, bindings) {
       if (nv && loopTests.has(nv[2])) hits.push({ kind: 'test', scoped: false });
       const ssh = !hits.length ? SSH_REMOTE_RE.exec(h.shell) : null;
       if (ssh) hits.push(...classifyChecks(maskQuotedShell(ssh[2]), ssh[2], bindings).kinds);
+      const bare = !hits.length && !ssh ? SSH_BARE_RE.exec(h.shell) : null;
+      if (bare) hits.push(...classifyChecks(maskQuotedShell(bare[1]), bare[1], bindings).kinds);
     }
     if (hits.length) {
       for (const x of hits) {
