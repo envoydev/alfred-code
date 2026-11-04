@@ -25,8 +25,8 @@ holds the typed prompts, the asks and answers, the runs, the errored results and
 L<n> locator. Anything else: the same script's timeline / show <L> / grep <regex>.
 
 Fill the five FILL IN sections, add the one '## Per skill run' section, and append the Environment rows the skill
-names - <the run's facts: OS, project stack, analyzer snapshot revision, the ledger test output for this session, the
-raw-transcript consent result>. Machine tables stay as printed. Every number cites its machine row or an L<n>.
+names - <the run's facts: OS, project stack, analyzer snapshot revision, the hook-blocks and tools-usage
+rows of this session's collected.json, the raw-transcript consent result>. Machine tables stay as printed. Every number cites its machine row or an L<n>.
 
 Last command: node <snapshot>/scripts/analyze-usage.js --check-report <bundle folder>/report-usage.md - the bundle is
 not done until it prints clean.

@@ -7,9 +7,12 @@ always `<alfred-code repo>/docs/session-investigation/<project>/`.
 
 **Route 1 - the data is already generated.** Copy the WHOLE bundle set the project holds -
 `SUMMARY.md`, `_rollup.txt` as `rollup.txt`, and every per-session folder entire - out of
-`<project>/<data root>/statistics/usage-report/` (`ALFRED_CODE_DATA_PATH`, `.alfred` by default; on an install not updated to 2.8.0, `usage-report/` - or `alfred-code-usage-report/` before 2.1.7 - under its docs root: a leftover `ALFRED_CODE_DOCS_PATH` value wins, else `<data root>/docs`, `.claude/docs` before 2.0.0). Add the
-two ledgers per session from the data root's `statistics/` (`tools-usage/<sid>.jsonl`, `hook-blocks/<sid>.jsonl`; the docs root before 2.8.0)
-where the bundle does not already carry them. Nothing is generated. A session in scope with no
+`<project>/<data root>/statistics/usage-report/` (`ALFRED_CODE_DATA_PATH`, `.alfred` by default; on an install not updated to 2.8.0, `usage-report/` - or `alfred-code-usage-report/` before 2.1.7 - under its docs root: a leftover `ALFRED_CODE_DOCS_PATH` value wins, else `<data root>/docs`, `.claude/docs` before 2.0.0). Then, for
+each copied session folder with no `collected.json`: when that session's transcript is on this machine (the
+history folders of route 3 step 1), run `node scripts/collect-session.js <transcript> --out <that folder>` - it adds
+the ledgers, the state and the receipt beside the copy; else report `collected: none (older bundle)` for it and add
+the two ledgers from the data root's `statistics/` (`tools-usage/<sid>.jsonl`, `hook-blocks/<sid>.jsonl`; the docs
+root before 2.8.0) where the bundle does not already carry them. No report is generated. A session in scope with no
 bundle is reported as missing, and generated only under the `fill-gaps` answer.
 
 **Route 2 - generate, `authored` sections.** `/capture-usage-report` must run in a fresh
@@ -30,20 +33,17 @@ already stores its history, and this route reads it from here.
    rollup already leaves the live session out, `CLAUDE_CODE_SESSION_ID`; `--exclude-session <id>` drops
    another) - apply the scope answer, drop what is already collected, and print the resolved session
    list (the list, never the analyzer output).
-3. Write `<DEST>/<project>/<session-id>/` per session:
+3. Write `<DEST>/<project>/<session-id>/` per session, the collector first - it makes the folder:
 
 | Artifact | How |
 |---|---|
-| `analyzer.json` | `node scripts/analyze-usage.js <transcript> --json --out .../analyzer.json` - `--out`, never a `>` redirect, which the permission classifier denies |
+| the collector's bundle | `node scripts/collect-session.js <transcript> --out <DEST>/<project>/<session-id>` - the transcript (ground truth, and the ONLY artifact carrying the actual messages), `subagents/`, `collected.json` (the receipt), `context.json`, `context/`, both ledgers beside the copy and under `data/`, the session's state, its docs and hook temp files. `docs/session-investigation/` is git-ignored, so the gate copies the text stores |
+| `analyzer.json` | `node scripts/analyze-usage.js <DEST>/<project>/<session-id>/<session-id>.jsonl --json --out .../analyzer.json` - the copy, never the original; `--out`, never a `>` redirect, which the permission classifier denies |
 | `analyzer-full.txt` | the same call without `--json` |
 | `report-usage.md` | `--report-md --out <file>` (skeleton), or the authored file from the project route |
-| `<session-id>.jsonl` | copy of the transcript - ground truth, and the ONLY artifact carrying the actual messages |
-| `subagents/` | copy of the transcript's sibling folder when it exists |
-| `tool-usage-<sid>.jsonl` | the instrumentation ledger from the project's docs root (`<project>/<data root>/statistics/tools-usage/<sid>.jsonl`; under the docs root before 2.8.0) |
-| `hook-blocks-<sid>.jsonl` | the guard-block ledger from the same root - the only place naming WHICH hook denied a call |
 
-   Pass `--hook-log <ledger>`, `--hook-blocks <that session's file, never the directory>` and
-   `--docs-root <root>` for a non-default docs path; say so per session when a ledger is absent.
+   The analyzer reads the ledgers beside the copy itself; pass `--docs-root <root>` for a non-default docs path.
+   A ledger the receipt names `absent` is reported per session with that row's reason.
 4. Write `<DEST>/<project>/rollup.txt`, and `SUMMARY.md` when the project contributed more than one
    session, so the audit's Phase 0 has its orientation file.
 
