@@ -427,10 +427,42 @@ const REDIRECT_TARGET_G = /(?:^|[^<>&\d])(?:\d?>>?|&>>?)\s*([^\s<>&;|]+)/g;
 // command of its own. A loop over a glob runs the suite (unscoped).
 const LOOP_TEST_G = /(?:^|[\s;&|(])for\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)/g;
 const NODE_VAR_RE = new RegExp(String.raw`^${RUNNER_PATH}node\s+${NODE_FLAGS}("?)\$\{?([A-Za-z_]\w*)\}?\1(?![\w.-])`);
-const SSH_REMOTE_RE = /^ssh\s+(?:-[\w-]+(?:\s+(?!["'])\S+)?\s+)*?[^\s"'-]\S*\s+("|')([\s\S]*)\1\s*$/;
-// O4 (burn-down 2026-11-04): ssh joins unquoted words into the remote command too. ssh's options that take a value
-// (`-p 2222`, `-i key`, `-p2222`) keep it; any other option is a flag, so the first bare word after them is the host.
-const SSH_BARE_RE = /^ssh\s+(?:(?:-[bcDEeFIiJLlmOopQRSWw](?:\s+|(?=\S))\S+|-[\w-]+)\s+)*[^\s"'-]\S*\s+([^\s"'][\s\S]*)$/;
+// O4 (burn-down 2026-11-04): ssh joins unquoted words into the remote command too. Read as ssh's own getopt does (final
+// review m4 - two regexes misread an option's value as the host and backtracked exponentially on a long failing line):
+// a value option (`-p 2222`, `-p2222`, `-vp 2222`) takes the rest of its word or the next word, other letters are flags,
+// `--` ends the options, the first other word is the host, and what follows it is the remote command - a wholly quoted
+// one unwrapped. A word may hold quoted spaces (`-o 'ProxyJump a b'`). No remote command, or a quote the line leaves open,
+// reads as none.
+const SSH_VALUE_OPTS = new Set('bcDEeFIiJLlmOopQRSWw');
+function sshRemote(shell) {
+  const s = String(shell);
+  if (!/^ssh\s/.test(s)) return null;
+  let i = 3;
+  const word = () => {
+    while (i < s.length && /\s/.test(s[i])) i++;
+    const start = i;
+    while (i < s.length && !/\s/.test(s[i])) {
+      if (s[i] === '"' || s[i] === "'") { const end = s.indexOf(s[i], i + 1); if (end < 0) return null; i = end + 1; } else i++;
+    }
+    return i > start ? s.slice(start, i) : null;
+  };
+  for (;;) {
+    const w = word();
+    if (w === null) return null;
+    if (w === '--') { const host = word(); if (host === null || /^["']/.test(host)) return null; break; }
+    if (!w.startsWith('-') || w === '-') { if (/^["']/.test(w)) return null; break; }
+    for (let k = 1; k < w.length; k++) {
+      if (!SSH_VALUE_OPTS.has(w[k])) continue;
+      if (k === w.length - 1 && word() === null) return null;
+      break;
+    }
+  }
+  const rest = s.slice(i).trim();
+  if (!rest) return null;
+  const quoted = /^("|')([\s\S]*)\1$/.exec(rest);
+  if (quoted) return quoted[2];
+  return /^["']/.test(rest) ? null : rest;
+}
 function classifyChecks(cmdCode, cmdShell, bindings) {
   const found = new Map();
   const logs = [];
@@ -447,10 +479,8 @@ function classifyChecks(cmdCode, cmdShell, bindings) {
       }
       const nv = !hits.length && loopTests.size ? NODE_VAR_RE.exec(h.shell) : null;
       if (nv && loopTests.has(nv[2])) hits.push({ kind: 'test', scoped: false });
-      const ssh = !hits.length ? SSH_REMOTE_RE.exec(h.shell) : null;
-      if (ssh) hits.push(...classifyChecks(maskQuotedShell(ssh[2]), ssh[2], bindings).kinds);
-      const bare = !hits.length && !ssh ? SSH_BARE_RE.exec(h.shell) : null;
-      if (bare) hits.push(...classifyChecks(maskQuotedShell(bare[1]), bare[1], bindings).kinds);
+      const remote = !hits.length ? sshRemote(h.shell) : null;
+      if (remote) hits.push(...classifyChecks(maskQuotedShell(remote), remote, bindings).kinds);
     }
     if (hits.length) {
       for (const x of hits) {

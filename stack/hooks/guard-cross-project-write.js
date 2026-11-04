@@ -351,18 +351,29 @@ const memInside = (target, dir) => {
   const d = memFold(dir);
   return t === d || t.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
 };
-// A target holding a glob (R072) is a member's memory when it CAN expand into one: its first segments, as many as the
-// folder has, each match that folder's segment (`*` and `?` within a segment, a `[...]` class), the rest anything.
+// A target holding a glob (R072) is a member's memory when it CAN expand into one: its segments match the folder's in
+// order (`*` and `?` within a segment, a `[...]` class) until the folder's run out, the rest anything - and a `**`
+// segment (bash globstar) matches any number of folders, none included (final review m5: it counted as one).
 const GLOB_CHAR = /[*?[]/;
 const segGlob = (seg) => new RegExp(`^${seg.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.').replace(/\[!/g, '[^')}$`, 's');
 function globReaches(target, dir) {
   const t = memFold(realish(target)).split(path.sep);
   const d = memFold(dir).split(path.sep);
-  if (t.length < d.length) return false;
-  return d.every((seg, i) => {
-    if (!GLOB_CHAR.test(t[i])) return t[i] === seg;
-    try { return segGlob(t[i]).test(seg); } catch { return true; }
-  });
+  const seen = new Map();
+  const segMatch = (pat, seg) => {
+    if (!GLOB_CHAR.test(pat)) return pat === seg;
+    try { return segGlob(pat).test(seg); } catch { return true; }
+  };
+  const reach = (i, j) => {
+    if (j === d.length) return true;
+    if (i === t.length) return false;
+    const key = i * (d.length + 1) + j;
+    if (seen.has(key)) return seen.get(key);
+    const ok = t[i] === '**' ? reach(i + 1, j) || reach(i, j + 1) : segMatch(t[i], d[j]) && reach(i + 1, j + 1);
+    seen.set(key, ok);
+    return ok;
+  };
+  return reach(0, 0);
 }
 function memberMemory(t) {
   const { members, own } = memoryOf();

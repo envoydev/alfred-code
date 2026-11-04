@@ -5685,6 +5685,25 @@ test('guard-cross-project-write: R072 a glob that can match a member\'s memory i
   } finally { w.rm(); }
 });
 
+// Final review m5: a `**` segment (bash globstar) matches any number of folders, but the segment-by-segment compare took
+// it as one, so a glob shorter than the member's memory path - `projects/**/memory/x.md` - never reached it.
+test('guard-cross-project-write: R072 a ** glob that can reach a member\'s memory is denied; one inside the child\'s own memory is allowed', () => {
+  const w = memWs();
+  try {
+    const projects = path.join(w.acct, 'projects');
+    const own = path.basename(path.dirname(w.mem('ws/api')));
+    fs.mkdirSync(w.mem('ws/api'), { recursive: true });
+    const bash = (command) => w.run('ws/api', { tool_name: 'Bash', tool_input: { command } });
+    for (const command of [`echo x > '${projects}'/**/memory/x.md`, `cp f '${w.acct}'/**/x.md`, `echo x > '${projects}'/**/**/memory/x.md`]) {
+      const r = bash(command);
+      assert.equal(r.status, 2, `${command}: ${r.stderr}`);
+      assert.match(r.stderr, /memory of/, r.stderr);
+    }
+    const mine = bash(`cp f '${projects}'/${own}/memory/**/x.md`);
+    assert.equal(mine.status, 0, mine.stderr);
+  } finally { w.rm(); }
+});
+
 test('guard-cross-project-write: an autoMemoryDirectory a repo can ship opens nothing - settings.json or a tracked settings.local.json naming ~/.ssh or a folder beside the project', () => {
   const w = memWs();
   try {

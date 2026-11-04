@@ -1223,6 +1223,15 @@ test('U02: a loop over test files, node "$f", and ssh', () => {
   // an option that takes a value keeps it (`-p 2222`, `-i key`), a flag does not (`-v`)
   for (const cmd of ['ssh host npm test', 'ssh -p 2222 -v ci@box npm run test', 'ssh -i ~/.ssh/k -p2222 box node --test']) assert.strictEqual(tests(cmd).length, 1, cmd);
   for (const cmd of ['ssh host ls -la', 'ssh -v host', 'ssh -p 2222 box cat test.log']) assert.deepStrictEqual(tests(cmd), [], cmd);
+  // Final review m4: the regex backtracked into reading an option's value as the host - `ssh -F cfg pytest` (host
+  // `pytest`, no remote command) read as running pytest - and its overlapping option forms took exponential time on a
+  // line that fails. ssh's own getopt rules now: a value option takes the rest of its word or the next word, flags group.
+  for (const cmd of ['ssh -F cfg pytest', 'ssh -o K0=v user@host', 'ssh -vp 2222 npm', "ssh -o 'ProxyJump a b' host"]) assert.deepStrictEqual(tests(cmd), [], cmd);
+  for (const cmd of ['ssh -vp 2222 box npm test', "ssh -o 'ProxyJump a b' box npm test", 'ssh -- box npm test']) assert.strictEqual(tests(cmd).length, 1, cmd);
+  const slow = `ssh ${Array(28).fill('-pa').join(' ')} "`;
+  const t0 = Date.now();
+  assert.deepStrictEqual(tests(slow), []);
+  assert.ok(Date.now() - t0 < 1000, `a failing 28-option line took ${Date.now() - t0}ms`);
 });
 
 // Usage audit 2026-11-03 U03: every free-text turn after a no-tool end_turn was an unheld-stop candidate, flow or not, and

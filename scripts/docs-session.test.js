@@ -2816,7 +2816,10 @@ test('R081: a second Stop with nothing changed spawns no ls-files', { skip: proc
     r.hook(stopEv(s), env);
     assert.strictEqual(lsFiles() - first, 0, 'the second read nothing');
     r.git('rm', '-qf', 'src/Gone/x.cs');
+    const beforeMiss = lsFiles();
     assert.match(stopReason(r, s, env), /A2 - its Scope: `src\/Gone\/\*\*` reaches no file/, 'a deletion still names the Scope');
+    // final review m8: the miss listed the tree for the witnesses, then again for the dead rows - once now
+    assert.strictEqual(lsFiles() - beforeMiss, 1, 'a miss with a dead Scope lists the tree once');
   } finally { r.rm(); fs.rmSync(shim, { recursive: true, force: true }); }
 });
 

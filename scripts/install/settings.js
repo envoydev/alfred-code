@@ -941,12 +941,17 @@ function writeSettings(opts)
 
     let changed = wireHooks(data, specs, retiredHooks);
 
-    // permissions.deny: union-merge the secret-file Read blocks, preserving any the project set.
-    const deny = ((data.permissions ??= {}).deny ??= []);
-    for (const rule of denySpecs) if (!deny.includes(rule)) { deny.push(rule); changed = true; }
+    // permissions.deny: union-merge the secret-file Read blocks, preserving any the project set. A `permissions` that is
+    // not an object, or a `deny` that is not a list, is the user's (R070, final review I2 - it threw, or a null was
+    // replaced): named, left as it is, and no deny pass below touches this file; its ledger rows stand as recorded.
+    const permsNotObject = Object.hasOwn(data, 'permissions') && !plain(data.permissions);
+    const denyRefused = permsNotObject || (plain(data.permissions) && Object.hasOwn(data.permissions, 'deny') && !Array.isArray(data.permissions.deny));
+    if (denyRefused) note(`${label}: ${permsNotObject ? 'permissions is not an object' : 'permissions.deny is not a list'} - left as it is; no deny entry is written to it this run`);
+    const deny = denyRefused ? null : ((data.permissions ??= {}).deny ??= []);
+    if (deny) for (const rule of denySpecs) if (!deny.includes(rule)) { deny.push(rule); changed = true; }
     // Entries this stack once wrote and no longer does: drop exactly those strings, so an update
     // clears what an older install seeded. A project's own entry is never touched.
-    for (const rule of [...deny]) if (retiredDeny.includes(rule))
+    if (deny) for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  ${label}: dropped retired deny entry ${rule}`); }
     // I1 (fix round 1): the pass below also runs over settings.local.json's deny list - a seat the
     // user switched off for themselves is re-spelled THERE, never moved into the shared file.
@@ -967,7 +972,7 @@ function writeSettings(opts)
         }
         return touched;
     };
-    if (respellSeats(deny, label)) changed = true;
+    if (deny && respellSeats(deny, label)) changed = true;
     // R99: `localFile` is settings.local.json on a project or user run - its stack keys apply over this
     // file, so the env pass writes a key it holds back into it (`applyEnv` `overlay`). A malformed one
     // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
@@ -994,13 +999,13 @@ function writeSettings(opts)
     const dropSeat = (rule, keep) =>
     {
         const seat = stackSeat(rule);
-        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
+        if (deny) for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
         { deny.splice(deny.indexOf(entry), 1); changed = true; log(entry === rule ? `  ${label}: agent allowed again ${entry}` : `  ${label}: agent entry dropped ${entry} (the seat's old spelling)`); }
     };
     for (const rule of agentDeny)
     {
         dropSeat(rule, rule);
-        if (!deny.includes(rule) && !(localDeny && localDeny.includes(rule))) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
+        if (deny && !deny.includes(rule) && !(localDeny && localDeny.includes(rule))) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
     }
     for (const rule of agentAllow) dropSeat(rule, null);
     // C4 (R133 N1): a seat denied only in settings.local.json stays off whatever settings.json says, so
@@ -1230,8 +1235,17 @@ function writeSettings(opts)
     const renameTo = new Map((migrations.renames || []).map(([from, to]) => [from, to]));
     const heldKeys = new Set([...settingsHad].map((key) => { let k = key; for (let i = 0; i < 8 && renameTo.has(k); i++) k = renameTo.get(k); return k; }));
     const moved = vars ? moveVariables({ vars, file: variablesFile, env: data.env, fileValues, MOVED, catalog, managedEnv, label, log, heldKeys }) : [];
-    // O11: the value .variables outranks goes back as typed, with no ledger row - it is the person's, never the stack's.
-    if (plain(data.env)) for (const [key, o] of outranked) data.env[key] = o.value;
+    // O11: the value .variables outranks goes back as typed, with no ledger row - it is the person's, never the stack's -
+    // and in its own place: re-added at the end, it reordered env and rewrote the file (final review I1).
+    if (plain(data.env) && outranked.size)
+    {
+        const next = {};
+        for (const key of Object.keys(envBefore))
+            if (outranked.has(key)) next[key] = outranked.get(key).value;
+            else if (Object.hasOwn(data.env, key)) next[key] = data.env[key];
+        for (const key of Object.keys(data.env)) if (!Object.hasOwn(next, key)) next[key] = data.env[key];
+        data.env = next;
+    }
     if (vars)
     {
         if (settingsEnvBefore === null && plain(data.env) && !Object.keys(data.env).length) delete data.env;
@@ -1259,8 +1273,9 @@ function writeSettings(opts)
     // recorded for the other file (a local-scope install's own, before a move) never claims the team's
     // copy (review finding 1). With no ledger a secret-file deny is never claimed - it may be the team's,
     // and a leftover after uninstall is harmless where a removed one is not (finding 6); a stack seat is.
-    const managedDeny = deny.filter((entry) => !denyBefore.includes(entry)
-        || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : Boolean(stackSeat(entry)))).map((entry) => ({ file: label, entry }));
+    const managedDeny = deny ? deny.filter((entry) => !denyBefore.includes(entry)
+        || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : Boolean(stackSeat(entry)))).map((entry) => ({ file: label, entry }))
+        : (priorDeny || []).filter((d) => d.file === label);
     if (localDeny)
         for (const entry of localDeny)
             if (!localDenyBefore.includes(entry) || (priorDeny ? priorDeny.some((d) => d.file === localName && d.entry === entry) : Boolean(stackSeat(entry))))

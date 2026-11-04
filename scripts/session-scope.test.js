@@ -678,6 +678,25 @@ test('an add naming exact paths passes when its sweep check times out', () => {
     } finally { p.rm(); }
 });
 
+// Final review m3: a dry run whose output passed spawnSync's 1 MB default came back ENOBUFS with a SIGTERM and was
+// denied as 'timed out after 5000ms' - the wrong reason and the wrong fix for a repo with 20k+ untracked paths. The
+// buffer is 64 MB (ALFRED_CODE_TEST_SWEEP_MAX_BUFFER is the seam); an overflow still asks once, naming the overflow.
+test('a broad add whose sweep check overflows its buffer is denied naming the output size, never a timeout', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('t4');
+        p.write('src/new.cs', forty);
+        const r = p.bash('t4', 'git add -A', { ALFRED_CODE_TEST_SWEEP_MAX_BUFFER: '8' });
+        assert.strictEqual(r.status, 2, r.stderr);
+        assert.match(r.stderr, /printed more than 8 bytes/);
+        assert.doesNotMatch(r.stderr, /timed out/);
+        assert.match(r.stderr, /^ {2}\*$/m);
+        const exact = p.bash('t4', 'git add src/new.cs', { ALFRED_CODE_TEST_SWEEP_MAX_BUFFER: '8' });
+        assert.strictEqual(exact.status, 0, `an add naming exact files passes: ${exact.stderr}`);
+    } finally { p.rm(); }
+});
+
 test('UNTRACKED-ALLOW * opens a timed-out broad add', () => {
     const p = project();
     try {

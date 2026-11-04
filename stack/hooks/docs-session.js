@@ -1691,13 +1691,17 @@ const liveBackgroundWork = (input) => input.hook_event_name === 'Stop' && Array.
 // reader decides (preferences.js deadScopes, beside these hooks where preferences-session.js finds it). The user's words
 // are never rewritten - the close names the entry. No copy, a throw or no row adds nothing.
 let prefsReader;
+// The dead rows the witness read of this same Stop found (scopesMayBeDead's miss): taken here instead of listing the
+// tree a second time (final review m8). Null on a cache hit, which reads the tree once below.
+let deadFromWitnesses = null;
 function deadScopeRows(root) {
   deadScopeRows.load();
   if (!prefsReader || typeof prefsReader.deadScopes !== 'function' || typeof prefsReader.scopeOf !== 'function') return [];
   try {
     // The vanished file is matched by the reader that found the Scope: dead, so every spelling it reads (a folder, a
     // bare path, a file-name glob, a rooted glob) is judged one way (final review I2).
-    return prefsReader.deadScopes(root).map((r) => ({ file: path.basename(String((r.doc && r.doc.file) || '')), id: r.id, glob: r.glob, part: prefsReader.scopeOf(r.glob)[0] }))
+    const rows = deadFromWitnesses || prefsReader.deadScopes(root).map((r) => ({ file: path.basename(String((r.doc && r.doc.file) || '')), id: r.id, glob: r.glob }));
+    return rows.map((r) => ({ ...r, part: prefsReader.scopeOf(r.glob)[0] }))
       .filter((r) => r.part && typeof r.part.test === 'function')
       .map(({ part, ...r }) => ({ ...r, matches: part.test }));
   } catch { return []; }
@@ -1720,7 +1724,8 @@ function scopesMayBeDead(root, state, sessionId) {
     const c = state.scopes;
     if (c && c.key === key && Array.isArray(c.witnesses) && c.witnesses.every((f) => fs.existsSync(path.join(root, f)))) return c.dead > 0;
     const w = prefsReader.scopeWitnesses(root);
-    state.scopes = { key, dead: w.filter((x) => !x.witness).length, witnesses: [...new Set(w.map((x) => x.witness).filter(Boolean))] };
+    deadFromWitnesses = w.filter((x) => !x.witness).map((x) => ({ file: x.file, id: x.id, glob: x.glob }));
+    state.scopes = { key, dead: deadFromWitnesses.length, witnesses: [...new Set(w.map((x) => x.witness).filter(Boolean))] };
     saveState(sessionId, state);
     return state.scopes.dead > 0;
   } catch { return false; }

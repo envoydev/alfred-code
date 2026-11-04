@@ -669,3 +669,28 @@ test('a settings.json value .variables outranks is kept as typed, named on every
         assert.doesNotMatch(outs[i], MOVED_LINE, `update ${i}: a kept value is no move`);
     }
 });
+
+// Final review I1: the kept value went back at the END of env (deleted by the move, then re-added), so the first update
+// rewrote a settings.json whose only change was the key order. The env keeps its order and the file its bytes.
+test('a value .variables outranks keeps its place between the user\'s own keys: settings.json is byte-identical after an update', POSIX_ONLY, () =>
+{
+    let typed = '';
+    const { steps } = seedRun(['install', 'update', 'update'], SEL, {
+        plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only'], ['--scope', 'project', '--installed-only']],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.claude', 'settings.json');
+            if (i === 0)
+            {
+                const s = json(file);
+                s.env = { USER_FIRST: 'a', ALFRED_CODE_HISTORY: '17', ...s.env, USER_LAST: 'z' };
+                typed = JSON.stringify(s, null, 2);
+                fs.writeFileSync(file, typed);
+            }
+            return fs.readFileSync(file, 'utf8');
+        },
+    });
+    assert.ok(/"ALFRED_CODE_HISTORY": "17"/.test(typed) && typed.indexOf('USER_FIRST') < typed.indexOf('ALFRED_CODE_HISTORY'));
+    assert.strictEqual(steps[1], typed, 'the first update leaves settings.json byte-identical');
+    assert.strictEqual(steps[2], typed, 'and so does the second');
+});

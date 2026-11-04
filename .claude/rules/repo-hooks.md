@@ -155,7 +155,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*`
   command (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
   lines forbid a repeat, and a prompt expanded twice (a stacked line) gets them and the contract on its first expansion
-  alone (`AUTO-SAID-<session>`: the `prompt_id`, else the line's hash for 10 s - R093): `**Auto-run: ON**` (each ask answered with its
+  alone (`AUTO-SAID-<session>`: the `prompt_id`, else the line's hash for 10 s - R093; `prompt_id` is a documented
+  common field, but that a stacked expansion keeps it is measured behaviour, not a documented promise - if a release
+  gave each expansion its own, the banner and contract would be said twice, the fail-safe side, and R096's Stop cap
+  would count from 1 again for the second - one more capped run of holds, never an unbounded one; final review m9,
+  LIMIT): `**Auto-run: ON**` (each ask answered with its
   Recommended option, an outward one or an unmarked one still waiting; on for the session until `--mode-auto-run-off`)
   or `**Auto-run: OFF**` (each ask waits; a refused start says why, and a flag past the leading run is said to count only
   right after the command), then `**Context:**` - auto-run or
@@ -1603,6 +1607,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     no `systemMessage`. A seat's prompt carries none: the session that receives its report grades what it acts on.
     After its stdout write it hands `modesText`'s own `autoRun` and `scorer` to `session-status.js onPrompt`, under
     `standDown('history-session')`, which rewrites the status file only when one of the two changed (spec section 4).
+    The stand-down runs as the write's gate, after the compare (R137): every prompt pays the module's require and one
+    small read (~2.5 ms measured, 2026-11-04) even where history-session is off - the trade for no stand-down stats on
+    the common prompt (final review m7, WONTFIX).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is exactly "1". It runs `async: true` on both routes (`settings.js asyncFor`, the one async hook since the stop contract's shell-result halves went in the deep hooks review 2026-10-16 - a log never
     blocks or decides, so no call waits on its spawn; code.claude.com/docs/en/hooks, 'Run hooks in the background').
@@ -1821,7 +1828,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the hand-written `AUTO` stamp `autoRunFor` refuses) - else fresh-session's rule; a Stop whose second read finds
     `autoRun` changed rebuilds. Written at SessionStart (always), at Stop
     when a field but `updatedAt` changed (an unchanged file over 24 hours old gets its mtime moved) and at
-    guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). The
+    guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). A
+    prompt's write re-reads the file just before its rename and keeps a `handoffPrompt` a Stop wrote since its first read
+    (R135); a Stop landing between that re-read and the rename (the build-and-write span) is still lost, and the next
+    Stop, which recomputes the field from history, writes it back - a stated residual, no lock on every prompt (final
+    review m6, WONTFIX). The
     gates are this hook's (`historyOff`, Cursor), so `HOOKS_OFF=history-session` stops it at all three events. The
     SessionStart prunes every status file past 7 days (`now - mtime > 7 days`, the session's own kept) under the `cwd` and
     each base in `<data root>/state/sessions/status-folders.json` (at most 32), and puts an anchored

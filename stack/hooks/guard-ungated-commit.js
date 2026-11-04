@@ -1688,7 +1688,12 @@ function prelude() { return require('./hook-prelude.js'); }
 // add swept untracked paths in unasked. A timed-out check now passes only an add whose every pathspec is an existing
 // file; any other asks once (UNTRACKED-ALLOW `*`). ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS is the tests' seam (5000 unset).
 const SWEEP_TIMEOUT_MS = Number(process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS) > 0 ? Number(process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS) : 5000;
+// The dry run's output buffer: spawnSync's 1 MB default overflowed at ~20k untracked paths (ENOBUFS, with a SIGTERM) and
+// read as a timeout (final review m3). 64 MB; an overflow asks once like a timeout, naming the overflow.
+// ALFRED_CODE_TEST_SWEEP_MAX_BUFFER is the tests' seam.
+const SWEEP_MAX_BUFFER = Number(process.env.ALFRED_CODE_TEST_SWEEP_MAX_BUFFER) > 0 ? Number(process.env.ALFRED_CODE_TEST_SWEEP_MAX_BUFFER) : 64 * 1024 * 1024;
 let sweepTimedOut = false;
+let sweepWhy = '';
 function exactFiles(args, cwd) {
   if (args.some((a) => /^--pathspec-from-file\b/.test(a))) return false;
   let rest = false;
@@ -1711,8 +1716,12 @@ function sweptPaths() {
     if (quiet) continue;
     const top = topOf(cwd);
     if (!top) continue;
-    const r = spawnSync(...gitSafe(['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: SWEEP_TIMEOUT_MS, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
-    if ((r.error && r.error.code === 'ETIMEDOUT') || r.signal) { if (!exactFiles(args, cwd)) sweepTimedOut = true; continue; }
+    const r = spawnSync(...gitSafe(['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: SWEEP_TIMEOUT_MS, maxBuffer: SWEEP_MAX_BUFFER, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    const overflow = Boolean(r.error && r.error.code === 'ENOBUFS');
+    if (overflow || (r.error && r.error.code === 'ETIMEDOUT') || r.signal) {
+      if (!exactFiles(args, cwd)) { sweepTimedOut = true; sweepWhy = overflow ? `printed more than ${SWEEP_MAX_BUFFER} bytes` : sweepWhy || `timed out after ${SWEEP_TIMEOUT_MS}ms`; }
+      continue;
+    }
     if (r.error || r.status !== 0) continue; // the add itself will fail the same way - never block on it
     let rest = false;
     const named = new Set(args.filter((a) => { if (a === '--') { rest = true; return false; } return rest || !a.startsWith('-'); })
@@ -1731,10 +1740,10 @@ function sweptPaths() {
 if (addCalls.length) {
   const swept = sweptPaths();
   if (sweepTimedOut) {
-    global.BLOCK_DETAIL = { branch: 'untracked-sweep-timeout' };
+    global.BLOCK_DETAIL = { branch: 'untracked-sweep-timeout', why: /^printed/.test(sweepWhy) ? 'overflow' : 'timeout' };
     const record = preExistingRecord();
     process.stderr.write(
-      `Blocked: the check of what this git add would stage (git add --dry-run) timed out after ${SWEEP_TIMEOUT_MS}ms, so it cannot\n` +
+      `Blocked: the check of what this git add would stage (git add --dry-run) ${sweepWhy}, so it cannot\n` +
       `tell whether the add sweeps in paths that were untracked before this change started (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}).\n` +
       `Stage the change's own files by name instead - git add <file> ..., each an existing file, is not judged. When the user\n` +
       `wants everything staged, write ${path.relative(root, receiptWrite('UNTRACKED-ALLOW')).split(path.sep).join('/')} with these lines and retry the SAME command -\n` +
