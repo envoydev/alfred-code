@@ -176,6 +176,7 @@ function solveRun({ sizeFirst = true, size = 'standard', resume = 'Bash', approv
     // the cycle note comes off the handoff bus (2026-10-24: no memory server); any other tool is no resume
     if (resume) rows.push(tool(resume, resume === 'Bash' ? { command: 'node .claude/hooks/handoff.js left order-validation' } : {}));
     if (sizeFirst) rows.push(sizeRow);
+    rows.push(say('Spec: not full - gated - the request names no tests'));
     rows.push(tool('Skill', { skill: 'task-design' }));
     if (!sizeFirst) rows.push(sizeRow);
     rows.push(tool('Read', { file_path: '/work/project/src/orders.js' }));
@@ -189,7 +190,7 @@ test('a compliant solve-task first leg follows every step', () =>
 {
     const r = sc.grade(expectOf('task-solve'), solveRun());
     assert.deepStrictEqual(failing(r), []);
-    assert.strictEqual(r.graded, 9);
+    assert.strictEqual(r.graded, 10);
 });
 
 test('the size line after the design step is out of order', () =>

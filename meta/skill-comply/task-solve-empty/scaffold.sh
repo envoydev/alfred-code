@@ -1,0 +1,49 @@
+#!/bin/bash
+# The workspace, run inside the freshly installed project: the task-solve fixture's order API and
+# nothing else - no plan file, no cycle to resume. Invoked with no request, the run has no task: the
+# one reply is an ask for it, and nothing runs before its answer.
+set -e
+git config user.email fixture@example.invalid
+git config user.name fixture
+mkdir -p src test
+printf '.alfred/\n.serena/\n.memory-mcp/\n' >> .gitignore
+cat > package.json <<'JSON'
+{ "name": "orders", "private": true, "scripts": { "test": "node --test" } }
+JSON
+cat > CLAUDE.md <<'MD'
+# orders
+
+The order API's handlers, one module per resource.
+
+## Commands
+
+- Test: `npm test` (one file: `node --test test/orders.test.js`)
+MD
+cat > src/orders.js <<'JS'
+'use strict';
+// POST /orders - creates an order from the request body.
+const orders = [];
+
+function createOrder(body)
+{
+    const order = { id: orders.length + 1, sku: body.sku, quantity: body.quantity, email: body.email };
+    orders.push(order);
+    return { status: 201, body: order };
+}
+
+module.exports = { createOrder, orders };
+JS
+cat > test/orders.test.js <<'JS'
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert');
+const { createOrder } = require('../src/orders.js');
+
+test('an order is created', () =>
+{
+    const res = createOrder({ sku: 'A-1', quantity: 2, email: 'a@example.invalid' });
+    assert.strictEqual(res.status, 201);
+});
+JS
+git add -A
+git commit -q -m 'baseline'

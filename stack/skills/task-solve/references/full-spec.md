@@ -1,5 +1,14 @@
 # Full spec - the check script's lookup
 
+## What a full spec names
+
+A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it
+is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or
+touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate,
+and so does any doubt. `scripts/spec-check.js` reads the request for all five.
+
+## The check's lookup
+
 Read first, on every size, to run the full-spec check - its `size floor:` line is the lowest size the
 `Size:` line may state, and on `standard` its `spec:` and `path:` lines decide the merged path. The lookup reads this skill's own
 copy of the script (`scripts/spec-check.js`): the project copy first, else the newest plugin-cache

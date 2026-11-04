@@ -6837,7 +6837,7 @@
     "full-spec-checklist": {
       "_note": "What a FULL spec is - the three items and the three disqualifiers the merged design-and-audit step turns on. Owned by the single-chat solve flow; vendored into the cross-task orchestrator for its single-chat path because both are user-invoked only and neither can load the other.",
       "owner": {
-        "file": "stack/skills/task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/references/full-spec.md",
         "marker": "names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria)"
       },
       "sites": [

@@ -275,7 +275,7 @@ test('task-solve: the agents-mode approval stamp names its first line', () => {
 test('task-solve: the spec-check lookup lives in references/full-spec.md, the verdict line stays in the body', () => {
     const b = body(skill('task-solve'));
     assert.doesNotMatch(b, /```bash\nSPEC=/, 'the lookup block left the body');
-    assert.match(flat(b), /Run it by the lookup in `references\/full-spec\.md`/);
+    assert.match(flat(b), /`references\/full-spec\.md` holds what a FULL spec names and how to run `scripts\/spec-check\.js`/);
     assert.match(flat(b), /`Spec: <full\|not full> - <path> - <its reason>`/);
     const ref = read('stack/skills/task-solve/references/full-spec.md');
     assert.match(ref, /SPEC=\.claude\/skills\/task-solve\/scripts\/spec-check\.js/);

@@ -186,12 +186,14 @@ test('full spec: the solve flow states the checklist, runs the check script and 
         'task-version-upgrade': 5, 'task-design': 1, 'task-verify-plan': 2 });
     for (const name of ['task-solve', 'task-solve-cross']) {
         const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');
+        // task-solve keeps the checklist in the reference its step names (prose A/B 2026-11-04, CAP-1), its body at its cap
+        const list = name === 'task-solve' ? `${core}\n${fs.readFileSync(path.join(SKILLS, name, 'references', 'full-spec.md'), 'utf8')}` : core;
         assert.match(core, /scripts\/spec-check\.js/, `${name}: the check is a script, not a judgment`);
-        assert.match(flat(core), /the surface/i, `${name}: surface`);
-        assert.match(flat(core), /observable behaviour/i, `${name}: behaviour`);
-        assert.match(flat(core), /tests or acceptance criteria/i, `${name}: verification`);
-        assert.match(flat(core), /more than one stack/i, `${name}: a multi-stack request keeps every gate`);
-        assert.match(flat(core), /auth, secret or payment path/i, `${name}: a security path keeps every gate`);
+        assert.match(flat(list), /the surface/i, `${name}: surface`);
+        assert.match(flat(list), /observable behaviour/i, `${name}: behaviour`);
+        assert.match(flat(list), /tests or acceptance criteria/i, `${name}: verification`);
+        assert.match(flat(list), /more than one stack/i, `${name}: a multi-stack request keeps every gate`);
+        assert.match(flat(list), /auth, secret or payment path/i, `${name}: a security path keeps every gate`);
         const merged = asks(core).find((a) => /^Full spec/.test(a.question));
         assert.ok(merged, `${name}: the merged step's one approval ask is a template`);
         assert.match(merged.options[0], /^Build as planned.*\(Recommended\)$/, `${name}: build as planned is recommended, first`);
