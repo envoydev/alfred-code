@@ -759,7 +759,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     The three event branches run first and exit 0 before any dispatch rule (a SubagentStart payload has no
     `subagent_type` and would read as `general-purpose`): SubagentStart takes the oldest pending file of its type and
     tells a seat its number ('Agents at once: <n> (ALFRED_CODE_MAXIMUM_RUN_AGENTS)', nothing at 5), SubagentStop marks
-    the file, and a `SendMessage` to a STOPPED seat is judged like a dispatch. A dispatch at or past the cap - a seat's
+    the file, and a `SendMessage` to a STOPPED seat is judged like a dispatch, and one sent by NAME is refused at the cap (R087: a name
+  cannot be told from a resume; under the cap it passes untouched, `byName: true` on the block row). A dispatch at or past the cap - a seat's
     own included - is denied with the running count and up to eight types, one `branch: agent-cap` row; the text never
     says how to lift it (the setting is the user's), a seat is told to do the step itself, and a main-session denial
     writes `.denied`. A later rule's exit 2 drops the call's pending file (a second exit wrapper after the shared

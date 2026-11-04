@@ -552,12 +552,34 @@ test('a resume through SendMessage is judged against the cap (AC17)', () =>
     assert.strictEqual(send(room.root, 'old', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 0);
     const [p] = pendings(room.reg);
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(room.reg.dir, p), 'utf8')).type, 'alfred-code:aspnet-verifier');
-    for (const to of ['researcher', 'run0'])
-    {
-        const s = setup();
-        assert.strictEqual(send(s.root, to, { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 0, to);
-        assert.deepStrictEqual(pendings(s.reg), [], `${to}: a name or a running agent passes untouched`);
-    }
+    const named = setup();
+    const byName = send(named.root, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' });
+    assert.strictEqual(byName.status, 2, 'a name at the cap is refused (R087)');
+    assert.match(byName.stderr, /the cap is full - wait for an agent to finish, then send it\./);
+    assert.deepStrictEqual(pendings(named.reg), []);
+    assert.deepStrictEqual(blockRows(named.root).map((r) => [r.detail.branch, r.detail.byName]), [['agent-cap', true]]);
+    const running = setup();
+    assert.strictEqual(send(running.root, 'run0', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 0, 'a running agent passes untouched');
+    assert.deepStrictEqual(pendings(running.reg), []);
+});
+
+test('a SendMessage by name one under, at and one over the cap, with no cap, or from a seat (R087)', () =>
+{
+    const send = (root, to, env, extra = {}) => callHook(GUARD, root, { hook_event_name: 'PreToolUse', tool_name: 'SendMessage', tool_use_id: 'toolu_n', session_id: 's1', cwd: root, tool_input: { to, message: 'go on' }, ...extra }, env);
+    const two = () => { const root = project(); runningFiles(regOf(root), ['Explore', 'Plan']); return root; };
+    const under = two();
+    assert.strictEqual(send(under, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 0, 'one under the cap passes');
+    assert.deepStrictEqual(anyCapFile(under), [], 'no pending file, no .denied');
+    assert.strictEqual(send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 2, 'at the cap is refused');
+    const over = send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '1' });
+    assert.strictEqual(over.status, 2, 'one over the cap is refused');
+    assert.match(over.stderr, /^2 of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is 1/);
+    assert.strictEqual(send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' }).status, 0, 'no cap passes');
+    const seatRoot = two();
+    const seat = send(seatRoot, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }, { agent_id: 'a0123456789abcdef' });
+    assert.strictEqual(seat.status, 2, 'a seat at the cap is refused');
+    assert.match(seat.stderr, /the cap is full - wait for an agent to finish, then send it\./);
+    assert.deepStrictEqual(anyCapFile(seatRoot).filter((n) => n.endsWith('.denied')), [], 'a seat never writes .denied');
 });
 
 test('a held lock lets the dispatch through with one agent-cap-unjudged row (AC8)', () =>
@@ -794,5 +816,7 @@ test('a resume by agent id is judged after its stopped file is gone - past 2 min
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(regOf(room).dir, p), 'utf8')).type, 'agent');
     const named = project();
     runningFiles(regOf(named), ['Explore', 'Plan']);
-    assert.strictEqual(send(named, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 0, 'a name is still out of model');
+    const late = send(named, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' });
+    assert.strictEqual(late.status, 2, 'a name at the cap is refused (R087)');
+    assert.match(late.stderr, /the cap is full - wait for an agent to finish, then send it\./);
 });

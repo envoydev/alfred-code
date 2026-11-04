@@ -298,11 +298,15 @@ function capGates(payload, env = process.env, { stop = false } = {})
 
 // The denial, three lines: the count and the types (at most 8, then how many more), what to do - a seat works inline -
 // and whose the setting is. It never says how to lift the cap: a model told so could write 0 into the shared settings.
-function denialText(c, n, { seat = false } = {})
+// `byName`: a SendMessage naming its agent - the cap cannot tell a resume of a stopped one from a message to a running
+// one or a teammate, so at the cap it is refused (R087, the user's ruling of 2026-11-05).
+function denialText(c, n, { seat = false, byName = false } = {})
 {
     const types = c.types.slice(0, TYPES_SHOWN).join(', ') + (c.types.length > TYPES_SHOWN ? ` and ${c.types.length - TYPES_SHOWN} more` : '');
+    const second = byName ? 'This message names its agent, so the cap cannot tell whether it resumes a stopped one: the cap is full - wait for an agent to finish, then send it.'
+        : seat ? 'Do this step yourself - the session is at its cap.' : 'Dispatch this one when one hands back - its notice wakes you - and send the rest of a fan-out the same way.';
     return `${c.running} of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is ${n}: ${types}\n` +
-        (seat ? 'Do this step yourself - the session is at its cap.' : 'Dispatch this one when one hands back - its notice wakes you - and send the rest of a fan-out the same way.') + '\n' +
+        second + '\n' +
         "The setting is the user's - never change it yourself.";
 }
 
