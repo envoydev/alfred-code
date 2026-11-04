@@ -647,7 +647,18 @@ test('2.8.0: the commit guard reads the session start from state/history/, else 
 // as 'the add will fail too', so a loaded runner let a broad add sweep untracked paths in unasked. A timed-out check of a
 // broad add now asks once (UNTRACKED-ALLOW `*`), and an add naming existing files passes. The seam sets the timeout to
 // 1 ms, which no git dry run meets on any OS; every other case in this file runs at 60000 (set at the top).
-const TIMEOUT_1MS = { ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS: '1' };
+// A 1 ms timer is not sure to fire: on the gate's Linux leg (2026-11-04) a dry run finished before spawnSync looked at
+// it, and the add was judged on its output. Off Windows a `git` on PATH sleeps 3 s on `--dry-run` (its sleep holding no
+// pipe, so the kill returns at once) and the timeout is 300 ms, so it always fires; on Windows no spawnSync can launch
+// a script shim without a shell, and a process start there outlasts 1 ms.
+function slowSweep() {
+    if (process.platform === 'win32') return { ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS: '1' };
+    const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-slowgit-'));
+    fs.writeFileSync(path.join(dir, 'git'), `#!/bin/sh\nfor a in "$@"; do [ "$a" = --dry-run ] && sleep 3 </dev/null >/dev/null 2>&1; done\nexec '${real}' "$@"\n`, { mode: 0o755 });
+    return { ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS: '300', PATH: `${dir}${path.delimiter}${process.env.PATH}` };
+}
+const TIMEOUT_1MS = slowSweep();
 
 test('a broad add whose sweep check times out is denied, naming the timeout and the UNTRACKED-ALLOW * line', () => {
     const p = project();

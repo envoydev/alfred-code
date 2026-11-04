@@ -299,7 +299,9 @@ test('a pruned history reads pruned', (t) =>
 // ---- Task 4: stores under another root - forge, preferences, handoff - and approvals ------------------------------
 
 const { execFileSync } = require('node:child_process');
-const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args],
+// No auto-maintenance: a commit spawns a detached `git maintenance run --auto`, whose objects/maintenance.lock came and
+// went inside a tree hash's walk on the gate's macOS leg (2026-11-04) - git's own write, never the collector's.
+const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0', ...args],
     { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 
 test('a linked-worktree session finds forge and handoff under the main checkout', (t) =>
