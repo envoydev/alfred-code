@@ -1541,3 +1541,44 @@ test('settle: garbage in, the threshold as with no points, no throw', () =>
     assert.strictEqual(thresholdOf(p, h.tp), 270000, 'the garbage lines skipped, the boundary found and the point settled');
     assert.deepStrictEqual(pointsOf(p).map((r) => [r.at, r.settled]), [[new Date(t0).toISOString(), true], ['yesterday', undefined]]);
 });
+
+// R130-R132: a pass bounded by its budget past the first window, one unreadable transcript skipped alone, a device name
+// never opened.
+test('R130: past the first window a pass reads at most its budget plus the probe blocks, and a window the budget cut decides nothing', () =>
+{
+    const h = history({});
+    const t0 = Date.now() - 2 * DAY;
+    const bAt = t0 + 49000;
+    fs.writeFileSync(path.join(h.dir, 'qqqq-1.jsonl'), JSON.stringify(boundaryRow(300000, bAt)) + '\n');
+    const filler = Array.from({ length: 6000 }, () => JSON.stringify({ type: 'progress', data: 'y'.repeat(1000), timestamp: new Date(bAt + 300).toISOString() }));
+    fs.writeFileSync(path.join(h.dir, 'qqqq-2.jsonl'), [JSON.stringify(boundaryRow(300000, bAt)), ...filler].join('\n') + '\n');
+    h.points([point('qqqq-1', 300000, t0), point('qqqq-2', 300000, t0)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    const MB = 1024 * 1024;
+    const r = engine(p, h.tp, counted('qqqq-', `return F.settleCompactPoints({ now: ${Date.now()}, budgetBytes: ${MB}, capBytes: ${4 * MB} });`));
+    assert.ok(r.bytes <= 2 * MB, `read ${r.bytes}: the 1 MB budget plus the probe blocks`);
+    assert.deepStrictEqual(r.r, { dropped: 0, settled: 1 }, 'the first settles; the one the budget cut waits for the next pass');
+    assert.deepStrictEqual(pointsOf(p).map((x) => [x.session, x.settled]), [['qqqq-1', true], ['qqqq-2', undefined]]);
+});
+
+test('R131: a point whose transcript cannot be read (a directory) does not stop the next one settling', () =>
+{
+    const t0 = Date.now() - 2 * DAY;
+    const h = history({ 'rrrr-2': [boundaryRow(300000, t0 + 49000)] });
+    fs.mkdirSync(path.join(h.dir, 'rrrr-1.jsonl'));
+    h.points([point('rrrr-1', 300000, t0), point('rrrr-2', 300000, t0)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    assert.deepStrictEqual(engine(p, h.tp, `return F.settleCompactPoints({ now: ${Date.now()} });`), { dropped: 0, settled: 1 });
+    assert.deepStrictEqual(pointsOf(p).map((x) => [x.session, x.settled]), [['rrrr-1', undefined], ['rrrr-2', true]]);
+});
+
+test('R132: a row naming a Windows device (CON, nul) is kept and never read', () =>
+{
+    const t0 = Date.now() - 2 * DAY;
+    const h = history({});
+    h.points([point('CON', 300000, t0), point('nul', 300000, t0)]);
+    const p = Object.assign(h.p, { sid: 'cur-0' });
+    const r = engine(p, h.tp, counted('CON', `return F.settleCompactPoints({ now: ${Date.now()} });`));
+    assert.deepStrictEqual([r.r, r.opens], [{ dropped: 0, settled: 0 }, 0]);
+    assert.deepStrictEqual(pointsOf(p).map((x) => x.session), ['CON', 'nul']);
+});

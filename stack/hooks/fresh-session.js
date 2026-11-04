@@ -337,6 +337,7 @@ const READ_CAP = 32 * 1024 * 1024;
 const READ_SLACK = 1200000;
 let _settleRan = false;
 const pointKey = (r) => `${r.at}|${r.session}|${r.tokens}`;
+const DEVICE_NAME_RE = /^(?:con|prn|aux|nul|com\d|lpt\d)$/i;
 function settleCompactPoints({ now = Date.now(), budgetBytes = SETTLE_BUDGET, capBytes = READ_CAP } = {}) {
   const res = { dropped: 0, settled: 0 };
   try {
@@ -346,7 +347,8 @@ function settleCompactPoints({ now = Date.now(), budgetBytes = SETTLE_BUDGET, ca
     const byFile = new Map();
     for (const r of readCompactPoints()) {
       const at = Date.parse(r.at);
-      if (r.settled || !r.session || !prelude.SESSION_ID_RE.test(String(r.session)) || !Number.isFinite(at) || !own) continue;
+      // a Windows device name is no transcript to open (R132): kept, never read
+      if (r.settled || !r.session || !prelude.SESSION_ID_RE.test(String(r.session)) || DEVICE_NAME_RE.test(String(r.session)) || !Number.isFinite(at) || !own) continue;
       if (now < at + 30000) continue;
       const file = r.session === sid ? own : path.join(path.dirname(own), `${r.session}.jsonl`);
       if (!byFile.has(file)) byFile.set(file, []);
@@ -355,9 +357,12 @@ function settleCompactPoints({ now = Date.now(), budgetBytes = SETTLE_BUDGET, ca
     const decide = new Map();
     let spent = 0;
     for (const [file, rows] of byFile) {
+      if (spent >= budgetBytes) break;
       let st = null;
       try { st = fs.statSync(file); } catch { /* missing */ }
       if (!st) { for (const r of rows) if (now >= Date.parse(r.at) + 600000) decide.set(pointKey(r), 'drop'); continue; }
+      // one file that cannot be read (a directory, a lock) is skipped alone; the rest of the pass still decides (R131)
+      try {
       // one window per run of rows under 15 min apart, so the hours between two compactions are never read
       const sorted = rows.slice().sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
       const runs = [];
@@ -367,8 +372,12 @@ function settleCompactPoints({ now = Date.now(), budgetBytes = SETTLE_BUDGET, ca
       }
       for (const run of runs) {
         if (spent >= budgetBytes) break;
-        const w = readWindow(file, Date.parse(run[0].at) - 120000, Date.parse(run[run.length - 1].at) + 750000, { capBytes });
+        // past the first window a read takes only what the budget has left (R130); a window that budget cut short decides
+        // nothing - the next pass reads it whole - so a point is never dropped for the budget's sake
+        const room = spent ? Math.min(capBytes, budgetBytes - spent) : capBytes;
+        const w = readWindow(file, Date.parse(run[0].at) - 120000, Date.parse(run[run.length - 1].at) + 750000, { capBytes: room });
         spent += w.bytes;
+        if (w.capped && room < capBytes) break;
         // a row is decided only on what the read reached: a cut read decides nothing it stopped short of, and an hour on drops it
         const reached = (t) => w.reachedTo >= t + READ_SLACK;
         for (const r of run) {
@@ -380,6 +389,7 @@ function settleCompactPoints({ now = Date.now(), budgetBytes = SETTLE_BUDGET, ca
           else if (now >= b.at + 30000) decide.set(pointKey(r), 'settle');
         }
       }
+      } catch { /* this file's rows wait; the next pass tries again */ }
     }
     if (!decide.size) return res;
     // applied to a fresh read, by key: a point another hook recorded since this pass began survives it
@@ -412,7 +422,7 @@ function settleCompactPoints({ now = Date.now(), budgetBytes = SETTLE_BUDGET, ca
 // forward read until the newest timestamp passes `toMs` + the slack, or `capBytes`. Only boundary and notice lines parse.
 // `reachedTo`: the newest timestamp the forward read saw, Infinity once it read to the file's end.
 function readWindow(file, fromMs, toMs, { slackMs = READ_SLACK, capBytes = READ_CAP } = {}) {
-  const out = { boundaries: [], notices: [], bytes: 0, reachedTo: NaN };
+  const out = { boundaries: [], notices: [], bytes: 0, reachedTo: NaN, capped: false };
   const TS_RE = /"timestamp"\s*:\s*"([^"]+)"/g;
   const newest = (text) => {
     let best = NaN;
@@ -461,7 +471,8 @@ function readWindow(file, fromMs, toMs, { slackMs = READ_SLACK, capBytes = READ_
     let seen = NaN;
     let read = 0;
     while (pos < size && read < capBytes && !(seen >= toMs + slackMs)) {
-      const n = fs.readSync(fd, chunk, 0, chunk.length, pos);
+      // never past the cap: a caller's budget is a number of bytes, not of chunks (R130)
+      const n = fs.readSync(fd, chunk, 0, Math.min(chunk.length, capBytes - read), pos);
       if (n <= 0) break;
       pos += n;
       read += n;
@@ -477,6 +488,7 @@ function readWindow(file, fromMs, toMs, { slackMs = READ_SLACK, capBytes = READ_
     }
     if (rest) take(rest);   // the file's last line, with no newline after it yet
     out.reachedTo = pos >= size ? Infinity : seen;
+    out.capped = pos < size && read >= capBytes && !(seen >= toMs + slackMs);
   } finally { fs.closeSync(fd); }
   return out;
 }

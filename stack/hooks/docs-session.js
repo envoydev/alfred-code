@@ -908,7 +908,8 @@ function seatAsk(input, root, docs, a, key, closing) {
   if (!durableHits.length) return null;
   const { asks, warnings } = sectionRefs(docs, namedFirst(docs, durableHits, (n) => !isRecomputedDomain(docs, n.domain)), ASK_SECTIONS, (id) => a.asked.includes(id) || isRecomputedRef(docs, id));
   if (!asks.length && !warnings.length) return null;
-  const files = [...new Set(hits.flatMap((h) => h.files))];
+  // the seat answers for its durable hits alone, so the line names their files (R083)
+  const files = [...new Set(durableHits.flatMap((h) => h.files))];
   const reason = finishAsk(docs, files, asks, warnings, closing);
   a.blocked = true;
   a.via = input.hook_event_name === 'PreToolUse' ? 'handback' : 'stop';
@@ -1691,9 +1692,7 @@ const liveBackgroundWork = (input) => input.hook_event_name === 'Stop' && Array.
 // are never rewritten - the close names the entry. No copy, a throw or no row adds nothing.
 let prefsReader;
 function deadScopeRows(root) {
-  if (prefsReader === undefined) {
-    try { prefsReader = require(path.join(__dirname, '..', 'skills', 'capture-preferences', 'scripts', 'preferences.js')); } catch { prefsReader = null; }
-  }
+  deadScopeRows.load();
   if (!prefsReader || typeof prefsReader.deadScopes !== 'function' || typeof prefsReader.scopeOf !== 'function') return [];
   try {
     // The vanished file is matched by the reader that found the Scope: dead, so every spelling it reads (a folder, a
@@ -1702,6 +1701,29 @@ function deadScopeRows(root) {
       .filter((r) => r.part && typeof r.part.test === 'function')
       .map(({ part, ...r }) => ({ ...r, matches: part.test }));
   } catch { return []; }
+}
+deadScopeRows.load = () => {
+  if (prefsReader === undefined) {
+    try { prefsReader = require(path.join(__dirname, '..', 'skills', 'capture-preferences', 'scripts', 'preferences.js')); } catch { prefsReader = null; }
+  }
+};
+
+// Whether a Scope: may be dead, without listing the tree on every Stop (R081): the reader names one file each live Scope
+// reaches, and while the docs keep their times and each of those files still exists, no live Scope can have died since,
+// so the last count stands. A dead one can only revive (a new file), which costs a diff, never a missed name. An older
+// capture copy with no witness reader takes the old read.
+function scopesMayBeDead(root, state, sessionId) {
+  deadScopeRows.load();
+  if (!prefsReader || typeof prefsReader.scopeWitnesses !== 'function' || typeof prefsReader.scopeDocsKey !== 'function') return deadScopeRows(root).length > 0;
+  try {
+    const key = prefsReader.scopeDocsKey(root);
+    const c = state.scopes;
+    if (c && c.key === key && Array.isArray(c.witnesses) && c.witnesses.every((f) => fs.existsSync(path.join(root, f)))) return c.dead > 0;
+    const w = prefsReader.scopeWitnesses(root);
+    state.scopes = { key, dead: w.filter((x) => !x.witness).length, witnesses: [...new Set(w.map((x) => x.witness).filter(Boolean))] };
+    saveState(sessionId, state);
+    return state.scopes.dead > 0;
+  } catch { return false; }
 }
 
 // A recomputed hit the capture already saw: its domain's watch.json was written after this session started and after
@@ -1724,8 +1746,8 @@ function stop(input, root, docs, state) {
   // Nothing watched and no dead Scope: to name, nothing to ask: the tree diff it would pay for (47-261ms, every turn)
   // can only end in no hit (audit 2026-10-08).
   const watched = !noWatch(docs);
-  let scopeRows = watched ? null : deadScopeRows(root);
-  if (!watched && !scopeRows.length) return;
+  let scopeRows = null;
+  if (!watched && !scopesMayBeDead(root, state, input.session_id)) return;
   let changed;
   let hits = [];
   let rcHits = [];

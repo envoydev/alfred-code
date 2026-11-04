@@ -2736,6 +2736,22 @@ test('watch-merge --doc takes in an older free-text entry and keeps one naming a
   } finally { r.rm(); }
 });
 
+test('R082: a hand-added entry naming only the run book doc survives a second --doc merge', () => {
+  const r = repo();
+  try {
+    r.write(AW, JSON.stringify({ watch: [entry('build and test commands', ['RUN-AND-DEBUG-AWARENESS#build'])] }));
+    const flags = ['--kinds', 'run book: ', '--doc', 'RUN-AND-DEBUG-AWARENESS'];
+    const book = [entry('run book: build', ['RUN-AND-DEBUG-AWARENESS#build'])];
+    assert.strictEqual(merge(r, 'awareness', flags, book).status, 0);
+    assert.deepStrictEqual(JSON.parse(r.read(AW)).watch.map((e) => e.kind), ['run book: build'], 'the first merge adopts the old capture\'s entry');
+    const j = JSON.parse(r.read(AW));
+    j.watch.push(entry('my check', ['RUN-AND-DEBUG-AWARENESS#debug']));
+    r.write(AW, JSON.stringify(j, null, 2) + '\n');
+    assert.strictEqual(merge(r, 'awareness', flags, book).status, 0);
+    assert.deepStrictEqual(JSON.parse(r.read(AW)).watch.map((e) => e.kind), ['run book: build', 'my check'], 'the hand-added entry survives the second');
+  } finally { r.rm(); }
+});
+
 test('watch-merge of the same entries still moves the file\'s time, so the close knows the capture ran (final review I1)', () => {
   const r = repo();
   try {

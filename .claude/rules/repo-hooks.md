@@ -1191,7 +1191,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     PreCompact's count runs 1-5k under the boundary's `preTokens` - marks the point `held`, which counts toward no
     trigger until `fresh-session.js settleCompactPoints` reads its transcript: once per process, one binary-searched
     window per run of points under 15 min apart (never the whole file - real ones reach 214 MB; 32 MB a window, 64 MB a
-    pass, the rest waiting for the next), a point decided only once that read reached past it (a
+    pass, the rest waiting for the next; a later window reads only the room the pass has left and, cut by it, decides
+    nothing - R130; a transcript that cannot be read, a directory among them, skips its run and the next settles - R131;
+    a session named like a device, `CON` or `nul`, is never opened - R132), a point decided only once that read reached past it (a
     probe inside a row of over 1 MB takes the nearest timestamp behind it), the notice drops it, a boundary 30 s past
     with none settles it, and an UNTIED point (no transcript 10 min on, no boundary while the session went on 10 min, or
     an hour on with no boundary or no read reaching it) is dropped - a kept one could hold a wrong trigger 30 days, a
@@ -1645,7 +1647,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     unmarked and the retry hands it over, every doc after it waiting its turn (`codeParts` `later`), and only an entry no
     room holds whole is cut once with a Read line - `preferences.js lint` fails one past 5,000; a designer's start, which has
     no retry, names what did not fit. A glob reaching no file would hide its entry from every edit, so `preferences.js lint`
-    notes it and every update names it (`docs.deadScopeLines`, through the capture's `deadScopes`; the hook reads
+    notes it and every update names it (`docs.deadScopeLines`, through the capture's `deadScopes`; the Stop check
+    re-reads them only when a preferences doc moved or the one file it saw under a live Scope is gone, `state.scopes`,
+    so a turn with nothing changed runs no `ls-files` - R081; `watch-merge --doc` adopts an older capture's entries for
+    that doc once, `docAdopted`, so a hand-added entry outside its kinds survives the next merge - R082; the hook reads
     `Scope:` through the script's own `scopeOf`, one reader since review 2026-10-23, so the two cannot drift); a glob aimed at the wrong EXISTING folder no script can
     judge, so `preferences.js reach` shows what each `Scope:` takes (count, file types, three paths - the capture reports
     it; the capture asks the user to confirm each new glob's reach) and `lint` and every update name a `Check:` that measures files its `Scope:` does not reach (`reachIn`, `docs.mismatchLines` through the capture's `scopeMismatches`) - and the FIRST git write (`shell-writes.js` `gitMutates`, plus a branch, tag or worktree branch made by
