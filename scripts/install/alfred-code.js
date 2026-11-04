@@ -42,6 +42,7 @@ const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
 const workspace = require('./workspace.js');
 const variables = require('./variables.js');
+const memoryDir = require('./memory-dir.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
@@ -665,12 +666,18 @@ function runLayers(ctx)
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
+    // Memory P3: a `--memory docs` that cannot be written here is unset before the settings pass writes the mode.
+    try { memoryDir.gate(ctx); }
+    catch (err) { ctx.note(`docs memory could not be checked (${err.message}) - --memory docs is not applied this run`); if (ctx.args.memory === 'docs') ctx.args.memory = undefined; ctx.args.memoryCopy = false; }
     variablesStep(ctx);
     installHooksAndRules(ctx);
     if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx, path.join(ctx.claudeDir, 'settings.local.json'));
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
+    // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
+    try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal }); }
+    catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
     // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is
     // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
     if (!ctx.docsRootPending)
@@ -830,6 +837,8 @@ function ignoreStep(ctx, docsPath)
     let mode = null;
     try { mode = copy.resolveDocsVersioning(projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot, docsPath, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }); }
     catch (err) { note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`); }
+    // The docs memory's union-merge attributes follow the versioning (memory-dir.js, R10).
+    ctx.docsVersioningMode = mode;
     let data = null;
     try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, log }); }
     catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
@@ -2092,6 +2101,16 @@ function ledgerOf(ctx)
         }));
     for (const [name, rows] of Object.entries(settings.carryMemberRows({ claudeDir: ctx.claudeDir, priorSettings: prior.settings, workspaceRows: ctx.workspaceRows })))
         settingsKeys[name] = { ...(settingsKeys[name] || {}), ...rows };
+    // Docs memory's row (memory-dir.js step) is decided there on every path, so it is set or dropped here, not carried.
+    // Always last in its file: the carry puts a prior row before the workspace rows, so a kept place moved on a re-run.
+    if (ctx.memoryDirRow !== undefined)
+    {
+        const rows = { ...(settingsKeys['settings.local.json'] || {}) };
+        delete rows.autoMemoryDirectory;
+        if (ctx.memoryDirRow) rows.autoMemoryDirectory = ctx.memoryDirRow;
+        if (Object.keys(rows).length) settingsKeys['settings.local.json'] = rows;
+        else delete settingsKeys['settings.local.json'];
+    }
     // No run registers a server since 2.10.1: the .mcp.json and account rows are what an earlier run recorded and is still
     // there unchanged (retireMcps removes them on the first update past each retirement) - so a later run, or uninstall,
     // still knows them for the stack's.
@@ -2311,7 +2330,10 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     const accountHash = ((ledger.account || {})['settings.json'] || {})[workspace.INSTRUCTION_KEY];
     if (accountHash) dropAccountKey({ projectRoot, configDir, accountFile, hash: accountHash, log, note });
     const stillOff = ['settings.json', 'settings.local.json'].filter((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
-    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, and the data root ${keptRoot}/ - the docs, and whatever an earlier release's servers left there${stillOff.length ? `; autoMemoryEnabled: false stays in ${stillOff.join(' and ')} - yours, so Claude's own memory stays off until you remove it` : ''}`);
+    // Docs memory (P3): the folder is the user's lessons, kept whole; with the row gone Claude Code reads its default place.
+    const memoryAt = path.resolve(projectRoot, docsPath, 'memory');
+    const memoryKept = layout().memoryFiles(memoryAt).length ? `, the docs memory ${path.relative(projectRoot, memoryAt).split(path.sep).join('/')}/ (Claude Code reads its default place again)` : '';
+    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, and the data root ${keptRoot}/ - the docs${memoryKept}, and whatever an earlier release's servers left there${stillOff.length ? `; autoMemoryEnabled: false stays in ${stillOff.join(' and ')} - yours, so Claude's own memory stays off until you remove it` : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);
