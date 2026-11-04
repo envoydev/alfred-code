@@ -1326,3 +1326,19 @@ test('start: the user\'s own value, or a managed one over the stack\'s row, name
     }
     finally { s.done(); }
 });
+
+// R160 (burn-down 2026-11-04): the leak scan ran only while the mode was docs; a docs memory still committed after a
+// switch away went unread.
+test('validate R7: a leaked path in a docs memory left after a switch to default is still named', () =>
+{
+    const s = docsSandbox({ mode: 'default', row: false });
+    try
+    {
+        assert.deepStrictEqual(s.rows(), [], 'no memory files: nothing');
+        s.memory(s.want, { 'MEMORY.md': `# Memory\n- notes kept in ${path.join(os.homedir(), 'x')}\n` });
+        assert.deepStrictEqual(s.rows(), ['!! memory: .alfred/docs/memory/MEMORY.md:2 holds an absolute local path - it is committed with the docs; make it project-relative']);
+        s.vars('ALFRED_CODE_MEMORY=default\nALFRED_CODE_DOCS_VERSIONING=local\n');
+        assert.deepStrictEqual(s.rows(), [], 'kept out of git: nothing to name');
+    }
+    finally { s.done(); }
+});

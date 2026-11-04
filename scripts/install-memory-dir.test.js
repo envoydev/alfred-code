@@ -593,3 +593,59 @@ test('docs: an empty settings.local.json takes the row', POSIX_ONLY, () =>
     assert.strictEqual(r.result.mode, 'docs');
     assert.doesNotMatch(r.out, /not valid JSON/);
 });
+
+// ---------- the burn-down of 2026-11-04 (R161-R163) ----------
+// R163: D11's refusal took the row out of a TRACKED settings.local.json and deleted the file when nothing else was left -
+// a tracked deletion a commit spreads to every teammate. A tracked file stays, as {}.
+test('a tracked settings.local.json holding only the stack\'s row ends as {} and stays tracked', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [['--memory', 'docs'], []],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.claude', 'settings.local.json');
+            if (i === 0)
+            {
+                writeLocal(repo, { autoMemoryDirectory: localOf(repo).autoMemoryDirectory });
+                git(repo, 'add', '-f', '.claude/settings.local.json');
+            }
+            return { text: readOr(file), tracked: git(repo, 'ls-files', '--', '.claude/settings.local.json').trim() };
+        },
+    });
+    assert.strictEqual(r.steps[1].text, '{}\n', r.outs[1]);
+    assert.strictEqual(r.steps[1].tracked, '.claude/settings.local.json', 'still in the index');
+    assert.match(r.outs[1], /settings\.local\.json kept as \{\} - git tracks it/);
+});
+
+// R162: --memory-copy while a hand-set docs root waits on update's ask dropped the copy without a word.
+test('--memory-copy while the docs root is pending says the copy was not made', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [[], ['--memory', 'docs', '--memory-copy']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const file = path.join(repo, '.claude', 'settings.json');
+            const s = json(file);
+            s.env = { ...(s.env || {}), ALFRED_CODE_DOCS_PATH: 'docs' };
+            fs.writeFileSync(file, JSON.stringify(s, null, 2));
+            fs.mkdirSync(path.join(repo, 'docs', 'architecture'), { recursive: true });
+            fs.writeFileSync(path.join(repo, 'docs', 'architecture', 'ARCHITECTURE.md'), '# mine\n');
+            return null;
+        },
+    });
+    assert.match(r.outs[1], /docs was set by hand - nothing moved yet/, r.outs[1]);
+    assert.match(r.outs[1], /memory: copy not made - the docs root waits on \/alfred-code:update's ask; an update with --memory-copy after it makes the copy/, r.outs[1]);
+});
+
+// R161: a user's own .gitattributes in the docs memory printed 'kept - yours' on every flag-less docs-mode update.
+test('a user .gitattributes prints no kept line on a flag-less update', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update', 'update'], SEL, {
+        args: [['--memory', 'docs'], [], ['--installed-only', '--memory', 'docs']],
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(ATTR(repo), '*.md text eol=lf\n'); return readOr(ATTR(repo)); },
+    });
+    assert.strictEqual(r.steps[1], '*.md text eol=lf\n', 'the user\'s file stays');
+    assert.doesNotMatch(r.outs[1], /\.gitattributes/, r.outs[1]);
+    assert.match(r.outs[2], /memory: \.alfred\/docs\/memory\/\.gitattributes kept - not the stack's text, so it is yours/, 'a run that asks names it');
+});

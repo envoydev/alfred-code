@@ -84,6 +84,13 @@ function removeRow(ctx, file, data)
 {
     delete data[KEY];
     if (Object.keys(data).length) { writeLocal(file, data); return; }
+    // R163 (burn-down 2026-11-04): a tracked file stays, as {} - its deletion would reach every teammate with the next commit.
+    if (variables.tracked(file))
+    {
+        writeLocal(file, data);
+        ctx.log(`  ${LOCAL} kept as {} - git tracks it, so deleting it would reach every teammate with the next commit`);
+        return;
+    }
     fs.rmSync(file, { force: true });
     ctx.log(`  ${LOCAL} removed - it held nothing but the stack's entries`);
 }
@@ -289,7 +296,8 @@ function attributesStep({ dir, want, log = () => {}, why = 'ALFRED_CODE_MEMORY i
     let text = null;
     try { text = fs.readFileSync(file, 'utf8'); } catch { text = null; }
     const ours = text !== null && text.replace(/\r\n/g, '\n') === ATTRIBUTES_TEXT;
-    const yours = () => { if (want || named) log(`memory: ${rel}/.gitattributes kept - not the stack's text, so it is yours`); return 'yours'; };
+    // R161 (burn-down 2026-11-04): named only on a run that asked - a flag-less update said it every time.
+    const yours = () => { if (named) log(`memory: ${rel}/.gitattributes kept - not the stack's text, so it is yours`); return 'yours'; };
     if (want)
     {
         if (text === null)
@@ -312,8 +320,15 @@ function attributesStep({ dir, want, log = () => {}, why = 'ALFRED_CODE_MEMORY i
 function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
 {
     const done = rowStep(ctx, { warnUnignoredLocal });
-    if (done.skip) return;
     const say = (line) => ctx.log(`  ${line}`);
+    // R162 (burn-down 2026-11-04): a copy asked for on a skipped run was dropped without a word.
+    if (done.skip)
+    {
+        if (ctx.memoryFrom) say(ctx.docsRootPending
+            ? 'memory: copy not made - the docs root waits on /alfred-code:update\'s ask; an update with --memory-copy after it makes the copy'
+            : 'memory: copy not made - the data root is not valid; once it is fixed, an update with --memory-copy makes the copy');
+        return;
+    }
     try { copyStep(ctx, done.mode); }
     catch (err) { say(`!! memory: copy stopped - ${err.message}; the old files stay where they are`); }
     // A sharing child's folder is its member's, and a refused one is left as it is until the cause is fixed.

@@ -571,3 +571,95 @@ test('uninstall removes the stack\'s .variables rows at their recorded hash and 
     assert.deepStrictEqual(steps[1], { ALFRED_CODE_HISTORY: '7' }, outs[1]);
     assert.match(outs[1], /\.variables env: ALFRED_CODE_HISTORY kept - changed since the stack wrote it, so it is yours \(1 chars\)/);
 });
+
+// ---------- the burn-down of 2026-11-04 (R097, R098, R169) ----------
+// R097: the move run wrote <new root>/state/lsp-coverage.json while the old root still sat on disk, so the next update
+// rewrote it - the whole tree, state files included, is equal from the run after the move.
+test('a --data-path move leaves the whole tree identical on the next update', POSIX_ONLY, () =>
+{
+    const move = ['--scope', 'project', '--installed-only', '--data-path', '.data', '--data-move', 'move'];
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
+        plugins: PLUGINS, args: [['--scope', 'project'], move, ['--scope', 'project', '--installed-only']],
+        each: (repo) => treeHash(repo),
+    });
+    assert.strictEqual(steps[2], steps[1], outs[2]);
+});
+
+// R098: a .variables another run holds locked kept every key in the settings file - a fresh install seeded all of them
+// into settings.json. Now only the keys the settings file already held stay; the rest wait for the next run.
+const holdLock = (repo) => { fs.mkdirSync(path.join(repo, '.alfred'), { recursive: true }); fs.writeFileSync(`${varsFile(repo)}.lock`, String(process.pid)); };
+test('a locked .variables during the move writes no seed into settings.json, and the next run seeds .variables', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], SEL, {
+        plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
+        prepare: holdLock,
+        each: (repo, i) =>
+        {
+            const got = { env: catalogIn(envIn(repo, 'settings.json')), vars: Object.keys(varsOf(repo)).sort() };
+            if (i === 0) fs.rmSync(`${varsFile(repo)}.lock`, { force: true });
+            return got;
+        },
+    });
+    assert.deepStrictEqual(steps[0].env, [...SETTINGS_KEYS].sort(), outs[0]);
+    assert.match(outs[0], /!! variables: \.alfred\/\.variables is locked by another run/);
+    assert.deepStrictEqual(steps[1].vars, [...SEEDED].sort(), outs[1]);
+    assert.deepStrictEqual(steps[1].env, [...SETTINGS_KEYS].sort());
+});
+
+test('an update under the same lock keeps the keys settings.json already held', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], SEL, {
+        plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                const file = path.join(repo, '.claude', 'settings.json');
+                const s = json(file);
+                s.env.ALFRED_CODE_HISTORY = '7';
+                fs.writeFileSync(file, JSON.stringify(s, null, 2));
+                // held in settings.json alone: .variables outranks settings.json (D4), so a key both hold is a dead copy
+                fs.writeFileSync(varsFile(repo), fs.readFileSync(varsFile(repo), 'utf8').replace(/^ALFRED_CODE_HISTORY=.*\n/m, ''));
+                holdLock(repo);
+            }
+            return { env: envIn(repo, 'settings.json'), vars: varsOf(repo) };
+        },
+    });
+    assert.strictEqual(steps[1].env.ALFRED_CODE_HISTORY, '7', outs[1]);
+    assert.deepStrictEqual(catalogIn(steps[1].env), [...SETTINGS_KEYS, 'ALFRED_CODE_HISTORY'].sort(), 'no seed from .variables lands in settings.json');
+    assert.deepStrictEqual(steps[1].vars, steps[0].vars, '.variables untouched');
+});
+
+// R169: the uninstall's kept line named the data root but not a .variables still holding the user's own values.
+test('uninstall names a .variables still holding the user\'s keys', POSIX_ONLY, () =>
+{
+    const { outs } = seedRun(['install', 'uninstall'], SEL, {
+        plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project']],
+        each: (repo, i) => { if (i === 0) variables.set(repo, ['ALFRED_CODE_HISTORY=7'], { env: acctEnv(repo), log: () => {} }); return null; },
+    });
+    assert.match(outs[1], /\.alfred\/\.variables \(1 of your keys - nothing reads them once the stack is gone\)/, outs[1]);
+});
+
+// O11 (a side agent's note, 2026-11-04): a value typed into settings.json that .variables outranks (D4) was dropped by the
+// next update and counted as moved. It is named as dropped, with both lengths, and is no move.
+test('a settings.json value .variables outranks is named as dropped, never counted as moved', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], SEL, {
+        plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                const file = path.join(repo, '.claude', 'settings.json');
+                const s = json(file);
+                s.env.ALFRED_CODE_HISTORY = '17';
+                fs.writeFileSync(file, JSON.stringify(s, null, 2));
+            }
+            return { env: envIn(repo, 'settings.json'), vars: varsOf(repo) };
+        },
+    });
+    assert.strictEqual(steps[1].vars.ALFRED_CODE_HISTORY, steps[0].vars.ALFRED_CODE_HISTORY, '.variables keeps the value every reader used');
+    assert.ok(!Object.hasOwn(steps[1].env, 'ALFRED_CODE_HISTORY'));
+    assert.match(outs[1], /!! settings\.json env: ALFRED_CODE_HISTORY dropped \(2 chars\) - \.alfred\/\.variables holds another value \(1 chars\), which outranks settings\.json, so every reader used that one; set it in \.alfred\/\.variables \(\/alfred-code:configure\) if the dropped one was meant/, outs[1]);
+    assert.doesNotMatch(outs[1], MOVED_LINE, 'a dropped value is no move');
+});

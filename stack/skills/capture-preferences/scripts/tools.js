@@ -1016,6 +1016,13 @@ function docsValidateRows(projectRoot, env)
     if (state.versioning === 'git') rows.push(...memoryLeakRows(projectRoot, state, env));
     return rows;
 }
+// R160 (burn-down 2026-11-04): a docs memory left committed after a switch away from docs is still read for leaks.
+function leftDocsLeakRows(projectRoot, env)
+{
+    const state = docsMemoryState({ projectRoot, env });
+    if (!state || state.share || state.versioning !== 'git' || !loader.memoryFiles(state.dir).length) return [];
+    return memoryLeakRows(projectRoot, state, env);
+}
 // The stack's docs row still in settings.local.json after a switch away from docs (the update removes it).
 function staleDocsRow(projectRoot, mode)
 {
@@ -1131,7 +1138,7 @@ function validateRows(projectRoot, env = process.env)
     }
     const setting = memorySetting({ projectRoot, env });
     const mode = memoryMode({ projectRoot, env });
-    rows.push(...(mode === 'docs' ? docsValidateRows(projectRoot, env) : staleDocsRow(projectRoot, mode)));
+    rows.push(...(mode === 'docs' ? docsValidateRows(projectRoot, env) : [...staleDocsRow(projectRoot, mode), ...leftDocsLeakRows(projectRoot, env)]));
     if (mode === 'custom')
     {
         if (!jobOrder({ projectRoot, env, job: 'memory' }).ranks.length) rows.push('!! memory: ALFRED_CODE_MEMORY is custom, but the tool order ranks no memory tool this machine reaches - rank one with /capture-preferences tools, or switch to native in /alfred-code:configure');

@@ -1412,3 +1412,18 @@ test('seed: a local-scope update carries settings.json\'s old skillOverrides key
     assert.deepStrictEqual(result.shared, { skillOverrides: { 'project-quality-loop': 'off' } }, 'a local-scope run never writes settings.json');
     assert.match(out, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-code-quality in settings\.local\.json/, out);
 });
+
+// R129 (burn-down 2026-11-04): an old key whose new name was already set was dropped, yet logged 're-keyed'.
+test('a dropped skillOverrides key is logged dropped, never re-keyed', () =>
+{
+    const plainKey = overridesWith(PLAIN, { 'old-plain': 'off', u: 'on' });
+    assert.deepStrictEqual(plainKey.overrides, { u: 'on' });
+    assert.deepStrictEqual(naming(plainKey.logs, 'old-plain'), ["  settings.json: skillOverrides old-plain ('off') dropped - u already holds 'on'"]);
+    const merged = overridesWith(UMB2, { 'old-a': 'off', 'old-b': 'off', u: 'on' });
+    assert.deepStrictEqual(merged.overrides, { u: 'on' });
+    assert.deepStrictEqual([...naming(merged.logs, 'old-a'), ...naming(merged.logs, 'old-b')], [
+        "  settings.json: skillOverrides old-a ('off') dropped - u already holds 'on'",
+        "  settings.json: skillOverrides old-b ('off') dropped - u already holds 'on'",
+    ]);
+    assert.ok(![...plainKey.logs, ...merged.logs].some((l) => /re-keyed/.test(l)));
+});

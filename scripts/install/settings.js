@@ -736,7 +736,9 @@ function rekeyOverrides(data, renamed, log, label)
         for (const from of m.olds)
         {
             if (never) log(`  !! ${label}: skillOverrides ${from}: ${quoted(o[from])} has no key after the merge - ${to} has no per-part switch; ${kept ? `it stays ${quoted(o[to])}` : takes || 'it stays unset'}`);
-            else if (kept || m.carry) log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
+            // R129 (burn-down 2026-11-04): a held new key keeps its value - the old one is dropped, never re-keyed
+            else if (kept) log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) dropped - ${to} already holds ${quoted(o[to])}`);
+            else if (m.carry) log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
             else log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) not carried - ${to} holds ${partsWord(to, renamed)} captures; ${takes || `set ${to} yourself to switch them all`}`);
             delete o[from];
         }
@@ -746,10 +748,11 @@ function rekeyOverrides(data, renamed, log, label)
     for (const [from, to] of Object.entries((renamed && renamed.skills) || {}))
     {
         if (Object.hasOwn(topics, from) || !Object.hasOwn(o, from)) continue;
-        if (!Object.hasOwn(o, to)) o[to] = o[from];
+        const held = Object.hasOwn(o, to);
+        if (held) log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) dropped - ${to} already holds ${quoted(o[to])}`);
+        else { o[to] = o[from]; log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`); }
         delete o[from];
         changed = true;
-        log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
     }
     return changed;
 }
@@ -891,11 +894,17 @@ function writeSettings(opts)
     const settingsEnvBefore = data.env === undefined ? null : JSON.stringify(data.env);
     const settingsHad = new Set(plain(data.env) ? Object.keys(data.env).filter(movable) : []);
     const fileValues = {};
+    const outranked = new Map();
     if (vars && (data.env === undefined || plain(data.env)))
     {
         for (const [key, value] of Object.entries(vars.read(variablesFile).values)) if (movable(key)) fileValues[key] = value;
         // The loader's order (D4): .variables over settings.json, settings.local.json over .variables - so a local-scope
         // run's own file keeps a value typed there, and the move carries the value every reader already saw.
+        // O11 (burn-down 2026-11-04): a value of this file's that .variables outranks was never read; it is named as dropped,
+        // with both lengths (never a value), and is no move.
+        if (label !== 'settings.local.json' && plain(data.env))
+            for (const [key, value] of Object.entries(fileValues))
+                if (Object.hasOwn(data.env, key) && String(data.env[key]) !== String(value)) outranked.set(key, [String(data.env[key]).length, String(value).length]);
         if (Object.keys(fileValues).length) data.env = label === 'settings.local.json' ? { ...fileValues, ...(data.env || {}) } : { ...(data.env || {}), ...fileValues };
     }
     const envBefore = plain(data.env) ? { ...data.env } : {};
@@ -1215,7 +1224,10 @@ function writeSettings(opts)
     const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorHere, release: releaseEnv, seedsOf, written: writtenNow, kept, migrations, log });
     if (envShared.changed && !vars) changed = true;
     managedEnv[label] = envShared.managed;
-    const moved = vars ? moveVariables({ vars, file: variablesFile, env: data.env, fileValues, MOVED, catalog, managedEnv, label, log }) : [];
+    // R098: the keys this file held before the run, under the names the env pass renamed them to
+    const renameTo = new Map((migrations.renames || []).map(([from, to]) => [from, to]));
+    const heldKeys = new Set([...settingsHad].map((key) => { let k = key; for (let i = 0; i < 8 && renameTo.has(k); i++) k = renameTo.get(k); return k; }));
+    const moved = vars ? moveVariables({ vars, file: variablesFile, env: data.env, fileValues, MOVED, catalog, managedEnv, label, log, heldKeys }) : [];
     if (vars)
     {
         if (settingsEnvBefore === null && plain(data.env) && !Object.keys(data.env).length) delete data.env;
@@ -1382,7 +1394,10 @@ function writeSettings(opts)
     }
 
     // The keys this file held before the run and no longer holds - each now in .variables (a renamed one under its new name).
-    const variablesMoved = moved.length ? [...settingsHad].filter((k) => !(plain(data.env) && Object.hasOwn(data.env, k))) : [];
+    const varsRel = variablesFile ? path.join(path.basename(path.dirname(variablesFile)), path.basename(variablesFile)).split(path.sep).join('/') : '';
+    for (const [key, [mine, theirs]] of outranked)
+        log(`  !! ${label} env: ${key} dropped (${mine} chars) - ${varsRel} holds another value (${theirs} chars), which outranks ${label}, so every reader used that one; set it in ${varsRel} (/alfred-code:configure) if the dropped one was meant`);
+    const variablesMoved = moved.length ? [...settingsHad].filter((k) => !outranked.has(k) && !(plain(data.env) && Object.hasOwn(data.env, k))) : [];
     if (!changed) return { written: localChanged, refused: false, managed, variablesMoved };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
@@ -1394,7 +1409,7 @@ function writeSettings(opts)
 // under .variables. A value .variables cannot hold (it spans lines) or that reads back otherwise stays in the settings
 // file, out of .variables (where it would win, D4 step 3), and so does every key when the file cannot be written; one
 // `!!` line names them. Returns the keys that left `env`.
-function moveVariables({ vars, file, env, fileValues, MOVED, catalog, managedEnv, label, log })
+function moveVariables({ vars, file, env, fileValues, MOVED, catalog, managedEnv, label, log, heldKeys = new Set() })
 {
     const layout = require('../../stack/hooks/layout.js');
     const want = {};
@@ -1407,9 +1422,20 @@ function moveVariables({ vars, file, env, fileValues, MOVED, catalog, managedEnv
     const order = catalog.map((r) => r.key);
     const done = Object.keys(updates).length ? vars.write(file, updates, { order }) : { changed: false };
     const rel = path.join(path.basename(path.dirname(file)), path.basename(file)).split(path.sep).join('/');
+    // R098 (burn-down 2026-11-04): a lock another run holds passes; only the keys this file already held stay in it, and the
+    // rest wait for the next run - keeping every key had seeded all of them into the settings file. A file that cannot be
+    // written keeps every key here, its one home.
+    if (done.why === 'locked')
+    {
+        const waiting = Object.keys(want).filter((key) => !heldKeys.has(key));
+        for (const key of waiting) { delete env[key]; if (managedEnv[label]) delete managedEnv[label][key]; }
+        const kept = Object.keys(want).filter((key) => heldKeys.has(key));
+        log(`  !! variables: ${rel} is locked by another run - nothing moved; ${kept.length ? `${kept.join(', ')} stay in ${label}, ` : ''}${waiting.length} key(s) wait for the next update - run it again`);
+        return [];
+    }
     if (done.why)
     {
-        log(`  !! variables: ${rel} is ${done.why === 'locked' ? 'locked by another run' : 'not writable'} - the keys are kept in ${label}; run the update again`);
+        log(`  !! variables: ${rel} is not writable - the keys are kept in ${label}; run the update again`);
         return [];
     }
     const back = (layout.readDotenv(file) || {}).values || {};
