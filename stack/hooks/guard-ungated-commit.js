@@ -1358,7 +1358,7 @@ function judgeReceipt(body, opts) {
   // family - the rename left this arm matching nothing, so a receipt naming the loop minted consent.
   const notRun = field('carried') ? [] : reviewsNotRun(first);
   if (notRun.length) {
-    r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load; if this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
+    r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load. A review you finished: print the review's report in your reply - its \`Findings:\` line as text, never only in thinking - then commit again. If this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
   }
   // A commit line that names NO review still needs one (2026-10-22, a side agent's note; the user's ruling 'Need any

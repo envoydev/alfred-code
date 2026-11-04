@@ -1184,6 +1184,9 @@ test('audit 2026-10-10 C01: a verify Skill call past the old 256KB tail still co
   const unfinished = gateWith(dir, 'git commit -am x', { transcript_path: launched });
   assert.equal(unfinished.status, 2, 'a call with no result line after it only launched (2026-10-22)');
   assert.match(unfinished.stderr, /names verify-code, but no run of it in this session reached its result line/);
+  // The D8 probe of 2026-11-04: a run reviewed inline, kept its verdict in thinking, retried the same commit and gave
+  // up after the second refusal. The refusal names the one move that clears it.
+  assert.match(unfinished.stderr, /print the review's report in your reply - its `Findings:` line as text, never only in thinking - then commit again/);
   const none = writeTranscript(dir, 'no-skill', filler);
   // the receipt is this session's own: written after its transcript began (audit 2026-10-20 H4)
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir)));
