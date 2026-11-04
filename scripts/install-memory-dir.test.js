@@ -295,6 +295,8 @@ function sameRepoChild()
     return { top, parent, child, lines, ctx };
 }
 
+// A place as the installer's lines show it: home-relative when it sits under the home folder (a temp dir under HOME).
+const homeShown = (p) => { const rel = path.relative(fs.realpathSync.native(require('node:os').homedir()), p); return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? `~/${rel.split(path.sep).join('/')}` : p; };
 test('docs: a same-repo workspace child sharing its parent\'s docs memory - no write, no !! line, no stamp row; a re-run changes nothing', { skip: process.platform === 'win32' && 'win32 reads the start folder\'s file - the child takes its own row' }, () =>
 {
     const t = sameRepoChild();
@@ -309,7 +311,7 @@ test('docs: a same-repo workspace child sharing its parent\'s docs memory - no w
             assert.strictEqual(ctx.memoryDirRow, null);
             assert.ok(!fs.existsSync(path.join(t.child, '.claude', 'settings.local.json')), 'nothing written in the child');
             assert.ok(!t.lines.some((l) => /!!/.test(l)), t.lines.join('\n'));
-            if (memory) assert.ok(t.lines.includes(`  memory: docs - shares ..'s docs memory (${layout.docsMemoryDir(t.parent)}/), so nothing is written here`), t.lines.join('\n'));
+            if (memory) assert.ok(t.lines.includes(`  memory: docs - shares ..'s docs memory (${homeShown(layout.docsMemoryDir(t.parent))}/), so nothing is written here`), t.lines.join('\n'));
             else assert.deepStrictEqual(t.lines, []);
             assert.strictEqual(ctx.args.memory, undefined, 'the child keeps reading docs from its member');
         }

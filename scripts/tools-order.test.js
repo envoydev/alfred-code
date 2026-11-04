@@ -976,9 +976,11 @@ const REFUSAL = layoutLib.DOCS_MEMORY_REFUSAL;
 // An absolute place outside the project on every OS, and the 8.3-free spelling Claude Code's default place is named from.
 const OLD = path.resolve('/old/place/memory');
 const OLD_SHOWN = OLD.split(path.sep).join('/');
+// A place as the lines show it: resolved natively (an 8.3 temp parent long, windows-2025), its missing tail re-attached.
+const nativeOf = (p) => { try { return fs.realpathSync.native(p); } catch { const up = path.dirname(p); return up === p ? p : path.join(nativeOf(up), path.basename(p)); } };
 const shownAt = (p) =>
 {
-    const at = fs.realpathSync.native(p);
+    const at = nativeOf(p);
     const rel = path.relative(fs.realpathSync.native(os.homedir()), at);
     return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? `~/${rel.split(path.sep).join('/')}` : at.split(path.sep).join('/');
 };
@@ -1086,7 +1088,7 @@ test('plan lines: memory-docs can or cannot be written; memory-copy only for an 
     try
     {
         d.memory(d.want, { 'MEMORY.md': '# docs\n' });
-        assert.deepStrictEqual(tools.memoryPlanLines({ projectRoot: d.root, env: d.env, target: 'default' }), [CAN_GIT, `memory-copy: 1 memory files at .alfred/docs/memory/, none at ${d.defaultPlace}/`]);
+        assert.deepStrictEqual(tools.memoryPlanLines({ projectRoot: d.root, env: d.env, target: 'default' }), [CAN_GIT, `memory-copy: 1 memory files at .alfred/docs/memory/, none at ${shownAt(d.defaultPlace)}/`]);
     }
     finally { d.done(); }
 });
@@ -1129,7 +1131,7 @@ test('memory lines: a same-repo child sharing its member\'s docs memory - the sh
         s.write(path.join(child, '.alfred', 'workspace'), 'parent ..\n');
         s.write(path.join(s.root, '.alfred', 'workspace'), 'child api\n');
         const lines = () => tools.modeLines({ projectRoot: child, env: s.env });
-        assert.deepStrictEqual(lines().slice(0, 2), [`memory: docs - shares ..'s docs memory, in ${s.want}/`, "memory-docs: shares ..'s docs memory - nothing to write here"], lines().join('\n'));
+        assert.deepStrictEqual(lines().slice(0, 2), [`memory: docs - shares ..'s docs memory, in ${shownAt(s.want)}/`, "memory-docs: shares ..'s docs memory - nothing to write here"], lines().join('\n'));
         assert.deepStrictEqual(tools.validateRows(child, s.env).filter((r) => r.startsWith('!! memory')), []);
         // With the member's row gone the child is refused as before: it sits below its repository root.
         s.local({});
@@ -1289,7 +1291,7 @@ test('validate: a teammate\'s stamp row names the stack\'s leftover docs row aft
     try
     {
         s.local({ autoMemoryDirectory: s.want });
-        const rel = path.relative(s.root, s.want).split(path.sep).join('/');
+        const rel = path.relative(fs.realpathSync.native(s.root), s.want).split(path.sep).join('/');
         const other = path.join('/elsewhere', 'teammate', 'shop');
         s.write(path.join(s.root, '.claude', 'alfred-code.stamp'), `managed-settings: settings.local.json:autoMemoryDirectory=${layoutLib.memoryRowHash(path.join(other, rel), other)}\n`);
         assert.deepStrictEqual(s.rows(), ["!! memory: ALFRED_CODE_MEMORY is default, but the stack's autoMemoryDirectory is still in .claude/settings.local.json - run /alfred-code:update to remove it"]);
