@@ -28,8 +28,9 @@ const ENUMS = {
     // Compact instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, settings.js applyEnv): setup's screen-B
     // answer, written over the value already there. Not given, the absent-only seed (`0`) stands.
     autoCompact: { values: ['', 'on', 'off'], text: "--auto-compact must be 'on' or 'off'" },
-    // 'docs' joins once the docs memory mode ships (spec P3).
-    memory: { values: ['', 'default', 'custom'], text: "--memory must be 'default' or 'custom'" },
+    // Claude Code's own memory: its default place, the docs root (`autoMemoryDirectory` in settings.local.json), or off
+    // for the user's own memory server. Not given, the value there stands.
+    memory: { values: ['', 'default', 'docs', 'custom'], text: "--memory must be 'default', 'docs' or 'custom'" },
     // Where the project's instruction files (AGENTS.md, CLAUDE.md) live - init's and configure's answer: a seed is written
     // there and a file at the other place moves (seeds.placeInstructionFiles). Not given, nothing moves and a seed goes to
     // .claude/.
@@ -54,6 +55,7 @@ const VALUED = new Map([
 const BOOLEAN = new Map([
     ['--forge-cli', 'forgeCli'], ['--github-cli', 'forgeCli'], ['--keep-pins', 'keepPins'],
     ['--installed-only', 'installedOnly'], ['--print-plan', 'printPlan'], ['--skills-only', 'skillsOnly'],
+    ['--memory-copy', 'memoryCopy'],
 ]);
 
 // The flags 2.0.0 took out with the servers they configured (the sentry and context7-local cut, R26
@@ -91,7 +93,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 const ALIASES = new Map([['--docs-move', '--data-move'], ['--github-cli', '--forge-cli']]);
 const NOTED_ALIASES = new Set(['--github-cli']);
 
-const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
+const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --memory-copy, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -111,7 +113,7 @@ function parseArgs(argv)
         action: '', scope: '',
         docsVersioning: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
         selection: '', source: '', planOut: '', parentPlan: '',
-        forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
+        forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false, memoryCopy: false,
         add: [], drop: [], scopeOf: {}, ignored: [], notes: [],
     };
 
@@ -222,6 +224,7 @@ function parseArgs(argv)
 
     for (const [key, { values, text }] of Object.entries(ENUMS))
         if (!values.includes(out[key])) fail(`${text} (got '${out[key]}')`);
+    if (out.memoryCopy && !out.memory) fail('--memory-copy goes with --memory - it copies the old memory files into the place that answer picks');
     // The entries update's docs-root ask named as the team's own (docs.docsMovePlan `leave`): top-level names, a folder's
     // trailing slash dropped, left where they are while the rest move - so only beside a move.
     out.docsRootLeave = out.docsRootLeaveRaw.split(',').map((s) => s.trim().replace(/[\\/]+$/, '')).filter(Boolean);

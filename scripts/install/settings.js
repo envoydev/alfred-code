@@ -605,7 +605,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
             + ` (--auto-compact${old === autoCompact.value ? ', unchanged' : ''})`);
     }
 
-    // 3e. WHICH MEMORY (`--memory default|custom`, init's and configure's answer), written over a value already there like
+    // 3e. WHICH MEMORY (`--memory default|docs|custom`, init's and configure's answer), written over a value already there like
     // 3d; without the flag the absent-only seed below writes `default`. writeSettings' memory pass reads the value this leaves.
     if (memory && memory.value && !fromChain('ALFRED_CODE_MEMORY', 'memory', memory.value))
     {
