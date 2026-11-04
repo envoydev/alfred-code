@@ -50,16 +50,16 @@ lower, the median grade no more than 0.5 under. No task passed, so batch 2 never
 
 Medians over the runs that reached the row; carry is the row's share of cache reads it inherited.
 
-| Row | Runs per arm | A cost + carry | B cost + carry | Marks A / B | Verdict | Siblings it carries |
-|---|---|---|---|---|---|---|
-| 1 build | 9 | $1.18 + $0.16 | $1.43 + $0.12 | session 9 / session 8, seat 1 | hold (t2 failed) | 5, 6, 15 |
-| 2 gate | 9 | $0.33 + $0.10 | $0.35 + $0.11 | session 9 / session 8, seat 1 | hold (t2 failed) | 8 |
-| 3 review | 3 | $1.65 + $0.00 | $1.49 + $0.01 | seat 3 / seat 3 | user (not separated: arm A took the seat too) | 7, 14-review-code |
-| 9 gather | 3 | $0.63 + $0.69 | $0.68 + $0.64 | session 3 / session 3 | hold (costlier, compliance 0/3) | 4-fanout |
-| 10 loop | 3 | $3.31 + $0.03 | $2.69 + $0.00 | session 3 / session 3 | hold (t4 failed) | 10-loops, 16 |
-| 4-designer, 14-security | - | - | - | - | hold (t7 never ran) | - |
-| 11, 12 | - | - | - | - | hold (t5 never ran) | - |
-| 13 | - | - | - | - | hold (t6 never ran) | - |
+| Row | Runs per arm | A cost + carry | B cost + carry | Marks A / B | Verdict | Siblings it carries | Ruling |
+|---|---|---|---|---|---|---|---|
+| 1 build | 9 | $1.18 + $0.16 | $1.43 + $0.12 | session 9 / session 8, seat 1 | hold (t2 failed) | 5, 6, 15 | O3 - Revert D8 from develop through a follow-up plan (Recommended), taken under auto-run, 2026-11-04 - 43a6f76a |
+| 2 gate | 9 | $0.33 + $0.10 | $0.35 + $0.11 | session 9 / session 8, seat 1 | hold (t2 failed) | 8 | O3 - Revert D8 from develop through a follow-up plan (Recommended), taken under auto-run, 2026-11-04 - 43a6f76a |
+| 3 review | 3 | $1.65 + $0.00 | $1.49 + $0.01 | seat 3 / seat 3 | user (not separated: arm A took the seat too) | 7, 14-review-code | O3 - Revert D8 from develop through a follow-up plan (Recommended), taken under auto-run, 2026-11-04 - 43a6f76a |
+| 9 gather | 3 | $0.63 + $0.69 | $0.68 + $0.64 | session 3 / session 3 | hold (costlier, compliance 0/3) | 4-fanout | O3 - Revert D8 from develop through a follow-up plan (Recommended), taken under auto-run, 2026-11-04 - 43a6f76a |
+| 10 loop | 3 | $3.31 + $0.03 | $2.69 + $0.00 | session 3 / session 3 | hold (t4 failed) | 10-loops, 16 | O3 - Revert D8 from develop through a follow-up plan (Recommended), taken under auto-run, 2026-11-04 - 43a6f76a |
+| 4-designer, 14-security | - | - | - | - | hold (t7 never ran) | - | O3 - Revert D8 from develop through a follow-up plan (Recommended), taken under auto-run, 2026-11-04 - 43a6f76a |
+| 11, 12 | - | - | - | - | hold (t5 never ran) | - | O3 - Revert D8 from develop through a follow-up plan (Recommended), taken under auto-run, 2026-11-04 - 43a6f76a |
+| 13 | - | - | - | - | hold (t6 never ran) | - | O3 - Revert D8 from develop through a follow-up plan (Recommended), taken under auto-run, 2026-11-04 - 43a6f76a |
 
 No row was kept.
 
