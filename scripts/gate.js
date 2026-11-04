@@ -17,7 +17,9 @@
 // A pass is stamped per commit (`<git dir>/alfred-gate/pass/<sha>.json`), so a push right after a
 // manual gate does not run it twice. Logs: `<git dir>/alfred-gate/logs/`.
 //
-//   npm run gate [-- --legs mac,linux,win] [--ref <rev>] [--force] [--keep]
+//   npm run gate [-- --legs mac,linux,win] [--ref <rev>] [--force] [--keep] [--tests <file,...>]
+// --tests runs only those test files on each leg (a VM-only failure read in minutes, not a 40-minute run); such a
+// partial run never skips on a commit's pass stamp and never writes one.
 //   node scripts/gate.js --pre-push <remote> <url>     (the pre-push hook; reads the ref lines on stdin)
 //   node scripts/gate.js --install-hook | --uninstall-hook
 // Local config (never tracked): `git config gate.windowsVm '<Parallels VM name>'`, `git config gate.legs mac,linux`;
@@ -38,7 +40,7 @@ const KEEP_PASS_STAMPS = 50;
 
 function parseArgs(argv)
 {
-    const opts = { legs: null, ref: 'HEAD', force: false, keep: false, prePush: false, installHook: false, uninstallHook: false, rest: [] };
+    const opts = { legs: null, ref: 'HEAD', force: false, keep: false, prePush: false, installHook: false, uninstallHook: false, tests: null, rest: [] };
     for (let i = 0; i < argv.length; i++)
     {
         const a = argv[i];
@@ -47,6 +49,12 @@ function parseArgs(argv)
         else if (a === '--ref') opts.ref = argv[++i];
         else if (a === '--force') opts.force = true;
         else if (a === '--keep') opts.keep = true;
+        else if (a === '--tests')
+        {
+            const list = String(argv[++i] || '').split(',').map(s => s.trim()).filter(Boolean);
+            if (!list.length) throw new Error('--tests takes a comma-separated list of test files');
+            opts.tests = list;
+        }
         else if (a === '--pre-push') opts.prePush = true;
         else if (a === '--install-hook') opts.installHook = true;
         else if (a === '--uninstall-hook') opts.uninstallHook = true;
@@ -482,13 +490,17 @@ function tail(file, n = 25)
     catch { return ''; }
 }
 
+// A pass stamp says the whole suite passed on the commit: a partial run neither reads nor writes one.
+const stampsPass = ({ ok, tests }) => !!ok && !(tests && tests.length);
+const skipsOnStamp = ({ force, tests }) => !force && !(tests && tests.length);
+
 // `branch` is what the clone checks out (a tag push gets a placeholder); `label` is what the run prints.
-async function runGate({ root, sha, branch, label = branch, legs, force, keep })
+async function runGate({ root, sha, branch, label = branch, legs, force, keep, tests = null })
 {
     const commonDir = path.resolve(root, git(root, ['rev-parse', '--git-common-dir']));
     const gateDir = path.join(commonDir, 'alfred-gate');
     const short = sha.slice(0, 10);
-    if (!force)
+    if (skipsOnStamp({ force, tests }))
     {
         const passed = passedLegs(gateDir, sha);
         if (legs.every(l => passed.has(l)))
@@ -515,7 +527,7 @@ async function runGate({ root, sha, branch, label = branch, legs, force, keep })
         bundle: path.join(runDir, 'repo.bundle'),
         log: leg => path.join(logDir, `${leg}.log`),
         // the legs share this machine's cores: each gets its part, near the 3 workers a runner has
-        legCfg: { gateRef, mainRef, branch, name: path.basename(root), keep, concurrency: Math.max(1, Math.floor((os.availableParallelism() - 1) / legs.length)) },
+        legCfg: { gateRef, mainRef, branch, name: path.basename(root), keep, tests, concurrency: Math.max(1, Math.floor((os.availableParallelism() - 1) / legs.length)) },
     };
     let cleaned = false;
     const cleanup = () => {
@@ -537,7 +549,7 @@ async function runGate({ root, sha, branch, label = branch, legs, force, keep })
         copyLeg(runDir);
         fs.chmodSync(ctx.bundle, 0o644);
         const started = Date.now();
-        console.log(`alfred-gate: ${label} @ ${short} on ${legs.join(', ')} (Node ${ctx.nodeMajor || '?'} as ci.yml pins)`);
+        console.log(`alfred-gate: ${label} @ ${short} on ${legs.join(', ')} (Node ${ctx.nodeMajor || '?'} as ci.yml pins)${tests ? ` - PARTIAL: ${tests.join(', ')} only, no pass stamp` : ''}`);
         const verdicts = await Promise.all(legs.map(async leg => {
             let r;
             try { r = await LEG_RUNNERS[leg](ctx); }
@@ -564,7 +576,7 @@ async function runGate({ root, sha, branch, label = branch, legs, force, keep })
             }
         }
         const ok = verdicts.every(v => v.ok);
-        if (ok)
+        if (stampsPass({ ok, tests }))
         {
             const passDir = path.join(gateDir, 'pass');
             fs.mkdirSync(passDir, { recursive: true });
@@ -660,7 +672,7 @@ async function main(argv)
         const dirty = tryGit(root, ['status', '--porcelain']).split('\n').filter(Boolean).length;
         if (dirty) console.log(`alfred-gate: ${dirty} uncommitted change(s), new files included, are NOT in the run - the gate tests the commit, as CI does`);
     }
-    return (await runGate({ root, sha, branch, legs, force: opts.force, keep: opts.keep })) ? 0 : 1;
+    return (await runGate({ root, sha, branch, legs, force: opts.force, keep: opts.keep, tests: opts.tests })) ? 0 : 1;
 }
 
 if (require.main === module)
@@ -669,4 +681,4 @@ if (require.main === module)
     main(process.argv.slice(2)).then(code => process.exit(code), err => { console.error(`alfred-gate: ${err.message || err}`); process.exit(2); });
 }
 
-module.exports = { LEGS, nodeSkew, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };
+module.exports = { LEGS, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };

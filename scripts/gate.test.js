@@ -141,7 +141,7 @@ test('gate: an isolated VM is read from its config.pvs; a VM is woken and put ba
 
 test('gate: legs come from --legs, then GATE_LEGS, then git config gate.legs; a bad name is refused', () => {
     assert.deepStrictEqual(gate.parseArgs(['--legs', 'win,mac,win']).legs, ['win', 'mac']);
-    assert.deepStrictEqual(gate.parseArgs(['--legs=linux', '--force', '--ref', 'develop']), { legs: ['linux'], ref: 'develop', force: true, keep: false, prePush: false, installHook: false, uninstallHook: false, rest: [] });
+    assert.deepStrictEqual(gate.parseArgs(['--legs=linux', '--force', '--ref', 'develop']), { legs: ['linux'], ref: 'develop', force: true, keep: false, prePush: false, installHook: false, uninstallHook: false, tests: null, rest: [] });
     assert.throws(() => gate.parseArgs(['--legs', 'mac,bsd']), /--legs takes a list/);
     assert.throws(() => gate.parseArgs(['--legs', '']), /--legs takes a list/);
     assert.throws(() => gate.parseArgs(['--nope']), /unknown option --nope/);
@@ -331,4 +331,21 @@ test('gate: --uninstall-hook turns the hook off when core.hooksPath names the ho
         assert.throws(() => gate.installHook(repo), /already/);
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('gate: --tests runs only the named test files, never skips on a stamp and never writes one', () => {
+    assert.deepStrictEqual(gate.parseArgs(['--tests', 'scripts/a.test.js,scripts/b.test.js']).tests, ['scripts/a.test.js', 'scripts/b.test.js']);
+    assert.strictEqual(gate.parseArgs([]).tests, null);
+    assert.throws(() => gate.parseArgs(['--tests']), /--tests takes a comma-separated list of test files/);
+    assert.throws(() => gate.parseArgs(['--tests', ',']), /--tests takes a comma-separated list of test files/);
+    const testStep = (cfg) => leg.steps(cfg).find(s => s.name === 'test').args;
+    assert.deepStrictEqual(testStep({ concurrency: 2, tests: ['scripts/a.test.js'] }).slice(-1), ['scripts/a.test.js'], 'the files go last, after every flag');
+    assert.ok(testStep({ concurrency: 2 }).every(a => !a.endsWith('.test.js')), 'no files named: the default pattern');
+    // a partial run proves nothing about the commit: no skip on a full run's stamp, no stamp of its own
+    assert.strictEqual(gate.stampsPass({ ok: true, tests: null }), true);
+    assert.strictEqual(gate.stampsPass({ ok: true, tests: ['scripts/a.test.js'] }), false);
+    assert.strictEqual(gate.stampsPass({ ok: false, tests: null }), false);
+    assert.strictEqual(gate.skipsOnStamp({ force: false, tests: null }), true);
+    assert.strictEqual(gate.skipsOnStamp({ force: false, tests: ['scripts/a.test.js'] }), false);
+    assert.strictEqual(gate.skipsOnStamp({ force: true, tests: null }), false);
 });
