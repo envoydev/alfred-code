@@ -58,6 +58,6 @@ step 5 and step 6; the small row's close is gone.
 ## The merged path
 
 On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session
-(neither twin asks its mode); on a heavy session the audit half goes to the `<stack>-verifier` seat by the same 'Model' bullet, still with no stop between them. A gap the audit finds that the spec settles is
+(neither twin asks its mode), no stop between them. A gap the audit finds that the spec settles is
 fixed in the plan in the same step and named in the ask; a gap only the user can settle stamps the
-gaps and takes step 2's stop. The approval ask that ends the step is `SKILL.md`'s. The stamps are step 2's and step 3's (`Gated: passed`, `Approved: <date> - mode <session|agents>`), and the mark moves to the seats option on step 3's mode-fit rule.
+gaps and takes step 2's stop. The approval ask that ends the step is `SKILL.md`'s.

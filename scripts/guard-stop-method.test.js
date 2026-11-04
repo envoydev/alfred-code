@@ -572,17 +572,6 @@ test('flow probes: a turn that loaded habits-execution-strategy and wrote no Exe
     assert.strictEqual(flowProbes(ok, 'execution-line').length, 0, 'the line in prose, in the close, in the ask - or no load - writes nothing');
 });
 
-test('flow probes: the D8 verdict `serial seats` is an Execution line like any other mode (D8)', () => {
-    const skill = call('Skill', { skill: 'alfred-code:habits-execution-strategy' });
-    const base = [typed('<command-name>/task-solve</command-name>'), skill.row, result(skill.id, 'Launching skill: habits-execution-strategy')];
-    const wrote = project();
-    flowStop(wrote, transcript(wrote, [...base, say('Execution: route the flow offered - mode serial seats: 1 - model seat pins - a wide read')]), 'Approved.');
-    assert.strictEqual(flowProbes(wrote, 'execution-line').length, 0, 'a serial seats line logs no miss');
-    const none = project();
-    flowStop(none, transcript(none, [...base, say('The plan is gated.')]), 'Approved.');
-    assert.strictEqual(flowProbes(none, 'execution-line').length, 1, 'no Execution line logs a miss');
-});
-
 test('flow probes: a source edit under a new prompt after the plan\'s Completed stamp, with no new plan, writes one row', () => {
     const root = project();
     const plan = path.join(root, '.alfred', 'docs', 'plans', '2026-10-10-cart.md');

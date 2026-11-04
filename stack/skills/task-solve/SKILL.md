@@ -31,7 +31,14 @@ run-time load.
 already passed. A resume paste that lands in a chat still holding the earlier cycle's conversation (no
 `/clear` between) is answered with one line - `/clear first, then paste it again` - and nothing else.
 A NEW cycle starting after a finished one in this same session offers the fresh-session hand-off
-in its first ask, after the in-session option. A cycle mid-build reads, in the plan file, `Resume: step 4 BUILD - mode session - next task 2`.
+in its first ask, after the in-session option. A cycle mid-build looks like:
+
+```
+plan <docs-path>/work/plans/csv.md:
+  Gated: passed | Approved: 2026-07-16 - mode session
+  Resume: step 4 BUILD - mode session - next task 2
+  task 1 DONE (dotnet test green - 4 passed) | task 2 IN_PROGRESS
+```
 
 ## The stop contract
 
@@ -68,7 +75,7 @@ zero re-work. Once the cycle has crossed the install's
 fresh-session trigger (400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other), spans hours, or resumes after an idle gap past the cache, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes. Below all three (a new cycle's first ask and the compaction stop aside), no ask
 carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess.
-The hook injects two numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
+The stop-contract hook injects the two measured numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
 Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.
 Check the trigger before each ask, never from memory. And HONOR the answer: when the user picks it, the turn ENDS with this
 block, after the answer - no new work in this chat. The fence holds the command alone: the plan's `Resume:`
@@ -116,9 +123,11 @@ On `path: merged`, steps 1 and 2 are ONE step, run by `references/full-spec.md`.
 ```ask
 Full spec - designed and audited in one step (<the Passes: line>; <the Gated: verdict>). Build it as planned <in this session | through the seats>: <the mode-fit reason>.
 - 'Build as planned - in this session (Recommended)' - <why the tasks fit one chat>
-- 'Build as planned - dispatch the agent seats' - <independent tasks that build in parallel | the cards one at a time in dependency order>
+- 'Build as planned - dispatch the agent seats' - <independent tasks that build in parallel>
 - 'Not yet - changes needed' - edit the plan, or I ask what to change
 ```
+
+The stamps are step 2's and step 3's (`Gated: passed`, `Approved: <date> - mode <session|agents>`), and the mark moves to the seats option on step 3's mode-fit rule.
 
 ## The steps
 
@@ -129,8 +138,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 1. **DESIGN** - run `task-design`, with `habits-clarify` loaded first. It writes the plan file -
    the artifact, not the chat - with its design rules settled IN it, so step 5 reviews against a plan that already decided them. *Stop* -
    none on a full spec, where step 2 follows in the same step (above).
-2. **GATE** - run `task-verify-plan` over the plan file in the mode step 1 ran - no mode ask. On a heavy session (the newest `Seats:` line unless it says no step moves, else a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this gate unless this run
-   did; its 'Model' bullet sends the audit to the `<stack>-verifier` seat whatever step 1's mode. The audit
+2. **GATE** - run `task-verify-plan` over the plan file in the mode step 1 ran - no mode ask. It
    stamps its eight-field block into the plan: `Gated: passed`; `passed - <N> fixes applied` for the
    non-judgment fixes it landed in this step, each named in the stop's `Result:` line; or the gaps,
    which route back to step 1 on the user's word. A `judgment` item is never applied in-step - each
@@ -147,14 +155,14 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    ask is this stop too ('Not yet' is the route-back).
 3. **APPROVE** - Read `references/step-mechanics.md` now - this ask's mode-fit rule and the
    mechanics of steps 4-6 are its content, not homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then load
-   `habits-execution-strategy` (the Skill tool) unless this run already did; write this build's own `Execution:` line, the
+   `habits-execution-strategy` (the Skill tool); its `Execution:` line is the
    mode-fit reason. Then present the gated plan and put the gate through ONE question whose
    options each NAME the mode:
 
    ```ask
    The plan is gated. Build it <in this session | through the seats>: <the mode-fit reason>.
    - 'Approve - build in this session (Recommended)' - <why the tasks fit one chat>
-   - 'Approve - dispatch the agent seats' - <independent tasks that build in parallel | the cards one at a time in dependency order>
+   - 'Approve - dispatch the agent seats' - <independent tasks that build in parallel>
    - 'Not yet - changes needed' - edit the plan, or I ask what to change
    ```
 

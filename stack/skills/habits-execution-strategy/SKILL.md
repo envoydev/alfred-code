@@ -20,7 +20,7 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
 
 - Fires before the first edit of a task that needs more than a few steps across more than one file or subtask, spans stacks, touches auth, a migration or a public contract, or would fan work out to seats. A small task settles route, mode and model inline from the always-on line (a direct edit, one agent, batched calls, the session's model) - no load.
 - It decides the route, the mode, the model and the check tiers. Test-first (`habits-test-first`) still runs inside each track, and this skill never replaces it.
-- Inside a flow that owns dispatch - the solve flows, the diagnose flow, the version-upgrade flow - the flow calls it before its build-mode ask (the upgrade flow's approval gate) or its fix task cards. The route is then the flow, so it supplies the mode and the model in the `Execution:` verdict and the option it recommends; the flow keeps the plan file, the approval gate, the dispatch and the seats. A `serial` (not `serial seats`) verdict moves the gate's mark to the in-session option, never past the gate: the flow's seats stand until the user picks in-session there.
+- Inside a flow that owns dispatch - the solve flows, the diagnose flow, the version-upgrade flow - the flow calls it before its build-mode ask (the upgrade flow's approval gate) or its fix task cards. The route is then the flow, so it supplies the mode and the model in the `Execution:` verdict and the option it recommends; the flow keeps the plan file, the approval gate, the dispatch and the seats. A `serial` verdict moves the gate's mark to the in-session option, never past the gate: the flow's seats stand until the user picks in-session there.
 
 ## Route - where the work runs
 
@@ -87,21 +87,6 @@ ones (Mode, below). When one holds, those units run in order; the rest may still
   a mechanical task whose correctness shows on the diff AND an independent verifier re-runs its
   gates; never below the pin on auth, a migration, concurrency, security, a shared contract seam or
   unclear legacy code. The heaviest model is for design and hard root cause, not routine edits.
-- **A heavy session** - heavier than a step's seat pin (the newest `Seats:` line unless it
-  says no step moves, else the model your system prompt names) - marks the seat only at
-  these choice points, and only for a SIZEABLE step (Mode): `task-solve` build; `task-solve` plan
-  gate; `task-solve` reviewer; `task-design` mode; `task-implement` build; `task-implement` red
-  after five; `task-implement` review; `task-verify-plan` audit; `issue-diagnoser` gather; the
-  `loop-code-quality`, `loop-architecture-quality` and `loop-test-coverage-quality` mode;
-  `task-solve-cross` mode; `task-solve-cross` plan gate; `task-build-from-scratch` mode; the
-  `review-code` and `review-security` seat ask; `task-version-upgrade` approve; the forced inline of
-  `capture-quality` code-quality and architecture-quality and `capture-awareness` code-style. These
-  stay here: one command, one grep, a one-file edit or diff, an unplanned review of a diff
-  `task-solve`'s size table calls `small`, and a stack with no seat; a risk-trigger diff keeps the
-  verifier at any size. Design moves to the designer seat only from a session heavier than opus; a
-  seats package keeps its designers. At a one-step choice the load writes only `Execution: <route> -
-  mode <serial seats: 1 | serial> - model <seat pins | session> - <the size reason>`, with no plan,
-  route or trim ask, or scorer; that line applies to its own step only, and a later choice writes its own. The direct route reads no model (Route).
 - **A seat type with no pin** (a general-purpose or explore subagent) runs on the session's model
   unless the dispatch names one - the heaviest model, when the session runs on it. Name its model in
   the verdict: the lighter one for read-only search, inventory and classification; the session's only
@@ -116,7 +101,7 @@ State it in one line, the line a flow's mode ask carries as its reason (inside a
 the flow):
 
 ```
-Execution: route <direct | the flow offered> - mode <serial | serial seats: <n> | batched | parallel seats: <n>> - model <session | seat pins | <seat>=<model>> - <why>; parallel keeps quality: <yes - each unit owns its files and is verified alone | no - <the shared file, contract or output>>
+Execution: route <direct | the flow offered> - mode <serial | batched | parallel seats: <n>> - model <session | seat pins | <seat>=<model>> - <why>; parallel keeps quality: <yes - each unit owns its files and is verified alone | no - <the shared file, contract or output>>
 ```
 
 Filled in, for a change whose two handlers both read a new DTO:
@@ -125,14 +110,9 @@ Filled in, for a change whose two handlers both read a new DTO:
 Execution: route direct - mode serial - model session - the DTO lands first, both handlers read it; parallel keeps quality: no - each handler needs the DTO's output
 ```
 
-`serial seats` dispatches the seats one at a time in dependency order, each after the last report and
-its gates; it is written only where the 'Model' bullet moves the step, else `serial`, and never on the
-direct route.
-
-Inside a flow, the recommended option follows the verdict: `parallel seats` marks the flow's seats
-option; `serial seats` marks it in the flows the 'Model' bullet lists, and any other flow reads it as
-`serial`; `serial` or `batched` marks the in-session one. Where no dispatch is available, `parallel
-seats` becomes batched calls and `serial seats` becomes `serial` in this session, said in the verdict.
+Inside a flow, the recommended option follows the verdict: `parallel seats` marks the flow's
+seats option, `serial` or `batched` the in-session one. Where no dispatch is available,
+`parallel seats` becomes batched calls in this session, said in the verdict.
 
 ## The plan - inline, five to ten lines
 

@@ -123,17 +123,11 @@ if (cursorOff) process.exit(0);
 })();
 // One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a probe, never a
 // block. Best-effort - a lost row is a lost measurement, never a changed turn.
-// This session's hook-blocks ledger: layout.js's statistics path, else the docs root's for a layout.js older than this hook.
-function ledgerFile() {
-  const base = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  const dir = (() => { try { return require('./layout.js').statsPath(base, ['hook-blocks']); } catch { return nodePath.resolve(base, docsRootEnv(), 'hook-blocks'); } })();
-  return nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
-}
 function ledgerRow(row) {
   try {
-    const file = ledgerFile();
-    fs.mkdirSync(nodePath.dirname(file), { recursive: true });
-    fs.appendFileSync(file, JSON.stringify({
+    const dir = (() => { try { return require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']); } catch { return nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks'); } })();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: nodePath.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
     }) + '\n');
   } catch { /* never throws */ }
@@ -272,7 +266,7 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
     sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
     ctxThreshold: () => null, coldFloor: () => null, worthResuming: () => false,
     freshVerdict: () => ({ pays: false }), verdictProbe: () => null, payText: () => '', notPayText: () => '',
-    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true, autoCompactWindow: () => null,
+    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
   };
 }
 fresh.use(payload);
@@ -1413,82 +1407,13 @@ function modeBanner(autoOn) {
 // run, ALFRED_CODE_UNATTENDED=1 or a hand-written stamp still reads as nobody.
 const banner = EVENT === 'UserPromptExpansion' && !payload.agent_id && BANNER_RE.test(skill) && !unattended({ ...payload, session_id: '' })
   ? modeBanner(Boolean(auto)) : '';
-// --- the SEATS fact line (D8, the user's ruling of 2026-11-03) ---
-// A session heavier than the seats' own tier (sonnet) is told so in one line on every flow call, both routes: the typed
-// command and the model's Skill call. The line is a FACT for the model - the price multiple of the build, review and
-// gather seats - and `habits-execution-strategy` 'Model' says which steps move; nothing here moves a mark. It prints
-// whether or not anyone is at the terminal (the banner's gate does not apply: the banner reports a mode to a person),
-// never for a seat, and after a /model switch down it says so once this session's ledger holds a `seats-line` row.
-// The engine's stand-in (fresh-session.js missing mid-update) has no `seatsFacts`, so the line is simply absent there.
-// The flows with a choice point the 'Model' bullet lists (scripts/d8-rows.js, held equal by seats-line.test.js), the
-// bullet's own skill, and `/mode-auto-run` with a request, which runs the solve flow by reading its body (no Skill call).
-const SEATS_SKILLS = ['task-solve', 'task-solve-cross', 'task-design', 'task-implement', 'task-verify-plan', 'task-build-from-scratch',
-  'task-version-upgrade', 'issue-diagnoser', 'loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage-quality',
-  'capture-quality', 'capture-awareness', 'review-code', 'review-security', 'habits-execution-strategy', 'mode-auto-run'];
-const SEATS_SKILL_RE = new RegExp(`^(?:alfred-code:)?(?:alfred-)?(?:${SEATS_SKILLS.join('|')})$`);
-function seatsFactsNow() {
-  if (payload.agent_id || !SEATS_SKILL_RE.test(skill)) return null;
-  // `/mode-auto-run` reaches a choice point only through its request: an empty or flag-only line runs no flow.
-  if (AUTO_SELF_RE.test(skill) && !(autoFlags && autoFlags.request)) return null;
-  if (!(EVENT === 'UserPromptExpansion' || (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)))) return null;
-  return fresh.seatsFacts(fresh.sessionModelId());
-}
-// Read on a flow call at or under the seats' tier: the ledger's newest 4 MB, 20x the largest of 413 local ledgers
-// (207 KB, measured 2026-11-03). A row only past that window leaves the down line unsaid.
-const SEATS_LEDGER_TAIL = 4 * 1024 * 1024;
-function seatsLedgerHolds() {
-  let fd = null;
-  try {
-    fd = fs.openSync(ledgerFile(), 'r');
-    const size = fs.fstatSync(fd).size;
-    const buf = Buffer.alloc(Math.min(size, SEATS_LEDGER_TAIL));
-    const got = fs.readSync(fd, buf, 0, buf.length, size - buf.length);
-    return buf.toString('utf8', 0, got).includes('"kind":"seats-line"');
-  } catch { return false; } finally { if (fd !== null) { try { fs.closeSync(fd); } catch { /* closed */ } } }
-}
-let seatsInfo = null;
-function seatsLine() {
-  const facts = seatsFactsNow();
-  if (!facts) return '';
-  if (facts.tier > fresh.MODEL_TIER.sonnet) {
-    seatsInfo = { model: facts.id, multiple: facts.multiple, down: false };
-    const price = facts.multiple ? `${facts.multiple} the price of` : 'heavier than';
-    const lighter = facts.designers ? `, ${facts.designers} lighter` : '';
-    return `**Seats:** this session runs ${facts.id}, ${price} the build, review and gather seats (${fresh.SEAT_IDS.sonnet}); `
-      + `the designers run ${fresh.SEAT_IDS.opus}${lighter} - \`habits-execution-strategy\` 'Model' says which steps move.`;
-  }
-  if (seatsLedgerHolds()) {
-    seatsInfo = { model: facts.id, multiple: facts.multiple, down: true };
-    const tier = facts.tier === fresh.MODEL_TIER.sonnet ? "the seats' own tier" : 'lighter than the seats';
-    return `**Seats:** this session now runs ${facts.id}, ${tier} - no step moves for the model.`;
-  }
-  return '';
-}
-const SEATS = (() => { try { return typeof fresh.seatsFacts === 'function' ? seatsLine() : ''; } catch { return ''; } })();
-// One measurement row per process that printed the line (a blocked call writes no output, so no row).
-let seatsRowWritten = false;
-function seatsPrinted(route) {
-  if (seatsRowWritten || !SEATS) return;
-  seatsRowWritten = true;
-  ledgerRow({ mode: 'probe', kind: 'seats-line', reason: 'probe: the Seats line printed', detail: { ...seatsInfo, route } });
-}
-// Every UserPromptExpansion output goes through here, the banner and the Seats line after the text; `leave` is an exit with nothing else to say.
+// Every UserPromptExpansion output goes through here, the banner after the text; `leave` is an exit with nothing else to say.
 function expansionOut(text) {
-  const body = [text, banner, SEATS].filter(Boolean).join('\n\n');
-  if (!body) return;
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptExpansion', additionalContext: body } }));
-  if (SEATS) seatsPrinted('typed');
-}
-// The PreToolUse twin: the text (when there is one) and the Seats line, nothing when both are empty.
-function skillOut(text) {
-  const body = [text, SEATS].filter(Boolean).join('\n\n');
-  if (!body) return;
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: body } }));
-  if (SEATS) seatsPrinted('skill');
+  const body = [text, banner].filter(Boolean).join('\n\n');
+  if (body) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptExpansion', additionalContext: body } }));
 }
 function leave() {
   if (EVENT === 'UserPromptExpansion') expansionOut('');
-  else if (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) skillOut('');
   process.exit(0);
 }
 // The solve flow a /mode-auto-run code change follows by reading it: the library copy the model could load - personal, then
@@ -1513,7 +1438,6 @@ if (auto && !auto.marker) {
       + 'option; one with no marked option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), waits for the user.'
     : `auto-run is ON for this session (${auto.file}) - no run started: `
       + 'the next task, capture, loop, issue or mode command runs under it, each ask taking its (Recommended) option. Do nothing else for this line.');
-  else skillOut('');
   process.exit(0);
 }
 if (auto) {
@@ -1532,7 +1456,7 @@ if (auto) {
     + `(8) A message the user types mid-run is input to the run: take it in and carry on; if it asks to stop the run, print its close and delete ${auto.marker}.`
     + (AUTO_SELF_RE.test(auto.run) ? ` ${solveFlowLine()}` : '');
   if (EVENT === 'UserPromptExpansion') expansionOut(contract);
-  else skillOut(contract);
+  else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: contract } }));
   process.exit(0);
 }
 // M7: a refused /mode-auto-run start offers no fresh session - nothing runs, so there is nothing to resume; nor does a
@@ -1788,7 +1712,7 @@ if (COMPACT_INSTEAD) {
   try { fs.writeFileSync(compactNoteFile(), new Date().toISOString(), { flag: 'wx' }); sweepOffers(); } catch (e) { first = !(e && e.code === 'EEXIST'); }
   const note = first ? `${COMPACT_NOTE} So /${skill} puts no fresh-session option in any ask and never ends a turn to move to a new session.` : '';
   if (EVENT === 'UserPromptExpansion') expansionOut(note);
-  else skillOut(note);
+  else if (note) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: note } }));
   process.exit(0);
 }
 const usage = lastUsage();

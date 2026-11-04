@@ -44,11 +44,10 @@ Build here or through the stack seats? <the verdict's reason>
 - 'In this session (Recommended)' - <why it fits one chat>
 - 'Dispatch the stack seats' - <the slices that run in parallel>
 ```
-On a heavy session (the newest `Seats:` line unless it says no step moves, else a system-prompt model above Sonnet), load `habits-execution-strategy` with the Skill tool before this ask unless this run did; its 'Model' bullet sets this mark. `serial seats` marks the seats option.
 
-No dispatch is INLINE without asking, and so is a scaffold too small to fan out unless the verdict reads `serial seats` - then ask, the seats marked.
+No dispatch or a scaffold too small to fan out is INLINE without asking.
 
-**DELEGATED** - for each vertical slice, dispatch that slice's stack seats directly from the main session (its designer, then implementer(s), then verifier - the domain-trio vertical, this skill's own `references/domain-trio-protocol.md`). Under `serial seats` the dispatches go one at a time in dependency order, each after the last report with its gates green; a red stops the chain. Each slice's designer plan goes through ONE ask before its first implementer, and the stamp below quotes the answer:
+**DELEGATED** - for each vertical slice, dispatch that slice's stack seats directly from the main session (its designer, then implementer(s), then verifier - the domain-trio vertical, this skill's own `references/domain-trio-protocol.md`). Each slice's designer plan goes through ONE ask before its first implementer, and the stamp below quotes the answer:
 
 ```ask
 <slice> plan, <N> tasks. Build it?

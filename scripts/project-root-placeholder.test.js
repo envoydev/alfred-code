@@ -42,3 +42,15 @@ test('the cross flow points at its own waiver, not a SKILL.md that has none', ()
     assert.ok(modes.includes('under the autonomy waiver above'));
     assert.ok(!/\*\*Autonomy waiver/.test(fs.readFileSync(path.join(SKILLS, 'task-solve-cross', 'SKILL.md'), 'utf8')), 'the cross SKILL.md holds no waiver');
 });
+
+// I1 (the D8 fix pass, kept when D8 was reverted): task-solve's waiver writes the AUTO root stamp at its absolute path,
+// and step-mechanics points back to it.
+const ROOT = path.join(__dirname, '..');
+const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const squash = (s) => s.replace(/\s+/g, ' ');
+test('the AUTO waiver writes the root stamp at its absolute path', () => {
+    const waiver = /\*\*Autonomy waiver \(AUTO\)\.\*\*[^\n]*(?:\n(?!\n)[^\n]*)*/.exec(read('stack/skills/task-solve/SKILL.md'));
+    assert.ok(waiver, 'the waiver paragraph');
+    assert.ok(squash(waiver[0]).includes('write `<project root>/<data root>/state/approvals/APPROVAL`, first line `AUTO'), squash(waiver[0]).slice(0, 300));
+    assert.ok(squash(read('stack/skills/task-solve/references/step-mechanics.md')).includes("The waiver's root stamp, its `AUTO` first line"), 'the pointer still names it');
+});

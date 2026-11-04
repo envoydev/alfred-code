@@ -356,7 +356,7 @@ const answered = (r) => { try { const o = JSON.parse(r.stdout).hookSpecificOutpu
 // first reply with two lines - auto-mode ON or OFF, and how the session meets a full context, with its numbers - said
 // once per typed command, after whatever else the expansion injects.
 const BANNER_HEAD = 'Open your reply to this command with these two lines, exactly as written, and never repeat them in a later reply:';
-const bannerOf = (r) => { const t = context(r); const at = t.indexOf(BANNER_HEAD); return at < 0 ? null : t.slice(at).split('\n\n')[0].split('\n').slice(1); };
+const bannerOf = (r) => { const t = context(r); const at = t.indexOf(BANNER_HEAD); return at < 0 ? null : t.slice(at).split('\n').slice(1); };
 const typedRun = (p, sid, prompt, t, env = {}, extra = {}) => run('guard-fresh-session-start.js', {
     hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: t, expansion_type: 'slash_command',
     command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt, ...extra,
