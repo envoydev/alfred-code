@@ -2733,3 +2733,25 @@ test('--check-report is clean on a report quoting the coverage numbers', (t) => 
   fs.writeFileSync(report, `${cut}${verdict}`);
   assert.notStrictEqual(cli(['--check-report', report]).status, 0);
 });
+
+// R164 (burn-down 2026-11-04): in the no-consent shape the analyzer reads <tmp>/<sid>, whose receipt says the text was
+// copied, while the bundle's own collected.json says it was withheld - the report quoted the wrong one.
+test('--receipt names the bundle\'s collected.json over the copy beside the transcript', (t) => {
+  const b = collectedBundle(t);
+  const { parseArgs, collect } = require('./collect-session.js');
+  const held = path.join(b.fx.root, 'bundles-withheld', b.fx.sid);
+  const r = collect(parseArgs([b.fx.transcript, '--out', held, '--tmp', b.fx.tmp, '--text', 'withhold']), { env: b.fx.env, now: b.fx.now });
+  assert.strictEqual(r.code, 0, r.message);
+  const heldReceipt = path.join(held, 'collected.json');
+  const want = JSON.parse(fs.readFileSync(heldReceipt, 'utf8')).stores.filter((s, i, all) => all.findIndex((x) => x.id === s.id) === i);
+  assert.ok(want.some((s, i) => s.status !== b.primary[i].status), 'the two receipts differ, so the test can tell them apart');
+  const rows = JSON.parse(analyzeBundle(b, ['--json', '--receipt', heldReceipt])).evidence.rows;
+  assert.deepStrictEqual(rows.map((x) => [x.id, x.status]), want.map((s) => [s.id, s.status]));
+  const beside = JSON.parse(analyzeBundle(b, ['--json'])).evidence.rows;
+  assert.deepStrictEqual(beside.map((x) => [x.id, x.status]), b.primary.map((s) => [s.id, s.status]), 'with no flag, the copy beside the transcript');
+  const missing = path.join(b.fx.root, 'nope.json');
+  assert.match(analyzeBundle(b, ['--report-md', '--receipt', missing]), /^--receipt \S*nope\.json not found - stores beyond the transcript are unknown$/m);
+  const garbage = path.join(b.fx.root, 'garbage.json');
+  fs.writeFileSync(garbage, '{ not json');
+  assert.match(analyzeBundle(b, ['--report-md', '--receipt', garbage]), /^collected\.json unreadable - stores beyond the transcript are unknown$/m);
+});

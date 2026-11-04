@@ -1734,3 +1734,26 @@ test('check 71: the pin table matches the tree, as --print-realpath-pins prints 
     assert.deepStrictEqual(lintRealpathPins(files), []);
     assert.deepStrictEqual(realpathPinsFor(files), REALPATH_PINS);
 });
+
+// R167 (burn-down 2026-11-04): docs/superpowers/ is git-ignored and machine-local, so a tracked comment citing a spec,
+// plan or ledger there points nowhere for every other reader of a public repo. The path is built from parts so this
+// file holds none itself.
+test('a comment line citing a spec, plan or sdd file under docs/superpowers is flagged', () =>
+{
+    const { lintSuperpowersCites } = require('./lint-skills.js');
+    const p = 'docs/super' + 'powers/';
+    const files = [
+        { file: 'scripts/a.js', text: `'use strict';\n// spec 4.4 of ${p}specs/2026-01-01-x-design.md\n` },
+        { file: 'stack/hooks/b.js', text: ` * the plan (${p}plans/2026-01-01-y.md)\n` },
+        { file: 'setup-plugin/c.sh', text: `# ledger ${p}sdd/2026-01-01-y/progress.md\n` },
+        { file: 'scripts/d.test.js', text: `const fixture = '${p}plans/2026-01-01-y.md';\n` },
+        { file: 'scripts/e.js', text: `// the stack's own .alfred/${p}plans/x.md\n` },
+        { file: 'scripts/run-tests.js', text: `// never ${p}sdd/ - a folder, no file\n` },
+        { file: 'docs/f.js', text: `// ${p}specs/z.md\n` },
+        { file: 'stack/skills/g/SKILL.md', text: `# ${p}specs/z.md\n` },
+    ];
+    const found = lintSuperpowersCites(files);
+    assert.deepStrictEqual(found.map((f) => f.split(' ')[0]), ['scripts/a.js:2', 'stack/hooks/b.js:1', 'setup-plugin/c.sh:1']);
+    assert.match(found[0], /git-ignored.*\(check 72\)$/);
+    assert.deepStrictEqual(lintSuperpowersCites(require('./lint-skills.js').repoTextFiles()), [], 'the tree holds none');
+});

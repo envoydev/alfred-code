@@ -2685,6 +2685,8 @@ function main()
     }
     // 71. A test compares paths through scripts/test-paths.js; the older non-native realpath calls stay pinned.
     for (const finding of lintRealpathPins(repoTextFiles())) flag(finding);
+    // 72. No tracked comment cites a file under the machine-local docs/superpowers/.
+    for (const finding of lintSuperpowersCites(repoTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -3135,6 +3137,27 @@ function lintRealpathPins(files, pins = REALPATH_PINS)
     return out;
 }
 
+// 72. A tracked comment never cites a spec, plan or ledger file under docs/superpowers/ (R167, burn-down 2026-11-04):
+// that folder is git-ignored and machine-local, so the pointer leads nowhere for any other reader of a public repo. The
+// comment states the rule it needs in place. Code comment lines only (a trimmed line opening with //, # or *) under
+// scripts/, stack/ and setup-plugin/ - a string is a fixture, a folder named with no file points at no design, and a
+// path inside another root (.alfred/docs/...) is not this repo's.
+const SUPERPOWERS_CITE = /(?<![\w./-])docs\/superpowers\/(?:specs|plans|sdd)\/(?:[\w.-]+\/)*[\w.-]+\.md/;
+function lintSuperpowersCites(files)
+{
+    const out = [];
+    for (const { file, text } of files)
+    {
+        if (!/^(?:scripts|stack|setup-plugin)\//.test(file) || /\.(?:md|json)$/i.test(file)) continue;
+        String(text).split('\n').forEach((line, i) =>
+        {
+            if (/^\s*(?:\/\/|#|\*)/.test(line) && SUPERPOWERS_CITE.test(line))
+                out.push(`${file}:${i + 1} cites a file under docs/superpowers/, which is git-ignored and machine-local - state the rule the comment needs in place (check 72)`);
+        });
+    }
+    return out;
+}
+
 // 70. capture-quality holds the three quality captures, the coverage loop is loop-test-coverage-quality and the coverage
 // doc is quality/COVERAGE-QUALITY.md (2026-10-29); a text naming an old one sends the model to a skill the update
 // pruned or a doc it moved. What names them on purpose is exempt by file or key, never by judgment: the manifest's
@@ -3579,6 +3602,7 @@ module.exports = {
     realpathPinsFor,
     lintRealpathPins,
     REALPATH_PINS,
+    lintSuperpowersCites,
     lintUmbrellaTopics,
     repoTextFiles,
     lintCoreDependencies,

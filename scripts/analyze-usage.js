@@ -29,6 +29,7 @@
 //   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --data-root <d>  # the state the Conformance claims read, when not data/ beside it
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --no-conformance  # leave the Conformance section out
+//   node scripts/analyze-usage.js <s.jsonl> --report-md --receipt <collected.json>  # the bundle's receipt, not the one beside the transcript
 //
 // INVENTORY vs USE answers the complement of every consumption table: which installed skill,
 // agent, rule, plugin and MCP server the session (or, in directory mode, the corpus) never
@@ -3418,10 +3419,13 @@ const SHELL_PROBES = {
 // THE COLLECTOR'S RECEIPT (scripts/collect-session.js): `collected.json` beside the transcript, one row per store the
 // collector looked for, its `count` the store's rows, else its files. A later row of the same id is a file that store
 // withheld (denied, capped), counted into the first row's why. Null when there is none - a bundle from before the
-// collector; `error` when it cannot be read.
-function readEvidence(transcript) {
+// collector; `error` when it cannot be read. `receipt` (--receipt) names another file: the no-consent shape analyzes a
+// <tmp> copy whose own receipt says the text was copied, while the bundle's says it was withheld (R164) - a named
+// file that is not there is `missing`, never the copy beside the transcript.
+function readEvidence(transcript, receipt) {
   let text;
-  try { text = fs.readFileSync(path.join(path.dirname(path.resolve(transcript)), 'collected.json'), 'utf8'); } catch { return null; }
+  try { text = fs.readFileSync(receipt ? path.resolve(receipt) : path.join(path.dirname(path.resolve(transcript)), 'collected.json'), 'utf8'); }
+  catch { return receipt ? { rows: [], collectedAt: null, error: 'missing', file: receipt } : null; }
   let rc;
   try { rc = JSON.parse(text); } catch { rc = null; }
   if (!rc || !Array.isArray(rc.stores)) return { rows: [], collectedAt: null, error: 'unreadable' };
@@ -3452,6 +3456,7 @@ function evidenceTotals(evidence) {
 // the collector) the one line saying the stores beyond the transcript are unknown.
 function evidenceLines(evidence) {
   if (!evidence) return ['no collected.json beside the transcript - stores beyond the transcript are unknown'];
+  if (evidence.error === 'missing') return [`--receipt ${evidence.file} not found - stores beyond the transcript are unknown`];
   if (evidence.error) return ['collected.json unreadable - stores beyond the transcript are unknown'];
   return [`collected ${evidence.collectedAt || '?'} - ${evidenceTotals(evidence)}`, ...evidence.rows.map((r) => `${pad(r.id, 26)} ${pad(r.status, 10)} ${rpad(String(r.count), 6)} ${r.why}`)];
 }
@@ -5002,7 +5007,7 @@ async function runAnalysis() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
   // Every occurrence of a value flag, so a repeated `--exclude-session <id>` is never read as the target.
-  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice', '--data-root']);
+  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice', '--data-root', '--receipt']);
   const flagValIdx = new Set(args.map((a, i) => (VALUE_FLAGS.has(a) ? i + 1 : -1)).filter((i) => i > 0));
   // No folder or transcript named: the transcripts of the project this runs in (sessionsDirOf).
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i))
@@ -5032,7 +5037,7 @@ async function runAnalysis() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--data-root <dir>] [--no-conformance] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--data-root <dir>] [--receipt <collected.json>] [--no-conformance] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
     process.exit(1);
   }
 
@@ -5139,7 +5144,7 @@ async function runAnalysis() {
   };
   const hookPath = ledgers['tool-usage'] ? ledgers['tool-usage'].file : null;
   const blockPath = ledgers['hook-blocks'] ? ledgers['hook-blocks'].file : null;
-  const evidence = readEvidence(target);
+  const evidence = readEvidence(target, flagVal('--receipt'));
   const sources = { evidence, ledgers, dir: path.dirname(path.resolve(target)) };
   const hookLog = hookPath ? await analyzeHookLog(hookPath) : null;
   // ONE ledger read, handed to every emitter. --report-md and --json used to drop it entirely,

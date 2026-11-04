@@ -50,7 +50,7 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs
 if (String(envOf(process.env, 'INSTRUMENT') || '').trim() !== '1') process.exit(0); // off unless explicitly switched on
 
 // pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes)
-const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
+const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
 // A dispatch description, a search pattern and a Bash description are the model's own text, and a token rode in them
 // verbatim (replayed: `ghp_...`, `sk-ant-...`). Masked on the whole text, then cut, so a cut never splits a token out
 // of its shape.

@@ -3117,3 +3117,11 @@ test('O2: read_media_file is judged like read_file', () => {
   fs.writeFileSync(path.join(dir, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   assert.strictEqual(call('mcp__fs__read_media_file', { path: path.join(dir, 'logo.png') }).status, 0, 'an image passes'); // mcp-fixture
 });
+
+// O2 (burn-down 2026-11-04): the GitLab personal token was no credential shape - in a command, or in a doc the usage
+// collector judged by the same shapes. Built from parts, so no such literal sits in this file.
+test('guard-secret-value: a GitLab personal token literal is blocked, the bare prefix in prose is not', () => {
+  const token = 'glpat' + '-' + 'Ab1_'.repeat(6);
+  assert.equal(bash(`curl -H "PRIVATE-TOKEN: ${token}" https://gitlab.example.test/api/v4/user`), 2, 'a token in a header');
+  assert.equal(bash(`echo "GitLab tokens open with ${'glpat' + '-'} and twenty characters"`), 0, 'prose about the shape is not the shape');
+});

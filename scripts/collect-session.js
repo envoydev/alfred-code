@@ -189,7 +189,10 @@ function resolveContext(opts, deps = {})
     };
 }
 
-// The refusals that need the context: a bundle inside the session's own folder, and one holding another session.
+// The refusals that need the context: a bundle inside the session's own folder, one inside a folder the stores read by
+// name (the data root's state/, the docs root - a re-run took the bundle as an item and copied it into itself, R166), and
+// one holding another session. The data root's statistics/ stays open: the capture skill's own bundles live in
+// statistics/usage-report/, and no store there is read by name.
 function refuseOut(ctx)
 {
     const fsx = ctx.fs;
@@ -197,6 +200,10 @@ function refuseOut(ctx)
     const folder = realOf(fsx, path.dirname(ctx.transcript));
     if (out === folder || inside(out, realOf(fsx, sidDir(ctx))))
         throw new Refusal(`--out ${ctx.out} lies in the transcript's own folder - pick a folder outside ${folder}`);
+    for (const [root, what] of [[path.join(ctx.dataRoot, 'state'), 'the data root\'s state/'], [ctx.docsRoot, 'the docs root']])
+    {
+        if (inside(out, realOf(fsx, root))) throw new Refusal(`--out ${ctx.out} lies inside ${what} (${root}), which the stores read by name - pick a folder outside it`);
+    }
     if (fsx.existsSync(ctx.out) && !isDir(fsx, ctx.out)) throw new Refusal(`--out ${ctx.out} is a file`);
     const receipt = path.join(ctx.out, 'collected.json');
     if (fsx.existsSync(receipt))

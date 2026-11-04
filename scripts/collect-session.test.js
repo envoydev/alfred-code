@@ -1006,3 +1006,105 @@ test('collect-privacy.js and collect-fixture.js start git through runtime.js, ne
     for (const f of ['collect-privacy.js', 'collect-fixture.js'])
         assert.doesNotMatch(fs.readFileSync(path.join(__dirname, f), 'utf8'), /require\(['"](?:node:)?child_process['"]\)/, f);
 });
+
+// ---------- the burn-down of 2026-11-04 (O2, O3, R165, R166, R168) ----------
+
+// O2: the collector judged a doc by the hook's credential shapes, and the GitLab personal token was not one of them.
+test('SECRET_SHAPE matches a GitLab personal token', () =>
+{
+    const { SECRET_SHAPE } = require('./credential-shapes.js');
+    assert.strictEqual(SECRET_SHAPE.test(`the token ${'glpat' + '-' + 'x'.repeat(20)} here`), true);
+    assert.strictEqual(SECRET_SHAPE.test('glpat' + '-' + 'x'.repeat(19)), false, 'one under the shape');
+});
+
+test('a doc holding a GitLab token is denied, never copied', (t) =>
+{
+    const fx = makeSession({}); t.after(fx.cleanup);
+    const token = 'glpat' + '-' + 'Ab1_'.repeat(6);
+    fx.write(path.join(fx.docsRoot, 'gl.md'), `the token ${token} leaked\n`);
+    docsLog(fx, { files: [projectRel(fx, path.join(fx.docsRoot, 'gl.md'))] });
+    const rc = run(fx);
+    assert.ok(!fs.existsSync(path.join(fx.out, 'docs', 'gl.md')));
+    assert.deepStrictEqual(skipped(rc, 'docs').map((s) => [s.status, s.file, s.why]), [['denied', 'docs/gl.md', 'credential shape']]);
+    assert.ok(!grepBundle(fx.out, token), 'no value in the bundle');
+});
+
+test('the GitLab prefix in prose with a short tail is no token', (t) =>
+{
+    const fx = makeSession({}); t.after(fx.cleanup);
+    fx.write(path.join(fx.docsRoot, 'prose.md'), `GitLab tokens open with ${'glpat' + '-' + 'abc'} and more\n`);
+    docsLog(fx, { files: [projectRel(fx, path.join(fx.docsRoot, 'prose.md'))] });
+    const rc = run(fx);
+    assert.ok(fs.existsSync(path.join(fx.out, 'docs', 'prose.md')));
+    assert.deepStrictEqual(skipped(rc, 'docs'), []);
+});
+
+// O3: a doc the session wrote through the docs engine from Bash was never collected - the engine's log rows named no
+// session, and its doc-set row names the doc under `wrote`.
+test('docs written through docs.js are collected', (t) =>
+{
+    const fx = makeSession({}); t.after(fx.cleanup);
+    fx.write(path.join(fx.docsRoot, 'architecture', 'references', 'patterns.md'), '# patterns\n\n## orders\n<!-- id: orders -->\nOld rule.\n');
+    const engine = path.join(__dirname, '..', 'stack', 'hooks', 'docs.js');
+    const env = { ...fx.env, CLAUDE_PROJECT_DIR: fx.project, CLAUDE_CODE_SESSION_ID: fx.sid, ALFRED_CODE_DOCS_VERSIONING: '' };
+    const r = require('node:child_process').spawnSync(process.execPath, [engine, 'set', 'patterns#orders'],
+        { cwd: fx.project, input: '## orders\n<!-- id: orders -->\nRefunds are ledgered first.\n', encoding: 'utf8', env });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const rc = run(fx);
+    assert.match(fs.readFileSync(path.join(fx.out, 'docs', 'architecture', 'references', 'patterns.md'), 'utf8'), /ledgered first/);
+    assert.strictEqual(row(rc, 'docs-log').rows, 1);
+});
+
+// R165: an unlisted state file held no `held` names, so once the hook swept it a re-collect read it absent though
+// the bundle kept it.
+test('an unlisted file swept from the source reads kept on a re-collect', (t) =>
+{
+    const fx = makeSession({}); t.after(fx.cleanup);
+    const name = `odd-${fx.sid}.json`;
+    const file = path.join(fx.dataRoot, 'state', 'sessions', name);
+    fx.write(file, '{}\n');
+    assert.strictEqual(row(run(fx), 'sessions:unlisted').status, 'copied');
+    fs.rmSync(file);
+    const again = row(run(fx), 'sessions:unlisted');
+    assert.deepStrictEqual([again.status, again.files], ['kept', 1]);
+    assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'sessions', name)));
+});
+
+// R166: a bundle under a folder a store walks by name was taken as that store's item - each re-run copied the bundle
+// into itself one level deeper.
+test('an --out inside a store\'s source root is refused', (t) =>
+{
+    const fx = makeSession({}); t.after(fx.cleanup);
+    for (const out of [path.join(fx.dataRoot, 'state', 'sessions', `${fx.sid}-audit`), path.join(fx.dataRoot, 'state', 'forge'), path.join(fx.docsRoot, 'audit')])
+    {
+        const r = attempt(fx, ['--out', out]);
+        assert.strictEqual(r.code, 2, out);
+        assert.match(r.message, /lies inside .* - pick a folder outside it/);
+        assert.ok(!fs.existsSync(out), `nothing written: ${out}`);
+    }
+});
+
+test('an --out beside the data root is accepted', (t) =>
+{
+    const fx = makeSession({}); t.after(fx.cleanup);
+    for (const out of [path.join(fx.dataRoot, 'statistics', 'usage-report', fx.sid), path.join(fx.dataRoot, 'audits', fx.sid)])
+    {
+        const rc = run(fx, ['--out', out]);
+        assert.strictEqual(rc.session, fx.sid, out);
+    }
+});
+
+// R168: the session-inspector status copy is a meta store, kept when text is withheld - and its handoffPrompt quotes
+// the open plan's Resume: line, conversation text.
+test('a withhold bundle\'s session-inspector status copy has handoffPrompt null', (t) =>
+{
+    const fx = makeSession({}); t.after(fx.cleanup);
+    fx.write(path.join(fx.project, '.claude', 'session-inspector', 'status', `${fx.sid}.json`),
+        JSON.stringify({ schema: 1, session: fx.sid, title: 't', handoffPrompt: 'Resume: the plan text' }));
+    run(fx, ['--text', 'withhold']);
+    const copy = JSON.parse(fs.readFileSync(path.join(fx.out, 'context', 'session-inspector-status.json'), 'utf8'));
+    assert.deepStrictEqual([copy.handoffPrompt, copy.title], [null, 't']);
+    const consent = path.join(fx.root, 'out-consent');
+    run(fx, ['--out', consent]);
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(consent, 'context', 'session-inspector-status.json'), 'utf8')).handoffPrompt, 'Resume: the plan text');
+});

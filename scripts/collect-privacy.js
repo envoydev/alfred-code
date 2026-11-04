@@ -1,5 +1,5 @@
-// THE PRIVACY RULES of scripts/collect-session.js (spec 4.4 of docs/superpowers/specs/2026-11-04-usage-collector-design.md,
-// a machine-local design): the names never copied, the content a doc or temp file is denied for, and the real-path
+// THE PRIVACY RULES of scripts/collect-session.js (the usage-collector design of 2026-11-04, its privacy section): the
+// names never copied, the content a doc or temp file is denied for, and the real-path
 // test. Each rule returns the reason a receipt row names - never the value it found.
 'use strict';
 const fs = require('node:fs');

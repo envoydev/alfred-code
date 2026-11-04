@@ -27,7 +27,7 @@ for f in <the session files>; do
   elif node "<snapshot>/scripts/collect-session.js" "$f" --out "<tmp>/$sid" \
     && node "<snapshot>/scripts/collect-session.js" "$f" --out "<out>/$sid" --text withhold --move-tool-usage; then
     echo "text withheld: $sid"
-    node "<snapshot>/scripts/analyze-usage.js" "<tmp>/$sid/$sid.jsonl" --report-md --out "<out>/$sid/report-usage.md"
+    node "<snapshot>/scripts/analyze-usage.js" "<tmp>/$sid/$sid.jsonl" --report-md --receipt "<out>/$sid/collected.json" --out "<out>/$sid/report-usage.md"
   else
     echo "collect refused: $sid"
   fi
@@ -38,7 +38,7 @@ bash "<tmp>/run.sh"
 
 The collector's gate checks every file the bundle would hold, where the consent test probed one name: an ignore rule for `*.jsonl` alone passes the test and refuses the collect. Such a session falls back to the no-consent pair below, and the batch prints `text withheld: <sid>`; its Environment row says `raw transcripts: not copied - the collector's gate refused`.
 
-No consent - 'Report and --json dumps only': the text stores are collected into `<tmp>` for the analyzer, and the bundle gets a second collect, which withholds them. That collect runs before the analyzer: it makes the bundle folder the report is written into.
+No consent - 'Report and --json dumps only': the text stores are collected into `<tmp>` for the analyzer, and the bundle gets a second collect, which withholds them. That collect runs before the analyzer: it makes the bundle folder the report is written into. The analyzer reads the `<tmp>` copy, so `--receipt` points its Evidence coverage at the bundle's own `collected.json`, which says what was withheld.
 
 ```bash
 cat > "<tmp>/run.sh" <<'EOF'
@@ -46,7 +46,7 @@ for f in <the session files>; do
   sid=$(basename "$f" .jsonl)
   if node "<snapshot>/scripts/collect-session.js" "$f" --out "<tmp>/$sid" \
     && node "<snapshot>/scripts/collect-session.js" "$f" --out "<out>/$sid" --text withhold --move-tool-usage; then
-    node "<snapshot>/scripts/analyze-usage.js" "<tmp>/$sid/$sid.jsonl" --report-md --out "<out>/$sid/report-usage.md"
+    node "<snapshot>/scripts/analyze-usage.js" "<tmp>/$sid/$sid.jsonl" --report-md --receipt "<out>/$sid/collected.json" --out "<out>/$sid/report-usage.md"
   else
     echo "collect refused: $sid"
   fi

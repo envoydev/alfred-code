@@ -73,7 +73,7 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs
 const SECRET_KEY_SOURCE = '(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$';
 const SECRET_KEY_RE = new RegExp(SECRET_KEY_SOURCE, 'i');
 // The value shapes the stack's credentials take - copied from guard-stop-contract.js; keep identical.
-const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
+const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
 // A credential file is small - a settings.json is under 10 KB - so the cap costs this gate nothing
 // on the files it exists for. Past it a file is judged by its FIRST MAX_BYTES, and a Read naming
 // `offset` / `limit` by the lines it asks for (audit 2026-10-30 HK-07: a 600KB dotenv and a 910KB

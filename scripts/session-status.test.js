@@ -1,5 +1,5 @@
 'use strict';
-// The session status file (2026-10-29, spec docs/superpowers/specs/2026-10-29-session-status-file-design.md): the plan
+// The session status file (the session-status-file design of 2026-10-29): the plan
 // read's one home in history.js (openPlan, entryFor) and session-status.js, the file a main session keeps under its cwd.
 const test = require('node:test');
 const SUITE = require('./hook-test-env').isolateHookSuite();

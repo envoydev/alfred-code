@@ -1,5 +1,5 @@
-// THE STORE TABLE of scripts/collect-session.js - one row per store the stack keeps about a session (spec 4.3 of
-// docs/superpowers/specs/2026-11-04-usage-collector-design.md, a machine-local design). Each row's `find(ctx)` is PURE:
+// THE STORE TABLE of scripts/collect-session.js - one row per store the stack keeps about a session (the
+// usage-collector design of 2026-11-04). Each row's `find(ctx)` is PURE:
 // it reads the sources and returns what to write (`items`), never writing; the collector gates and writes them.
 //
 //   StoreRow = { id, cls: 'meta'|'text', match, kind?, prefix?, prefixes?, name?, sweeps?, prunes?, find, held }
@@ -395,7 +395,10 @@ const unlistedRow = (kind, prefixes, skip = []) => ({
         }
         return { items, root, why: items.length ? 'unlisted prefix' : undefined };
     },
-    held: () => [],
+    // What the bundle holds under the same rule, so a file the hook swept since an earlier collect reads kept (R165).
+    held: (ctx) => listDir(ctx.fs, path.join(ctx.out, 'data', 'state', kind))
+        .filter((x) => holdsSid(ctx, x) && !skip.includes(x) && !prefixes.some((p) => x.startsWith(p)))
+        .map((x) => `data/state/${kind}/${x}`),
 });
 
 // The hook temp files (spec 4.3): the prefixes every one starts with - the one list the tmp row and the drift test's sweep
@@ -520,7 +523,15 @@ const STORES = [
         find: (ctx) =>
         {
             const file = path.join(ctx.project, '.claude', 'session-inspector', 'status', `${ctx.sid}.json`);
-            return { items: exists(ctx.fs, file) ? [{ to: 'context/session-inspector-status.json', from: file }] : [] };
+            const to = 'context/session-inspector-status.json';
+            if (!exists(ctx.fs, file)) return { items: [] };
+            if ((ctx.opts || {}).text !== 'withhold') return { items: [{ to, from: file }] };
+            // A meta store kept under withhold, but its handoffPrompt quotes the open plan's Resume: line - conversation
+            // text, so the withheld copy carries it as null (R168).
+            const { value, error } = readJson(ctx, file);
+            if (error || !value || typeof value !== 'object' || Array.isArray(value)) return { items: [], status: 'unreadable', why: error || 'not a JSON object' };
+            const kept = Object.hasOwn(value, 'handoffPrompt') ? { ...value, handoffPrompt: null } : value;
+            return { items: [{ to, body: JSON.stringify(kept, null, 1) + '\n' }] };
         },
         held: () => ['context/session-inspector-status.json'],
     },
@@ -646,7 +657,8 @@ const STORES = [
     },
     {
         // Every docs-root path the session's Write / Edit / MultiEdit / NotebookEdit calls name, and every one its
-        // docs-log rows name (`target`, `files`, `refs`, project-relative), as they are NOW.
+        // docs-log rows name (`target`, `files`, `refs`, and the docs engine's `wrote` and `file`, project-relative), as
+        // they are NOW.
         id: 'docs', cls: 'text', match: 'docs', content: true, caps: true,
         find: (ctx) =>
         {
@@ -666,7 +678,7 @@ const STORES = [
             {
                 if (!o || typeof o !== 'object') continue;
                 add(o.target);
-                for (const f of [].concat(o.files || [], o.refs || [])) add(f);
+                for (const f of [].concat(o.files || [], o.refs || [], o.wrote || [], o.file || [])) add(f);
             }
             const items = [...found.keys()].sort().map((rel) => ({ to: `docs/${rel}`, from: found.get(rel), root: ctx.docsRoot }));
             return { items, matched: 'docs', why: items.length ? 'read at collect time' : undefined };

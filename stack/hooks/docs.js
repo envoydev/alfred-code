@@ -2288,12 +2288,15 @@ const cmd = process.argv[2];
 const args = process.argv.slice(3);
 // Beside hook-blocks/ and tools-usage/ in the data root's statistics/ (2.8.0, layout.js copied beside this engine) - every
 // ledger in this stack lives there, never committed; an older copy route without layout.js keeps the docs root.
+// A row names the session that ran the command (CLAUDE_CODE_SESSION_ID, set in every Bash call of a session) - the usage
+// collector keeps a session's rows by it, and a doc set from Bash reached no bundle without it (O3, burn-down 2026-11-04).
 const docsLog = (row) => {
   try {
     let file = path.join(DOCS_ROOT, 'docs-log.jsonl');
     try { file = require('./layout.js').statsPath(ROOT, ['docs-log.jsonl']); } catch { /* an older copy route */ }
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`);
+    const session = process.env.CLAUDE_CODE_SESSION_ID;
+    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), ...(session ? { session } : {}), ...row })}\n`);
   } catch {}
 };
 const commands = {

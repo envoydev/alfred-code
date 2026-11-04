@@ -1,4 +1,4 @@
-// THE DRIFT TEST (spec 4.3 of docs/superpowers/specs/2026-11-04-usage-collector-design.md): every store the hooks write
+// THE DRIFT TEST (the usage-collector design of 2026-11-04, its store table): every store the hooks write
 // about a session has a STORES row in scripts/collect-stores.js, so a new store reaches the audit bundle or turns this
 // red. Four layers: the state kinds, the names passed to the path helpers, the prefixes built away from them (pinned),
 // and the prefixes the hooks sweep. The scan reads source as tokens - comments, regex literals and template

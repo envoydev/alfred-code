@@ -1,5 +1,5 @@
 'use strict';
-// ALFRED_CODE_MAXIMUM_RUN_AGENTS (the user's task of 2026-10-27, spec docs/superpowers/specs/2026-10-27-maximum-run-agents-design.md):
+// ALFRED_CODE_MAXIMUM_RUN_AGENTS (the user's task of 2026-10-27, the maximum-run-agents design):
 // how many of a session's agents may run at once. The registry under <data root>/state/sessions/, the dispatch guard's
 // deny, the start and stop events, the Stop reconcile and its one continuation, and the line the flows read.
 const test = require('node:test');

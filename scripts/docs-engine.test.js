@@ -2937,3 +2937,16 @@ test('lint --no-map leaves the architecture part\'s newModule row out, --map kee
     assert.doesNotMatch(r.cli(['lint', 'ops', '--map']).stdout, ops);
   } finally { r.rm(); }
 });
+
+// O3 (burn-down 2026-11-04): the collector keeps a session's docs-log rows by their `session`, and the engine wrote
+// none - a doc the session set through this CLI from Bash never reached its bundle.
+test('a docs-log row written from a session carries its id', () => {
+  const r = repo({ docsPath: 'docs', files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 10.'), { CLAUDE_CODE_SESSION_ID: 'sess-1' }).status, 0);
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 20.'), { CLAUDE_CODE_SESSION_ID: undefined }).status, 0);
+    const rows = r.read('.alfred/statistics/docs-log.jsonl').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(rows.map((o) => [o.event, o.session]), [['doc-set', 'sess-1'], ['doc-set', undefined]]);
+    assert.ok(!Object.hasOwn(rows[1], 'session'), 'no session, no key');
+  } finally { r.rm(); }
+});
