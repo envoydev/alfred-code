@@ -24,7 +24,7 @@
 //             does the skill hold its non-waivable steps?
 //
 // Grader vocabulary. `tool_used` (tool, input_match, min default 1, max), `tool_order` (before/after,
-// FIRST occurrence of each), `regex` (target last_message | trace, match contains | not_contains,
+// FIRST occurrence of each; this script's own `after_optional` passes a run where `after` never happens), `regex` (target last_message | trace, match contains | not_contains,
 // flags) follow `claude plugin eval`'s semantics as read from the Claude Code 2.1.280 bundle: tool
 // name equality, `input_match` a RegExp over the JSON-serialized input. A grader that uses only
 // those fields pastes into a case.yaml as is. `llm`, `baseline` and `file_exists` are accepted and
@@ -327,6 +327,7 @@ function runGrader(g, run, refs)
         {
             const b = firstIndex(ev, g.before, refs);
             const a = firstIndex(ev, g.after, refs);
+            if (a === -1 && g.after_optional) return pass(true, `'after' ${label(g.after, refs)} never called - nothing to order`);
             if (b === -1) return pass(false, `'before' ${label(g.before, refs)} never called`);
             if (a === -1) return pass(false, `'after' ${label(g.after, refs)} never called`);
             return pass(b < a, `${label(g.before, refs)}@${b} ${b < a ? 'precedes' : 'does NOT precede'} ${label(g.after, refs)}@${a}`);

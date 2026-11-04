@@ -989,3 +989,19 @@ test('check: run.trace, run.model and x_backed are validated', () =>
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// The 2026-11-04 prose round (U19c): 'when a branch is created, the listing comes first' - a run that creates none owes
+// no order, so tool_order's own after_optional passes it; without the flag, a missing after still fails.
+test('tool_order after_optional: no after event passes, an after with no before still fails', () =>
+{
+    const step = (extra) => ({ skill: 'x', steps: [{ id: 'listed', graders: [{ type: 'tool_order', name: 'list before create',
+        before: { tool: 'Bash', input_match: 'git branch -a' }, after: { tool: 'Bash', input_match: 'git switch -c' }, ...extra }] }] });
+    const run = (exp, rows) => sc.grade(exp, jsonl([user('Fix it on a branch.'), ...rows])).steps[0];
+    const ask = [tool('Bash', { command: 'git branch -a' }), say('The branch names do not follow the entry - which wins?')];
+    assert.strictEqual(run(step({ after_optional: true }), ask).verdict, 'PASS');
+    assert.strictEqual(run(step({ after_optional: true }), [say('Nothing to do.')]).verdict, 'PASS', 'neither event: nothing to order');
+    assert.strictEqual(run(step({}), ask).verdict, 'FAIL', 'without the flag a missing after fails as before');
+    assert.strictEqual(run(step({ after_optional: true }), [tool('Bash', { command: 'git switch -c SHOP-205' })]).verdict, 'FAIL');
+    assert.strictEqual(run(step({ after_optional: true }), [tool('Bash', { command: 'git switch -c SHOP-205' }), tool('Bash', { command: 'git branch -a' })]).verdict, 'FAIL');
+    assert.strictEqual(run(step({ after_optional: true }), [...ask, tool('Bash', { command: 'git switch -c SHOP-205' })]).verdict, 'PASS');
+});
