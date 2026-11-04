@@ -166,6 +166,9 @@ function count(reg, { now = Date.now(), probe = () => {} } = {})
             for (const e of [...alive.values()])
             {
                 const parent = started.get(cleanId(e.body.parent, { agent: true }));
+                // A parent that stopped and was not sent back has ended: its child counts alone (R084).
+                const pStop = parent ? Number(parent.body.stop) || 0 : 0;
+                if (pStop && !(mtimeOf(parent.body.transcript) > pStop + SENT_BACK_MS)) continue;
                 if (parent && !alive.has(parent.name)) { alive.set(parent.name, parent); grew = true; }
             }
         }
@@ -199,8 +202,11 @@ function dropPending(reg, toolUseId)
     if (id) remove(fileOf(reg, 'P', id));
 }
 
-// A start takes the oldest pending file of its type, else the oldest one, and carries its parent; a start with none
-// writes its running file all the same - whatever runs, counts. A resume starts the same id again and clears `stop`.
+// A start takes the oldest pending file of its type (compared without the `alfred-code:` prefix and case), else the
+// oldest one - carrying its parent only when it was the one pending file left, since among several of other types the
+// oldest may be another dispatch's (R085); a start with none writes its running file all the same - whatever runs,
+// counts. A resume starts the same id again and clears `stop`.
+const typeKey = (t) => String(t || '').replace(/^alfred-code:/i, '').toLowerCase();
 function startAgent(reg, { agentId, type = '', transcript = '', now = Date.now() } = {})
 {
     try
@@ -208,9 +214,11 @@ function startAgent(reg, { agentId, type = '', transcript = '', now = Date.now()
         const id = cleanId(agentId, { agent: true });
         if (!id) return;
         const pending = entries(reg).filter((e) => e.kind === 'P' && e.body).sort((a, b) => (Number(a.body.at) || 0) - (Number(b.body.at) || 0));
-        const taken = pending.find((e) => e.body.type === type) || pending[0];
+        const ofType = pending.find((e) => typeKey(e.body.type) === typeKey(type));
+        const taken = ofType || pending[0];
         const before = readEntry(fileOf(reg, 'R', id));
-        const parent = taken ? String(taken.body.parent || '') : String((before && before.parent) || '');
+        const sure = ofType || pending.length === 1;
+        const parent = taken && sure ? String(taken.body.parent || '') : String((before && before.parent) || '');
         if (taken) remove(taken.file);
         writeEntry(fileOf(reg, 'R', id), { type: String(type || (taken && taken.body.type) || 'agent'), at: now, parent, transcript: String(transcript || (before && before.transcript) || '') });
     }
@@ -250,7 +258,7 @@ function reconcile(reg, backgroundTasks, { now = Date.now(), probe = () => {} } 
         {
             if (e.kind === 'P' && (!e.body || !String(e.body.parent || ''))) { remove(e.file); removed++; }
         }
-        const inflight = backgroundTasks.filter((t) => t && typeof t === 'object' && t.type === 'subagent' && !SETTLED_STATUS.test(String(t.status || '')));
+        const inflight = backgroundTasks.filter((t) => t && typeof t === 'object' && String(t.type || '').toLowerCase() === 'subagent' && !SETTLED_STATUS.test(String(t.status || '')));
         const ids = new Set(inflight.map((t) => cleanId(t.id, { agent: true })).filter(Boolean));
         const started = count(reg, { now, probe }).live.filter((e) => e.kind === 'R');
         const byId = started.some((e) => ids.has(e.id));
@@ -351,7 +359,7 @@ function stopContinue(payload, env = process.env)
             if (c.running >= g.n) return '';
             remove(deniedOf(g.reg));
             const stopped = Math.max(1, (Number(denied.running) || 0) - c.running);
-            return `The agent cap denied a dispatch this turn, and ${stopped} of the agents it counted have stopped since - send that dispatch again now.`;
+            return `Since the user's last message the agent cap denied a dispatch, and ${stopped} of the agents it counted have stopped - send that dispatch again now.`;
         });
         return (done.ok && done.value) || '';
     }
