@@ -1,0 +1,30 @@
+{
+  "id": "t1",
+  "profile": "web-angular",
+  "base": "common/angular",
+  "model": "claude-opus-5-5",
+  "size": "standard",
+  "prompt": "/task-solve --mode-auto-run-on Orders can take a discount code. On the order detail page, a code typed into a field named discountCode and applied with a button named applyDiscount is sent to POST /api/orders/{id}/discount as { code }; the page then shows the discounted total the server returns, formatted like $90.00, and an error line with class discount-error when the server answers 422.",
+  "second": null,
+  "suite": "npx ng build && npx ng test --watch=false",
+  "rest": "npx ng build && npx ng test --watch=false --exclude src/app/orders/discount.acceptance.spec.ts",
+  "acceptance": "npx ng test --watch=false --include src/app/orders/discount.acceptance.spec.ts",
+  "acceptanceCount": 2,
+  "oracle": ["src/app/orders/discount.acceptance.spec.ts"],
+  "trigger": { "text": "4 files: model, service, detail component, its spec", "files": 4 },
+  "rows": [1, 2, 3],
+  "expect": {
+    "A": { "1": "session", "2": "session", "3": "session" },
+    "B": { "1": "seat", "2": "seat", "3": "seat" },
+    "notSeparatedIfSeat": [3]
+  },
+  "estimate": 6.5,
+  "cap": 16,
+  "rubric": [
+    "Meets the request: every case it names works - the field, the button, the POST body, the returned total formatted as currency, the 422 error line.",
+    "Correct: no regression on the detail page, and the implied edge cases handled (an empty code, a failure other than 422, a second apply).",
+    "Tests: the change comes with tests that would fail without it.",
+    "Conventions: the project's own patterns (standalone, signals, OnPush, inject, the fake backend) and the stack's idioms.",
+    "Scope: nothing unrequested is added or changed."
+  ]
+}

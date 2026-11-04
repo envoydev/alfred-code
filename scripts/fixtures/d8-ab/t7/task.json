@@ -1,0 +1,13 @@
+{
+  "id": "t7",
+  "from": "t1",
+  "model": "claude-fable-5-1",
+  "rows": [4, 1, 2, 3],
+  "expect": {
+    "A": { "1": "session", "2": "session", "3": "session", "4": "session" },
+    "B": { "1": "seat", "2": "seat", "3": "seat", "4": "seat" },
+    "notSeparatedIfSeat": [3]
+  },
+  "estimate": 16,
+  "cap": 40
+}
