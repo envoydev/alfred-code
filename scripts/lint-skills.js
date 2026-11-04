@@ -1298,7 +1298,8 @@ const SETUP_ASK_TEMPLATES = {
     // -1: the memory level ask, with the memory server (the no-MCP stack, 2026-10-24).
     // +2: step 8's memory and navigation asks (spec P1 + P2, 2026-10-24).
     // +3: step 8's workspace role, one template per role (workspace roles and variables D2, 2026-10-27).
-    'setup-plugin/commands/configure.md': 13,
+    // +1: step 8's copy of the old memory files to the new place (memory P3, 2026-11-04).
+    'setup-plugin/commands/configure.md': 14,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -1321,8 +1322,9 @@ const SETUP_ASK_TEMPLATES = {
     'setup-plugin/commands/status.md': 1,
     // +2: step 4's memory and navigation asks (spec P1 + P2, 2026-10-24). +1: the account's both-instruction-files ask
     // in a joined child (workspace layering, 2026-10-26). +1: the marketplace auto-update ask, once per account (U01 of the
-    // 2026-11-03 usage audit).
-    'setup-plugin/references/init-bootstrap.md': 5,
+    // 2026-11-03 usage audit). +2: step 4's docs memory template beside the default one, and the copy ask (memory P3,
+    // 2026-11-04).
+    'setup-plugin/references/init-bootstrap.md': 7,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's
     // detection confirm and its dispute follow-up, which was asked in plain text (audit 2026-10-21 commands T2-08).
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).

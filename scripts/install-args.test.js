@@ -419,7 +419,7 @@ test('install-args: --instructions-seed is uninstall\'s answer for the seed - ke
     fails(['update', '--instructions-seed', 'remove'], /--instructions-seed is uninstall's answer/);
 });
 
-test('install-args: --memory takes default or custom, lower-cased', () =>
+test('install-args: --memory takes default, docs or custom, lower-cased', () =>
 {
     assert.strictEqual(ok(['install']).memory, '');
     assert.strictEqual(ok(['install', '--memory', 'CUSTOM']).memory, 'custom');
@@ -428,9 +428,14 @@ test('install-args: --memory takes default or custom, lower-cased', () =>
     assert.deepStrictEqual(ok(['install', '--memory-level', 'project']).ignored, ['--memory-level ignored - the memory server left the stack in 2.10.1'], '--memory-level stays the retired flag');
 });
 
-test('install-args: --memory docs is refused until docs mode ships', () =>
+test('install-args: --memory takes docs; --memory-copy rides with --memory', () =>
 {
-    fails(['install', '--memory', 'docs'], /^--memory must be 'default' or 'custom'/);
+    assert.strictEqual(ok(['install', '--memory', 'DOCS']).memory, 'docs');
+    assert.strictEqual(ok(['update', '--memory', 'docs', '--memory-copy']).memoryCopy, true);
+    assert.strictEqual(ok(['install']).memoryCopy, false);
+    assert.ok(require('./install/args.js').FLAG_LIST.includes('--memory-copy'));
+    fails(['update', '--memory-copy'], /^--memory-copy goes with --memory/);
+    fails(['install', '--memory', 'bogus'], /^--memory must be 'default', 'docs' or 'custom'/);
 });
 
 // E-batch fn-11 (forge-neutral ledger): --github-cli, the flag's name before --forge-cli, failed as an unknown flag.

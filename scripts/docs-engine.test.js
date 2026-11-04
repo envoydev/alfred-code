@@ -1443,6 +1443,20 @@ test('a not-found ref names domain-qualified candidates in the Known list, not t
   } finally { r.rm(); }
 });
 
+// Memory P3 (Risk 5): Claude Code's own memory sits at <docs root>/memory under docs mode - never a domain, so no watch,
+// lint or overlay reads its lessons as docs.
+test('domains: memory/ is never a domain, even with a watch.json planted in it', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/memory/watch.json', '{}');
+    r.write('.claude/docs/memory/MEMORY.md', '# Memory\n- [a lesson](feedback.md)\n');
+    const docs = requireEngine(r.root);
+    assert.ok(!docs.domains().includes('memory'), docs.domains().join(', '));
+    assert.match(docs.lint('memory').problems[0], /^no domain 'memory'/);
+    assert.deepStrictEqual(docs.watchMerge('memory', [], { kinds: ['src/'] }), { error: 'not a domain name: "memory"' });
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 test('resetDomains clears the cache a fixture needs to see a domain added after the module was required', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {

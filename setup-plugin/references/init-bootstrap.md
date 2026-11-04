@@ -67,9 +67,18 @@ close names it.
 
 ## 4. Memory and navigation
 
-One call, nothing changed but the language-server check it re-runs: `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --lsp` - paste its lines byte-for-byte in ONE fenced block. They say which memory the project uses, what navigation each actor gets and whether a language server covers the project's files.
+One call, nothing changed but the language-server check it re-runs: `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --lsp` - paste its lines byte-for-byte in ONE fenced block. They say which memory the project uses, what navigation each actor gets and whether a language server covers the project's files - and, in a `memory-docs:` line, whether Claude's own memory can be kept in this repo's docs (a `memory-copy:` line follows a docs preview, below).
 
-Each question is asked only while its mode is the stack's default: a `memory: custom` line, or a navigation line reading `yours`, is a choice already made - one narration line each (`<memory | navigation>: kept - /alfred-code:configure changes it`), no question. The rest go in ONE AskUserQuestion call:
+Each question is asked only while its mode is the stack's default: a `memory: custom` or `memory: docs` line, or a navigation line reading `yours`, is a choice already made - one narration line each (`<memory | navigation>: kept - /alfred-code:configure changes it`), no question. The rest go in ONE AskUserQuestion call. The memory question is the first template below on a `memory-docs: can be written` line:
+
+```ask
+Memory for this project?
+- 'Native, in this repo's docs (Recommended)' - Claude Code keeps its own memory in <the memory-docs folder>, <committed with the docs | kept out of git> as that line says; from the next session.
+- 'Native, Claude's default place' - Claude Code keeps its own memory where it always does; nothing is written.
+- 'Custom, your memory server through the tool order' - Claude's own memory goes off and the memory tool you rank holds the lessons; ranks one now if none is.
+```
+
+and the second on a `memory-docs: cannot be written` line, after one narration line quoting that line's reason:
 
 ```ask
 Memory for this project?
@@ -107,7 +116,15 @@ same with `--decline` - report its `auto-update:` line verbatim. Neither touches
 
 - **Custom navigation:** read `$TMP/repo/stack/skills/capture-preferences/references/tools-area.md` (through Bash) and follow it inline for the navigation job alone - its step 4 asks navigation's question only, even with one server candidate, since the user chose Custom - start to finish, its `lint` and `order` included.
 - **Custom memory:** follow the same file for the memory job alone, the same way, then run `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --memory custom` - the mode is written only by the call below, so this previews what custom would use. A memory line saying `no memory tool is reachable` means nothing would hold the lessons: apply `default` instead and say `No memory tool is ranked and reachable, so memory stays native (Claude's default place).`
-- **Apply:** a memory answer other than the `memory:` line's mode is ONE call - `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --memory <mode>` (`default` or `custom`) - whose `ALFRED_CODE_MEMORY` and `autoMemoryEnabled` lines are reported verbatim; it applies from the next session. The same answer is no call, and so is 'Agent decides'.
+- **Docs memory:** run `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --memory docs`. A `memory-copy:` line in it means ONE more AskUserQuestion call, `<n>` its count:
+
+```ask
+Copy your <n> memory files to the new place?
+- 'Copy them (Recommended)' - the old ones stay where they are.
+- 'Start empty' - the new place starts with no memory; the old files stay where they are.
+```
+
+- **Apply:** a memory answer other than the `memory:` line's mode is ONE call - `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --memory <mode>` (`default`, `docs` or `custom`; 'Copy them' adds `--memory-copy`) - whose `ALFRED_CODE_MEMORY`, `autoMemoryEnabled`, `autoMemoryDirectory`, `memory: copied` and `.gitattributes` lines are reported verbatim; it applies from the next session. The same answer is no call, and so is 'Agent decides'.
 
 ## 5. Captures - each SKILL.md followed inline
 
@@ -144,7 +161,7 @@ too. Its one line goes in the card.
 
 **The card restates the OUTCOME of every step** - one line each, in step order: each machine item
 (installed, failed with its reason, skipped, blocked with its fix), each capture (ran and what it wrote, done, skipped
-and why), the modes, as `memory: <default | custom> · navigation: <the stack's order | yours>`, step 4's `auto-update:` line, AGENTS.md (created, improved or skipped,
+and why), the modes, as `memory: <default | docs | custom> · navigation: <the stack's order | yours>`, step 4's `auto-update:` line, AGENTS.md (created, improved or skipped,
 with the check's last line), then the `initialised:` line. Then the
 user's own next steps as suggestions, each with its one reason: a restart when step 3 installed a language server
 binary; `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card
@@ -174,7 +191,7 @@ is answered by the run itself, never AskUserQuestion, by one rule:
   it. A multi-select ask takes the options its question names as the default, a destructive one left out.
 - Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
   not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
-  installs, memory, navigation, both instruction files, auto-update, AGENTS.md) - apply exactly those, never re-judge them; an ask with no line is one step 4
+  installs, memory and its copy, navigation, both instruction files, auto-update, AGENTS.md) - apply exactly those, never re-judge them; an ask with no line is one step 4
   does not put.
 - The stack's files are read through the Bash tool, never the Read tool (above): outside the working
   directory the Read tool asks first, and here nobody answers.

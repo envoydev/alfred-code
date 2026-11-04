@@ -14,6 +14,8 @@ const tools = require(TOOLS);
 // The data root and docs root are read from the process env as the hooks read them; this machine's own must not leak in.
 delete process.env.ALFRED_CODE_DATA_PATH;
 delete process.env.ALFRED_CODE_DOCS_PATH;
+// So is its docs versioning, which the memory-docs plan line reads (memory P3).
+delete process.env.ALFRED_CODE_DOCS_VERSIONING;
 
 const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__'; // mcp-fixture
 const MEMORY_LINE = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list'; // mcp-fixture
@@ -605,13 +607,15 @@ test('no coverage file, or one with a covering server, keeps LSP as today', () =
 // What navigation each actor gets, said plainly for init, configure and status (spec N1-N3); the memory lines lead.
 const navLine = (s) => tools.modeLines({ projectRoot: s.root, env: s.env }).find((l) => l.startsWith('navigation: '));
 const MEM_DEFAULT = "memory: default - Claude Code's own memory, at its default place";
+// The plan line after the memory lines (memory P3): whether docs mode could be written here.
+const PLAN_DOCS = 'memory-docs: can be written - .alfred/docs/memory/, committed with the docs';
 test('modes: the stack\'s order, then the lsp line', () =>
 {
     const s = sandbox();
     try
     {
         NO_PLUGINS(s);
-        assert.deepStrictEqual(tools.modeLines({ projectRoot: s.root, env: s.env }), [MEM_DEFAULT, "navigation: the stack's order - LSP > Grep", 'lsp: not checked yet - the next update or /alfred-code:init checks it']);
+        assert.deepStrictEqual(tools.modeLines({ projectRoot: s.root, env: s.env }), [MEM_DEFAULT, PLAN_DOCS, "navigation: the stack's order - LSP > Grep", 'lsp: not checked yet - the next update or /alfred-code:init checks it']);
     }
     finally { s.done(); }
 });
@@ -656,16 +660,16 @@ test('the modes command prints the lines and --lsp refreshes the file', () =>
     try
     {
         NO_PLUGINS(s);
-        const run = (...args) => spawnSync(process.execPath, [TOOLS, ...args, '--project', s.root], { encoding: 'utf8', env: { ...s.env, ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '' } });
+        const run = (...args) => spawnSync(process.execPath, [TOOLS, ...args, '--project', s.root], { encoding: 'utf8', env: { ...s.env, ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '', CLAUDE_PROJECT_DIR: s.root } });
         const file = path.join(s.root, '.alfred', 'state', 'lsp-coverage.json');
         let r = run('modes');
         assert.strictEqual(r.status, 0, r.stderr);
-        assert.strictEqual(r.stdout, `${MEM_DEFAULT}\nnavigation: the stack's order - LSP > Grep\nlsp: not checked yet - the next update or /alfred-code:init checks it\n`);
+        assert.strictEqual(r.stdout, `${MEM_DEFAULT}\n${PLAN_DOCS}\nnavigation: the stack's order - LSP > Grep\nlsp: not checked yet - the next update or /alfred-code:init checks it\n`);
         assert.ok(!fs.existsSync(file), 'without --lsp nothing is written');
         r = run('modes', '--lsp');
         assert.strictEqual(r.status, 0, r.stderr);
         assert.ok(fs.existsSync(file), 'the check ran');
-        assert.match(r.stdout.split('\n')[2], /^lsp: (none covers|covers |not settled - the project holds no files yet)/);
+        assert.match(r.stdout.split('\n')[3], /^lsp: (none covers|covers |not settled - the project holds no files yet)/);
     }
     finally { s.done(); }
 });
@@ -701,8 +705,9 @@ test('modes: memory default, custom with a rank, custom with none', () =>
         settingsAt(s, { enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: false });
         const lines = tools.modeLines({ projectRoot: s.root, env: s.env });
         assert.strictEqual(lines[0], 'memory: custom - no memory tool is reachable here, so nothing is stored; rank one with /capture-preferences tools');
-        assert.match(lines[1], /^navigation: /, 'then navigation, then lsp');
-        assert.match(lines[2], /^lsp: /);
+        assert.strictEqual(lines[1], PLAN_DOCS, 'then the plan line');
+        assert.match(lines[2], /^navigation: /, 'then navigation, then lsp');
+        assert.match(lines[3], /^lsp: /);
     }
     finally { s.done(); }
 });
@@ -745,14 +750,16 @@ test('configure\'s memory area reports custom from .variables', () =>
     finally { s.done(); }
 });
 
-test('memoryMode reads Custom and bogus as default', () =>
+test('memoryMode: docs is its own mode; Docs and bogus read as default', () =>
 {
     const s = sandbox();
     try
     {
         const mode = () => tools.memoryMode({ projectRoot: s.root, env: s.env });
         assert.strictEqual(mode(), 'default');
-        for (const v of ['Custom', 'bogus', '', 'docs']) { settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: v } }); assert.strictEqual(mode(), 'default', v); }
+        for (const v of ['Custom', 'Docs', 'bogus', '']) { settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: v } }); assert.strictEqual(mode(), 'default', v); }
+        settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'docs' } });
+        assert.strictEqual(mode(), 'docs');
         settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'custom' } });
         assert.strictEqual(mode(), 'custom');
         settingsAt(s, { env: { ALFRED_CODE_MEMORY: 'default' } }, 'settings.local.json');
@@ -959,6 +966,303 @@ test('capture lint, validate and tools.js next never read an ancestor\'s doc - n
         assert.match(next.stdout, /^Next: T1$/m, next.stdout + next.stderr);
         const lint = spawnSync(process.execPath, [TOOLS, 'lint', '--project', s.api], { cwd: s.api, env: s.env, encoding: 'utf8' });
         assert.doesNotMatch(lint.stdout + lint.stderr, /T7/);
+    }
+    finally { s.done(); }
+});
+
+// ---- memory P3: docs mode's lines, plan lines and validate rows (Task 5) -----------------------------------------------
+const layoutLib = require('../stack/hooks/layout.js');
+const REFUSAL = layoutLib.DOCS_MEMORY_REFUSAL;
+const rowHashOf = (value) => require('node:crypto').createHash('sha256').update(JSON.stringify(value)).digest('hex');
+// The sandbox's env without any stack key the runner carries, so the mode and versioning are the sandbox's own.
+const bareEnv = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith('ALFRED_CODE_')));
+// A git repo on docs (or another mode), with the stack's row in place unless `row` is false.
+function docsSandbox({ mode = 'docs', row = true, versioning = null } = {})
+{
+    const s = sandbox();
+    spawnSync('git', ['init', '-q', s.root]);
+    s.env = bareEnv(s.env);
+    s.vars = (text) => s.write(path.join(s.root, '.alfred', '.variables'), text);
+    s.vars(`ALFRED_CODE_MEMORY=${mode}\n${versioning ? `ALFRED_CODE_DOCS_VERSIONING=${versioning}\n` : ''}`);
+    s.want = layoutLib.docsMemoryDir(s.root, { env: s.env });
+    s.local = (value) => settingsAt(s, value, 'settings.local.json');
+    s.stampRow = (value) => s.write(path.join(s.root, '.claude', 'alfred-code.stamp'), `managed-settings: settings.local.json:autoMemoryDirectory=${rowHashOf(value)}\n`);
+    s.defaultPlace = path.join(s.config, 'projects', s.root.replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+    s.memory = (dir, files) => { for (const [name, text] of Object.entries(files)) s.write(path.join(dir, name), text); };
+    s.lines = (memory = null) => tools.modeLines({ projectRoot: s.root, env: s.env, memory });
+    s.rows = () => tools.validateRows(s.root, s.env).filter((r) => r.startsWith('!! memory'));
+    if (row) { s.local({ autoMemoryDirectory: s.want }); s.stampRow(s.want); }
+    return s;
+}
+const IN_GIT = "memory: docs - Claude Code's own memory, in .alfred/docs/memory/ (committed with the docs)";
+const CAN_GIT = 'memory-docs: can be written - .alfred/docs/memory/, committed with the docs';
+
+test('memory lines: docs in place, under git and under local', () =>
+{
+    const s = docsSandbox();
+    try
+    {
+        assert.deepStrictEqual(s.lines().slice(0, 2), [IN_GIT, CAN_GIT], s.lines().join('\n'));
+        assert.deepStrictEqual(s.rows(), [], 'in place: no validate row');
+        s.vars('ALFRED_CODE_MEMORY=docs\nALFRED_CODE_DOCS_VERSIONING=local\n');
+        assert.deepStrictEqual(s.lines().slice(0, 2), ["memory: docs - Claude Code's own memory, in .alfred/docs/memory/ (kept out of git)", 'memory-docs: can be written - .alfred/docs/memory/, kept out of git']);
+        // P2's switch-off line follows for docs as for default.
+        settingsAt(s, { enabledPlugins: STACK, autoMemoryEnabled: false });
+        assert.strictEqual(s.lines()[1], 'memory: autoMemoryEnabled is false in .claude/settings.json - yours; native memory stays off until you remove it', s.lines().join('\n'));
+    }
+    finally { s.done(); }
+});
+
+test('memory lines: docs refused, unset and stale each say what to run', () =>
+{
+    const s = docsSandbox({ row: false });
+    try
+    {
+        assert.strictEqual(s.lines()[0], 'memory: docs, but no autoMemoryDirectory is set here - /alfred-code:update writes it');
+        s.local({ autoMemoryDirectory: '/old/place/memory' });
+        s.stampRow('/old/place/memory');
+        assert.strictEqual(s.lines()[0], 'memory: docs, but autoMemoryDirectory points at /old/place/memory, not .alfred/docs/memory/ - /alfred-code:update re-points it');
+        // The same value with no stamp row is the user's own: refused, and kept.
+        fs.rmSync(path.join(s.root, '.claude', 'alfred-code.stamp'));
+        assert.strictEqual(s.lines()[0], `memory: docs, but ${REFUSAL.own} - Claude's own memory stays at its default place`);
+        assert.strictEqual(s.lines()[1], `memory-docs: cannot be written - ${REFUSAL.own}`);
+        s.local({});
+        spawnSync('git', ['add', '-f', '.claude/settings.local.json'], { cwd: s.root });
+        assert.strictEqual(s.lines()[0], `memory: docs, but ${REFUSAL.tracked} - Claude's own memory stays at its default place`);
+    }
+    finally { s.done(); }
+});
+
+test('memory lines: --memory docs previews, refusal included; --memory default previews while docs', () =>
+{
+    const s = docsSandbox({ mode: 'default', row: false });
+    try
+    {
+        assert.strictEqual(s.lines('docs')[0], "memory: docs (preview) - Claude Code's own memory, in .alfred/docs/memory/ (committed with the docs)");
+        assert.strictEqual(s.lines()[0], MEM_DEFAULT, 'without the preview the mode on disk is said');
+        s.local({ autoMemoryDirectory: '/somewhere/else' });
+        assert.strictEqual(s.lines('docs')[0], `memory: docs (preview) - cannot be written here: ${REFUSAL.own}`);
+        const d = docsSandbox();
+        try
+        {
+            assert.strictEqual(d.lines('default')[0], "memory: default (preview) - Claude Code's own memory, at its default place");
+            assert.strictEqual(d.lines('docs')[0], IN_GIT, 'the mode already docs is no preview');
+        }
+        finally { d.done(); }
+    }
+    finally { s.done(); }
+});
+
+test('plan lines: memory-docs can or cannot be written; memory-copy only for an empty new place', () =>
+{
+    const s = docsSandbox({ mode: 'default', row: false });
+    try
+    {
+        const plan = (target) => tools.memoryPlanLines({ projectRoot: s.root, env: s.env, target });
+        assert.deepStrictEqual(plan(null), [CAN_GIT]);
+        assert.deepStrictEqual(plan('docs'), [CAN_GIT], 'no old memory: no copy line');
+        s.memory(s.defaultPlace, { 'MEMORY.md': '# m\n', 'debugging.md': 'd\n' });
+        assert.deepStrictEqual(plan('docs'), [CAN_GIT, `memory-copy: 2 memory files at ${s.defaultPlace}/, none at .alfred/docs/memory/`]);
+        assert.deepStrictEqual(plan('custom'), [CAN_GIT], 'custom has no place to copy into');
+        assert.deepStrictEqual(plan('default'), [CAN_GIT], 'the current place is no new place');
+        s.memory(s.want, { 'MEMORY.md': '# already\n' });
+        assert.deepStrictEqual(plan('docs'), [CAN_GIT], 'the new place has a MEMORY.md');
+        fs.rmSync(s.want, { recursive: true, force: true });
+        s.local({ autoMemoryDirectory: '/somewhere/else' });
+        assert.deepStrictEqual(plan('docs'), [`memory-docs: cannot be written - ${REFUSAL.own}`], 'refused: no copy line');
+    }
+    finally { s.done(); }
+    // docs -> default: the docs folder holds the index, the default place none.
+    const d = docsSandbox();
+    try
+    {
+        d.memory(d.want, { 'MEMORY.md': '# docs\n' });
+        assert.deepStrictEqual(tools.memoryPlanLines({ projectRoot: d.root, env: d.env, target: 'default' }), [CAN_GIT, `memory-copy: 1 memory files at .alfred/docs/memory/, none at ${d.defaultPlace}/`]);
+    }
+    finally { d.done(); }
+});
+
+test('validate: docs rows - refused, unset, stale, and a stack row left under default', () =>
+{
+    const s = docsSandbox({ row: false });
+    try
+    {
+        assert.deepStrictEqual(s.rows(), ['!! memory: ALFRED_CODE_MEMORY is docs, but no autoMemoryDirectory is set here - run /alfred-code:update to write it']);
+        s.local({ autoMemoryDirectory: '/old/place/memory' });
+        s.stampRow('/old/place/memory');
+        assert.deepStrictEqual(s.rows(), ['!! memory: ALFRED_CODE_MEMORY is docs, but autoMemoryDirectory points at /old/place/memory, not .alfred/docs/memory/ - run /alfred-code:update to re-point it']);
+        fs.rmSync(path.join(s.root, '.claude', 'alfred-code.stamp'));
+        assert.deepStrictEqual(s.rows(), [`!! memory: ALFRED_CODE_MEMORY is docs, but ${REFUSAL.own} - Claude's own memory stays at its default place`]);
+    }
+    finally { s.done(); }
+    for (const mode of ['default', 'custom'])
+    {
+        const d = docsSandbox({ mode });
+        try
+        {
+            if (mode === 'custom') settingsAt(d, { enabledPlugins: STACK, autoMemoryEnabled: false });
+            assert.ok(d.rows().includes(`!! memory: ALFRED_CODE_MEMORY is ${mode}, but the stack's autoMemoryDirectory is still in .claude/settings.local.json - run /alfred-code:update to remove it`), d.rows().join('\n'));
+            d.local({ autoMemoryDirectory: '/the/users/own' });
+            assert.ok(!d.rows().some((r) => r.includes("the stack's autoMemoryDirectory")), 'a value changed since is the user\'s');
+        }
+        finally { d.done(); }
+    }
+});
+
+test('memory lines: a same-repo child sharing its member\'s docs memory - the shares line and plan line, no validate row', () =>
+{
+    const s = docsSandbox();
+    try
+    {
+        const child = path.join(s.root, 'api');
+        s.write(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+        s.write(path.join(child, '.alfred', 'workspace'), 'parent ..\n');
+        s.write(path.join(s.root, '.alfred', 'workspace'), 'child api\n');
+        const lines = () => tools.modeLines({ projectRoot: child, env: s.env });
+        assert.deepStrictEqual(lines().slice(0, 2), [`memory: docs - shares ..'s docs memory, in ${s.want}/`, "memory-docs: shares ..'s docs memory - nothing to write here"], lines().join('\n'));
+        assert.deepStrictEqual(tools.validateRows(child, s.env).filter((r) => r.startsWith('!! memory')), []);
+        // With the member's row gone the child is refused as before: it sits below its repository root.
+        s.local({});
+        assert.deepStrictEqual(lines().slice(0, 2), [`memory: docs, but ${REFUSAL.elsewhere} - Claude's own memory stays at its default place`, `memory-docs: cannot be written - ${REFUSAL.elsewhere}`], lines().join('\n'));
+    }
+    finally { s.done(); }
+});
+
+// R6: a linked worktree reads the main checkout's settings.local.json on darwin and linux, and its own on win32.
+function docsWorktree()
+{
+    const s = docsSandbox();
+    const git = (...args) => spawnSync('git', args, { cwd: s.root, encoding: 'utf8' });
+    s.write(path.join(s.root, 'README.md'), 'x\n');
+    git('add', 'README.md');
+    git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init');
+    s.wt = path.join(s.work, 'wt');
+    git('worktree', 'add', '-q', s.wt);
+    return s;
+}
+
+test('start: a linked worktree reading the main checkout\'s row (darwin/linux) - no line', () =>
+{
+    const s = docsWorktree();
+    try
+    {
+        assert.ok(fs.statSync(path.join(s.wt, '.git')).isFile(), 'a linked worktree');
+        for (const platform of ['darwin', 'linux']) assert.strictEqual(tools.memoryStartLine({ projectRoot: s.wt, env: s.env, platform }), '', platform);
+        assert.strictEqual(tools.memoryStartLine({ projectRoot: s.root, env: s.env, platform: 'linux' }), '', 'the main checkout itself');
+    }
+    finally { s.done(); }
+});
+
+test('start: a linked worktree with no row on win32 gets the R6 line', (t) =>
+{
+    const s = docsWorktree();
+    try
+    {
+        const line = tools.memoryStartLine({ projectRoot: s.wt, env: s.env, platform: 'win32' });
+        assert.strictEqual(line, "Memory: this worktree has no autoMemoryDirectory, so Claude's own memory reads and saves at its default place this session, not .alfred/docs/memory/.");
+        t.diagnostic(`R6 line: ${line.length} chars`);
+        // The worktree's own row in place: nothing to say.
+        s.write(path.join(s.wt, '.claude', 'settings.local.json'), { autoMemoryDirectory: s.want });
+        assert.strictEqual(tools.memoryStartLine({ projectRoot: s.wt, env: s.env, platform: 'win32' }), '');
+    }
+    finally { s.done(); }
+});
+
+test('start: a same-repo child sharing its member\'s docs memory - no line', () =>
+{
+    const s = docsSandbox();
+    try
+    {
+        const child = path.join(s.root, 'api');
+        s.write(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+        s.write(path.join(child, '.alfred', 'workspace'), 'parent ..\n');
+        s.write(path.join(s.root, '.alfred', 'workspace'), 'child api\n');
+        assert.strictEqual(tools.memoryStartLine({ projectRoot: child, env: s.env, platform: 'linux' }), '');
+        // The member's row gone: the child shares nothing, and is told its memory is not in place.
+        s.local({});
+        assert.match(tools.memoryStartLine({ projectRoot: child, env: s.env, platform: 'linux' }), /^Memory: docs mode, but autoMemoryDirectory is not set here/);
+    }
+    finally { s.done(); }
+});
+
+test('validate R7: a home path and a secret value are named by file:line and key, the value never printed', () =>
+{
+    const s = docsSandbox();
+    try
+    {
+        s.write(path.join(s.root, '.alfred', '.secrets'), 'API_TOKEN=abcdefghijkl\n');
+        s.memory(s.want, { 'MEMORY.md': `# Memory\n- notes kept in ${path.join(os.homedir(), 'x')}\n- the token abcdefghijkl worked\n` });
+        const rows = s.rows();
+        assert.deepStrictEqual(rows, [
+            '!! memory: .alfred/docs/memory/MEMORY.md:2 holds an absolute local path - it is committed with the docs; make it project-relative',
+            '!! memory: .alfred/docs/memory/MEMORY.md:3 holds the value of API_TOKEN from the secrets store - it is committed with the docs; remove it',
+        ]);
+        assert.ok(!tools.validateRows(s.root, s.env).some((r) => r.includes('abcdefghijkl')), 'the value is never printed');
+        s.memory(s.want, { 'MEMORY.md': `# Memory\n- the project at ${s.root}/src\n` });
+        assert.deepStrictEqual(s.rows(), ['!! memory: .alfred/docs/memory/MEMORY.md:2 holds an absolute local path - it is committed with the docs; make it project-relative'], 'the project root too');
+    }
+    finally { s.done(); }
+});
+
+test('validate R7: the 8-character floor - 7 not matched, 8 and 9 matched', () =>
+{
+    const s = docsSandbox();
+    try
+    {
+        s.write(path.join(s.root, '.alfred', '.secrets'), 'KEY_SEVEN=sevench\nKEY_EIGHT=eightchr\nKEY_NINE=ninechars\n');
+        s.memory(s.want, { 'MEMORY.md': '# Memory\n- a sevench\n- a eightchr\n- a ninechars\n' });
+        assert.deepStrictEqual(s.rows(), [
+            '!! memory: .alfred/docs/memory/MEMORY.md:3 holds the value of KEY_EIGHT from the secrets store - it is committed with the docs; remove it',
+            '!! memory: .alfred/docs/memory/MEMORY.md:4 holds the value of KEY_NINE from the secrets store - it is committed with the docs; remove it',
+        ]);
+    }
+    finally { s.done(); }
+});
+
+test('validate R7: the 10-row cap - 9 and 10 findings print every row, 11 prints 10 plus a count', () =>
+{
+    const s = docsSandbox();
+    try
+    {
+        const COUNT = '!! memory: 1 more in .alfred/docs/memory/ - fix the ten above, then run /alfred-code:validate again';
+        for (const [n, rows, count] of [[9, 9, false], [10, 10, false], [11, 10, true]])
+        {
+            s.memory(s.want, { 'MEMORY.md': Array.from({ length: n }, (_, i) => `- /Users/someone/note${i}`).join('\n') + '\n' });
+            const got = s.rows();
+            assert.strictEqual(got.filter((r) => r.includes('holds an absolute local path')).length, rows, `${n}: ${got.join('\n')}`);
+            assert.strictEqual(got.includes(COUNT), count, `${n}: ${got.join('\n')}`);
+            assert.strictEqual(got.length, rows + (count ? 1 : 0));
+        }
+    }
+    finally { s.done(); }
+});
+
+test('validate R7: off under local versioning', () =>
+{
+    const s = docsSandbox({ versioning: 'local' });
+    try
+    {
+        s.memory(s.want, { 'MEMORY.md': '- /Users/someone/x\n' });
+        assert.deepStrictEqual(s.rows(), []);
+    }
+    finally { s.done(); }
+});
+
+test('modes CLI: --memory docs prints the preview and the plan lines', () =>
+{
+    const s = docsSandbox({ mode: 'default', row: false });
+    try
+    {
+        NO_PLUGINS(s);
+        s.memory(s.defaultPlace, { 'MEMORY.md': '# m\n' });
+        const r = spawnSync(process.execPath, [TOOLS, 'modes', '--memory', 'docs', '--project', s.root], { cwd: s.root, encoding: 'utf8', env: { ...s.env, CLAUDE_PROJECT_DIR: s.root } });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.deepStrictEqual(r.stdout.trim().split('\n').slice(0, 3), [
+            "memory: docs (preview) - Claude Code's own memory, in .alfred/docs/memory/ (committed with the docs)",
+            CAN_GIT,
+            `memory-copy: 1 memory files at ${s.defaultPlace}/, none at .alfred/docs/memory/`,
+        ], r.stdout);
+        assert.strictEqual(r.stderr, '');
     }
     finally { s.done(); }
 });

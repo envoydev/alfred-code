@@ -1834,7 +1834,7 @@ function filesUnder(dir)
 // migration below still moves on (DOCS_MIGRATIONS, the usage report, layout.js LAYOUT_MOVES), the first-look map, and
 // any folder holding a watch.json (a domain by definition). Everything else under the root is the project's.
 const STACK_DOCS = new Set([
-    'architecture', 'code-style', 'preferences', 'decisions', 'tickets', 'explanations', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
+    'architecture', 'code-style', 'preferences', 'decisions', 'tickets', 'explanations', 'awareness', 'work', 'quality', 'memory', 'ORIENTATION.md', '.branches',
     ...DOCS_MIGRATIONS.map(([from]) => from.split('/')[0]), USAGE_REPORT_OLD, ...LAYOUT.LAYOUT_MOVES.map((m) => m.from),
 ]);
 function stackEntry(base, e)
