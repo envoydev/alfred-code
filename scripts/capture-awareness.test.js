@@ -367,7 +367,7 @@ test('update-history: the merge note says one ask and no per-part switch', () =>
 {
     const whole = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'update-history.md'), 'utf8');
     // this merge's paragraph alone - capture-quality's note above it does ask one question per part
-    const at = whole.indexOf('| `/capture-architecture` | `/capture-awareness` |'); // legacy: the note's own table row
+    const at = whole.indexOf('| `/capture-architecture` | `/capture-awareness architecture` |'); // legacy: the note's own table row, in its topic form (R126)
     const note = whole.slice(at, whole.indexOf('The architecture docs move into the awareness domain', at)).replace(/\s+/g, ' ');
     assert.ok(at > -1 && note.length > 100, 'the merge paragraph is found');
     assert.match(note, /`\/capture-awareness` alone runs the chain of all five parts behind one ask\./);

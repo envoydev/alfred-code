@@ -258,6 +258,7 @@ function scan(roots)
 const PINNED = {
     'COMPACT-STATE-': 'guard-fresh-session-start.js',
     'AUTO-TAKEN-': 'guard-fresh-session-start.js',
+    'AUTO-SAID-': 'guard-fresh-session-start.js',
     'turn-check-': 'check-turn-build.js',
     'AGENT-CAP-': 'agent-cap.js',
     'review-snapshot-': 'hook-prelude.js',

@@ -103,7 +103,7 @@ function makeSession(opts = {})
 // The name-matched stores of the data root, for both sessions (the other session's content marked OTHER), and the
 // session-inspector status file under the project.
 const SESSION_NAMES = (s) => [
-    `AUTO-RUN-${s}`, `AUTO-TAKEN-${s}`, `COMPACT-STATE-${s}`, `twins-${s}.json`, `review-snapshot-${s}@c1.json`,
+    `AUTO-RUN-${s}`, `AUTO-TAKEN-${s}`, `AUTO-SAID-${s}`, `COMPACT-STATE-${s}`, `twins-${s}.json`, `review-snapshot-${s}@c1.json`,
     `trivial-${s}`, `turn-check-${s}`, `AGENT-CAP-${s}-R-a1`, `SCORER-${s}`, `SCORER-HELD-${s}`, `preferences-${s}-main.json`,
 ];
 const FORGE_NAMES = (s) => [`ACTS-${s}.jsonl`, `REFS-${s}.json`, `NOTE-${s}.json`, `PAUSE-${s}.json`];
