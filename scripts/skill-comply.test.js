@@ -619,8 +619,14 @@ test('check: every shipped expectation is valid and its quotes are still in the 
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
     // The task-* fixtures beside task-solve are the 2026-11-03 usage audit's A/Bs (U28-U32), one edited step each.
     // The tier4-* fixtures are the 2026-10-30 audit's Tier 4 rule A/Bs (RU-05 to RU-20), each bound to its fixture.
-    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
-        'tier4-compaction', 'tier4-data-root', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run']);
+    const base = ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
+        'tier4-compaction', 'tier4-data-root', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
+    const listed = sc.listSkills();
+    for (const name of base) assert.ok(listed.includes(name), `${name} is still shipped`);
+    // A fixture added by a prose A/B group is pinned in that group's own scripts/skill-comply-prose-<group>.test.js (the
+    // 2026-11-04 round: a group's fixtures ship or leave with its verdict), so no stray folder passes unnamed.
+    const prose = fs.readdirSync(__dirname).filter((f) => /^skill-comply-prose-[A-Z]\.test\.js$/.test(f)).map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n');
+    for (const name of listed.filter((n) => !base.includes(n))) assert.ok(prose.includes(`'${name}'`), `${name} is pinned by no skill-comply-prose-<group>.test.js`);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -780,8 +786,10 @@ test('grade is gradeRun over parseTranscript, and a level\'s prompt joins a copy
             jsonl([user('go'), tool('Edit', { file_path: 'src/app.js', old_string: 'a', new_string: 'b' }), say('Changed it.')]),
             jsonl([user('go'), say('Nothing to do.')]),
         ];
+        // a seat-trace fixture (run.trace 'seat') parses the dispatched seat's rows alone
+        const seat = Boolean(exp.run && exp.run.trace === 'seat');
         for (const text of traces) {
-            assert.deepStrictEqual(sc.gradeRun(exp, sc.parseTranscript(text)), sc.grade(exp, text), name);
+            assert.deepStrictEqual(sc.gradeRun(exp, sc.parseTranscript(text, { seat })), sc.grade(exp, text), name);
             const run = sc.parseTranscript(text);
             const before = JSON.stringify(run);
             for (const level of Object.keys(exp.prompts || {})) sc.gradeRun(exp, run, { level });
@@ -812,4 +820,169 @@ test('parseTranscript marks a session file\'s attachment rows - hook context, in
     const seat = jsonl([{ ...user('the brief'), isSidechain: true }, { ...tool('Read', { file_path: 'b.md' }), isSidechain: true }]);
     assert.strictEqual(sc.parseTranscript(seat).events.length, 0, 'a main-session parse skips a seat\'s rows');
     assert.deepStrictEqual(sc.parseTranscript(seat, { sidechain: true }).events.map((e) => e.tool), ['Read']);
+});
+
+// --- the billed-round harness (2026-11-04 prose A/B): effort, keychain token, fixture model and env, seat trace, x_backed, pooled reps
+
+// A temp expectation holding one csharp copy with its `run` patched, so a replay plan can be read for it. It is loaded by
+// path, never through meta/skill-comply/, so the shipped list stays as it is.
+function replayFor(patch, opts = {})
+{
+    const dir = tmp('skill-comply-billed-');
+    const exp = expectOf('csharp');
+    Object.assign(exp.run, patch);
+    const file = path.join(dir, 'expect.json');
+    fs.writeFileSync(file, JSON.stringify(exp));
+    fs.copyFileSync(path.join(sc.EXPECT_DIR, 'csharp', 'scaffold.sh'), path.join(dir, 'scaffold.sh'));
+    try
+    {
+        const cmds = sc.replayPlan({ skills: [file], levels: ['plain'], source: path.join(__dirname, '..'), out: path.join(dir, 'run'), model: 'sonnet', budget: 1, ...opts });
+        return { cmds, problems: sc.checkExpectation(sc.loadExpectation(file)) };
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+const billedLine = (cmds) => cmds.filter((c) => c.kind === 'billed').map((c) => c.cmd);
+
+test('replay --dry-run with --effort and --token-keychain reads the keychain inside the billed step only', POSIX_ONLY, () =>
+{
+    const dir = tmp('skill-comply-');
+    try
+    {
+        const r = cli(['replay', '--dry-run', '--skill', 'csharp', '--level', 'plain', '--source', path.join(__dirname, '..'), '--out', path.join(dir, 'run'),
+            '--model', 'sonnet', '--effort', 'high', '--token-keychain', 'test-item']);
+        assert.strictEqual(r.code, 0, r.err);
+        const lines = r.out.split('\n');
+        const billed = lines.filter((l, i) => lines[i - 1] === '# billed: one nested model session');
+        assert.strictEqual(billed.length, 1);
+        const b = billed[0];
+        assert.match(b, / --effort high /);
+        assert.ok(b.includes('export CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s test-item -w)" && [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && printf '), b);
+        assert.match(b, /^\(cd \S+ && export CLAUDE_CODE_OAUTH_TOKEN=/, 'the token line opens the billed subshell, never an env argument');
+        assert.match(b, / -u ANTHROPIC_API_KEY /);
+        assert.doesNotMatch(b, /\| env [^>]*CLAUDE_CODE_OAUTH_TOKEN=/, 'the value never rides an env argv');
+        assert.ok(lines.every((l) => !/sk-ant-/.test(l)), 'no token-shaped string in the plan');
+        const others = lines.filter((l) => !billed.includes(l));
+        assert.ok(others.every((l) => !/\bsecurity find-generic-password\b|CLAUDE_CODE_OAUTH_TOKEN/.test(l)), 'prep and grade lines never read the keychain');
+        const script = path.join(dir, 'plan.sh');
+        fs.writeFileSync(script, r.out);
+        execFileSync('bash', ['-n', script]);
+        // without the flags, nothing of either
+        const plain = cli(['replay', '--dry-run', '--skill', 'csharp', '--level', 'plain', '--source', path.join(__dirname, '..'), '--out', path.join(dir, 'run')]);
+        assert.doesNotMatch(plain.out, /--effort|security find|ANTHROPIC_API_KEY/);
+        assert.strictEqual(cli(['replay', '--dry-run', '--effort', 'loud']).code, 2, 'an effort outside the CLI\'s levels is refused');
+        assert.strictEqual(cli(['replay', '--dry-run', '--token-keychain', 'a b']).code, 2, 'a keychain item is one plain word');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('run.env of a fixture reaches only its own billed line', POSIX_ONLY, () =>
+{
+    const withEnv = replayFor({ env: { CLAUDE_CODE_ENTRYPOINT: 'sdk-ts' } });
+    assert.deepStrictEqual(withEnv.problems, []);
+    const [b] = billedLine(withEnv.cmds);
+    assert.match(b, / -u ALFRED_CODE_DOCS_PATH CLAUDE_CODE_ENTRYPOINT='sdk-ts' HOME=/, 'the pair follows the unset list');
+    assert.ok(withEnv.cmds.filter((c) => c.kind !== 'billed').every((c) => !c.cmd.includes('CLAUDE_CODE_ENTRYPOINT')));
+    const [none] = billedLine(replayFor({}).cmds);
+    assert.doesNotMatch(none, /CLAUDE_CODE_ENTRYPOINT/);
+    for (const key of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'SENTRY_ACCESS_TOKEN', 'ALFRED_CODE_SCORER', 'HOME', 'lower_case'])
+        assert.match(replayFor({ env: { [key]: 'x' } }).problems.join('\n'), /run\.env/, key);
+    assert.match(replayFor({ env: { A_KEY: 1 } }).problems.join('\n'), /run\.env/, 'a value is a string');
+    assert.match(replayFor({ env: ['A=1'] }).problems.join('\n'), /run\.env/, 'run.env is an object');
+});
+
+test('run.model of a fixture wins over --model for its own runs', POSIX_ONLY, () =>
+{
+    const [own] = billedLine(replayFor({ model: 'haiku' }).cmds);
+    assert.match(own, / --model=haiku > /);
+    assert.doesNotMatch(own, /--model=sonnet/);
+    const [session] = billedLine(replayFor({}).cmds);
+    assert.match(session, / --model=sonnet > /);
+});
+
+test('run.trace seat grades only the rows of the dispatched seat', () =>
+{
+    const seatRow = (row) => ({ ...row, parent_tool_use_id: 'toolu_seat' });
+    const text = jsonl([user('Dispatch the designer.'), tool('Agent', { subagent_type: 'console-solution-designer', prompt: 'the brief' }), say('dispatched'),
+        seatRow(user('the brief')), seatRow(tool('Read', { file_path: 'brief.md' })), seatRow(say('Decisions: A1 - the store seam')),
+        { type: 'result', subtype: 'success', result: 'dispatched' }]);
+    const steps = [{ id: 'decided', graders: [{ type: 'regex', target: 'last_message', pattern: 'A1' }] }];
+    assert.strictEqual(sc.grade({ skill: 's', run: { trace: 'seat' }, steps }, text).steps[0].verdict, 'PASS');
+    assert.strictEqual(sc.grade({ skill: 's', steps }, text).steps[0].verdict, 'FAIL', 'the main session ends on its own text');
+    assert.strictEqual(sc.grade({ skill: 's', run: { trace: 'main' }, steps }, text).steps[0].verdict, 'FAIL');
+    const seat = sc.parseTranscript(text, { seat: true });
+    assert.deepStrictEqual(seat.events.map((e) => e.tool), ['Read', '@text'], 'the main session\'s Agent call and text are dropped');
+});
+
+test('x_backed: a claim needs a backing per unit', () =>
+{
+    const exp = { skill: 'x', steps: [{ id: 'claim-backed', graders: [{ type: 'x_backed', name: 'each commit builds is backed',
+        claim: { tool: '@text', text_match: 'each commit builds' }, backing: { tool: 'Bash', input_match: 'npm test' }, per: { tool: 'Bash', input_match: 'git commit' } }] }] };
+    const commit = (s) => tool('Bash', { command: `git commit -m '${s}'` });
+    const run = (rows) => sc.grade(exp, jsonl([user('Commit both.'), ...rows])).steps[0];
+    const none = run([tool('Bash', { command: 'npm test' }), commit('a'), commit('b'), say('Two commits made.')]);
+    assert.strictEqual(none.verdict, 'PASS', 'no claim, nothing to back');
+    const thin = run([tool('Bash', { command: 'npm test' }), commit('a'), commit('b'), say('Done - each commit builds.')]);
+    assert.strictEqual(thin.verdict, 'FAIL');
+    assert.match(thin.results[0].explanation, /claim 1, backing 1, per 2/);
+    const backed = run([tool('Bash', { command: 'npm test' }), commit('a'), tool('Bash', { command: 'npm test' }), commit('b'), say('Done - each commit builds.')]);
+    assert.strictEqual(backed.verdict, 'PASS');
+    const claimOnly = run([say('Trust me, each commit builds.')]);
+    assert.strictEqual(claimOnly.verdict, 'FAIL', 'a claim with no unit still needs one backing');
+});
+
+test('compareReps pools reps: a gap of 2 is WORSE, 1 is same, 0 against 0 is INCONCLUSIVE, a missing side is NOT RUN', () =>
+{
+    const g = (...verdicts) => verdicts.map((v) => ({ steps: [{ id: 's', verdict: v }] }));
+    const P = 'PASS';
+    const F = 'FAIL';
+    const S = 'SKIP';
+    const one = (b, a, opts) => sc.compareReps(b, a, opts);
+    const worse = one(g(P, P, P), g(P, F, F));
+    assert.deepStrictEqual(worse.rows, [{ step: 's', before: '3/3', after: '1/3', outcome: 'WORSE' }]);
+    assert.strictEqual(worse.verdict, 'NOT MET');
+    assert.strictEqual(one(g(P, P, P), g(P, P, F)).rows[0].outcome, 'same');
+    assert.strictEqual(one(g(P, P, P), g(P, P, F)).verdict, 'HOLDS');
+    const pooled = one(g(P, P, P, P, P, P), g(P, P, P, P, F));
+    assert.deepStrictEqual([pooled.rows[0].before, pooled.rows[0].after, pooled.rows[0].outcome], ['6/6', '4/5', 'same'], 'failures 0 against 1');
+    const short = one(g(P, P, P, P, P, P), g(P, P, P, P), { planned: 6 });
+    assert.deepStrictEqual([short.rows[0].outcome, short.verdict], ['SHORT', 'NOT PROVEN']);
+    assert.strictEqual(one(g(P, P, P, P, P, P), g(P, P, P, P, P), { planned: 6 }).rows[0].outcome, 'same', 'one short of planned is not SHORT');
+    const blind = one(g(F, F, F), g(F, F, F));
+    assert.deepStrictEqual([blind.rows[0].outcome, blind.verdict], ['INCONCLUSIVE', 'NOT PROVEN']);
+    assert.strictEqual(one(g(P, F, F), g(P, P, P)).rows[0].outcome, 'better');
+    const missing = one(g(P, P, P), []);
+    assert.deepStrictEqual([missing.rows[0].outcome, missing.rows[0].after, missing.verdict], ['NOT RUN', '-', 'NOT PROVEN']);
+    const skipped = one(g(S, S), g(S, S));
+    assert.deepStrictEqual([skipped.rows[0].outcome, skipped.rows[0].before, skipped.verdict], ['NOT GRADED', '0/0', 'NOT PROVEN']);
+    assert.strictEqual(one(g(P, S, P), g(P, P, S)).rows[0].before, '2/2', 'SKIP is left out of n');
+    assert.strictEqual(one(g(P, P, P, P), g(P, P)).rows[0].outcome, 'same', 'a side short of runs makes no gap by itself');
+    assert.strictEqual(one([], []).verdict, 'NOT PROVEN', 'no rows proves nothing');
+});
+
+test('check: run.trace, run.model and x_backed are validated', () =>
+{
+    const dir = tmp('skill-comply-');
+    try
+    {
+        const exp = expectOf('csharp');
+        exp.run.trace = 'other';
+        exp.run.model = '';
+        exp.steps[0].graders.push({ type: 'x_backed', claim: { tool: '@text', text_match: '([unclosed' }, backing: 'Bash', per: 'Bash' });
+        exp.steps[1].graders.push({ type: 'x_backed', claim: 'Bash' });
+        const file = path.join(dir, 'expect.json');
+        fs.writeFileSync(file, JSON.stringify(exp));
+        fs.copyFileSync(path.join(sc.EXPECT_DIR, 'csharp', 'scaffold.sh'), path.join(dir, 'scaffold.sh'));
+        const text = sc.checkExpectation(sc.loadExpectation(file)).join('\n');
+        assert.match(text, /run\.trace must be 'main' or 'seat'/);
+        assert.match(text, /run\.model must be a non-empty string/);
+        assert.match(text, /\.claim: \/\(\[unclosed\/ does not compile/);
+        assert.match(text, /x_backed needs claim, backing and per/);
+        exp.run.trace = 'seat';
+        exp.run.model = 'haiku';
+        exp.steps[0].graders.pop();
+        exp.steps[1].graders.pop();
+        fs.writeFileSync(file, JSON.stringify(exp));
+        assert.deepStrictEqual(sc.checkExpectation(sc.loadExpectation(file)), []);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
