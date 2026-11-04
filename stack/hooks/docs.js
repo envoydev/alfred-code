@@ -87,7 +87,8 @@ const BRANCHES = path.join(DOCS_ROOT, '.branches');
 // Cached like the git-state probes below: parseRef calls this on every bare reference, and the docs root
 // does not gain a domain mid-process. resetDomains() below is the escape hatch a fixture needs when it
 // adds a domain after the module was already required.
-const RESERVED_DOMAIN_NAMES = new Set(['references', 'history']);
+// 'memory' is Claude Code's own memory under docs mode (memory P3).
+const RESERVED_DOMAIN_NAMES = new Set(['references', 'history', 'memory']);
 let DOMAINS_CACHE;
 const domains = () => {
   if (DOMAINS_CACHE) return DOMAINS_CACHE;
