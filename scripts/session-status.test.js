@@ -601,9 +601,12 @@ test('removeStatus takes back the status files and the exclude lines this projec
     const exclude = path.join(top, '.git', 'info', 'exclude');
     // the line the user typed for root is there before any session: nothing is added for root, so it stays theirs
     fs.writeFileSync(exclude, '# git ls-files --others --exclude-from=.git/info/exclude\n*.log\n/app/.claude/session-inspector/status/\n');
-    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env } }), 'written', base);
+    // uptime pinned: the exclude check has an 8 s deadline on the PROCESS's age, and on a slow runner this test starts past
+    // it, so every check read 'late' (the Windows VM gate on 547ede2c)
+    const fast = () => 0;
+    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env, uptime: fast } }), 'written', base);
     // a write outside SessionStart that made the folder added sub's pair itself
-    assert.deepStrictEqual(S().ensureExcluded([root, sub, other], { env: {} }), ['present', 'present', 'added']);
+    assert.deepStrictEqual(S().ensureExcluded([root, sub, other], { env: {}, uptime: fast }), ['present', 'present', 'added']);
     // another project's pair is one in use: its status folder is there (E-batch SYS-03 sweeps a pair whose folder is gone)
     fs.mkdirSync(path.join(other, '.claude', 'session-inspector', 'status'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
