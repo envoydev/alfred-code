@@ -46,6 +46,22 @@ test('every task.json loads and is complete', () =>
     }
 });
 
+// Rows 1-3 are reached only on a `standard` or larger plan (D8 spec, 'Where the size line falls'); a `small` one
+// designs, builds and verifies inline. The probe of 2026-11-04 asked for a change a model can make in two files, sized
+// itself small, and never reached a row it was built to read. The request's own floor is the one size no run can go
+// under, so every task reading rows 1-3 floors at standard by task-solve's spec-check.
+test('a task that reads rows 1-3 floors at standard by its request alone', () =>
+{
+    const { classify } = require(path.join(ROOT, 'stack', 'skills', 'task-solve', 'scripts', 'spec-check.js'));
+    for (const id of fx.list())
+    {
+        const t = fx.loadTask(id);
+        if (!t.prompt.startsWith('/task-solve ') || !t.rows.some((r) => r <= 3)) continue;
+        const floor = classify(t.prompt.replace(/^\/\S+ --mode-auto-run-on /, '')).sizeFloor;
+        assert.strictEqual(floor, 'standard', `${id} floors at ${floor}`);
+    }
+});
+
 test('t7 inherits t1 and runs on Fable', () =>
 {
     const t1 = fx.loadTask('t1');

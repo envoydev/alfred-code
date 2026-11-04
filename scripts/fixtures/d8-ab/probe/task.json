@@ -4,7 +4,7 @@
   "base": "common/angular",
   "model": "claude-opus-5-5",
   "size": "standard",
-  "prompt": "/task-solve --mode-auto-run-on Add a status filter to the order list: a select named statusFilter above the list (All, Pending, Shipped, Delivered) filters the orders shown, and the choice survives a page reload.",
+  "prompt": "/task-solve --mode-auto-run-on Add a status filter to the order list: a select named statusFilter above the list (All, Pending, Shipped, Delivered) filters the orders shown, and the choice survives a page reload. The stored choice is validated when it is read back: an unknown value shows All.",
   "second": null,
   "suite": "npx ng build && npx ng test --watch=false",
   "rest": "npx ng build && npx ng test --watch=false --exclude src/app/orders/status-filter.acceptance.spec.ts",
