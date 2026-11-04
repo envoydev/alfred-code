@@ -120,7 +120,8 @@ test('a custom data root in settings.json and an absolute --data-root are both t
     const abs = path.join(fx.root, 'scratch-data');
     fs.mkdirSync(abs);
     const rc = run(fx, ['--out', path.join(fx.root, 'out2'), '--data-root', abs]);
-    assert.strictEqual(rc.dataRoot, abs);
+    // layout.js spells the setting with '/' on every OS, so the receipt's dataRoot is compared resolved
+    assert.strictEqual(path.resolve(rc.dataRoot), path.resolve(abs));
     assert.strictEqual(rc.docsRoot, path.join(abs, 'docs'));
 });
 
@@ -312,7 +313,7 @@ test('a linked-worktree session finds forge and handoff under the main checkout'
     fx.write(path.join(fx.dataRoot, 'state', 'forge', `ACTS-${fx.sid}.jsonl`), line({ session: fx.sid, act: 'push' }));
     fx.write(path.join(fx.dataRoot, 'state', 'handoff', 'feat.jsonl'), line({ name: 'feat/1/seat', text: 'note', at: '2026-11-01T10:30:00.000Z' }));
     const rc = run(fx, ['--project', wt]);
-    const main = fs.realpathSync(fx.project);
+    const main = fs.realpathSync.native(fx.project);
     for (const id of ['forge:ACTS-', 'handoff'])
     {
         assert.ok(['copied', 'filtered'].includes(row(rc, id).status), `${id}: ${row(rc, id).status}`);
@@ -335,7 +336,7 @@ test('preferences records are found under the first checkout holding the prefere
     assert.deepStrictEqual({ ...process.env }, before, 'loading the prelude left the collector\'s env as it was');
     const r = row(rc, 'sessions:preferences-');
     assert.strictEqual(r.status, 'copied');
-    assert.strictEqual(r.root, fs.realpathSync(fx.project));
+    assert.strictEqual(r.root, fs.realpathSync.native(fx.project));
 });
 
 test('approvals are taken by their session line', (t) =>

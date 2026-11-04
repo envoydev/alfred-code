@@ -325,7 +325,8 @@ test('an ordinary command passes silently', () => {
   const dir = project();
   const out = run(DISPATCH, bashPayload('git status', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
   assert.deepStrictEqual(out, { status: 0, stdout: '', stderr: '' });
-  assert.deepStrictEqual(ledgerRows(dir), []);
+  // a slow runner may log the dispatcher's slow probe (HK15, its own tests below) - log only, never a decision
+  assert.deepStrictEqual(ledgerRows(dir).filter((r) => r.kind !== 'slow'), []);
 });
 
 test('empty or malformed input: every guard fails open, the dispatcher says nothing and writes nothing', () => {
