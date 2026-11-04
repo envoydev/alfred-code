@@ -1279,6 +1279,24 @@ test('a quality run is read by its part: code and the chain review, architecture
     finally { p.rm(); }
 });
 
+// R124 (burn-down 2026-11-04): an expansion with no command_args read no topic, so every typed run was the chain.
+test('R124: a typed capture-quality expansion carrying only the prompt reads its part from the prompt', () =>
+{
+    const p = project();
+    try
+    {
+        const layout = require(path.join(HOOKS, 'layout.js'));
+        const marks = (s) => JSON.parse(fs.readFileSync(layout.statePath(p.root, 'sessions', `preferences-${s}-main.json`), 'utf8'));
+        for (const [prompt, part] of [['/capture-quality code', 'code-quality'], ['/capture-quality --mode-auto-run-on coverage', 'test-coverage-quality'], ['/capture-quality', 'chain']])
+        {
+            const s = sid();
+            p.hook({ hook_event_name: 'UserPromptExpansion', session_id: s, expansion_type: 'slash_command', command_name: 'capture-quality', prompt });
+            assert.strictEqual(marks(s).part, part, prompt);
+        }
+    }
+    finally { p.rm(); }
+});
+
 // The architecture seat judged nothing, so its briefs listed the entries by hand (the user's answer 'Hook pushes the arch
 // doc'): inside an architecture quality run its start hands it the architecture entries alone - never the code docs -
 // and its first reads the rest. The map capture dispatches the same seat to describe the code as it is, so outside such

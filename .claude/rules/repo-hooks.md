@@ -86,9 +86,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `<data root>/state/approvals/APPROVAL` (`AUTO - "<the typed words>"`, `session:`, `skill:`, `at:`, `taken-from:` on a
   takeover) is written by the first `--mode-auto-run-on` or `/mode-auto-run <request>` (its typed request is its own
   `-on`), kept while live for the session and deleted only by `--mode-auto-run-off`. The RUN MARKER
-  `<data root>/state/sessions/AUTO-RUN-<session>` (`skill:`, `prompt:` the typed line's 12-hex sha1, `at:`) is written by
-  each typed family command while the stamp is live - none by a flag-only `mode-` line; a writer finding the same
-  `skill:` and `prompt:` leaves the file and its mtime - and deleted by that run's close or `-off`. The typed route is
+  `<data root>/state/sessions/AUTO-RUN-<session>` (`skill:`, `prompt:` the typed line's 12-hex sha1, `at:`, `prompt-id:`
+  the payload's `prompt_id` when it has one) is written by each typed family command while the stamp is live - none by a
+  flag-only `mode-` line; a writer finding the same `skill:`, `prompt:` and `prompt-id:` leaves the file and its mtime, so
+  the line typed again (a new `prompt_id`) counts its Stop cap from 1 (R096) - and deleted by that run's close or `-off`;
+  a typed run whose marker cannot be written gets the contract with one `!!` line and no hold clause (R095), and a Skill
+  route with no marker open names none (R094). The typed route is
   `UserPromptExpansion`; the model's `Skill` call writes or keeps the stamp only, never a marker, and only when its own
   args lead with the flag and the user's newest TYPED prompt's `modeFlags` gives `family` and `autoRun: 'on'` (audit
   HK04: a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt); a seat never starts one.
@@ -96,7 +99,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   written in the last 10 minutes), a data root that cannot be written, an empty `/mode-auto-run`, a seat - is asked by
   the start hook and the ON line alike; a refused start writes an `auto-start-refused` row and its banner says why. A
   start over another session's idle stamp writes `taken-from:` and an `auto-takeover` row, and the losing session's next
-  typed prompt gets the takeover notice once (`AUTO-TAKEN-<session>`). Each run under the mode gets the full contract as
+  typed prompt gets the takeover notice once per taker (`AUTO-TAKEN-<session>` holds the taker it was said for, R091).
+  An empty `/mode-auto-run` under this session's own live stamp is said as already ON, never refused (R090), and the ON
+  line counts a prompt's `-on` only while this start hook runs (R092). Each run under the mode gets the full contract as
   `additionalContext`, naming its marker, so its own offers and every person-directed hook read the session as
   unattended. `/mode-auto-run <request>`'s ON contract carries a `Solve flow:` line naming the library copy of
   `task-solve/SKILL.md` (`skillCopyState`: personal, then project, `on` or `user-invocable-only`; `switched off here` when
@@ -149,7 +154,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left).
   **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*`
   command (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
-  expansion fires once per typed command and the lines forbid a repeat: `**Auto-run: ON**` (each ask answered with its
+  lines forbid a repeat, and a prompt expanded twice (a stacked line) gets them and the contract on its first expansion
+  alone (`AUTO-SAID-<session>`: the `prompt_id`, else the line's hash for 10 s - R093): `**Auto-run: ON**` (each ask answered with its
   Recommended option, an outward one or an unmarked one still waiting; on for the session until `--mode-auto-run-off`)
   or `**Auto-run: OFF**` (each ask waits; a refused start says why, and a flag past the leading run is said to count only
   right after the command), then `**Context:**` - auto-run or

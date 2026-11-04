@@ -965,7 +965,9 @@ const RUN_TAIL = 8 * 1024 * 1024;
 function recordRun(marks, run, input) {
   marks.run = run;
   const p = prelude();
-  const args = input.hook_event_name === 'UserPromptExpansion' ? input.command_args : (input.tool_input || {}).args;
+  // An expansion with no command_args reads its topic from the typed prompt minus its command, as the start hook does (R124).
+  const typedArgs = () => (typeof input.command_args === 'string' ? input.command_args : String(input.prompt || '').replace(/^\s*\/[A-Za-z0-9:_-]+\s*/, ''));
+  const args = input.hook_event_name === 'UserPromptExpansion' ? typedArgs() : (input.tool_input || {}).args;
   const part = p && typeof p.qualityPart === 'function' ? p.qualityPart(run, args) : '';
   if (part) marks.part = part; else delete marks.part;
   // the call's id: a hook that refused the call (the built-in review's deny, the fresh-session hold) ends the run at its

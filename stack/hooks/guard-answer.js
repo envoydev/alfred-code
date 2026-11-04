@@ -521,7 +521,8 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
     hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge + modes.context },
   }));
   // The session status file (session-status.js): this prompt's autoRun and scorer, under history-session's own gates.
-  try { if (scorer && !scorer.standDown('history-session')) require('./session-status.js').onPrompt(payload, modes); } catch { /* the status file never costs the prompt */ }
+  // The stand-down runs as the write's gate, only once the compare says a write is due (R137).
+  try { if (scorer) require('./session-status.js').onPrompt(payload, modes, () => !scorer.standDown('history-session')); } catch { /* the status file never costs the prompt */ }
   process.exit(0);
 }
 

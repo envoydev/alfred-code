@@ -486,6 +486,14 @@ test('ON line: lists exactly the modes on, on the prompt that turns one on or of
     clearStamp();
     assert.doesNotMatch(prompt('e6', 'next', OFF), /auto-run: on/);
 });
+test('ON line: with the start hook switched off a typed -on claims no auto-run, since no stamp gets written (R092)', () => {
+    clearStamp();
+    const startOff = { ...OFF, ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start' };
+    assert.strictEqual(msgOf('r92', '/task-solve --mode-auto-run-on fix x', startOff), undefined);
+    autoStamp('r92');
+    assert.strictEqual(msgOf('r92', '/task-solve --mode-auto-run-on fix x', startOff), 'Modes ON: auto-run', 'a live stamp still reads');
+    clearStamp();
+});
 test('ON line: a prelude older than autoRunFor (a copy-route skew) still lists auto-run and carries its line', () => {
     const real = path.dirname(HOOK);
     const dir = fs.mkdtempSync(path.join(TMP, 'old-prelude-'));
@@ -598,7 +606,16 @@ test('T4 autoRun at the prompt', () => {
     assert.strictEqual(statusRead('st4').handoffPrompt, 'Read .alfred/docs/work/plans/st4.md, check that branch feat/x is checked out, and continue from its Resume: line (task 2 - the router).');
     const quiet = typed('st5', 'plain', { ALFRED_CODE_HOOKS_OFF: 'history-session' });
     assert.ok(!fs.existsSync(statusPath('st5')), 'history-session off: no file');
-    assert.strictEqual(quiet.stdout, typed('st6', 'plain', { ALFRED_CODE_HOOKS_OFF: 'history-session' }).stdout, 'the prompt\'s stdout unchanged');
+    // R138: a status write that throws (its folder is a file) leaves the prompt's stdout as the off run's, exit 0.
+    const statusDir = path.dirname(statusPath('st6'));
+    const aside = `${statusDir}.aside`;
+    fs.renameSync(statusDir, aside);
+    fs.writeFileSync(statusDir, 'not a folder');
+    try {
+        const broken = typed('st6', 'plain');
+        assert.strictEqual(broken.status, 0, broken.stderr);
+        assert.strictEqual(broken.stdout, quiet.stdout, 'the prompt\'s stdout unchanged by a failing status write');
+    } finally { fs.rmSync(statusDir, { force: true }); fs.renameSync(aside, statusDir); }
     assert.strictEqual(JSON.parse(quiet.stdout).hookSpecificOutput.additionalContext, JSON.parse(typed('st7', 'plain').stdout).hookSpecificOutput.additionalContext, 'the same context with the file on');
 });
 test('T5 scorer at the prompt', () => {
