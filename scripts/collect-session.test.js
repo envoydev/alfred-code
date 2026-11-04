@@ -7,6 +7,7 @@ const path = require('node:path');
 const { makeSession, line } = require('./collect-fixture.js');
 const { parseArgs, collect, scanTranscript, UsageError } = require('./collect-session.js');
 const { STORES } = require('./collect-stores.js');
+const { samePath } = require('./test-paths.js');
 
 // One collect of a fixture session: into <root>/out unless args name --out, the fixture's temp dir searched unless
 // args name --tmp (the real temp dir is never read), the fixture's isolated env and clock.
@@ -120,8 +121,8 @@ test('a custom data root in settings.json and an absolute --data-root are both t
     const abs = path.join(fx.root, 'scratch-data');
     fs.mkdirSync(abs);
     const rc = run(fx, ['--out', path.join(fx.root, 'out2'), '--data-root', abs]);
-    // layout.js spells the setting with '/' on every OS, so the receipt's dataRoot is compared resolved
-    assert.strictEqual(path.resolve(rc.dataRoot), path.resolve(abs));
+    // layout.js spells the setting with '/' on every OS, so the receipt's dataRoot is compared as one place
+    assert.ok(samePath(rc.dataRoot, abs), `${rc.dataRoot} is ${abs}`);
     assert.strictEqual(rc.docsRoot, path.join(abs, 'docs'));
 });
 

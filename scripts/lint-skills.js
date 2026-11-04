@@ -2683,6 +2683,8 @@ function main()
         });
         for (const finding of lintUmbrellaTopics({ umbrellas, renamedTopics: renamed.topics, renamedSkills: renamed.skills })) flag(finding);
     }
+    // 71. A test compares paths through scripts/test-paths.js; the older non-native realpath calls stay pinned.
+    for (const finding of lintRealpathPins(repoTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -3037,6 +3039,102 @@ function lintOldLocations(files)
     }
     return out;
 }
+// 71. A test compares two paths through scripts/test-paths.js (samePath / realLong), never a JS-resolver realpath
+// (O1, burn-down 2026-11-04): Windows spells one folder several ways (a slash, a drive letter's case, CI's 8.3 temp
+// RUNNER~1) and `fs.realpathSync` keeps the spelling it was handed, so such a compare went red on Windows only - 3.7.1's
+// drive-less roots, bdf3b1c1's RUNNER~1. The calls already in the tree stay pinned per file (some meet a value production
+// computes with the same resolver, so a blanket switch would break them); a file over its pin is a new call, a file under
+// it lowers the pin. `node scripts/lint-skills.js --print-realpath-pins` prints the table from the tree.
+const REALPATH_TEST_FILE = /\.test\.[cm]?js$/;
+const REALPATH_PINS = {
+    'scripts/analyze-usage.test.js': 1,
+    'scripts/audit-2026-10-30-fixpass-gaps.test.js': 2,
+    'scripts/audit-2026-10-30-fixpass-receipts.test.js': 2,
+    'scripts/audit-2026-10-30-fixpass-shell.test.js': 2,
+    'scripts/audit-2026-11-03-guard-asks.test.js': 12,
+    'scripts/code-quality.test.js': 1,
+    'scripts/docs-engine.test.js': 2,
+    'scripts/docs-versioning-rule.test.js': 1,
+    'scripts/guard-commit-gate.test.js': 1,
+    'scripts/guard-hooks.test.js': 6,
+    'scripts/guard-read-write.test.js': 7,
+    'scripts/guard-secret-value.test.js': 3,
+    'scripts/guard-sensitive-data.test.js': 2,
+    'scripts/habits-scorer-card.test.js': 2,
+    'scripts/handoff-engine.test.js': 1,
+    'scripts/history-session.test.js': 3,
+    'scripts/hook-prelude.test.js': 10,
+    'scripts/hooks-entry.test.js': 1,
+    'scripts/init-plan.test.js': 1,
+    'scripts/install-args.test.js': 1,
+    'scripts/install-mcp-migrate.test.js': 3,
+    'scripts/install-renames.test.js': 2,
+    'scripts/install-runtime.test.js': 1,
+    'scripts/install-uninstall.test.js': 1,
+    'scripts/install-workspace.test.js': 5,
+    'scripts/layout-variables.test.js': 2,
+    'scripts/lsp-coverage.test.js': 1,
+    'scripts/mcp-prose.test.js': 2,
+    'scripts/memory-docs-hooks.test.js': 1,
+    'scripts/mode-flags.test.js': 1,
+    'scripts/preferences-session.test.js': 2,
+    'scripts/preferences.test.js': 4,
+    'scripts/profile-fixture.test.js': 1,
+    'scripts/scan-evidence.test.js': 1,
+    'scripts/secret-chain.test.js': 1,
+    'scripts/secrets-run.test.js': 1,
+    'scripts/session-scope.test.js': 1,
+    'scripts/session-status.test.js': 3,
+    'scripts/session-surface.test.js': 1,
+    'scripts/setup-plugin.test.js': 1,
+    'scripts/shell-guards.test.js': 7,
+    'scripts/shell-writes.test.js': 1,
+    'scripts/source-cache.test.js': 2,
+    'scripts/tools-doc.test.js': 1,
+    'scripts/tools-inventory.test.js': 1,
+    'scripts/tools-order.test.js': 1,
+    'scripts/tools-refresh.test.js': 1,
+    'scripts/workspace.test.js': 1,
+};
+function nonNativeRealpathCalls(text)
+{
+    return (String(text).match(/(?<![\w$])realpathSync\s*\(/g) || []).length;
+}
+function realpathPinsFor(files)
+{
+    const pins = {};
+    for (const { file, text } of [...files].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0)))
+    {
+        if (!REALPATH_TEST_FILE.test(file)) continue;
+        const n = nonNativeRealpathCalls(text);
+        if (n > 0) pins[file] = n;
+    }
+    return pins;
+}
+function lintRealpathPins(files, pins = REALPATH_PINS)
+{
+    const out = [];
+    const seen = new Set();
+    for (const { file, text } of files)
+    {
+        if (!REALPATH_TEST_FILE.test(file)) continue;
+        seen.add(file);
+        const n = nonNativeRealpathCalls(text);
+        const pin = pins[file] || 0;
+        if (n > pin)
+        {
+            const lines = String(text).split('\n');
+            let last = 0;
+            lines.forEach((l, i) => { if (nonNativeRealpathCalls(l) > 0) last = i + 1; });
+            out.push(`${file}:${last} holds ${n} non-native realpath calls, its pin is ${pin} - compare paths with samePath from scripts/test-paths.js (check 71)`);
+        }
+        else if (n < pin) out.push(`${file} holds ${n} non-native realpath calls - lower its pin from ${pin} to ${n} in REALPATH_PINS (check 71)`);
+    }
+    for (const [file, pin] of Object.entries(pins))
+        if (!seen.has(file) && pin > 0) out.push(`${file} holds 0 non-native realpath calls - lower its pin from ${pin} to 0 in REALPATH_PINS (check 71)`);
+    return out;
+}
+
 // 70. capture-quality holds the three quality captures, the coverage loop is loop-test-coverage-quality and the coverage
 // doc is quality/COVERAGE-QUALITY.md (2026-10-29); a text naming an old one sends the model to a skill the update
 // pruned or a doc it moved. What names them on purpose is exempt by file or key, never by judgment: the manifest's
@@ -3477,6 +3575,10 @@ module.exports = {
     lintLegacyNames,
     lintOldLocations,
     lintRetiredQuality,
+    nonNativeRealpathCalls,
+    realpathPinsFor,
+    lintRealpathPins,
+    REALPATH_PINS,
     lintUmbrellaTopics,
     repoTextFiles,
     lintCoreDependencies,
@@ -3536,6 +3638,12 @@ module.exports = {
 
 if (require.main === module)
 {
+    if (process.argv.includes('--print-realpath-pins'))
+    {
+        const pins = realpathPinsFor(repoTextFiles());
+        process.stdout.write(Object.entries(pins).map(([file, n]) => `    '${file}': ${n},\n`).join(''));
+        return;
+    }
     require('../stack/hooks/hook-prelude.js').blockingStdio();
     main();
 }

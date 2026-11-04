@@ -1679,3 +1679,58 @@ test('check 69 flags a skill script folder with no CommonJS marker', () =>
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// O1 (burn-down 2026-11-04): Windows path spelling broke tests again and again (a drive-less root in 3.7.1, CI's 8.3
+// RUNNER~1 temp in bdf3b1c1) - each time a test compared a JS-resolver realpath with a path production spelled another
+// way. Check 71 pins each test file's count of non-native realpath calls: a new one goes through scripts/test-paths.js.
+// The call is built from parts so this file holds none itself.
+const REALPATH_CALL = 'fs.realpath' + 'Sync(p)';
+
+test('nonNativeRealpathCalls counts every non-native call, two on one line twice, and never a native one', () =>
+{
+    const { nonNativeRealpathCalls } = require('./lint-skills.js');
+    assert.strictEqual(nonNativeRealpathCalls(`a(${REALPATH_CALL}, ${REALPATH_CALL});\n`), 2);
+    assert.strictEqual(nonNativeRealpathCalls('fs.realpathSync.native(p); (fs.realpathSync.native || fs.realpathSync)(p);\n'), 0);
+    assert.strictEqual(nonNativeRealpathCalls(''), 0);
+});
+
+test('a test file gaining a non-native realpathSync call over its pin is flagged', () =>
+{
+    const { lintRealpathPins } = require('./lint-skills.js');
+    const files = [{ file: 'scripts/x.test.js', text: `a();\n${REALPATH_CALL};\n${REALPATH_CALL};\n` }];
+    const found = lintRealpathPins(files, { 'scripts/x.test.js': 1 });
+    assert.strictEqual(found.length, 1, found.join(' | '));
+    assert.match(found[0], /^scripts\/x\.test\.js:3 .*2 .*pin is 1.*samePath.*\(check 71\)$/);
+    assert.deepStrictEqual(lintRealpathPins(files, { 'scripts/x.test.js': 2 }), [], 'at its pin passes');
+});
+
+test('a file under its pin is told to lower it', () =>
+{
+    const { lintRealpathPins } = require('./lint-skills.js');
+    const found = lintRealpathPins([{ file: 'scripts/x.test.js', text: `${REALPATH_CALL};\n` }], { 'scripts/x.test.js': 3 });
+    assert.strictEqual(found.length, 1, found.join(' | '));
+    assert.match(found[0], /^scripts\/x\.test\.js .*lower its pin from 3 to 1 .*\(check 71\)$/);
+    const gone = lintRealpathPins([], { 'scripts/gone.test.js': 2 });
+    assert.match(gone.join(' | '), /scripts\/gone\.test\.js .*lower its pin from 2 to 0/, 'a pinned file that left the tree is told too');
+});
+
+test('a file not in the pin table holding one is flagged', () =>
+{
+    const { lintRealpathPins } = require('./lint-skills.js');
+    const files = [
+        { file: 'scripts/y.test.js', text: `${REALPATH_CALL};\n` },
+        { file: 'scripts/helper.js', text: `${REALPATH_CALL};\n` },
+        { file: 'scripts/z.test.js', text: 'fs.realpathSync.native(p);\n' },
+    ];
+    const found = lintRealpathPins(files, {});
+    assert.strictEqual(found.length, 1, found.join(' | '));
+    assert.match(found[0], /^scripts\/y\.test\.js:1 .*1 .*pin is 0.*\(check 71\)$/);
+});
+
+test('check 71: the pin table matches the tree, as --print-realpath-pins prints it', () =>
+{
+    const { lintRealpathPins, realpathPinsFor, REALPATH_PINS, repoTextFiles } = require('./lint-skills.js');
+    const files = repoTextFiles();
+    assert.deepStrictEqual(lintRealpathPins(files), []);
+    assert.deepStrictEqual(realpathPinsFor(files), REALPATH_PINS);
+});
