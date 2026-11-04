@@ -266,7 +266,7 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
     sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
     ctxThreshold: () => null, coldFloor: () => null, worthResuming: () => false,
     freshVerdict: () => ({ pays: false }), verdictProbe: () => null, payText: () => '', notPayText: () => '',
-    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
+    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true, autoCompactWindow: () => null,
   };
 }
 fresh.use(payload);

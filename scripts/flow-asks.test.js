@@ -220,3 +220,31 @@ test('U11: type-into-Other in the question text is denied', () => {
         assert.strictEqual(ask({ question: 'Which cache?', options: opts }).status, 0, 'the same ask without Other passes');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// Moved from d8-skill-text.test.js when D8 was reverted (43a6f76a; the revert's review, minor 1): the seat-first and
+// non-mode asks keep the option they mark - about ten of these marks have no other pin.
+const MARKED_ASKS = [
+    { file: 'stack/skills/capture-awareness/SKILL.md', firstLine: "Run the seat parts through their analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/architecture.md', firstLine: "First architecture capture across <the modules>. Characterize them through the architecture-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/project-code-style.md', firstLine: "First style capture across <the languages>. Characterize them through the code-style-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/related-projects.md', firstLine: "Characterize <the siblings> through the related-project-analyzer seats, one per sibling, or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/SKILL.md', firstLine: "Run the chosen parts through their analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/architecture-quality.md', firstLine: "Hunt the weaknesses and strengths of <the modules> through the architecture-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/code-quality.md', firstLine: "Judge <the modules> through the code-quality-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/test-coverage-quality.md', firstLine: "Analyze <the measured surfaces> through the test-coverage-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-preferences/references/tools-area.md', firstLine: "May agents use <server>?", recommended: "Main session only (Recommended)" },
+    { file: 'stack/skills/habits-execution-strategy/SKILL.md', firstLine: "This task fits <the flow>: <what it adds for THIS task>. Start it, or proceed here directly?", recommended: "Start <the flow's slash command> (Recommended)" },
+    { file: 'stack/skills/habits-execution-strategy/SKILL.md', firstLine: "The plan needs <N> seats / reaches <the scope past the request>. Run the trimmed plan?", recommended: "Run the trimmed plan (Recommended)" },
+    { file: 'stack/skills/mode-output-scorer/SKILL.md', firstLine: "The <output> scored <S>/100 (level <n>); the next revision can reach at most <ceiling> - <the needs line, why it stopped, or nothing closable left>. How should it go on?", recommended: "Answer the open decisions (Recommended)" },
+    { file: 'stack/skills/task-implement/SKILL.md', firstLine: "<task> FAILED: <why>.", recommended: "Stop and report (Recommended)" },
+    { file: 'stack/skills/task-implement/SKILL.md', firstLine: "Both write routes refused the approval stamp: <the refusal>.", recommended: "Retry the stamp (Recommended)" },
+    { file: 'stack/skills/loop-code-quality/SKILL.md', firstLine: "Both write routes refused the approval stamp: <the refusal>.", recommended: "Retry the stamp (Recommended)" }
+];
+test('the seat-first asks keep their marks', () => {
+    for (const u of MARKED_ASKS) {
+        const blocks = [...read(u.file).matchAll(/```ask\n([\s\S]*?)```/g)].map((m) => m[1].split('\n'));
+        const marked = blocks.filter((b) => b[0].trim() === u.firstLine).some((b) => b.some((l) => /^\s*- '/.test(l) && l.includes(`'${u.recommended}'`)));
+        assert.ok(marked, `${u.file}: the ask "${u.firstLine.slice(0, 60)}" still marks '${u.recommended}'`);
+    }
+    assert.ok(MARKED_ASKS.length >= 14);
+});

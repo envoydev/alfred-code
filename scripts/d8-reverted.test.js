@@ -21,7 +21,7 @@ const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
     .flatMap((e) => (e.isDirectory() ? filesUnder(path.join(dir, e.name)) : [path.join(dir, e.name)]));
 
 test('no shipped file carries D8 text', () => {
-    const marked = filesUnder(path.join(ROOT, 'stack'))
+    const marked = [...filesUnder(path.join(ROOT, 'stack')), path.join(ROOT, 'meta', 'stack-manifest.json')]
         .filter((f) => D8_MARKER.test(fs.readFileSync(f, 'utf8')))
         .map((f) => path.relative(ROOT, f));
     assert.deepStrictEqual(marked, []);
@@ -55,11 +55,11 @@ function transcript(model) {
 }
 const WINDOW_SEEDS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '280000',
     ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '180000' };
-const run = (payload, env) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-fresh-session-start.js')],
+const run = (payload, env, hooks = HOOKS) => spawnSync(process.execPath, [path.join(hooks, 'guard-fresh-session-start.js')],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...WINDOW_SEEDS, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...env } });
 const context = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext || ''; } catch { return ''; } };
-const typed = (p, sid, skill, t) => run({ hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: t,
-    expansion_type: 'slash_command', command_name: skill, command_args: 'x', prompt: `/${skill} x` }, { CLAUDE_PROJECT_DIR: p.root });
+const typed = (p, sid, skill, t, hooks) => run({ hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: t,
+    expansion_type: 'slash_command', command_name: skill, command_args: 'x', prompt: `/${skill} x` }, { CLAUDE_PROJECT_DIR: p.root }, hooks);
 const viaSkill = (p, sid, skill, t) => run({ hook_event_name: 'PreToolUse', tool_name: 'Skill', session_id: sid, cwd: p.root,
     transcript_path: t, tool_input: { skill, args: '' } }, { CLAUDE_PROJECT_DIR: p.root });
 const rows = (p, sid) => { try { return fs.readFileSync(path.join(p.blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
@@ -84,4 +84,15 @@ test('Skill calls to task-design and habits-execution-strategy on opus print no 
         assert.ok(!r.stdout.includes('**Seats:**'), `${skill}: ${r.stdout}`);
         assert.deepStrictEqual(rows(p, sid).filter((row) => row.kind === 'seats-line'), [], skill);
     }
+});
+
+// The D8 review of the revert (Important): D8 had given the engine stand-in `autoCompactWindow`, which the banner calls, so a
+// hook that runs before fresh-session.js lands (an update's skew window) kept its banner; the revert must not lose it.
+test('a hook without fresh-session.js still prints the banner on a typed flow command', () => {
+    const dir = fs.mkdtempSync(path.join(TMP, 'hooks-'));
+    for (const f of fs.readdirSync(HOOKS)) if (f !== 'fresh-session.js') { try { fs.copyFileSync(path.join(HOOKS, f), path.join(dir, f)); } catch { /* a folder */ } }
+    const p = project();
+    const r = typed(p, 'no-engine', 'task-solve', transcript('claude-opus-5-5'), dir);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(context(r).includes('**Auto-run:'), `the banner prints: ${r.stdout}`);
 });
