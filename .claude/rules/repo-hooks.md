@@ -1690,7 +1690,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     another. Any other seat gets nothing there: the other analyzers and diagnosers record or diagnose rather than judge
     against the preferences, so alfred-preferences.md alone points them at the docs. The record is per actor, `<data root>/state/sessions/preferences-<session>-<actor>.json` (the OS temp
     dir when that cannot be written, and a one-line note instead of a hold when neither can), written through a temp file and
-    a rename and swept past 7 days (`sweepStale`); a `compact` or `clear` start deletes that actor's marks, since the summary
+    a rename and swept past 7 days (`sweepStale`). A PreToolUse call loads, decides and saves it under `<record>.lock` (an
+    exclusive create, waited up to 3 s, taken over past 10 s, unlocked when neither works): Claude Code runs the hooks of one
+    message's parallel Reads at once (T10 live check ta-M4, 2026-11-04, 2.1.318 - three 1.5 s hooks overlapped, two parallel
+    Writes did not), and two unlocked calls each handed a judge the same part. A `compact` or `clear` start deletes that actor's marks, since the summary
     dropped the docs (a compaction keeps the run and the `arch` mark), and a seat's own compaction - which runs the SessionStart hooks inside the seat, the payload carrying
     its `agent_id` (loading audit 2026-10-21 G3: 77 of 77 seat compactions) - deletes only its record and pushes nothing.
     `PERSONAL-PREFERENCES.md` - how the user wants the assistant to work (the user's ruling of 2026-10-21: loaded at session

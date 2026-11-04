@@ -597,6 +597,42 @@ function saveMarks(files, marks) {
   return false;
 }
 const dropRecord = (files) => { for (const f of files) { try { fs.rmSync(f, { force: true }); } catch {} } };
+
+// ta-M4 (T10 live check, 2026-11-04, Claude Code 2.1.318): one message's parallel Reads run their PreToolUse hooks at
+// once, so two calls could each load the record before either saved it and hand a judge the same docs twice (or drop
+// each other's read marks). A PreToolUse call's load - decide - save runs under a lock beside the record: a second call
+// waits for the first's save. A lock older than LOCK_STALE_MS is a dead call's and is taken over; one not had within
+// LOCK_WAIT_MS leaves the call unlocked, as every call ran before.
+const LOCK_WAIT_MS = 3000;
+const LOCK_STALE_MS = 10000;
+let heldLock = null;
+function lockRecord(files) {
+  const id = `${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  const pause = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* no wait: try again at once */ } };
+  for (const file of files) {
+    const lock = `${file}.lock`;
+    try { fs.mkdirSync(path.dirname(lock), { recursive: true }); } catch { continue; }
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    for (;;) {
+      try { fs.writeFileSync(lock, id, { flag: 'wx' }); heldLock = { lock, id }; return true; }
+      catch (e) {
+        if (!e || e.code !== 'EEXIST') break;   // this place takes no lock: the next one
+        let age = 0;
+        try { age = Date.now() - fs.statSync(lock).mtimeMs; } catch { continue; }   // released meanwhile: try again
+        if (age > LOCK_STALE_MS) { try { fs.rmSync(lock, { force: true }); } catch {} continue; }
+        if (Date.now() > deadline) return false;
+        pause(15);
+      }
+    }
+  }
+  return false;
+}
+function releaseRecord() {
+  if (!heldLock) return;
+  const { lock, id } = heldLock;
+  heldLock = null;
+  try { if (fs.readFileSync(lock, 'utf8') === id) fs.rmSync(lock, { force: true }); } catch { /* gone already */ }
+}
 function blockRow(ctx, input, kind, reason, extra = {}) {
   try {
     const dir = layout ? layout.statsPath(ctx.home, ['hook-blocks']) : path.resolve(ctx.home, dataRootRel(), 'statistics', 'hook-blocks');
@@ -1222,6 +1258,7 @@ function main() {
   const name = String(input.tool_name || '');
   const t = input.tool_input || {};
   const cwd = typeof input.cwd === 'string' && input.cwd ? path.resolve(start, input.cwd) : start;
+  lockRecord(files);
   const marks = loadMarks(files);
   const mark = (keys) => { const fresh = keys.filter((k) => !marks[k]); if (!fresh.length) return; for (const k of fresh) marks[k] = true; saveMarks(files, marks); };
   // Who reads against the docs: a seat by its type, the main session while a review run is on.
@@ -1323,4 +1360,5 @@ function main() {
 module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
 if (require.main === module) {
   try { main(); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
+  finally { releaseRecord(); }
 }

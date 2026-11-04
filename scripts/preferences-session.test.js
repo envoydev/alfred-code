@@ -48,8 +48,18 @@ function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECT
         return { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ...extra, ...(off ? { ALFRED_CODE_HOOKS_OFF: off } : {}) };
     };
     const hook = (payload, extra = {}, file = HOOK) => spawnSync(process.execPath, [file], { cwd: root, input: typeof payload === 'string' ? payload : JSON.stringify({ cwd: root, ...payload }), encoding: 'utf8', env: env(extra) });
+    // The same call, left running: two of them side by side are the parallel calls of one message.
+    const hookAsync = (payload, extra = {}) => new Promise((resolve) =>
+    {
+        const c = spawn(process.execPath, [HOOK], { cwd: root, env: env(extra) });
+        let stdout = ''; let stderr = '';
+        c.stdout.on('data', (d) => { stdout += d; });
+        c.stderr.on('data', (d) => { stderr += d; });
+        c.on('close', (status) => resolve({ status, stdout, stderr }));
+        c.stdin.end(JSON.stringify({ cwd: root, ...payload }));
+    });
     return {
-        root, write, hook,
+        root, write, hook, hookAsync,
         read: (rel) => fs.readFileSync(path.join(root, rel), 'utf8'),
         exists: (rel) => fs.existsSync(path.join(root, rel)),
         rm: () => { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(config, { recursive: true, force: true }); },
@@ -1980,4 +1990,45 @@ test('ws/api\'s ignore memory root drops the index for ws/api/tool too (R0); a c
         assert.doesNotMatch(pushed(shared.hook(start(sid(), 'startup'))), /Workspace root memory/);
     }
     finally { p.rm(); shared.rm(); }
+});
+
+// ta-M4 (T10 live check, 2026-11-04, Claude Code 2.1.318): one message's parallel Reads run their PreToolUse hooks at
+// once, so two processes could each load the record before either saved it and hand a judge the same part twice.
+test('ta-M4: a read beside a held one waits for its record - the next part, never the same one twice; a dead lock is taken over', async () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const s = sid();
+        const who = { agent_id: 'v1', agent_type: 'alfred-code:aspnet-verifier' };
+        p.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who });
+        const record = path.join(p.root, '.alfred', 'state', 'sessions', `preferences-${s}-v1.json`);
+        const lock = `${record}.lock`;
+        const before = fs.existsSync(record) ? fs.readFileSync(record, 'utf8') : null;
+        const read = pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, s, who);
+        const first = p.hook(read);
+        assert.ok(denied(first), 'the first read is held');
+        assert.ok(!fs.existsSync(lock), 'a call leaves no lock behind');
+        const handed = fs.readFileSync(record, 'utf8');
+        // The race, replayed: the second call starts while the first still holds the record, which reads as it did before.
+        if (before === null) fs.rmSync(record); else fs.writeFileSync(record, before);
+        fs.writeFileSync(lock, 'other');
+        const t0 = Date.now();
+        const second = p.hookAsync(read);
+        setTimeout(() => { fs.writeFileSync(record, handed); fs.rmSync(lock, { force: true }); }, 400);
+        const r = await second;
+        assert.ok(Date.now() - t0 >= 350, 'it waited for the lock');
+        assert.notStrictEqual(reason(r), reason(first), 'never the same part twice');
+        assert.ok(!fs.existsSync(lock), 'its own lock is gone after it');
+        // A lock its process left when it died is taken over at once, not waited out.
+        fs.writeFileSync(lock, 'dead');
+        const old = new Date(Date.now() - 60000);
+        fs.utimesSync(lock, old, old);
+        const t1 = Date.now();
+        p.hook(read);
+        assert.ok(Date.now() - t1 < 2500, 'a stale lock costs no wait');
+        assert.ok(!fs.existsSync(lock), 'and the taken-over lock is released');
+    }
+    finally { p.rm(); }
 });
