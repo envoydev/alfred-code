@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawnSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const ROOT = path.join(__dirname, '..');
 const SYSTEM = 'You evaluate one Claude Code hook condition and answer with JSON only.';
@@ -305,7 +305,7 @@ function live(opts, prompt, rows)
             if (spent >= cap) { stopped = { spent, left: rows.length - i }; break; }
             const [cmd, argv] = claudeCommand(args);
             const t0 = Date.now();
-            const r = spawnSync(cmd, argv, { cwd, env, input: stdin, encoding: 'utf8', timeout: 120000, maxBuffer: 1 << 24 });
+            const r = rt.spawnCommand(cmd, argv, { cwd, env, input: stdin, encoding: 'utf8', timeout: 120000, maxBuffer: 1 << 24 });
             const v = r.status === 0 ? verdictOf(r.stdout || '') : { verdict: 'unparsed', reason: `exit ${r.status}: ${String(r.stderr || r.stdout || '').slice(0, 200)}`, cost: 0 };
             const entry = { key, id: row.id, run, model: opts.model, verdict: v.verdict, reason: v.reason, cost: v.cost || 0, ms: Date.now() - t0 };
             fs.appendFileSync(opts.cache, `${JSON.stringify(entry)}\n`);
@@ -422,6 +422,21 @@ function main()
     process.stdout.write(`calls: ${rows.length}\n`);
 }
 
-if (require.main === module) main();
+// The pinned copy (meta/shared-rules.json 'blocking-stdio'), never the prelude's: loading hook-prelude.js applies the
+// project's variables to process.env, and the billed judge's environment must not take them.
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+
+if (require.main === module)
+{
+    blockingStdio();
+    main();
+}
 
 module.exports = { readPrompt, render, hookInput, authOf, claudeArgs, verdictOf, cacheKey, readCache, tally, checkBar, DEFAULT_PROMPT, DEFAULT_MODEL };
