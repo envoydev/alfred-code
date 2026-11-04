@@ -33,18 +33,16 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     assert.ok(JSON.stringify(core.hooks).includes('stack/hooks/shell-guards.js') && JSON.stringify(core.hooks).includes('stack/hooks/file-guards.js'), 'the core declares the stack hooks INLINE, so nothing sits at the shared root');
 });
 
-// session-inspector (alfred-mods) is the catalog's second entry from its own repo, pinned per release: no `version` (the
-// mod's own plugin.json holds it), `ref` and `sha` set together (sha wins when they disagree), and the id never renamed.
-// It is the marketplace's, never the stack's: the installer neither installs, updates nor removes it.
-test('session-inspector is listed from alfred-mods, pinned to a release tag and its commit, and foreign to the stack', () => {
+// session-inspector (alfred-mods) is the catalog's second entry from its own repo. It follows alfred-mods' release
+// branch, `main`, with no sha (the user's ruling of 2026-11-04: one marketplace for every plugin, and a mod release
+// needs no change here): a merge there reaches an install on its next update once the mod's own plugin.json bumps its
+// version. No `version` here (a copy would drift), and the id never renamed. It is the marketplace's, never the stack's:
+// the installer neither installs, updates nor removes it.
+test('session-inspector is listed from alfred-mods on its main branch, and foreign to the stack', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
     const entry = mp.plugins.find((x) => x.name === 'session-inspector');
     assert.ok(entry, 'the session-inspector entry');
-    assert.deepStrictEqual(Object.keys(entry.source).sort(), ['ref', 'repo', 'sha', 'source']);
-    assert.strictEqual(entry.source.source, 'github');
-    assert.strictEqual(entry.source.repo, 'envoydev/alfred-mods');
-    assert.match(entry.source.ref, /^v\d+\.\d+\.\d+$/, 'a release tag, never a branch');
-    assert.match(entry.source.sha, /^[0-9a-f]{40}$/, 'the full commit the tag names');
+    assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/alfred-mods', ref: 'main' });
     assert.ok(!Object.hasOwn(entry, 'version'), 'no version: the mod\'s own plugin.json holds it, and a copy here would drift');
     assert.ok(foreignEntry(entry));
     assert.deepStrictEqual(mp.plugins.filter(foreignEntry).map((x) => x.name), ['preferred-tools', 'session-inspector']);
@@ -52,15 +50,19 @@ test('session-inspector is listed from alfred-mods, pinned to a release tag and 
 });
 
 // SYS-07 of the 2026-11-03 system audit: preferred-tools floated on `ref: main` with no sha, so the catalog served
-// whatever landed on that branch next. It is pinned like session-inspector: the branch it tracks plus the commit
-// reviewed, and every entry from outside this repo carries a full sha (lint check 49 fails one without).
-test('preferred-tools is pinned to a reviewed commit beside its branch, and every foreign entry carries a full sha', () => {
+// whatever landed on that branch next. It is pinned: the branch it tracks plus the commit reviewed, and every entry
+// from outside this repo carries a full sha (lint check 49 fails one without) - save an envoydev/ repo on `main` with
+// no sha, the user's own release branch (2026-11-04).
+test('preferred-tools is pinned to a reviewed commit beside its branch, and every foreign entry carries a full sha or floats on its own main', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
     const entry = mp.plugins.find((x) => x.name === 'preferred-tools');
     assert.ok(entry, 'the preferred-tools entry');
     assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/preferred-tools', ref: 'main', sha: '33f60bf31df899e3f33d7a0d20c2646d35b1830c' });
     for (const p of mp.plugins.filter(foreignEntry))
-        assert.match(String(p.source.sha || ''), /^[0-9a-f]{40}$/, `${p.name} is pinned to a full commit`);
+    {
+        const floats = p.source.source === 'github' && /^envoydev\//.test(p.source.repo) && p.source.ref === 'main' && !Object.hasOwn(p.source, 'sha');
+        assert.ok(floats || /^[0-9a-f]{40}$/.test(String(p.source.sha || '')), `${p.name} is pinned to a full commit or follows its own main`);
+    }
 });
 
 test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
