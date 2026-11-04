@@ -3353,11 +3353,15 @@ function lintMarketplaceEntries(liveIn)
         findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands an install with no hooks and no skills (docs/plugin-cli-evidence.md S11, S16); update migrates a renamed id instead - run `npm run marketplace`');
     // An MCP server entry has its own check (53: the stack ships none). An entry from OUTSIDE this repo is the
     // marketplace's, never the placement's - but it is pinned to a full commit (SYS-07 of the 2026-11-03 system audit:
-    // preferred-tools floated on `ref: main`, so the catalog served whatever landed on that branch next).
+    // preferred-tools floated on `ref: main`, so the catalog served whatever landed on that branch next). The one
+    // exception is the user's own repo tracking its release branch: a `github` source under `envoydev/` on `ref: main`
+    // with no `sha` floats, so a release merged there reaches the catalog with no change here (the user's ruling of
+    // 2026-11-04: one marketplace for every plugin, session-inspector first). A `sha` it does carry is a full one.
+    const ownFloat = (src) => src.source === 'github' && /^envoydev\/[A-Za-z0-9._-]+$/.test(String(src.repo)) && src.ref === 'main' && !Object.hasOwn(src, 'sha');
     for (const p of live.plugins || [])
     {
-        if (p && require('./install/plugins.js').foreignEntry(p) && !/^[0-9a-f]{40}$/.test(typeof p.source.sha === 'string' ? p.source.sha : ''))
-            findings.push(`marketplace.json entry ${p.name} is fetched from outside this repo with no 40-hex \`sha\` - pin the commit you reviewed beside its \`ref\` (session-inspector's shape), or the catalog serves whatever lands on that ref next`);
+        if (p && require('./install/plugins.js').foreignEntry(p) && !ownFloat(p.source) && !/^[0-9a-f]{40}$/.test(typeof p.source.sha === 'string' ? p.source.sha : ''))
+            findings.push(`marketplace.json entry ${p.name} is fetched from outside this repo with no 40-hex \`sha\` - pin the commit you reviewed beside its \`ref\`, or the catalog serves whatever lands on that ref next; only an envoydev/ repo on \`ref: main\` with no sha floats`);
         if (!p || generated.has(p.name) || build.mcpEntry(p) || require('./install/plugins.js').foreignEntry(p)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);

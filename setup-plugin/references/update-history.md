@@ -729,3 +729,10 @@ Under auto-run, an ask that recommends a billed run waits for you, and a hand-wr
 or once a plan completes after it. The guards close the gaps the 2026-11-03 batch review named (the secret guard's
 cwd-built paths, a redirected group read as a copy, per-session commit receipts, a forge publish chained behind a push).
 Nothing to do by hand.
+
+## after 3.7.1 - session-inspector and preferred-tools follow their own main branch
+
+The catalog's `session-inspector` entry now follows `envoydev/alfred-mods` on its `main` branch instead of a pinned
+release, and its `preferred-tools` entry follows `envoydev/preferred-tools` on its `main` branch instead of a pinned
+commit. A release of either reaches you on your next plugin update with no stack release in between. The stack still
+never installs, updates or removes either. Nothing to do by hand.
