@@ -2605,3 +2605,131 @@ test('rollup walk skips a collected bundle\'s data, tmp, docs, context and tool-
     fs.rmSync(corpus, { recursive: true, force: true });
   }
 });
+
+// ---------- a bundle the collector wrote (Task 10 of the usage-collector plan) ----------
+// One fixture session with every store, collected into <root>/bundles/<sid> as the capture skill's consent shape does;
+// `before(fx)` runs between the fixture and the collect.
+function collectedBundle(t, { before } = {}) {
+  const { makeSession } = require('./collect-fixture.js');
+  const { parseArgs, collect } = require('./collect-session.js');
+  const fx = makeSession({ stores: true }); t.after(fx.cleanup);
+  if (before) before(fx);
+  const out = path.join(fx.root, 'bundles', fx.sid);
+  const r = collect(parseArgs([fx.transcript, '--out', out, '--tmp', fx.tmp]), { env: fx.env, now: fx.now });
+  assert.strictEqual(r.code, 0, r.message);
+  const receipt = JSON.parse(fs.readFileSync(path.join(out, 'collected.json'), 'utf8'));
+  const primary = receipt.stores.filter((s, i, all) => all.findIndex((x) => x.id === s.id) === i);
+  return { fx, out, transcript: path.join(out, `${fx.sid}.jsonl`), receipt, primary };
+}
+const analyzeBundle = (b, args, target = b.transcript) =>
+  execFileSync('node', [SCRIPT, target, ...args], { encoding: 'utf8', env: { ...process.env, ...b.fx.env } });
+const countOf = (s) => (s.rows !== undefined ? s.rows : s.files !== undefined ? s.files : '');
+
+test('--report-md prints Evidence coverage from collected.json', (t) => {
+  const b = collectedBundle(t);
+  const lines = analyzeBundle(b, ['--report-md']).split('\n');
+  const at = lines.indexOf('## Evidence coverage');
+  assert.ok(at > lines.indexOf('## Environment'), 'after the Environment table');
+  assert.ok(at < lines.indexOf('## Session vintage'), 'before the Session vintage');
+  const head = lines.indexOf('| store | status | count | why |', at);
+  assert.ok(head > at, 'the table head');
+  const rows = [];
+  for (let i = head + 2; lines[i] && lines[i].startsWith('|'); i++) rows.push(lines[i]);
+  assert.strictEqual(rows.length, b.primary.length, 'one row per store');
+  b.primary.forEach((s, i) => assert.ok(rows[i].startsWith(`| ${s.id} | ${s.status} | ${countOf(s)} |`), rows[i]));
+  const json = JSON.parse(analyzeBundle(b, ['--json']));
+  assert.strictEqual(json.evidence.rows.length, b.primary.length);
+  assert.strictEqual(json.evidence.collectedAt, b.receipt.collectedAt);
+  assert.deepStrictEqual(json.evidence.rows.find((r) => r.id === 'tools-usage'), { id: 'tools-usage', status: b.primary.find((s) => s.id === 'tools-usage').status, count: 2, why: b.primary.find((s) => s.id === 'tools-usage').why || '' });
+  const full = analyzeBundle(b, []);
+  assert.ok(full.indexOf('EVIDENCE COVERAGE') > 0 && full.indexOf('EVIDENCE COVERAGE') < full.indexOf('\nTOKENS'), 'the full report: before TOKENS');
+});
+
+test('Evidence coverage names the files a store withheld', (t) => {
+  // a plan the session wrote that binds a credential-named key: the docs row keeps its status, its why says one denied
+  const b = collectedBundle(t, { before: (fx) => fx.write(path.join(fx.docsRoot, 'work', 'plans', 'p.md'), `# plan\n${'API_' + 'TOKEN'}=${'abcd' + '1234'}\n`) });
+  assert.ok(b.receipt.stores.some((s) => s.id === 'docs' && s.status === 'denied'), 'the fixture denies the plan');
+  const row = JSON.parse(analyzeBundle(b, ['--json'])).evidence.rows.find((r) => r.id === 'docs');
+  assert.match(row.why, /1 denied/);
+});
+
+test('Evidence coverage says no collected.json sits beside the transcript, never that a native one predates the collector', () => {
+  const dir = tmp();
+  try {
+    const file = writeFixture(dir);
+    const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+    assert.match(md, /^## Evidence coverage\n\nno collected\.json beside the transcript - stores beyond the transcript are unknown$/m);
+    assert.doesNotMatch(md, /predates the collector/);
+    assert.strictEqual(run([file]).evidence, null);
+    fs.writeFileSync(path.join(dir, 'collected.json'), '{ not json');
+    assert.match(execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' }), /^collected\.json unreadable - stores beyond the transcript are unknown$/m);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the ledgers are read from the bundle by default and a flag wins', (t) => {
+  const b = collectedBundle(t);
+  const sid = b.fx.sid;
+  const ledgersRow = (md) => md.split('\n').find((l) => l.startsWith('| Ledgers read |'));
+  let md = analyzeBundle(b, ['--report-md']);
+  assert.strictEqual(ledgersRow(md), `| Ledgers read | tool-usage: tool-usage-${sid}.jsonl (beside the transcript); hook-blocks: hook-blocks-${sid}.jsonl (beside the transcript) |`);
+  assert.match(md, /^\| Hook ledger \| joined \(2 rows\) \|$/m);
+  // the second copies gone: the bundle's data/ ledgers
+  for (const n of [`tool-usage-${sid}.jsonl`, `hook-blocks-${sid}.jsonl`]) fs.rmSync(path.join(b.out, n));
+  md = analyzeBundle(b, ['--report-md']);
+  assert.strictEqual(ledgersRow(md), `| Ledgers read | tool-usage: data/statistics/tools-usage/${sid}.jsonl (data/); hook-blocks: data/statistics/hook-blocks/${sid}.jsonl (data/) |`);
+  // a flag wins
+  const other = path.join(b.fx.root, 'other.jsonl');
+  fs.writeFileSync(other, line({ ts: '2026-11-01T10:30:00.000Z', session: sid, tool: 'Grep' }));
+  md = analyzeBundle(b, ['--report-md', '--hook-log', other]);
+  assert.strictEqual(ledgersRow(md), `| Ledgers read | tool-usage: ${other} (flag); hook-blocks: data/statistics/hook-blocks/${sid}.jsonl (data/) |`);
+  assert.match(md, /^\| Hook ledger \| joined \(1 rows\) \|$/m);
+  // none anywhere
+  fs.rmSync(path.join(b.out, 'data'), { recursive: true, force: true });
+  assert.strictEqual(ledgersRow(analyzeBundle(b, ['--report-md'])), '| Ledgers read | tool-usage: none found; hook-blocks: none found |');
+});
+
+test('the stamp falls back to the bundle\'s context/ copy', (t) => {
+  const b = collectedBundle(t, { before: (fx) => fx.write(path.join(fx.project, '.claude', 'alfred-code.stamp'), 'version: 9.9.9\nsha: 0123456789abcdef\ninstalled: 2026-10-30T00:00:00.000Z\n') });
+  assert.ok(fs.existsSync(path.join(b.out, 'context', 'alfred-code.stamp')), 'the collector copied the stamp');
+  fs.rmSync(b.fx.project, { recursive: true, force: true });   // the transcript's cwd is gone from this machine
+  const md = analyzeBundle(b, ['--report-md']);
+  assert.match(md, /^\| Stack install \| v9\.9\.9 \(0123456789ab\), stamped 2026-10-30T00:00:00\.000Z - installed before this session ran \|$/m);
+  assert.match(md, /^\| Inventory source \| .*; stamp from the bundle's context\/ copy, read at collect time/m);
+});
+
+test('the rollup over a collected bundle\'s parent counts one session', (t) => {
+  const b = collectedBundle(t);
+  const got = run([path.dirname(b.out)]);
+  assert.deepStrictEqual(got.sessions.map((s) => s.session), [b.fx.sid]);
+});
+
+test('Evidence coverage prints the store totals, and a verdict quoting them is clean', (t) => {
+  const b = collectedBundle(t);
+  const absent = b.primary.filter((s) => s.status === 'absent').length;
+  const totals = `${b.primary.length} stores, ${b.primary.length - absent} found, ${absent} absent`;
+  assert.ok(analyzeBundle(b, []).includes(`collected ${b.receipt.collectedAt} - ${totals}`), 'the full report');
+  const report = path.join(b.out, 'report-usage.md');
+  analyzeBundle(b, ['--report-md', '--out', report]);
+  const md = fs.readFileSync(report, 'utf8');
+  assert.ok(md.includes(`written ${b.receipt.collectedAt}): ${totals}.`), 'the --report-md coverage line');
+  const verdict = `## Verdict\n\nThe collector looked for ${b.primary.length} stores and found ${b.primary.length - absent} (Evidence coverage).\n`;
+  fs.writeFileSync(report, `${md.slice(0, md.indexOf('## Waste analysis - FILL IN'))}${verdict}`);
+  assert.strictEqual(cli(['--check-report', report]).status, 0, cli(['--check-report', report]).out);
+});
+
+test('--check-report is clean on a report quoting the coverage numbers', (t) => {
+  // 37 tool results beside the fixture's two files: a count no other machine row prints
+  const b = collectedBundle(t, { before: (fx) => { for (let i = 0; i < 37; i++) fx.write(path.join(fx.folder, fx.sid, 'tool-results', `x${i}.txt`), 'r'); } });
+  const report = path.join(b.out, 'report-usage.md');
+  analyzeBundle(b, ['--report-md', '--out', report]);
+  const md = fs.readFileSync(report, 'utf8');
+  const folder = b.primary.find((s) => s.id === 'session-folder');
+  assert.strictEqual(countOf(folder), 39);
+  const verdict = `## Verdict\n\nThe session folder held ${countOf(folder)} files (Evidence coverage row session-folder).\n`;
+  fs.writeFileSync(report, `${md.slice(0, md.indexOf('## Waste analysis - FILL IN'))}${verdict}`);
+  assert.strictEqual(cli(['--check-report', report]).status, 0);
+  // the number is the coverage section's own: without the section the same line cites nothing
+  const cut = md.slice(0, md.indexOf('## Evidence coverage')) + md.slice(md.indexOf('## Session vintage'), md.indexOf('## Waste analysis - FILL IN'));
+  fs.writeFileSync(report, `${cut}${verdict}`);
+  assert.notStrictEqual(cli(['--check-report', report]).status, 0);
+});

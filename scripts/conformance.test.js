@@ -276,3 +276,15 @@ test('S1 and S2 open on the new name too (spec section 10)', () => {
         finally { fs.rmSync(dir, { recursive: true, force: true }); }
     }
 });
+test('loadBundle reads seats from subagents/ beside the transcript', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-'));
+    try {
+        fs.writeFileSync(path.join(dir, 's.jsonl'), jsonl([user('go')]));
+        fs.mkdirSync(path.join(dir, 'subagents'));
+        fs.writeFileSync(path.join(dir, 'subagents', 'agent-a1.jsonl'), jsonl([tool('Read', { file_path: 'a.md' })]));
+        fs.writeFileSync(path.join(dir, 'subagents', 'agent-a1.meta.json'), JSON.stringify({ agentType: 'general-purpose' }));
+        const { seats } = cf.loadBundle(path.join(dir, 's.jsonl')).session;
+        assert.strictEqual(seats.length, 1);
+        assert.strictEqual(seats[0].agentType, 'general-purpose');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

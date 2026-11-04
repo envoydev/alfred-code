@@ -187,7 +187,8 @@ function loadBundle(transcript, { dataRoot, hookBlocks } = {}) {
   const dir = path.dirname(file);
   const sid = path.basename(file).replace(/\.jsonl$/, '');
   const main = sc.parseTranscript(fs.readFileSync(file, 'utf8'));
-  const seatDir = path.join(dir, sid, 'subagents');
+  // A bundle keeps the seats beside the transcript, as analyze-usage's analyzeSubagents already reads them.
+  const seatDir = isDir(path.join(dir, sid, 'subagents')) ? path.join(dir, sid, 'subagents') : path.join(dir, 'subagents');
   const seats = (isDir(seatDir) ? fs.readdirSync(seatDir) : []).filter((n) => /^agent-.+\.jsonl$/.test(n)).sort().map((n) => {
     let agentType = null;
     try { agentType = JSON.parse(fs.readFileSync(path.join(seatDir, n.replace(/\.jsonl$/, '.meta.json')), 'utf8')).agentType || null; } catch { /* no meta: an unnamed seat */ }
