@@ -640,12 +640,14 @@ test('uninstall names a .variables still holding the user\'s keys', POSIX_ONLY, 
     assert.match(outs[1], /\.alfred\/\.variables \(1 of your keys - nothing reads them once the stack is gone\)/, outs[1]);
 });
 
-// O11 (a side agent's note, 2026-11-04): a value typed into settings.json that .variables outranks (D4) was dropped by the
-// next update and counted as moved. It is named as dropped, with both lengths, and is no move.
-test('a settings.json value .variables outranks is named as dropped, never counted as moved', POSIX_ONLY, () =>
+// O11 (two side-agent notes, 2026-11-04): a value typed into settings.json that .variables outranks (D4) was deleted by
+// the next update and counted as moved; a warning alone still lost it. It stays where it was typed - it changes nothing a
+// reader sees, since .variables wins - the line names both lengths (never a value) on every update until it is settled,
+// it is no move, and no ledger row claims it.
+test('a settings.json value .variables outranks is kept as typed, named on every update, never counted as moved', POSIX_ONLY, () =>
 {
-    const { outs, steps } = seedRun(['install', 'update'], SEL, {
-        plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
+        plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only'], ['--scope', 'project', '--installed-only']],
         each: (repo, i) =>
         {
             if (i === 0)
@@ -655,11 +657,15 @@ test('a settings.json value .variables outranks is named as dropped, never count
                 s.env.ALFRED_CODE_HISTORY = '17';
                 fs.writeFileSync(file, JSON.stringify(s, null, 2));
             }
-            return { env: envIn(repo, 'settings.json'), vars: varsOf(repo) };
+            return { env: envIn(repo, 'settings.json'), vars: varsOf(repo), ledger: ledgerOf(repo).env || {} };
         },
     });
-    assert.strictEqual(steps[1].vars.ALFRED_CODE_HISTORY, steps[0].vars.ALFRED_CODE_HISTORY, '.variables keeps the value every reader used');
-    assert.ok(!Object.hasOwn(steps[1].env, 'ALFRED_CODE_HISTORY'));
-    assert.match(outs[1], /!! settings\.json env: ALFRED_CODE_HISTORY dropped \(2 chars\) - \.alfred\/\.variables holds another value \(1 chars\), which outranks settings\.json, so every reader used that one; set it in \.alfred\/\.variables \(\/alfred-code:configure\) if the dropped one was meant/, outs[1]);
-    assert.doesNotMatch(outs[1], MOVED_LINE, 'a dropped value is no move');
+    for (const i of [1, 2])
+    {
+        assert.strictEqual(steps[i].vars.ALFRED_CODE_HISTORY, steps[0].vars.ALFRED_CODE_HISTORY, `update ${i}: .variables keeps the value every reader used`);
+        assert.strictEqual(steps[i].env.ALFRED_CODE_HISTORY, '17', `update ${i}: the typed value stays in settings.json`);
+        assert.ok(!Object.hasOwn(steps[i].ledger['settings.json'] || {}, 'ALFRED_CODE_HISTORY'), `update ${i}: no ledger row claims the typed value`);
+        assert.match(outs[i], /!! settings\.json env: ALFRED_CODE_HISTORY kept as typed \(2 chars\), but \.alfred\/\.variables holds another value \(1 chars\), which outranks settings\.json, so every reader uses that one - set it in \.alfred\/\.variables \(\/alfred-code:configure\) if the typed one was meant, else delete it from settings\.json/, outs[i]);
+        assert.doesNotMatch(outs[i], MOVED_LINE, `update ${i}: a kept value is no move`);
+    }
 });

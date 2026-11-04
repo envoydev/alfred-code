@@ -900,11 +900,11 @@ function writeSettings(opts)
         for (const [key, value] of Object.entries(vars.read(variablesFile).values)) if (movable(key)) fileValues[key] = value;
         // The loader's order (D4): .variables over settings.json, settings.local.json over .variables - so a local-scope
         // run's own file keeps a value typed there, and the move carries the value every reader already saw.
-        // O11 (burn-down 2026-11-04): a value of this file's that .variables outranks was never read; it is named as dropped,
-        // with both lengths (never a value), and is no move.
+        // O11 (burn-down 2026-11-04): a value of this file's that .variables outranks was never read. It is put back as typed
+        // after the move - deleting it lost what the person typed - named with both lengths (never a value), and is no move.
         if (label !== 'settings.local.json' && plain(data.env))
             for (const [key, value] of Object.entries(fileValues))
-                if (Object.hasOwn(data.env, key) && String(data.env[key]) !== String(value)) outranked.set(key, [String(data.env[key]).length, String(value).length]);
+                if (Object.hasOwn(data.env, key) && String(data.env[key]) !== String(value)) outranked.set(key, { value: data.env[key], mine: String(data.env[key]).length, theirs: String(value).length });
         if (Object.keys(fileValues).length) data.env = label === 'settings.local.json' ? { ...fileValues, ...(data.env || {}) } : { ...(data.env || {}), ...fileValues };
     }
     const envBefore = plain(data.env) ? { ...data.env } : {};
@@ -1228,6 +1228,8 @@ function writeSettings(opts)
     const renameTo = new Map((migrations.renames || []).map(([from, to]) => [from, to]));
     const heldKeys = new Set([...settingsHad].map((key) => { let k = key; for (let i = 0; i < 8 && renameTo.has(k); i++) k = renameTo.get(k); return k; }));
     const moved = vars ? moveVariables({ vars, file: variablesFile, env: data.env, fileValues, MOVED, catalog, managedEnv, label, log, heldKeys }) : [];
+    // O11: the value .variables outranks goes back as typed, with no ledger row - it is the person's, never the stack's.
+    if (plain(data.env)) for (const [key, o] of outranked) data.env[key] = o.value;
     if (vars)
     {
         if (settingsEnvBefore === null && plain(data.env) && !Object.keys(data.env).length) delete data.env;
@@ -1395,8 +1397,8 @@ function writeSettings(opts)
 
     // The keys this file held before the run and no longer holds - each now in .variables (a renamed one under its new name).
     const varsRel = variablesFile ? path.join(path.basename(path.dirname(variablesFile)), path.basename(variablesFile)).split(path.sep).join('/') : '';
-    for (const [key, [mine, theirs]] of outranked)
-        log(`  !! ${label} env: ${key} dropped (${mine} chars) - ${varsRel} holds another value (${theirs} chars), which outranks ${label}, so every reader used that one; set it in ${varsRel} (/alfred-code:configure) if the dropped one was meant`);
+    for (const [key, { mine, theirs }] of outranked)
+        log(`  !! ${label} env: ${key} kept as typed (${mine} chars), but ${varsRel} holds another value (${theirs} chars), which outranks ${label}, so every reader uses that one - set it in ${varsRel} (/alfred-code:configure) if the typed one was meant, else delete it from ${label}`);
     const variablesMoved = moved.length ? [...settingsHad].filter((k) => !outranked.has(k) && !(plain(data.env) && Object.hasOwn(data.env, k))) : [];
     if (!changed) return { written: localChanged, refused: false, managed, variablesMoved };
     fs.mkdirSync(path.dirname(file), { recursive: true });
