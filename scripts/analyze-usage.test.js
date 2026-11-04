@@ -2734,6 +2734,27 @@ test('--check-report is clean on a report quoting the coverage numbers', (t) => 
   assert.notStrictEqual(cli(['--check-report', report]).status, 0);
 });
 
+// CI flake of 2026-11-04 (Ubuntu, 1 run in 30 here): a session id is a random UUID, and `c5e1896d-495b-4ce8-af39-...` lent the
+// check a machine 39 - a number inside an id, a hash or a temp folder's name is part of a name, never a printed count.
+test('--check-report reads no number out of a UUID, a hex hash or a name it is glued into', () => {
+  const dir = tmp();
+  const report = path.join(dir, 'report-usage.md');
+  const sid = 'c5e1896d-495b-4ce8-af39-d7cff81b30e1';
+  fs.writeFileSync(report, [
+    `# Stack usage report - session \`${sid}\``, '',
+    '## Inputs', '',
+    `| Ledgers read | tool-usage-${sid}.jsonl; commit 39ab12cd; data root /tmp/collect-fx-Yk39Pc/x |`, '',
+    '## Waste analysis - FILL IN', '',
+    '- The session folder held 39 files.', '',
+  ].join('\n'));
+  const res = cli(['--check-report', report]);
+  assert.strictEqual(res.status, 1, res.out);
+  assert.match(res.out, /\b39\b/, 'the 39 cites no printed count');
+  fs.writeFileSync(report, fs.readFileSync(report, 'utf8').replace('| Ledgers read |', '| Ledgers read | 39 files |'));
+  assert.strictEqual(cli(['--check-report', report]).status, 0, 'a printed 39 still settles it');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // R164 (burn-down 2026-11-04): in the no-consent shape the analyzer reads <tmp>/<sid>, whose receipt says the text was
 // copied, while the bundle's own collected.json says it was withheld - the report quoted the wrong one.
 test('--receipt names the bundle\'s collected.json over the copy beside the transcript', (t) => {

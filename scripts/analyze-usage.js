@@ -4799,7 +4799,8 @@ const LOCATOR_RE = /\b(?:L\d+|turns?\s+\d+|lines?\s+\d+|rows?\s+\d+)\b/i;
 const LOCATOR_G = /\b(?:L(\d+)|turns?\s+(\d+)|lines?\s+(\d+)|rows?\s+(\d+))\b(?!:\d|-\d{1,2}-\d)/gi;
 // A number token, with the units the tables print: `8.0k`, `~12`, `1,204`, `53%`, `$0.42`. The
 // magnitude suffix binds to the digits with no space - `1 block(s)` is the number 1, not '1 b'.
-const NUMBER_TOKEN_RE = /\d[\d,]*(?:\.\d+)?(?:[kKmMbB](?![A-Za-z]))?%?/g;
+// A digit glued to a letter, a digit or a dot on its left is part of a name (`af39`, `x86`, `v2.11.0`), never a count.
+const NUMBER_TOKEN_RE = /(?<![A-Za-z0-9_.])\d[\d,]*(?:\.\d+)?(?:[kKmMbB](?![A-Za-z]))?%?/g;
 const numValue = (tok) => {
   const m = /^(\d[\d,]*(?:\.\d+)?)([kKmMbB]?)%?$/.exec(String(tok).trim());
   if (!m) return null;
@@ -4814,7 +4815,11 @@ const stripDates = (line) => String(line)
   .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z?/g, ' ')
   .replace(/\d{4}-\d{2}-\d{2}/g, ' ')
   .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, ' ');
+// A UUID (every session id) and a hex hash name a thing; the digits in them are no printed count (a CI flake of
+// 2026-11-04: `...-af39-...` lent the check a machine 39).
 const stripNonClaims = (line) => stripDates(line)
+  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ' ')
+  .replace(/\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,}\b/gi, ' ')
   .replace(/\bL\d+(?:-L?\d+)?\b/g, ' ')
   .replace(/\b(?:turns?|lines?|rows?)\s+\d+(?:\s*-\s*\d+)?\b/gi, ' ');
 const numbersIn = (line) => {
