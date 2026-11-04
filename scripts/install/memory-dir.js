@@ -150,14 +150,14 @@ function gate(ctx)
     if (ctx.args.memoryCopy) ctx.memoryFrom = layout.memoryDirsOf(ctx.projectRoot, { env });
 }
 
-// After ignoreStep: the row for the mode the run left, by the plan's table. Sets ctx.memoryDirRow - the hash to record,
-// or null - on every path; a pending hand-set docs root, an invalid data root and a file that cannot be read keep the
-// last run's row.
-function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
+// The row for the mode the run left, by the plan's table. Sets ctx.memoryDirRow - the hash to record, or null - on every
+// path; a pending hand-set docs root, an invalid data root and a file that cannot be read keep the last run's row.
+// Returns what it decided: { skip } before anything was read, else { mode, share, refusal }.
+function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
 {
     const prior = priorRow(ctx);
     ctx.memoryDirRow = prior === undefined ? null : prior;
-    if (ctx.docsRootPending || (ctx.dataInfo && ctx.dataInfo.invalid)) return;
+    if (ctx.docsRootPending || (ctx.dataInfo && ctx.dataInfo.invalid)) return { skip: true };
     const root = ctx.projectRoot;
     const env = memoryEnv(ctx);
     const file = path.join(ctx.claudeDir, LOCAL);
@@ -174,11 +174,11 @@ function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
         if (isOurs) removeRow(ctx, file, read.data);
         ctx.memoryDirRow = null;
         if (ctx.memoryAsked || isOurs) say(`memory: docs - shares ${share.member}'s docs memory (${shown(share.dir, root)}/), so nothing is written here`);
-        return;
+        return { mode, share };
     }
     if (mode !== 'docs')
     {
-        if (read.state === 'garbage') return;
+        if (read.state === 'garbage') return { mode };
         if (isOurs)
         {
             say(`${LOCAL}: autoMemoryDirectory removed - ALFRED_CODE_MEMORY is no longer docs, so Claude's own memory is back at its default place`);
@@ -186,7 +186,7 @@ function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
         }
         else if (has && prior !== undefined) say(`${LOCAL}: autoMemoryDirectory kept - changed since the stack wrote it, so it is yours`);
         ctx.memoryDirRow = null;
-        return;
+        return { mode };
     }
 
     const wanted = layout.docsMemoryDir(root, { env });
@@ -198,11 +198,11 @@ function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
             say(`${LOCAL}: autoMemoryDirectory removed - ${refusal.text}`);
             removeRow(ctx, file, read.data);
             ctx.memoryDirRow = null;
-            return;
+            return { mode, refusal };
         }
         if (read.state !== 'garbage') ctx.memoryDirRow = null;
         if (!ctx.memoryRefused) say(`!! memory: ALFRED_CODE_MEMORY is docs, but ${refusal.text} - nothing written; Claude's own memory stays at its default place`);
-        return;
+        return { mode, refusal };
     }
     const want = `${shown(wanted, root)}/`;
     if (!has)
@@ -214,23 +214,114 @@ function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
         say(`${LOCAL}: autoMemoryDirectory written - ${want} (ALFRED_CODE_MEMORY is docs; Claude's own memory lives with the docs from the next session)`);
         for (const line of outrankLines(root, { wanted, env })) say(line);
         if (read.state === 'absent') warnUnignoredLocal(ctx, file);
-        return;
+        return { mode };
     }
     const dir = valueDir(read.data[KEY]);
     if (isOurs)
     {
-        if (dir && layout.dirKey(dir) === layout.dirKey(wanted)) return;
+        if (dir && layout.dirKey(dir) === layout.dirKey(wanted)) return { mode };
         const old = showValue(read.data[KEY], root);
         read.data[KEY] = wanted;
         writeLocal(file, read.data);
         ctx.memoryDirRow = rowHash(wanted);
         say(`${LOCAL}: autoMemoryDirectory re-pointed - ${old} -> ${want} (the folder moved)`);
         for (const line of outrankLines(root, { wanted, env })) say(line);
-        return;
+        return { mode };
     }
     // The user's own value naming the wanted folder (D3): docs mode is on, and the value stays theirs.
     ctx.memoryDirRow = null;
     if (ctx.memoryAsked) say(`${LOCAL}: autoMemoryDirectory already names ${want} - yours, kept and not recorded`);
+    return { mode };
 }
 
-module.exports = { gate, step, memoryEnv, rowHash, outrankLines, shown };
+// R5: copies every top-level `.md` of `from` into `to`, never over a file already there; sub-folders stay behind.
+// `show` spells a folder for the line. Returns { copied, skipped }.
+function copyMemory({ from, to, log = () => {}, show = (dir) => dir })
+{
+    fs.mkdirSync(to, { recursive: true });
+    let copied = 0;
+    let skipped = 0;
+    for (const name of layout.memoryFiles(from))
+    {
+        try { fs.copyFileSync(path.join(from, name), path.join(to, name), fs.constants.COPYFILE_EXCL); copied++; }
+        catch (err) { if (err.code === 'EEXIST') skipped++; else throw err; }
+    }
+    let subs = 0;
+    try { subs = fs.readdirSync(from, { withFileTypes: true }).filter((e) => e.isDirectory()).length; }
+    catch { /* the count is a courtesy */ }
+    log(`memory: copied ${copied} files from ${show(from)}/ to ${show(to)}/ - the old ones stay where they are${skipped ? `; ${skipped} already there, skipped` : ''}${subs ? `; ${subs} sub-folders left at ${show(from)}/` : ''}`);
+    return { copied, skipped };
+}
+
+// `--memory-copy`: the place before this run (gate's ctx.memoryFrom) into the place after it, when the old one is one
+// folder holding a MEMORY.md and the new one is one folder without. Custom has no place of Claude's own to copy into.
+function copyStep(ctx, mode)
+{
+    if (!ctx.memoryFrom) return;
+    const root = ctx.projectRoot;
+    const say = (line) => ctx.log(`  ${line}`);
+    const show = (dir) => shown(dir, root);
+    if (mode === 'custom') { say('memory: copy skipped - custom memory has no place of Claude\'s own to copy into'); return; }
+    if (ctx.memoryFrom.length !== 1) { say('memory: copy skipped - the old place is not one folder here'); return; }
+    const to = layout.memoryDirsOf(root, { env: memoryEnv(ctx) });
+    if (to.length !== 1) { say('memory: copy skipped - the new place is not one folder here'); return; }
+    const [from] = ctx.memoryFrom;
+    if (!fs.existsSync(path.join(from, 'MEMORY.md'))) { say(`memory: copy skipped - nothing at ${show(from)}/`); return; }
+    if (fs.existsSync(path.join(to[0], 'MEMORY.md'))) { say(`memory: copy skipped - ${show(to[0])}/ already has a MEMORY.md`); return; }
+    copyMemory({ from, to: to[0], log: say, show });
+}
+
+// R10: under git docs versioning the docs memory gets a union merge for its index, so lessons added on two branches
+// merge clean. The stack's file is known by its text (OD4, the data root's .gitignore precedent; CRLF read as LF, D8).
+const ATTRIBUTES_TEXT = '# alfred-code: lessons added to the memory index on two branches merge by union (docs memory, R10)\nMEMORY.md merge=union\n';
+// `want`: write it, else remove the stack's. `why` ends the removal line; `rel` spells the folder; `named` false keeps a
+// file of the user's unnamed where nothing would be written.
+function attributesStep({ dir, want, log = () => {}, why = 'ALFRED_CODE_MEMORY is no longer docs', rel = dir, named = true })
+{
+    const file = path.join(dir, '.gitattributes');
+    let text = null;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { text = null; }
+    const ours = text !== null && text.replace(/\r\n/g, '\n') === ATTRIBUTES_TEXT;
+    const yours = () => { if (want || named) log(`memory: ${rel}/.gitattributes kept - not the stack's text, so it is yours`); return 'yours'; };
+    if (want)
+    {
+        if (text === null)
+        {
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(file, ATTRIBUTES_TEXT);
+            log(`memory: ${rel}/.gitattributes written - MEMORY.md merges by union, so lessons added on two branches merge clean`);
+            return 'written';
+        }
+        return ours ? 'kept' : yours();
+    }
+    if (text === null) return 'none';
+    if (!ours) return yours();
+    fs.rmSync(file, { force: true });
+    log(`memory: ${rel}/.gitattributes removed - ${why}`);
+    return 'removed';
+}
+
+// After ignoreStep: the row, then the copy and the attributes file, each failing alone.
+function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
+{
+    const done = rowStep(ctx, { warnUnignoredLocal });
+    if (done.skip) return;
+    const say = (line) => ctx.log(`  ${line}`);
+    try { copyStep(ctx, done.mode); }
+    catch (err) { say(`!! memory: copy stopped - ${err.message}; the old files stay where they are`); }
+    // A sharing child's folder is its member's, and a refused one is left as it is until the cause is fixed.
+    if (done.share || done.refusal) return;
+    const dir = layout.docsMemoryDir(ctx.projectRoot, { env: memoryEnv(ctx) });
+    const docs = done.mode === 'docs';
+    try
+    {
+        attributesStep({
+            dir, want: docs && ctx.docsVersioningMode !== 'local', log: say, rel: shown(dir, ctx.projectRoot),
+            why: docs ? 'the docs are kept out of git' : 'ALFRED_CODE_MEMORY is no longer docs',
+            named: Boolean(ctx.memoryAsked || ctx.args.docsVersioning),
+        });
+    }
+    catch (err) { say(`!! memory: the docs memory's .gitattributes could not be checked (${err.message}) - re-run /alfred-code:update`); }
+}
+
+module.exports = { gate, step, memoryEnv, rowHash, outrankLines, shown, copyMemory, attributesStep, ATTRIBUTES_TEXT };

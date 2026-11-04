@@ -339,3 +339,221 @@ test('docs: uninstall removes the row and names the memory folder as kept', POSI
     assert.strictEqual(r.result.kept, '# Memory\n');
     assert.ok(!(r.result.local && Object.hasOwn(r.result.local, 'autoMemoryDirectory')));
 });
+
+// ---- Task 4: the copy (R5) and the attributes file (R10) ------------------------------------------------------------
+// The default place in the sandbox account: <work>/acct/projects/<repo path, every non-alphanumeric as ->/memory.
+const defaultPlace = (repo) => path.join(path.dirname(repo), 'acct', 'projects', real(repo).replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+const seedMemory = (dir, files) =>
+{
+    fs.mkdirSync(dir, { recursive: true });
+    for (const [name, text] of Object.entries(files))
+    {
+        if (text === null) fs.mkdirSync(path.join(dir, name), { recursive: true });
+        else fs.writeFileSync(path.join(dir, name), text);
+    }
+};
+const mtimeOf = (f) => fs.statSync(f).mtimeMs;
+const ATTR = (repo) => path.join(repo, '.alfred', 'docs', 'memory', '.gitattributes');
+
+test('copy: default -> docs with --memory-copy copies every top-level .md, the old ones untouched', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [[], ['--installed-only', '--memory', 'docs', '--memory-copy']],
+        each: (repo, i) =>
+        {
+            const from = defaultPlace(repo);
+            if (i === 0)
+            {
+                seedMemory(from, { 'MEMORY.md': '# Memory\n- one\n', 'debugging.md': 'debug notes\n', sub: null, 'sub/inner.md': 'inner\n' });
+                const past = new Date(Date.now() - 3600_000);
+                for (const n of ['MEMORY.md', 'debugging.md']) fs.utimesSync(path.join(from, n), past, past);
+                return { mtimes: ['MEMORY.md', 'debugging.md'].map((n) => mtimeOf(path.join(from, n))) };
+            }
+            const to = memOf(repo);
+            return {
+                from, to, mtimes: ['MEMORY.md', 'debugging.md'].map((n) => mtimeOf(path.join(from, n))),
+                old: ['MEMORY.md', 'debugging.md'].map((n) => readOr(path.join(from, n))),
+                now: ['MEMORY.md', 'debugging.md'].map((n) => readOr(path.join(to, n))),
+                inner: fs.existsSync(path.join(to, 'sub')),
+            };
+        },
+    });
+    const [before, after] = r.steps;
+    assert.deepStrictEqual(after.now, ['# Memory\n- one\n', 'debug notes\n'], r.outs[1]);
+    assert.deepStrictEqual(after.old, after.now, 'the old files keep their content');
+    assert.deepStrictEqual(after.mtimes, before.mtimes, 'the old files keep their mtime');
+    assert.ok(!after.inner, 'a sub-folder is not copied');
+    assert.match(r.outs[1], /memory: copied 2 files from ~\/acct\/projects\/[^ ]+\/memory\/ to \.alfred\/docs\/memory\/ - the old ones stay where they are; 1 sub-folders left at ~\/acct\/projects\/[^ ]+\/memory\//);
+});
+
+test('copy: never overwrites - a file present at both places is skipped and counted', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [[], ['--installed-only', '--memory', 'docs', '--memory-copy']],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                seedMemory(defaultPlace(repo), { 'MEMORY.md': '# old index\n', 'debugging.md': 'old debug\n' });
+                seedMemory(memOf(repo), { 'debugging.md': 'kept at the new place\n' });
+                return null;
+            }
+            return { index: readOr(path.join(memOf(repo), 'MEMORY.md')), debug: readOr(path.join(memOf(repo), 'debugging.md')) };
+        },
+    });
+    assert.strictEqual(r.steps[1].index, '# old index\n', r.outs[1]);
+    assert.strictEqual(r.steps[1].debug, 'kept at the new place\n', 'never overwritten');
+    assert.match(r.outs[1], /memory: copied 1 files from [^ ]+ to \.alfred\/docs\/memory\/ - the old ones stay where they are; 1 already there, skipped\n/);
+});
+
+test('copy: skipped when the new place has a MEMORY.md', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [[], ['--installed-only', '--memory', 'docs', '--memory-copy']],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                seedMemory(defaultPlace(repo), { 'MEMORY.md': '# old\n', 'other.md': 'other\n' });
+                seedMemory(memOf(repo), { 'MEMORY.md': '# new\n' });
+                return null;
+            }
+            return { files: fs.readdirSync(memOf(repo)).filter((n) => n.endsWith('.md')).sort(), index: readOr(path.join(memOf(repo), 'MEMORY.md')) };
+        },
+    });
+    assert.deepStrictEqual(r.steps[1].files, ['MEMORY.md'], r.outs[1]);
+    assert.strictEqual(r.steps[1].index, '# new\n');
+    assert.match(r.outs[1], /memory: copy skipped - \.alfred\/docs\/memory\/ already has a MEMORY\.md/);
+});
+
+test('copy: docs -> default copies back into the default place', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [['--memory', 'docs'], ['--installed-only', '--memory', 'default', '--memory-copy']],
+        each: (repo, i) =>
+        {
+            if (i === 0) { seedMemory(memOf(repo), { 'MEMORY.md': '# docs index\n', 'lesson.md': 'a lesson\n' }); return null; }
+            return { back: ['MEMORY.md', 'lesson.md'].map((n) => readOr(path.join(defaultPlace(repo), n))), old: readOr(path.join(memOf(repo), 'MEMORY.md')), local: localOf(repo) };
+        },
+    });
+    assert.deepStrictEqual(r.steps[1].back, ['# docs index\n', 'a lesson\n'], r.outs[1]);
+    assert.strictEqual(r.steps[1].old, '# docs index\n', 'the docs copy stays');
+    assert.ok(!r.steps[1].local || !Object.hasOwn(r.steps[1].local, 'autoMemoryDirectory'), 'the row is gone');
+    assert.match(r.outs[1], /memory: copied 2 files from \.alfred\/docs\/memory\/ to ~\/acct\/projects\/[^ ]+\/memory\/ - the old ones stay where they are\n/);
+});
+
+test('copy: without --memory-copy nothing is copied', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [[], ['--installed-only', '--memory', 'docs']],
+        each: (repo, i) =>
+        {
+            if (i === 0) { seedMemory(defaultPlace(repo), { 'MEMORY.md': '# old\n' }); return null; }
+            return { md: layout.memoryFiles(memOf(repo)) };
+        },
+    });
+    assert.deepStrictEqual(r.steps[1].md, [], r.outs[1]);
+    assert.doesNotMatch(r.outs[1], /memory: cop(ied|y skipped)/);
+});
+
+test('copy: a renamed project folder skips the copy', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        env: [{ CLAUDE_CODE_PROJECT_DIR_NAME: 'renamed' }, { CLAUDE_CODE_PROJECT_DIR_NAME: 'renamed' }],
+        args: [[], ['--installed-only', '--memory', 'docs', '--memory-copy']],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                seedMemory(path.join(path.dirname(repo), 'acct', 'projects', 'renamed', 'memory'), { 'MEMORY.md': '# renamed\n' });
+                seedMemory(defaultPlace(repo), { 'MEMORY.md': '# default-named\n' });
+                return null;
+            }
+            return { md: layout.memoryFiles(memOf(repo)), local: localOf(repo) };
+        },
+    });
+    assert.match(r.outs[1], /memory: copy skipped - the old place is not one folder here/);
+    assert.deepStrictEqual(r.steps[1].md, [], 'nothing copied from the default-named folder');
+    assert.ok(r.steps[1].local && /\.alfred\/docs\/memory$/.test(r.steps[1].local.autoMemoryDirectory), 'docs mode is still written');
+});
+
+test('attributes: written under git, removed on --docs-versioning local, removed on a switch to default, a hand-edited one kept', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update', 'update', 'update', 'update', 'update', 'update'], SEL, {
+        args: [['--memory', 'docs'], [], ['--installed-only', '--docs-versioning', 'local'], ['--installed-only', '--docs-versioning', 'git'], ['--installed-only', '--memory', 'default'], ['--installed-only', '--memory', 'docs'], ['--installed-only', '--memory', 'default']],
+        each: (repo, i) =>
+        {
+            const text = readOr(ATTR(repo));
+            // After the fifth run (docs again), the user edits the file: the next switch keeps it.
+            if (i === 5) fs.writeFileSync(ATTR(repo), `${text}*.md text eol=lf\n`);
+            return text;
+        },
+    });
+    const [written, again, local, back, off, docs, kept] = r.steps;
+    assert.strictEqual(written, memoryDir.ATTRIBUTES_TEXT, r.outs[0]);
+    assert.match(r.outs[0], /memory: \.alfred\/docs\/memory\/\.gitattributes written - MEMORY\.md merges by union, so lessons added on two branches merge clean/);
+    assert.strictEqual(again, written, 'a re-run keeps it');
+    assert.doesNotMatch(r.outs[1], /\.gitattributes/);
+    assert.strictEqual(local, null, r.outs[2]);
+    assert.match(r.outs[2], /memory: \.alfred\/docs\/memory\/\.gitattributes removed - the docs are kept out of git/);
+    assert.strictEqual(back, memoryDir.ATTRIBUTES_TEXT, r.outs[3]);
+    assert.strictEqual(off, null, r.outs[4]);
+    assert.match(r.outs[4], /memory: \.alfred\/docs\/memory\/\.gitattributes removed - ALFRED_CODE_MEMORY is no longer docs/);
+    assert.strictEqual(docs, memoryDir.ATTRIBUTES_TEXT);
+    assert.strictEqual(kept, `${memoryDir.ATTRIBUTES_TEXT}*.md text eol=lf\n`, r.outs[6]);
+    assert.match(r.outs[6], /memory: \.alfred\/docs\/memory\/\.gitattributes kept - not the stack's text, so it is yours/);
+});
+
+test('attributes: a CRLF copy of the stack\'s text is the stack\'s (D8)', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mem-attr-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, '.gitattributes'), memoryDir.ATTRIBUTES_TEXT.replace(/\n/g, '\r\n'));
+        const lines = [];
+        assert.strictEqual(memoryDir.attributesStep({ dir, want: false, log: (l) => lines.push(l), why: 'x' }), 'removed');
+        assert.ok(!fs.existsSync(path.join(dir, '.gitattributes')));
+        assert.strictEqual(memoryDir.attributesStep({ dir, want: false, log: (l) => lines.push(l) }), 'none');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('attributes: git status shows memory/ under git and not under local', POSIX_ONLY, () =>
+{
+    const status = (repo) => git(repo, 'status', '--porcelain', '--untracked-files=all');
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [['--memory', 'docs'], ['--installed-only', '--docs-versioning', 'local']],
+        each: (repo, i) => { if (i === 0) seedMemory(memOf(repo), { 'MEMORY.md': '# m\n' }); return status(repo); },
+    });
+    assert.match(r.steps[0], /\.alfred\/docs\/memory\/MEMORY\.md/, r.steps[0]);
+    assert.match(r.steps[0], /\.alfred\/docs\/memory\/\.gitattributes/);
+    assert.doesNotMatch(r.steps[1], /\.alfred\/docs\/memory\//, r.steps[1]);
+});
+
+test('R10: two branches each adding a line to MEMORY.md merge clean', () =>
+{
+    const repo = real(fs.mkdtempSync(path.join(os.tmpdir(), 'mem-r10-')));
+    const g = (...a) => git(repo, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...a);
+    try
+    {
+        g('init', '-q', '-b', 'main');
+        const dir = path.join(repo, '.alfred', 'docs', 'memory');
+        assert.strictEqual(memoryDir.attributesStep({ dir, want: true, log: () => {} }), 'written');
+        fs.writeFileSync(path.join(dir, 'MEMORY.md'), '# Memory\n- first\n');
+        g('add', '-A');
+        g('commit', '-q', '-m', 'base');
+        g('checkout', '-q', '-b', 'a');
+        fs.appendFileSync(path.join(dir, 'MEMORY.md'), '- from a\n');
+        g('commit', '-q', '-am', 'a');
+        g('checkout', '-q', '-b', 'b', 'main');
+        fs.appendFileSync(path.join(dir, 'MEMORY.md'), '- from b\n');
+        g('commit', '-q', '-am', 'b');
+        g('checkout', '-q', 'a');
+        g('merge', '-q', '--no-edit', 'b');
+        const merged = fs.readFileSync(path.join(dir, 'MEMORY.md'), 'utf8');
+        assert.match(merged, /- from a\n/);
+        assert.match(merged, /- from b\n/);
+        assert.doesNotMatch(merged, /<<<<<<<|>>>>>>>/);
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
