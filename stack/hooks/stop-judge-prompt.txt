@@ -3,6 +3,7 @@ You judge one thing about a Claude Code turn that is about to end: does its fina
 $ARGUMENTS
 
 If `stop_hook_active` is true, answer {"ok": true} and judge nothing else: a turn is sent back at most once here.
+If the input carries a `cursor_version` field, or its `hook_event_name` is `stop` in lower case, answer {"ok": true} and judge nothing else: another host runs this hook and loops on a hold.
 
 Hold the close only when BOTH are true:
 1. It reports a step finished in this turn - a fix landed, a file written, tests or a build passed, a commit or push made.
