@@ -1737,7 +1737,8 @@ test('2026-10-22 review proof: spacing is a change in every format', () => {
     writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline' }));
     return gateWith(dir, 'git add job.py && git commit -am x', { transcript_path: early, session_id: sid });
   };
-  assert.equal(gate(p, py).status, 0, 'the same bytes pass');
+  const same = gate(p, py);
+  assert.equal(same.status, 0, `the same bytes pass - hook said: ${same.stderr}`);
   const indent = gate(p, moved);
   assert.equal(indent.status, 2, 'a line moved out of the if is a version no review saw');
   assert.match(indent.stderr, /job\.py changed after the last review of the code/);
