@@ -1731,6 +1731,11 @@ test('2026-10-22 review proof: spacing is a change in every format', () => {
   runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', session_id: sid, cwd: dir, tool_name: 'Skill', tool_use_id: 's60', tool_input: { skill: 'review-code' } }, {
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
   });
+  // the snapshot's git calls run under a 5s timeout: a loaded machine (the Windows VM under the whole suite) misses it,
+  // writes none, and the time rule then refuses the same bytes - say so instead of a bare exit 2
+  const { readReviewSnapshots } = require(path.join(HOOKS, 'hook-prelude.js'));
+  assert.equal(readReviewSnapshots(dir, sid, { ...process.env, CLAUDE_PROJECT_DIR: dir }).length, 1,
+    'the review snapshot was written (its git calls have 5s each - a loaded machine can miss it)');
   const text = fs.readFileSync(j, 'utf8');
   const gate = (file, body) => {
     fs.writeFileSync(file, body); fs.utimesSync(file, ago(10), ago(10));
