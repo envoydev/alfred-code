@@ -789,7 +789,7 @@ function transcriptScan() {
   // answer, its labels and when it landed; done: the tool_use ids of the review calls that counted; typedDone: when each
   // typed review that counted started.
   _scan = { ran: new Set(), labels: new Set(), typed: [], reviews: [], reviewSeat: false, codeReviews: [], answers: [], refused: new Set(),
-    done: new Set(), typedDone: [] };
+    done: new Set(), typedDone: [], unprovenFindings: [] };
   const tp = payload.transcript_path;
   if (!tp) return _scan;
   // A Skill or seat call counts once the scan is done, and only when its result was no error: a call another hook
@@ -1012,6 +1012,9 @@ function transcriptScan() {
     if (k.id) _scan.done.add(k.id);
     k.apply();
   }
+  // O9 (burn-down 2026-11-04): the Findings reviews run but never proven, by kind - a WAIVED refusal names none through a
+  // VERIFIED line, so it names these and the receipt route instead of only the waiver words.
+  _scan.unprovenFindings = [...new Set(open.filter((k) => reviewProof(k.review) === 'findings').map((k) => k.review))];
   return _scan;
 }
 // Is this exact string one of the assistant's own AskUserQuestion option labels? Compared with the
@@ -1068,6 +1071,10 @@ function answeredAt(label) {
 const REVIEW_NAMED_RE = /(?<![\w-])[\w-]*?(?:verify-(?:code|plan)|quality-loop|coverage-loop|loop-(?:quality|code-quality|architecture-quality|test-coverage(?:-quality)?)|review-(?:code|security))(?![\w-])/gi;   // older copy: the coverage loop's first name
 // a name with no kind is none: a prelude without the review words gives every name null, and null matched null (review 2026-10-23)
 const reviewsNamed = (line) => [...new Set([...String(line).matchAll(REVIEW_NAMED_RE)].map((m) => reviewKind(m[0])).filter(Boolean))];
+// The receipt writer as a result line (8889292a), said once for every refusal that names it.
+const receiptRoute = (n) => (n > 1
+  ? 'write the receipt with the checkpoint\'s receipt.js in its own call after the reviews, its output shown and no seat they sent still running: that call\'s `wrote` line is their result line; then commit in the next call'
+  : 'write the receipt with the checkpoint\'s receipt.js in its own call after the review, its output shown and no seat it sent still running: that call\'s `wrote` line is its result line; then commit in the next call');
 function reviewsNotRun(line) {
   const named = reviewsNamed(line);
   if (!named.length) return [];
@@ -1225,6 +1232,9 @@ function judgeReceipt(body, opts) {
     // (habits-commit-checkpoint), and an option label this run wrote is the model's sentence, not the user's.
     else if (!WAIVER_WORDS.test(w)) r.problem = `the WAIVED quote (${JSON.stringify(w).slice(0, 60)}) waives nothing - a waiver is the user's own words skipping the review ('skip the review', 'just push', 'commit it without the check'); an instruction to commit is no waiver`;
     else if (isOwnOptionLabel(w)) r.problem = 'the WAIVED quote is character-identical to an option label THIS run wrote - that is the model\'s sentence, not the user\'s waiver';
+    // O9 (burn-down 2026-11-04): a session whose reviews ran unseen went round the waiver words alone; name the route.
+    const unseen = r.problem && opts && opts.gate === 'COMMIT-GATE' ? transcriptScan().unprovenFindings : [];
+    if (unseen.length) r.problem += `. ${unseen.join(', ')} ran in this session but no result line reached the transcript - print ${unseen.length > 1 ? 'each report' : 'its report'} as text, or ${receiptRoute(unseen.length)}`;
     return r;
   }
 
@@ -1416,9 +1426,7 @@ function judgeReceipt(body, opts) {
     const ask = notRun.length > 1
       ? `Reviews you finished: print each review's report as text in a reply of its own - its ${lineName}, never only in thinking - then commit again`
       : `A review you finished: print the review's report in your reply - its ${lineName} as text, never only in thinking - then commit again`;
-    const route = kinds.size === 1 && kinds.has('findings') ? (notRun.length > 1
-      ? ' - or write the receipt with the checkpoint\'s receipt.js in its own call after the reviews, its output shown and no seat they sent still running: that call\'s `wrote` line is their result line; then commit in the next call'
-      : ' - or write the receipt with the checkpoint\'s receipt.js in its own call after the review, its output shown and no seat it sent still running: that call\'s `wrote` line is its result line; then commit in the next call') : '';
+    const route = kinds.size === 1 && kinds.has('findings') ? ` - or ${receiptRoute(notRun.length)}` : '';
     r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load. ${ask}${route}. If this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
   }
@@ -1676,6 +1684,17 @@ function prelude() { return require('./hook-prelude.js'); }
 // the pathspec - `.`, `-A`, `:/`, a directory, a glob); a pre-existing path in it is SWEPT unless the call names that
 // exact path, and a swept one passes only through UNTRACKED-ALLOW (a path, a directory ending in `/`, or `*`). A survey
 // (`-N`), a dry run, a patch or edit session and a tracked-only `-u` stage no untracked path and are not judged.
+// R173 (burn-down 2026-11-04): a dry run past its timeout read as 'the add will fail too', so on a loaded runner a broad
+// add swept untracked paths in unasked. A timed-out check now passes only an add whose every pathspec is an existing
+// file; any other asks once (UNTRACKED-ALLOW `*`). ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS is the tests' seam (5000 unset).
+const SWEEP_TIMEOUT_MS = Number(process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS) > 0 ? Number(process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS) : 5000;
+let sweepTimedOut = false;
+function exactFiles(args, cwd) {
+  if (args.some((a) => /^--pathspec-from-file\b/.test(a))) return false;
+  let rest = false;
+  const specs = args.filter((a) => { if (a === '--') { rest = true; return false; } return rest || !a.startsWith('-'); });
+  return specs.length > 0 && specs.every((a) => { try { return fs.statSync(path.resolve(cwd, a)).isFile(); } catch { return false; } });
+}
 function sweptPaths() {
   const before = preExisting();
   if (!before.size) return [];
@@ -1692,7 +1711,8 @@ function sweptPaths() {
     if (quiet) continue;
     const top = topOf(cwd);
     if (!top) continue;
-    const r = spawnSync(...gitSafe(['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    const r = spawnSync(...gitSafe(['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: SWEEP_TIMEOUT_MS, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    if ((r.error && r.error.code === 'ETIMEDOUT') || r.signal) { if (!exactFiles(args, cwd)) sweepTimedOut = true; continue; }
     if (r.error || r.status !== 0) continue; // the add itself will fail the same way - never block on it
     let rest = false;
     const named = new Set(args.filter((a) => { if (a === '--') { rest = true; return false; } return rest || !a.startsWith('-'); })
@@ -1705,10 +1725,27 @@ function sweptPaths() {
     }
   }
   const { lines } = allowLines('UNTRACKED-ALLOW');
+  if (lines.includes('*')) sweepTimedOut = false;
   return [...swept].filter((f) => !(lines.includes('*') || lines.includes(f) || lines.some((l) => l.endsWith('/') && f.startsWith(l))));
 }
 if (addCalls.length) {
   const swept = sweptPaths();
+  if (sweepTimedOut) {
+    global.BLOCK_DETAIL = { branch: 'untracked-sweep-timeout' };
+    const record = preExistingRecord();
+    process.stderr.write(
+      `Blocked: the check of what this git add would stage (git add --dry-run) timed out after ${SWEEP_TIMEOUT_MS}ms, so it cannot\n` +
+      `tell whether the add sweeps in paths that were untracked before this change started (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}).\n` +
+      `Stage the change's own files by name instead - git add <file> ..., each an existing file, is not judged. When the user\n` +
+      `wants everything staged, write ${path.relative(root, receiptWrite('UNTRACKED-ALLOW')).split(path.sep).join('/')} with these lines and retry the SAME command -\n` +
+      receiptLines(['*']) +
+      `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
+      `  'Stage only this session's files (Recommended)'\n` +
+      `  'Stage everything' - the user adds every untracked path to the change\n` +
+      `It is honoured for this session only, under 8h.\n` + allowLines('UNTRACKED-ALLOW').shut,
+    );
+    process.exit(2);
+  }
   if (swept.length) {
     global.BLOCK_DETAIL = { branch: 'untracked-sweep', count: swept.length };
     const rel = (name) => path.relative(root, receiptWrite(name)).split(path.sep).join('/');
