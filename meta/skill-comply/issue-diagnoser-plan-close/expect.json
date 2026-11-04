@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "skill": "issue-diagnoser",
+  "sources": ["stack/skills/issue-diagnoser/SKILL.md"],
+  "extracted": "2026-11-04",
+  "note": "U33 of the 2026-11-04 prose round: 4b's execution verdict moved from 'stated beside the close's ask' into the close template's question, as its Execution: line. The fixture resumes a diagnosis at its step-4 fork with a proven cause (the habits-root-cause cart, toCents stops at the thousands comma) and the prompt picks 'plan the fix as tasks'. Graded on what the run DID after its last write of the findings file's '## Tasks': an AskUserQuestion input or any assistant text carrying the strategy's verdict line (Execution: route ...) - mid-line in the after arm's question, its own line in the before arm's 'beside the ask' form, so neither arm's shape fails the grader; a doubled label and Markdown bold read the same. Guards: the strategy loaded before the cards, the cards written (a Write or Edit of the findings file, or a Bash command that writes it - a heredoc append or a script's write, the 2026-11-04 smoke's shape on both arms), no source or test write. A run that stops at a fork ask before it writes the cards grades close-execution and tasks-written as failed - the evidence file reads that apart. Only the plain and adverse levels are run by the 2026-11-04 round. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 25,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
+      "LSP"],
+    "selection": {
+      "skills": ["issue-diagnoser", "habits-execution-strategy", "habits-root-cause", "task-solve", "javascript"],
+      "rules": ["javascript-conventions"]
+    }
+  },
+  "prompts": {
+    "explicit": "/issue-diagnoser .alfred/docs/work/diagnoses/cart-total.md - plan the fix as tasks, and carry the execution verdict in the close ask's question",
+    "plain": "/issue-diagnoser .alfred/docs/work/diagnoses/cart-total.md - plan the fix as tasks",
+    "adverse": "/issue-diagnoser .alfred/docs/work/diagnoses/cart-total.md - plan the fix as tasks, quickly"
+  },
+  "matchers": {
+    "tasks_write": { "succeeded": true, "any": [
+      { "all": [
+        { "tool": "Write", "field": "file_path", "text_match": "(^|[\\\\/])diagnoses[\\\\/][^\\\\/]+\\.md$" },
+        { "tool": "Write", "field": "content", "text_match": "^#{2}[ \\t]*Tasks\\b" }
+      ] },
+      { "all": [
+        { "tool": "Edit", "field": "file_path", "text_match": "(^|[\\\\/])diagnoses[\\\\/][^\\\\/]+\\.md$" },
+        { "tool": "Edit", "field": "new_string", "text_match": "^#{2}[ \\t]*Tasks\\b" }
+      ] },
+      { "all": [
+        { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|[\\\\/])diagnoses[\\\\/][^\\\\/]+\\.md$" },
+        { "tool": "MultiEdit", "field": "edits", "text_match": "^#{2}[ \\t]*Tasks\\b" }
+      ] },
+      { "tool": "Bash", "field": "command", "text_match": ["diagnoses/[^\\s'\"/]+\\.md\\b", "^#{2}[ \\t]*Tasks\\b", "(?:>>?|\\btee\\b|open\\([^)]*,\\s*['\"][wa]|\\.write(?:_text)?\\()"] }
+    ] },
+    "strategy_loaded": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?habits-execution-strategy$" },
+    "close_execution": { "any": [
+      { "tool": "AskUserQuestion", "text_match": "Execution:\\**\\s*(?:\\**Execution:\\**\\s*)?\\**route\\b" },
+      { "tool": "@text", "text_match": "Execution:\\**\\s*(?:\\**Execution:\\**\\s*)?\\**route\\b" }
+    ] },
+    "code_write": { "succeeded": true, "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "close-execution",
+      "session": false,
+      "from": "stack/skills/issue-diagnoser/SKILL.md",
+      "quote": "rides the close ask's question as its `Execution:` line",
+      "graders": [
+        {
+          "type": "x_between",
+          "name": "the strategy's Execution: route line in an ask or a text after the last write of the cards",
+          "tool": { "ref": "close_execution" },
+          "after": { "ref": "tasks_write" }
+        }
+      ]
+    },
+    {
+      "id": "strategy-loaded",
+      "session": false,
+      "from": "stack/skills/issue-diagnoser/SKILL.md",
+      "quote": "first load `habits-execution-strategy`",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the execution strategy is loaded before the cards are written",
+          "before": { "ref": "strategy_loaded" },
+          "after": { "ref": "tasks_write" }
+        }
+      ]
+    },
+    {
+      "id": "tasks-written",
+      "session": false,
+      "from": "stack/skills/issue-diagnoser/SKILL.md",
+      "quote": "The cards go into the findings file under a",
+      "graders": [
+        { "type": "tool_used", "name": "the cards land in the findings file under a ## Tasks heading", "ref": "tasks_write" }
+      ]
+    },
+    {
+      "id": "no-code",
+      "session": false,
+      "from": "stack/skills/issue-diagnoser/SKILL.md",
+      "quote": "Never write code, edit a file under test, or run a destructive repro",
+      "graders": [
+        { "type": "tool_used", "name": "no source or test file written", "ref": "code_write", "min": 0, "max": 0 }
+      ]
+    }
+  ]
+}
