@@ -185,7 +185,8 @@ is answered by the run itself, never AskUserQuestion, by one rule:
   `refresh` state is destructive (its command replaces the account's existing status line); a
   `missing` one is not.
 - **Needs a person** means the option works only with free text typed via Other (a sibling list, a
-  name), or it ends the run on something a person must do (paste a fresh-session one-liner, restart).
+  name), or it ends the run on something a person must do (paste a fresh-session one-liner, restart),
+  or it would commit files nobody has read (the memory copy where git versions the docs: 'Start empty').
 - Then, and on an ask with no option marked Recommended, take the option that changes nothing (skip,
   none, stop here, run here); an ask with no such option is skipped with its step, and the close names
   it. A multi-select ask takes the options its question names as the default, a destructive one left out.

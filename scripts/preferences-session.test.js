@@ -1769,14 +1769,24 @@ test('start: the row in a settings.local.json git tracks - no memory line (D6: s
     finally { p.rm(); }
 });
 
+// An absolute place outside the project on every OS (Windows reads '/old/...' on the current drive).
+const OLD_PLACE = path.resolve('/old/place/memory');
+const OLD_SHOWN = OLD_PLACE.split(path.sep).join('/');
 test('start: docs with a stale value names /alfred-code:update', (t) =>
 {
-    const p = docsProject({ value: '/old/place/memory' });
+    const p = docsProject({ value: OLD_PLACE });
     try
     {
+        // The stack wrote it - its stamp row vouches - so the update re-points it.
+        p.write('.claude/alfred-code.stamp', `managed-settings: settings.local.json:autoMemoryDirectory=${require('../stack/hooks/layout.js').memoryRowHash(OLD_PLACE, p.root)}\n`);
         const lines = memoryLine(p.start());
-        assert.deepStrictEqual(lines, [`Memory: docs mode, but autoMemoryDirectory points at /old/place/memory here, so Claude's own memory is not in ${DOCS_MEMORY}/ this session - /alfred-code:update re-points it.`]);
+        assert.deepStrictEqual(lines, [`Memory: docs mode, but autoMemoryDirectory points at ${OLD_SHOWN} here, so Claude's own memory is not in ${DOCS_MEMORY}/ this session - /alfred-code:update re-points it.`]);
         t.diagnostic(`stale line: ${lines[0].length} chars`);
+        // No row vouches for it: the user's own value, named as such - no promise the update cannot keep (P3 review finding 4).
+        fs.rmSync(path.join(p.root, '.claude', 'alfred-code.stamp'));
+        const own = memoryLine(p.start());
+        assert.strictEqual(own.length, 1, own.join('\n'));
+        assert.match(own[0], /this session: \.claude\/settings\.local\.json sets its own autoMemoryDirectory - yours, so it stays\.$/);
     }
     finally { p.rm(); }
 });
@@ -1795,7 +1805,7 @@ test('start: docs with no value in the main checkout names /alfred-code:update',
 
 test('start: a seat\'s start never carries the memory line', () =>
 {
-    const p = docsProject({ value: '/old/place/memory' });
+    const p = docsProject({ value: OLD_PLACE });
     try
     {
         const seat = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a1', agent_type: 'general-purpose' });
@@ -1834,7 +1844,7 @@ test('start: default and custom modes - no new line', () =>
 {
     for (const mode of ['default', 'custom'])
     {
-        const p = docsProject({ mode, value: '/old/place/memory' });
+        const p = docsProject({ mode, value: OLD_PLACE });
         try { assert.deepStrictEqual(memoryLine(p.start()), [], mode); }
         finally { p.rm(); }
     }

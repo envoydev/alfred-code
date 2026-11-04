@@ -973,6 +973,15 @@ test('capture lint, validate and tools.js next never read an ancestor\'s doc - n
 // ---- memory P3: docs mode's lines, plan lines and validate rows (Task 5) -----------------------------------------------
 const layoutLib = require('../stack/hooks/layout.js');
 const REFUSAL = layoutLib.DOCS_MEMORY_REFUSAL;
+// An absolute place outside the project on every OS, and the 8.3-free spelling Claude Code's default place is named from.
+const OLD = path.resolve('/old/place/memory');
+const OLD_SHOWN = OLD.split(path.sep).join('/');
+const shownAt = (p) =>
+{
+    const at = fs.realpathSync.native(p);
+    const rel = path.relative(fs.realpathSync.native(os.homedir()), at);
+    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? `~/${rel.split(path.sep).join('/')}` : at.split(path.sep).join('/');
+};
 const rowHashOf = (value) => require('node:crypto').createHash('sha256').update(JSON.stringify(value)).digest('hex');
 // The sandbox's env without any stack key the runner carries, so the mode and versioning are the sandbox's own.
 const bareEnv = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith('ALFRED_CODE_')));
@@ -987,7 +996,7 @@ function docsSandbox({ mode = 'docs', row = true, versioning = null } = {})
     s.want = layoutLib.docsMemoryDir(s.root, { env: s.env });
     s.local = (value) => settingsAt(s, value, 'settings.local.json');
     s.stampRow = (value) => s.write(path.join(s.root, '.claude', 'alfred-code.stamp'), `managed-settings: settings.local.json:autoMemoryDirectory=${rowHashOf(value)}\n`);
-    s.defaultPlace = path.join(s.config, 'projects', s.root.replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+    s.defaultPlace = path.join(s.config, 'projects', fs.realpathSync.native(s.root).replace(/[^A-Za-z0-9]/g, '-'), 'memory');
     s.memory = (dir, files) => { for (const [name, text] of Object.entries(files)) s.write(path.join(dir, name), text); };
     s.lines = (memory = null) => tools.modeLines({ projectRoot: s.root, env: s.env, memory });
     s.rows = () => tools.validateRows(s.root, s.env).filter((r) => r.startsWith('!! memory'));
@@ -1019,9 +1028,9 @@ test('memory lines: docs refused, unset and stale each say what to run', () =>
     try
     {
         assert.strictEqual(s.lines()[0], 'memory: docs, but no autoMemoryDirectory is set here - /alfred-code:update writes it');
-        s.local({ autoMemoryDirectory: '/old/place/memory' });
-        s.stampRow('/old/place/memory');
-        assert.strictEqual(s.lines()[0], 'memory: docs, but autoMemoryDirectory points at /old/place/memory, not .alfred/docs/memory/ - /alfred-code:update re-points it');
+        s.local({ autoMemoryDirectory: OLD });
+        s.stampRow(OLD);
+        assert.strictEqual(s.lines()[0], `memory: docs, but autoMemoryDirectory points at ${OLD_SHOWN}, not .alfred/docs/memory/ - /alfred-code:update re-points it`);
         // The same value with no stamp row is the user's own: refused, and kept.
         fs.rmSync(path.join(s.root, '.claude', 'alfred-code.stamp'));
         assert.strictEqual(s.lines()[0], `memory: docs, but ${REFUSAL.own} - Claude's own memory stays at its default place`);
@@ -1062,7 +1071,7 @@ test('plan lines: memory-docs can or cannot be written; memory-copy only for an 
         assert.deepStrictEqual(plan(null), [CAN_GIT]);
         assert.deepStrictEqual(plan('docs'), [CAN_GIT], 'no old memory: no copy line');
         s.memory(s.defaultPlace, { 'MEMORY.md': '# m\n', 'debugging.md': 'd\n' });
-        assert.deepStrictEqual(plan('docs'), [CAN_GIT, `memory-copy: 2 memory files at ${s.defaultPlace}/, none at .alfred/docs/memory/`]);
+        assert.deepStrictEqual(plan('docs'), [CAN_GIT, `memory-copy: 2 memory files at ${shownAt(s.defaultPlace)}/, none at .alfred/docs/memory/`]);
         assert.deepStrictEqual(plan('custom'), [CAN_GIT], 'custom has no place to copy into');
         assert.deepStrictEqual(plan('default'), [CAN_GIT], 'the current place is no new place');
         s.memory(s.want, { 'MEMORY.md': '# already\n' });
@@ -1088,9 +1097,9 @@ test('validate: docs rows - refused, unset, stale, and a stack row left under de
     try
     {
         assert.deepStrictEqual(s.rows(), ['!! memory: ALFRED_CODE_MEMORY is docs, but no autoMemoryDirectory is set here - run /alfred-code:update to write it']);
-        s.local({ autoMemoryDirectory: '/old/place/memory' });
-        s.stampRow('/old/place/memory');
-        assert.deepStrictEqual(s.rows(), ['!! memory: ALFRED_CODE_MEMORY is docs, but autoMemoryDirectory points at /old/place/memory, not .alfred/docs/memory/ - run /alfred-code:update to re-point it']);
+        s.local({ autoMemoryDirectory: OLD });
+        s.stampRow(OLD);
+        assert.deepStrictEqual(s.rows(), [`!! memory: ALFRED_CODE_MEMORY is docs, but autoMemoryDirectory points at ${OLD_SHOWN}, not .alfred/docs/memory/ - run /alfred-code:update to re-point it`]);
         fs.rmSync(path.join(s.root, '.claude', 'alfred-code.stamp'));
         assert.deepStrictEqual(s.rows(), [`!! memory: ALFRED_CODE_MEMORY is docs, but ${REFUSAL.own} - Claude's own memory stays at its default place`]);
     }
@@ -1109,7 +1118,8 @@ test('validate: docs rows - refused, unset, stale, and a stack row left under de
     }
 });
 
-test('memory lines: a same-repo child sharing its member\'s docs memory - the shares line and plan line, no validate row', () =>
+// POSIX only: on Windows Claude Code reads the start folder's settings.local.json, so a same-repo child takes its own row.
+test('memory lines: a same-repo child sharing its member\'s docs memory - the shares line and plan line, no validate row', { skip: process.platform === 'win32' && 'win32 reads the start folder\'s file - no sharing' }, () =>
 {
     const s = docsSandbox();
     try
@@ -1168,7 +1178,7 @@ test('start: a linked worktree with no row on win32 gets the R6 line', (t) =>
     finally { s.done(); }
 });
 
-test('start: a same-repo child sharing its member\'s docs memory - no line', () =>
+test('start: a same-repo child sharing its member\'s docs memory - no line', { skip: process.platform === 'win32' && 'win32 reads the start folder\'s file - no sharing' }, () =>
 {
     const s = docsSandbox();
     try
@@ -1178,9 +1188,12 @@ test('start: a same-repo child sharing its member\'s docs memory - no line', () 
         s.write(path.join(child, '.alfred', 'workspace'), 'parent ..\n');
         s.write(path.join(s.root, '.alfred', 'workspace'), 'child api\n');
         assert.strictEqual(tools.memoryStartLine({ projectRoot: child, env: s.env, platform: 'linux' }), '');
-        // The member's row gone: the child shares nothing, and is told its memory is not in place.
+        // The member's row gone: the child shares nothing, and is told its memory is not in place - by the cause an update in
+        // the child would print (docs mode is written at the repository root), never a promise that it re-points it.
         s.local({});
-        assert.match(tools.memoryStartLine({ projectRoot: child, env: s.env, platform: 'linux' }), /^Memory: docs mode, but autoMemoryDirectory is not set here/);
+        const line = tools.memoryStartLine({ projectRoot: child, env: s.env, platform: 'linux' });
+        assert.match(line, /^Memory: docs mode, but Claude's own memory is not in .*this session: this project is below its repository root/);
+        assert.doesNotMatch(line, /alfred-code:update re-points/);
     }
     finally { s.done(); }
 });
@@ -1260,9 +1273,54 @@ test('modes CLI: --memory docs prints the preview and the plan lines', () =>
         assert.deepStrictEqual(r.stdout.trim().split('\n').slice(0, 3), [
             "memory: docs (preview) - Claude Code's own memory, in .alfred/docs/memory/ (committed with the docs)",
             CAN_GIT,
-            `memory-copy: 1 memory files at ${s.defaultPlace}/, none at .alfred/docs/memory/`,
+            `memory-copy: 1 memory files at ${shownAt(s.defaultPlace)}/, none at .alfred/docs/memory/`,
         ], r.stdout);
         assert.strictEqual(r.stderr, '');
+    }
+    finally { s.done(); }
+});
+
+// ---- P3 review fix pass -------------------------------------------------------------------------------------------
+// Finding 1: a teammate's stamp records the row by its place under the project, and validate still finds the stack's
+// leftover row after a switch away from docs.
+test('validate: a teammate\'s stamp row names the stack\'s leftover docs row after a switch to default', () =>
+{
+    const s = docsSandbox({ mode: 'default', row: false });
+    try
+    {
+        s.local({ autoMemoryDirectory: s.want });
+        const rel = path.relative(s.root, s.want).split(path.sep).join('/');
+        const other = path.join('/elsewhere', 'teammate', 'shop');
+        s.write(path.join(s.root, '.claude', 'alfred-code.stamp'), `managed-settings: settings.local.json:autoMemoryDirectory=${layoutLib.memoryRowHash(path.join(other, rel), other)}\n`);
+        assert.deepStrictEqual(s.rows(), ["!! memory: ALFRED_CODE_MEMORY is default, but the stack's autoMemoryDirectory is still in .claude/settings.local.json - run /alfred-code:update to remove it"]);
+    }
+    finally { s.done(); }
+});
+
+// Finding 4: the start line promises '/alfred-code:update re-points it' only where the update can - never for a value
+// that is the user's own, nor for one a higher setting (managed) puts over the stack's row.
+test('start: the user\'s own value, or a managed one over the stack\'s row, names the cause and promises no update', () =>
+{
+    const s = docsSandbox({ row: false });
+    try
+    {
+        s.local({ autoMemoryDirectory: '/mine/notes/memory' });
+        const own = tools.memoryStartLine({ projectRoot: s.root, env: s.env, platform: 'linux' });
+        assert.match(own, /^Memory: docs mode, but Claude's own memory is not in \.alfred\/docs\/memory\/ this session: .*yours, so it stays\.$/, own);
+        assert.doesNotMatch(own, /alfred-code:update/);
+        // The stack's row in place, a managed value over it.
+        s.local({ autoMemoryDirectory: s.want });
+        s.stampRow(s.want);
+        const managed = path.join(s.root, '..', 'managed-' + path.basename(s.root), 'managed-settings.json');
+        const policy = path.resolve('/srv/policy/memory');
+        s.write(managed, { autoMemoryDirectory: policy });
+        const over = tools.memoryStartLine({ projectRoot: s.root, env: s.env, platform: 'linux', managed });
+        assert.ok(over.startsWith(`Memory: docs mode, but autoMemoryDirectory points at ${policy.split(path.sep).join('/')} from`), over);
+        assert.match(over, /from a setting that outranks \.claude\/settings\.local\.json, so Claude's own memory is not in \.alfred\/docs\/memory\/ this session\.$/, over);
+        // A stale row of the stack's own still names the update.
+        s.local({ autoMemoryDirectory: OLD });
+        s.stampRow(OLD);
+        assert.match(tools.memoryStartLine({ projectRoot: s.root, env: s.env, platform: 'linux' }), /\/alfred-code:update re-points it\.$/);
     }
     finally { s.done(); }
 });

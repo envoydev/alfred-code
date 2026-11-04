@@ -149,12 +149,13 @@ function modesOf(root)
         return {
             memory: tools.memoryMode({ projectRoot: root }), ownNavigation: tools.jobOrder({ projectRoot: root, job: 'navigation' }).own,
             docsWritable: plan.some((l) => l.startsWith('memory-docs: can be written')), copyCount: copy ? Number(copy[1]) : 0,
+            docsCommitted: !plan.some((l) => /^memory-docs: can be written - .*, kept out of git$/.test(l)),
         };
     }
-    catch { return { memory: 'default', ownNavigation: false, docsWritable: false, copyCount: 0 }; }
+    catch { return { memory: 'default', ownNavigation: false, docsWritable: false, copyCount: 0, docsCommitted: true }; }
 }
 
-function unattended({ machine, captures, instructionsBoth, autoUpdate, memory = 'default', ownNavigation = false, docsWritable = false, copyCount = 0 })
+function unattended({ machine, captures, instructionsBoth, autoUpdate, memory = 'default', ownNavigation = false, docsWritable = false, copyCount = 0, docsCommitted = true })
 {
     const lines = [];
     const take = machine.filter((m) => m.state === 'missing').map((m) => m.what);
@@ -162,11 +163,18 @@ function unattended({ machine, captures, instructionsBoth, autoUpdate, memory = 
     for (const m of machine.filter((x) => DESTRUCTIVE_MACHINE.includes(x.state)))
         lines.push(`unattended: machine installs -> skip ${m.what} (a refresh replaces the account's existing status line - destructive)`);
     // Step 4 asks each only while its mode is the stack's default: a mode already chosen is configure's to change (D12).
-    // Docs mode is the Recommended answer wherever it can be written, and the copy of the old memory files with it.
+    // Docs mode is the Recommended answer wherever it can be written, and the copy of the old memory files with it - but
+    // where git versions the docs, the copy would commit this account's own memory files unread (P3 review finding 2), so
+    // an unattended run starts empty there; the old files stay at their place for configure's copy.
     if (memory === 'default')
     {
         lines.push(`unattended: Memory for this project? -> ${docsWritable ? "Native, in this repo's docs" : "Native, Claude's default place"} (Recommended)`);
-        if (docsWritable && copyCount > 0) lines.push(`unattended: Copy your ${copyCount} memory files to the new place? -> Copy them (Recommended)`);
+        if (docsWritable && copyCount > 0)
+        {
+            lines.push(docsCommitted
+                ? `unattended: Copy your ${copyCount} memory files to the new place? -> Start empty (the copy would commit this account's memory files with the docs, unread - they stay at their default place)`
+                : `unattended: Copy your ${copyCount} memory files to the new place? -> Copy them (Recommended)`);
+        }
     }
     if (!ownNavigation) lines.push("unattended: Navigation in files? -> Agent decides, the stack's order (Recommended)");
     lines.push('unattended: AGENTS.md -> fill it in (Recommended)');

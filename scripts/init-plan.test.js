@@ -414,13 +414,27 @@ test('unattended: a mode already chosen gets no line - step 4 asks only while it
 // Memory P3: where docs mode can be written, unattended init takes it, and the copy of the old memory files with it.
 const DOCS_LINE = "unattended: Memory for this project? -> Native, in this repo's docs (Recommended)";
 const DEFAULT_LINE = "unattended: Memory for this project? -> Native, Claude's default place (Recommended)";
-test('unattended: docs writable - docs and the copy, both Recommended', () =>
+test('unattended: docs writable and kept out of git - docs and the copy, both Recommended', () =>
 {
-    const lines = unattended({ machine: [], captures: [], docsWritable: true, copyCount: 2 });
+    const lines = unattended({ machine: [], captures: [], docsWritable: true, copyCount: 2, docsCommitted: false });
     assert.ok(lines.includes(DOCS_LINE), lines.join('\n'));
     assert.ok(lines.includes('unattended: Copy your 2 memory files to the new place? -> Copy them (Recommended)'), lines.join('\n'));
     assert.ok(!lines.includes(DEFAULT_LINE));
     assert.ok(!unattended({ machine: [], captures: [], docsWritable: true, copyCount: 0 }).some((l) => /Copy your/.test(l)), 'nothing to copy: no copy line');
+});
+
+// P3 review finding 2: under git the copy would commit the account's own memory files with the docs, and nobody reads
+// them on an unattended run - so it starts empty, the old files staying where they are. Unknown versioning is git's.
+const START_EMPTY = "unattended: Copy your 2 memory files to the new place? -> Start empty (the copy would commit this account's memory files with the docs, unread - they stay at their default place)";
+test('unattended: docs committed with git - docs mode, but the copy starts empty', () =>
+{
+    for (const docsCommitted of [true, undefined])
+    {
+        const lines = unattended({ machine: [], captures: [], docsWritable: true, copyCount: 2, ...(docsCommitted === undefined ? {} : { docsCommitted }) });
+        assert.ok(lines.includes(DOCS_LINE), lines.join('\n'));
+        assert.ok(lines.includes(START_EMPTY), lines.join('\n'));
+        assert.ok(!lines.some((l) => /Copy them/.test(l)), lines.join('\n'));
+    }
 });
 
 test('unattended: docs not writable - the default place, no copy line', () =>
@@ -444,7 +458,7 @@ test('unattended: the CLI reads docs writable and the copy count from the projec
     const root = project();
     spawnSync('git', ['init', '-q', root]);
     const acct = path.join(TMP, 'acct-docs');
-    const place = path.join(acct, 'projects', fs.realpathSync(root).replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+    const place = path.join(acct, 'projects', fs.realpathSync.native(root).replace(/[^A-Za-z0-9]/g, '-'), 'memory');
     fs.mkdirSync(place, { recursive: true });
     for (const name of ['MEMORY.md', 'feedback.md']) fs.writeFileSync(path.join(place, name), '# x\n');
     const inv = path.join(root, 'installed.json');
@@ -452,7 +466,12 @@ test('unattended: the CLI reads docs writable and the copy count from the projec
     const run = () => spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_UNATTENDED: '1', ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '', ALFRED_CODE_MEMORY: '' }, encoding: 'utf8' }).stdout;
     const out = run();
     assert.ok(out.includes(DOCS_LINE), out);
-    assert.match(out, /^unattended: Copy your 2 memory files to the new place\? -> Copy them \(Recommended\)$/m);
+    assert.ok(out.includes(START_EMPTY), out);
+    // Kept out of git (ALFRED_CODE_DOCS_VERSIONING=local): the copy is taken.
+    fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.alfred', '.variables'), 'ALFRED_CODE_DOCS_VERSIONING=local\n');
+    assert.match(run(), /^unattended: Copy your 2 memory files to the new place\? -> Copy them \(Recommended\)$/m);
+    fs.rmSync(path.join(root, '.alfred', '.variables'));
     // A tracked settings.local.json refuses docs mode: the default place, no copy line.
     fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), '{}\n');
     spawnSync('git', ['add', '-f', '.claude/settings.local.json'], { cwd: root });

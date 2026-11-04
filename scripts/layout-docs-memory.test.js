@@ -170,8 +170,10 @@ test('docsMemoryShare: a same-repo child inheriting docs shares its member\'s ro
     fs.writeFileSync(path.join(parent, '.alfred', '.variables'), 'ALFRED_CODE_MEMORY=docs\n');
     const dir = layout.docsMemoryDir(parent, { env: r.env });
     writeLocal(parent, { autoMemoryDirectory: dir });
-    const opts = { env: r.env, home: r.home, managed: r.managed };
+    // The POSIX rule (the repository root's file is read); win32 reads the start folder's, so a child shares nothing there.
+    const opts = { env: r.env, home: r.home, managed: r.managed, platform: 'linux' };
     assert.deepStrictEqual(layout.docsMemoryShare(child, opts), { member: '..', dir });
+    assert.strictEqual(layout.docsMemoryShare(child, { ...opts, platform: 'win32' }), null, 'win32 reads the start folder file');
     assert.strictEqual(layout.docsMemoryShare(parent, opts), null, 'the member itself holds its own mode');
     writeLocal(parent, {});
     assert.strictEqual(layout.docsMemoryShare(child, opts), null, 'the parent wrote no row');
@@ -183,4 +185,49 @@ test('docsMemoryShare: a same-repo child inheriting docs shares its member\'s ro
     assert.deepStrictEqual(layout.docsMemoryShare(child, { ...opts, env: applied }), { member: '..', dir }, 'the applied env is no value of the child\'s own');
     fs.writeFileSync(path.join(child, '.alfred', '.variables'), 'ALFRED_CODE_MEMORY=docs\n');
     assert.strictEqual(layout.docsMemoryShare(child, opts), null, 'the child\'s own docs is no share');
+});
+
+// P3 review finding 1: the stamp travels with a committed `.claude/`, so its row names the docs memory by its place under
+// the project, never by this machine's absolute path - a teammate's run records the hash this machine's value matches.
+test('memoryRowHash / memoryRowMatches: the row is the place under the project, the same on every machine', () =>
+{
+    const here = layout.memoryRowHash('/Users/a/code/shop/.alfred/docs/memory', '/Users/a/code/shop');
+    assert.match(here, /^[0-9a-f]{64}$/);
+    assert.strictEqual(layout.memoryRowHash('/home/b/work/shop2/.alfred/docs/memory', '/home/b/work/shop2'), here, 'another machine, another folder name');
+    assert.ok(layout.memoryRowMatches('/home/b/work/shop2/.alfred/docs/memory', here));
+    assert.ok(layout.memoryRowMatches('C:\\Users\\c\\shop\\.alfred\\docs\\memory', here), 'a Windows value');
+    assert.ok(!layout.memoryRowMatches('/home/b/work/shop2/.data/docs/memory', here), 'another place under the project');
+    assert.ok(!layout.memoryRowMatches('/home/b/notes/memory', here));
+    // An absolute row (a docs root outside the project) is matched by the value itself.
+    const outside = layout.memoryRowHash('/srv/shared/docs/memory', '/Users/a/code/shop');
+    assert.ok(layout.memoryRowMatches('/srv/shared/docs/memory', outside));
+    assert.ok(!layout.memoryRowMatches('/srv/other/docs/memory', outside));
+    for (const bad of [null, 42, '', {}]) assert.ok(!layout.memoryRowMatches(bad, here), String(bad));
+    assert.ok(!layout.memoryRowMatches('/x/.alfred/docs/memory', null));
+});
+
+// P3 review finding 3: an empty settings.local.json reads as {} (settings.js readSettings, the 2026-10-20 ruling), and a
+// file that cannot be read gets its own reason, never 'not valid JSON'.
+test('docsMemoryRefusal: an empty or whitespace settings.local.json is no refusal; an unreadable one says so', { skip: process.platform === 'win32' && 'chmod' }, () =>
+{
+    const r = repo('empty');
+    const wanted = layout.docsMemoryDir(r.root, { env: r.env });
+    for (const text of ['', '  \n', '\uFEFF'])
+    {
+        writeLocal(r.root, text);
+        assert.strictEqual(layout.docsMemoryRefusal(r.root, { wanted, home: r.home }), null, JSON.stringify(text));
+    }
+    writeLocal(r.root, '{}');
+    const file = path.join(r.root, '.claude', 'settings.local.json');
+    fs.chmodSync(file, 0o000);
+    try
+    {
+        let readable = true;
+        try { fs.readFileSync(file); } catch { readable = false; }
+        if (readable) return; // running as root: nothing is unreadable
+        const out = layout.docsMemoryRefusal(r.root, { wanted, home: r.home });
+        assert.strictEqual(out && out.why, 'unreadable');
+        assert.match(out.text, /cannot be read/);
+    }
+    finally { fs.chmodSync(file, 0o644); }
 });

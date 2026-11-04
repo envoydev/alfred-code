@@ -1799,7 +1799,10 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
             }
             const spot = settingAt(data, at);
             if (!spot || !Object.hasOwn(spot.holder, spot.key)) continue;
-            if (valueHash(JSON.stringify(spot.holder[spot.key])) !== hash) { log(`  ${name}: ${at} kept - changed since the stack wrote it, so it is yours`); continue; }
+            // Docs memory's row names its folder by the place under the project (layout.js memoryRowHash), never the value.
+            const same = at === 'autoMemoryDirectory' ? require('../../stack/hooks/layout.js').memoryRowMatches(spot.holder[spot.key], hash)
+                : valueHash(JSON.stringify(spot.holder[spot.key])) === hash;
+            if (!same) { log(`  ${name}: ${at} kept - changed since the stack wrote it, so it is yours`); continue; }
             dropSetting(data, at);
             changed = true;
         }

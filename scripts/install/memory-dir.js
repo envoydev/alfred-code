@@ -27,10 +27,12 @@ function memoryEnv(ctx)
     const name = String(process.env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim();
     return { CLAUDE_CONFIG_DIR: ctx.configDir, ...(name ? { CLAUDE_CODE_PROJECT_DIR_NAME: process.env.CLAUDE_CODE_PROJECT_DIR_NAME } : {}) };
 }
-const rowHash = (value) => stampLayer.valueHash(JSON.stringify(value));
+// The row names the folder by its place under the main checkout, so a stamp committed with .claude/ vouches for the same
+// row on every teammate's machine (layout.js memoryRowHash, P3 review finding 1).
+const rowHash = (value, root) => layout.memoryRowHash(value, layout.mainCounterpart(path.resolve(root)) || root);
 const priorRow = (ctx) => ((((ctx.ledger || {}).settings || {})[LOCAL]) || {})[KEY];
 // The value the stack wrote: the prior stamp's row, at its hash.
-const oursIn = (ctx) => (value) => priorRow(ctx) !== undefined && rowHash(value) === priorRow(ctx);
+const oursIn = (ctx) => (value) => priorRow(ctx) !== undefined && layout.memoryRowMatches(value, priorRow(ctx));
 const modeOf = (ctx) => layout.variablesOf(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir } }).values.ALFRED_CODE_MEMORY || 'default';
 
 // A path as the lines show it: project-relative, `~/`-relative, else in full.
@@ -56,13 +58,18 @@ function valueDir(value, home = os.homedir())
 }
 const showValue = (value, root) => { const dir = valueDir(value); return dir ? shown(dir, root) : String(value); };
 
-// The local file: { state: 'absent' | 'ok' | 'garbage', data }.
+// The local file: { state: 'absent' | 'ok' | 'garbage', data }. An empty one is {} (settings.js readSettings, the
+// 2026-10-20 ruling); one that cannot be read keeps the last run's row, as garbage does.
 function readLocal(file)
 {
     if (!fs.existsSync(file)) return { state: 'absent', data: null };
+    let text;
+    try { text = layout.readText(file); }
+    catch { return { state: 'garbage', data: null }; }
+    if (!text.trim()) return { state: 'ok', data: {} };
     try
     {
-        const data = JSON.parse(layout.readText(file));
+        const data = JSON.parse(text);
         return data && typeof data === 'object' && !Array.isArray(data) ? { state: 'ok', data } : { state: 'garbage', data: null };
     }
     catch { return { state: 'garbage', data: null }; }
@@ -210,7 +217,7 @@ function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
         const data = read.state === 'ok' ? read.data : {};
         data[KEY] = wanted;
         writeLocal(file, data);
-        ctx.memoryDirRow = rowHash(wanted);
+        ctx.memoryDirRow = rowHash(wanted, root);
         say(`${LOCAL}: autoMemoryDirectory written - ${want} (ALFRED_CODE_MEMORY is docs; Claude's own memory lives with the docs from the next session)`);
         for (const line of outrankLines(root, { wanted, env })) say(line);
         if (read.state === 'absent') warnUnignoredLocal(ctx, file);
@@ -223,7 +230,7 @@ function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
         const old = showValue(read.data[KEY], root);
         read.data[KEY] = wanted;
         writeLocal(file, read.data);
-        ctx.memoryDirRow = rowHash(wanted);
+        ctx.memoryDirRow = rowHash(wanted, root);
         say(`${LOCAL}: autoMemoryDirectory re-pointed - ${old} -> ${want} (the folder moved)`);
         for (const line of outrankLines(root, { wanted, env })) say(line);
         return { mode };

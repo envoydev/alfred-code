@@ -781,6 +781,7 @@ const DOCS_MEMORY_REFUSAL = Object.freeze({
     elsewhere: 'this project is below its repository root: Claude Code reads this project\'s .claude/settings.local.json only as a leftover beside the root\'s, for sessions started here, and the root\'s value wins - docs mode is written at a repository root only',
     tracked: '.claude/settings.local.json is tracked in git, so Claude Code reads it as the repository\'s - untrack it (git rm --cached .claude/settings.local.json, then add it to .gitignore) to allow docs mode',
     garbage: '.claude/settings.local.json is not valid JSON - fix it, then run /alfred-code:update again',
+    unreadable: '.claude/settings.local.json cannot be read - give it read access, then run /alfred-code:update again',
     own: '.claude/settings.local.json sets its own autoMemoryDirectory - yours, so it stays',
 });
 
@@ -807,8 +808,12 @@ function docsMemoryRefusal(root, { wanted, tracked = () => false, ours = () => f
     // Asked before the file is read: one git still indexes after the update removed it is tracked too (D11).
     if (tracked(file)) return refuse('tracked');
     if (!fs.existsSync(file)) return null;
+    // An empty file reads as {} (settings.js readSettings, the 2026-10-20 ruling); one that cannot be read is no JSON error.
+    let text;
+    try { text = readText(file); } catch { return refuse('unreadable'); }
+    if (!text.trim()) return null;
     let data;
-    try { data = JSON.parse(readText(file)); } catch { return refuse('garbage'); }
+    try { data = JSON.parse(text); } catch { return refuse('garbage'); }
     if (!data || typeof data !== 'object' || Array.isArray(data)) return refuse('garbage');
     if (!Object.hasOwn(data, 'autoMemoryDirectory')) return null;
     const value = data.autoMemoryDirectory;
@@ -820,6 +825,31 @@ function docsMemoryRefusal(root, { wanted, tracked = () => false, ours = () => f
         if (dir && dirKey(dir) === dirKey(wanted)) return null;
     }
     return refuse('own');
+}
+
+// The stamp's row for the stack's own `autoMemoryDirectory`: the folder named by its place under the project
+// (`<project>/.alfred/docs/memory`), never by this machine's absolute path - a stamp committed with `.claude/` reaches
+// teammates whose checkouts sit elsewhere, and an absolute hash read their stack-written value as their own (P3 review,
+// finding 1). A folder outside the project keeps its absolute form. `root` is the checkout the value was computed from.
+const memoryRowText = (form) => require('crypto').createHash('sha256').update(JSON.stringify(form)).digest('hex');
+function memoryRowHash(value, root)
+{
+    const v = String(value);
+    const rel = path.relative(realpathOrSelf(path.resolve(root)), realpathOrSelf(path.resolve(v)));
+    return memoryRowText(rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? `<project>/${rel.split(path.sep).join('/')}` : v);
+}
+// Whether a value is the one a row was recorded for: its absolute form (a row outside the project, or one an earlier
+// build recorded), else any trailing part of it as a place under the project - so a moved folder, a data-root move
+// and another machine's checkout all still read as the stack's.
+const MEMORY_ROW_DEPTH = 12;
+function memoryRowMatches(value, hash)
+{
+    if (typeof value !== 'string' || !value.trim() || typeof hash !== 'string' || !hash) return false;
+    if (memoryRowText(value) === hash) return true;
+    const parts = value.trim().split(/[\\/]+/).filter(Boolean);
+    for (let n = 1; n <= Math.min(parts.length, MEMORY_ROW_DEPTH); n++)
+        if (memoryRowText(`<project>/${parts.slice(-n).join('/')}`) === hash) return true;
+    return false;
 }
 
 // The top-level `.md` files of a memory folder, sorted; [] when it is absent or cannot be read.
@@ -908,6 +938,6 @@ module.exports = {
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
     memoryDirsOf, defaultMemoryDirs, memoryDirSetting, trustedMemoryDir, localSettingsFile, docsRootOf, topMember,
-    docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
+    docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

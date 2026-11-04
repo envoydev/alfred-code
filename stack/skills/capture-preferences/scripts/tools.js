@@ -868,6 +868,10 @@ function placeShown(projectRoot, abs, home = os.homedir())
     return inHome !== null ? `~/${inHome}` : at.split(path.sep).join('/');
 }
 const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
+// Whether a value is the one the stamp's row vouches for: through the loader's place-under-the-project match, else (a
+// loader too old to know it) the row as an absolute value.
+const rowMatches = (value, hash) => (typeof loader.memoryRowMatches === 'function' ? loader.memoryRowMatches(value, hash)
+    : hash !== null && sha256(JSON.stringify(value)) === hash);
 // The stamp's hash of the stack's own autoMemoryDirectory (the installer's ledger row, memory-dir.js), or null.
 function stackMemoryRow(projectRoot)
 {
@@ -893,7 +897,7 @@ function docsMemoryState({ projectRoot, env = process.env, tracked = gitTracked,
     if (!loader || typeof loader.docsMemoryDir !== 'function') return null;
     const dir = loader.docsMemoryDir(projectRoot, { env });
     const hash = stackMemoryRow(projectRoot);
-    const ours = (value) => hash !== null && sha256(JSON.stringify(value)) === hash;
+    const ours = (value) => hash !== null && rowMatches(value, hash);
     const versioning = loader.variablesOf(projectRoot, { env }).values.ALFRED_CODE_DOCS_VERSIONING === 'local' ? 'local' : 'git';
     return {
         dir, shown: placeShown(projectRoot, dir, home), versioning,
@@ -942,19 +946,29 @@ function memoryPlanLines({ projectRoot, env = process.env, target = null })
 // The main session's start line when docs mode is not in effect here (R6, and a value the folder's move left stale), else
 // ''. Files only, never a spawn (D6): a settings.local.json git tracks reads like any other, and validate names it. A
 // same-repo child sharing its member's docs memory is in effect (OD5). `<docs-path>` is shown from the main checkout.
-function memoryStartLine({ projectRoot, env = process.env, platform = process.platform, home = os.homedir() })
+function memoryStartLine({ projectRoot, env = process.env, platform = process.platform, home = os.homedir(), managed = undefined })
 {
     try
     {
         if (!loader || typeof loader.docsMemoryDir !== 'function' || memoryMode({ projectRoot, env }) !== 'docs') return '';
-        if (loader.docsMemoryShare(projectRoot, { env, home, platform })) return '';
+        if (loader.docsMemoryShare(projectRoot, { env, home, platform, ...(managed ? { managed } : {}) })) return '';
         const dir = loader.docsMemoryDir(projectRoot, { env });
-        const setting = loader.memoryDirSetting(projectRoot, { env, home, platform });
+        const setting = loader.memoryDirSetting(projectRoot, { env, home, platform, ...(managed ? { managed } : {}) });
         if (setting && loader.dirKey(setting) === loader.dirKey(dir)) return '';
         const docs = `${placeShown(loader.mainCounterpart(projectRoot) || projectRoot, dir, home)}/`;
         const top = loader.gitTopOf(projectRoot, { home });
         if (!setting && top && loader.worktreeMain(top))
             return `Memory: this worktree has no autoMemoryDirectory, so Claude's own memory reads and saves at its default place this session, not ${docs}.`;
+        // The update cannot change a value that is the user's own (P3 review finding 4): the line names the cause instead.
+        const refusal = loader.docsMemoryRefusal(projectRoot, { wanted: dir, ours: (v) => rowMatches(v, stackMemoryRow(projectRoot)), home, platform });
+        if (refusal) return `Memory: docs mode, but Claude's own memory is not in ${docs} this session: ${refusal.text}.`;
+        // Nor one a higher setting puts over the stack's row in place.
+        const read = loader.localSettingsFile(projectRoot, { home, platform });
+        const local = read ? readJsonFile(read) : null;
+        const row = local && typeof local === 'object' && typeof local.autoMemoryDirectory === 'string' ? local.autoMemoryDirectory.trim() : '';
+        const rowDir = /^~[\\/]/.test(row) ? path.join(home, row.slice(2)) : path.isAbsolute(row) ? path.resolve(row) : null;
+        if (setting && rowDir && loader.dirKey(rowDir) === loader.dirKey(dir))
+            return `Memory: docs mode, but autoMemoryDirectory points at ${placeShown(projectRoot, setting, home)} from a setting that outranks .claude/settings.local.json, so Claude's own memory is not in ${docs} this session.`;
         const value = setting ? `points at ${placeShown(projectRoot, setting, home)}` : 'is not set';
         return `Memory: docs mode, but autoMemoryDirectory ${value} here, so Claude's own memory is not in ${docs} this session - /alfred-code:update re-points it.`;
     }
@@ -1007,7 +1021,7 @@ function staleDocsRow(projectRoot, mode)
 {
     const hash = stackMemoryRow(projectRoot);
     const local = readJsonFile(path.join(projectRoot, '.claude', 'settings.local.json'));
-    if (!hash || !local || typeof local !== 'object' || !Object.hasOwn(local, 'autoMemoryDirectory') || sha256(JSON.stringify(local.autoMemoryDirectory)) !== hash) return [];
+    if (!hash || !local || typeof local !== 'object' || !Object.hasOwn(local, 'autoMemoryDirectory') || !rowMatches(local.autoMemoryDirectory, hash)) return [];
     return [`!! memory: ALFRED_CODE_MEMORY is ${mode}, but the stack's autoMemoryDirectory is still in .claude/settings.local.json - run /alfred-code:update to remove it`];
 }
 

@@ -23,7 +23,9 @@ const localOf = (repo) => json(path.join(repo, '.claude', 'settings.local.json')
 const settingsOf = (repo) => json(path.join(repo, '.claude', 'settings.json')) || {};
 const stampOf = (repo) => readOr(path.join(repo, '.claude', 'alfred-code.stamp')) || '';
 const modeOf = (repo) => ((layout.readDotenv(path.join(repo, '.alfred', '.variables')) || {}).values || {}).ALFRED_CODE_MEMORY;
-const rowHash = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+// The stamp's row names the docs memory by its place under the project - `<project>/<data>/docs/memory` - the same on every
+// machine (P3 review finding 1), never this machine's absolute path.
+const rowHash = (want) => crypto.createHash('sha256').update(JSON.stringify(`<project>/${want.split(path.sep).slice(-3).join('/')}`)).digest('hex');
 const stampRow = (repo) => (/settings\.local\.json:autoMemoryDirectory=([0-9a-f]{64})/.exec(stampOf(repo)) || [])[1] || null;
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
 const writeLocal = (repo, value) =>
@@ -40,7 +42,7 @@ test('docs: install --memory docs writes the absolute main-checkout path and its
     const r = seedRun('install', SEL, { args: ['--memory', 'docs'], inspect: docsInspect });
     assert.strictEqual(r.result.local.autoMemoryDirectory, r.result.want, r.out);
     assert.ok(path.isAbsolute(r.result.local.autoMemoryDirectory));
-    assert.strictEqual(r.result.row, rowHash(r.result.want), 'the stamp records the sha256 of the JSON string');
+    assert.strictEqual(r.result.row, rowHash(r.result.want), 'the stamp records the sha256 of the place under the project');
     assert.ok(!Object.hasOwn(r.result.settings, 'autoMemoryDirectory'), 'never the committed settings.json');
     assert.strictEqual(r.result.mode, 'docs');
     assert.match(r.out, /settings\.local\.json: autoMemoryDirectory written - \.alfred\/docs\/memory\/ \(ALFRED_CODE_MEMORY is docs; Claude's own memory lives with the docs from the next session\)/);
@@ -184,9 +186,10 @@ test('outrankLines: a managed autoMemoryDirectory is named as outranking the row
         assert.deepStrictEqual(memoryDir.outrankLines(root, { wanted, env, managed, home }),
             ['settings.local.json: autoMemoryDirectory outranks yours in .claude/settings.json - Claude\'s own memory goes to .alfred/docs/memory/; yours stays']);
         fs.mkdirSync(path.dirname(managed));
-        fs.writeFileSync(managed, JSON.stringify({ autoMemoryDirectory: '/corp/memory' }));
+        const corp = path.resolve('/corp/memory');
+        fs.writeFileSync(managed, JSON.stringify({ autoMemoryDirectory: corp }));
         const lines = memoryDir.outrankLines(root, { wanted, env, managed, home });
-        assert.ok(lines.includes('!! memory: a managed autoMemoryDirectory outranks .claude/settings.local.json here - Claude\'s own memory stays at /corp/memory, not .alfred/docs/memory/'), lines.join('\n'));
+        assert.ok(lines.includes('!! memory: a managed autoMemoryDirectory outranks .claude/settings.local.json here - Claude\'s own memory stays at ' + corp + ', not .alfred/docs/memory/'), lines.join('\n'));
     }
     finally { fs.rmSync(top, { recursive: true, force: true }); }
 });
@@ -292,7 +295,7 @@ function sameRepoChild()
     return { top, parent, child, lines, ctx };
 }
 
-test('docs: a same-repo workspace child sharing its parent\'s docs memory - no write, no !! line, no stamp row; a re-run changes nothing', () =>
+test('docs: a same-repo workspace child sharing its parent\'s docs memory - no write, no !! line, no stamp row; a re-run changes nothing', { skip: process.platform === 'win32' && 'win32 reads the start folder\'s file - the child takes its own row' }, () =>
 {
     const t = sameRepoChild();
     try
@@ -551,9 +554,40 @@ test('R10: two branches each adding a line to MEMORY.md merge clean', () =>
         g('checkout', '-q', 'a');
         g('merge', '-q', '--no-edit', 'b');
         const merged = fs.readFileSync(path.join(dir, 'MEMORY.md'), 'utf8');
-        assert.match(merged, /- from a\n/);
-        assert.match(merged, /- from b\n/);
+        assert.match(merged, /- from a\r?\n/);
+        assert.match(merged, /- from b\r?\n/);
         assert.doesNotMatch(merged, /<<<<<<<|>>>>>>>/);
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+// ---- P3 review fix pass -------------------------------------------------------------------------------------------
+// Finding 1: a team commits `.claude/`, so the stamp a teammate's run wrote reaches this checkout. Its row must still
+// vouch for this machine's stack-written value: a switch to default takes the row back, never keeps it as the user's.
+test('docs: a teammate\'s stamp (another checkout\'s run) still vouches for this machine\'s row - a switch to default removes it', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'install', 'update'], SEL, {
+        args: [['--memory', 'docs'], ['--memory', 'docs'], ['--memory', 'default']],
+        cwds: ['other', 'repo', 'repo'],
+        prepare: (repo) => { const other = path.join(path.dirname(repo), 'other'); fs.mkdirSync(other); git(other, 'init', '-q'); },
+        each: (repo, i) =>
+        {
+            const other = path.join(path.dirname(repo), 'other');
+            if (i === 1) fs.copyFileSync(path.join(other, '.claude', 'alfred-code.stamp'), path.join(repo, '.claude', 'alfred-code.stamp'));
+            return null;
+        },
+        inspect: docsInspect,
+    });
+    assert.ok(!(r.result.local && Object.hasOwn(r.result.local, 'autoMemoryDirectory')), r.outs[2]);
+    assert.match(r.outs[2], /autoMemoryDirectory removed - ALFRED_CODE_MEMORY is no longer docs/);
+    assert.doesNotMatch(r.outs[2], /yours/);
+});
+
+// Finding 3: an empty settings.local.json is read as {} (settings.js readSettings), so docs mode is written into it.
+test('docs: an empty settings.local.json takes the row', POSIX_ONLY, () =>
+{
+    const r = seedRun('install', SEL, { args: ['--memory', 'docs'], prepare: (repo) => writeLocal(repo, ''), inspect: docsInspect });
+    assert.strictEqual(r.result.local && r.result.local.autoMemoryDirectory, r.result.want, r.out);
+    assert.strictEqual(r.result.mode, 'docs');
+    assert.doesNotMatch(r.out, /not valid JSON/);
 });
