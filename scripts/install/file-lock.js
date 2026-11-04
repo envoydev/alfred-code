@@ -17,14 +17,20 @@ function takeLock(lock, { now, sleep, retryMs, staleMs })
     const start = now();
     for (;;)
     {
-        try
+        // A link at the lock's path is never opened: on Windows an exclusive create follows a dangling link and makes its
+        // target, so the lock was taken through it and an empty file written wherever it pointed (the gate's VM leg,
+        // 2026-11-04). A link waits out `retryMs` below like any lock this run cannot remove, on every OS.
+        if (!isLink(lock))
         {
-            fs.closeSync(fs.openSync(lock, 'wx'));
-            return true;
-        }
-        catch (e)
-        {
-            if (!e || e.code !== 'EEXIST') throw e;
+            try
+            {
+                fs.closeSync(fs.openSync(lock, 'wx'));
+                return true;
+            }
+            catch (e)
+            {
+                if (!e || e.code !== 'EEXIST') throw e;
+            }
         }
         // A lock this run cannot read or remove - a dangling link, a directory named like it, a read-only file on
         // Windows - waits out `retryMs` like a live one, never spins (R065). Only a lock gone by the time of the stat

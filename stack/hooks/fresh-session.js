@@ -361,6 +361,9 @@ function settleCompactPoints({ now = Date.now(), budgetBytes = SETTLE_BUDGET, ca
       let st = null;
       try { st = fs.statSync(file); } catch { /* missing */ }
       if (!st) { for (const r of rows) if (now >= Date.parse(r.at) + 600000) decide.set(pointKey(r), 'drop'); continue; }
+      // a transcript that is no plain file (a directory) waits, decided by nothing: on Windows a directory's size reads 0,
+      // so no read fails there and an empty window would drop its rows an hour on (the gate's VM leg, 2026-11-04)
+      if (!st.isFile()) continue;
       // one file that cannot be read (a directory, a lock) is skipped alone; the rest of the pass still decides (R131)
       try {
       // one window per run of rows under 15 min apart, so the hours between two compactions are never read
