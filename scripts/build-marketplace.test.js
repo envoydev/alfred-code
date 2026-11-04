@@ -136,69 +136,13 @@ test('the core carries every stack hook inline, its own two first in each event'
     assert.strictEqual(total(core.hooks), total(stack) + 4, 'nothing doubled, nothing lost');
 });
 
-// HK-22 (audit 2026-10-30): the stop judge ships as a `prompt` hook - a manifest row with `type: prompt`, its text read
-// from ONE file (stack/hooks/stop-judge-prompt.txt) so a later host adapter reads the same words. The row names the stop
-// contract's file, so it renders the same `file::matcher` spec as the command row: the command wiring takes it once.
-// Its `model` is LEFT OUT: the hook evaluator passes the field to the API as written, so the `haiku` alias failed every
-// call ('There's an issue with the selected model (haiku)', a non-blocking error - the judge never ran; measured in a live
-// `claude -p` session 2026-11-03), and a pinned id breaks on a provider whose Haiku carries another id. With none, Claude
-// Code runs its background model - Haiku on every provider (claude-haiku-5-5 on the Anthropic API, measured).
-test('HK-22: the stop judge is HELD - its prompt row is validated and left unwired, the regex done check decides', () => {
-    // The user's ruling of 2026-11-03 ('hold judge, keep regex'): a prompt hook runs no stack prelude, so it would judge
-    // every repo the plugin is enabled in. The row stays, held, so the day it ships is one key.
-    const core = coreEntry();
-    const prompts = Object.values(core.hooks).flat().flatMap((g) => g.hooks).filter((h) => h.type === 'prompt');
-    assert.deepStrictEqual(prompts, [], 'no prompt hook rides the core while the judge is held');
-    const text = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'stop-judge-prompt.txt'), 'utf8').trim();
-    assert.match(text, /\$ARGUMENTS/, 'the parked prompt still carries the hook input placeholder');
-    const stopContract = core.hooks.Stop.flatMap((g) => g.hooks).filter((h) => /guard-stop-contract\.js/.test(h.command || ''));
-    assert.strictEqual(stopContract.length, 1, 'the stop contract\'s command hook is wired once');
-    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks.filter((r) => r.type === 'prompt');
-    assert.deepStrictEqual(raw.map((r) => [r.file, r.matcher, r.active, r.held]), [['guard-stop-contract.js', '@Stop', false, true]],
-        'one prompt row, parked for the copy route and held for the plugin route');
-});
-
-test('HK-22: a prompt row that cannot ship fails the generator loudly', () => {
-    const fixture = (row, file) => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-row-'));
-        fs.mkdirSync(path.join(dir, 'meta'));
-        fs.mkdirSync(path.join(dir, 'stack', 'hooks'), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'meta', 'stack-manifest.json'), JSON.stringify({ hooks: [
-            { file: 'guard-stop-contract.js', matcher: '@Stop', event: '', note: 'x' },
-            { file: 'guard-stop-contract.js', matcher: '@Stop', event: '', type: 'prompt', prompt: 'judge.txt', timeout: 30, active: false, note: 'x', ...row },
-        ] }));
-        if (file !== null) fs.writeFileSync(path.join(dir, 'stack', 'hooks', 'judge.txt'), file === undefined ? 'Judge $ARGUMENTS' : file);
-        return dir;
-    };
-    const ok = fixture({});
-    assert.deepStrictEqual(parseHookWirings(ok).filter((w) => w.type === 'prompt'),
-        [{ type: 'prompt', file: 'guard-stop-contract.js', event: 'Stop', prompt: 'Judge $ARGUMENTS', timeout: 30 }]);
-    fs.rmSync(ok, { recursive: true, force: true });
-    const held = fixture({ held: true });
-    assert.deepStrictEqual(parseHookWirings(held).filter((w) => w.type === 'prompt'), [], 'a held row wires nothing');
-    fs.rmSync(held, { recursive: true, force: true });
-    const heldBad = fixture({ held: true, model: 'haiku' });
-    assert.throws(() => parseHookWirings(heldBad), /alias 'haiku'/, 'a held row is still validated');
-    fs.rmSync(heldBad, { recursive: true, force: true });
-    const pinned = fixture({ model: 'claude-haiku-5-5' });
-    assert.strictEqual(parseHookWirings(pinned).find((w) => w.type === 'prompt').model, 'claude-haiku-5-5', 'a full model id passes through');
-    fs.rmSync(pinned, { recursive: true, force: true });
-    for (const [row, file, why] of [
-        [{}, null, /cannot read the prompt/],
-        [{}, '  \n', /is empty/],
-        [{}, 'Judge the close.', /\$ARGUMENTS/],
-        [{ model: '' }, undefined, /empty model/],
-        [{ model: 'haiku' }, undefined, /alias 'haiku'/],
-        [{ model: 'sonnet[1m]' }, undefined, /alias 'sonnet\[1m\]'/],
-        [{ timeout: 0 }, undefined, /timeout/],
-        [{ matcher: '@SessionStart' }, undefined, /SessionStart takes no prompt hook/],
-        [{ matcher: 'Bash' }, undefined, /names no event/],
-        [{ prompt: '../judge.txt' }, undefined, /inside stack\/hooks/],
-    ]) {
-        const dir = fixture(row, file);
-        assert.throws(() => parseHookWirings(dir), why, JSON.stringify(row));
-        fs.rmSync(dir, { recursive: true, force: true });
-    }
+// HK-22 retired (2026-11-04): the Haiku stop judge missed its gate (median 125 of 161 against the regex's 122, flips 24;
+// docs/stop-judge-gate-evidence.md), so its row, its prompt file and the generator's prompt path went with it (D7).
+test('the manifest carries no prompt row and the generator no prompt path', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+    assert.strictEqual(manifest.hooks.some((r) => r.type === 'prompt'), false, 'no prompt row');
+    assert.strictEqual('promptWiring' in require('./build-marketplace.js'), false, 'no prompt path in the generator');
+    assert.strictEqual(fs.existsSync(path.join(__dirname, '..', 'stack', 'hooks', 'stop-judge-prompt.txt')), false, 'no prompt file');
 });
 
 test('mergeHooks keeps one group per matcher, the first block\'s hooks first', () => {
@@ -373,9 +317,7 @@ test('the core entry wires the library-stamp line at a startup, a clear and a re
 test('the README trust surface counts what the core entry carries', () =>
 {
     const core = coreEntry();
-    // A prompt hook runs no file (HK-22, the stop judge): it is a model call, which the doc names on a line of its own.
-    const all = Object.values(core.hooks).flat().flatMap((g) => g.hooks);
-    const files = new Set(all.filter((h) => h.type !== 'prompt')
+    const files = new Set(Object.values(core.hooks).flat().flatMap((g) => g.hooks)
         .map((h) => /\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/.exec(h.command)[1]));
     // A dispatcher is a runner, not a hook: the guards it runs in-process are the hooks.
     const dispatcher = require('../stack/hooks/shell-guards.js');
@@ -404,10 +346,6 @@ test('the README trust surface counts what the core entry carries', () =>
     if (dispatched) assert.match(row, new RegExp(`${word(dispatcher.GUARDS.length)} of them run in-process by one dispatcher \\(\`${dispatcher.SELF}\\.js\`\\)`), 'the row names the dispatcher that runs the shell guards');
     if (fileDispatched) assert.match(row, new RegExp(`${word(fileDispatcher.GUARDS.length)} by another \\(\`${fileDispatcher.SELF}\\.js\`\\) on the file tools`), 'and the one that runs the file guards');
     if (ridden) assert.match(row, /the turn build check \(`check-turn-build\.js`\) inside `history-session\.js`'s Stop/, 'and the hook that runs the turn check');
-    const judges = all.filter((h) => h.type === 'prompt');
-    const judgeLine = doc.split('\n').find((l) => /stop judge/.test(l)) || '';
-    // no `model` key runs Claude Code's background model (Haiku); a named one is a full id the doc spells out
-    for (const h of judges) assert.match(judgeLine, new RegExp(`${h.model ? `one \`${h.model}\` call` : 'one call to Claude Code\'s background model \\(Haiku'}[^.]*\`stack/hooks/stop-judge-prompt\.txt\``), 'the doc names the model call each prompt hook makes, and its text');
 });
 
 // Review finding 2: code.claude.com/docs/en/plugins-reference - 'If you declare `options` on any field,

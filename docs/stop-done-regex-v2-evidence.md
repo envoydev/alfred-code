@@ -128,4 +128,5 @@ hold. It marked 42 hold, 119 release, 1 unsure. Scored text-only by the same off
 - The live rate: each exemption that fires writes one `done-close-exempt` probe row naming it - `resume-unread`,
   `neutral-live-work` and the widened `own-work-running` included. A week of those rows is the production reading.
 - The user's own reading of the labels.
-- No billed model call ran: the judge was not re-run against the v2 corpus.
+- The judge against v2 was measured afterwards, in `docs/stop-judge-gate-evidence.md` (2026-11-04: it missed its gate
+  and was retired).

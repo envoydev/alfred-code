@@ -509,7 +509,7 @@ test('H9: quoted output is no pending item, a real one still holds, and an exemp
 });
 
 // --- Retune 3.7.1 (the user's ruling of 2026-11-03: hold the stop judge, keep the regex, cover more cases). A labelled
-// corpus of real closes, read on the judge's own criteria (stack/hooks/stop-judge-prompt.txt), set each change below; each
+// corpus of real closes, read on the stop judge's criteria (its prompt, retired 2026-11-04, is in git history), set each change below; each
 // fixture paraphrases a corpus close with its names replaced. The counts are in docs/stop-done-regex-v2-evidence.md.
 test('retune 3.7.1: the done half reads no future, earlier or quoted done word, and takes a first-person report of the work', () => {
   for (const [text, why] of [

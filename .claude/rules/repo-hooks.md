@@ -282,7 +282,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   THE STOP CHAIN (hooks audit 2026-10-08 S1): four hooks can block a `Stop` - the stop contract,
   docs-session, the turn build check (answer length did until 2026-10-20) and forge-session's ref watch on a loud ref
   move no gated act explains (audit 2026-10-30 HK-23: the chain was documented as three; the stop judge, a `prompt` hook,
-  is held - THE STOP JUDGE, under the stop contract) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
+  was held, then retired - THE STOP JUDGE, under the stop contract) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
   Code is already continuing as a result of a stop hook', code.claude.com/docs/en/hooks), so a hook that stood down on
   the flag alone never judged the close rewritten after a sibling's block. Each marks its own block (`hook-prelude.js`
   `markStopHeld`, a file under `ALFRED_CODE_HOOK_LOG_DIR` or the temp dir) and stands down on a continuation only when
@@ -1101,34 +1101,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     close carrying none of the labels passes - the stated limit, never a word list; the suites build such text from code
     points (`hook-test-env.js foreignWords`). Replayed text-only over all 3,482 closes (no transcript-backed exemption can
     run there) it holds 223 where the old reading held 448.
-    THE STOP JUDGE (audit 2026-10-30 HK-22), HELD since 2026-11-03 (the user's ruling: 'hold judge, keep regex'): a prompt
-    hook runs no stack prelude, so under the plugin's default user scope it would judge every repo, set up or not, and no
-    stand-down reaches it. The manifest row carries `held: true`: `promptWiring` still validates it and wires it on neither
-    route, and the regex DONE half holds as before, retuned instead (THE RETUNE, above: 18 of the 18 replayed closes
-    the judge scored 14 to 16 on). What follows is the judge as built, for the day the key goes. The regex DONE half
-    held 18 replayed closes 13 times wrong, and a Haiku judge over the same 18 scored 14 to 16 in three runs. It is a
-    Claude Code `prompt` hook on the core's Stop, beside this hook - its text `stack/hooks/stop-judge-prompt.txt` (one file,
-    for a later Cursor or Codex adapter), `timeout: 30` and NO `model`: the hook evaluator sends the field to the API as
-    written, so `model: haiku` failed every live call ('There's an issue with the selected model (haiku)', a non-blocking
-    error - the judge never ran; 2026-11-03), and with none Claude Code runs its background model, `claude-haiku-5-5` on the
-    Anthropic API (measured; lint 48b fails an alias, a full id passes) - parked in the manifest as an `active: false` `type: "prompt"` row
-    naming this file, so the plugin route alone would carry it (`build-marketplace.js promptWiring`, lint check 48b: a
-    prompt-capable event, no model alias, a whole-number timeout, `$ARGUMENTS`, the text equal to the file) and the copy route,
-    which wires command hooks only, has no judge. The prompt reads the Stop input (`last_assistant_message`,
-    `stop_hook_active`, `background_tasks`) and holds only a close that reports a step done AND leaves a next action owed
-    and unasked; it releases whenever `stop_hook_active` is true (once per turn, so it never adds to Claude Code's
-    8-continuation cap - and it also releases a close rewritten after a sibling's hold, the flag's known blind spot). Shipped, the regex reading would hold nothing: a close it reads as done-with-pending would write one
-    `kind: done-close-exempt` probe row naming the judge and pass, and a prose offer could draw two reasons in one cycle. No stack code runs in it:
-    `ALFRED_CODE_HOOKS_OFF` and `unattended()` cannot reach it, so it also runs under `claude -p` (one extra turn at most
-    per held close). It sees more than its hook input: a live reason cited the user's own instruction, which the input
-    does not carry, so a close the user dictated reads as the user's wish and passes. A hold feeds back 'Stop hook feedback:
-    [<the whole prompt>]: <reason>' - about 2,250 characters in the session's context per hold. Live check 2026-11-03
-    (`claude -p`, an exported plugin, an isolated account): held an offer and a 'say the word' close, released the
-    rewrite after each on the flag, released a 'Remaining: stage or commit' line, a clean close and an informational
-    answer; 0.7-3.9 s per Stop, about $0.003 of Haiku each. Claude Code has no per-hook switch for a
-    plugin hook ('There is no way to disable an individual hook while keeping it in the configuration',
-    code.claude.com/docs/en/hooks; `${user_config.*}` is not substituted into a prompt): `disableAllHooks` or disabling the
-    plugin turns it off with every other hook (`docs/install-footprint.md` names it once it ships). THE ASK-FIXED ROW WAITS (the hooks track's minor list):
+    THE STOP JUDGE (audit 2026-10-30 HK-22) is RETIRED (2026-11-04, decision D7): a Claude Code `prompt` hook asking Haiku
+    whether a close owes a step, measured against the retuned regex on 161 labelled closes - median 125 / min 123 right,
+    wrong holds up to 24, flips 24 across three runs against a bar of 132 / 127 / 20 / 8, the regex alone 122
+    (`docs/stop-judge-gate-evidence.md`). Its manifest row, prompt file, generator path and lint check left in the removal
+    commit; the regex done check above decides alone. THE ASK-FIXED ROW WAITS (the hooks track's minor list):
     PreToolUse hooks on one matcher run in parallel, and on `AskUserQuestion` the core lists the plugin's
     `guard-layer-table.js` first and this hook second - each a node start per ask, p50 28ms and 44ms on an 830KB
     transcript (measured 2026-10-20, this machine); since 2026-10-28 (F4) the layer gate's PreToolUse half judges only a

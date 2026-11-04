@@ -2,7 +2,8 @@
 
 HK-22's scoped build (`docs/superpowers/plans/2026-11-04-stop-judge-scoped.md`, git-ignored) shipped the prompt-hook
 judge only if it beat the retuned regex (v2, `docs/stop-done-regex-v2-evidence.md`) by a set bar. It did not:
-**GATE: FAIL**. The judge is retired per decision D7; the regex done-close reading stays as it is.
+**GATE: FAIL**. The judge is retired per decision D7; the regex done-close reading stays as it is. The prompt file and
+the replay runner named below left with it; git history holds both.
 
 ## What was run
 

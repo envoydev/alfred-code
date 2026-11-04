@@ -78,16 +78,6 @@ test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 an
         for (const b of blocks)
             for (const h of b.hooks)
             {
-                // Audit 2026-10-30 HK-22: the stop judge is the one `prompt` hook - a call to Claude Code's background model
-                // (Haiku) on Stop, no launcher, no file, and no `model` key: the evaluator sends an alias as written and fails.
-                if (h.type === 'prompt')
-                {
-                    assert.strictEqual(event, 'Stop', 'the stop judge is the only prompt hook, and it rides Stop');
-                    assert.deepStrictEqual(Object.keys(h).sort(), ['prompt', 'timeout', 'type']);
-                    assert.strictEqual(h.timeout, 30);
-                    assert.match(h.prompt, /\$ARGUMENTS/);
-                    continue;
-                }
                 assert.strictEqual(h.type, 'command');
                 // check-turn-build.js runs a real build at Stop - the one wiring allowed past 10s - and since 2026-10-16
                 // it rides history-session's Stop process, which takes its 60 (history-session.js wiringRows).
@@ -116,7 +106,7 @@ test('every generated hook command runs a non-executable script, under a root wi
     {
         const commands = new Set();
         for (const blocks of Object.values(coreEntry().hooks))
-            for (const b of blocks) for (const h of b.hooks) if (h.type === 'command') commands.add(h.command);   // the stop judge launches nothing (HK-22)
+            for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
         assert.ok(commands.size >= 14, `expected the seventeen hooks (the shell and file guards through their two dispatchers, the turn check through history-session's Stop) plus the core's own two, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)

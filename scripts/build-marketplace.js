@@ -204,55 +204,16 @@ function applyToMarketplace(mkt, entries, { retired = [] } = {})
 // and the Phase 1 and Phase 2 spikes measured that an inline block gives each entry its own hooks,
 // fired once, for all six event types the stack uses.
 
-// The events a `prompt` hook runs on (code.claude.com/docs/en/hooks, 'Prompt-based hooks', read 2026-11-03): every other
-// event skips one, and SessionStart and Setup take only command and mcp_tool hooks.
-const PROMPT_EVENTS = new Set(['PermissionDenied', 'PermissionRequest', 'PostToolBatch', 'PostToolUse', 'PostToolUseFailure', 'PreToolUse',
-    'Stop', 'SubagentStop', 'TaskCompleted', 'TaskCreated', 'TeammateIdle', 'UserPromptExpansion', 'UserPromptSubmit']);
-// The model aliases (code.claude.com/docs/en/model-config, 'Model aliases'). A prompt hook's `model` reaches the API as
-// written: `haiku` failed every call of the stop judge - 'There's an issue with the selected model (haiku)', a non-blocking
-// error, so the judge never ran (a live `claude -p` session, 2026-11-03). Leave `model` out for Claude Code's background
-// model (Haiku, on each provider's own id), or name a full model id.
-const MODEL_ALIASES = new Set(['default', 'best', 'fable', 'sonnet', 'opus', 'haiku', 'sonnet[1m]', 'opus[1m]', 'opusplan']);
-const modelAlias = (model) => typeof model === 'string' && MODEL_ALIASES.has(model.trim().toLowerCase());
-
-// A manifest row with `type: "prompt"` (audit 2026-10-30 HK-22, the stop judge) is a model call, not a script: Claude Code
-// sends its `prompt` with the hook input in place of `$ARGUMENTS` to `model` (or its background model) and reads back `{ok, reason}` (the same
-// page). Its text lives in ONE file under stack/hooks/, named by the row, so a later host adapter reads the same words;
-// the entry carries the text inline because a prompt hook reads no file. The row names the hook FILE whose half it
-// judges, so the installer's catalog and off-list see no new hook, and it is parked (`active: false`): the copy route
-// wires command hooks alone. Anything that cannot ship fails here, never as a hook that quietly judges nothing.
-function promptWiring(row, sourceDir)
-{
-    const where = `build-marketplace: the prompt row on ${row.file} ${row.matcher}`;
-    const at = String(row.matcher || '');
-    if (!at.startsWith('@')) throw new Error(`${where} names no event - a prompt row's matcher is @<Event>`);
-    const [event, matcher] = at.slice(1).split(':');
-    if (!PROMPT_EVENTS.has(event)) throw new Error(`${where}: ${event} takes no prompt hook`);
-    const hooksDir = path.join(sourceDir, 'stack', 'hooks');
-    const file = path.resolve(hooksDir, String(row.prompt || ''));
-    if (!row.prompt || path.dirname(file) !== hooksDir) throw new Error(`${where}: its prompt file must sit inside stack/hooks/, got '${row.prompt}'`);
-    let text;
-    try { text = fs.readFileSync(file, 'utf8').trim(); }
-    catch (err) { throw new Error(`${where}: cannot read the prompt ${row.prompt} - ${err.message}`); }
-    if (!text) throw new Error(`${where}: the prompt ${row.prompt} is empty`);
-    if (!/(^|[^\\])\$ARGUMENTS/.test(text)) throw new Error(`${where}: the prompt ${row.prompt} carries no $ARGUMENTS - the hook input would be appended after its answer format`);
-    if (row.model !== undefined && (typeof row.model !== 'string' || !row.model.trim())) throw new Error(`${where}: an empty model - leave the key out for Claude Code's background model`);
-    if (modelAlias(row.model)) throw new Error(`${where}: the model alias '${row.model}' reaches the API as written and fails - leave the key out for Claude Code's background model, or name a full model id`);
-    if (!Number.isInteger(row.timeout) || row.timeout < 1) throw new Error(`${where}: timeout must be a whole number of seconds`);
-    return { type: 'prompt', file: row.file, event, ...(matcher ? { matcher } : {}), prompt: text, ...(row.model !== undefined ? { model: row.model.trim() } : {}), timeout: row.timeout };
-}
-
 function parseHookWirings(sourceDir)
 {
     const dir = sourceDir || REPO;
     const manifest = loadManifest(dir);
     if (!manifest.catalogs.hooks.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
     const raw = (manifest.rows && Array.isArray(manifest.rows.hooks)) ? manifest.rows.hooks : [];
-    const isPrompt = (r) => Boolean(r) && r.type === 'prompt';
     // The shell guards' rows fold into ONE shell-guards.js row: one process per shell call, not eight - and the
     // file guards' into ONE file-guards.js row (2.1.5 M3): one process per file-tool call, not three - and the turn
-    // check's Stop row into history-session's (2026-10-16): one process per turn fewer. A prompt row is no command.
-    const rows = historySession.wiringRows(fileGuards.wiringRows(wiringRows(raw.filter((r) => !isPrompt(r)).map(renderHook))));
+    // check's Stop row into history-session's (2026-10-16): one process per turn fewer.
+    const rows = historySession.wiringRows(fileGuards.wiringRows(wiringRows(raw.map(renderHook))));
     const out = [];
     for (const line of rows)
     {
@@ -273,9 +234,6 @@ function parseHookWirings(sourceDir)
         if (args) wiring.args = args.split(/\s+/);
         out.push(wiring);
     }
-    // A HELD prompt row (`held: true`) is validated and left unwired: the stop judge waits behind the regex done check,
-    // the user's ruling of 2026-11-03 ('hold judge, keep regex') - its file and this route stay for the day it ships.
-    for (const row of raw.filter(isPrompt)) { const w = promptWiring(row, dir); if (row.held !== true) out.push(w); }
     if (!out.length) throw new Error('build-marketplace: the manifest hooks[] parsed to nothing');
     return out;
 }
@@ -291,11 +249,6 @@ function hooksBlock(wirings)
         {
             group = w.matcher === undefined ? { hooks: [] } : { matcher: w.matcher, hooks: [] };
             list.push(group);
-        }
-        if (w.type === 'prompt')
-        {
-            group.hooks.push({ type: 'prompt', prompt: w.prompt, ...(w.model !== undefined ? { model: w.model } : {}), timeout: w.timeout });
-            continue;
         }
         // A side-effect hook runs async, off the call's path (settings.js asyncFor). Its env gate stays inside the hook:
         // the copy route's `[ ... ] ||` shell test fails under PowerShell, the shell form's runner where Git Bash is
@@ -371,4 +324,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, mcpEntry, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PROMPT_EVENTS, modelAlias };
+module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, mcpEntry, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE };

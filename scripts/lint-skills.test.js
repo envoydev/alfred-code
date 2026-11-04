@@ -779,29 +779,15 @@ test('check 48: a core missing a stack wiring, or a core with no hooks, is a fin
     assert.ok(lintHooksEntry(none).some((f) => /no `alfred-code` entry/.test(f)), 'no core at all is caught');
 });
 
-// HK-22 (audit 2026-10-30): the stop judge is a `prompt` hook - no command, so the launcher shape does not apply; it is
-// held instead to a model, a timeout and the hook input's placeholder, and its text to the prompt file through the
-// generated block (a drifted text is a stale entry).
-test('check 48: a prompt hook needs a timeout and $ARGUMENTS, no model alias, and its text follows the prompt file', () => {
-    const { lintPromptHook, lintHooksEntry } = require('./lint-skills.js');
-    const good = { type: 'prompt', prompt: 'Judge $ARGUMENTS', timeout: 30 };
-    assert.deepStrictEqual(lintPromptHook(good, 'Stop'), [], 'no model: Claude Code\'s background model');
-    assert.deepStrictEqual(lintPromptHook({ ...good, model: 'claude-haiku-5-5' }, 'Stop'), [], 'a full id');
-    // measured 2026-11-03: the hook evaluator sends the field as written, and `haiku` failed every call
-    for (const alias of ['haiku', 'sonnet', 'opus', 'fable', 'best', 'default', 'opusplan', 'opus[1m]', ' Haiku '])
-        assert.ok(lintPromptHook({ ...good, model: alias }, 'Stop').some((f) => /model alias/.test(f)), alias);
-    assert.ok(lintPromptHook({ ...good, model: '' }, 'Stop').some((f) => /empty model/.test(f)));
-    assert.ok(lintPromptHook({ ...good, timeout: undefined }, 'Stop').some((f) => /no timeout/.test(f)));
-    assert.ok(lintPromptHook({ ...good, prompt: 'Judge the close.' }, 'Stop').some((f) => /\$ARGUMENTS/.test(f)));
-    assert.ok(lintPromptHook(good, 'SessionStart').some((f) => /SessionStart takes no prompt hook/.test(f)));
-    // The judge is HELD (the user's ruling of 2026-11-03): the live core carries no prompt hook, and one added to the
-    // entry by hand while the row is held is a stale entry.
+// HK-22 retired (2026-11-04): the stop judge left with its manifest row and the generator's prompt path, so a prompt
+// hook added to the core entry by hand is no wiring the manifest makes - a stale entry.
+test('check 48: a prompt hook added to the core by hand is a stale entry', () => {
+    const { lintHooksEntry } = require('./lint-skills.js');
     const drifted = liveMarketplace();
     const stop = drifted.plugins.find((p) => p.name === 'alfred-code').hooks.Stop;
-    assert.ok(!stop.flatMap((g) => g.hooks).some((h) => h.type === 'prompt'), 'the live core carries no prompt hook while the judge is held');
-    const text = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'stack', 'hooks', 'stop-judge-prompt.txt'), 'utf8').trim();
-    stop[0].hooks.push({ type: 'prompt', prompt: text, timeout: 30 });
-    assert.ok(lintHooksEntry(drifted).some((f) => /core entry's hooks are STALE/.test(f)), 'a prompt hook wired by hand while its row is held is caught');
+    assert.ok(!stop.flatMap((g) => g.hooks).some((h) => h.type === 'prompt'), 'the live core carries no prompt hook');
+    stop[0].hooks.push({ type: 'prompt', prompt: 'Judge $ARGUMENTS', timeout: 30 });
+    assert.ok(lintHooksEntry(drifted).some((f) => /core entry's hooks are STALE/.test(f)), 'a prompt hook wired by hand is caught');
 });
 
 test('check 49: the live file is clean, and a stale RETIRED alias, a renames key or a hooks entry fail', () => {
