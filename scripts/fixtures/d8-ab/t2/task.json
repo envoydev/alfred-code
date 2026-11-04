@@ -1,0 +1,30 @@
+{
+  "id": "t2",
+  "profile": "aspnet",
+  "base": "common/dotnet",
+  "model": "claude-opus-5-5",
+  "size": "standard",
+  "prompt": "/task-solve --mode-auto-run-on Add POST /orders/{id}/refund. Only callers with the refunds-approver role may refund: anonymous callers get 401, other roles 403. A refund marks the order Refunded and returns it; refunding an order twice returns 409.",
+  "second": null,
+  "suite": "dotnet build && dotnet test",
+  "rest": "dotnet build && dotnet test --filter FullyQualifiedName!~RefundAcceptanceTests",
+  "acceptance": "dotnet test --filter FullyQualifiedName~RefundAcceptanceTests",
+  "acceptanceCount": 4,
+  "oracle": ["tests/Api.Tests/RefundAcceptanceTests.cs"],
+  "trigger": { "text": "auth: the reference diff holds AddAuthorization and a policy", "grep": "AddAuthorization[\\s\\S]*AddPolicy" },
+  "rows": [1, 2],
+  "expect": {
+    "A": { "1": "session", "2": "session" },
+    "B": { "1": "seat", "2": "seat" },
+    "notSeparatedIfSeat": []
+  },
+  "estimate": 6.5,
+  "cap": 16,
+  "rubric": [
+    "Meets the request: every case it names works - 401 anonymous, 403 for other roles, 200 with the order marked Refunded, 409 on a second refund.",
+    "Correct: no regression in the other endpoints, and the implied edge cases handled (an unknown order, two refunds racing).",
+    "Tests: the change comes with tests that would fail without it.",
+    "Conventions: the project's own patterns (minimal API groups, typed results, the store interface) and the stack's idioms for authorization.",
+    "Scope: nothing unrequested is added or changed."
+  ]
+}

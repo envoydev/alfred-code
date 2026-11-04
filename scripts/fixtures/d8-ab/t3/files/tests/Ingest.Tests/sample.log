@@ -1,0 +1,19 @@
+2026-10-31T00:00:00Z INFO ingest started: business day 2026-10-31
+2026-10-31T00:00:04Z,ord-200001,West,ORDER,10.00,USD,store-01,t-01
+2026-10-31T00:00:09Z,ord-200002,"North, East",ORDER,25.50,USD,store-02,t-03
+2026-10-31T00:00:09Z WARN skipped line 3: amount not a number
+2026-10-31T00:00:15Z,ord-200003,Central,ORDER,7.25,USD,store-03,t-02
+2026-10-31T00:00:21Z,ord-200004,"South, West",ORDER,100.00,USD,store-04,t-05
+2026-10-31T00:00:21Z WARN skipped line 6: amount not a number
+2026-10-31T00:00:30Z,ord-200005,West,REFUND,2.50,USD,store-01,t-01
+2026-10-31T00:00:34Z,ord-200006,"North, East",REFUND,5.50,USD,store-02,t-03
+2026-10-31T00:00:34Z WARN skipped line 9: amount not a number
+2026-10-31T00:00:40Z,ord-200007,"Old Town, Center",ORDER,42.00,USD,store-05,t-07
+2026-10-31T00:00:40Z WARN skipped line 11: amount not a number
+2026-10-31T00:00:47Z,ord-200008,Central,ORDER,12.75,USD,store-03,t-02
+2026-10-31T00:00:52Z,ord-200009,"South, West",ORDER,0.99,USD,store-04,t-05
+2026-10-31T00:00:52Z WARN skipped line 14: amount not a number
+2026-10-31T00:01:00Z INFO ingest finished: 9 records, 5 skipped
+2026-10-31T00:01:00Z INFO totals for 2 regions
+2026-10-31T00:01:00Z INFO total Central: 20.00
+2026-10-31T00:01:00Z INFO total West: 7.50
