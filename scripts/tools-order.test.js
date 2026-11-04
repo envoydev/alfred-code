@@ -266,6 +266,49 @@ test('a doc that is a link is never read', { skip: process.platform === 'win32' 
     finally { s.done(); }
 });
 
+// R041: a job name is read in any case - `Navigation` is the default's own job, `Deny` the deny entry.
+test('Job: Navigation replaces the default, Job: Deny is the deny entry', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const body = ['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: Navigation', '- Order: Grep', '',
+            '## T2 - Not for agents', '<!-- id: t2 -->', '- Job: Deny', '- Deny: own:jetbrains', '- Why: kept with the main session'];
+        s.doc(body);
+        const text = ['# Tools preferences', '', 'Updated: 2026-10-24', '', ...body, ''].join('\n');
+        assert.deepStrictEqual(tools.parseToolsDoc(text).entries.map((e) => e.job), ['navigation', 'deny']);
+        assert.deepStrictEqual(tools.lintToolsDoc(text).problems, []);
+        const line = s.line();
+        assert.strictEqual(line.split('\n').filter((l) => /^- navigation\b/i.test(l)).length, 1, line);
+        assert.ok(line.includes('): Grep.'), line);
+        assert.ok(!/^- Deny\b/m.test(line), line);
+    }
+    finally { s.done(); }
+});
+
+// R042: a doc that is a link, or not a regular file, is named and never read - a FIFO would block the read.
+test('a symlinked tools doc is named, a FIFO doc skipped', { skip: process.platform === 'win32' && 'a symlink needs elevation, mkfifo is POSIX' }, () =>
+{
+    const s = sandbox();
+    try
+    {
+        const doc = path.join(s.root, DOC_REL);
+        fs.mkdirSync(path.dirname(doc), { recursive: true });
+        fs.writeFileSync(path.join(s.work, 'elsewhere.md'), '## T1 - Code navigation\n<!-- id: t1 -->\n- Job: navigation\n- Order: Grep\n');
+        fs.symlinkSync(path.join(s.work, 'elsewhere.md'), doc);
+        assert.match(s.line(), new RegExp(`^Tool order - the stack's defaults \\(${DOC_REL.replace(/\./g, '\\.')} is a link - not read\\)`));
+        const lint = spawnSync(process.execPath, [TOOLS, 'lint', '--project', s.root], { encoding: 'utf8', env: s.env, timeout: 10000 });
+        assert.ok(lint.stdout.includes(`${DOC_REL} is a link - not read`), lint.stdout);
+        fs.rmSync(doc);
+        assert.strictEqual(spawnSync('mkfifo', [doc]).status, 0, 'mkfifo');
+        const r = spawnSync(process.execPath, ['-e', `process.stdout.write(require(${JSON.stringify(TOOLS)}).toolsLine({ projectRoot: ${JSON.stringify(s.root)}, env: process.env }))`],
+            { encoding: 'utf8', env: s.env, timeout: 5000 });
+        assert.strictEqual(r.signal, null, 'the line never blocks on the FIFO');
+        assert.match(r.stdout, /is not a regular file - not read\)/, r.stdout);
+    }
+    finally { s.done(); }
+});
+
 test('toolsLine never throws', () =>
 {
     assert.strictEqual(tools.toolsLine({ projectRoot: null, env: {}, seat: null, suggest: false }), '');

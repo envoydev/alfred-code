@@ -1739,10 +1739,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     that resolve plus three of its problems, never a default; an over-cap one states nothing but its problem. The line has its own
     cap (`TOOLS_LINE_CAP`, 4,000 chars): past it the Load clauses go, then the tail, so the personal push before it and the
     line together stay well under Claude Code's hook-output cap. Once
-    per project with no doc it suggests `/capture-preferences tools` (`suggestOnce`, a `<data root>/state/tool-preferences/
-    suggested` marker; one that cannot be written says it again). Every SubagentStart but Claude Code's two guides
+    per project with no doc it suggests `/capture-preferences tools` (`wantsSuggest`, then `markSuggested` only when the line
+    sent carries it - an empty or cut line spends nothing, R043b; a `<data root>/state/tool-preferences/suggested` marker;
+    one that cannot be written says it again). A doc that is a link or not a regular file (a FIFO would block the read) is
+    never read and named in the line's source and by `tools.js lint` (R042); a `Job:` is read in any case (R041). Every SubagentStart but Claude Code's two guides
     (`claude-code-guide`, `statusline-setup`) gets the seat's own order after any doc push: a seat whose definition the hook
-    finds - the core's `stack/agents/<seat>.md` for `alfred-code:<seat>`, else the project's `.claude/agents/<name>.md` -
+    finds - the core's `stack/agents/<seat>.md` for `alfred-code:<seat>`, else the project's `.claude/agents/<name>.md`;
+    another plugin's `<plugin>:<seat>` from `agents/<seat>.md` under the install record in `installed_plugins.json` that
+    reaches this project, narrowest scope first (`pluginAgentFile`, R040) -
     only the ranks its `tools:` / `disallowedTools:` grant, with no load line when it has a `tools:` line; any other seat
     the main session's, no suggestion; a seat's own compaction re-sends its order. `preferences-session:tools` in
     `ALFRED_CODE_HOOKS_OFF` switches the line off and nothing else. Measured on a default install (no doc, no

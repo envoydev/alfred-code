@@ -197,7 +197,9 @@ function listServer(def, { env = process.env, pluginRoot = null, timeoutMs = 300
     if (kind === 'http' && d.url) return listHttp(expand(d.url, env, pluginRoot), { headers: expandMap(d.headers, env, pluginRoot), timeoutMs });
     if (!d.command) return Promise.resolve({ ok: false, why: 'no command or url' });
     const args = Array.isArray(d.args) ? d.args.map((a) => expand(a, env, pluginRoot)) : [];
-    const childEnv = { ...env, ...expandMap(d.env, env, pluginRoot) };
+    // Claude Code exports CLAUDE_PLUGIN_ROOT to a plugin's stdio server (plugins-reference, 'Where each variable resolves');
+    // the registration's own env still wins (R043a).
+    const childEnv = { ...env, ...(pluginRoot ? { CLAUDE_PLUGIN_ROOT: pluginRoot } : {}), ...expandMap(d.env, env, pluginRoot) };
     return listStdio(expand(d.command, env, pluginRoot), args, { env: childEnv, timeoutMs, ...(start ? { spawn: start } : {}), ...(d.cwd ? { cwd: expand(d.cwd, env, pluginRoot) } : {}) });
 }
 

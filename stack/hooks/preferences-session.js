@@ -1133,11 +1133,18 @@ function hostText() {
   return hostLines().join('\n');
 }
 // What the tool order resolves a seat against: its definition's frontmatter where the file is found - the core's own seat
-// beside this hook (`alfred-code:<seat>`), else the project's copy - and 'other' (the main session's reach) where not.
+// beside this hook (`alfred-code:<seat>`), else the project's copy; another plugin's seat from that plugin's install folder
+// (R040) - and 'other' (the main session's reach) where none is found.
 function seatOf(ctx, type) {
-  const m = /^(alfred-code:)?([\w-]+)$/.exec(String(type || ''));
+  const m = /^(?:([\w.-]+):)?([\w-]+)$/.exec(String(type || ''));
   if (!m) return 'other';
-  const files = [...(m[1] ? [path.join(__dirname, '..', 'agents', `${m[2]}.md`)] : []), path.join(ctx.home, '.claude', 'agents', `${m[2]}.md`)];
+  let files;
+  if (!m[1] || m[1] === 'alfred-code') files = [...(m[1] ? [path.join(__dirname, '..', 'agents', `${m[2]}.md`)] : []), path.join(ctx.home, '.claude', 'agents', `${m[2]}.md`)];
+  else {
+    const lib = toolsLib();
+    const file = lib && typeof lib.pluginAgentFile === 'function' ? lib.pluginAgentFile(ctx.home, m[1], m[2], process.env) : null;
+    files = file ? [file] : [];
+  }
   for (const file of files) {
     try {
       const fd = fs.openSync(file, 'r');
@@ -1153,8 +1160,11 @@ function toolsText(ctx, seat) {
   const lib = toolsLib();
   if (!lib) return '';
   try {
-    const suggest = seat === null && lib.suggestOnce(ctx.home);
+    // The one suggestion is spent only by a line that carries it (R043b); a tools.js copy older than the split marks first.
+    const split = typeof lib.wantsSuggest === 'function' && typeof lib.markSuggested === 'function';
+    const suggest = seat === null && (split ? lib.wantsSuggest(ctx.home) : lib.suggestOnce(ctx.home));
     const line = lib.toolsLine({ projectRoot: ctx.home, env: process.env, seat, suggest });
+    if (suggest && split && line.includes(lib.SUGGEST_LINE)) lib.markSuggested(ctx.home);
     // Custom memory with nothing to hold the lessons: the main session is told, a seat is not.
     const none = seat === null && lib.memoryMode({ projectRoot: ctx.home, env: process.env }) === 'custom'
       && !lib.jobOrder({ projectRoot: ctx.home, env: process.env, job: 'memory' }).ranks.length;

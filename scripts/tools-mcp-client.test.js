@@ -21,6 +21,7 @@ const tools = [
     { name: 'wipe', annotations: { destructiveHint: true }, inputSchema: { type: 'object', properties: {} } },
 ];
 if (mode === 'echoenv') tools.push({ name: String(process.env.FIXTURE_NAME), inputSchema: { type: 'object' } });
+if (mode === 'rootenv') tools.push({ name: 'root=' + String(process.env.CLAUDE_PLUGIN_ROOT), inputSchema: { type: 'object' } });
 let buf = '';
 process.stdin.on('data', (chunk) => {
     buf += chunk;
@@ -89,6 +90,22 @@ test('listServer expands ${VAR}, ${VAR:-default} and ${CLAUDE_PLUGIN_ROOT}', asy
     assert.ok(r.tools.some((t) => t.name === 'fallback'), JSON.stringify(r));
     assert.strictEqual(expand('${A}-${B:-b}-${C}', { A: 'a' }, null), 'a-b-');
     assert.strictEqual(expand('${CLAUDE_PLUGIN_ROOT}/x', {}, '/root'), '/root/x');
+});
+
+// R043a: Claude Code exports CLAUDE_PLUGIN_ROOT to a plugin's stdio server (plugins-reference, 'Where each variable
+// resolves'), so a listing starts the server the same way; a server no plugin declares gets none.
+test('a plugin server starts with CLAUDE_PLUGIN_ROOT', async () =>
+{
+    const env = { ...process.env };
+    delete env.CLAUDE_PLUGIN_ROOT;
+    const named = (r) => r.tools.map((t) => t.name).filter((n) => n.startsWith('root='));
+    const plugin = await listServer({ command: process.execPath, args: [FIXTURE, 'rootenv'] }, { env, pluginRoot: DIR });
+    assert.strictEqual(plugin.ok, true, JSON.stringify(plugin));
+    assert.deepStrictEqual(named(plugin), [`root=${DIR}`]);
+    const own = await listServer({ command: process.execPath, args: [FIXTURE, 'rootenv'] }, { env, pluginRoot: null });
+    assert.deepStrictEqual(named(own), ['root=undefined']);
+    const pinned = await listServer({ command: process.execPath, args: [FIXTURE, 'rootenv'], env: { CLAUDE_PLUGIN_ROOT: '/pinned' } }, { env, pluginRoot: DIR });
+    assert.deepStrictEqual(named(pinned), ['root=/pinned'], 'the registration\'s own env still wins');
 });
 
 test('listHttp initializes, echoes the session id and reads an SSE answer', async () =>
