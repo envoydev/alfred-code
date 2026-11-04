@@ -12,7 +12,7 @@ git config user.name fixture
 mkdir -p src/db/migrations src/orders src/http test .alfred/docs .claude
 printf '.alfred/\n.serena/\n.memory-mcp/\n' >> .gitignore
 cp -R "$HERE/fixtures/inputs/." .alfred/docs/
-node -e "const f='.claude/settings.local.json';const fs=require('fs');let o={};try{o=JSON.parse(fs.readFileSync(f,'utf8'))}catch{}o.env={...(o.env||{}),ALFRED_CODE_SCORER:'1'};fs.writeFileSync(f,JSON.stringify(o,null,2)+'\n')"
+node -e "const f='.claude/settings.local.json';const fs=require('fs');let o={};try{o=JSON.parse(fs.readFileSync(f,'utf8'))}catch{}o.env={...(o.env||{}),ALFRED_CODE_SCORER:'1',ALFRED_CODE_SCORER_ROUNDS:'1'};fs.writeFileSync(f,JSON.stringify(o,null,2)+'\n')"
 cat > package.json <<'JSON'
 { "name": "orders", "private": true, "scripts": { "test": "node --test" } }
 JSON

@@ -585,32 +585,34 @@ test('an output-scorer trace grades the seat, the script\'s next before the plan
     const plan = () => tool('Write', { file_path: '/w/.alfred/docs/work/plans/cancel-reason.md', content: '# plan' });
     const seat = () => tool('Agent', { subagent_type: 'alfred-code:output-scorer', prompt: 'score-file: /w/s.md' });
     const next = () => tool('Bash', { command: 'node "$S" next --root /w --session s1 --slug cancel --level 80 --rounds 3' });
+    // the seat's report graded before next (the 2026-11-04 prose round, sc-13: grade-after-return)
+    const graded = () => tool('Bash', { command: 'node "$S" grade /w/s.md --output designer-plan --level 80' });
     const answers = () => tool('Write', { file_path: '/w/.alfred/state/sessions/scorer/s1/cancel/answers.md', content: 'a' });
-    const good = jsonl([user('plan it'), seat(), next(), say('Scored: 91/100 (level 80) - 1 run(s) - independent - designer-plan'), plan()]);
+    const good = jsonl([user('plan it'), seat(), graded(), next(), say('Scored: 91/100 (level 80) - 1 run(s) - independent - designer-plan'), plan()]);
     assert.deepStrictEqual(failing(sc.grade(exp, good, { level: 'plain' })), []);
 
-    const early = jsonl([user('plan it'), plan(), seat(), next()]);
+    const early = jsonl([user('plan it'), plan(), seat(), graded(), next()]);
     assert.deepStrictEqual(failing(sc.grade(exp, early, { level: 'plain' })), ['script-decides']);
 
     const noSeat = jsonl([user('plan it'), next(), plan()]);
-    assert.deepStrictEqual(failing(sc.grade(exp, noSeat, { level: 'plain' })), ['grader-is-the-seat']);
+    assert.deepStrictEqual(failing(sc.grade(exp, noSeat, { level: 'plain' })), ['grader-is-the-seat', 'grade-after-return']);
 
     const withheld = 'Scored: 70/100 (level 80) - NOT PASSED after 3 run(s) - withheld at /w/d.md';
-    const leaked = jsonl([user('plan it'), seat(), next(), say(withheld), plan()]);
+    const leaked = jsonl([user('plan it'), seat(), graded(), next(), say(withheld), plan()]);
     assert.deepStrictEqual(failing(sc.grade(exp, leaked, { level: 'plain' })), ['no-plan-after-withhold']);
 
-    const second = jsonl([user('plan it'), seat(), next(), say(withheld), answers(), seat(), next(),
+    const second = jsonl([user('plan it'), seat(), graded(), next(), say(withheld), answers(), seat(), graded(), next(),
         say('Scored: 88/100 (level 80) - 4 run(s) - independent - designer-plan'), plan()]);
     assert.deepStrictEqual(failing(sc.grade(exp, second, { level: 'plain' })), []);
 
-    const third = jsonl([user('plan it'), seat(), next(), say(withheld), answers(), seat(), next(), say(withheld), answers()]);
+    const third = jsonl([user('plan it'), seat(), graded(), next(), say(withheld), answers(), seat(), graded(), next(), say(withheld), answers()]);
     assert.deepStrictEqual(failing(sc.grade(exp, third, { level: 'plain' })), ['one-more-attempt']);
 
     // the fix-on-pass offer: no plan until the answer's release line, whichever draft that release names
     const offered = 'Scored: 88/100 (level 80) - fix offered - 1 run(s) - independent - designer-plan';
-    const jumped = jsonl([user('plan it'), seat(), next(), say(offered), plan()]);
+    const jumped = jsonl([user('plan it'), seat(), graded(), next(), say(offered), plan()]);
     assert.deepStrictEqual(failing(sc.grade(exp, jumped, { level: 'plain' })), ['no-plan-while-fix-offered']);
-    const waited = jsonl([user('plan it'), seat(), next(), say(offered), seat(), next(),
+    const waited = jsonl([user('plan it'), seat(), graded(), next(), say(offered), seat(), graded(), next(),
         say('Scored: 90/100 (level 80) - 2 run(s) - independent - designer-plan'), plan()]);
     assert.deepStrictEqual(failing(sc.grade(exp, waited, { level: 'plain' })), []);
 });
