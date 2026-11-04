@@ -1,7 +1,9 @@
 'use strict';
 // Release 3's probe A5 against the REAL claude, logged out, in a throwaway CLAUDE_CONFIG_DIR and HOME (never the user's
 // account): the folder Claude Code keys a project by under `<config>/projects/`, beside the name R6's rule computes from
-// the git top - every character outside [A-Za-z0-9] as `-`, NFC, and past 200 characters the first 200 plus `-<hash>`.
+// the git top - every character outside [A-Za-z0-9] as `-`, NFC, and past 200 characters the first 200 plus `-<hash>`,
+// the hash base 36 of the absolute Java string hash of the path (R068: Claude Code 2.1.318's own rule; the cwd as typed on
+// Windows, the real path elsewhere).
 // An `InstructionsLoaded` hook from `--settings` (A9: it fires before the auth stop) writes its payload; its
 // `transcript_path` names the folder. Each case runs from its git top, typed as the case says.
 //   node memory-probe.js <claude>
@@ -25,15 +27,17 @@ const shell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(CLAUDE);
 
 const hookJs = path.join(work, 'hook.js');
 fs.writeFileSync(hookJs, "let s='';process.stdin.on('data',(d)=>{s+=d;}).on('end',()=>{require('fs').writeFileSync(process.argv[2],s);});\n");
+const hash = (p) => { let h = 0; for (let i = 0; i < p.length; i++) h = ((h << 5) - h + p.charCodeAt(i)) | 0; return Math.abs(h).toString(36); };
 const rule = (top) =>
 {
-    const name = top.normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
-    return name.length > 200 ? `${name.slice(0, 200)}-*` : name;
+    const spelled = top.normalize('NFC');
+    const name = spelled.replace(/[^A-Za-z0-9]/g, '-');
+    return name.length > 200 ? `${name.slice(0, 200)}-${hash(spelled)}` : name;
 };
 // On Windows Claude Code keeps the case the cwd was TYPED in, and NTFS opens a folder under any case: there the names are
 // compared case-folded, and each row also says whether R6's own spelling opens the folder.
 const fold = (n) => (process.platform === 'win32' ? n.toLowerCase() : n);
-const fits = (got, want) => (want.endsWith('-*') ? fold(got).startsWith(fold(want.slice(0, -1))) && got.length > want.length - 1 : fold(got) === fold(want));
+const fits = (got, want) => fold(got) === fold(want);
 
 // A folder name whose absolute path sanitizes to `total` characters.
 const padTo = (parent, total, stem) => stem + 'x'.repeat(Math.max(1, total - (parent.length + 1) - stem.length));
@@ -66,8 +70,8 @@ for (const c of cases)
         continue;
     }
     const got = path.basename(path.dirname(payload.transcript_path));
-    const want = rule(top);
-    const opens = want.endsWith('-*') ? '' : `, R6's spelling opens it: ${fs.existsSync(path.join(acct, 'projects', want)) ? 'yes' : 'no'}`;
+    const want = rule(process.platform === 'win32' ? cwd : top);
+    const opens = `, R6's spelling opens it: ${fs.existsSync(path.join(acct, 'projects', want)) ? 'yes' : 'no'}`;
     say(`${fits(got, want) ? 'PASS' : 'FAIL'} A5 ${c.label}: cwd typed '${cwd}' -> projects/${got} (R6: ${want}, ${got.length} chars${opens})`);
 }
 for (const d of fs.existsSync(path.join(acct, 'projects')) ? fs.readdirSync(path.join(acct, 'projects')) : []) say(`folder on disk: projects/${d}`);

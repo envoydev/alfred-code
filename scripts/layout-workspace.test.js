@@ -194,6 +194,10 @@ test('the kill switch is the caller\'s: workspaceChain reads the chain whatever 
 // The folder Claude Code keys a project by, as T1 measured it (docs/workspace-layering-evidence.md, A5): the git top
 // with every character outside [A-Za-z0-9] as `-`; `<S>` is the measured temp prefix, here the test's own.
 const sanitized = (p) => p.normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
+// Past 200 characters Claude Code (2.1.318, read from its own code for R068) keeps the first 200 and appends
+// `-<base36 of |the Java string hash of the git top as it spells it|>`; written out here so the test is no copy of layout.js.
+const ccHash = (p) => { let h = 0; for (const c of p.normalize('NFC')) for (let i = 0; i < c.length; i++) h = ((h << 5) - h + c.charCodeAt(i)) | 0; return Math.abs(h).toString(36); };
+const ccName = (p) => { const n = sanitized(p); return n.length <= 200 ? n : `${n.slice(0, 200)}-${ccHash(p)}`; };
 const memTree = (spec) =>
 {
     const at = tree(spec);
@@ -278,7 +282,7 @@ test('a garbage settings.json or a non-string autoMemoryDirectory / ALFRED_CODE_
     assert.strictEqual(layout.docsRootOf(m.at('p'), { env: m.env }), path.join(m.at('p'), '.alfred', 'docs'));
 });
 
-test('a 201-character name lists <first 200>-* and returns every match; 199 and 200 are exact', () =>
+test('a 201-character name is <first 200>-<hash of the git top>, the one folder Claude Code makes, whatever else shares the first 200 (R068); 199 and 200 are exact', () =>
 {
     const m = memTree({});
     const base = m.at('.');
@@ -294,11 +298,13 @@ test('a 201-character name lists <first 200>-* and returns every match; 199 and 
     const long = path.join(base, pad(201, 'len201-'));
     fs.mkdirSync(long); execFileSync('git', ['init', '-q'], { cwd: long });
     const head = sanitized(long).slice(0, 200);
-    assert.deepStrictEqual(layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed }), [], 'past 200: only folders that exist');
+    const want = [path.join(m.acct, 'projects', `${head}-${ccHash(long)}`, 'memory')];
+    for (const platform of ['darwin', 'linux'])
+        assert.deepStrictEqual(layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed, platform }), want, `${platform}: named before it exists`);
     for (const h of ['b5411q', 'zz09aa']) fs.mkdirSync(path.join(m.acct, 'projects', `${head}-${h}`, 'memory'), { recursive: true });
     fs.mkdirSync(path.join(m.acct, 'projects', `${head}x`), { recursive: true });
-    assert.deepStrictEqual(layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed }).sort(),
-        ['b5411q', 'zz09aa'].map((h) => path.join(m.acct, 'projects', `${head}-${h}`, 'memory')).sort());
+    for (const platform of ['darwin', 'linux'])
+        assert.deepStrictEqual(layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed, platform }), want, `${platform}: a sibling sharing the first 200 is not this project's`);
 });
 
 test('docsRootOf reads the ancestor\'s leftover ALFRED_CODE_DOCS_PATH, never the env\'s, else <dataRoot>/docs', () =>
@@ -361,7 +367,7 @@ test('workspaceMemoryOf: ignore memory root in the child or a nearer member drop
     assert.strictEqual(wsMem(m, 'ws/web'), null, 'one account-level folder is the child\'s own memory');
 });
 
-test('workspaceMemoryOf past 200 characters: a child sharing the root\'s first 200 cannot tell whose a folder is; with its own folder elsewhere, one match is the root\'s and two are none', () =>
+test('workspaceMemoryOf past 200 characters: a child sharing the root\'s first 200 still names the root\'s own folder (R068)', () =>
 {
     const m = memTree({});
     const base = m.at('.');
@@ -374,14 +380,13 @@ test('workspaceMemoryOf past 200 characters: a child sharing the root\'s first 2
     }
     const head = sanitized(ws).slice(0, 200);
     const api = path.join(ws, 'api');
-    const of = () => layout.workspaceMemoryOf(api, { env: m.env, home: m.home, managed: m.managed });
-    assert.strictEqual(of(), null, 'no folder yet');
-    fs.mkdirSync(path.join(m.acct, 'projects', `${head}-b5411q`, 'memory'), { recursive: true });
-    assert.strictEqual(of(), null, 'the child\'s own name lists the same folder');
-    fs.writeFileSync(path.join(api, '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: path.join(base, 'api-mem') }));
-    assert.strictEqual(of(), path.join(m.acct, 'projects', `${head}-b5411q`, 'memory'));
+    const of = (platform) => layout.workspaceMemoryOf(api, { env: m.env, home: m.home, managed: m.managed, platform });
+    const root = path.join(m.acct, 'projects', ccName(ws), 'memory');
+    assert.notStrictEqual(ccName(ws), ccName(api), 'two git tops, two folders');
+    assert.strictEqual(sanitized(api).slice(0, 200), head, 'the child shares the root\'s first 200');
+    for (const platform of ['darwin', 'linux']) assert.strictEqual(of(platform), root, `${platform}: no folder yet`);
     fs.mkdirSync(path.join(m.acct, 'projects', `${head}-zz09aa`, 'memory'), { recursive: true });
-    assert.strictEqual(of(), null, 'two matches: no line');
+    for (const platform of ['darwin', 'linux']) assert.strictEqual(of(platform), root, `${platform}: a third folder sharing the first 200 changes nothing`);
 });
 
 // A5 on Windows (2026-10-27): Claude Code keys the folder by the cwd's case as TYPED, and NTFS opens it under any case, so
@@ -395,8 +400,8 @@ test('memoryDirsOf past 200 on win32 lists a folder named in another case; on a 
     const typed = `${sanitized(long).slice(0, 200).toLowerCase()}-jungf8`;
     fs.mkdirSync(path.join(m.acct, 'projects', typed, 'memory'), { recursive: true });
     const of = (platform) => layout.memoryDirsOf(long, { env: m.env, home: m.home, managed: m.managed, platform });
-    assert.deepStrictEqual(of('win32'), [path.join(m.acct, 'projects', typed, 'memory')]);
-    assert.deepStrictEqual(of('darwin'), []);
+    assert.ok(of('win32').includes(path.join(m.acct, 'projects', typed, 'memory')), 'win32 lists the typed case');
+    assert.deepStrictEqual(of('darwin'), [path.join(m.acct, 'projects', ccName(long), 'memory')], 'darwin: the computed folder alone');
 });
 
 // ---- release 3 review: a child's linked worktree reads the chain its main checkout holds ----------------------------

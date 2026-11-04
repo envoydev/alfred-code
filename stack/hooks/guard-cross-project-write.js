@@ -319,8 +319,9 @@ function sameRepoWorktree(t) {
   const top = gitTopOf(t);
   return !!top && commonGitDir(top) === rootCommon;
 }
-// R8 (release 3): a linked workspace member's memory folder is read-only from here (D3) - every member's, every match
-// past 200 characters - so it is judged before the account-dir allowance that holds it. A folder that is also one of this
+// R8 (release 3): a linked workspace member's memory folder is read-only from here (D3) - every member's, past 200
+// characters the one `-<hash>` folder Claude Code names for it (R068; on Windows every `<first 200>-*` match) - so it is
+// judged before the account-dir allowance that holds it. A folder that is also one of this
 // project's own (a shared account-level value) is its own memory, and so is one of its own nested inside a member's.
 let memoryDirs;
 function memoryOf() {

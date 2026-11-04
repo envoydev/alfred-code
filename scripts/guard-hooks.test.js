@@ -5648,6 +5648,39 @@ test('guard-cross-project-write: an autoMemoryDirectory the account settings nam
   } finally { w.rm(); }
 });
 
+// R068 (burn-down 2026-11-04): past 200 characters every `<first 200>-*` folder was both the root's and the child's, so the
+// own-memory rule dropped them all and a child wrote into its root's memory. Claude Code names one folder per git top, its
+// hash written out here (Claude Code 2.1.318's own rule) so the test is no copy of layout.js.
+test('guard-cross-project-write: R068 past 200 characters a child\'s write into the root\'s memory is denied, before and after the folders exist; its own passes', { skip: process.platform === 'win32' && 'win32 lists every <first 200>-* folder (the typed case is unknown)' }, () => {
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'xp-long-')));
+  try {
+    const ws = path.join(top, 'w'.repeat(Math.max(1, 205 - (top.length + 1))));
+    const api = path.join(ws, 'api');
+    for (const [dir, file] of [[ws, 'child api\n'], [api, 'parent ..\n']]) {
+      fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n'); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+      spawnSync('git', ['init', '-q'], { cwd: dir });
+    }
+    const home = path.join(top, 'home');
+    const acct = path.join(home, '.claude');
+    fs.mkdirSync(acct, { recursive: true });
+    const hash = (p) => { let h = 0; for (let i = 0; i < p.length; i++) h = ((h << 5) - h + p.charCodeAt(i)) | 0; return Math.abs(h).toString(36); };
+    const mem = (p) => { const n = p.normalize('NFC').replace(/[^A-Za-z0-9]/g, '-'); assert.ok(n.length > 200); return path.join(acct, 'projects', `${n.slice(0, 200)}-${hash(p.normalize('NFC'))}`, 'memory'); };
+    const write = (file) => {
+      const env = { ...process.env, CLAUDE_PROJECT_DIR: api, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+      delete env.CLAUDE_CODE_PROJECT_DIR_NAME; delete env.ALFRED_CODE_WORKSPACE;
+      return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: api, input: JSON.stringify({ cwd: api, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env });
+    };
+    for (const made of [false, true]) {
+      if (made) for (const p of [ws, api]) fs.mkdirSync(mem(p), { recursive: true });
+      const r = write(path.join(mem(ws), 'MEMORY.md'));
+      assert.equal(r.status, 2, `folders made: ${made} - ${r.stderr}`);
+      assert.match(r.stderr, /memory of/, r.stderr);
+      assert.equal(write(path.join(mem(api), 'MEMORY.md')).status, 0, `its own memory, folders made: ${made}`);
+    }
+  } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
 // R071 (burn-down 2026-11-04): realpath fixes the case only of a folder that exists, and APFS opens either spelling.
 test('guard-cross-project-write: R071 a member memory path typed in another case is denied on darwin; the child\'s own memory path is allowed', { skip: process.platform !== 'darwin' && 'darwin-only' }, () => {
   const w = memWs();

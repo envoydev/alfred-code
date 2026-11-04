@@ -135,8 +135,9 @@ The stores and what each holds, where the docs root and the data root live, and 
   on Windows - then a leftover in the start folder (E-batch 300-memdirs: a sub-folder start read only its own), its
   `settings.json`, the account's; a leading `~` is the home folder), else `<account>/projects/<name>/memory`, `<name>`
   its git top (a linked worktree's main checkout) with every character outside `[A-Za-z0-9]` as `-`; past 200
-  characters Claude Code appends `-<hash>`, so the existing `<first 200>-*` folders are listed (probe A5,
-  `docs/workspace-layering-evidence.md`), and `CLAUDE_CODE_PROJECT_DIR_NAME` set means none. The line a child's start
+  characters Claude Code appends `-<hash>`, which `layout.memoryNameHash` computes (R068, the A5 re-run in
+  `docs/workspace-layering-evidence.md`; on Windows, where the hash is of the typed case, every `<first 200>-*` folder
+  is listed beside it), and `CLAUDE_CODE_PROJECT_DIR_NAME` set means none. The line a child's start
   shows is `layout.workspaceMemoryOf`: the top member's folder, none past an `ignore memory root`, unless exactly one
   folder matches, or when it is one of the child's own. The install opens the docs roots and denies their edit
   (`repo-installer.md`); the hooks read them and guard the memory (`repo-hooks.md`).

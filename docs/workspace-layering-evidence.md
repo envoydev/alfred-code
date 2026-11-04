@@ -178,11 +178,32 @@ Verdicts:
   The one place a name is compared as text is the past-200 listing: it now ignores case on win32
   (`layout.memoryDirsOf`, the test 'memoryDirsOf past 200 on win32 lists a folder named in another case'). This is the
   plan's 'Revisit when' ask, taken in auto-run on its recommended answer: R6 stands, with that case-folded listing.
-- Past 200 characters the suffix is a 6-character hash the stack cannot compute, so it lists `<first 200>-*`. A child
-  shares its root's first 200 characters, so its own list holds every root candidate: such a child gets no memory line
-  unless its own `autoMemoryDirectory` sets its folder apart (`layout.workspaceMemoryOf`). For the same reason neither
-  the Edit deny nor the write guard protects the root's memory there: both leave out the child's own folders, and these
-  are all of them. The same `autoMemoryDirectory` restores both, and the deny then covers every match.
+- Past 200 characters the suffix is a hash. Until R068 (2026-11-04) the stack listed `<first 200>-*`, and a child, which
+  shares its root's first 200 characters, held every root candidate as its own: no memory line, and neither the Edit
+  deny nor the write guard protected the root's memory. Superseded by the re-run below: the hash is computed.
+
+### A5 re-run - the past-200 hash (R068, 2026-11-04, Claude Code 2.1.318 macOS)
+
+Claude Code's own code (2.1.318) names the folder `<first 200>-<base 36 of |h|>`, `h` the Java string hash
+(`h = 31 * h + code unit`, 32-bit) of the path it keys by - the git top as Claude Code spells it: the real path on
+macOS, the cwd as typed on Windows (the table above). `memory-probe.js` now computes that name for every row and
+compares it exactly; logged out, so no model call.
+
+| Case | Computed | Made |
+|---|---|---|
+| sanitized 201 | `<first 200>-qmiiri` | `<first 200>-qmiiri` |
+| sanitized 201, lowercase-typed | `<first 200>-8lwbni`, real case | `<first 200>-8lwbni`, real case |
+
+macOS 8/8 PASS, every row exact. So `layout.memoryDirsOf` names the one folder past 200 characters, before it exists,
+and a child sharing its root's first 200 characters gets the root's folder as its memory line, and the Edit deny and the
+write guard cover it (tests 'a 201-character name is <first 200>-<hash of the git top>...', 'workspaceMemoryOf past
+200 characters...', 'guard-cross-project-write: R068 ...'). On Windows the hash is of the TYPED case, which no hook
+knows, so there it still lists every `<first 200>-*` folder (case ignored) beside the computed one - the old ceiling
+stands on Windows alone. Not run: the Windows re-run.
+
+R069, the same day, logged out: `CLAUDE_CODE_PROJECT_DIR_NAME=probe_x-1` beside a throwaway `CLAUDE_CONFIG_DIR` named the
+folder `probe_x-1`; `con`, `a/b`, a 65-character value and the value without `CLAUDE_CONFIG_DIR` each kept the derived
+folder - 5/5 PASS against `layout.projectDirNamed`.
 - A4 (a Read under `additionalDirectories` asks no permission) PASS, 2026-10-28, Claude Code 2.1.312, one logged-in
   `claude -p` run ($0.08 reported). The child was built as R3-1 builds it - a root install, `workspace.js role --answer
   child`, the child install with `--parent-plan` - from a clean export of develop e48e6ea3; its `settings.local.json`

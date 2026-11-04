@@ -704,9 +704,18 @@ function autoMemorySetting(root, { account, home, managed, trusted = false, untr
 }
 // The folder Claude Code keeps a project's auto memory in (A5, docs/workspace-layering-evidence.md): the setting, else
 // `<account>/projects/<name>/memory`, `<name>` the git top (a worktree's main checkout) with every character outside
-// [A-Za-z0-9] as `-`. Past 200 characters Claude Code cuts the name and appends `-<hash>`: every existing match is named.
+// [A-Za-z0-9] as `-`. Past 200 characters Claude Code keeps the first 200 and appends `-<hash>` (memoryNameHash).
 // [] when CLAUDE_CODE_PROJECT_DIR_NAME renames the folder and no setting names it.
 const MEMORY_NAME_MAX = 200;
+// The `<hash>` (R068, read from Claude Code 2.1.318's own code): base 36 of the absolute Java string hash of the git top
+// as Claude Code spells it - UTF-16 code units, 32-bit wrap. One folder per project, so a sibling sharing the first 200
+// characters is never taken for it.
+function memoryNameHash(p)
+{
+    let h = 0;
+    for (let i = 0; i < p.length; i++) h = ((h << 5) - h + p.charCodeAt(i)) | 0;
+    return Math.abs(h).toString(36);
+}
 // Claude Code's own rule for that name (code.claude.com/docs/en/sessions, 'Name the project directory yourself', read
 // 2026-11-04): only beside CLAUDE_CONFIG_DIR, and only 1-64 letters, digits, - or _ that spell no Windows device name;
 // any other value keeps the derived folder (R069).
@@ -728,17 +737,20 @@ function defaultMemoryDirs(root, { env = process.env, home = require('os').homed
     const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
     if (projectDirNamed(env)) return [];
     const top = gitTopOf(root, { home });
-    const name = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
+    const spelled = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC');
+    const name = spelled.replace(/[^A-Za-z0-9]/g, '-');
     const projects = path.join(account, 'projects');
     if (name.length <= MEMORY_NAME_MAX) return [path.join(projects, name, 'memory')];
     const head = `${name.slice(0, MEMORY_NAME_MAX)}-`;
-    // Claude Code names the folder from the cwd as TYPED, and on Windows that case need not be the real one (probe A5):
-    // NTFS opens the computed spelling under any case, but a listing compares names, so there it ignores case.
-    const fold = (n) => (platform === 'win32' ? n.toLowerCase() : n);
+    const exact = path.join(projects, `${head}${memoryNameHash(spelled)}`, 'memory');
+    if (platform !== 'win32') return [exact];
+    // Claude Code names the folder from the cwd as TYPED, and on Windows that case need not be the real one (probe A5),
+    // so neither the name's case nor its hash is known there: every `<first 200>-*` folder is listed, case ignored.
     let names = [];
-    try { names = fs.readdirSync(projects).filter((n) => fold(n).startsWith(fold(head)) && n.length > head.length); }
+    try { names = fs.readdirSync(projects).filter((n) => n.toLowerCase().startsWith(head.toLowerCase()) && n.length > head.length); }
     catch { /* no projects folder yet */ }
-    return names.sort().map((n) => path.join(projects, n, 'memory'));
+    const listed = names.sort().map((n) => path.join(projects, n, 'memory'));
+    return listed.some((d) => d.toLowerCase() === exact.toLowerCase()) ? listed : [exact, ...listed];
 }
 // The settings.local.json Claude Code reads in a git repository (settings docs, 'Where Claude Code keeps the local file
 // in a git repository', v2.1.211): the repository root's - a linked worktree's main checkout's - for every sub-folder;
@@ -926,7 +938,7 @@ function topMember(projectRoot, { env = process.env } = {})
 // R6: the workspace root's (the top member's) memory folder, read-only to a child. Null at a root or with the switch at 0,
 // past an `ignore memory root` here or in a nearer member (R0), unless exactly one folder matches, and when it is one of
 // the child's own (a shared account-level value): that is not the root's memory to show.
-function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env) } = {})
+function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
     if (!workspaceOn({ env, projectRoot })) return null;
     const chain = workspaceChain(chainProjectOf(projectRoot), { env });
@@ -934,9 +946,9 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
     if (!members.length) return null;
     const ignored = (ignores) => (ignores || []).some((i) => i.category === 'memory' && i.name === 'root');
     if (ignored(chain.ignores) || members.slice(0, -1).some((m) => ignored(m.ignores))) return null;
-    const found = memoryDirsOf(members[members.length - 1].root, { env, home, managed });
+    const found = memoryDirsOf(members[members.length - 1].root, { env, home, managed, platform });
     if (found.length !== 1) return null;
-    const own = new Set(memoryDirsOf(projectRoot, { env, home, managed }).map(dirKey));
+    const own = new Set(memoryDirsOf(projectRoot, { env, home, managed, platform }).map(dirKey));
     return own.has(dirKey(found[0])) ? null : found[0];
 }
 
