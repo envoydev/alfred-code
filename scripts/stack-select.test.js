@@ -1313,6 +1313,9 @@ test('F22: fresh shares call 1 while both sides fit in 4 questions', () =>
     assert.deepStrictEqual(split.map((l) => l.replace(/:.*/, '')),
         ['call 1 question 1 (add)', 'call 1 question 2 (add)', 'call 2 question 1 (drop)', 'call 2 question 2 (drop)', 'call 2 question 3 (drop)']);
     assert.deepStrictEqual(dealPick({ add: synth(1), drop: [] }, 'fresh'), ['deal: nothing to pick - re-ask step 1']);
+    // ws-5: both sides empty, and the drop side alone at one row, ask nothing either
+    assert.deepStrictEqual(dealPick({ add: [], drop: [] }, 'fresh'), ['deal: nothing to pick - re-ask step 1']);
+    assert.deepStrictEqual(dealPick({ add: [], drop: synth(1, 'recommended') }, 'fresh'), ['deal: nothing to pick - re-ask step 1']);
     assert.deepStrictEqual(dealPick({ add: synth(1), drop: synth(3, 'recommended') }, 'fresh'),
         ["add: none - 1 row; step 1's 'Add every ...' covers it", 'call 1 question 1 (drop): #1 r1, #2 r2, #3 r3']);
 });

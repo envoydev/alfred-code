@@ -2,6 +2,7 @@
 name: task-solve-cross
 description: "Use when work spans backend and frontend, a cross-stack bug, or to route agent seats - 'plan the agents for this'. Not for greenfield builds."
 disable-model-invocation: true
+argument-hint: "<the task, feature or bug>"
 ---
 
 # Project Solve Cross-Task - the Team-Lead Router for Engineering Work

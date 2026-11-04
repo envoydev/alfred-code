@@ -2,6 +2,7 @@
 name: task-solve
 description: "Use to run a task through the gated single-chat vertical - 'run the task cycle', 'build this with approvals', 'with my sign-off'. Not a one-line edit."
 disable-model-invocation: true
+argument-hint: "<the task, feature or bug>"
 ---
 
 # Solve Task - the gated single-chat vertical

@@ -29,7 +29,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   on disk and entries covering every plugin row the run stands for (the event, a matcher firing on each of the row's
   tools; the core entry's rows from the plugin root's `marketplace.json`, a guard run in-process by the plugin's
   dispatcher that dispatcher's row, the file dispatcher per call), and only entries wired when the SESSION BEGAN (E1-3:
-  Claude Code reads its hooks at start, so a twin written mid-session ran nothing while the plugin copy stood down) -
+  Claude Code reads its hooks at start, so a twin written mid-session ran nothing while the plugin copy stood down; the model can write that wiring itself under
+  `bypassPermissions`, which lets protected-path writes to `.claude/` through - code.claude.com/docs/en/permission-modes,
+  'Protected paths', read 2026-11-04, O5. Known ceiling, E1-3b: a repo that COMMITS a twin file and its wiring stands
+  the plugin copy down for that hook from the first session - the twin runs as the project's own hook once the user trusts
+  the folder, the trust that runs any hook it ships, and a hash against the plugin's file would also refuse every older
+  copy-route twin) -
   `<data root>/state/sessions/twins-<session>.json`, the `event|matcher|command` keys written by the fresh-session hook on
   SessionStart (startup, resume, clear, fork; a compaction keeps it), else by the first call naming the session in a
   set-up repo, or the first finding a twin in a repo never set up (exclusive create - the residual: a twin written before
