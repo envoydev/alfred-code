@@ -76,6 +76,13 @@ const LAUNCHER_POSIX_RE = /^'((?:[^']|'\\'')+)'( --env-file \/dev\/null)? '((?:[
 const LAUNCHER_GITBASH = 'exec "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/claude-hud/statusline.cmd"';
 const unquote = (word) => word.split("'\\''").join("'");
 
+// Every LAUNCHER text this repo has shipped, by the sha256 of its bytes (E-batch m2): a launcher on disk that matches one
+// is ours and is rewritten with the current text when the line is written; any other bytes - claude-hud's own install
+// copies its statusline.mjs to the same path - are kept. A change to LAUNCHER adds its sha here (a test holds it).
+const OWN_LAUNCHER_SHAS = new Set([
+    '60d6f88a5ea16e9111e25feadbc34f7d29ae21dfac7cf002c48998fb8ffc588e', // 1.0.0 - 3.6.0 (0b292803, 2026-09-25)
+    '51ee0125f53fb40c7e28727918d80e4a13b7ccdaede6f153fe7fb0214117aaa9', // 3.7.0 on - a moved plugins root (1bfdc5a8, 2026-11-03)
+]);
 // The Windows launcher, `<account>/plugins/claude-hud/statusline.mjs` (setup.md:237-293), reading a moved plugins root
 // as claude-hud 0.14.2's own scripts/statusline.mjs does.
 const LAUNCHER = String.raw`import fs from 'node:fs';
@@ -417,7 +424,7 @@ function addsNote(targets)
 
 // Everything the run would do, nothing written. `item` is init-plan's machine line state: skip,
 // blocked, missing, refresh (a claude-hud line of a stale shape will be replaced) or present.
-function planHud({ configDir, project, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog, runtimeVersion = versionOf })
+function planHud({ configDir, project, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog, runtimeVersion = versionOf, read = (p) => fs.readFileSync(p) })
 {
     const accountFile = path.join(configDir, 'settings.json');
     const account = readDoc(accountFile);
@@ -439,9 +446,14 @@ function planHud({ configDir, project, platform = process.platform, env = proces
     plan.entry = (catalog || readJsonFile(CATALOG) || { plugins: {} }).plugins[HUD] || { targets: [] };
     plan.writesLine = ['absent', 'stale'].includes(plan.statusLine.state);
     // One writer per file (audit 2026-11-03 PL-10): claude-hud's own `hud install` (0.15.0 install.mjs) copies its
-    // scripts/statusline.mjs to this same path, and its hud.mjs reads no launcher's text - so a launcher already there,
-    // whoever wrote it, is left as it is, and only a missing one is written.
-    plan.writesLauncher = plan.writesLine && Boolean(want.launcher) && !exists(want.launcher.file);
+    // scripts/statusline.mjs to this same path, and its hud.mjs reads no launcher's text - so a launcher someone else
+    // wrote is left as it is. A missing one is written, and an older one of ours (OWN_LAUNCHER_SHAS) is refreshed
+    // (E-batch m2); an unreadable path is no launcher of ours.
+    const ownOld = () => { try { const t = read(want.launcher.file); return OWN_LAUNCHER_SHAS.has(require('node:crypto').createHash('sha256').update(t).digest('hex')) && String(t) !== LAUNCHER; } catch { return false; } };
+    // The refresh does not wait for the line (final review M4): a pre-3.7.0 Windows install without Git Bash holds a current
+    // CMD line - unchanged since - beside the root-blind 1.0.0 launcher.
+    plan.refreshesLauncher = (plan.writesLine || plan.statusLine.state === 'current') && Boolean(want.launcher) && exists(want.launcher.file) && ownOld();
+    plan.writesLauncher = (plan.writesLine && Boolean(want.launcher) && !exists(want.launcher.file)) || plan.refreshesLauncher;
     // Only a runtime this run writes is checked; a line left as it is names its own.
     plan.runtimeMiss = plan.writesLine ? runtimeCheck({ runtime, newest: install.newest, runtimeVersion }) : null;
     // The row as it lands AFTER the statusLine write, which its refresh interval is gated on.
@@ -449,7 +461,7 @@ function planHud({ configDir, project, platform = process.platform, env = proces
     plan.changes = (plan.writesLine ? 1 : 0) + (plan.writesLauncher ? 1 : 0)
         + plan.targets.reduce((n, t) => n + (t.skipped ? 0 : t.rows.filter((r) => r.status === 'missing').length), 0);
     const note = [addsNote(plan.targets), plan.runtimeMiss && plan.runtimeMiss.note].filter(Boolean).join('; ');
-    if (plan.changes) plan.item = { state: plan.statusLine.state === 'stale' ? 'refresh' : 'missing', detail: null, note };
+    if (plan.changes) plan.item = { state: plan.statusLine.state === 'stale' || (plan.refreshesLauncher && !plan.writesLine) ? 'refresh' : 'missing', detail: null, note };
     else if (plan.statusLine.state === 'foreign')
         plan.item = { state: 'skip', detail: `the ${plan.where} statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; ${setupRoute(install.newest)} replaces it` };
     else plan.item = { state: 'present', detail: '' };
@@ -497,16 +509,16 @@ function applyHud(plan, run = {})
             return { code: 1, lines: [`hud: blocked - ${e.message} - nothing written; fix it and run this again`] };
         }
     }
+    if (plan.writesLauncher)
+    {
+        fs.mkdirSync(path.dirname(sl.launcher.file), { recursive: true });
+        fs.writeFileSync(sl.launcher.file, LAUNCHER);
+        lines.push(plan.refreshesLauncher ? `hud: launcher refreshed - ${sl.launcher.file} held an older one this stack wrote` : `hud: launcher written - ${sl.launcher.file}`);
+        changes += 1;
+    }
+    else if (plan.writesLine && sl.launcher) lines.push(`hud: launcher kept - ${sl.launcher.file} is there already`);
     if (plan.writesLine)
     {
-        if (plan.writesLauncher)
-        {
-            fs.mkdirSync(path.dirname(sl.launcher.file), { recursive: true });
-            fs.writeFileSync(sl.launcher.file, LAUNCHER);
-            lines.push(`hud: launcher written - ${sl.launcher.file}`);
-            changes += 1;
-        }
-        else if (sl.launcher) lines.push(`hud: launcher kept - ${sl.launcher.file} is there already`);
         const doc = plan.settings.doc || {};
         doc.statusLine = lineAfter(doc, sl.command);
         fs.mkdirSync(path.dirname(plan.settingsFile), { recursive: true });
@@ -568,7 +580,7 @@ function main(argv, { env = process.env, out = (s) => process.stdout.write(s) } 
     return res.code;
 }
 
-module.exports = { SHAPES, LAUNCHER, fill, classify, expected, sourceLabel, gitBash, nodeOnPath, versionOf, hudInstall, resolveConfigDir, planHud, applyHud, parseArgs, main };
+module.exports = { SHAPES, LAUNCHER, OWN_LAUNCHER_SHAS, fill, classify, expected, sourceLabel, gitBash, nodeOnPath, versionOf, hudInstall, resolveConfigDir, planHud, applyHud, parseArgs, main };
 
 if (require.main === module)
 {

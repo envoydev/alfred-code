@@ -35,6 +35,12 @@ SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast commen
 justification on a task card: a design decision whose only support is a letter of the acronym, with
 no breakage named, has not been argued.
 
+## Decomposition rules step 4 points to
+
+When the ask cites a spec row, a card or a spec file, that source is requirement too: every clause of a cited row and every Verify or Done-when bullet of a cited card maps to a task's `test:`, and the close's done gate demonstrates them.
+
+Where tasks may build in parallel, give every file two tasks would both edit - the route registry, a root config or DI composition root, a barrel or shared index - exactly one owning task, and forbid the rest from touching it.
+
 ## A customer-side bug
 
 A bug seen only on the customer's side - a report, a production log, never reproduced here - opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task: a fix to a symptom nobody reproduced is a guess.

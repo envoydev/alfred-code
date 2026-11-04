@@ -471,3 +471,13 @@ test('runtimeScripts: a double-quoted script keeps each backslash bash keeps, an
   const [js] = shell.runtimeScripts('node -e "console.log(\\"a\\\\b\\$c\\")"');
   assert.strictEqual(js.body, 'console.log("a\\b$c")', 'an escaped quote, backslash and dollar are undone');
 });
+
+// E1-2c (inventory A): unlink, shred, trash and trash-put remove files like rm, so each operand is a write target;
+// shred's -n / -s values are counts, never paths.
+test('E1-2c: unlink, shred and trash name their operands as writes', () => {
+  const targets = (c) => shell.scanShell(c, {}).targets.map((t) => t.raw);
+  for (const cmd of ['unlink a/f', 'shred -u a/f', 'trash a/f', 'trash-put a/f'])
+    assert.deepStrictEqual(targets(cmd), ['a/f'], cmd);
+  assert.deepStrictEqual(targets('shred -n 3 -u a/f'), ['a/f'], "shred's -n value is no path");
+  assert.deepStrictEqual(targets('shred --iterations 3 -s 1K a/f'), ['a/f'], "shred's --iterations and -s values are no paths");
+});

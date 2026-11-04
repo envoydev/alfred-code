@@ -203,7 +203,7 @@ function gitRevision(dir)
 }
 
 // The git top level of `cwd`, or '' - and '' when it is the HOME directory (`home`): a repo kept at $HOME is no project's
-// top, and the hooks' own reader (memory.js `gitTopOf`) skips it the same way, so a project below it without a `.git` is
+// top, and the hooks' own reader (layout.js `gitTopOf`) skips it the same way, so a project below it without a `.git` is
 // its launch directory for the installer as much as for them (2.1.6 seam review m3).
 function gitRoot(cwd, home)
 {

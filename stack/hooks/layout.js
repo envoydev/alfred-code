@@ -21,8 +21,9 @@ function envOf(env, suffix)
     return value === '' ? undefined : value;
 }
 
-// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
-const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a relative value
+// checkDataPath refuses reads as .alfred, an absolute one (a harness's scratch, which the installer refuses) is kept.
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
 const docsRoot = (env = process.env) => envOf(env, 'DOCS_PATH') || `${dataRoot(env)}/docs`;
 
 // A receipt the user's yes writes (the approval, the commit and push gates, every *-ALLOW) is an approval; every
@@ -220,9 +221,9 @@ function projectRootOf(start, { home = require('os').homedir() } = {})
 
 // One ALFRED_CODE_<suffix> setting as a script outside a session sees it: the shell env, then this machine's file before
 // the shared one, then the account's.
-function settingFrom({ env, projectDir, suffix, key })
+function settingFrom({ env, projectDir, suffix })
 {
-    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);
+    const read = (e) => envOf(e, suffix);
     const own = String(read(env) || '').trim();
     if (own || !projectDir) return own;
     const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
@@ -675,7 +676,9 @@ const readObject = (file) =>
 // R6: `autoMemoryDirectory` where Claude Code reads it first - the managed drop-ins (merged after the file in alphabetical
 // order, so the last wins), the managed file, the member's settings.local.json, its settings.json, the account's.
 // `trusted` reads only the files a cloned repo cannot ship - the managed ones, the account's, and the settings.local.json
-// Claude Code reads (localSettingsFile) when `untracked(file)` vouches for it.
+// Claude Code reads (localSettingsFile) when `untracked(file)` vouches for it. The untrusted read takes that same file
+// first, then a leftover in the start folder, then settings.json (E-batch 300-memdirs: a session started in a sub-folder
+// read the start folder's file alone, while Claude Code reads the repo root's - the main checkout's for a worktree).
 function autoMemorySetting(root, { account, home, managed, trusted = false, untracked = () => false, platform = process.platform })
 {
     const dropDir = path.join(path.dirname(managed), 'managed-settings.d');
@@ -683,7 +686,8 @@ function autoMemorySetting(root, { account, home, managed, trusted = false, untr
     try { drops = fs.readdirSync(dropDir).filter((n) => n.endsWith('.json') && !n.startsWith('.')).sort().reverse().map((n) => path.join(dropDir, n)); }
     catch { /* no drop-in folder */ }
     const local = trusted ? localSettingsFile(root, { home, platform }) : path.join(root, '.claude', 'settings.local.json');
-    const project = trusted ? (local ? [local] : []) : [local, path.join(root, '.claude', 'settings.json')];
+    const rootLocal = trusted ? null : localSettingsFile(root, { home, platform });
+    const project = trusted ? (local ? [local] : []) : [...new Set([rootLocal, local].filter(Boolean)), path.join(root, '.claude', 'settings.json')];
     for (const file of [...drops, managed, ...project, path.join(account, 'settings.json')])
     {
         const value = (readObject(file) || {}).autoMemoryDirectory;
@@ -701,11 +705,20 @@ function autoMemorySetting(root, { account, home, managed, trusted = false, untr
 // [A-Za-z0-9] as `-`. Past 200 characters Claude Code cuts the name and appends `-<hash>`: every existing match is named.
 // [] when CLAUDE_CODE_PROJECT_DIR_NAME renames the folder and no setting names it.
 const MEMORY_NAME_MAX = 200;
+// The `autoMemoryDirectory` Claude Code applies here, or null: the first read memoryDirsOf makes, with no trust filter.
+function memoryDirSetting(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
+{
+    return autoMemorySetting(root, { account: env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), home, managed, platform });
+}
 function memoryDirsOf(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
+    const set = memoryDirSetting(root, { env, home, managed, platform });
+    return set ? [set] : defaultMemoryDirs(root, { env, home, platform });
+}
+// The default place alone, whatever a setting names: what docs mode's switch back to default would use (memory P3).
+function defaultMemoryDirs(root, { env = process.env, home = require('os').homedir(), platform = process.platform } = {})
+{
     const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
-    const set = autoMemorySetting(root, { account, home, managed });
-    if (set) return [set];
     if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
     const top = gitTopOf(root, { home });
     const name = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
@@ -750,6 +763,118 @@ function docsRootOf(root, { env = process.env, dataRoot } = {})
     }
     const data = dataRoot || dataRootOf(root, { env: { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR } });
     return path.resolve(root, ...data.split('/'), 'docs');
+}
+
+// ---- memory P3: Claude Code's own memory in the docs root (ALFRED_CODE_MEMORY=docs) ----------------------------------
+// The installer (scripts/install/memory-dir.js), tools.js and the session start read the place, the setting and the
+// refusal from here alone, so the three never disagree. Nothing here spawns: the git tracked check is the caller's.
+
+// `<docs root>/memory` of the MAIN checkout, absolute and real: one folder for a checkout and each linked worktree.
+function docsMemoryDir(root, { env = process.env } = {})
+{
+    return realpathOrSelf(path.join(docsRootOf(mainCounterpart(path.resolve(root)) || path.resolve(root), { env }), 'memory'));
+}
+
+// Why docs mode cannot be written here, verbatim in the installer's `!!` line, the plan line and the validate row.
+const DOCS_MEMORY_REFUSAL = Object.freeze({
+    symlink: '.claude is a symlink, so Claude Code reads its settings.local.json as the repository\'s',
+    elsewhere: 'this project is below its repository root: Claude Code reads this project\'s .claude/settings.local.json only as a leftover beside the root\'s, for sessions started here, and the root\'s value wins - docs mode is written at a repository root only',
+    tracked: '.claude/settings.local.json is tracked in git, so Claude Code reads it as the repository\'s - untrack it (git rm --cached .claude/settings.local.json, then add it to .gitignore) to allow docs mode',
+    garbage: '.claude/settings.local.json is not valid JSON - fix it, then run /alfred-code:update again',
+    unreadable: '.claude/settings.local.json cannot be read - give it read access, then run /alfred-code:update again',
+    own: '.claude/settings.local.json sets its own autoMemoryDirectory - yours, so it stays',
+});
+
+// R4 and the plan's two more causes (D2), first match wins: a symlinked `.claude`; a project below its repository root
+// outside Windows (Claude Code reads the root's file, and this one only as a leftover the root's value outranks); the
+// file tracked (`tracked(file)`, the caller's git check, asked whether or not the file is on disk); not a JSON object; an `autoMemoryDirectory` of the user's own -
+// one equal to `wanted` is accepted (D3), and one `ours(value)` vouches for is the stack's. Null: docs mode can be written.
+function docsMemoryRefusal(root, { wanted, tracked = () => false, ours = () => false, home = require('os').homedir(), platform = process.platform } = {})
+{
+    const at = path.resolve(root);
+    const claude = path.join(at, '.claude');
+    const file = path.join(claude, 'settings.local.json');
+    const refuse = (why) => ({ why, text: DOCS_MEMORY_REFUSAL[why] });
+    let link = false;
+    try { link = fs.lstatSync(claude).isSymbolicLink(); } catch { /* no .claude yet */ }
+    if (link) return refuse('symlink');
+    const read = localSettingsFile(at, { home, platform });
+    if (read)
+    {
+        const counterpart = mainCounterpart(at);
+        const allowed = [file, counterpart && path.join(counterpart, '.claude', 'settings.local.json')].filter(Boolean).map(dirKey);
+        if (!allowed.includes(dirKey(read))) return refuse('elsewhere');
+    }
+    // Asked before the file is read: one git still indexes after the update removed it is tracked too (D11).
+    if (tracked(file)) return refuse('tracked');
+    if (!fs.existsSync(file)) return null;
+    // An empty file reads as {} (settings.js readSettings, the 2026-10-20 ruling); one that cannot be read is no JSON error.
+    let text;
+    try { text = readText(file); } catch { return refuse('unreadable'); }
+    if (!text.trim()) return null;
+    let data;
+    try { data = JSON.parse(text); } catch { return refuse('garbage'); }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return refuse('garbage');
+    if (!Object.hasOwn(data, 'autoMemoryDirectory')) return null;
+    const value = data.autoMemoryDirectory;
+    if (ours(value)) return null;
+    if (typeof value === 'string' && wanted)
+    {
+        const v = value.trim();
+        const dir = /^~[\\/]/.test(v) ? path.join(home, v.slice(2)) : path.isAbsolute(v) ? path.resolve(v) : null;
+        if (dir && dirKey(dir) === dirKey(wanted)) return null;
+    }
+    return refuse('own');
+}
+
+// The stamp's row for the stack's own `autoMemoryDirectory`: the folder named by its place under the project
+// (`<project>/.alfred/docs/memory`), never by this machine's absolute path - a stamp committed with `.claude/` reaches
+// teammates whose checkouts sit elsewhere, and an absolute hash read their stack-written value as their own (P3 review,
+// finding 1). A folder outside the project keeps its absolute form. `root` is the checkout the value was computed from.
+const memoryRowText = (form) => require('crypto').createHash('sha256').update(JSON.stringify(form)).digest('hex');
+function memoryRowHash(value, root)
+{
+    const v = String(value);
+    const rel = path.relative(realpathOrSelf(path.resolve(root)), realpathOrSelf(path.resolve(v)));
+    return memoryRowText(rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? `<project>/${rel.split(path.sep).join('/')}` : v);
+}
+// Whether a value is the one a row was recorded for: its absolute form (a row outside the project, or one an earlier
+// build recorded), else any trailing part of it as a place under the project - so a moved folder, a data-root move
+// and another machine's checkout all still read as the stack's.
+const MEMORY_ROW_DEPTH = 12;
+function memoryRowMatches(value, hash)
+{
+    if (typeof value !== 'string' || !value.trim() || typeof hash !== 'string' || !hash) return false;
+    if (memoryRowText(value) === hash) return true;
+    const parts = value.trim().split(/[\\/]+/).filter(Boolean);
+    for (let n = 1; n <= Math.min(parts.length, MEMORY_ROW_DEPTH); n++)
+        if (memoryRowText(`<project>/${parts.slice(-n).join('/')}`) === hash) return true;
+    return false;
+}
+
+// The top-level `.md` files of a memory folder, sorted; [] when it is absent or cannot be read.
+function memoryFiles(dir)
+{
+    try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile() && /\.md$/.test(e.name)).map((e) => e.name).sort(); }
+    catch { return []; }
+}
+
+// OD5: a workspace child in the same repository that reads `docs` from a member, and whose effective setting is already
+// that member's docs memory (Claude Code reads the repository root's settings.local.json, the member's row): it shares
+// it, so nothing is written here. { member: <rel>, dir } or null. The chain starts where variablesOf starts it, and the
+// mode's source is read from the files and the members alone: a hook's or a script's loader has already applied the
+// members' values to its process env (applyVariables), where they would read as a launch value of the child's own.
+function docsMemoryShare(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
+{
+    const at = path.resolve(root);
+    const chainEnv = Object.fromEntries(['CLAUDE_CONFIG_DIR', SWITCH_KEY].filter((k) => env[k] !== undefined).map((k) => [k, env[k]]));
+    const { values, from } = variablesOf(at, { env: chainEnv });
+    if (values.ALFRED_CODE_MEMORY !== 'docs') return null;
+    const member = workspaceChain(mainCounterpart(at) || at, { env: chainEnv }).members.find((m) => m.rel === from.ALFRED_CODE_MEMORY);
+    if (!member) return null;
+    const setting = memoryDirSetting(at, { env, home, managed, platform });
+    const dir = docsMemoryDir(member.root, { env });
+    return setting && dirKey(setting) === dirKey(dir) ? { member: member.rel, dir } : null;
 }
 // The folder a checkout's workspace chain is read from: a linked worktree's main counterpart, whose workspace file the
 // worktree lacks (it is gitignored), as resolveVariables reads it.
@@ -812,6 +937,7 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, trustedMemoryDir, localSettingsFile, docsRootOf, topMember, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
+    memoryDirsOf, defaultMemoryDirs, memoryDirSetting, trustedMemoryDir, localSettingsFile, docsRootOf, topMember,
+    docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

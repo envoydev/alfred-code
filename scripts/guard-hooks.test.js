@@ -1524,6 +1524,60 @@ test('guard-unapproved-dispatch: an approval belongs to the plan the brief names
 });
 const layoutApproval = (root, id) => path.join(root, '.alfred', 'state', 'approvals', id, 'APPROVAL');
 
+// D6 (the user's ruling of 2026-11-03, 'Fix it in the dispatch guard'): a hand-written AUTO waiver covers one run - a plan
+// written after it that carries its Completed: line closes that run, and the waiver no longer passes a seat.
+test('guard-unapproved-dispatch: a hand-written AUTO waiver is spent by a plan completed after it (D6)', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (seat, prompt = 'build task 1') => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  const plans = path.join(root, '.alfred', 'docs', 'work', 'plans');
+  fs.mkdirSync(plans, { recursive: true });
+  const ago = (f, s) => { const t = (Date.now() - s * 1000) / 1000; fs.utimesSync(f, t, t); };
+  const stamp = stateReceipt(root, 'APPROVAL', 'AUTO - "run all recommended without asking me"\n');
+  ago(stamp, 600);
+  const plan = path.join(plans, 'cart.md');
+  const write = (body, s) => { fs.writeFileSync(plan, body); ago(plan, s); };
+  write('# Cart\n\nApproved: 2026-11-04\nCompleted: 2026-11-04 12:00\n', 60);
+  const spent = disp('aspnet-implementer');
+  assert.equal(spent.status, 2, 'a plan completed after the waiver spends it');
+  assert.match(spent.stderr, /AUTO waiver at .*APPROVAL predates .*cart\.md's Completed: line \(2026-11-04 12:00\)/, 'the denial names the plan and its line');
+  assert.match(spent.stderr, /a new run is waived by a new AUTO line in the user's words/, 'and the way on');
+  assert.equal(disp('general-purpose').status, 0, 'a spent waiver holds no generic seat either - its run is closed');
+  write('# Cart\n\nCompleted: 2026-11-04 12:00\n', 1200);
+  assert.equal(disp('aspnet-implementer').status, 0, 'a Completed: line older than the waiver leaves it standing');
+  write('# Cart\n\nApproved: 2026-11-04\n', 60);
+  assert.equal(disp('aspnet-implementer').status, 0, 'no Completed: line - the waiver stands');
+  write('# Cart\n\nCompleted:\n', 60);
+  assert.equal(disp('aspnet-implementer').status, 0, 'an empty Completed: line is no stamp');
+  write(Buffer.from([0, 255, 254, 10, 67, 111]).toString('latin1'), 60);
+  assert.equal(disp('aspnet-implementer').status, 0, 'a garbage plan file is no evidence');
+  write(`# Big\nCompleted: 2026-11-04\n${'x'.repeat(1024 * 1024)}\n`, 60);
+  assert.equal(disp('aspnet-implementer').status, 0, 'a plan past 1 MB is not read');
+  // bounded: the newest 50 plans; a completed one behind them is not read
+  write('# Cart\n\nCompleted: 2026-11-04 12:00\n', 300);
+  for (let i = 0; i < 50; i++) { const f = path.join(plans, `other-${i}.md`); fs.writeFileSync(f, '# Other\n'); ago(f, 100); }
+  assert.equal(disp('aspnet-implementer').status, 0, '51 plans, the completed one oldest: not read');
+  fs.rmSync(path.join(plans, 'other-0.md'));
+  assert.equal(disp('aspnet-implementer').status, 2, '50 plans, the completed one among them: spent');
+  for (let i = 1; i < 50; i++) fs.rmSync(path.join(plans, `other-${i}.md`));
+  // the pre-2.8.0 plans folder counts too
+  fs.rmSync(plan);
+  const legacy = path.join(root, '.alfred', 'docs', 'plans');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(path.join(legacy, 'old.md'), 'Completed: 2026-11-04\n'); ago(path.join(legacy, 'old.md'), 60);
+  assert.equal(disp('aspnet-implementer').status, 2, 'a plan under the pre-2.8.0 plans/ spends it as well');
+  if (process.platform !== 'win32' && process.getuid && process.getuid() !== 0) {
+    fs.chmodSync(legacy, 0o000);
+    try { assert.equal(disp('aspnet-implementer').status, 0, 'an unreadable plans folder is no evidence'); }
+    finally { fs.chmodSync(legacy, 0o755); }
+  }
+  // unchanged: an APPROVED root stamp and a session-named AUTO
+  fs.writeFileSync(stamp, 'APPROVED legacy - "go"\n'); ago(stamp, 600);
+  assert.equal(disp('aspnet-implementer').status, 0, 'an APPROVED root stamp is not a waiver - a completed plan leaves it');
+  fs.writeFileSync(stamp, 'AUTO - "/task-solve --mode-auto-run-on fix it"\nsession: tp-d6\n'); ago(stamp, 600);
+  assert.doesNotMatch(disp('aspnet-implementer').stderr, /predates/, 'a session-named AUTO is the run marker\'s, never spent here');
+});
+
 // Spike S1 run 4: a plugin agent is addressable ONLY as `<plugin>:<agent>` - the bare name returns
 // 'Agent type not found'. So from the release that ships the seats as plugins, every house dispatch
 // arrives prefixed, and a gate keyed on the bare name would stop gating anything at all.
@@ -1853,6 +1907,33 @@ test('guard-fresh-session-start: a manual-only flag is read from the running plu
   const running = path.join(cfg, 'running', 'mk2', 'alfred-code', '9.9.9');
   skill(running, false);
   assert.equal(call({ CLAUDE_PLUGIN_ROOT: running }), 0, 'the running plugin is read first');
+});
+
+// READER-2 (usage audit 2026-11-03): CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root, its cache in cache/
+// (code.claude.com/docs/en/plugins/loading; .claude/skills/repo-audit-plugins/references/currency.md) - the flag was read
+// only under <config>/plugins/cache, so a moved install's manual-only skill ran on the model's call.
+test('READER-2: skillHeads reads a moved plugins root', () => {
+  const cfg = fs.mkdtempSync(path.join(TMP, 'skillcfg-'));
+  const moved = fs.mkdtempSync(path.join(TMP, 'plugins-root-'));
+  const skill = (pluginsRoot, name, flagged) => {
+    const d = path.join(pluginsRoot, 'cache', 'mk', 'alfred-code', '1.0.0', 'stack', 'skills', name);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'SKILL.md'), `---\nname: ${name}\ndescription: x\n${flagged ? 'disable-model-invocation: true\n' : ''}---\n`);
+  };
+  skill(moved, 'bar', true);
+  skill(path.join(cfg, 'plugins'), 'bar', false);
+  skill(path.join(cfg, 'plugins'), 'baz', true);
+  const call = (name, value) => {
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, CLAUDE_PLUGIN_ROOT: '' };
+    if (value === undefined) delete env.CLAUDE_CODE_PLUGIN_CACHE_DIR; else env.CLAUDE_CODE_PLUGIN_CACHE_DIR = value;
+    return runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: `alfred-code:${name}` } }, { env }).status;
+  };
+  assert.equal(call('bar', moved), 2, 'the moved root holds the flagged copy');
+  assert.equal(call('bar', `  ${moved} `), 2, 'a value with spaces around it is trimmed');
+  for (const value of [undefined, '', '   ']) {
+    assert.equal(call('bar', value), 0, `${JSON.stringify(value)}: <config>/plugins/cache holds the unflagged copy`);
+    assert.equal(call('baz', value), 2, `${JSON.stringify(value)}: and its flagged one is read`);
+  }
 });
 
 test('guard-unapproved-dispatch: what-type and where-defined sweeps over plain words are no symbol question', () => {
@@ -5035,8 +5116,14 @@ test('guard-desktop-exec: the browser code runner is denied under any registrati
   stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'session: desk\nbrowser_run_code_unsafe\n');
   assert.equal(desktopRun(root, RUN_CODE[2], { code: 'x' }).status, 0, 'its own line opens it');
   assert.equal(desktopRun(root, 'mcp__mac__Shell', { command: 'ls' }).status, 2, 'and nothing else'); // mcp-fixture
+  // E-batch mcp-B-m2 (the user's 'Take all', 2026-11-04): `*` is the desktop lines' wildcard - the code runner takes its own line
   stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'session: desk\n*\n');
-  assert.equal(desktopRun(root, RUN_CODE[1], { code: 'x' }).status, 0, '`*` opens it too');
+  const star = desktopRun(root, RUN_CODE[1], { code: 'x' });
+  assert.equal(star.status, 2, '`*` opens no code runner');
+  assert.match(star.stderr, /with the line `browser_run_code_unsafe`/, 'the denial still names its own line');
+  assert.equal(desktopRun(root, 'mcp__mac__Shell', { command: 'ls' }).status, 0, '`*` still opens the desktop Shell'); // mcp-fixture
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'session: desk\n*\nbrowser_run_code_unsafe\n');
+  assert.equal(desktopRun(root, RUN_CODE[1], { code: 'x' }).status, 0, 'beside `*`, its own line opens it');
 });
 
 // Audit 2026-10-08 row 40: the ledger kept 120 characters of the Shell command, credential included, and the denial
@@ -6256,6 +6343,48 @@ test('audit 2026-10-30 HK-03 / HK-16: DISCARD, CROSS-WRITE and DESKTOP-EXEC are 
   }
 });
 
+// E-batch mcp-B-m1: a registered server's PowerShell (Windows-MCP ships one) or execute_shell_command runs a shell command
+// no shell guard sees, as MacOS-MCP's Shell does - each is gated by its tool name under any registration, and its own
+// receipt line, the tool's name, opens it after the user's answer; a Shell line opens neither.
+test('B-m1: an MCP PowerShell or execute_shell_command tool is gated', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-bm1-'));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root };
+  const TOOLS = [['mcp__win__PowerShell', 'PowerShell'], ['mcp__x__execute_shell_command', 'execute_shell_command'], [`mcp__plugin_${'my-win'}_${'my-win'}__PowerShell`, 'PowerShell']]; // mcp-fixture
+  let k = 0;
+  const session = (rows) => { const tp = rcFile(path.join(root, 'sessions', `b${++k}.jsonl`), rows); pause(5); return tp; };
+  const call = (tool, tp, input = { command: 'Remove-Item -Recurse C:\\x' }) => runIn('guard-desktop-exec.js', { tool_name: tool, tool_input: input, session_id: RC, transcript_path: tp, cwd: root }, { env });
+  const label = (name) => `Allow the server's ${name} this session`;
+  for (const [tool, name] of TOOLS) {
+    const denied = call(tool, session([rc.typed('clean it')]));
+    assert.equal(denied.status, 2, tool);
+    assert.match(denied.stderr, new RegExp(`the ${name} tool`), 'the denial names the tool');
+    assert.match(denied.stderr, /outside every shell guard/);
+    assert.ok(denied.stderr.includes(`'${label(name)}'`), 'its allow label is offered');
+    assert.ok(denied.stderr.includes(`  session: ${RC}\n  ${name}\n`), `the receipt line names the tool\n${denied.stderr}`);
+    assert.equal(call(tool, session([rc.typed('clean it')]), {}).status, 2, `${tool} with no command is the same tool`);
+    // the user's allow, this session: its own line opens it
+    let tp = session([rc.typed('clean it'), rc.denial('DESKTOP-EXEC-ALLOW', tool), rc.answer(label(name))]);
+    stateReceipt(root, 'DESKTOP-EXEC-ALLOW', `session: ${RC}\n${name}\n`);
+    assert.equal(call(tool, tp).status, 0, `${tool}: its line after the user's allow`);
+    // a Shell line, or the other tool's line, opens nothing here
+    tp = session([rc.typed('clean it'), rc.denial('DESKTOP-EXEC-ALLOW', tool), rc.answer(label(name))]);
+    stateReceipt(root, 'DESKTOP-EXEC-ALLOW', `session: ${RC}\nShell\n${name === 'PowerShell' ? 'execute_shell_command' : 'PowerShell'}\n`);
+    assert.equal(call(tool, tp).status, 2, `${tool}: another tool's line`);
+    // the user's other pick is no allow
+    tp = session([rc.typed('clean it'), rc.denial('DESKTOP-EXEC-ALLOW', tool), rc.answer('Use the Bash or PowerShell tool instead (Recommended)')]);
+    stateReceipt(root, 'DESKTOP-EXEC-ALLOW', `session: ${RC}\n${name}\n`);
+    assert.equal(call(tool, tp).status, 2, `${tool}: the built-in route was the answer`);
+  }
+  // Claude Code's own PowerShell tool is the shell route the guards judge, and a longer tool name is another tool
+  for (const tool of ['PowerShell', 'mcp__win__PowerShellX', 'mcp__x__execute_shell_commands', 'mcp__x__Xexecute_shell_command'])
+    assert.equal(call(tool, session([rc.typed('clean it')])).status, 0, `${tool} is not this guard's`);
+  // the generated core wiring reaches both tool names
+  const core = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8')).plugins.find((p) => p.name === 'alfred-code');
+  const group = core.hooks.PreToolUse.find((g) => g.hooks.some((h) => /guard-desktop-exec\.js/.test(h.command)));
+  for (const [tool] of TOOLS) assert.match(tool, new RegExp(group.matcher), `the core matcher takes ${tool}`);
+  assert.doesNotMatch('mcp__win__PowerShellX', new RegExp(group.matcher));
+});
+
 test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript shows the user typing it - the hook\'s two routes and task-solve\'s waiver', () => {
   const { approvalStamp } = require('../stack/hooks/hook-prelude.js');
   let k = 0;
@@ -6386,4 +6515,24 @@ test('audit 2026-10-30 HK-03 / HK-16: the two bounds the receipts brought - a re
   assert.equal(at(-1), true, 'one byte under the window');
   assert.equal(at(0), true, 'at it: the newline before the row is the window\'s first byte');
   assert.equal(at(1), false, 'one byte over: the row\'s start is cut, so it is no whole row');
+});
+
+// E1-2c (inventory A): the cross-project guard judges the other removal verbs like rm.
+test('E1-2c: the cross-project guard judges unlink of an outside file', () => {
+  assert.equal(xpBash(`rm ${path.join(XP_OTHER, 'f.txt')}`), 2, 'rm, the reference');
+  assert.equal(xpBash(`unlink ${path.join(XP_OTHER, 'f.txt')}`), 2, 'unlink outside');
+  assert.equal(xpBash(`shred -u ${path.join(XP_OTHER, 'f.txt')}`), 2, 'shred outside');
+  assert.equal(xpBash(`trash ${path.join(XP_OTHER, 'f.txt')}`), 2, 'trash outside');
+  // A temp root that holds the project is dropped from the scratch list (this test's project sits in one), so the temp
+  // case is pinned as 'unlink is judged exactly as rm', whatever the root's verdict.
+  const tmpX = path.join(os.tmpdir(), 'x');
+  assert.equal(xpBash(`unlink ${tmpX}`), xpBash(`rm ${tmpX}`), 'unlink in the temp dir is judged as rm is');
+  assert.equal(xpBash('unlink build/old.txt'), 0, 'unlink inside the project passes');
+  // E-batch M6: an allowed root that does NOT hold the project - the temp root's place on a real machine - proves the pass
+  const scratch = fs.mkdtempSync(path.join(TMP, 'xp-scratch-'));
+  const inScratch = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: scratch } }).status;
+  assert.equal(inScratch(`unlink ${path.join(scratch, 'f.txt')}`), 0, 'unlink in an allowed root apart from the project passes');
+  assert.equal(inScratch(`shred -u ${path.join(scratch, 'f.txt')}`), 0, 'and so does shred');
+  assert.equal(inScratch(`unlink ${path.join(XP_OTHER, 'f.txt')}`), 2, 'while the sibling project stays blocked');
 });

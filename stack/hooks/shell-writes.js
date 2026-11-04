@@ -950,7 +950,9 @@ function psTargets(words) {
   }
   return out;
 }
-const FS_CHANGE = new Set(['rm', 'rmdir', 'mkdir', 'touch', 'truncate', 'chmod', 'chown', 'rimraf']);
+// unlink, shred and the trash CLIs remove a file like rm (E1-2c): each operand is a target. shred's -n / -s values are counts.
+const FS_CHANGE = new Set(['rm', 'rmdir', 'mkdir', 'touch', 'truncate', 'chmod', 'chown', 'rimraf', 'unlink', 'shred', 'trash', 'trash-put']);
+const SHRED_VALUE = new Set(['-n', '--iterations', '-s', '--size']);
 const COPY_VERBS = new Set(['cp', 'mv', 'ln', 'install', 'rsync']);
 const IN_PLACE = /^-[A-Za-z]*i(?![A-Za-z0-9_])/;
 // sed's own argument grammar (GNU and BSD): which words are its in-place TARGETS. The script is the first operand unless
@@ -1014,7 +1016,10 @@ function writesOf(cmd, c, out, opts = {}) {
     // first operand, never a path (`+x`, `755`, `u+x,g-w`, `user:group`), unless --reference names the file to copy
     // them from (audit 2026-10-10, session 758ce661: COMPACT-STATE listed '+x' as a file written)
     let skip = (name === 'chmod' || name === 'chown') && !c.argv.some((a) => a.startsWith('--reference'));
+    let count = false;
     for (const a of c.argv) {
+      if (count) { count = false; continue; }
+      if (name === 'shred' && SHRED_VALUE.has(a)) { count = true; continue; }
       // `chmod -x f` / `chmod -w f`: a mode spelled like a flag
       if (skip && name === 'chmod' && /^-[rwxXst]+$/.test(a)) { skip = false; continue; }
       if (!plain(a) || SED_SCRIPT.test(a)) continue;

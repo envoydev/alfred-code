@@ -363,3 +363,37 @@ test('plugin layers: a BOM\'d settings.json still names the enabled plugins, and
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Run C item 4 (Task 12 ruling 87): CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root - the registry, the
+// marketplace list and cache/ - while the user settings stay in the config dir.
+test('plugins: a moved plugins root is read for the registry; the user settings still come from the config dir', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-plugins-moved-'));
+  const m = writeMachine(dir);
+  const corpus = writeCorpus(dir, m);
+  const moved = path.join(dir, 'moved-root');
+  fs.renameSync(path.join(m.cfg, 'plugins'), moved);
+  const home = path.join(dir, 'home');
+  const inv = runJson([corpus], { CLAUDE_CONFIG_DIR: m.cfg, CLAUDE_CODE_PLUGIN_CACHE_DIR: moved, HOME: home, USERPROFILE: home }).inventory;
+  assert.strictEqual(row(inv.plugins, 'proj-plug').installedIn, 2, 'the registry under the moved root is read');
+  assert.strictEqual(row(inv.plugins, 'off-plug').installedIn, 1, 'off in the config dir\'s settings.json, on in proj-b');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('plugin layers: the cache under a moved plugins root is read (CLAUDE_CODE_PLUGIN_CACHE_DIR)', () => {
+  const { loadPluginLayers } = require('./analyze-usage.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-layers-moved-'));
+  const saved = [process.env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR];
+  try {
+    const moved = path.join(dir, 'moved');
+    process.env.CLAUDE_CONFIG_DIR = dir;
+    process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = moved;
+    const skill = path.join(moved, 'cache', 'mk', 'demo', '1.0.0', 'skills', 'demo-skill', 'SKILL.md');
+    fs.mkdirSync(path.dirname(skill), { recursive: true });
+    fs.writeFileSync(skill, '---\nname: demo-skill\ndescription: a demo\n---\nBody.\n');
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ enabledPlugins: { 'demo@mk': true } }));
+    assert.deepStrictEqual(loadPluginLayers(dir).skills.map((s) => s.name), ['demo-skill']);
+  } finally {
+    for (const [k, v] of [['CLAUDE_CONFIG_DIR', saved[0]], ['CLAUDE_CODE_PLUGIN_CACHE_DIR', saved[1]]]) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

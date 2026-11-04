@@ -1250,6 +1250,28 @@ test('F21: --dependents names an always skill locked and lists no dependent', ()
     finally { fs.rmSync(rawFile, { force: true }); }
 });
 
+// E-batch ws-4: walk.md reads a locked row's drop through --dependents, and a rule exited 2. An always rule is locked; any
+// other rule has no dependents (no item requires a rule), so it prints nothing.
+test('ws-4: --dependents rule:<name>', () =>
+{
+    const rawFile = path.join(os.tmpdir(), `dep-rule-${process.pid}.json`);
+    fs.writeFileSync(rawFile, JSON.stringify({ rules: ['alfred-security', 'sql-conventions'], skills: ['habits-clarify'] }));
+    try
+    {
+        const dep = (spec) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--dependents', spec], { encoding: 'utf8' });
+        const locked = dep('rule:alfred-security');
+        assert.strictEqual(locked.status, 0, locked.stderr);
+        // the selection's own `required:` lines print first on every run; the --dependents answer is the rest
+        const answer = (out) => out.split('\n').filter((l) => /^(?:locked|dependent):/.test(l));
+        assert.deepStrictEqual(answer(locked.stdout), ['locked: rule:alfred-security - every install carries it; it cannot be dropped']);
+        const other = dep('rule:sql-conventions');
+        assert.strictEqual(other.status, 0, other.stderr);
+        assert.deepStrictEqual(answer(other.stdout), []);
+        assert.strictEqual(dep('widget:x').status, 2, 'an unknown category still exits 2');
+    }
+    finally { fs.rmSync(rawFile, { force: true }); }
+});
+
 // F22 (the 2026-10-28 workspace run): the walk built its Pick call by hand and dealt rows unevenly or lost some. The
 // tool deals the rows: at most 4 questions of 2-4 options per call, every row in exactly one question.
 const { spread, dealSides, dealPick } = require('./stack-select.js');
@@ -1291,6 +1313,9 @@ test('F22: fresh shares call 1 while both sides fit in 4 questions', () =>
     assert.deepStrictEqual(split.map((l) => l.replace(/:.*/, '')),
         ['call 1 question 1 (add)', 'call 1 question 2 (add)', 'call 2 question 1 (drop)', 'call 2 question 2 (drop)', 'call 2 question 3 (drop)']);
     assert.deepStrictEqual(dealPick({ add: synth(1), drop: [] }, 'fresh'), ['deal: nothing to pick - re-ask step 1']);
+    // ws-5: both sides empty, and the drop side alone at one row, ask nothing either
+    assert.deepStrictEqual(dealPick({ add: [], drop: [] }, 'fresh'), ['deal: nothing to pick - re-ask step 1']);
+    assert.deepStrictEqual(dealPick({ add: [], drop: synth(1, 'recommended') }, 'fresh'), ['deal: nothing to pick - re-ask step 1']);
     assert.deepStrictEqual(dealPick({ add: synth(1), drop: synth(3, 'recommended') }, 'fresh'),
         ["add: none - 1 row; step 1's 'Add every ...' covers it", 'call 1 question 1 (drop): #1 r1, #2 r2, #3 r3']);
 });

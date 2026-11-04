@@ -666,3 +666,36 @@ test('H7: a find naming one file is sized like a cat of it; -iname is the same i
   }
   assert.equal(at('find src -iname "*.ts" | xargs cat').status, 2, 'a glob is still the sweep');
 });
+
+// U25 (inventory A): a group `{ ...; }` or subshell `( ... )` redirected into a file copies what it prints - the same as
+// `cat a > b` - and the segment loop cut the group at its own `;`, so the cat inside it read as a dump.
+test('U25: a redirected group or subshell is a copy', () => {
+  const dir = capDir();
+  fs.writeFileSync(path.join(dir, 'big.html'), linesOf(60000, 'html'));
+  const sh = (command) => run(READ, { tool_name: 'Bash', tool_input: { command }, session_id: sid(), cwd: dir },
+    { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }).status;
+  for (const c of ['{ echo a; cat big.html; } > out.txt', '( echo a; cat big.html ) > out.txt', '{ echo a; cat big.html; } >> out.txt',
+    '( echo a; cat big.html ) >> out.txt', '{ echo a; cat big.html; } 1> out.txt', '{ echo a; cat big.html; } &> out.txt',
+    'cd . && { echo a; cat big.html; } > out.txt',
+    // matrix find: a segment cut after `&&` starts with the space before the group's `{` or `(`
+    'cd . && { cat big.html; } &> out.txt', 'true && { cat big.html; } > out.txt', 'true; ( cat big.html ) > out.txt', '{ cat big.html; } > out.txt'])
+    assert.equal(sh(c), 0, c);
+  for (const c of ['{ echo a; cat big.html; }', '( echo a; cat big.html )', '{ cat big.html; } | cat', '{ cat big.html; } > /dev/stdout',
+    '{ cat big.html; } >&2', '{ echo a; cat big.html; } 2> err.txt', '{ cat big.html; } > out.txt; cat big.html', '( cat big.html ) > /dev/tty'])
+    assert.equal(sh(c), 2, c);
+});
+
+// E-batch final review I2: the group's target is a copy of what its cat printed, so a later print of that target is sized as
+// the source - the plain `cat big > out && cat out` already was (HK-19); U25's group form opened a copy-then-print path.
+test('final review I2: a print of a redirected group\'s target is sized as its source', () => {
+  const dir = capDir();
+  fs.writeFileSync(path.join(dir, 'big.html'), linesOf(60000, 'html'));
+  fs.writeFileSync(path.join(dir, 'small.txt'), 'a\nb\n');
+  const sh = (command) => run(READ, { tool_name: 'Bash', tool_input: { command }, session_id: sid(), cwd: dir },
+    { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }).status;
+  for (const c of ['{ cat big.html; } > out.txt && cat out.txt', '( cat big.html ) > o2.txt; cat o2.txt', '{ echo a; cat big.html; } >> o3.txt && cat o3.txt',
+    'cat big.html > o4.txt && cat o4.txt'])
+    assert.equal(sh(c), 2, c);
+  for (const c of ['{ cat big.html; } > out.txt && wc -l out.txt', '{ cat small.txt; } > o5.txt && cat o5.txt', '{ cat big.html; } > out.txt && head -5 out.txt'])
+    assert.equal(sh(c), 0, c);
+});

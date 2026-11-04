@@ -48,8 +48,18 @@ function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECT
         return { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ...extra, ...(off ? { ALFRED_CODE_HOOKS_OFF: off } : {}) };
     };
     const hook = (payload, extra = {}, file = HOOK) => spawnSync(process.execPath, [file], { cwd: root, input: typeof payload === 'string' ? payload : JSON.stringify({ cwd: root, ...payload }), encoding: 'utf8', env: env(extra) });
+    // The same call, left running: two of them side by side are the parallel calls of one message.
+    const hookAsync = (payload, extra = {}) => new Promise((resolve) =>
+    {
+        const c = spawn(process.execPath, [HOOK], { cwd: root, env: env(extra) });
+        let stdout = ''; let stderr = '';
+        c.stdout.on('data', (d) => { stdout += d; });
+        c.stderr.on('data', (d) => { stderr += d; });
+        c.on('close', (status) => resolve({ status, stdout, stderr }));
+        c.stdin.end(JSON.stringify({ cwd: root, ...payload }));
+    });
     return {
-        root, write, hook,
+        root, config, write, hook, hookAsync,
         read: (rel) => fs.readFileSync(path.join(root, rel), 'utf8'),
         exists: (rel) => fs.existsSync(path.join(root, rel)),
         rm: () => { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(config, { recursive: true, force: true }); },
@@ -176,6 +186,21 @@ test('a branch or tag made, a gh merge and a git write behind a wrapper count; r
             assert.ok(denied(p.hook(bash(cmd, sid()))), cmd);
         for (const cmd of ['git status', 'git log --oneline -5', 'git diff HEAD --stat', 'git branch -a', 'git branch --show-current', 'git stash list', 'git tag -l', 'ls -la', 'npm test', 'echo "git commit"'])
             assert.ok(!denied(p.hook(bash(cmd, sid()))), cmd);
+    }
+    finally { p.rm(); }
+});
+
+// U19a (inventory A): `git apply` without --index / --cached writes only the working tree, like an editor would, so it
+// draws no git-preferences hold; with either flag it writes the index and still does.
+test('U19a: git apply without --index or --cached is no git write', () =>
+{
+    const p = project();
+    try
+    {
+        for (const cmd of ['git apply -R p.patch', 'git apply p.patch', 'git apply --check p.patch'])
+            assert.ok(!denied(p.hook(bash(cmd, sid()))), cmd);
+        for (const cmd of ['git apply --index p.patch', 'git apply --cached p.patch', 'git apply -R --index p.patch', 'git apply --3way p.patch', 'git apply -3 p.patch'])
+            assert.ok(denied(p.hook(bash(cmd, sid()))), cmd);
     }
     finally { p.rm(); }
 });
@@ -1702,6 +1727,129 @@ test('custom memory with a rank, and default memory: no memory line', () =>
     }
 });
 
+// Docs memory (memory P3, R6): the main start says so when docs mode is not in effect here, and only then. The start
+// reads files alone (D6), so a settings.local.json git tracks is invisible to it.
+const TOOLS_JS = path.join(HOOKS, '..', 'skills', 'capture-preferences', 'scripts', 'tools.js');
+const DOCS_MEMORY = '.alfred/docs/memory';
+const memoryLine = (text) => text.split('\n').filter((l) => l.startsWith('Memory: docs mode') || l.startsWith('Memory: this worktree'));
+function docsProject({ mode = 'docs', value, docs = false } = {})
+{
+    const p = project({ ...(docs ? {} : { docs: {} }), tools: true });
+    p.write('.alfred/.variables', `ALFRED_CODE_MEMORY=${mode}\n`);
+    if (value !== undefined) p.write('.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: value }));
+    p.want = path.join(p.root, ...DOCS_MEMORY.split('/'));
+    p.start = () => pushed(p.hook(start(sid(), 'startup')));
+    return p;
+}
+
+test('start: docs in place - no memory line', () =>
+{
+    const p = docsProject();
+    try
+    {
+        p.write('.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: p.want }));
+        const text = p.start();
+        assert.match(text, /Tool order/, 'the tools part ran');
+        assert.deepStrictEqual(memoryLine(text), [], text);
+    }
+    finally { p.rm(); }
+});
+
+test('start: the row in a settings.local.json git tracks - no memory line (D6: start never spawns git)', () =>
+{
+    const p = docsProject();
+    try
+    {
+        p.write('.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: p.want }));
+        spawnSync('git', ['add', '-f', '.claude/settings.local.json'], { cwd: p.root });
+        assert.deepStrictEqual(memoryLine(p.start()), [], 'Claude Code reads the value in a trusted folder: nothing to say');
+        const validate = spawnSync(process.execPath, [TOOLS_JS, 'validate', '--project', p.root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: p.config } });
+        assert.match(validate.stdout, /settings\.local\.json is tracked in git/, `validate names the tracked file\n${validate.stdout}${validate.stderr}`);
+    }
+    finally { p.rm(); }
+});
+
+// An absolute place outside the project on every OS (Windows reads '/old/...' on the current drive).
+const OLD_PLACE = path.resolve('/old/place/memory');
+const OLD_SHOWN = OLD_PLACE.split(path.sep).join('/');
+test('start: docs with a stale value names /alfred-code:update', (t) =>
+{
+    const p = docsProject({ value: OLD_PLACE });
+    try
+    {
+        // The stack wrote it - its stamp row vouches - so the update re-points it.
+        p.write('.claude/alfred-code.stamp', `managed-settings: settings.local.json:autoMemoryDirectory=${require('../stack/hooks/layout.js').memoryRowHash(OLD_PLACE, p.root)}\n`);
+        const lines = memoryLine(p.start());
+        assert.deepStrictEqual(lines, [`Memory: docs mode, but autoMemoryDirectory points at ${OLD_SHOWN} here, so Claude's own memory is not in ${DOCS_MEMORY}/ this session - /alfred-code:update re-points it.`]);
+        t.diagnostic(`stale line: ${lines[0].length} chars`);
+        // No row vouches for it: the user's own value, named as such - no promise the update cannot keep (P3 review finding 4).
+        fs.rmSync(path.join(p.root, '.claude', 'alfred-code.stamp'));
+        const own = memoryLine(p.start());
+        assert.strictEqual(own.length, 1, own.join('\n'));
+        assert.match(own[0], /this session: \.claude\/settings\.local\.json sets its own autoMemoryDirectory - yours, so it stays\.$/);
+    }
+    finally { p.rm(); }
+});
+
+test('start: docs with no value in the main checkout names /alfred-code:update', (t) =>
+{
+    const p = docsProject();
+    try
+    {
+        const lines = memoryLine(p.start());
+        assert.deepStrictEqual(lines, [`Memory: docs mode, but autoMemoryDirectory is not set here, so Claude's own memory is not in ${DOCS_MEMORY}/ this session - /alfred-code:update re-points it.`]);
+        t.diagnostic(`unset line: ${lines[0].length} chars`);
+    }
+    finally { p.rm(); }
+});
+
+test('start: a seat\'s start never carries the memory line', () =>
+{
+    const p = docsProject({ value: OLD_PLACE });
+    try
+    {
+        const seat = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a1', agent_type: 'general-purpose' });
+        assert.deepStrictEqual(memoryLine(String(out(seat).additionalContext || '')), []);
+        assert.strictEqual(memoryLine(p.start()).length, 1, 'the main start of the same project is told');
+        const off = pushed(p.hook(start(sid(), 'startup'), { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' }));
+        assert.deepStrictEqual(memoryLine(off), [], 'the tools part switched off silences it');
+    }
+    finally { p.rm(); }
+});
+
+test('start: a session in a linked worktree is judged as the worktree, not the main checkout holding the docs (R6)', () =>
+{
+    const p = docsProject({ docs: true });
+    try
+    {
+        const git = (...args) => spawnSync('git', args, { cwd: p.root, encoding: 'utf8' });
+        git('add', '.gitignore', 'src/app.ts');
+        git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init');
+        const wt = `${p.root}-wt`;
+        git('worktree', 'add', '-q', wt);
+        try
+        {
+            const startAt = () => pushed(p.hook({ ...start(sid(), 'startup'), cwd: wt }, { CLAUDE_PROJECT_DIR: wt }));
+            assert.match(startAt(), /put behaviour on the type that owns the data|Tool order/, 'the main checkout\'s docs are read');
+            assert.deepStrictEqual(memoryLine(startAt()), ["Memory: this worktree has no autoMemoryDirectory, so Claude's own memory reads and saves at its default place this session, not .alfred/docs/memory/."]);
+            p.write('.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: p.want }));
+            if (process.platform !== 'win32') assert.deepStrictEqual(memoryLine(startAt()), [], 'the main checkout\'s row is the worktree\'s on darwin and linux');
+        }
+        finally { fs.rmSync(wt, { recursive: true, force: true }); }
+    }
+    finally { p.rm(); }
+});
+
+test('start: default and custom modes - no new line', () =>
+{
+    for (const mode of ['default', 'custom'])
+    {
+        const p = docsProject({ mode, value: OLD_PLACE });
+        try { assert.deepStrictEqual(memoryLine(p.start()), [], mode); }
+        finally { p.rm(); }
+    }
+});
+
 // Item 4 gap D (2026-10-25): a design that ends in a plan never edits a scoped file, so no edit hold handed the main
 // session the preference docs. A chat design load is handed them beside the skill's text - never denied, nothing retried.
 test('DESIGN_RUN: a chat design load is handed the preference docs and never denied (item 4 gap D)', () =>
@@ -1965,4 +2113,45 @@ test('ws/api\'s ignore memory root drops the index for ws/api/tool too (R0); a c
         assert.doesNotMatch(pushed(shared.hook(start(sid(), 'startup'))), /Workspace root memory/);
     }
     finally { p.rm(); shared.rm(); }
+});
+
+// ta-M4 (T10 live check, 2026-11-04, Claude Code 2.1.318): one message's parallel Reads run their PreToolUse hooks at
+// once, so two processes could each load the record before either saved it and hand a judge the same part twice.
+test('ta-M4: a read beside a held one waits for its record - the next part, never the same one twice; a dead lock is taken over', async () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const s = sid();
+        const who = { agent_id: 'v1', agent_type: 'alfred-code:aspnet-verifier' };
+        p.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who });
+        const record = path.join(p.root, '.alfred', 'state', 'sessions', `preferences-${s}-v1.json`);
+        const lock = `${record}.lock`;
+        const before = fs.existsSync(record) ? fs.readFileSync(record, 'utf8') : null;
+        const read = pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, s, who);
+        const first = p.hook(read);
+        assert.ok(denied(first), 'the first read is held');
+        assert.ok(!fs.existsSync(lock), 'a call leaves no lock behind');
+        const handed = fs.readFileSync(record, 'utf8');
+        // The race, replayed: the second call starts while the first still holds the record, which reads as it did before.
+        if (before === null) fs.rmSync(record); else fs.writeFileSync(record, before);
+        fs.writeFileSync(lock, 'other');
+        const t0 = Date.now();
+        const second = p.hookAsync(read);
+        setTimeout(() => { fs.writeFileSync(record, handed); fs.rmSync(lock, { force: true }); }, 400);
+        const r = await second;
+        assert.ok(Date.now() - t0 >= 350, 'it waited for the lock');
+        assert.notStrictEqual(reason(r), reason(first), 'never the same part twice');
+        assert.ok(!fs.existsSync(lock), 'its own lock is gone after it');
+        // A lock its process left when it died is taken over at once, not waited out.
+        fs.writeFileSync(lock, 'dead');
+        const old = new Date(Date.now() - 60000);
+        fs.utimesSync(lock, old, old);
+        const t1 = Date.now();
+        p.hook(read);
+        assert.ok(Date.now() - t1 < 2500, 'a stale lock costs no wait');
+        assert.ok(!fs.existsSync(lock), 'and the taken-over lock is released');
+    }
+    finally { p.rm(); }
 });

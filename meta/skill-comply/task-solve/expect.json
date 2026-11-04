@@ -3,7 +3,7 @@
   "skill": "task-solve",
   "sources": ["stack/skills/task-solve/SKILL.md"],
   "extracted": "2026-09-23",
-  "note": "The skill is manual-only, so every level invokes it by its slash command and only the words after it change. A headless run cannot answer a stop, so the steps graded are the ones before and AT the first stop: the resume check, the size line (re-proving the Size first section - input parsing is on the floor, so the fixture task is standard), the design step, its plan file, and a stop that carries its three fields without approving or building anything. In a real session (conformance.js) the steps run on the size the run stated: the design steps on `Size: standard` alone, the stop fields on a size that stops, the floor never - it is this fixture task's.",
+  "note": "The skill is manual-only, so every level invokes it by its slash command and only the words after it change. A headless run cannot answer a stop, so the steps graded are the ones before and AT the first stop: the resume check, the size line (re-proving the Size first section - input parsing is on the floor, so the fixture task is standard), the design step, its plan file, and a stop that carries its three fields without approving or building anything. In a real session (conformance.js) the steps run on the size the run stated: the design steps on `Size: standard` alone, the stop fields on a size that stops, the floor never - it is this fixture task's. Print mode (`claude -p`) has no AskUserQuestion, so stop-after-design also takes a text stop after the design step that carries a (Recommended) option AND the Result: field - the AND keeps the clarify ask, which marks an option but reports no Result:, from passing as the stop. The scaffold's CLAUDE.md states the order rules (the 2026-11-04 smoke's both arms stopped at clarify asking for them) and its .alfred/.variables sets ALFRED_CODE_SCORER=0, so the plan lands under work/plans/ rather than the output scorer's draft.",
   "run": {
     "max_turns": 40,
     "stacks": ["javascript"],
@@ -76,6 +76,20 @@
       ]
     },
     {
+      "id": "spec-line",
+      "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "State its verdict in one line",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the full-spec check's verdict stated in one Spec line",
+          "target": "trace",
+          "pattern": "\\bSpec:\\**\\s*\\**(?:full|not full)\\**\\s*[-\\u2013\\u2014] "
+        }
+      ]
+    },
+    {
       "id": "design-invoked",
       "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
@@ -107,9 +121,12 @@
       "graders": [
         {
           "type": "tool_order",
-          "name": "the design step, then the stop's AskUserQuestion",
+          "name": "the design step, then the stop - its AskUserQuestion, or a text stop carrying both a marked option and the Result: field",
           "before": { "ref": "design" },
-          "after": "AskUserQuestion"
+          "after": { "any": [
+            "AskUserQuestion",
+            { "tool": "@text", "text_match": ["\\(Recommended\\)", "\\bResult:"] }
+          ] }
         }
       ]
     },

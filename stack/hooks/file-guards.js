@@ -90,12 +90,21 @@ function main()
     // Which tool this is decides which guards judge it; a payload with no readable tool is judged by none, the
     // answer each guard gave it alone (they all fail open on it).
     let tool = '';
-    try { tool = String((JSON.parse(stdin.toString('utf8')) || {}).tool_name || ''); } catch { tool = ''; }
-    // GATE 2 per call (HK-02): the copy's wiring must fire on THIS tool, so a copy wired on fewer tools than the plugin row
-    // leaves the rest to the plugin, never to nobody.
+    let session;
     try
     {
-        if (require('./hook-prelude.js').yieldToCopiedTwin(SELF, undefined, { event: 'PreToolUse', tool })) process.exit(0);
+        const payload = JSON.parse(stdin.toString('utf8')) || {};
+        tool = String(payload.tool_name || '');
+        session = typeof payload.session_id === 'string' && payload.session_id ? payload.session_id : undefined;
+    }
+    catch { tool = ''; }
+    // GATE 2 per call (HK-02): the copy's wiring must fire on THIS tool, so a copy wired on fewer tools than the plugin row
+    // leaves the rest to the plugin, never to nobody - and was wired when this session began (E1-3, useSession).
+    try
+    {
+        const prelude = require('./hook-prelude.js');
+        if (prelude.useSession) prelude.useSession(session);
+        if (prelude.yieldToCopiedTwin(SELF, undefined, { event: 'PreToolUse', tool, session })) process.exit(0);
     }
     catch { /* an install without the prelude runs every guard */ }
     const named = process.argv.slice(2).filter((a) => NAMES.includes(a));

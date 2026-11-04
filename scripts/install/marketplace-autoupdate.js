@@ -84,7 +84,8 @@ function layersOf({ projectRoot, env, managedFile })
     }
     layers.push({ kind: 'user', label: userFile, file: userFile });
     for (const l of layers) l.read = readFile(l.file);
-    return { layers, userFile, knownFile: path.join(configDir, 'plugins', 'known_marketplaces.json') };
+    // The plugins root CLAUDE_CODE_PLUGIN_CACHE_DIR may move (READER-3): known_marketplaces.json and installed_plugins.json sit in it.
+    return { layers, userFile, knownFile: path.join(require('./source.js').pluginsBase(configDir, env), 'known_marketplaces.json') };
 }
 
 // D10 (the U01 live check, 2026-11-03; the user's design): the marketplace the CORE is installed from is the stack's,

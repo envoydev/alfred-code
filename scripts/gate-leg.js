@@ -27,10 +27,11 @@ const rt = require('./install/runtime.js');
 const RESULT = 'ALFRED-GATE-RESULT ';
 const STEP = 'ALFRED-GATE-STEP ';
 // `concurrency` caps the test workers when legs share one machine's cores, about the 3 a runner has.
-const steps = ({ concurrency } = {}) => [
+// `tests` (gate --tests) names the only files the test step runs; npm test takes them after every flag (run-tests.js).
+const steps = ({ concurrency, tests } = {}) => [
     { name: 'install', args: ['install', '--no-audit', '--no-fund'], fatal: true },
     { name: 'lint', args: ['run', 'lint'] },
-    { name: 'test', args: ['test', '--', '--test-reporter=tap', ...(concurrency ? [`--test-concurrency=${Number(concurrency)}`] : [])], tap: true },
+    { name: 'test', args: ['test', '--', '--test-reporter=tap', ...(concurrency ? [`--test-concurrency=${Number(concurrency)}`] : []), ...(Array.isArray(tests) ? tests : [])], tap: true },
 ];
 
 // The tools CI's runner images carry that some tests need; a leg without one skips (or fails) those
@@ -233,4 +234,4 @@ if (require.main === module)
     main(cfgPath).then(code => process.exit(code), err => { console.error(err); process.exit(1); });
 }
 
-module.exports = { RESULT, STEP, CI_TOOLS, runnerEnv, setEnv, onPath, missingTools, parseTapSummary, failedTests, verdict };
+module.exports = { RESULT, STEP, CI_TOOLS, steps, runnerEnv, setEnv, onPath, missingTools, parseTapSummary, failedTests, verdict };

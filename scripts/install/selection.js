@@ -235,7 +235,9 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = 
     // A hook a release renamed (manifest `renamed.hooks`) reads under its new name wherever an older install names it -
     // a copied file (deriveFromDisk below), the stamp's shipped list and an ALFRED_CODE_HOOKS_OFF value - so a hook the
     // user switched off stays off under its new name, and one they kept is no new hook to adopt.
-    const hookRenames = (manifest.renamed && manifest.renamed.hooks) || {};
+    // A value naming a PART (`<hook>:<part>`, B-m6) is an off-list spelling alone: the settings writer re-spells the stored
+    // csv to it, the prelude reads the old name as it, and no hook name here becomes one.
+    const hookRenames = Object.fromEntries(Object.entries((manifest.renamed && manifest.renamed.hooks) || {}).filter(([, to]) => !String(to).includes(':')));
     const hookNow = (h) => { const bare = String(h).trim().replace(/\.js$/, ''); return Object.hasOwn(hookRenames, bare) ? hookRenames[bare] : h; };
     const offNow = (e) => (e && typeof e === 'object' && envOf(e, 'HOOKS_OFF') != null
         ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
@@ -443,7 +445,8 @@ const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mc
 function renamedTo({ renamed, kind, name, log = () => {}, said = new Set() })
 {
     const to = ((renamed && renamed[RENAMED_KIND[kind]]) || {})[name];
-    if (!to) return name;
+    // A hook renamed to a PART (B-m6) keeps its name: a part is no item a selection line can carry.
+    if (!to || (kind === 'hook' && String(to).includes(':'))) return name;
     if (!said.has(`${kind} ${name}`)) { said.add(`${kind} ${name}`); log(`renamed: ${kind} ${name} -> ${to}`); }
     return to;
 }
@@ -766,9 +769,9 @@ function addLines(lines, add = [], log = () => {})
 // introduced, or one an --add pulls in, arrives with what needs it. `from` is what the user picked;
 // hook lines are leaf picks and pass through untouched (`hook none` included), and a name the graph
 // does not know - the user's own item - is left where it is.
-function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () => {} } = {})
+function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () => {}, label = 'installed-only' } = {})
 {
-    if (!graph || !graph.catalog) { log('installed-only: closure skipped - no dependency graph in this source'); return [...lines]; }
+    if (!graph || !graph.catalog) { log(`${label}: closure skipped - no dependency graph in this source`); return [...lines]; }
     const { computeClosure, findUnknownNames, dropUnknownNames, categoryOf } = require('../stack-select.js');
     const key = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mcps', plugin: 'plugins' };
     const raw = { skills: [], agents: [], rules: [], mcps: [], plugins: [] };
@@ -810,15 +813,25 @@ function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () 
     }
     const out = [...lines];
     for (const [name, { category, why, reason }] of left)
-        if (!out.includes(`${category} ${name}`)) log(`installed-only: required: ${category} ${name} - ${why}; left out, ${reason}`);
+        if (!out.includes(`${category} ${name}`)) log(`${label}: required: ${category} ${name} - ${why}; left out, ${reason}`);
     for (const [name, why] of Object.entries(closure.reasons))
     {
         const line = `${categoryOf(closure, name)} ${name}`;
         if (left.has(name) || out.includes(line)) continue;
         out.push(line);
-        log(`installed-only: required: ${line} - ${why}`);
+        log(`${label}: required: ${line} - ${why}`);
     }
     return out;
+}
+
+// E-batch O4: install takes a --selection file as the walk wrote it, already closed - a hand-written partial one was applied
+// as given and closed only by the next update's read-back. It is closed here from its own picks, each line it adds said
+// once; the walk's own selection gains nothing (computeClosure is what wrote it), so the pass is idempotent.
+function closeSelection(lines, { graph, log = () => {} } = {})
+{
+    const picks = lines.map((l) => String(l).trim()).filter((l) => /^(?:skill|agent|rule|mcp|plugin) \S/.test(l));
+    if (!graph || !graph.catalog) return [...lines];
+    return closeLines(lines, { from: picks, graph, log, label: 'selection' });
 }
 
 // `--drop`: the items the user switched off (configure's drop, update carrying a renamed item's
@@ -933,6 +946,6 @@ function lockedLines(always)
 }
 
 module.exports = {
-    lockedLines, addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, foreignRefFiles, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    lockedLines, addLines, closeLines, closeSelection, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, foreignRefFiles, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, GENERATED_FILES, FORMER_PLUGINS,
 };

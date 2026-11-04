@@ -60,15 +60,15 @@
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`"
+          "marker": "envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`"
+          "marker": "envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`"
         },
         {
           "file": "stack/hooks/docs.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`"
+          "marker": "envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`"
         },
         {
           "file": "stack/hooks/docs-session.js",
@@ -3875,7 +3875,6 @@
           "file": "stack/agents/wpf-verifier.md",
           "marker": "report the view checks as UNVERIFIED with the reason"
         },
-
         {
           "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "a native screen nothing observed is never a silent pass"
@@ -5493,43 +5492,43 @@
       ]
     },
     "approval-stamp-absolute-path": {
-      "_note": "The APPROVAL gate stamp is written with the Write tool at the ABSOLUTE ${CLAUDE_PROJECT_DIR} path (substituted in skill content, CC >= 2.1.196) (a relative path landed in the wrong cwd; the shell route is masked) - per plan since 2.8.0 (<data root>/state/approvals/<plan id>/APPROVAL, and every implementer brief carries `plan: <plan id>`: guard-unapproved-dispatch.js passes a brief only on its own plan's stamp, so two sessions on two plans no longer share one approval) - restated in every flow that writes an APPROVED stamp. The solve flows' typed AUTO waiver stays at the root (no-stops-waiver-solve-flows).",
+      "_note": "The APPROVAL gate stamp is written with the Write tool at the ABSOLUTE `<project root>` path (the model fills it in on every host; `${CLAUDE_PROJECT_DIR}` is substituted only in a Claude Code SKILL.md, so skill prose never names it, and the installer writes a SKILL.md's stamp path back to it in the Claude Code copy - install/library.js renderSkillFile) (a relative path landed in the wrong cwd; the shell route is masked) - per plan since 2.8.0 (<data root>/state/approvals/<plan id>/APPROVAL, and every implementer brief carries `plan: <plan id>`: guard-unapproved-dispatch.js passes a brief only on its own plan's stamp, so two sessions on two plans no longer share one approval) - restated in every flow that writes an APPROVED stamp. The solve flows' typed AUTO waiver stays at the root (no-stops-waiver-solve-flows).",
       "owner": {
         "file": "stack/skills/task-implement/SKILL.md",
-        "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+        "marker": "Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
       },
       "sites": [
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+          "marker": "Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+          "marker": "Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+          "marker": "Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+          "marker": "Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+          "marker": "Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+          "marker": "Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/loop-code-quality/references/staged-mode.md",
-          "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL`"
+          "marker": "written with the Write tool at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL`"
         },
         {
           "file": "stack/skills/task-solve/references/step-mechanics.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+          "marker": "Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         }
       ]
     },
@@ -6838,7 +6837,7 @@
     "full-spec-checklist": {
       "_note": "What a FULL spec is - the three items and the three disqualifiers the merged design-and-audit step turns on. Owned by the single-chat solve flow; vendored into the cross-task orchestrator for its single-chat path because both are user-invoked only and neither can load the other.",
       "owner": {
-        "file": "stack/skills/task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/references/full-spec.md",
         "marker": "names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria)"
       },
       "sites": [
@@ -7103,7 +7102,7 @@
       ]
     },
     "blocking-stdio": {
-      "_note": "hook-prelude.js blockingStdio makes stdout and stderr blocking, so a pipe gets every byte before process.exit - Node writes a pipe async on macOS, and a hook decision or CLI report past the pipe buffer reached its reader cut off (2026-10-10: the secret guard rewrite of a 100 KB command arrived as 65,536 bytes and ran unredacted). Every hook loads the prelude; a CLI beside it calls it in its main block. The three engines that ship without the prelude on one route (docs.js, and secrets-run.js, the MCP launcher, on every route), the five skill scripts a skill copy carries alone and the gate leg (copied to a VM with only install/runtime.js) each carry this byte-identical copy. A change to it is ten edits, not one.",
+      "_note": "hook-prelude.js blockingStdio makes stdout and stderr blocking, so a pipe gets every byte before process.exit - Node writes a pipe async on macOS, and a hook decision or CLI report past the pipe buffer reached its reader cut off (2026-10-10: the secret guard rewrite of a 100 KB command arrived as 65,536 bytes and ran unredacted). Every hook loads the prelude; a CLI beside it calls it in its main block. The two engines that ship without the prelude on one route (docs.js, and secrets-run.js, the MCP launcher, on every route), the six skill scripts a skill copy carries alone and the gate leg (copied to a VM with only install/runtime.js) each carry this byte-identical copy. A change to it is ten edits, not one.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
@@ -7386,12 +7385,12 @@
       "_note": "The typed no-stops waiver (a hand-written AUTO stamp) lives ONLY in the two solve flows, in the same words - the user's ruling of 2026-10-20 (stack audit S1): one request had four behaviours across the flows, and a hand-written AUTO makes every person-directed hook read the session as unattended for 8h. Every other flow answers the same words with `--mode-auto-run-on` (no-stops-points-to-auto-mode). task-solve-cross carries it in references/execution-modes.md, read before its first stop, because its SKILL.md sits at its 18,000-char cap.",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
-        "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer."
+        "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<project root>/<data root>/state/approvals/APPROVAL`, first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer."
       },
       "sites": [
         {
           "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer."
+          "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<project root>/<data root>/state/approvals/APPROVAL`, first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer."
         }
       ]
     },
@@ -7890,28 +7889,88 @@
       "_note": "The data root, ALFRED_CODE_DATA_PATH relative to the project or .alfred - one reading in the hooks' layout.js and every script that writes under it without the hooks beside it (2.8.0 layout).",
       "owner": {
         "file": "stack/hooks/layout.js",
-        "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+        "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
       },
       "sites": [
         {
           "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
           "file": "stack/skills/task-solve/scripts/spec-check.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
           "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
           "file": "setup-plugin/hooks/guard-layer-table.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
           "file": "stack/skills/mode-output-scorer/scripts/scorecard.js",
-          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/docs.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-answer.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-catastrophic-rm.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-config-protection.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-cross-project-write.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-desktop-exec.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-fresh-session-start.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-protected-force-push.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-read-whole-file.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-secret-value.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-stop-contract.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-unapproved-dispatch.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/guard-ungated-commit.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/history.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        },
+        {
+          "file": "stack/hooks/instrument-tool-usage.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         }
       ]
     },
@@ -7924,43 +7983,43 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         }
       ]
     },
@@ -8386,12 +8445,12 @@
       "_note": "How a script outside a session reads an ALFRED_CODE_ setting (env, then the project's settings.local.json, settings.json, the account) - data-root.js's settingFrom, copied byte for byte into the hooks' layout.js for the workspace chain (release 2), which cannot require stack/mcp/.",
       "owner": {
         "file": "stack/mcp/data-root.js",
-        "marker": "function settingFrom({ env, projectDir, suffix, key })\n{\n    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);\n    const own = String(read(env) || '').trim();\n    if (own || !projectDir) return own;\n    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');\n    for (const file of [\n        path.join(projectDir, '.claude', 'settings.local.json'),\n        path.join(projectDir, '.claude', 'settings.json'),\n        path.join(account, 'settings.json'),\n    ])\n    {\n        try\n        {\n            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();\n            if (value) return value;\n        }\n        catch { /* absent, unreadable or malformed: the next file answers */ }\n    }\n    return '';\n}"
+        "marker": "function settingFrom({ env, projectDir, suffix })\n{\n    const read = (e) => envOf(e, suffix);\n    const own = String(read(env) || '').trim();\n    if (own || !projectDir) return own;\n    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');\n    for (const file of [\n        path.join(projectDir, '.claude', 'settings.local.json'),\n        path.join(projectDir, '.claude', 'settings.json'),\n        path.join(account, 'settings.json'),\n    ])\n    {\n        try\n        {\n            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();\n            if (value) return value;\n        }\n        catch { /* absent, unreadable or malformed: the next file answers */ }\n    }\n    return '';\n}"
       },
       "sites": [
         {
           "file": "stack/hooks/layout.js",
-          "marker": "function settingFrom({ env, projectDir, suffix, key })\n{\n    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);\n    const own = String(read(env) || '').trim();\n    if (own || !projectDir) return own;\n    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');\n    for (const file of [\n        path.join(projectDir, '.claude', 'settings.local.json'),\n        path.join(projectDir, '.claude', 'settings.json'),\n        path.join(account, 'settings.json'),\n    ])\n    {\n        try\n        {\n            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();\n            if (value) return value;\n        }\n        catch { /* absent, unreadable or malformed: the next file answers */ }\n    }\n    return '';\n}"
+          "marker": "function settingFrom({ env, projectDir, suffix })\n{\n    const read = (e) => envOf(e, suffix);\n    const own = String(read(env) || '').trim();\n    if (own || !projectDir) return own;\n    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');\n    for (const file of [\n        path.join(projectDir, '.claude', 'settings.local.json'),\n        path.join(projectDir, '.claude', 'settings.json'),\n        path.join(account, 'settings.json'),\n    ])\n    {\n        try\n        {\n            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();\n            if (value) return value;\n        }\n        catch { /* absent, unreadable or malformed: the next file answers */ }\n    }\n    return '';\n}"
         }
       ]
     },

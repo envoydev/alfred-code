@@ -16,14 +16,14 @@ test.after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force:
 
 function fx({
     sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawSettings, noStamp = false,
-    ruleEdit = false, docsRoot, gitRule = '# git\n',
+    ruleEdit = false, docsRoot, gitRule = '# git\n', skillBody = 'body\n',
 } = {})
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'libcheck-'));
     roots.push(root);
     const src = path.join(root, 'src');
     fs.mkdirSync(path.join(src, 'stack/skills/demo'), { recursive: true });
-    fs.writeFileSync(path.join(src, 'stack/skills/demo/SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
+    fs.writeFileSync(path.join(src, 'stack/skills/demo/SKILL.md'), `---\nname: demo\ndescription: d\n---\n${skillBody}`);
     fs.mkdirSync(path.join(src, 'stack/agents'), { recursive: true });
     fs.writeFileSync(path.join(src, 'stack/agents/seat.md'), '---\nname: seat\ndescription: s\n---\nbody\n');
     fs.mkdirSync(path.join(src, 'stack/rules'), { recursive: true });
@@ -160,6 +160,22 @@ test('alfred-docs-root is compared normalised - the placeholder never reads as b
     fs.appendFileSync(path.join(f.src, 'stack/rules/alfred-docs-root.md'), 'a real upstream change\n');
     const out = run(f).out;
     assert.match(out, /behind: rule alfred-docs-root/, 'a genuine content change past the placeholder still reads as behind');
+});
+
+// 2026-11-03: a SKILL.md naming the approval stamp's path is installed with `${CLAUDE_PROJECT_DIR}` where the source says
+// `<project root>` (library.renderSkillFile), so the comparison renders the source the same way before hashing it.
+test('a skill whose copy the installer rendered is compared rendered - it never reads as behind by itself', () =>
+{
+    const skillBody = 'Write `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` first.\n';
+    const f = fx({ skillBody });
+    assert.match(fs.readFileSync(path.join(f.skills, 'demo/SKILL.md'), 'utf8'), /\$\{CLAUDE_PROJECT_DIR\}\/<data root>\/state\/approvals\//);
+    const r = run(f);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /library: clean \(4 copies\)/);
+    assert.doesNotMatch(r.out, /behind: skill demo/);
+
+    const g = fx({ skillBody, sourceVersion: '9.9.9', sourceEdit: true });
+    assert.match(run(g).out, /behind: skill demo/, 'a real change past the rewrite still reads as behind');
 });
 
 // R29: a stamp written before rules joined the library (skills/agents present, no library-rules

@@ -24,7 +24,10 @@
 // gate (a leftover stamp silently authorized later, unrelated runs).
 const fs = require('fs');
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 // 2.8.0 layout (layout.js, copied beside this hook): receipts in <data root>/state/approvals/, session scratch in
 // state/sessions/, the session records in state/history/; null on an older copy route, which keeps the pre-2.8.0 paths.
 let layout = null;
@@ -331,37 +334,52 @@ if (forgeLib || PUSH_GATE_ON) {
     }
   }
 }
+// Task 4b: the forge publish acts chained after a push (`git push && gh pr merge 4`). The push is the act selected above, so
+// these are read here once - each needs the receipt even when the push itself moves nothing, each merge gets its own
+// unseen-head check, and each is a ledger row of its own (fn-9).
+let chainedPublish = [];
+if (publishMatch && publishMatch.git && forgeLib && forgeLib.classifyCommand) {
+  try { chainedPublish = forgeLib.classifyCommand(command, gitCwd, { parsed }).filter((a) => a && a.strength === 'known' && forgeLib.PUBLISH.has(a.concept)); }
+  catch { chainedPublish = []; }
+}
 // The act ledger the ref watch reads (forge.js recordAct): what moved, where, from which head - in the repository's one
 // ledger (forge.js ledgerRoot), so a worktree's push is read by the session watching its main checkout. A git push is one row
 // per ref it names, so a push of feat/x never covers a move of main; one naming refs it does not list (--all, --tags) is one
 // row marked `all`. The call's tool_use_id rides along: the watch trusts a row only once its PostToolUse confirmed it ran.
-function ledgerPublish(match, dir) {
+function ledgerPublish(match, dir, { pushRows = true } = {}) {
   if (!forgeLib || !forgeLib.recordAct) return;
   const f = match.forge || {};
   const head = f.head || forgeLib.gitOut(dir, ['rev-parse', 'HEAD']) || null;
   let rows = [{ ref: f.ref || null }];
   if (match.git && forgeLib.pushTargets) {
     rows = [];
-    for (const p of calls.filter((c) => c.sub === 'push')) {
-      const targets = forgeLib.pushTargets(p.argv || [], gitCwd);
-      if (targets === null) rows.push({ ref: null, all: true });
-      else rows.push(...targets.map((ref) => ({ ref })));
+    // a push that moves nothing (a dry run, nothing ahead) is no act; the merge chained behind it still is (Task 4b)
+    if (pushRows) {
+      for (const p of calls.filter((c) => c.sub === 'push')) {
+        const targets = forgeLib.pushTargets(p.argv || [], gitCwd);
+        if (targets === null) rows.push({ ref: null, all: true });
+        else rows.push(...targets.map((ref) => ({ ref })));
+      }
+      if (!rows.length) rows = [{ ref: null }];
     }
-    if (!rows.length) rows = [{ ref: null }];
+    // fn-9: the command's other publish acts (`git push && gh pr merge 4`) are rows of their own, each with its own concept
+    for (const a of chainedPublish) rows.push({ ref: a.ref || null, concept: a.concept, change: a.change, head: a.head, armed: a.armed });
   }
   let ledger = dir;
   try { ledger = forgeLib.ledgerRoot(dir) || dir; } catch { /* the act's own repo */ }
   const seen = new Set();
   for (const row of rows) {
-    const key = `${row.ref}|${!!row.all}`;
+    const concept = row.concept || f.concept || forgeLib.CONCEPTS.BRANCH;
+    const key = `${concept}|${row.ref}|${!!row.all}|${row.change || ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    forgeLib.recordAct(ledger, payload.session_id, { concept: f.concept || forgeLib.CONCEPTS.BRANCH, change: f.change, ref: row.ref, head, all: row.all, armed: f.armed, tool_use_id: payload.tool_use_id });
+    forgeLib.recordAct(ledger, payload.session_id, { concept, change: row.concept ? row.change : f.change, ref: row.ref, head: row.head || head, all: row.all,
+      armed: row.concept ? row.armed : f.armed, tool_use_id: payload.tool_use_id });
   }
 }
 if (!PUSH_GATE_ON) {
   const dry = publishMatch && publishMatch.git && (publishMatch.call.argv || []).some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a));
-  if (publishMatch && !dry) { try { ledgerPublish(publishMatch, gitRead.callDir(publishMatch.call || { at: publishMatch.index, dirs: [] })); } catch { /* best effort */ } }
+  if (publishMatch && (!dry || chainedPublish.length)) { try { ledgerPublish(publishMatch, gitRead.callDir(publishMatch.call || { at: publishMatch.index, dirs: [] }), { pushRows: !dry }); } catch { /* best effort */ } }
   publishMatch = null;
   askMatch = null;
 }
@@ -554,7 +572,7 @@ function projectOf(f) {
   return ownsManifest(parts[0]) ? parts[0] : null;
 }
 // The projects a PUBLISH is taking out: the commits ahead of upstream, not the working tree (a
-// push's spec already draws that distinction). Docs-root files are excluded the same way
+// push's spec already draws that distinction). Docs-root and data-root state files are excluded the same way
 // commitSet() excludes them - the receipt lives there and names no project of its own.
 // A FIRST push has no upstream to diff against, and the scope check read no project at all (audit 2026-10-08): its
 // commits are the ones no remote branch holds yet.
@@ -565,9 +583,14 @@ function pushTouchedProjects() {
     try { files = git('log --name-only --format= HEAD --not --remotes').split('\n').filter(Boolean); } catch { files = []; }
   }
   const pre = docsPrefix();
+  // ab-HO3: what an act never commits is no project either - the data root's state/ and statistics/ beside the docs root
+  // (ownPrefixes, the set commitSet() leaves out): a data root in a manifest-owning folder read its ledger rows as one.
+  let own = [];
+  try { own = ownPrefixes(gitTop || root); } catch { own = []; }
   const out = new Set();
   for (const f of files) {
-    if (pre && f.replace(/\\/g, '/').startsWith(pre)) continue;
+    const rel = f.replace(/\\/g, '/');
+    if ((pre && rel.startsWith(pre)) || own.some((p) => rel.startsWith(p))) continue;
     const p = projectOf(f);
     if (p) out.add(p);
   }
@@ -674,6 +697,9 @@ const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|
 const MERGE_VERB = /^merge/i;
 const USER_KEEPS = /\bmyself\b/i;
 const NOUN_BEFORE = /\b(?:the|a|an|this|that|my|your|its|our|last|first|previous|next)\s+$/i;
+// U26b (usage audit 2026-11-03): 'commit' leading a noun ('commit messages', 'at commit description') is the noun, never the act -
+// a 'not' earlier in its clause refused 'Commit now but edit commit messages not to have ... at commit description'.
+const NOUN_AFTER = /^\s+(?:messages?|descriptions?|titles?|subjects?|bod(?:y|ies)|hash(?:es)?|histor(?:y|ies)|logs?|ids?|shas?|summar(?:y|ies)|texts?|lines?|lists?|graph|range|author)\b/i;
 const ACT_BEFORE = /\b(?:do|make|create|go ahead with|proceed with|run|finish|approve)\s+(?:the|a|an|this|that|your)\s+$/i;
 const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b/i;
 const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later)[^\p{L}\p{N}]*$/iu;
@@ -712,6 +738,7 @@ function consentIn(text, gate) {
       const before = clean.slice(a, m.index);
       const after = clean.slice(m.index + m[0].length, z);
       if ((NOUN_BEFORE.test(before) && !ACT_BEFORE.test(before)) || WHY_CLAUSE.test(clause)) continue;
+      if (/^commit$/i.test(m[0].trim()) && NOUN_AFTER.test(after)) continue;
       const nk = boundAfter(bounds, z);
       const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
       const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
@@ -779,10 +806,36 @@ function transcriptScan() {
   const seatIds = new Set();
   const seatDone = new Set();
   const agentAt = new Map();
+  // when each Agent / Task call reported: a foreground result that is neither an error nor a launch notice, or a
+  // background seat's completed notification
+  const agentDoneAt = new Map();
+  // A text block is one proof however many result lines it holds: a report's `**Findings:**` header and its closing
+  // `Findings:` line are one review's (2026-11-04: counting every line let one report close two reviews).
   const proofsIn = (text, at, after = 0) => {
     for (const [kind, re] of Object.entries(REVIEW_PROOF)) if (re.test(text)) proofs.push({ at, kind, after });
   };
   const textOf = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('\n') : '');
+  // The checkpoint's receipt writer is a result line too (2026-11-04, the commit-path A/B's smoke: in 4 of 4 runs the
+  // reviews' reports stayed in thinking, stored empty, and no Findings line reached the transcript whatever the refusal
+  // said). The call counts when it runs `node <receipt.js> commit` with a `--findings` value and no `--dry-run` - the
+  // script named by its path, or by a variable the same command set to that path (`R=".../receipt.js"` then
+  // `node "$R" commit`, the shape every smoke run used) - and its result is the writer's own `wrote ...COMMIT-GATE` line.
+  // It closes every review still open whose result line is Findings (never a loop's Outcome), unless a seat sent after
+  // that review had not reported before the call. An echo, another script, or a call with no such result is no receipt.
+  const RECEIPT_RUN = /(?:^|[;&|(\n])[ \t]*(?:[A-Za-z_]\w*=(?:"[^"\n]*"|'[^'\n]*'|[^\s;&|]*)[ \t]+)*(?:[^\s;&|"']*[\\/])?node(?:\.exe)?(?:[ \t]+-[^\s;&|]*)*[ \t]+("[^"\n]*"|'[^'\n]*'|[^\s;&|"']+)(?:[ \t]|\\\r?\n)+commit(?=[\s;&|]|$)/g;
+  const receiptCommit = (cmd) => {
+    if (typeof cmd !== 'string' || !/(?:^|\s)--findings(?:=|\s+)\S/.test(cmd) || /(?:^|\s)--dry-run\b/.test(cmd)) return false;
+    for (const m of cmd.matchAll(RECEIPT_RUN)) {
+      const script = m[1].replace(/^(["'])(.*)\1$/, '$2');
+      if (/(?:^|[\\/])receipt\.js$/.test(script)) return true;
+      const v = /^\$(?:\{(\w+)\}|(\w+))$/.exec(script);
+      const name = v && (v[1] || v[2]);
+      if (name && new RegExp(`(?:^|[\\s;&|(])\\$?${name}[ \\t]*=[ \\t]*(["']?)[^\\n;"']*receipt\\.js\\1(?=[\\s;&|]|$)`).test(cmd)) return true;
+    }
+    return false;
+  };
+  const receiptPending = new Map();
+  const receipts = [];
   let rowNo = 0;
   let fd;
   try {
@@ -797,7 +850,7 @@ function transcriptScan() {
       // each row's place in the transcript, a block's place inside its row
       const at = ++rowNo * 1000;
       if (line.length < 1024 * 1024 && (/"name"\s*:\s*"(?:Skill|Agent|Task)"/.test(line) || line.includes('"answers"')
-        || (/"type"\s*:\s*"assistant"/.test(line) && /Findings|Outcome/.test(line)))) {
+        || (/"type"\s*:\s*"assistant"/.test(line) && /Findings|Outcome|receipt\.js/.test(line)))) {
         let row = null;
         try { row = JSON.parse(line); } catch { row = null; }
         const c = row && row.message && row.message.content;
@@ -806,6 +859,7 @@ function transcriptScan() {
             if (!b) return;
             if (b.type === 'text' && typeof b.text === 'string') proofsIn(b.text, at + i);
             if (b.type !== 'tool_use' || !b.input) return;
+            if ((b.name === 'Bash' || b.name === 'PowerShell') && b.id && receiptCommit(b.input.command)) receiptPending.set(String(b.id), at + i);
             if (/^(?:Agent|Task)$/.test(b.name) && b.id) agentAt.set(String(b.id), at + i);
             const named = b.name === 'Skill' ? String(b.input.skill || b.input.command || '') : /^(?:Agent|Task)$/.test(b.name) ? String(b.input.subagent_type || '') : '';
             if (!named) return;
@@ -835,7 +889,7 @@ function transcriptScan() {
         for (const id of new Set([...line.matchAll(/"tool_use_id"\s*:\s*"([^"]+)"/g)].map((m) => m[1]))) {
           const sentAt = agentAt.get(id);
           if (sentAt === undefined) continue;
-          if (line.length >= 1024 * 1024) { if (seatIds.has(id)) seatDone.add(id); continue; }
+          if (line.length >= 1024 * 1024) { if (seatIds.has(id)) seatDone.add(id); if (!agentDoneAt.has(id)) agentDoneAt.set(id, at); continue; }
           let row = null;
           try { row = JSON.parse(line); } catch { row = null; }
           const c = row && row.message && row.message.content;
@@ -844,7 +898,22 @@ function transcriptScan() {
           const text = textOf(own.content);
           if ((row.toolUseResult && row.toolUseResult.status === 'async_launched') || /^\s*Async agent launched/.test(text)) continue;
           if (seatIds.has(id)) seatDone.add(id);
+          if (!agentDoneAt.has(id)) agentDoneAt.set(id, at);
           proofsIn(text, at, sentAt);
+        }
+      }
+      // the receipt writer's own result: it wrote the commit receipt
+      if (receiptPending.size && line.includes('"tool_result"') && line.length < 1024 * 1024) {
+        for (const id of new Set([...line.matchAll(/"tool_use_id"\s*:\s*"([^"]+)"/g)].map((m) => m[1]))) {
+          const callAt = receiptPending.get(id);
+          if (callAt === undefined) continue;
+          let row = null;
+          try { row = JSON.parse(line); } catch { row = null; }
+          const c = row && row.message && row.message.content;
+          const own = Array.isArray(c) && c.find((x) => x && x.type === 'tool_result' && String(x.tool_use_id) === id);
+          if (!own || own.is_error === true || !/^\s*wrote\s[^\n]*COMMIT-GATE/m.test(textOf(own.content))) continue;
+          receiptPending.delete(id);
+          receipts.push({ at: callAt, receipt: true });
         }
       }
       // a background seat's completion, and the report it carries
@@ -857,6 +926,7 @@ function transcriptScan() {
           const id = (/<tool-use-id>([^<]+)<\/tool-use-id>/.exec(block) || [])[1];
           if (!id || !agentAt.has(id) || (/<status>([a-z_]+)<\/status>/.exec(block) || [])[1] !== 'completed') continue;
           if (seatIds.has(id)) seatDone.add(id);
+          if (!agentDoneAt.has(id)) agentDoneAt.set(id, at);
           if (text !== line) proofsIn(block, at, agentAt.get(id));
         }
       }
@@ -920,9 +990,18 @@ function transcriptScan() {
   const reviewCalls = calls.filter((k) => k.review && !(k.id && _scan.refused.has(k.id)));
   const open = [];
   const proven = new Set();
-  const events = [...reviewCalls.map((k) => ({ at: k.at, call: k })), ...proofs.map((p) => ({ at: p.at, proof: p }))].sort((a, b) => a.at - b.at);
+  const events = [...reviewCalls.map((k) => ({ at: k.at, call: k })), ...proofs.map((p) => ({ at: p.at, proof: p })), ...receipts].sort((a, b) => a.at - b.at);
+  // a seat sent after the review, never refused, that had not reported before the receipt call: the review was unfinished
+  const seatRunning = (from, to) => [...agentAt].some(([id, sent]) => sent > from && sent < to && !_scan.refused.has(id)
+    && !(agentDoneAt.has(id) && agentDoneAt.get(id) < to));
   for (const e of events) {
     if (e.call) { open.push(e.call); continue; }
+    if (e.receipt) {
+      for (let j = open.length - 1; j >= 0; j--) {
+        if (reviewProof(open[j].review) === 'findings' && !seatRunning(open[j].at, e.at)) proven.add(open.splice(j, 1)[0]);
+      }
+      continue;
+    }
     const top = open[open.length - 1];
     if (top && reviewProof(top.review) === e.proof.kind && (!e.proof.after || e.proof.after > top.at)) proven.add(open.pop());
   }
@@ -1224,9 +1303,13 @@ function judgeReceipt(body, opts) {
   const claimed = (opts && opts.countAgainstTree) ? /(\d+)\s*files?\b/i.exec(spec) : null;
   if (claimed) {
     let actual = 0;
-    try { actual = commitSet().count; } catch { actual = 0; }
+    let opaque = '';
+    try { const cs = commitSet(); actual = cs.count; opaque = cs.opaqueWord || ''; } catch { actual = 0; }
     if (actual && Number(claimed[1]) < actual) {
-      r.problem = `spec: claims ${claimed[1]} file(s) but this commit takes in ${actual} (the index, plus what -a, a chained git add or the paths it names add) - review the rest, or narrow what this act commits`;
+      // U26c: a path word built when the command runs (`${=G1}`, `$F`) cannot be read here, so the count is the whole tree
+      const how = opaque ? ` - \`${opaque.slice(0, 60)}\` is built when the command runs, so the gate counts the whole uncommitted tree; name the paths literally`
+        : ' (the index, plus what -a, a chained git add or the paths it names add)';
+      r.problem = `spec: claims ${claimed[1]} file(s) but this commit takes in ${actual}${how} - review the rest, or narrow what this act commits`;
       return r;
     }
   }
@@ -1327,7 +1410,16 @@ function judgeReceipt(body, opts) {
   // family - the rename left this arm matching nothing, so a receipt naming the loop minted consent.
   const notRun = field('carried') ? [] : reviewsNotRun(first);
   if (notRun.length) {
-    r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load; if this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
+    // each review's own result line; a text block is one result line, and the receipt writer stands in for Findings only
+    const kinds = new Set(notRun.map((n) => reviewProof(n)));
+    const lineName = kinds.size > 1 ? 'result line (`Findings:`, a loop\'s `Outcome:`)' : kinds.has('outcome') ? '`Outcome:` line' : '`Findings:` line';
+    const ask = notRun.length > 1
+      ? `Reviews you finished: print each review's report as text in a reply of its own - its ${lineName}, never only in thinking - then commit again`
+      : `A review you finished: print the review's report in your reply - its ${lineName} as text, never only in thinking - then commit again`;
+    const route = kinds.size === 1 && kinds.has('findings') ? (notRun.length > 1
+      ? ' - or write the receipt with the checkpoint\'s receipt.js in its own call after the reviews, its output shown and no seat they sent still running: that call\'s `wrote` line is their result line; then commit in the next call'
+      : ' - or write the receipt with the checkpoint\'s receipt.js in its own call after the review, its output shown and no seat it sent still running: that call\'s `wrote` line is its result line; then commit in the next call') : '';
+    r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load. ${ask}${route}. If this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
   }
   // A commit line that names NO review still needs one (2026-10-22, a side agent's note; the user's ruling 'Need any
@@ -1475,15 +1567,20 @@ if (publishMatch) {
     } catch { ahead = true; }
     if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
   }
-  if (!dryRun && ahead && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
+  // the lead act publishes, or a forge publish act chained behind a push that moves nothing does (Task 4b)
+  const leadPublishes = !dryRun && ahead;
+  const gated = leadPublishes || chainedPublish.length > 0;
+  const actOf = (a) => command.slice(a.at, a.end).trim().replace(/\s+/g, ' ').replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
+  const shown = leadPublishes || !chainedPublish.length ? act : actOf(chainedPublish[0]);
+  if (gated && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
     const r = readReceipt('PUSH-GATE', sessionStartMs());
     if (!((r.waived || r.verified) && !r.problem)) {
       process.stderr.write(
         (r.stale
-          ? `Blocked: ${act} - the publish receipt at ${r.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round did not review THIS push).\n`
+          ? `Blocked: ${shown} - the publish receipt at ${r.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round did not review THIS push).\n`
           : r.problem
-            ? `Blocked: ${act} - the publish receipt at ${r.gate} does not hold: ${r.problem}.\n`
-            : `Blocked: ${act} without the publish gate receipt.\n`) +
+            ? `Blocked: ${shown} - the publish receipt at ${r.gate} does not hold: ${r.problem}.\n`
+            : `Blocked: ${shown} without the publish gate receipt.\n`) +
           `A publish leaves this machine for good. Run habits-commit-checkpoint's publish half (load it): say what goes to\n` +
           `which branch, get the user's answer, then write ${r.write} with the skill's scripts/receipt.js (\`push\`) - it\n` +
           `fills head: and spec: from git:\n` +
@@ -1500,20 +1597,25 @@ if (publishMatch) {
   // A merge lands the CHANGE's head, not this checkout's: the receipt's head: must be that head or a descendant of it
   // (forge.js unseenHead - read with plain git, so on every forge and transport; no change ref or no network leaves the
   // local-HEAD rule above standing). The atomic receipt in the command is the newest, then the file.
-  if (!dryRun && ahead && forgeLib && publishMatch.forge && publishMatch.forge.concept === forgeLib.CONCEPTS.MERGE) {
-    let text = command.slice(0, publishMatch.index);
+  // Every merge in the command: the lead act, and each chained behind a push (Task 4b).
+  const merges = !forgeLib ? [] : [
+    ...(leadPublishes && publishMatch.forge && publishMatch.forge.concept === forgeLib.CONCEPTS.MERGE ? [{ m: publishMatch.forge, at: publishMatch.index, shown: act }] : []),
+    ...chainedPublish.filter((a) => a.concept === forgeLib.CONCEPTS.MERGE).map((a) => ({ m: a, at: a.at, shown: actOf(a) })),
+  ];
+  for (const { m, at, shown: mergeAct } of merges) {
+    let text = command.slice(0, at);
     try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
     const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
     let unseen = null;
-    try { unseen = forgeLib.unseenHead({ cwd: root, change: publishMatch.forge.change, sha: publishMatch.forge.head, receiptHead }); } catch { unseen = null; }
+    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, receiptHead }); } catch { unseen = null; }
     if (unseen) {
-      process.stderr.write(`Blocked: ${act} - ${unseen}.\n` +
+      process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
         'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');
       process.exit(2);
     }
   }
   // Allowed: the act ledger the ref watch reads.
-  if (!dryRun && ahead && forgeLib) ledgerPublish(publishMatch, root);
+  if (gated && forgeLib) ledgerPublish(publishMatch, root, { pushRows: leadPublishes });
 }
 
 // --- the COMMIT gate ----------------------------------------------------------------------
@@ -1552,23 +1654,21 @@ function lineFinding(file, text, lineNo) {
   return '';
 }
 // A `<data root>/state/approvals/<name>` ALLOW receipt's lines (the pre-2.8.0 flow/ still read) - the USER's answer to a
-// block, this session's own, under 8h. `write` is where a denial says to put one.
+// block, read by hook-prelude.js readReceiptFile: under 8h, written after the session began, and a `session:` line naming
+// this call's session when the call names one (E1-6 / O1: another session's answer opened this one's sweep and scan).
+// `write` is where a denial says to put one; `shut` the sentence a denial adds when a receipt is there but not honoured.
 function allowLines(name) {
   const file = receiptRead(name);
   const write = receiptWrite(name);
-  try {
-    const st = fs.statSync(file);
-    let sessionStartMs = 0;
-    try {
-      const tr = fs.statSync(String(payload.transcript_path || ''));
-      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs <= 8 * 60 * 60 * 1000 && !(sessionStartMs && st.mtimeMs < sessionStartMs)) {
-      return { file, write, lines: fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) };
-    }
-  } catch { /* absent or unreadable - nothing allowed */ }
-  return { file, write, lines: [] };
+  let r = null;
+  try { r = prelude().readReceiptFile(file, payload); } catch { r = null; }
+  let shut = '';
+  try { shut = prelude().receiptShutText(r, path.relative(root, file).split(path.sep).join('/')); } catch { shut = ''; }
+  return { file, write, lines: r && r.live ? r.lines : [], shut };
 }
+// The lines a denial tells the model to write, its `session:` line first (hook-prelude.js receiptLinesText).
+const receiptLines = (lines) => { try { return prelude().receiptLinesText(payload, lines); } catch { return lines.map((l) => `  ${l}\n`).join(''); } };
+function prelude() { return require('./hook-prelude.js'); }
 
 // --- a git add that sweeps in what the session did not make --------------------------------------
 // Pilot 3: ~150 files the harness left untracked before the session began were committed by a close's `git add`, and
@@ -1613,17 +1713,21 @@ if (addCalls.length) {
     global.BLOCK_DETAIL = { branch: 'untracked-sweep', count: swept.length };
     const rel = (name) => path.relative(root, receiptWrite(name)).split(path.sep).join('/');
     const record = preExistingRecord();
+    // Past 15 paths the receipt is the top folders that hold them (a root file stays a path), printed whole: 15 lines of a
+    // longer list left the retry denied again for the rest (E-batch M7).
+    const sweepLines = swept.length > 15 ? [...new Set(swept.map((f) => (f.includes('/') ? `${f.split('/')[0]}/` : f)))] : swept;
     process.stderr.write(
       `Blocked: this git add stages ${swept.length} path(s) that were untracked before this change started -\n` +
       `${swept.slice(0, 15).map((f) => `  ${f}`).join('\n')}\n` +
       (swept.length > 15 ? `  ... and ${swept.length - 15} more\n` : '') +
       `They are not this change (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}). Stage the change's own\n` +
       `paths by name instead - git add <path> ... When the user named these files as part of this change, write\n` +
-      `${rel('UNTRACKED-ALLOW')} with one path (a directory ending in /, or *) per line and retry the SAME command;\n` +
+      `${rel('UNTRACKED-ALLOW')} with these lines (one path per line; a directory ending in /, or *) and retry the SAME command -\n` +
+      receiptLines(sweepLines) +
       `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
       `  'Stage only this session's paths (Recommended)'\n` +
       `  'Stage them too' - the user adds these files to the change\n` +
-      `It is honoured for this session only, under 8h.\n`,
+      `It is honoured for this session only, under 8h.\n` + allowLines('UNTRACKED-ALLOW').shut,
     );
     process.exit(2);
   }
@@ -1649,7 +1753,7 @@ function commitScope() {
   const placeAll = (dir, words, into) => {
     for (const w of words) {
       const p = place(dir, w);
-      if (p === null) scope.unknown = true;
+      if (p === null) { scope.unknown = true; if (!scope.opaqueWord && /[$`]/.test(w)) scope.opaqueWord = w; }
       into.push(p === null ? w : p);
     }
   };
@@ -1658,6 +1762,8 @@ function commitScope() {
     scope.dryRun = flags.has('--dry-run');
     scope.amend = flags.has('--amend');
     scope.tracked = flags.has('-a') || flags.has('--all') || flags.has('--pathspec-from-file');
+    // U26a: `--amend --only` (or -o) with no path and no -a rewrites the message alone - git takes nothing from the index
+    scope.messageOnly = scope.amend && (flags.has('--only') || flags.has('-o')) && !paths.length && !scope.tracked;
     if (flags.has('-p') || flags.has('--patch') || flags.has('--interactive')) scope.unknown = true;
     if (paths.length) {
       placeAll(callDir(commitMatch.call), paths, scope.commitPaths);
@@ -1695,6 +1801,7 @@ function measure(scope) {
   const keep = (f) => f && !own.some((p) => f.startsWith(p));
   const run = (args) => execFileSync(...gitSafe(['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
   const tracked = new Map();
+  if (scope && scope.messageOnly) return { top, tracked, untracked: [], count: 0 }; // U26a: the message alone
   const numstat = (base, paths) => {
     const f = run([...base, '--numstat', '-z', ...(paths.length ? ['--', ...paths] : [])]).split('\0');
     for (let i = 0; i < f.length; i++) {
@@ -1741,10 +1848,11 @@ function commitSet() {
   const moved = calls.some((c) => c.at < commitMatch.index && INDEX_MOVER.has(c.sub));
   const scope = commitMatch.opaque || moved ? null : commitScope();
   let set = measure(scope && !scope.unknown ? scope : null);
-  if (scope && !scope.unknown && !set.count && (scope.paths.length || scope.commitPaths.length)) {
+  if (scope && !scope.unknown && !scope.messageOnly && !set.count && (scope.paths.length || scope.commitPaths.length)) {
     const tree = measure(null);
     if (tree.count) set = tree;
   }
+  set.opaqueWord = scope && scope.unknown && scope.opaqueWord ? scope.opaqueWord : '';
   commitSetCache = set;
   return set;
 }
@@ -1912,7 +2020,7 @@ function headerName(raw) {
 }
 function stagedFindings() {
   const scope = commitScope();
-  if (scope.dryRun) return [];
+  if (scope.dryRun || scope.messageOnly) return [];
   const out = [];
   let budget = SCAN_LIMIT;
   const top = gitTop || root;
@@ -2015,11 +2123,13 @@ function stagedFindings() {
   const found = stagedFindings();
   // 'Commit it as is' is the USER's answer, honoured through its own receipt: one `file`, `file:line`
   // or `*` per line; this session's own, under 8h.
-  const { write: allowFile, lines: allow } = allowLines('STAGED-SCAN-ALLOW');
+  const { write: allowFile, lines: allow, shut: allowShut } = allowLines('STAGED-SCAN-ALLOW');
   const open = found.filter((f) => !(allow.includes('*') || allow.includes(f.file) || allow.includes(`${f.file}:${f.line}`)));
   if (open.length) {
     global.BLOCK_DETAIL = { branch: 'staged-scan', count: open.length };
     const allowRel = path.relative(root, allowFile).split(path.sep).join('/');
+    // Past 15 hits the receipt names each file once, printed whole (E-batch M7: 15 lines left the rest denied on the retry).
+    const scanLines = open.length > 15 ? [...new Set(open.map((f) => f.file))] : open.map((f) => `${f.file}:${f.line}`);
     process.stderr.write(
       `Blocked: the commit adds what must never land -\n${open.slice(0, 15).map((f) => `  ${f.file}:${f.line} - ${f.hit}`).join('\n')}\n` +
       (open.length > 15 ? `  ... and ${open.length - 15} more\n` : '') +
@@ -2028,8 +2138,9 @@ function stagedFindings() {
       `for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
       `  'Remove it and stage again (Recommended)'\n` +
       `  'Commit it as is' - the user keeps the line on purpose\n` +
-      `On 'Commit it as is', write ${allowRel} with one \`file:line\` per kept hit and retry the SAME\n` +
-      `command. It is honoured for this session only, under 8h.\n`,
+      `On 'Commit it as is', write ${allowRel} with these lines (one \`file:line\` per kept hit, past 15 one \`file\` per\n` +
+      `file) and retry the SAME command -\n` + receiptLines(scanLines) +
+      `It is honoured for this session only, under 8h.\n` + allowShut,
     );
     process.exit(2);
   }
@@ -2040,9 +2151,11 @@ if (carriesOwnReceipt('COMMIT-GATE', commitMatch.index)) process.exit(0);
 // detached scratch worktree was held for the project's receipt). The staged scan above still ran; a branch, the
 // project's own tree or a path outside the temp roots is gated as before.
 if (commitMatch.call && gitTop && !(projectDir && gitTop === topOf(projectDir))) {
-  const UID = typeof process.getuid === 'function' ? process.getuid() : null;
-  const realOr = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
-  const tmpRoots = [require('os').tmpdir(), ...(UID != null ? [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`] : [])].map(realOr);
+  // hook-prelude.js tempRoots is the one home; the inline list stays for a prelude older than this hook
+  const tmpRoots = (() => { try { const r = require('./hook-prelude.js').tempRoots; if (typeof r === 'function') return r(); } catch { /* an older prelude */ }
+    const UID = typeof process.getuid === 'function' ? process.getuid() : null;
+    const realOr = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+    return [require('os').tmpdir(), ...(UID != null ? [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`] : [])].map(realOr); })();
   const under = tmpRoots.some((d) => gitTop === d || gitTop.startsWith(d.endsWith(path.sep) ? d : d + path.sep));
   let detached = false;
   if (under) {

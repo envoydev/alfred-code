@@ -49,6 +49,9 @@ On any non-trivial diff, before committing or presenting, in order:
    - 'Hold' - nothing is committed and no receipt is written
    ```
 
+   The `<VERIFIED phrase>` says what ran on what: one build or test run of the whole tree verifies the tree, never
+   each commit of a split - 'each commit builds' needs a run per commit.
+
 6. **Receipt.** Write the receipt below with `receipt.js`, then commit, read `git log -1 --stat` back
    into the close, then clear it.
 

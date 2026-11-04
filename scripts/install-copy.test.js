@@ -339,3 +339,19 @@ test('install-copy: a library skill script runs as CommonJS in an ESM project', 
         else assert.notStrictEqual(r.status, 0, 'without the marker the project\'s "type": "module" takes the script');
     }
 });
+
+// 2026-11-03: the copy route renders a skill through library.renderSkillFile, which needs the file's path inside the
+// skill - the stamp path is written back in the top-level SKILL.md alone, a reference keeps `<project root>`.
+test('install-copy: syncTree hands the render each file\'s relative path, and a re-run rewrites nothing', () =>
+{
+    const stamp = 'Write `<project root>/<data root>/state/approvals/<plan id>/APPROVAL`.\n';
+    const { base, src } = fixture({ 'SKILL.md': stamp, 'references/a.md': stamp, 'references/SKILL.md': stamp });
+    const dest = path.join(base, 'dest');
+    const { renderSkillFile } = require('./install/library.js');
+    const render = (text, rel) => renderSkillFile(rel, text);
+    assert.ok(copy.syncTree({ src, dest, render }));
+    assert.match(fs.readFileSync(path.join(dest, 'SKILL.md'), 'utf8'), /`\$\{CLAUDE_PROJECT_DIR\}\/<data root>\/state\/approvals\//);
+    assert.equal(fs.readFileSync(path.join(dest, 'references/a.md'), 'utf8'), stamp);
+    assert.equal(fs.readFileSync(path.join(dest, 'references/SKILL.md'), 'utf8'), stamp);
+    assert.ok(!copy.syncTree({ src, dest, render }), 'a second run changes nothing');
+});

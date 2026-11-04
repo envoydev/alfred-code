@@ -199,9 +199,62 @@ const changeFromArgs = (argv) => {
   }
   return null;
 };
-// One HTTP call read off an API-capable command word, or null when the word is not one.
-function apiCallOf(c, name, argv) {
+// curl's -K / --config file (E-batch fn-10b): read up to CURL_CONFIG_MAX bytes from where the call runs, each line turned
+// into argv words as curl reads it - `name = value`, `name: value`, `name value`, `--name value`, a bare switch, a quoted
+// value - and parsed with the call's own. A file it cannot read (missing, stdin, past the cap, a config nested three deep)
+// makes the call `unknown`, as a hidden body does: the gates ask, never pass it as a read.
+const CURL_CONFIG_MAX = 64 * 1024;
+function curlConfigWords(text) {
+  const out = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = /^(-{0,2}[A-Za-z0-9][\w-]*)(?:\s*[=:]\s*|\s+|$)(.*)$/.exec(line);
+    if (!m) continue;
+    const name = m[1].startsWith('-') ? m[1] : m[1].length === 1 ? `-${m[1]}` : `--${m[1]}`;
+    let value = m[2].trim();
+    if (value.startsWith('"')) value = value.slice(1).replace(/"\s*$/, '').replace(/\\(.)/g, '$1');
+    out.push(name);
+    if (value !== '') out.push(value);
+  }
+  return out;
+}
+function readCurlConfig(file, dir) {
+  if (!file || file === '-') return { why: 'stdin' };
+  // E-batch final review M2: a descriptor names the CALL's stdin or a redirect, never a file the hook can read - its own stdin
+  // is drained, so `-K /dev/stdin <<< ...` read as an empty config and the call passed. A non-file is refused by stat, before
+  // an open a FIFO would block.
+  if (/^\/dev\/(?:stdin|fd\/\d+)$|^\/proc\/self\/fd\/\d+$/.test(file)) return { why: `${file} is a descriptor` };
+  const where = path.resolve(dir || process.cwd(), file.replace(/^~(?=\/|$)/, require('node:os').homedir()));
+  let fd;
+  try {
+    if (!fs.statSync(where).isFile()) return { why: `${path.basename(where)} is not a regular file` };
+    fd = fs.openSync(where, 'r');
+    const buf = Buffer.alloc(CURL_CONFIG_MAX + 1);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    if (n > CURL_CONFIG_MAX) return { why: `${path.basename(where)} is over 64KB` };
+    return { words: curlConfigWords(buf.subarray(0, n).toString('utf8')) };
+  } catch (err) { return { why: `${path.basename(where)}: ${err.code || err.name}` }; }
+  finally { if (fd !== undefined) try { fs.closeSync(fd); } catch { /* closed */ } }
+}
+// One HTTP call read off an API-capable command word, or null when the word is not one. A curl config the hook cannot read
+// comes back as { unread: <why> }.
+function apiCallOf(c, name, argv, dir, depth = 0) {
   if (name === 'curl') {
+    const own = [], extra = [];
+    for (let i = 0; i < argv.length; i++) {
+      const a = argv[i];
+      let file = null;
+      if (a === '-K' || a === '--config') { file = argv[i + 1]; i++; }
+      else if (a.startsWith('--config=')) file = a.slice(9);
+      else if (/^-K./.test(a)) file = a.slice(2);
+      else { own.push(a); continue; }
+      if (depth >= 2) return { unread: 'a curl config nested past two levels' };
+      const read = readCurlConfig(file, dir);
+      if (!read.words) return { unread: `curl's config file (${read.why})` };
+      extra.push(...read.words);
+    }
+    if (extra.length) return apiCallOf(c, name, [...own, ...extra], dir, depth + 1);
     let method = null, url = null, body = '', bodyHidden = false, upload = false;
     for (let i = 0; i < argv.length; i++) {
       const a = argv[i], next = argv[i + 1];
@@ -248,7 +301,10 @@ function apiCallOf(c, name, argv) {
     for (let i = 1; i < argv.length; i++) {
       const a = argv[i], next = argv[i + 1];
       if (a === '-X' || a === '--method') { method = next; i++; continue; }
-      if (/^(?:-f|--raw-field|-F|--field|--form)$/.test(a)) { fields = true; body += ` ${next || ''}`; i++; continue; }
+      // -F / --field reads a value opening with @ from a file (E-batch fn-10a); -f / --raw-field takes it as text.
+      const fieldValue = /^(?:-F|--field)$/.test(a) ? next : a.startsWith('--field=') ? a.slice(8) : /^-F./.test(a) ? a.slice(2) : null;
+      if (fieldValue !== null) { fields = true; if (/^[^=]*=@/.test(String(fieldValue || ''))) bodyHidden = true; else body += ` ${fieldValue || ''}`; if (fieldValue === next) i++; continue; }
+      if (/^(?:-f|--raw-field|--form)$/.test(a)) { fields = true; body += ` ${next || ''}`; i++; continue; }
       if (a === '--input') { fields = true; bodyHidden = true; i++; continue; }
       if (VALUED.has(a)) { i++; continue; }
       if (!isFlag(a) && !url) url = a;
@@ -361,29 +417,44 @@ function classifyShell(c, raw, cwd, pre) {
   let words;
   try { words = sw.commandWords(command, parsed); } catch { return []; }
   const out = [];
-  let interp = false;
+  // Where each heredoc / here-string goes: the simple command whose redirect opens it. An interpreter reads one of its own
+  // stage's, or one an earlier stage of its pipe passes on (`cat <<EOF | node`); a body any other command takes is text
+  // (E-batch fn-4: `cat <<EOF > notes.md` beside a `node -e` scanned the notes as code).
+  let fed = null;
+  const fedTo = (cmd, span) => {
+    if (!fed) {
+      fed = [];
+      const docs = new Map();
+      try { for (const h of sw.heredocsOf(command)) docs.set(h.index, command.slice(h.bodyStart, h.bodyEnd)); } catch { /* none */ }
+      for (const k of (parsed && parsed.cmds) || []) for (const r of k.redirs || []) {
+        if ((r.op === '<<' || r.op === '<<-') && docs.has(r.at)) fed.push({ cmd: k, at: r.at, text: docs.get(r.at) });
+        else if (r.op === '<<<' && r.target && typeof r.target.s === 'number') fed.push({ cmd: k, at: r.at, text: command.slice(r.target.s, r.target.e) });
+      }
+    }
+    // E-batch final review I1: one opened INSIDE the interpreter's own words (`python3 -c "$(cat <<'EOF' ... EOF)"`) is its
+    // code too - the substitution's `cat` owns the redirect, the interpreter runs what it prints.
+    const inside = (d) => span && typeof d.at === 'number' && d.at > span.at && d.at < span.end;
+    return fed.filter((d) => d.cmd === cmd || (cmd && d.cmd.elem === cmd.elem && d.cmd.stage < cmd.stage) || inside(d)).map((d) => d.text);
+  };
+  const dirOf = (w) => { try { return (read.callDir && read.callDir({ at: w.at })) || cwd || process.cwd(); } catch { return cwd || process.cwd(); } };
   for (const w of words) {
     const name = baseName(w.name);
     const argv = (w.argv || []).map(String);
     const ws = w.cmd && w.cmd.words;
     const span = { at: w.at, end: ws && ws.length ? ws[ws.length - 1].e : command.length };
     let r = null;
-    const api = c.apiCommands.has(name) || name === 'gh' || name === 'glab' || name === 'tea' || name === 'az' ? apiCallOf(c, name, argv) : null;
-    if (api) r = classifyApi(c, api, 'api');
+    const api = c.apiCommands.has(name) || name === 'gh' || name === 'glab' || name === 'tea' || name === 'az' ? apiCallOf(c, name, argv, dirOf(w)) : null;
+    if (api && api.unread) r = result(MERGE, 'unknown', 'api', `${name} reads its options from ${api.unread}`);
+    else if (api) r = classifyApi(c, api, 'api');
     else if (c.interpreters.has(name)) {
-      interp = true;
       const flagAt = argv.findIndex((a) => /^(?:-[A-Za-z]*[eEc]|-p|--eval|--print|-command)$/i.test(a));
-      if (flagAt >= 0 && argv[flagAt + 1]) {
-        const calls = interpreterCalls(c, argv[flagAt + 1]);
-        r = calls.sort((a, b) => rankOf(b) - rankOf(a))[0] || null;
-      }
+      const code = [...(flagAt >= 0 && argv[flagAt + 1] ? [argv[flagAt + 1]] : []), ...fedTo(w.cmd, span)];
+      r = code.flatMap((t) => interpreterCalls(c, t)).sort((a, b) => rankOf(b) - rankOf(a))[0] || null;
     } else if (name === 'git') {
       if (argv.length && c.nounOf.get(argv[0]) === 'change') r = classifyCli(c, name, argv);
     } else if (name !== 'sudo' && name !== 'env' && name !== 'xargs') r = classifyCli(c, name, argv);
     if (r) out.push({ ...r, ...span });
   }
-  // A heredoc fed to an interpreter carries its code in the body the parse blanks: read the raw text once.
-  if (interp && !out.some((r) => r.transport === 'api')) for (const r of interpreterCalls(c, String(raw))) out.push({ ...r, at: 0, end: String(raw).length });
   out.command = command;
   return out;
 }
@@ -442,6 +513,8 @@ function classifyMcp(c, toolName, input, server, opts = {}) {
   const inp = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   const extra = { change: keyValue(inp, c.lex.changeKeys || []), ref: keyValue(inp, c.lex.refKeys || []), head: keyValue(inp, c.lex.headKeys || []) };
   const toolWords = tokens(tool);
+  // `run` beside `code` runs code (`browser_run_code_unsafe`, `code_run`), no pipeline (E-batch fn-1).
+  const runsCode = toolWords.some((w, i) => w === 'run' && (toolWords[i + 1] === 'code' || toolWords[i - 1] === 'code'));
   const selectorWords = [];
   const flagWords = [];
   for (const k of Object.keys(inp)) {
@@ -452,6 +525,7 @@ function classifyMcp(c, toolName, input, server, opts = {}) {
   // merge that lands later is armed.
   const done = (r) => {
     if (!r) return null;
+    if (runsCode && (r.concept === PIPELINE || r.concept === WATCH)) return null;
     if ((r.concept === BRANCH || r.concept === RELEASE) && !forgeShaped(c, serverName, inp, opts)) return null;
     const out = { ...r };
     if (r.concept === RELEASE) out.ref = keyValue(inp, c.lex.tagKeys || []) || r.ref;
@@ -628,6 +702,13 @@ function remoteOf(cwd) {
   const all = (gitOut(cwd, ['remote']) || '').split('\n').filter(Boolean);
   return all.includes('origin') ? 'origin' : all.length === 1 ? all[0] : null;
 }
+// A git line over 160 characters keeps its END, where git says what went wrong (E-batch fn-2: a long path cut the
+// reason before 'does not appear to be a git repository'): the text after its last ': ', else its last 160 characters.
+const tailOf = (line) => {
+  if (line.length <= 160) return line;
+  const after = line.slice(line.lastIndexOf(': ') + 2);
+  return line.includes(': ') && after.length <= 160 ? after : `...${line.slice(-157)}`;
+};
 // { ok, refs: Map<ref, sha>, reason } - `patterns` narrows the listing (`--heads --tags` by default; a symref answer for HEAD
 // when `symref` is set).
 function lsRemote(cwd, remote, patterns = null, opts = {}) {
@@ -639,7 +720,7 @@ function lsRemote(cwd, remote, patterns = null, opts = {}) {
     const lines = String(r.stderr || (r.error && r.error.message) || `git exited ${r.status}`).split('\n').map((l) => l.trim()).filter(Boolean);
     const cause = lines.find((l) => /^(?:fatal|error|ssh):/i.test(l)) || lines[0] || `git exited ${r.status}`;
     const why = r.error && r.error.code === 'ETIMEDOUT' ? `no answer within ${(opts.timeout || LS_REMOTE_MS) / 1000}s`
-      : cause.replace(/^fatal:\s*/i, '').slice(0, 160);
+      : tailOf(cause.replace(/^fatal:\s*/i, ''));
     return { ok: false, refs: new Map(), reason: why };
   }
   const refs = new Map();
@@ -705,10 +786,10 @@ function pushTargets(argv, cwd) {
     const s = spec.replace(/^\+/, '');
     let dst = s.includes(':') ? s.slice(s.lastIndexOf(':') + 1) : s;
     dst = dst.replace(/^refs\/(?:heads|tags)\//, '');
-    if (!dst || dst === 'HEAD') { const c = current(); if (!c) continue; dst = c; }
+    if (!dst || dst === 'HEAD' || dst === '@') { const c = current(); if (!c) continue; dst = c; } // `@` is HEAD (E-batch fn-10c)
     out.push(dst);
   }
   return out;
 }
 
-module.exports = { classify, classifyCommand, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

@@ -54,7 +54,9 @@ let partOff = (hook, part) => envOf(process.env, LEGACY_PART[part]) === '0';
 try { partOff = require('./hook-prelude.js').partOff || partOff; } catch { /* an install without the prelude reads the old keys */ }
 const docsOff = (part) => partOff('docs-session', part);
 
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// layout.js's reader when it is beside this file, so an inline DATA_PATH spelling ('./') names the root every other
+// hook reads (E-batch ab-HO5); an older copy route without layout.js keeps the old expression.
+const docsRootEnv = () => (layout && typeof layout.docsRoot === 'function' ? layout.docsRoot() : envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`);
 // 2.8.0: the hooks' state lives under <data root>/state/ (layout.js); the pre-2.8.0 <docs-path>/flow/ is still read for
 // the 2.x line, and is the only path when layout.js is not beside this file.
 let layout = null;
@@ -393,6 +395,7 @@ function sessionStart(input, root, docs, state) {
   if (st && st.mainline && st.deletedUnmerged.length) extra.push(`Doc versions of deleted branches never detected as merged: ${six(st.deletedUnmerged)} - \`${READ} promote <branch>\` folds one in, \`${READ} prune <branch>\` drops it.`);
   if (st && st.mainline && st.liveOnMainline && st.liveOnMainline.length) extra.push(`Doc versions of branches sitting on mainline with no proof they merged: ${six(st.liveOnMainline)} - one that was merged fast-forward looks exactly like one that only caught up, so nothing was folded in; if it landed, \`${READ} promote <branch>\`.`);
   if (st && st.outgrown) extra.push(`${st.outgrown} section(s) describe code that changed since they were written - each says so when opened, and the code wins there.`);
+  if (st && Array.isArray(st.addedSince) && st.addedSince.length) extra.push(`Sections with no covers line, captured before files were added: ${six(st.addedSince)} - each may not describe the code added since; \`${READ} stale\` lists the files.`);
   // With no doc file to read by section (a provisional orientation alone, or a domain whose every file is protected),
   // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
   let readable = true;
@@ -427,8 +430,8 @@ function main() {
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
     startNote = recordUntracked(input, root);
   }
-  // On the PLUGIN route this hook runs from the marketplace clone, where docs.js/memory.js/
-  // history.js are all tracked - so a never-set-up project under a user-scope core never reaches
+  // On the PLUGIN route this hook runs from the marketplace clone, where docs.js and
+  // history.js are both tracked - so a never-set-up project under a user-scope core never reaches
   // this line (M1, R47 fix round 1: the require always resolves there). The case that CAN happen is
   // a partial or skewed copy on the HOOKS COPY ROUTE (ALFRED_CODE_HOOKS_VIA_PLUGIN=false), where
   // docs.js failed to land beside this file - exit silently for exactly THAT missing-module case,
@@ -657,6 +660,31 @@ function setsSince(root, since, ids) {
     } catch {}
   }
   return ids.filter((id) => done.has(normRef(id)));
+}
+// U27-1 (usage audit 2026-11-03): a section `docs.js set` rewrote AFTER the change that hits it, this session, is already
+// answered - the Stop ask named one the model had just rewritten. The newest doc-set row per section, from the ledger
+// tail (a set further back is no answer to this change); compared with the newest write of the files the ask is about,
+// so a set made between two changes leaves the section asked, the safe direction.
+function setAfter(root, files) {
+  let changedAt = 0;
+  for (const f of files) { try { changedAt = Math.max(changedAt, fs.statSync(path.join(root, f)).mtimeMs); } catch { /* gone */ } }
+  if (!changedAt) return () => false;
+  const newest = new Map();
+  for (const file of new Set([docsLogFile(root), path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl')])) {
+    try {
+      const size = fs.statSync(file).size;
+      const len = Math.min(size, LEDGER_TAIL);
+      const buf = Buffer.alloc(len);
+      const fd = fs.openSync(file, 'r');
+      try { fs.readSync(fd, buf, 0, len, size - len); } finally { fs.closeSync(fd); }
+      for (const line of buf.toString('utf8').split('\n')) {
+        let row; try { row = JSON.parse(line); } catch { continue; }
+        const at = Date.parse(row && row.event === 'doc-set' ? row.at : '');
+        if (Number.isFinite(at) && at > (newest.get(normRef(row.ref)) || 0)) newest.set(normRef(row.ref), at);
+      }
+    } catch { /* no ledger */ }
+  }
+  return (id) => (newest.get(normRef(id)) || 0) >= changedAt;
 }
 // A SEPARATE signal, never the outcome: whether the agent gave the ask's own words as its answer. The phrase has to
 // BE the reply - a line of its own, bare or quoted or bulleted - so a sentence that merely contains it, which is how
@@ -957,6 +985,40 @@ function unknownRoots(command, roots) {
     const x = String(r).replace(/^\.\//, '').replace(/\/+$/, '');
     return !x || x === '.' || new RegExp(`(?:^|[^\\w.-])${esc(x)}(?:/|[^\\w.-]|$)`).test(String(command));
   });
+}
+// U27-2 (usage audit 2026-11-03): an interpreter write through a computed path whose every path word - the words after an
+// inline script and the path literals inside it - sits under a temp root (hook-prelude.js tempRoots) and outside the
+// project is a scratch write, never a source write: a scratchpad path holding 'src/' named a source root, so the copy was
+// held, and its retry held again. A word holding `$` proves nothing, and with no path word the reading is as before.
+const INLINE_FLAG = /^-(?:e|c|p|-eval|-print)$/;
+function scratchOnly(command, root, cwd) {
+  if (!shellReader || typeof shellReader.commandWords !== 'function') return false;
+  let temps;
+  try { temps = require('./hook-prelude.js').tempRoots(); } catch { return false; }
+  const real = (p) => {
+    let at = path.resolve(cwd || root, p.replace(/^~(?=\/|$)/, process.env.HOME || process.env.USERPROFILE || '~'));
+    const rest = [];
+    for (let i = 0; i < 64 && !fs.existsSync(at) && path.dirname(at) !== at; i++) { rest.unshift(path.basename(at)); at = path.dirname(at); }
+    try { at = fs.realpathSync.native(at); } catch { /* as resolved */ }
+    return path.join(at, ...rest);
+  };
+  const under = (p, d) => p === d || p.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
+  const project = real(root);
+  const pathy = (w) => /[\\/]/.test(w) && !/^[a-z][\w+.-]*:\/\//i.test(w);
+  const words = [];
+  for (const w of shellReader.commandWords(command)) {
+    const at = w.argv.findIndex((a) => INLINE_FLAG.test(a));
+    if (at < 0 || typeof w.argv[at + 1] !== 'string') continue;
+    // a literal after `+` is a suffix joined to a path the script holds elsewhere, and one interpolating `${` is built at
+    // run time: neither names a path by itself
+    const script = w.argv[at + 1];
+    for (const m of script.matchAll(/(["'`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+      if (pathy(m[2]) && !m[2].includes('${') && !/\+\s*$/.test(script.slice(0, m.index))) words.push(m[2]);
+    }
+    words.push(...w.argv.slice(at + 2).filter((a) => !a.startsWith('-') && pathy(a)));
+  }
+  if (!words.length || words.some((x) => x.includes('$'))) return false;   // a shell `$` word: its value is unknown here
+  return words.map(real).every((p) => !under(p, project) && temps.some((d) => under(p, d)));
 }
 const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];
 
@@ -1373,7 +1435,10 @@ function preToolUse(input, root, docs, state) {
     recordRun(input, command);
     recordMoved(root, input, stashMoves(command, typeof input.cwd === 'string' && input.cwd ? input.cwd : root, root));
   }
-  const shellWrites = isShellTool(name) ? writeTargets(command) : null;
+  const shellWrites0 = isShellTool(name) ? writeTargets(command) : null;
+  // a computed interpreter write that only touches scratch paths is dropped here (U27-2), so it neither holds nor attributes
+  const shellWrites = shellWrites0 && shellWrites0.includes(UNKNOWN_INTERPRETER_WRITE) && scratchOnly(command, root, input.cwd)
+    ? shellWrites0.filter((t) => t !== UNKNOWN_INTERPRETER_WRITE) : shellWrites0;
   let wrote = [];
   if (fileWrite) wrote = paths;
   else if (shellWrites) {
@@ -1715,7 +1780,8 @@ function stop(input, root, docs, state) {
     }
   } catch { return; }
   if (!hits.length && !rcHits.length && !dead.length) return;
-  const { asks, warnings } = hits.length || rcHits.length ? askPools(docs, hits, ASK_SECTIONS, undefined, rcHits) : { asks: [], warnings: [] };
+  const answered = setAfter(root, [...new Set([...hits, ...rcHits].flatMap((h) => h.files))]);
+  const { asks, warnings } = hits.length || rcHits.length ? askPools(docs, hits, ASK_SECTIONS, answered, rcHits) : { asks: [], warnings: [] };
   if (!asks.length && !warnings.length && !dead.length) return;
   const files = [...new Set([...hits, ...rcHits].flatMap((h) => h.files))];
   for (const f of [...new Set(changed.files)]) if (!files.includes(f) && dead.some((r) => r.matches(f))) files.push(f);
@@ -1746,7 +1812,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
 if (require.main === module) {
   try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

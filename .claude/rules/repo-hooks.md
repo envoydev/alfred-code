@@ -28,7 +28,21 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   HK-02: an entry naming the twin under matcher `Nothing`, no file on disk, stood both dispatchers down): the copied file
   on disk and entries covering every plugin row the run stands for (the event, a matcher firing on each of the row's
   tools; the core entry's rows from the plugin root's `marketplace.json`, a guard run in-process by the plugin's
-  dispatcher that dispatcher's row, the file dispatcher per call); a repo never set up (no install
+  dispatcher that dispatcher's row, the file dispatcher per call), and only entries wired when the SESSION BEGAN (E1-3:
+  Claude Code reads its hooks at start, so a twin written mid-session ran nothing while the plugin copy stood down; the model can write that wiring itself under
+  `bypassPermissions`, which lets protected-path writes to `.claude/` through - code.claude.com/docs/en/permission-modes,
+  'Protected paths', read 2026-11-04, O5. Known ceiling, E1-3b: a repo that COMMITS a twin file and its wiring stands
+  the plugin copy down for that hook from the first session - the twin runs as the project's own hook once the user trusts
+  the folder, the trust that runs any hook it ships, and a hash against the plugin's file would also refuse every older
+  copy-route twin) -
+  `<data root>/state/sessions/twins-<session>.json`, the `event|matcher|command` keys written by the fresh-session hook on
+  SessionStart (startup, resume, clear, fork; a compaction keeps it), else by the first call naming the session in a
+  set-up repo, or the first finding a twin in a repo never set up (exclusive create - the residual: a twin written before
+  that call counts). Both dispatchers read `session_id` before their check and `useSession` it, so every guard they run
+  in-process is narrowed. The two protective guards that also run as their own process (`guard-desktop-exec`, the secret
+  guard's MCP and SessionStart routes) take every gate but the twin yield first (`standDown(..., { twin: false })`) and
+  call `yieldToCopiedTwin` with the payload's session once they have read it (E-batch final review M1); any other hook run
+  as its own process, a call naming no session and an unreadable or unwritable snapshot yield as before; a repo never set up with no twin gets no read and no write; a repo never set up (no install
   record in it, any folder between it and its git top level (a monorepo package with its own install), the top itself -
   never a repo kept at the home directory, for the installer's `gitRoot` as much as the hooks, seam m3 - or - for a git
   worktree - its main checkout, so a worktree of an
@@ -42,7 +56,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   before, whichever file holds the value. Beside the gates,
   The csv opt-out reads a hook's OLD name too (`HOOK_RENAMED`, the manifest's `renamed.hooks` copied inline and held equal
   by `hook-prelude.test.js`: `guard-answer-length` still switches guard-answer off - audit 2026-10-20, the hooks track's
-  minor list). AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past
+  minor list). A value may name a PART (E-batch B-m6): `memory-session` -> `preferences-session:host`, where the retired
+  hook's host traps live on - `partOff` reads the old name as that part, `hookDisabled` never as a whole hook, the settings
+  writer re-spells a stored one, and `selection.js` keeps it out of every hook name and selection line. AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past
   its auto-continue timeout itself - `afkTimeoutMs` on the result, 'No response after <N>s - the user may be away from
   keyboard' in the text the model reads, partial picks after it (the 2.1.304 bundle;
   code.claude.com/docs/en/tools-reference, 'Question auto-continue timeout'). `askTimedOut` reads either, and every
@@ -103,7 +119,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
   hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
   push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, post, send, upload, a remote branch or tag
-  deleted, a hard reset, a database dropped, rotate, revoke, pay - audit HK01: an auto-answered 'Open the PR' was push
+  deleted, a hard reset, a database dropped, rotate, revoke, pay - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
   in real transcripts the narrowed pattern drops 91 hits, all of those shapes or a `/purchases/` path, and adds none);
@@ -138,8 +154,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   or `**Auto-run: OFF**` (each ask waits; a refused start says why, and a flag past the leading run is said to count only
   right after the command), then `**Context:**` - auto-run or
   `COMPACT_INSTEAD` compacts (at the seeded `autoCompactWindow` when one is set, else Claude Code's own point), offers off
-  compact too, and otherwise the fresh-session refresh past `ctxThreshold()` - with the window and model the engine read,
-  no number invented for an unknown window, and an auto-compact window past the model's capacity (a `/model` switch to a
+  compact too, and otherwise the fresh-session refresh once the carry passes `ctxThreshold()` - said as the trigger it is,
+  '(a trigger, not the current size)', since 'past ~400k' read as the session's size (usage audit 2026-11-03 U12-2) -
+  with the window and model the engine read, no number invented for an unknown window, and an auto-compact window past the model's capacity (a `/model` switch to a
   smaller model) quoted as the capacity it is capped at (code.claude.com/docs/en/model-config, 'Set the auto-compact
   window': 'Claude Code caps it at the model's context window', verified 2026-10-21). It rides AFTER the contract, the compact note or the offer
   (`expansionOut`), so each of those keeps its shape; a seat, the Skill route and nobody at the terminal get none - judged
@@ -161,7 +178,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `Path(p).write_text`; a verb, open or binding inside a string literal is no write, a `$NAME` the shell expands in a
   double-quoted `-e` or unquoted heredoc takes the latest literal the command assigned it, and `process.argv[N]` /
   `sys.argv[N]` take the word passed to the script - audit 2026-10-20 C31 / C25), and one through a computed path is one `unknown` target spelled `$UNKNOWN_INTERPRETER_WRITE`
-  (guards skip it as an unexpanded variable; docs-session counts it as a source write only under a root the command names - audit 2026-10-20 C25, 4f2bfdee: a temp-path script was held twice as a source write); a sed `s` with another
+  (guards skip it as an unexpanded variable; docs-session counts it as a source write only under a root the command names, and never when every path word sits under a temp root outside the project - audit 2026-10-20 C25, 4f2bfdee: a temp-path script was held twice as a source write; usage audit 2026-11-03 U27-2); a sed `s` with another
   delimiter (`s#a#b#`, `s|a|b|`) and an address's `a\` / `i\` / `c\` text are scripts, chmod's mode and chown's owner
   are no path, `NAME=( ... )` is an array assignment and never a subshell, and a `git tag` listing (`--contains`,
   `--points-at`, `--merged`, `-l`, `-n`) is a read. It is the ONE home of shell text
@@ -265,7 +282,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   THE STOP CHAIN (hooks audit 2026-10-08 S1): four hooks can block a `Stop` - the stop contract,
   docs-session, the turn build check (answer length did until 2026-10-20) and forge-session's ref watch on a loud ref
   move no gated act explains (audit 2026-10-30 HK-23: the chain was documented as three; the stop judge, a `prompt` hook,
-  is held - THE STOP JUDGE, under the stop contract) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
+  was held, then retired - THE STOP JUDGE, under the stop contract) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
   Code is already continuing as a result of a stop hook', code.claude.com/docs/en/hooks), so a hook that stood down on
   the flag alone never judged the close rewritten after a sibling's block. Each marks its own block (`hook-prelude.js`
   `markStopHeld`, a file under `ALFRED_CODE_HOOK_LOG_DIR` or the temp dir) and stands down on a continuation only when
@@ -325,8 +342,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   contract answered its own SHOW ask and the secret receipt opened) - so a Skill-route start more than 5MB of work after
   its typed prompt runs attended; a stamp missing the line, or over another session's row, is dead. A HAND-WRITTEN one
   (no `session:`) is live only when its quoted words (8 characters or more, case-insensitive) appear in a turn the user
-  typed, or the user answered 'Start AUTO here' to an AskUserQuestion with auto-run off - never a Skill call alone (125ms
-  on 200MB; memoised per stamp mtime and transcript size).
+  typed, or the user answered 'Start AUTO here' to an AskUserQuestion with auto-run off - never a Skill call alone - and
+  no typed row turning auto-run off follows them (E1-1: a later typed match makes it live again) (125ms on 200MB;
+  memoised per stamp mtime and transcript size).
   - `guard-protected-force-push.js` - blocks force-push to protected branches. It reads the command through
     `shell-writes.js`'s `gitText` (below), so a push counts past a wrapper (`timeout 60`, `env A=1`, `nohup`), in an
     `if` / `for` body, `bash -c '...'`, a heredoc or here-string into a shell, `eval`, a script file and a git alias
@@ -418,7 +436,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a runtime body as its script. A verb that prints a whole file under another name is size-gated like `cat` (nl, tac,
     sort, base64, xxd, `dd if=`, a copy onto `/dev/stdout`, curl `file://`, vim's print, `look ''`, an identity sed /
     awk / `perl -p`, grep with an empty pattern, a read loop echoing every line, perl's handle read, php's
-    `file_get_contents` / `readfile`); a bounded run, or one into a file, is not. A verb, `;` or `|` inside a quoted string is
+    `file_get_contents` / `readfile`); a bounded run, or one into a file, is not - and a group or subshell redirected to a
+    file copies (U25: `{ echo a; cat big.html; } > out.txt` was cut at its own `;`; a terminal device or `>&2` still
+    prints), and a later print of that file is sized as the largest file a cat inside the group printed, as HK-19 sizes
+    `cat a > b` (final review I2: `{ cat big.html; } > out.txt && cat out.txt`). A verb, `;` or `|` inside a quoted string is
     text (`grep -c 'cat -n' f` runs no cat), unless a shell runs the string (a shell's `-c`, `eval`, `watch`, a stage piped
     into `sh`), and pairing stops trusting quotes after a comment's apostrophe; `echo "$(cat f)"` prints what its
     substitution read, an assignment of one does not. Only a gated file over the threshold
@@ -474,9 +495,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + a Playwright server's `browser_file_upload` under any
     registration name (N6), whose
     `tool_input.paths` each take the Read judgement - a page asking for an upload got any workspace file, audit 2026-10-14
-    PL3 - + a filesystem server's `read_text_file` / `read_file` / `read_multiple_files` under any registration name, whose
-    `path` (a `head` judged as a window from line 1) or `paths` take it too - the user's own server returned a `.env` unjudged,
-    audit 2026-10-30 HK-26, one more node start on those calls only) - credentials are read for PRESENCE, never
+    PL3 - + a filesystem server's `read_text_file` / `read_file` / `read_media_file` / `read_multiple_files` under any
+    registration name, whose `path` (a `head` judged as a window from line 1) or `paths` take it too - the user's own server
+    returned a `.env` unjudged, audit 2026-10-30 HK-26; `read_media_file` returns any file as base64, E-batch O2 - one more
+    node start on those calls only) - credentials are read for PRESENCE, never
     value. A leading `NAME=value` word and every `$(...)` / backtick body are judged as commands of their own, quote-
     and nesting-aware (audit 2026-10-20 C17: the source protocol's own `MARK="...$(printf ... | ...)"` read as a
     changing step); a count or a facts-only print (a length, a boolean, a type, a label) runs as written, never one routed
@@ -654,13 +676,21 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     no resolver follows) or bare in a pipe whose stages name the data root (`ls -a .alfred | grep .secrets | xargs ...`) -
     and a `find` handing what it finds to a reader (an `-exec` / `-ok` action, a pipe on, a `$(...)` around it) is refused
     when its walk reaches the store and a `-name` / `-path` test matches the store's name, or, from the data root itself,
-    no name test narrows it; a `-maxdepth` short of the store passes. The same day the dump half took `$(pwd)` / a backtick
+    no name test narrows it; a `-maxdepth` short of the store passes. The word after a find test (`-name`, `-path`,
+    `-wholename`, `-regex`, `-lname` and their `-i` forms) is a pattern, never a path the command opens (E-batch U24:
+    `-not -path './.alfred/*'` excluding the data root was refused as naming the store). The same day the dump half took `$(pwd)` / a backtick
     `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
     `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
     path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged. Audit 2026-10-30 HK-04: `$PWD`
     itself is where the shell stands in every spelling - a quoted piece (`"$PWD"/.env`, the shell's quote removal), an
     assignment (`f=$PWD/.env`, `D=$PWD`), a `for` list - after a followed `cd`, a relative one moving from the payload's
     cwd; what VARS leaves (`${PWD:?}`, `${HOME:=x}`) goes through shell-writes.js `shellVars`, never inside a verbatim body.
+    An inline script's own cwd - `process.cwd()`, `os.getcwd()`, `process.env.PWD`, `os.environ['PWD']` - is that place
+    too when it builds a path by concatenation (E-batch E1-5, HK-04's runtime half). A read-only verb spelled by a system
+    directory (`/usr/bin/grep`, `/bin/`, `/usr/local/bin/`, `/opt/homebrew/bin/`) is the bare verb; a project or temp
+    path to a verb is whatever that file is (U22). In the runner's own line a print verb is judged inside that line's own
+    stage, so `echo 'ok' && docker run -e PGPASSWORD=$DB_PASSWORD ...` prints nothing while an `echo $DB_PASSWORD` in it
+    still blocks (U23, usage audit 2026-11-03: the retry dropped the safety test before a delete).
     The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and
@@ -687,7 +717,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     audit 2026-10-08). An
     `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny). The APPROVAL
     root is `CLAUDE_PROJECT_DIR`, else the payload's `cwd`, as its ledger reads it, and every block row names its branch
-    (`symbol-question`, `diagnoser-pin`, `implementer-unapproved` / `-stale-stamp` / `-ask-timed-out`,
+    (`symbol-question`, `diagnoser-pin`, `implementer-unapproved` / `-stale-stamp` / `-ask-timed-out` / `-auto-spent`,
     `generic-while-stamped`). Audit 2026-10-20 H5: a live stamp naming THIS session whose `skill:` dispatches generic seats
     by design (`GENERIC_DISPATCH_SKILLS`: `capture-usage-report`, whose bundle authors are generic seats on a named model)
     passes a generic dispatch; another session's or a hand-written stamp naming no session is no exemption, and the
@@ -696,7 +726,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     user's `--mode-auto-run-on` right after the command; a hand-written AUTO waiver belongs to task-solve and task-solve-cross
     alone. Ruling S3: an implementer dispatch on an APPROVED or AUTO stamp written after an ask the idle timeout closed
     (the answer hook's marker, under the hook temp dir) is denied once - 'the question timed out - re-ask' - and the
-    marker is spent; a stamp older than the timeout stands.
+    marker is spent; a stamp older than the timeout stands. D6 (the user's ruling of 2026-11-03): a hand-written root
+    `AUTO` (no `session:` line) is SPENT once a `.md` under `layout.planDirs` newer than the stamp carries `^Completed:\s*\S`
+    - it passes no seat, implementer or generic, and the implementer denial names the plan and its line
+    (`implementer-auto-spent`). Bounded per dispatch: the newest 50 plan files, none past 1 MB, an unreadable folder or
+    file no evidence; a session-named AUTO, `APPROVED` and the plan stamps are untouched.
     Its `no-execution-verdict` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16: 85 rows nobody
     read, and an 8MB transcript read on every main-session Agent call (+23ms on a 226MB transcript).
     A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
@@ -820,7 +854,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     way, and the snapshot its expansion took (no call id) counts beside a typed review that counted, started within two
     minutes of it. review-security's Report carries the line since this ruling, and loop-test-coverage-quality names its
     `**Outcome**` field. The model can write the line without the review: the rule catches an abandoned or interrupted
-    review, not a forged one.
+    review, not a forged one. The checkpoint's RECEIPT WRITER is a result line too (2026-11-04, the commit-path A/B: in 4
+    of 4 smoke runs the reviews' reports stayed in thinking, which the transcript stores empty, so no `Findings:` line
+    reached it however the refusal was worded, and no run committed; with the writer counted, 6 of 6 committed): a
+    main-session `Bash` / `PowerShell` call running `node <receipt.js> commit` with a `--findings` value and no
+    `--dry-run` - the script by its path, or by a variable the same command set to it (`R=".../receipt.js"` then
+    `node "$R" commit`; node flags, `node.exe` and a continued line allowed) - whose result carries the writer's own
+    `wrote ...COMMIT-GATE` line. Only that line proves the write: `; echo rc=$?` makes a refused writer's call read
+    as no error, and one run hid the output with `>/dev/null`. It closes every review still open before it whose line
+    is `Findings:` - never a loop's `Outcome:` - unless a seat sent after that review had not reported before the
+    call (a foreground result, a completed notification; a call refused with an error result never ran). An echo,
+    another script, a review loaded after it: no close. The refusal names this route, in its own call with its output
+    shown, when every review it lists is a Findings one. A text block is ONE result line however many `Findings` lines
+    it holds (a report's `**Findings:**` header and its closing line are one review's), so two reports need two
+    replies.
     THE TOOL-USAGE LEDGER IS NO EVIDENCE ('Fix ALL left gaps'): its row is written at PreToolUse and keeps no target, no
     result and no refusal, so a review the newest 64MB of the transcript does not hold is a review to run again.
     The snapshot reads the work tree, while a plain commit takes the index: a late file whose index stages a version of
@@ -844,24 +891,32 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     than the project's, on a detached HEAD, under the temp dir or the harness scratch root is scratch and needs no receipt
     - the staged scan still runs (audit 2026-10-11 SD16, 2ca8e8ee).
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
-    what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).
+    what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks); the docs root
+    and the data root's `state/` and `statistics/` are no project there either, as they are not in the commit's count
+    (E-batch ab-HO3: a data root inside a manifest-owning folder read its own ledger rows as a second project).
     Every commit, trivial or not, first gets a scan of the lines it ADDS (the index, plus what `-a` or a
     chained `git add` takes in; a commit NAMING paths, the working tree of those paths - alone under
     `--only`, on top of the index under `--include`; at most 2MB, a binary file or one past the cap
     skipped, and past the total the scan stops reading but keeps its hits): a conflict marker, a debugger, a focused test (a comment-only line and an ordinary call such as `fit(...)` never count), a
     credential-shaped literal or a hidden character (`hidden-chars.js`, the lint's class; a byte-0 BOM
     passes, and so does a joiner or direction mark a script needs) blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
-    through one ask and `<data root>/state/approvals/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
+    through one ask and `<data root>/state/approvals/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`). A message-only
+    amend (`--amend --only` or `-o`, no path, no `-a`) takes nothing from the index, so nothing staged is scanned or
+    counted (E-batch U26a).
     What was untracked when the change started (`docs-session.js`'s record, below - the one this session's first start
     named in `untracked-session-<sid>`, else the HEAD-keyed one, else the newest) is not the change: it
     leaves the receipt's `spec:` count and the trivial bar, and a `git add` whose own dry run would stage one of
     those paths without naming it (`-A`, `.`, `:/`, a directory, a glob) blocks until `<data root>/state/approvals/UNTRACKED-ALLOW`
     lists it (a path, a directory ending in `/`, or `*`) - pilot 3's ~150 harness files drove 19 denials and one sweep.
+    Both ALLOW receipts are read by `hook-prelude.js readReceiptFile` (under 8h, written after the session began, a
+    `session:` line naming the call's session), and each denial prints the lines to write, `session:` first (E-batch
+    E1-6 / O1: another session's answer opened this one's sweep and scan).
     The receipt's `spec:` count is measured on what the commit takes in - the scan's set, each add and commit path placed
     where its own git call runs (the cwd, a cd, its `-C`) as a `:(top)` pathspec (2.1.6 H2: on the whole tree, narrowing a
     commit never helped) - and on the whole tree when the command does not spell that set out (a path word the shell
     expands, an add fed by `xargs` or `--pathspec-from-file`, an interactive add or commit, `git $C`, a chained `git rm` /
-    `git stash pop`) or its named paths resolve to nothing while the tree is dirty. The trivial bar is cumulative per
+    `git stash pop`) or its named paths resolve to nothing while the tree is dirty - the spec denial then names the word
+    it could not read (E-batch U26c: `git add -- ${=G1}` read as 'takes in 64' with no reason given). The trivial bar is cumulative per
     SESSION (review M2): this commit's set plus the session's earlier commits the guard itself let through as trivial -
     its ledger `<data root>/state/sessions/trivial-<session>`, one row per trivial pass (the HEAD it was made on, its files and
     churn), counted while any of its files still differs between the session start and HEAD - so an amend or a rebase
@@ -888,7 +943,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     open the PR) to the PUSH-GATE; a negation before or after the verb ('don't push', 'no need to commit', 'commit is
     not needed'), a stop ('hold off on the push'), a deferral (a wait on CI defers a push, a release or a ship, never a
     merge: 'merge it once CI is green' consents), the user keeping the act ('I'll push it myself') or a
-    statement about the verb refuses it, and only its own gate. Opening a pull request ('open the PR') is
+    statement about the verb refuses it, and only its own gate; 'commit' leading a noun ('commit messages', 'at commit
+    description') is the noun and neither consents nor refuses (E-batch U26b). Opening a pull request ('open the PR') is
     consent; a question, a negation or the PR's description / template / page is not (H3).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `SubagentHandback` - the output-scorer seal, below; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
@@ -902,14 +958,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     curly double quote; audit 2026-10-08) outside a backticked span or fenced block, which it neither judges nor rewrites
     (R5: a string's delimiters in code stay double), once per ask text (a marker the log dir cannot hold goes under the temp
     dir, so a missing dir never re-denies), carrying the corrected strings (I3); a fresh-session option quoting no number
-    within 20% of the measured carry (both numbers appended to its description); a fresh option pointing at a resume block
+    within 20% of the measured carry (both numbers appended to its description - or, where the question already states a
+    figure ('Last measured: ~157k ...'), that sentence REPLACED by the fresh one, never both, U12); a fresh option pointing at a resume block
     'above' that no fence since the typed turn shows (`ASK_ABOVE_RE`, reworded to 'the resume block, printed after this
     answer'); and, with no mechanical fix, an option
     telling the user to type into Other (`OTHER_RE`, module scope - lint check 61 reads that one line and fails a shipped
-    ask template it matches, audit 2026-10-20 C01: 14 template lines in 10 skills taught the wording this denies), a single-select question without exactly one '(Recommended)' listed first (an
-    unmarked one whose text says why none is recommended passes), and - off auto-mode and with offers on - a new cycle's
+    ask template it matches, audit 2026-10-20 C01: 14 template lines in 10 skills taught the wording this denies), or a
+    question or header saying so (usage audit 2026-11-03 U11), the denial's pick example quoting the ask's own first two
+    labels; a single-select question without exactly one '(Recommended)' listed first (an
+    unmarked one whose text says why none is recommended passes); a question whose 'Recommended:' clause shares no word
+    with the marked option while another option's LABEL does (a word in another option's description decides nothing,
+    U05); and - off auto-mode and with offers on - a new cycle's
     first ask with no fresh option after a typed prompt followed this session's plan `Completed:` stamp (once per stamp;
-    audit 2026-10-10 C08 / C09 / C26); a question shaped as an approval (approve, as shown, is ready, post / file /
+    audit 2026-10-10 C08 / C09 / C26), an ask opening work only - a flow stop's `Result:` field, or an option naming a
+    plan, task-solve, task-design, an approval or a new scope; a plain question after the cycle is none (U09); a question shaped as an approval (approve, as shown, is ready, post / file /
     publish / send this) with no chat text since the user's last typed turn that carries its subject - 200 characters or
     more naming its noun (audit 2026-10-11, session 2ca8e8ee: a staged plan and a ticket comment approved unseen) - the
     noun being the approval verb's own object (a pronoun or 'as shown' points back to the nearest phrase not after a
@@ -946,7 +1008,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     and an empty registry outranks the lagging transcript, audit 2026-10-08; when
     that cannot be read, an agent / review / implementer still running or a waiter that wakes the session); a wait counts only when
     it names the running work (a report, a verdict, an agent - an approval, a go-ahead, a decision or a sign-off is a
-    hand-back), a dev server, `dotnet run`, `docker compose up` or another server or watcher is no work that ends, and a
+    hand-back), a dev server, `dotnet run`, `docker compose up` or another server or watcher is no work that ends (read
+    with assignments, arithmetic expansions and variable references left out - `start=$(date +%s); npm test` is a timed
+    suite, `PORT=3000 npm start` a server, usage audit 2026-11-03 U07), and a
     wait on the user, a next step, 'tell me' or 'nothing reports' keeps it a stall
     (review B2, re-verify N-B2) - except that 'tell me', 'let me know' and 'ping me'
     are an OFFER when an offer word follows (if, in case, how, what, whether, about - not before an infinitive:
@@ -977,7 +1041,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     on my side' line naming the user's own run is no exit; under live work the mandated 'uncommitted for your review'
     line and a step gated on the running work ('once the agent is done') are status, a resumed seat's 'its sign-off' is
     a wait, 'your allow' is a hand-back, and a `gh run watch` ends. An answer to the user's own question listing only a
-    third party's or deferred items passes, and so does the close after a fresh-session ask answered this turn. The
+    third party's or deferred items passes, and so does the close after a fresh-session ask answered this turn. A
+    confirm-ask with a negation earlier in its clause ('I couldn't confirm whether ...') is a report, no ask; and a prose
+    question after this turn's two newest asks were both refused by a hook (`askRefusedThisTurn`: error results, neither
+    an answer nor the user's rejection) stands with one `prose-after-refused-ask` probe row - one refusal is a fixable ask
+    and still holds (U06; the C15 offer shapes stay stops). The
     ask branch's typed-turn count follows the live `parentUuid` chain, and its stale-scope note counts `push` only in a
     git shape. Audit 2026-10-11 SD10: a line opening `Deferred by you:` is nothing owed when an ask answered THIS turn
     carries a deferral in its answer (the pinned contract with validate's close; with no such answer it is judged as
@@ -986,7 +1054,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     its own or approval hand-back; an ask just answered no longer exempts a close handing the user a NEW run-and-report
     action ('Run the pull, then tell me when it's done'); a merge, PR, remote or CI ask's stale-scope note (each half its imperative alone since the deep hooks review
     2026-10-16, the stories in `docs/baseline-rules-evidence.md`) needs a
-    remote-aware read (`git fetch`, a `git log origin/...`, `git branch -r`, `gh pr`), never `git status`; and a production
+    remote-aware read (`git fetch`, a `git log origin/...`, `git branch -r`, `gh pr`, `gh repo view`, `gh api user` -
+    E-batch fn-8), never `git status`; and a production
     file the streak CREATED ('File created') beside a test edit is test-first scaffolding, not a root-cause streak. Hooks
     review 2026-10-16 (20 done-close blocks read against their transcripts: 3 right, 15 wrong; the replay of the sample
     clears 9 of the 15 and keeps the 2 right ones it reproduces): the DONE half reads `doneProse` - a done word under a
@@ -1014,7 +1083,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a code span (`QUOTED_OUTPUT_RE`: '15f00b6c (not pushed)' quoted git's own line and held a finished close, session
     7ec6c7db); the same words unquoted still hold. Each done-close exemption is one named entry of `DONE_EXEMPTIONS`, and
     the first that fires on a close the base test held writes one `mode: probe`, `kind: done-close-exempt` row naming it -
-    the rate a change to one is measured on (C03 had no row).
+    the rate a change to one is measured on (C03 had no row). `status-question` (usage audit 2026-11-03 U10, 629719b3):
+    the newest typed prompt is a status or time question ('How much time is left?', 'Any ETA?') and the Stop registry
+    holds live work this session launched - the answer they asked for; with no live work in the registry it holds. The
+    audit's second U10 close (68541f68: the user picked the login route, the close told them how) already passes through
+    the answered-ask exemption and is pinned in `guard-stop-closes.test.js`.
     THE RETUNE (3.7.1; the user's ruling of 2026-11-03: hold the judge, keep the regex, cover more): a labelled corpus of
     real closes, read on the judge's own criteria (94 labelled - the 18 replayed plus 76 sampled from 3,482), set every
     change, each citing its corpus pattern in a code comment; `docs/stop-done-regex-v2-evidence.md` holds the method and the
@@ -1041,34 +1114,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     close carrying none of the labels passes - the stated limit, never a word list; the suites build such text from code
     points (`hook-test-env.js foreignWords`). Replayed text-only over all 3,482 closes (no transcript-backed exemption can
     run there) it holds 223 where the old reading held 448.
-    THE STOP JUDGE (audit 2026-10-30 HK-22), HELD since 2026-11-03 (the user's ruling: 'hold judge, keep regex'): a prompt
-    hook runs no stack prelude, so under the plugin's default user scope it would judge every repo, set up or not, and no
-    stand-down reaches it. The manifest row carries `held: true`: `promptWiring` still validates it and wires it on neither
-    route, and the regex DONE half holds as before, retuned instead (THE RETUNE, above: 18 of the 18 replayed closes
-    the judge scored 14 to 16 on). What follows is the judge as built, for the day the key goes. The regex DONE half
-    held 18 replayed closes 13 times wrong, and a Haiku judge over the same 18 scored 14 to 16 in three runs. It is a
-    Claude Code `prompt` hook on the core's Stop, beside this hook - its text `stack/hooks/stop-judge-prompt.txt` (one file,
-    for a later Cursor or Codex adapter), `timeout: 30` and NO `model`: the hook evaluator sends the field to the API as
-    written, so `model: haiku` failed every live call ('There's an issue with the selected model (haiku)', a non-blocking
-    error - the judge never ran; 2026-11-03), and with none Claude Code runs its background model, `claude-haiku-5-5` on the
-    Anthropic API (measured; lint 48b fails an alias, a full id passes) - parked in the manifest as an `active: false` `type: "prompt"` row
-    naming this file, so the plugin route alone would carry it (`build-marketplace.js promptWiring`, lint check 48b: a
-    prompt-capable event, no model alias, a whole-number timeout, `$ARGUMENTS`, the text equal to the file) and the copy route,
-    which wires command hooks only, has no judge. The prompt reads the Stop input (`last_assistant_message`,
-    `stop_hook_active`, `background_tasks`) and holds only a close that reports a step done AND leaves a next action owed
-    and unasked; it releases whenever `stop_hook_active` is true (once per turn, so it never adds to Claude Code's
-    8-continuation cap - and it also releases a close rewritten after a sibling's hold, the flag's known blind spot). Shipped, the regex reading would hold nothing: a close it reads as done-with-pending would write one
-    `kind: done-close-exempt` probe row naming the judge and pass, and a prose offer could draw two reasons in one cycle. No stack code runs in it:
-    `ALFRED_CODE_HOOKS_OFF` and `unattended()` cannot reach it, so it also runs under `claude -p` (one extra turn at most
-    per held close). It sees more than its hook input: a live reason cited the user's own instruction, which the input
-    does not carry, so a close the user dictated reads as the user's wish and passes. A hold feeds back 'Stop hook feedback:
-    [<the whole prompt>]: <reason>' - about 2,250 characters in the session's context per hold. Live check 2026-11-03
-    (`claude -p`, an exported plugin, an isolated account): held an offer and a 'say the word' close, released the
-    rewrite after each on the flag, released a 'Remaining: stage or commit' line, a clean close and an informational
-    answer; 0.7-3.9 s per Stop, about $0.003 of Haiku each. Claude Code has no per-hook switch for a
-    plugin hook ('There is no way to disable an individual hook while keeping it in the configuration',
-    code.claude.com/docs/en/hooks; `${user_config.*}` is not substituted into a prompt): `disableAllHooks` or disabling the
-    plugin turns it off with every other hook (`docs/install-footprint.md` names it once it ships). THE ASK-FIXED ROW WAITS (the hooks track's minor list):
+    THE STOP JUDGE (audit 2026-10-30 HK-22) is RETIRED (2026-11-04, decision D7): a Claude Code `prompt` hook asking Haiku
+    whether a close owes a step, measured against the retuned regex on 161 labelled closes - median 125 / min 123 right,
+    wrong holds up to 24, flips 24 across three runs against a bar of 132 / 127 / 20 / 8, the regex alone 122
+    (`docs/stop-judge-gate-evidence.md`). Its manifest row, prompt file, generator path and lint check left in the removal
+    commit; the regex done check above decides alone. THE ASK-FIXED ROW WAITS (the hooks track's minor list):
     PreToolUse hooks on one matcher run in parallel, and on `AskUserQuestion` the core lists the plugin's
     `guard-layer-table.js` first and this hook second - each a node start per ask, p50 28ms and 44ms on an 830KB
     transcript (measured 2026-10-20, this machine); since 2026-10-28 (F4) the layer gate's PreToolUse half judges only a
@@ -1200,15 +1250,19 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `work/plans/` (on, `designer-plan` listed; not where a draft was written, a plan reader - `task-implement`,
     `task-verify-plan`, `task-verify-code` - ran, or the loop released that `target:`); T3 a findings write whose `Cause:`
     is set, or a diagnoser seat that settled (on, `root-cause` listed); T4 a typed stack naming `mode-output-scorer` (on
-    or off; a flag-only `/mode-output-scorer --mode-output-scorer-off` line is no stack, the stack-modes spec section 4). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
+    or off; a flag-only `/mode-output-scorer --mode-output-scorer-off` line is no stack, the stack-modes spec section 4; nor
+    is one that also names `habits-adjust-agents-md`, which grades nothing - sc-8). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
     holds a `released` / `final` line written since the cycle opened (2s slack); a typed one is no receipt and writes one
     `scorer-receipt-unbacked` row. The `SCORER-HELD-<session>` marker holds the cycle's key (the row's uuid, else its
     timestamp, else its hash), and the check sits BEFORE the `stopHeld` exit, so a rewrite after this hook's own hold for
     another reason is still judged while the marker keeps it to one hold. A live `output-scorer` seat in
-    `background_tasks` is the loop's own wait, never held; a seat's Stop and a transcript-less Stop judge nothing; no
-    opening row writes one `scorer-cycle-unread` row. The hold's block row names `branch: scorer` (AC11, AC14, AC16, AC17,
-    AC19, AC24, AC25; `guard-stop-closes.test.js`, 'scorer backstop'). THE SEAL (5.10): an `output-scorer` seat's report
-    names its score file on its first line (`*` and backticks dropped); PreToolUse `SubagentHandback` - or SubagentStop's
+    `background_tasks` is the loop's own wait, never held - with no registry sent, an async `output-scorer` launch the
+    transcript holds with no notice that ended it is (sc-5, the launch scan `liveBackgroundWork` reads); a seat's Stop and
+    a transcript-less Stop judge nothing; no opening row writes one `scorer-cycle-unread` row while the scorer is on, none
+    while it is off (sc-11). The hold's block row names `branch: scorer` (AC11, AC14, AC16, AC17,
+    AC19, AC24, AC25; `guard-stop-closes.test.js`, 'scorer backstop'). THE SEAL (5.11): an `output-scorer` seat's report
+    names its score file on one of its first three non-empty lines (`*` and backticks dropped; a line or two of preface,
+    sc-10); PreToolUse `SubagentHandback` - or SubagentStop's
     `last_assistant_message` for a run with no hand-back, before that route's `stop_hook_active` exit - writes it as
     `seal: sha256 <hex>` then the report as delivered, only into this session's scorer folder (both sides realpathed, so
     macOS's `/var` is `/private/var` and a symlinked parent leads nowhere), only a `.score.md` that does not exist yet
@@ -1220,7 +1274,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `docs-session.test.js`).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
-    running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;
+    running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10;
+    the caches under `CLAUDE_CODE_PLUGIN_CACHE_DIR` when it moves the plugins root, trimmed, else `<config dir>/plugins`,
+    READER-2; the user's slash turn is untouched;
     a plugin COMMAND and the router skill too - `commands/`, `setup-plugin/commands/`, `setup-plugin/skills/` - audit
     2026-10-08: the guided commands - six since setup merged into init, 2026-10-17 - and `alfred-code` were never resolved;
     a plugin COMMAND is read only under its plugin's namespace, since a bare name is a personal or project command or a
@@ -1276,7 +1332,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     ask); a changing call after an `AskUserQuestion` whose answer came past the idle wait arms the idle hold
     once per ask (C49: an ask answered next morning never reached the prompt-route offer) - never one that puts the
     fresh-session choice itself (`fresh-session.js isFreshAsk`, the `FRESH_ASK_RE` test every answered-choice reader
-    makes). Both idle routes keep the RE-OFFER STEP the Stop and tick routes keep (`grownSinceAnswer`): no offer and no
+    makes). The ask route's hold records the ask it answered, and a prompt the user TYPED after that answer releases it
+    (`typed-after-answer`, usage audit 2026-11-03 U15-1: the user is back, and the prompt route judges that prompt's own
+    gap); a harness prompt and a `Stop hook feedback:` row are nobody typing. Both idle routes keep the RE-OFFER STEP the Stop and tick routes keep (`grownSinceAnswer`): no offer and no
     hold until the carry has grown `REOFFER_GROWTH` (1.5x) past the newest fresh-session ask answered in any turn, 'Continue
     here' included (`freshAskAnsweredCtx`, which parses only answer and ask rows). Review fix pass, run B, M4: with the
     5-minute wait a 'Continue here' given after the wait read as a new slow ask, armed the hold again and denied the
@@ -1319,7 +1377,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `write_file` / `edit_file` / `create_directory` by `path` and `move_file` on both its `source` and `destination`, under any
     registration name - audit 2026-11-03 SYS-02, the write half of HK-26; one more node start on those calls only) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
-    `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
+    `cp`/`mv` destination, `rm`/`unlink`/`shred`/`trash`/`trash-put`/`mkdir`/`chmod` (E1-2c), `git -C <other>` mutating, `cd <other>` then a write);
     the change goes to a task card under `<docs-path>/work/cross-project-tasks/`. Reading stays open. A shell path is
     anchored at the payload's `cwd` (the Bash tool's persisted cwd, as the rm and config guards read it; a missing,
     relative or vanished one is the project root), a file-tool path at the project root (audit 2026-10-08). Session
@@ -1457,7 +1515,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `clone` laying a settings file down, an extract tool other than tar and unzip, a scoped `claude plugin marketplace
     remove` of the core's marketplace, a glob or a deeper folder removed, and a dropped core key from a shell write whose
     content the guard cannot know (a redirect, a `jq` / `sponge` rewrite, `: > file`).
-  - `guard-desktop-exec.js` (PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any
+  - `guard-desktop-exec.js` (PreToolUse on the desktop server types' process launchers, `App` and `Shell`, under any
     registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
     (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server
     type's code runner `browser_run_code_unsafe` the same way, `|^mcp__.+__browser_run_code_unsafe$`: Playwright's README
@@ -1466,9 +1524,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (2026-10-24, ruling N9, a side note's finding: an add-back under the record name ran it unjudged)) - the
     user's ruling of 2026-09-29 (I10): Windows-MCP's `App` with `mode: launch_executable` (any executable, caller-given
     args - the server excludes tools by NAME, never by mode) and every MacOS-MCP `Shell` call (a shell command no
-    shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. 'Allow' is honoured through
-    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
-    a Windows path - or `*`; a bare file name opens only a call naming it bare, never that name in every directory - audit
+    shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. A server's `PowerShell` (Windows-MCP's
+    own) and `execute_shell_command` are that same unjudged shell (E-batch mcp-B-m1): `|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$`
+    in the matcher, each denied pointing at Claude Code's own Bash or PowerShell tool, each opened only by its own line -
+    the tool's name - after the 'Allow the server's <tool> this session' answer; a `Shell` line opens neither. 'Allow' is honoured through
+    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `PowerShell`, `execute_shell_command`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
+    a Windows path - or `*`, which opens every line but `browser_run_code_unsafe` - that one only by its own line, E-batch mcp-B-m2; a bare file name opens only a call naming it bare, never that name in every directory - audit
     2026-10-20, the hooks track's minor list; a security receipt, THE RECEIPTS above); the denial suggests the full path - and names a live bare line that
     missed it, with the full path to write in its place - and a Shell block row keeps
     the command's verb only, never the command (audit 2026-10-08). PROTECTIVE
@@ -1548,6 +1609,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     are not committed yet - the installer's untracked GIT-PREFERENCES.md seed read 'mismatch' at every start), and the
     'read the section covering the file' line needs a section that can answer it (`docs.js watchesSourceRoot`: a durable,
     covered domain's cover or watch entry reaching a source root; an engine copy without the probe keeps the line).
+    Usage audit 2026-11-03 U27 / U36: the Stop ask leaves out a section whose newest `doc-set` row (the ledger tail, by
+    `normRef`) is at or after the newest change of the files that would ask about it - it was rewritten this turn (U27-1,
+    the Stop route only); an inline runtime (`node -e`, `python3 -c`, `-p`, `--eval`) whose every path word - the
+    script's literals, past one after `+` or holding `${`, and the words after it - resolves under a temp root
+    (`hook-prelude.js tempRoots`: the OS temp dir and the harness's `/tmp/claude-<uid>`, realpath'd) and outside the
+    project is no source write, and a word holding `$` keeps the old reading (U27-2). The engine's `stale` lists a
+    section with NO covers line, in any domain but `preferences`, once a commit since its stamp ADDS a file outside
+    the data root (`no-covers-new-files`; the covered reason is `covered-files-changed`): one `git rev-list --no-walk
+    --ignore-missing` orders the stamps newest first and drops an unknown sha, only the newest two are diffed
+    (`--diff-filter=A <sha> HEAD`, 1s and 1.5s timeouts, inside the hook's 10s), a failed call lists nothing; `status`
+    keeps `outgrown` for the covered rows and lists these as `addedSince`, and the start block names them in one line
+    (U36: a capture written before a module existed read as current for good).
   - `preferences-session.js` (PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep, every MCP call (a navigation server's
     two edit tools and five lookups read by tool name, N6), LSP, Skill and the shell route, the file and shell rows run inside
     their dispatchers; `SessionStart`, every source; `SubagentStart`; `UserPromptExpansion` on the run names) - the user's
@@ -1570,7 +1643,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `Scope:` through the script's own `scopeOf`, one reader since review 2026-10-23, so the two cannot drift); a glob aimed at the wrong EXISTING folder no script can
     judge, so `preferences.js reach` shows what each `Scope:` takes (count, file types, three paths - the capture reports
     it; the capture asks the user to confirm each new glob's reach) and `lint` and every update name a `Check:` that measures files its `Scope:` does not reach (`reachIn`, `docs.mismatchLines` through the capture's `scopeMismatches`) - and the FIRST git write (`shell-writes.js` `gitMutates`, plus a branch, tag or worktree branch made by
-    name, `gh pr merge` / `create`, `gh release create` / `edit` / `delete`, and text naming git that `gitText` could not read)
+    name, `gh pr merge` / `create`, `gh release create` / `edit` / `delete`, and text naming git that `gitText` could not read; a `git apply` without `--index` / `--cached` / `--3way` writes only the tree and draws no hold - U19a)
     until `GIT-PREFERENCES.md` was, read live with its `<!-- locked: <key> -->` entries first as the SEED states them (an
     edited copy is named, never handed over as locked). The denial HANDS THE DOCS OVER, so a retry is all it costs; both
     holds share ONE room when one command triggers both, git first (`INLINE_CAP` 7,000 of pasted text, the names of what was
@@ -1630,7 +1703,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     another. Any other seat gets nothing there: the other analyzers and diagnosers record or diagnose rather than judge
     against the preferences, so alfred-preferences.md alone points them at the docs. The record is per actor, `<data root>/state/sessions/preferences-<session>-<actor>.json` (the OS temp
     dir when that cannot be written, and a one-line note instead of a hold when neither can), written through a temp file and
-    a rename and swept past 7 days (`sweepStale`); a `compact` or `clear` start deletes that actor's marks, since the summary
+    a rename and swept past 7 days (`sweepStale`). A PreToolUse call loads, decides and saves it under `<record>.lock` (an
+    exclusive create, waited up to 3 s, taken over past 10 s, unlocked when neither works): Claude Code runs the hooks of one
+    message's parallel Reads at once (T10 live check ta-M4, 2026-11-04, 2.1.318 - three 1.5 s hooks overlapped, two parallel
+    Writes did not), and two unlocked calls each handed a judge the same part. A `compact` or `clear` start deletes that actor's marks, since the summary
     dropped the docs (a compaction keeps the run and the `arch` mark), and a seat's own compaction - which runs the SessionStart hooks inside the seat, the payload carrying
     its `agent_id` (loading audit 2026-10-21 G3: 77 of 77 seat compactions) - deletes only its record and pushes nothing.
     `PERSONAL-PREFERENCES.md` - how the user wants the assistant to work (the user's ruling of 2026-10-21: loaded at session
@@ -1740,7 +1816,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Uninstall takes both back through the module's own `removeStatus` (audit 2026-11-03 SYS-03; `uninstall.js
     removeSessionStatus`): under the root and each listed base the files a status write names and the folders they leave
     empty, then each exclude pair it added for those bases - session-inspector's own files beside `status/`, a line of the
-    user's own and another project's pair stay; a pair for a base the list already dropped stays too (a stated ceiling).
+    user's own and another project's pair still in use stay. A stack pair (the comment with its anchored line right under
+    it) whose status folder exists in NONE of the repository's work trees goes too (E-batch SYS-03: a base the list had
+    dropped kept its pair) - it excludes nothing, and the next write re-adds it; the work trees are listed once per common
+    dir (`git worktree list --porcelain`, 1.5s), and with no answer nothing is swept. The root-form pair goes through the
+    list alone, and a lone anchored line is the user's.
     `docs/install-footprint.md` lists both writes.
   - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
     stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
@@ -1750,11 +1830,24 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     branch write on every transport and `preferences-session.js` holds the first one; a forge noun with no known verb is
     `unknown` (an ask, a deny when unattended). On the MCP route a branch, tag, file or release word counts only on a
     FORGE-SHAPED server (repo coordinates in the input, a forge word in the key with no local `repo_path`, or launched as
-    a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). Every publish
+    a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). E-batch fn-1 /
+    fn-4 / fn-10: a tool whose name holds `run` beside `code` (`browser_run_code_unsafe`) is no pipeline act; inline code is
+    read only where an interpreter runs it - its `-e` / `-c` string, a heredoc or here-string of its own stage, one an
+    earlier stage of its pipe passes on, or one opened inside its own words (`python3 -c "$(cat <<'EOF' ... EOF)"`, final
+    review I1), never the whole command (`cat <<EOF > notes.md` beside a `node -e` is text); `gh
+    api -F <key>=@<file>` is a hidden body; curl's `-K` / `--config` file is read (64KB, from where the call runs) and
+    parsed with the call, one it cannot read or past the cap making the call `unknown` - a descriptor (`/dev/stdin`,
+    `/dev/fd/N`, `/proc/self/fd/N`) is never opened (the hook's own stdin is drained) and a non-file is refused by stat
+    before any open a FIFO would block (final review M2); and a bare `@` refspec is `HEAD`
+    (`pushTargets`). A not-checked reason over 160 characters keeps git's END, the text after its last `: ` (fn-2). Every publish
     the gate allows, the push half off included, is ledgered in `<data root>/state/forge/ACTS-<session>.jsonl` under the
     REPOSITORY's root (`forge.js ledgerRoot` - a worktree and its main checkout share one), a `git push` one row per
-    ref it names (`forge.js pushTargets`), each with its `tool_use_id`; the watch trusts a row once its PostToolUse
-    confirmed it.
+    ref it names (`forge.js pushTargets`), and every other publish act of the same command a row of its own with its
+    own concept (`forge.js classifyCommand`; E-batch fn-9: `git push && gh pr merge 4` ledgered the push alone), each
+    with its `tool_use_id`; the watch trusts a row once its PostToolUse confirmed it. A forge publish act chained behind a
+    push is gated as if it stood alone (E-batch 4b, a side review of fn-9): it needs the receipt when the push moves
+    nothing (a dry run, nothing ahead - the denial names the chained act), each merge in the command gets the unseen-head
+    check (`forge.js unseenHead`, the receipt read up to that merge), and a push that moves nothing writes no push row.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
     a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,

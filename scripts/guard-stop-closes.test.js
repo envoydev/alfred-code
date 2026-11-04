@@ -509,7 +509,7 @@ test('H9: quoted output is no pending item, a real one still holds, and an exemp
 });
 
 // --- Retune 3.7.1 (the user's ruling of 2026-11-03: hold the stop judge, keep the regex, cover more cases). A labelled
-// corpus of real closes, read on the judge's own criteria (stack/hooks/stop-judge-prompt.txt), set each change below; each
+// corpus of real closes, read on the stop judge's criteria (its prompt, retired 2026-11-04, is in git history), set each change below; each
 // fixture paraphrases a corpus close with its names replaced. The counts are in docs/stop-done-regex-v2-evidence.md.
 test('retune 3.7.1: the done half reads no future, earlier or quoted done word, and takes a first-person report of the work', () => {
   for (const [text, why] of [
@@ -756,6 +756,33 @@ test('scorer backstop: no typed prompt in the transcript - not held, one scorer-
   assert.strictEqual(scorer([T1('V1')], 'done', { session_id: 'V1' }), 0);
   assert.strictEqual(ledgerRows('scorer-cycle-unread').length, 1);
 });
+// sc-11: the probe row says the backstop judged nothing - true only while it would have judged
+test('scorer backstop: no probe row while the scorer is off', () => {
+  assert.strictEqual(scorer([T1('V2')], 'done', { session_id: 'V2' }, { ALFRED_CODE_SCORER: '0' }), 0);
+  assert.strictEqual(ledgerRows('scorer-cycle-unread').length, 0, 'off: no row');
+  assert.strictEqual(scorer([T1('V3')], 'done', { session_id: 'V3' }), 0);
+  assert.strictEqual(ledgerRows('scorer-cycle-unread').length, 1, 'on: one row');
+});
+// sc-5: a harness that sends no background_tasks still launched the grader this session - its un-ended async launch is the wait
+test('scorer backstop: a grader launched in the transcript with no registry is live', () => {
+  const launch = (id, type) => [call(`g-${id}`, 'Agent', { subagent_type: type, prompt: 'grade', run_in_background: true }),
+    result(`g-${id}`, `Async agent launched successfully. agentId: ${id}`, { status: 'async_launched', agentId: id })];
+  const wait = 'Scoring custom - the grader is running';
+  assert.strictEqual(scorer([typed('go'), T1('L5'), ...launch('a5', 'alfred-code:output-scorer')], wait, { session_id: 'L5' }), 0);
+  assert.ok(!fs.existsSync(scorerHeldFile(ROOT, 'L5')), 'the live grader is the wait');
+  const ended = typed('<task-notification><task-id>a6</task-id><status>completed</status></task-notification>');
+  scorer([typed('go'), T1('L6'), ...launch('a6', 'alfred-code:output-scorer'), ended], wait, { session_id: 'L6' });
+  assert.ok(fs.existsSync(scorerHeldFile(ROOT, 'L6')), 'its notice ended it: held');
+  scorer([typed('go'), T1('L7'), ...launch('a7', 'alfred-code:evidence-gatherer')], wait, { session_id: 'L7' });
+  assert.ok(fs.existsSync(scorerHeldFile(ROOT, 'L7')), 'another seat is no grader: held');
+});
+// sc-8: the skill says a stack naming habits-adjust-agents-md grades nothing, so the backstop owes nothing for it
+test('scorer backstop: a stack naming habits-adjust-agents-md owes no score', () => {
+  assert.strictEqual(scorer([typed('/habits-adjust-agents-md /mode-output-scorer improve it')], 'here', { session_id: 'J1' }), 0);
+  assert.strictEqual(scorer([typed('<command-name>/habits-adjust-agents-md</command-name>\n<command-args>/mode-output-scorer improve it</command-args>')], 'here', { session_id: 'J2' }), 0);
+  for (const sid of ['J1', 'J2']) assert.ok(!fs.existsSync(scorerHeldFile(ROOT, sid)), sid);
+  assert.strictEqual(scorer([typed('why did habits-adjust-agents-md skip? /mode-output-scorer explain x')], 'here', { session_id: 'J3' }), 2, 'talk about the skill is no stack');
+});
 test('scorer backstop: typed rows with no uuid or timestamp key the cycle by the row\'s hash - held once across two closes', () => {
   const tp = transcript([typed('go'), T1('K1')]);
   assert.strictEqual(closeOver(tp, 'done', { session_id: 'K1' }), 2);
@@ -793,7 +820,7 @@ test('scorer backstop: all four keys unset (or the switch empty) read the defaul
   assert.strictEqual(scorer([typed('go'), T3W], 'done', { session_id: 'S2' }, unset), 0, 'no root-cause');
 });
 
-// --- the output-scorer's seal (spec 5.10): the seat's report is written to the score file its first line names, sealed,
+// --- the output-scorer's seal (spec 5.11): the seat's report is written to the score file its first line names, sealed,
 // from its SubagentHandback call or, with none, from SubagentStop - only inside this session's scorer folder, never twice.
 const crypto = require('node:crypto');
 const SCORECARD = path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'scripts', 'scorecard.js');
@@ -826,6 +853,21 @@ test('scorer seal: a leading blank line, bold or backticks around score-file: st
     handback(`${head}${file}${head.startsWith('`') ? '`' : ''}\nbody`);
     assert.ok(fs.existsSync(file), id);
   }
+});
+// sc-10: a seat that opens with a line or two of preface still names its score file
+test('seal: the score-file line may follow up to two preface lines', () => {
+  const at3 = path.join(FOLDER, 'ad000001.score.md'); const at4 = path.join(FOLDER, 'ad000002.score.md');
+  handback(`Graded the plan.\n\nHere is the card:\nscore-file: ${at3}\nbody`);
+  assert.ok(fs.existsSync(at3), 'the third non-empty line seals');
+  handback(`One.\nTwo.\nThree.\nscore-file: ${at4}\nbody`);
+  assert.ok(!fs.existsSync(at4), 'the fourth does not');
+});
+// sc-12: the seal is the spec's 5.11 (5.10 is the read guard)
+test('seal: the hook comment and repo-hooks.md name spec 5.11', () => {
+  const hook = fs.readFileSync(HOOK, 'utf8');
+  assert.ok(hook.includes("seal (mode-output-scorer, spec 5.11)"), 'the hook comment'); assert.ok(!hook.includes('spec 5.10)'), 'no 5.10 left in the hook');
+  const doc = fs.readFileSync(path.join(__dirname, '..', '.claude', 'rules', 'repo-hooks.md'), 'utf8');
+  assert.ok(doc.includes('THE SEAL (5.11)'), 'repo-hooks.md'); assert.ok(!doc.includes('THE SEAL (5.10)'), 'no 5.10 left in repo-hooks.md');
 });
 test('scorer seal: a second delivery of the same score-file never rewrites the first seal (AC22)', () => {
   const file = path.join(FOLDER, 'ab000001.score.md');
@@ -864,4 +906,114 @@ test('scorer seal: the written file passes scorecard grade, and fails with exit 
   assert.strictEqual(cli(['grade', file, '--rubric', R100_FILE, '--level', '80']).status, 0);
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('| c1 | yes |', '| c1 | no  |'));
   assert.strictEqual(cli(['grade', file, '--rubric', R100_FILE, '--level', '80']).status, 3);
+});
+
+// Usage audit 2026-11-03 U06: a report of what could not be confirmed read as a confirm-ask; the C15 offer shapes stay stops.
+test('U06: a negated confirm is no decision question', () => {
+  const done = 'Done: the cache layer is rebuilt and the suite is green (412/412).\n\n';
+  for (const neg of ["I couldn't confirm whether the cache was warm.", 'I could not confirm whether the cache was warm.', "I wasn't able to confirm that you had run the migration."])
+    assert.strictEqual(close(`${done}${neg}`).status, 0, neg);
+  assert.strictEqual(close(`${done}Should I push?`).status, 2, 'a decision question still holds');
+  assert.strictEqual(close(`${done}Confirm whether the cache was warm.`).status, 2, 'an un-negated confirm still holds');
+  for (const text of [
+    "The 81 changed files are ready for you to review on develop. Say 'commit' when you want them committed.",
+    'If you want a real confirmation, I can re-check every screen against its frame after CI finishes.',
+    'That would save a few KB per lazy page at most; I can do it if you want.',
+    'I can run that manual check now if you want; it starts the local backend and stops it afterwards.',
+    'Full list in the ledger. I can start the M2 plan for the minor gaps whenever you want.',
+    "I can draft a plan for #9 and #10 next, or go through the 'DIFFERENT' rows and pick the ones worth matching.",
+    'My recommendation is to skip a full triage and do one quick pass over the behaviour rows. Otherwise this parity scope can stop here.',
+  ]) assert.strictEqual(close(`${done}${text}`).status, 2, `C15 after a Done line: ${text}`);
+});
+
+test('U06: a prose close may follow a second refused ask', () => {
+  const ask = (id) => call(id, 'AskUserQuestion', { questions: [{ question: 'Which store?', options: [{ label: 'Redis (Recommended)', description: 'x' }, { label: 'Memory', description: 'y' }] }] });
+  const denied = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text, is_error: true }] } });
+  const HOOK_DENY = 'PreToolUse:AskUserQuestion hook error: [node guard-stop-contract.js]: This ask names an option the user must type into Other.';
+  const USER_NO = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).";
+  const prose = 'The ask was refused twice, so here it is in prose: should I cache in Redis or in memory?';
+  const sid = `u06-${process.pid}`;
+  const ledger = () => { try { return fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  const stop = (rows, id) => run({ hook_event_name: 'Stop', session_id: id || sid, last_assistant_message: prose, transcript_path: transcript([...rows, say(`c${seq}`, prose)]) });
+  const twice = [typed('add caching'), ask('q1'), denied('q1', HOOK_DENY), ask('q2'), denied('q2', HOOK_DENY)];
+  assert.strictEqual(stop(twice).status, 0, 'two hook refusals: the model cannot ask, the prose close stands');
+  assert.deepStrictEqual(ledger().filter((x) => x.kind === 'prose-after-refused-ask').map((x) => x.mode), ['probe']);
+  assert.strictEqual(stop([typed('add caching'), ask('q3'), denied('q3', HOOK_DENY)], `${sid}-one`).status, 2, 'one refusal is a fixable ask: still held');
+  assert.strictEqual(stop([typed('add caching')], `${sid}-none`).status, 2, 'no ask this turn: still held');
+  assert.strictEqual(stop([ask('q4'), denied('q4', HOOK_DENY), typed('add caching'), ask('q5'), denied('q5', HOOK_DENY)], `${sid}-turn`).status, 2,
+    'a refusal before the typed turn is another turn');
+  const userNo = `${sid}-user`;
+  stop([typed('add caching'), ask('q6'), denied('q6', USER_NO), ask('q7'), denied('q7', USER_NO)], userNo);
+  assert.strictEqual(ledger().filter((x) => x.kind === 'prose-after-refused-ask').length, 1, 'the user rejecting the ask is no hook refusal');
+});
+
+// m3 (E-batch): an ask template pointing 'above' at the reply drew the stop contract's pointer check on every shipped run.
+test('m3: no shipped ask template draws a pointer', () => {
+  const src = fs.readFileSync(HOOK, 'utf8');
+  const lit = /^const POINTER_ABOVE_RE = \/(.+)\/([a-z]*);\s*$/m.exec(src);
+  assert.ok(lit, 'the one-line literal is read from the hook');
+  const re = new RegExp(lit[1], lit[2]);
+  const ROOT = path.join(__dirname, '..');
+  let lines = 0;
+  for (const rel of ['setup-plugin/commands/validate.md', 'stack/skills/habits-adjust-agents-md/SKILL.md']) {
+    let inAsk = false;
+    for (const line of fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\n')) {
+      if (/^\s*```ask\s*$/.test(line)) { inAsk = true; continue; }
+      if (inAsk && /^\s*```\s*$/.test(line)) { inAsk = false; continue; }
+      if (inAsk) { lines++; assert.doesNotMatch(line, re, `${rel}: ${line.trim()}`); }
+    }
+  }
+  assert.ok(lines >= 12, `the walk read the ask blocks (${lines} lines)`);
+  for (const old of ['Review the AGENTS.md check rows above?', 'Write <file> from the outline above (<N> sections, facts from step 3)?',
+    '<N> check fixes are heuristic - read each diff above.', 'the check could not resolve - read each diff above.', "'Apply the check fixes' - every diff above is written"])
+    assert.match(old, re, `the old wording is a pointer: ${old}`);
+});
+
+// Usage audit 2026-11-03 U07: 'start=$(date +%s)' read as `start`, a server, so a timed suite never counted as finite work.
+test('U07: an assignment named start is no server', () => {
+  const wait = 'Green so far: build and unit tests 1677/1677. Not run: the integration suite, waiting on the Docker daemon (the wait is still going).';
+  const sh = (command) => ({ background_tasks: [{ id: `u7-${seq}`, type: 'shell', status: 'running', command }] });
+  assert.strictEqual(over([typed('go')], wait, sh('start=$(date +%s); npm test; echo $(( $(date +%s) - start ))')).status, 0, 'a timed suite is finite work');
+  assert.strictEqual(over([typed('go')], wait, sh('T0="$(date +%s)" npm test')).status, 0, 'a quoted assignment too');
+  assert.strictEqual(over([typed('go')], wait, sh('npm start')).status, 2, 'npm start is still a server');
+  assert.strictEqual(over([typed('go')], wait, sh('PORT=3000 npm start')).status, 2, 'an assignment before a server leaves the server');
+});
+
+// Usage audit 2026-11-03 U10, two closes rebuilt from the audited sessions (names neutral). 629719b3: 'How much time is
+// left?' answered while the 35-suite gate ran - held as done + pending. 68541f68: the user picked the login route and the
+// close told them how - it passes today (the answered-ask exemption: the pick is one tool call back), pinned.
+test('U10: a status question over live work, and a close after the user picked its pending step', () => {
+  const close = 'About 5 minutes for the gate:\n\n- 31 of 35 suites are done. Left are the four short ones, about a minute each.\n- Then about 2 minutes to re-run the one red suite alone.\n- After that the build stops for your pick of reviewer, then the final check and close. Those take roughly 15-30 minutes, depending on the reviewer you pick.';
+  const rows = (prompt) => [typed(prompt), call(`g${seq}`, 'Bash', { command: 'grep -c ^done gate/summary.txt' }), result(`g${seq}`, '31')];
+  const live = { background_tasks: [{ id: 'gate', type: 'shell', status: 'running', description: 'the 35-suite gate', command: 'for f in tests/*.test.cjs; do node "$f"; done > gate/summary.txt' }] };
+  const sid = `u10-${process.pid}`;
+  const r = run({ hook_event_name: 'Stop', session_id: sid, last_assistant_message: close, transcript_path: transcript([...rows('How much time is left?'), say(`c${seq}`, close)]), ...live });
+  assert.strictEqual(r.status, 0, 'the answer to a time question while the gate runs');
+  const ledger = fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8');
+  assert.match(ledger, /"exempt":"status-question"/, 'its probe row names the release');
+  for (const prompt of ['How long until the gate finishes?', 'Any ETA?', 'Is it still running?', 'status?'])
+    assert.strictEqual(over(rows(prompt), close, live).status, 0, prompt);
+  assert.strictEqual(over(rows('How much time is left?'), close).status, 2, 'no live work in the registry: still held');
+  assert.strictEqual(over(rows('go on with the build'), close, live).status, 2, 'no status question: still held');
+  const Q = "I can't read TKT-101 - the tracker server isn't loaded. How do I get the ticket text?";
+  const picked = [typed('/task-solve check whether TKT-101 is fixed'),
+    call('q1', 'AskUserQuestion', { questions: [{ question: Q, header: 'Ticket text', options: [{ label: 'I paste the ticket text (Recommended)', description: 'You paste it' }, { label: 'Authenticate the tracker connector', description: 'I start the login flow' }] }] }),
+    result('q1', `Your questions have been answered: "${Q}"="Authenticate the tracker connector". You can now continue with these answers in mind.`),
+    call('m1', 'mcp__claude_ai_Tracker__authenticate', {}), result('m1', 'This is a claude.ai MCP connector. Ask the user to run /mcp and select "claude.ai Tracker" to authenticate.')];
+  const howTo = "**Result:** still blocked - the login flow can't be started from this session. It has to be started from `/mcp`.\n**Progress:** 0 of 6 steps\n**Leftovers:** none\n\nTo authenticate:\n- Type `/mcp` in the prompt and select 'claude.ai Tracker', then finish the browser login.\n- Tell me when it's done. I'll then read TKT-101 and check the code for the fix.";
+  assert.strictEqual(over(picked, howTo).status, 0, '68541f68: the step the user picked, explained - passes today, pinned');
+});
+
+// E-batch fn-8: `gh repo view` and `gh api user` read the remote, yet a merge ask after them drew the stale-scope note.
+test('fn-8: gh repo view and gh api user are remote reads', () => {
+  const ask = (rows, question) => {
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
+  };
+  const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };
+  const merged = 'The check needs the new services. Recommended: wait until ticket 3 is merged and install that build.';
+  for (const command of ['gh repo view --json defaultBranchRef', 'gh api user --jq .login'])
+    assert.doesNotMatch(ask(ran(command), merged), /This ask named (?:remote or job|git) state/, command);
+  assert.match(ask(ran('git status --short'), merged), /no remote-aware read in this turn/, 'a local read still draws the note');
 });

@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { hashItem, hashBuffer, copyLibrary } = require('./install/library.js');
+const { hashItem, hashBuffer, copyLibrary, renderSkillFile } = require('./install/library.js');
 const { check } = require('./library-check.js');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
@@ -412,4 +412,79 @@ test('library-check on the full copy route: a fresh install is clean, an edited 
     assert.deepStrictEqual(bad(result.fresh), [], 'a fresh full-route install must read clean');
     assert.deepStrictEqual(bad(result.newer), [['rule alfred-quality-gates', 'behind']]);
     assert.deepStrictEqual(bad(result.edited), [['rule alfred-navigation', 'drift']]);
+});
+
+// The approval stamp's path (2026-11-03, the user's ruling 'Installer writes it back'): a source SKILL.md names the
+// root `<project root>` so every host's model fills it in, and a Claude Code copy gets back `${CLAUDE_PROJECT_DIR}` -
+// the text 3.7.1 shipped, which Claude Code substitutes in a SKILL.md alone - so a session started in a sub-folder
+// still writes the stamp where the dispatch hook reads it. A reference file is read as literal text, so it keeps
+// `<project root>`.
+const NEUTRAL_STAMP = '`<project root>/<data root>/state/approvals/';
+const CLAUDE_STAMP = '`${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/';
+
+function stampFixture()
+{
+    const f = fixture();
+    fs.writeFileSync(path.join(f.src, 'stack/skills/demo/SKILL.md'), `---\nname: demo\ndescription: d\n---\nWrite ${NEUTRAL_STAMP}<plan id>/APPROVAL\` first.\n`);
+    fs.writeFileSync(path.join(f.src, 'stack/skills/demo/references/a.md'), `Write ${NEUTRAL_STAMP}<plan id>/APPROVAL\`.\n`);
+    return f;
+}
+
+test('renderSkillFile writes the stamp path back in SKILL.md alone', () =>
+{
+    const text = `a ${NEUTRAL_STAMP}x/APPROVAL\` and ${NEUTRAL_STAMP}APPROVAL\``;
+    assert.equal(renderSkillFile('SKILL.md', text), `a ${CLAUDE_STAMP}x/APPROVAL\` and ${CLAUDE_STAMP}APPROVAL\``);
+    assert.equal(renderSkillFile('references/a.md', text), text, 'a reference is read as literal text');
+    assert.equal(renderSkillFile('references/SKILL.md', text), text, 'only the top-level SKILL.md');
+    assert.equal(renderSkillFile('SKILL.md', 'the `<project root>` placeholder'), 'the `<project root>` placeholder', 'only the stamp path');
+});
+
+test('every shipped SKILL.md naming the stamp path renders to the 3.7.1 spelling', () =>
+{
+    const dir = path.join(ROOT, 'stack', 'skills');
+    const hit = [];
+    for (const name of fs.readdirSync(dir))
+    {
+        const file = path.join(dir, name, 'SKILL.md');
+        if (!fs.existsSync(file)) continue;
+        const text = fs.readFileSync(file, 'utf8');
+        if (!text.includes(NEUTRAL_STAMP)) continue;
+        const out = renderSkillFile('SKILL.md', text);
+        assert.ok(!out.includes(NEUTRAL_STAMP), `${name}: no neutral stamp path left`);
+        assert.equal(out.split(CLAUDE_STAMP).length, text.split(NEUTRAL_STAMP).length, `${name}: each one written back`);
+        hit.push(name);
+    }
+    assert.deepEqual(hit.sort(), ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality', 'task-build-from-scratch', 'task-implement', 'task-solve', 'task-version-upgrade']);
+});
+
+test('copyLibrary installs the rendered SKILL.md, records its hash, and a re-run rewrites nothing', () =>
+{
+    const f = stampFixture();
+    const opts = { sourceDir: f.src, skillsDir: f.skillsDir, agentsDir: f.agentsDir, skills: ['demo'], stamped: null, note: () => {} };
+    const got = copyLibrary({ ...opts, log: () => {} });
+    const skill = fs.readFileSync(path.join(f.skillsDir, 'demo/SKILL.md'), 'utf8');
+    assert.ok(skill.includes(CLAUDE_STAMP) && !skill.includes(NEUTRAL_STAMP), skill);
+    assert.ok(fs.readFileSync(path.join(f.skillsDir, 'demo/references/a.md'), 'utf8').includes(NEUTRAL_STAMP), 'the reference keeps <project root>');
+    assert.equal(got.skills.demo, hashItem(path.join(f.skillsDir, 'demo')), 'the stamp holds the hash of what was written');
+    assert.equal(got.skills.demo, hashItem(path.join(f.src, 'stack/skills/demo'), renderSkillFile), 'which is the rendered source hash');
+    const before = fs.statSync(path.join(f.skillsDir, 'demo/SKILL.md')).mtimeMs;
+    const logs = [];
+    copyLibrary({ ...opts, stamped: got, log: (l) => logs.push(l) });
+    assert.deepEqual(logs, [], 'a re-run rewrites nothing');
+    assert.equal(fs.statSync(path.join(f.skillsDir, 'demo/SKILL.md')).mtimeMs, before);
+    fs.rmSync(f.root, { recursive: true, force: true });
+});
+
+test('copyLibrary over an unrendered copy the stamp recorded rewrites it as the stack\'s, not as a hand edit', () =>
+{
+    const f = stampFixture();
+    fs.mkdirSync(path.join(f.skillsDir, 'demo'), { recursive: true });
+    fs.cpSync(path.join(f.src, 'stack/skills/demo'), path.join(f.skillsDir, 'demo'), { recursive: true });
+    const stamped = { skills: { demo: hashItem(path.join(f.skillsDir, 'demo')) }, agents: {}, rules: {} };
+    const logs = [];
+    const got = copyLibrary({ sourceDir: f.src, skillsDir: f.skillsDir, agentsDir: f.agentsDir, skills: ['demo'], stamped, log: (l) => logs.push(l), note: () => {} });
+    assert.ok(fs.readFileSync(path.join(f.skillsDir, 'demo/SKILL.md'), 'utf8').includes(CLAUDE_STAMP));
+    assert.ok(!logs.some((l) => /hand-edited/.test(l)), logs.join('\n'));
+    assert.equal(got.skills.demo, hashItem(path.join(f.skillsDir, 'demo')));
+    fs.rmSync(f.root, { recursive: true, force: true });
 });

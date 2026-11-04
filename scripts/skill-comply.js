@@ -24,7 +24,7 @@
 //             does the skill hold its non-waivable steps?
 //
 // Grader vocabulary. `tool_used` (tool, input_match, min default 1, max), `tool_order` (before/after,
-// FIRST occurrence of each), `regex` (target last_message | trace, match contains | not_contains,
+// FIRST occurrence of each; this script's own `after_optional` passes a run where `after` never happens), `regex` (target last_message | trace, match contains | not_contains,
 // flags) follow `claude plugin eval`'s semantics as read from the Claude Code 2.1.280 bundle: tool
 // name equality, `input_match` a RegExp over the JSON-serialized input. A grader that uses only
 // those fields pastes into a case.yaml as is. `llm`, `baseline` and `file_exists` are accepted and
@@ -56,11 +56,18 @@
 //             not both, and a `tool` never called fails - one hypothesis, one change, one re-run.
 //             A `tool` call that failed is no call of the set (its retry is the same change); a
 //             `preceded_by` / `followed_by` event skips failed calls only where its matcher says so.
+//   x_backed  a `claim` event needs `backing` events, one per `per` event (at least one): 'each commit
+//             builds' with one test run over two commits fails. No claim, nothing to back - PASS.
+//
+// A fixture's `run` may also carry `trace: 'seat'` (grade only the rows of the seat it dispatches - the
+// stream's `parent_tool_use_id` rows), `model` (its own model, over --model) and `env` (variables for its
+// billed step alone, never a secret or an ALFRED_CODE_ key - those belong in its scaffold).
 //
 //   node scripts/skill-comply.js check [<skill>...]
 //   node scripts/skill-comply.js grade <skill|expect.json> <transcript.jsonl> [--level <l>] [--json]
 //   node scripts/skill-comply.js replay --dry-run [--skill a,b] [--level a,b] [--source <dir>] [--out <dir>]
-//                                   [--model <m>] [--max-budget-usd <n>] [--claude <bin>]
+//                                   [--model <m>] [--effort <level>] [--max-budget-usd <n>] [--claude <bin>]
+//                                   [--token-keychain <item>]
 //   node scripts/skill-comply.js replay --live ...      (billed - never without the user's word)
 //   node scripts/skill-comply.js compare <before-out> <after-out> [--skill a,b] [--level a,b]
 //
@@ -69,12 +76,15 @@
 // fails on BOTH arms is INCONCLUSIVE, never 'not worse' - a grader blind to what the run did passes
 // every comparison by default, and a step graded by nothing offline (only llm / baseline /
 // file_exists graders, SKIP) is NOT GRADED - it measured nothing. The rule HOLDS only with no step
-// worse, inconclusive, not run or not graded.
+// worse, inconclusive, not run or not graded. `compareReps` is the same rule over several reps per arm,
+// pooled per step: WORSE only when the after arm fails at least `gap` (2) more runs than the before arm.
 //
 // The replay installs on the full COPY route, from a clean export: the copied skills are this
 // working tree's text byte for byte, where the plugin route would resolve the released marketplace.
 // HOME and CLAUDE_CONFIG_DIR are isolated under --out; the billed step runs under that config dir,
-// which holds no login until one is given to it. POSIX shells only.
+// which holds no login until one is given to it - `--token-keychain <item>` gives it one: the billed
+// step's own subshell reads the macOS keychain item into CLAUDE_CODE_OAUTH_TOKEN, so the value is never
+// printed, never in an argv and never in a file. POSIX shells only.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -86,8 +96,13 @@ const LEVELS = ['explicit', 'plain', 'adverse'];
 const TEXT = '@text';
 const EVAL_TYPES = new Set(['tool_used', 'tool_order', 'regex']);
 const SKIP_TYPES = { llm: 'needs a model judge - out of scope offline', baseline: 'needs a model judge - out of scope offline', file_exists: 'needs the run\'s created-files list, which a transcript does not carry' };
-const X_TYPES = new Set(['x_between', 'x_quotes_user', 'x_each']);
+const X_TYPES = new Set(['x_between', 'x_quotes_user', 'x_each', 'x_backed']);
 const SECRETS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
+// `claude --help` on 2.1.318, read 2026-11-04: '--effort <level> ... (low, medium, high, xhigh, max)'.
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const KEYCHAIN_ITEM = /^[A-Za-z0-9._-]+$/;
+// A fixture's run.env never carries a login, an API key or the isolation the plan sets itself.
+const ENV_REFUSED = new Set([...SECRETS, 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'HOME', 'CLAUDE_CONFIG_DIR', 'PATH', 'TMPDIR']);
 // A shell tool's non-zero exit comes back is_error with this head - the command RAN.
 const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
 const EXIT_STATUS = /^Exit code \d+/;
@@ -112,7 +127,10 @@ const COPY_ROUTE = ['ALFRED_CODE_SKILLS_VIA_PLUGIN=false', 'ALFRED_CODE_HOOKS_VI
 // files a session or a seat loaded (their paths, one per line), and a prompt typed while the run was busy
 // (`queued_command`, a typed `prompt`).
 // Each event carries `ts`, its row's timestamp in ms (null when the row has none).
-function parseTranscript(text, { sidechain = false } = {})
+// `seat` reads the other half of a stream-json run: ONLY the rows a dispatched seat wrote (each carries
+// `parent_tool_use_id`), the main session's rows and its result row dropped - a fixture whose steps
+// grade the seat's own work (`run.trace: 'seat'`).
+function parseTranscript(text, { sidechain = false, seat = false } = {})
 {
     const events = [];
     const users = [];
@@ -129,7 +147,7 @@ function parseTranscript(text, { sidechain = false } = {})
         try { o = JSON.parse(line); }
         catch { bad++; continue; }
         if (!o || typeof o !== 'object') { bad++; continue; }
-        if ((o.isSidechain === true && !sidechain) || o.parent_tool_use_id) continue;
+        if (seat ? !o.parent_tool_use_id : (o.isSidechain === true && !sidechain) || o.parent_tool_use_id) continue;
         const m = o.message;
         const stamp = typeof o.timestamp === 'string' ? Date.parse(o.timestamp) : NaN;
         const ts = Number.isFinite(stamp) ? stamp : null;
@@ -309,6 +327,7 @@ function runGrader(g, run, refs)
         {
             const b = firstIndex(ev, g.before, refs);
             const a = firstIndex(ev, g.after, refs);
+            if (a === -1 && g.after_optional) return pass(true, `'after' ${label(g.after, refs)} never called - nothing to order`);
             if (b === -1) return pass(false, `'before' ${label(g.before, refs)} never called`);
             if (a === -1) return pass(false, `'after' ${label(g.after, refs)} never called`);
             return pass(b < a, `${label(g.before, refs)}@${b} ${b < a ? 'precedes' : 'does NOT precede'} ${label(g.after, refs)}@${a}`);
@@ -351,6 +370,17 @@ function runGrader(g, run, refs)
                 ? pass(false, bad.join('; '))
                 : pass(true, `each of ${at.length} ${label(g.tool, refs)} call(s) has its own ${[g.preceded_by, g.followed_by].filter((m) => m !== undefined).map((m) => label(m, refs)).join(' and ')}`);
         }
+        case 'x_backed':
+        {
+            const count = (m) => ev.filter((e) => matches(e, m, refs)).length;
+            const claim = count(g.claim);
+            const backing = count(g.backing);
+            const per = count(g.per);
+            const counts = `claim ${claim}, backing ${backing}, per ${per}`;
+            if (!claim) return pass(true, `no ${label(g.claim, refs)} - nothing to back (${counts})`);
+            const need = Math.max(1, per);
+            return pass(backing >= need, `${counts} - ${backing >= need ? 'one backing per unit' : `${need} backing run(s) needed`}`);
+        }
         case 'x_quotes_user':
         {
             const m = inlineMatcher(g);
@@ -380,7 +410,7 @@ function runGrader(g, run, refs)
 
 function grade(expect, transcriptText, opts = {})
 {
-    return gradeRun(expect, parseTranscript(transcriptText), opts);
+    return gradeRun(expect, parseTranscript(transcriptText, { seat: Boolean(expect.run && expect.run.trace === 'seat') }), opts);
 }
 
 // The grading half over a run already parsed - a whole transcript, or one window of a session
@@ -447,6 +477,43 @@ function compareArms(before, after, stepIds = {})
     const notGraded = count('NOT GRADED');
     const verdict = worse ? 'NOT MET' : inconclusive || notRun || notGraded || !rows.length ? 'NOT PROVEN' : 'HOLDS';
     return { rows, worse, inconclusive, notRun, notGraded, verdict };
+}
+
+// The ship rule over REPS: each arm a list of grades (one per run, null for a run with no transcript), pooled
+// per step id as '<passes>/<graded>' (SKIP left out of graded). FAILURES decide, never passes, so an arm short
+// of a run (an infra NOT RUN, a cut, a stop) cannot make a gap by itself. WORSE when the after arm fails `gap`
+// or more runs than the before arm; a gap of 1 is noise. `planned` (the runs each arm should have) marks a
+// step SHORT - NOT PROVEN - when an arm graded fewer than `planned - 1`.
+function compareReps(before, after, { gap = 2, planned } = {})
+{
+    const sides = [before, after].map((grades) => (Array.isArray(grades) ? grades : []).filter(Boolean));
+    const ids = [...new Set(sides.flatMap((grades) => grades.flatMap((g) => (g.steps || []).map((s) => s.id))))];
+    const pool = (grades, id) =>
+    {
+        const verdicts = grades.map((g) => (g.steps || []).find((s) => s.id === id)).filter(Boolean).map((s) => s.verdict);
+        const graded = verdicts.filter((v) => v === 'PASS' || v === 'FAIL');
+        const passes = graded.filter((v) => v === 'PASS').length;
+        return { runs: verdicts.length, n: graded.length, passes, failures: graded.length - passes };
+    };
+    const shown = (p) => (p.runs ? `${p.passes}/${p.n}` : '-');
+    const rows = ids.map((step) =>
+    {
+        const b = pool(sides[0], step);
+        const a = pool(sides[1], step);
+        let outcome;
+        if (!b.runs || !a.runs) outcome = 'NOT RUN';
+        else if (!b.n || !a.n) outcome = 'NOT GRADED';
+        else if (!b.passes && !a.passes) outcome = 'INCONCLUSIVE';
+        else if (a.failures - b.failures >= gap) outcome = 'WORSE';
+        else if (planned !== undefined && (b.n < planned - 1 || a.n < planned - 1)) outcome = 'SHORT';
+        else if (b.failures - a.failures >= gap) outcome = 'better';
+        else outcome = 'same';
+        return { step, before: shown(b), after: shown(a), outcome };
+    });
+    const has = (o) => rows.some((r) => r.outcome === o);
+    const verdict = has('WORSE') ? 'NOT MET'
+        : !rows.length || ['INCONCLUSIVE', 'NOT RUN', 'NOT GRADED', 'SHORT'].some(has) ? 'NOT PROVEN' : 'HOLDS';
+    return { rows, verdict };
 }
 
 function formatCompare(c)
@@ -561,6 +628,18 @@ function checkExpectation(exp)
     const run = e.run || {};
     if (!Number.isInteger(run.max_turns) || run.max_turns < 1 || run.max_turns > 200) problems.push(`${where}: run.max_turns must be an integer 1..200`);
     if (!Array.isArray(run.allowed_tools) || !run.allowed_tools.length) problems.push(`${where}: run.allowed_tools must be a non-empty list`);
+    if (run.trace !== undefined && !['main', 'seat'].includes(run.trace)) problems.push(`${where}: run.trace must be 'main' or 'seat'`);
+    if (run.model !== undefined && (typeof run.model !== 'string' || !run.model.trim())) problems.push(`${where}: run.model must be a non-empty string`);
+    if (run.env !== undefined)
+    {
+        if (!run.env || typeof run.env !== 'object' || Array.isArray(run.env)) problems.push(`${where}: run.env must be an object of NAME: 'value'`);
+        else for (const [k, v] of Object.entries(run.env))
+        {
+            if (!/^[A-Z][A-Z0-9_]*$/.test(k)) problems.push(`${where}: run.env key '${k}' is not an upper-case variable name`);
+            else if (ENV_REFUSED.has(k) || k.startsWith('ALFRED_CODE_')) problems.push(`${where}: run.env key '${k}' is refused - a login, a secret or the isolation never rides a fixture; an ALFRED_CODE_ value goes in its scaffold`);
+            if (typeof v !== 'string' || /[\n\r\0]/.test(v)) problems.push(`${where}: run.env value of '${k}' must be a one-line string`);
+        }
+    }
     let recs = {};
     try { recs = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8')); }
     catch { problems.push(`${where}: meta/recommendations.json could not be read to check run.stacks`); }
@@ -621,6 +700,11 @@ function checkExpectation(exp)
                 if (g.preceded_by !== undefined) checkMatcher(g.preceded_by, refs, `${gw}.preceded_by`, problems);
                 if (g.followed_by !== undefined) checkMatcher(g.followed_by, refs, `${gw}.followed_by`, problems);
             }
+            if (g.type === 'x_backed')
+            {
+                if (g.claim === undefined || g.backing === undefined || g.per === undefined) problems.push(`${gw}: x_backed needs claim, backing and per`);
+                for (const k of ['claim', 'backing', 'per']) if (g[k] !== undefined) checkMatcher(g[k], refs, `${gw}.${k}`, problems);
+            }
             if (g.type === 'x_quotes_user') compiles(g.capture || '', 'm', gw, problems);
             if (g.type === 'regex')
             {
@@ -666,8 +750,16 @@ function replaySelection(e, root = ROOT)
 // The whole replay as an ordered list of shell commands - the one list both --dry-run prints and
 // --live runs, so what the user approves is what executes. `billed` marks the nested sessions and
 // `grade` the reads that need their transcripts.
-function replayPlan({ skills, levels, source, out, model, budget = 2, claude = 'claude' })
+// `effort` pins the session's effort; a fixture's `run.model` wins over `model` for its own runs and its
+// `run.env` pairs ride its billed step alone. `tokenKeychain` names the macOS keychain item the billed
+// step's own subshell reads into CLAUDE_CODE_OAUTH_TOKEN (exported there, so `env` inherits it and no
+// argv holds it; an empty read stops the step before claude starts), with ANTHROPIC_API_KEY unset.
+function replayPlan({ skills, levels, source, out, model, budget = 2, claude = 'claude', effort, tokenKeychain })
 {
+    if (effort !== undefined && !EFFORTS.includes(effort)) throw new Error(`effort must be one of ${EFFORTS.join(', ')}`);
+    if (tokenKeychain !== undefined && !KEYCHAIN_ITEM.test(String(tokenKeychain))) throw new Error('a keychain item is one plain word ([A-Za-z0-9._-])');
+    const login = tokenKeychain !== undefined
+        ? `export CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s ${tokenKeychain} -w)" && [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && ` : '';
     const cmds = [];
     const add = (cmd, kind = 'prep', note) => cmds.push({ cmd, kind, note });
     const src = source ? path.resolve(source) : path.join(out, 'src');
@@ -676,7 +768,7 @@ function replayPlan({ skills, levels, source, out, model, budget = 2, claude = '
     if (!source) add(`node ${q(path.join(ROOT, 'scripts', 'clean-export.js'))} ${q(ROOT)} ${q(src)}`, 'prep', 'one source snapshot for every run');
     add(`mkdir -p ${q(home)} ${q(config)}`);
     const clean = `env -i PATH="$PATH" TMPDIR="\${TMPDIR:-/tmp}" HOME=${q(home)} CLAUDE_CONFIG_DIR=${q(config)}`;
-    const unset = [...SECRETS, ...stackEnvKeys()].map((k) => `-u ${k}`).join(' ');
+    const unset = [...SECRETS, ...stackEnvKeys(), ...(tokenKeychain !== undefined ? ['ANTHROPIC_API_KEY'] : [])].map((k) => `-u ${k}`).join(' ');
     for (const skill of skills)
     {
         const { data: e, dir } = loadExpectation(skill);
@@ -688,6 +780,8 @@ function replayPlan({ skills, levels, source, out, model, budget = 2, claude = '
         add(`node ${q(path.join(src, 'scripts', 'stack-select.js'))} --selection ${q(selJson)} --emit ${q(selTxt)}`);
         // The copy route registers MCP servers bare, so the allowed list names them that way.
         const tools = e.run.allowed_tools.map(canonical).join(',');
+        const runModel = typeof e.run.model === 'string' && e.run.model.trim() ? e.run.model : model;
+        const pairs = Object.entries(e.run.env && typeof e.run.env === 'object' ? e.run.env : {}).map(([k, v]) => ` ${k}='${String(v).replace(/'/g, `'\\''`)}'`).join('');
         for (const level of levels)
         {
             const ldir = path.join(sdir, level);
@@ -699,9 +793,14 @@ function replayPlan({ skills, levels, source, out, model, budget = 2, claude = '
             add(`(cd ${q(proj)} && ${clean} ${COPY_ROUTE.join(' ')} node ${q(path.join(src, 'scripts', 'install', 'alfred-code.js'))} install --source ${q(src)} --selection ${q(selTxt)} --memory-level project)`);
             add(`(cd ${q(proj)} && ${clean} bash ${q(path.join(dir, 'scaffold.sh'))})`);
             const flags = ['-p', '--output-format stream-json', '--verbose', `--max-turns ${e.run.max_turns}`, '--permission-mode dontAsk',
-                '--setting-sources user,project,local', `--allowed-tools=${q(tools)}`, `--max-budget-usd ${budget}`];
-            if (model) flags.push(`--model=${q(model)}`);
-            add(`(cd ${q(proj)} && printf '%s' ${q(e.prompts[level])} | env ${unset} HOME=${q(home)} CLAUDE_CONFIG_DIR=${q(config)} ${q(claude)} ${flags.join(' ')} > ${q(transcript)})`, 'billed');
+                '--setting-sources user,project,local', `--allowed-tools=${q(tools)}`];
+            // A seat's own text reaches the stream only on request (`claude --help`, 2.1.318: 'Forward subagent text and
+            // thinking blocks as assistant/user messages with parent_tool_use_id set').
+            if (e.run.trace === 'seat') flags.push('--forward-subagent-text');
+            if (effort) flags.push(`--effort ${effort}`);
+            flags.push(`--max-budget-usd ${budget}`);
+            if (runModel) flags.push(`--model=${q(runModel)}`);
+            add(`(cd ${q(proj)} && ${login}printf '%s' ${q(e.prompts[level])} | env ${unset}${pairs} HOME=${q(home)} CLAUDE_CONFIG_DIR=${q(config)} ${q(claude)} ${flags.join(' ')} > ${q(transcript)})`, 'billed');
             add(`node ${q(__filename)} grade ${q(skill)} ${q(transcript)} --level ${level}`, 'grade');
         }
     }
@@ -713,7 +812,9 @@ function formatPlan(cmds, { skills, levels, budget })
     const billed = cmds.filter((c) => c.kind === 'billed').length;
     const out = ['#!/bin/bash',
         `# skill-comply replay: ${skills.length} skill(s) x ${levels.length} level(s) = ${billed} billed nested session(s), each capped at --max-budget-usd ${budget}.`,
-        '# The billed steps run under the isolated CLAUDE_CONFIG_DIR below, which holds no login until you give it one.',
+        cmds.some((c) => c.kind === 'billed' && c.cmd.includes('security find-generic-password'))
+            ? '# The billed steps run under the isolated CLAUDE_CONFIG_DIR below; each reads its login from the keychain inside its own subshell, never printed.'
+            : '# The billed steps run under the isolated CLAUDE_CONFIG_DIR below, which holds no login until you give it one.',
         'set -e'];
     for (const c of cmds)
     {
@@ -744,7 +845,7 @@ function parseFlags(argv)
 {
     const flags = {};
     const pos = [];
-    const valued = new Set(['--level', '--skill', '--source', '--out', '--model', '--max-budget-usd', '--claude']);
+    const valued = new Set(['--level', '--skill', '--source', '--out', '--model', '--max-budget-usd', '--claude', '--effort', '--token-keychain']);
     const bare = new Set(['--json', '--dry-run', '--live']);
     for (let i = 0; i < argv.length; i++)
     {
@@ -764,7 +865,7 @@ function parseFlags(argv)
 const USAGE = `usage:
   skill-comply.js check [<skill>...]
   skill-comply.js grade <skill|expect.json> <transcript.jsonl> [--level explicit|plain|adverse] [--json]
-  skill-comply.js replay --dry-run [--skill a,b] [--level a,b] [--source <dir>] [--out <dir>] [--model <m>] [--max-budget-usd <n>] [--claude <bin>]
+  skill-comply.js replay --dry-run [--skill a,b] [--level a,b] [--source <dir>] [--out <dir>] [--model <m>] [--effort <level>] [--max-budget-usd <n>] [--claude <bin>] [--token-keychain <item>]
   skill-comply.js replay --live    (same flags - starts billed nested sessions)
   skill-comply.js compare <before-out> <after-out> [--skill a,b] [--level a,b]`;
 
@@ -843,6 +944,8 @@ function main(argv)
         if (unknownLevel) { console.error(`skill-comply: unknown level '${unknownLevel}' (${LEVELS.join(', ')})`); return 2; }
         const budget = flags['max-budget-usd'] ?? '2';
         if (!/^\d+(\.\d+)?$/.test(String(budget)) || Number(budget) <= 0) { console.error('skill-comply: --max-budget-usd must be a positive number'); return 2; }
+        if (flags.effort !== undefined && !EFFORTS.includes(flags.effort)) { console.error(`skill-comply: --effort must be one of ${EFFORTS.join(', ')}`); return 2; }
+        if (flags['token-keychain'] !== undefined && !KEYCHAIN_ITEM.test(flags['token-keychain'])) { console.error('skill-comply: --token-keychain names one keychain item ([A-Za-z0-9._-])'); return 2; }
         const out = path.resolve(flags.out || path.join(os.tmpdir(), `skill-comply-${new Date().toISOString().replace(/[:.]/g, '-')}`));
         let cmds;
         try
@@ -854,7 +957,7 @@ function main(argv)
             }
             if (flags.source && !fs.existsSync(path.join(flags.source, 'scripts', 'install', 'alfred-code.js')))
                 throw new Error(`--source ${flags.source} is not a stack source (no scripts/install/alfred-code.js)`);
-            cmds = replayPlan({ skills, levels, source: flags.source, out, model: flags.model, budget, claude: flags.claude || 'claude' });
+            cmds = replayPlan({ skills, levels, source: flags.source, out, model: flags.model, budget, claude: flags.claude || 'claude', effort: flags.effort, tokenKeychain: flags['token-keychain'] });
         }
         catch (err) { console.error(`skill-comply: ${err.message}`); return 1; }
         if (flags['dry-run'])
@@ -877,4 +980,4 @@ if (require.main === module)
     process.exitCode = main(process.argv.slice(2));
 }
 
-module.exports = { parseTranscript, grade, gradeRun, formatGrade, compareArms, formatCompare, checkExpectation, loadExpectation, listSkills, replayPlan, formatPlan, canonical, matches, main, LEVELS, EXPECT_DIR, EVAL_TYPES, X_TYPES, SKIP_TYPES };
+module.exports = { parseTranscript, grade, gradeRun, formatGrade, compareArms, compareReps, formatCompare, checkExpectation, loadExpectation, listSkills, replayPlan, formatPlan, canonical, matches, main, LEVELS, EXPECT_DIR, EVAL_TYPES, X_TYPES, SKIP_TYPES };

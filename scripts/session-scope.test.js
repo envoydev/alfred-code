@@ -174,15 +174,64 @@ test('UNTRACKED-ALLOW opens the sweep for the paths the user named, and only tho
     try {
         p.write('harness/one.txt', 'h\n'); p.write('harness/two.txt', 'h\n');
         p.start('s6');
-        p.flow('UNTRACKED-ALLOW', 'harness/one.txt\n');
+        p.flow('UNTRACKED-ALLOW', 'session: s6\nharness/one.txt\n'); // E1-6: the session it answers
         const partial = p.bash('s6', 'git add -A');
         assert.strictEqual(partial.status, 2);
         assert.match(partial.stderr, /harness\/two\.txt/);
         assert.doesNotMatch(partial.stderr, /  harness\/one\.txt/, 'the named path is no longer listed');
-        p.flow('UNTRACKED-ALLOW', 'harness/\n');
+        p.flow('UNTRACKED-ALLOW', 'session: s6\nharness/\n');
         assert.strictEqual(p.bash('s6', 'git add -A').status, 0, 'a directory line covers what is under it');
-        p.flow('UNTRACKED-ALLOW', '*\n');
+        p.flow('UNTRACKED-ALLOW', 'session: s6\n*\n');
         assert.strictEqual(p.bash('s6', 'git add .').status, 0);
+    } finally { p.rm(); }
+});
+
+// E-batch M7: past 15 swept paths the denial listed 15 receipt lines, so the retry was denied again for the rest. The lines
+// it prints, written as told, open the retry whatever the count.
+const printedReceipt = (stderr) => {
+    const m = /retry the SAME (?:command|call)[^\n]*\n((?:  .*\n)+)/.exec(stderr);
+    return m ? m[1].split('\n').map((l) => l.trim()).filter(Boolean) : [];
+};
+test('M7: past 15 swept paths the printed receipt lines cover every one', () => {
+    const p = project();
+    try {
+        for (let i = 0; i < 20; i += 1) p.write(`harness/f${i}.txt`, 'h\n');
+        for (let i = 0; i < 3; i += 1) p.write(`loose${i}.txt`, 'h\n');
+        p.start('m7');
+        const r = p.bash('m7', 'git add -A');
+        assert.strictEqual(r.status, 2);
+        const lines = printedReceipt(r.stderr);
+        assert.strictEqual(lines[0], 'session: m7', 'the session line first');
+        assert.ok(lines.length <= 16, `a short list: ${lines.length} lines`);
+        p.flow('UNTRACKED-ALLOW', lines.join('\n') + '\n');
+        const retry = p.bash('m7', 'git add -A');
+        assert.strictEqual(retry.status, 0, `the printed lines open the retry: ${retry.stderr.slice(0, 300)}`);
+    } finally { p.rm(); }
+});
+
+// E1-6 (inventory A): UNTRACKED-ALLOW is read by hook-prelude.js readReceiptFile - a `session:` line naming the call's
+// session - so another session's answer never opens this one's sweep.
+test('E1-6: UNTRACKED-ALLOW counts only for the session it names', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('e16');
+        p.flow('UNTRACKED-ALLOW', 'session: another-session\n*\n');
+        assert.strictEqual(p.bash('e16', 'git add -A').status, 2, 'another session\'s receipt opens nothing');
+        p.flow('UNTRACKED-ALLOW', 'session: e16\n*\n');
+        assert.strictEqual(p.bash('e16', 'git add -A').status, 0, 'this session\'s receipt opens the sweep');
+    } finally { p.rm(); }
+});
+
+test('E1-6: an old receipt with no session line asks again', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('e16b');
+        p.flow('UNTRACKED-ALLOW', '*\n');
+        const r = p.bash('e16b', 'git add -A');
+        assert.strictEqual(r.status, 2, 'a receipt naming no session is shut');
+        assert.match(r.stderr, /\n  session: e16b\n/, 'the denial\'s receipt lines start with this session');
     } finally { p.rm(); }
 });
 
@@ -196,7 +245,7 @@ test('the receipt\'s spec count and the trivial-diff bar leave the pre-existing 
         p.flow('COMMIT-GATE', ['VERIFIED the rounding fix', 'authorized: "commit it"', `head: ${head}`, 'spec: 1 file - src/a.cs', 'live-probe: NOT RUN - test', 'format: npx prettier --check - clean over 1 staged file', 'findings: none'].join('\n') + '\n');
         // 2.1.6 H2: the count is what the commit takes in, so the sweep that takes the harness files in is the case -
         // the user allowed it, and they still are not the change
-        p.flow('UNTRACKED-ALLOW', '*\n');
+        p.flow('UNTRACKED-ALLOW', 'session: s7\n*\n');
         const r = p.bash('s7', 'git add -A && git commit -m fix');
         assert.strictEqual(r.status, 0, r.stderr);
         p.dropRecords();

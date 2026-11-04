@@ -186,15 +186,65 @@ test('full spec: the solve flow states the checklist, runs the check script and 
         'task-version-upgrade': 5, 'task-design': 1, 'task-verify-plan': 2 });
     for (const name of ['task-solve', 'task-solve-cross']) {
         const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');
+        // task-solve keeps the checklist in the reference its step names (prose A/B 2026-11-04, CAP-1), its body at its cap
+        const list = name === 'task-solve' ? `${core}\n${fs.readFileSync(path.join(SKILLS, name, 'references', 'full-spec.md'), 'utf8')}` : core;
         assert.match(core, /scripts\/spec-check\.js/, `${name}: the check is a script, not a judgment`);
-        assert.match(flat(core), /the surface/i, `${name}: surface`);
-        assert.match(flat(core), /observable behaviour/i, `${name}: behaviour`);
-        assert.match(flat(core), /tests or acceptance criteria/i, `${name}: verification`);
-        assert.match(flat(core), /more than one stack/i, `${name}: a multi-stack request keeps every gate`);
-        assert.match(flat(core), /auth, secret or payment path/i, `${name}: a security path keeps every gate`);
+        assert.match(flat(list), /the surface/i, `${name}: surface`);
+        assert.match(flat(list), /observable behaviour/i, `${name}: behaviour`);
+        assert.match(flat(list), /tests or acceptance criteria/i, `${name}: verification`);
+        assert.match(flat(list), /more than one stack/i, `${name}: a multi-stack request keeps every gate`);
+        assert.match(flat(list), /auth, secret or payment path/i, `${name}: a security path keeps every gate`);
         const merged = asks(core).find((a) => /^Full spec/.test(a.question));
         assert.ok(merged, `${name}: the merged step's one approval ask is a template`);
         assert.match(merged.options[0], /^Build as planned.*\(Recommended\)$/, `${name}: build as planned is recommended, first`);
     }
     assert.match(flat(read('stack/skills/task-solve/SKILL.md')), /`path: merged` you may raise to gated[^.]*never lower\./, 'the model may raise the script\'s verdict to gated, never lower it');
+});
+
+// Usage audit 2026-11-03 U11: 'write your own in Other' in the QUESTION passed the option-only check.
+test('U11: type-into-Other in the question text is denied', () => {
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'u11-'));
+    try {
+        const tp = path.join(dir, 't.jsonl');
+        fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { id: 'a', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: 900 } } }) + '\n');
+        const ask = (q) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-stop-contract.js')], {
+            input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'u11', transcript_path: tp, tool_name: 'AskUserQuestion', tool_input: { questions: [q] } }),
+            encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(dir, 'log-')) },
+        });
+        const opts = [{ label: 'Cache in Redis (Recommended)', description: 'shared across nodes' }, { label: 'Cache in memory', description: 'one node' }];
+        for (const q of [{ question: 'Which cache? Pick one, or write your own in Other.', options: opts }, { question: 'Which cache?', header: 'or via Other', options: opts }]) {
+            const r = ask(q);
+            assert.strictEqual(r.status, 2, `${q.question} / ${q.header || ''}: ${r.stderr}`);
+            assert.match(r.stderr, /'Cache in Redis' \/ 'Cache in memory'/, 'the example names the ask\'s own first two labels');
+        }
+        assert.strictEqual(ask({ question: 'Which cache?', options: opts }).status, 0, 'the same ask without Other passes');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Moved from d8-skill-text.test.js when D8 was reverted (43a6f76a; the revert's review, minor 1): the seat-first and
+// non-mode asks keep the option they mark - about ten of these marks have no other pin.
+const MARKED_ASKS = [
+    { file: 'stack/skills/capture-awareness/SKILL.md', firstLine: "Run the seat parts through their analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/architecture.md', firstLine: "First architecture capture across <the modules>. Characterize them through the architecture-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/project-code-style.md', firstLine: "First style capture across <the languages>. Characterize them through the code-style-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-awareness/references/related-projects.md', firstLine: "Characterize <the siblings> through the related-project-analyzer seats, one per sibling, or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/SKILL.md', firstLine: "Run the chosen parts through their analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/architecture-quality.md', firstLine: "Hunt the weaknesses and strengths of <the modules> through the architecture-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/code-quality.md', firstLine: "Judge <the modules> through the code-quality-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-quality/references/test-coverage-quality.md', firstLine: "Analyze <the measured surfaces> through the test-coverage-analyzer seats or in this session?", recommended: "Through the seats (Recommended)" },
+    { file: 'stack/skills/capture-preferences/references/tools-area.md', firstLine: "May agents use <server>?", recommended: "Main session only (Recommended)" },
+    { file: 'stack/skills/habits-execution-strategy/SKILL.md', firstLine: "This task fits <the flow>: <what it adds for THIS task>. Start it, or proceed here directly?", recommended: "Start <the flow's slash command> (Recommended)" },
+    { file: 'stack/skills/habits-execution-strategy/SKILL.md', firstLine: "The plan needs <N> seats / reaches <the scope past the request>. Run the trimmed plan?", recommended: "Run the trimmed plan (Recommended)" },
+    { file: 'stack/skills/mode-output-scorer/SKILL.md', firstLine: "The <output> scored <S>/100 (level <n>); the next revision can reach at most <ceiling> - <the needs line, why it stopped, or nothing closable left>. How should it go on?", recommended: "Answer the open decisions (Recommended)" },
+    { file: 'stack/skills/task-implement/SKILL.md', firstLine: "<task> FAILED: <why>.", recommended: "Stop and report (Recommended)" },
+    { file: 'stack/skills/task-implement/SKILL.md', firstLine: "Both write routes refused the approval stamp: <the refusal>.", recommended: "Retry the stamp (Recommended)" },
+    { file: 'stack/skills/loop-code-quality/SKILL.md', firstLine: "Both write routes refused the approval stamp: <the refusal>.", recommended: "Retry the stamp (Recommended)" }
+];
+test('the seat-first asks keep their marks', () => {
+    for (const u of MARKED_ASKS) {
+        const blocks = [...read(u.file).matchAll(/```ask\n([\s\S]*?)```/g)].map((m) => m[1].split('\n'));
+        const marked = blocks.filter((b) => b[0].trim() === u.firstLine).some((b) => b.some((l) => /^\s*- '/.test(l) && l.includes(`'${u.recommended}'`)));
+        assert.ok(marked, `${u.file}: the ask "${u.firstLine.slice(0, 60)}" still marks '${u.recommended}'`);
+    }
+    assert.ok(MARKED_ASKS.length >= 14);
 });

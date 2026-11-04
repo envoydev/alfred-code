@@ -65,12 +65,13 @@ const ROUTES = [
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on tool names it matches: the desktop
-  // server types' two launchers and the browser server type's code runner under any registration (N6 and N9, 2026-10-24 -
+  // server types' launchers (a server's PowerShell and execute_shell_command too, E-batch mcp-B-m1) and the browser server type's code runner under any registration (N6 and N9, 2026-10-24 -
   // the stack ships no server, so the name is the user's). A bare server spelling is built here, never written - lint
   // check 54 fails on it as literal text.
   { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$',
-    tools: ['control', 'desktop'].flatMap((k) => [`mcp__plugin_windows-${k}_windows-${k}__App`, `mcp__windows-${k}__App`, `mcp__plugin_macos-${k}_macos-${k}__Shell`, `mcp__macos-${k}__Shell`])
+    pattern: '^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$|^mcp__.+__browser_run_code_unsafe$',
+    tools: ['control', 'desktop'].flatMap((k) => [`mcp__plugin_windows-${k}_windows-${k}__App`, `mcp__windows-${k}__App`, `mcp__windows-${k}__PowerShell`, `mcp__plugin_macos-${k}_macos-${k}__Shell`, `mcp__macos-${k}__Shell`])
+        .concat([`mcp__${'shell'}__execute_shell_command`])
         .concat(['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `playwright-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_run_code_unsafe`, `mcp__${s}__browser_run_code_unsafe`])) },
   // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): a Playwright server under any
   // registration name (N6), replayed on the names the stack once shipped.
@@ -80,8 +81,8 @@ const ROUTES = [
   // A file server's read tools, the secret guard's fifth read route (audit 2026-10-30 HK-26): a user-registered
   // filesystem server under any registration name.
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__.+__(read_file|read_text_file|read_multiple_files)$',
-    tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['read_file', 'read_text_file', 'read_multiple_files'].map((t) => `mcp__${s}__${t}`)) },
+    pattern: '^mcp__.+__(read_file|read_text_file|read_multiple_files|read_media_file)$',
+    tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['read_file', 'read_text_file', 'read_multiple_files', 'read_media_file'].map((t) => `mcp__${s}__${t}`)) },
   // The same server's write tools (audit 2026-11-03 SYS-02): the cross-project guard on all four, the config guard on the
   // three that change a file's text.
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', deny: true,

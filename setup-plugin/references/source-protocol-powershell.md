@@ -44,7 +44,8 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
 }
 $Src = ''
 $BestVer = $null
-$Base = Join-Path $ConfigDir 'plugins/cache'
+$PluginsRoot = if ($env:CLAUDE_CODE_PLUGIN_CACHE_DIR) { $env:CLAUDE_CODE_PLUGIN_CACHE_DIR } else { Join-Path $ConfigDir 'plugins' }   # the variable moves the plugins root, cache/ included
+$Base = Join-Path $PluginsRoot 'cache'
 if (Test-Path -LiteralPath $Base -PathType Container) {
   foreach ($mkt in (Get-ChildItem -LiteralPath $Base -Directory -ErrorAction SilentlyContinue)) {
     $entry = Join-Path $mkt.FullName 'alfred-code'

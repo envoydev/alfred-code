@@ -781,7 +781,7 @@ function jobOrder({ projectRoot, env = process.env, job, seat = null })
 
 // The memory mode (ALFRED_CODE_MEMORY), one of the stack's variables: the loader's winner (settings.local.json, the
 // project's .variables, settings.json, the account file, the process env, a linked member - spec D4). Anything but
-// exactly `custom` is the default, so a typo never leaves a project without Claude's own memory.
+// exactly `custom` or `docs` is the default, so a typo never leaves a project without Claude's own memory.
 // `layers` as the loader takes it: 'team' is the value under a developer's own settings.local.json. The choice is
 // { name, value } - `name` the layer it came from ('settings.local.json', 'own', 'env' or a member) - or null.
 function memoryChoice(projectRoot, env = process.env, layers = 'all')
@@ -793,7 +793,7 @@ function memoryChoice(projectRoot, env = process.env, layers = 'all')
 function memoryMode({ projectRoot, env = process.env })
 {
     const choice = memoryChoice(projectRoot, env);
-    return choice && choice.value === 'custom' ? 'custom' : 'default';
+    return choice && (choice.value === 'custom' || choice.value === 'docs') ? choice.value : 'default';
 }
 
 // The `autoMemoryEnabled` in effect here: the narrowest file that sets the key (settings.local.json, settings.json, then the
@@ -848,6 +848,183 @@ function stackSwitchOff(projectRoot, setting)
     return older && name === (field('scope') === 'local' ? 'settings.local.json' : 'settings.json') ? "the old memory server's switch-off" : null;
 }
 
+// ---------------------------------------------------------------- docs memory (memory P3)
+// The place, the setting and the refusal come from layout.js (docsMemoryDir, memoryDirSetting, docsMemoryRefusal,
+// docsMemoryShare), the installer's rule, so the lines here never disagree with what an update writes.
+
+// A folder as the memory lines show it: project-relative, `~/`-relative, or in full.
+function placeShown(projectRoot, abs, home = os.homedir())
+{
+    const real = (p) => (loader && loader.realpathOrSelf ? loader.realpathOrSelf(p) : path.resolve(p));
+    const at = real(abs);
+    const under = (dir) =>
+    {
+        const rel = path.relative(real(dir), at);
+        return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : null;
+    };
+    const inProject = under(projectRoot);
+    if (inProject !== null) return inProject;
+    const inHome = under(home);
+    return inHome !== null ? `~/${inHome}` : at.split(path.sep).join('/');
+}
+const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
+// Whether a value is the one the stamp's row vouches for: through the loader's place-under-the-project match, else (a
+// loader too old to know it) the row as an absolute value.
+const rowMatches = (value, hash) => (typeof loader.memoryRowMatches === 'function' ? loader.memoryRowMatches(value, hash)
+    : hash !== null && sha256(JSON.stringify(value)) === hash);
+// The stamp's hash of the stack's own autoMemoryDirectory (the installer's ledger row, memory-dir.js), or null.
+function stackMemoryRow(projectRoot)
+{
+    const text = readText(path.join(projectRoot, '.claude', 'alfred-code.stamp')) || '';
+    const field = (text.match(/^managed-settings: *(.*)$/m) || [])[1] || '';
+    const row = field.split(',').map((s) => s.trim()).find((s) => s.startsWith('settings.local.json:autoMemoryDirectory='));
+    return row ? row.slice(row.indexOf('=') + 1) : null;
+}
+// git's own answer whether a file is tracked; a failed or missing git says no.
+function gitTracked(file)
+{
+    try
+    {
+        return spawnSync('git', ['-c', 'core.fsmonitor=false', 'ls-files', '--error-unmatch', '--', path.basename(file)],
+            { cwd: path.dirname(file), stdio: 'ignore', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).status === 0;
+    }
+    catch { return false; }
+}
+// Docs mode's state here: { dir, shown, versioning, refusal, setting, share }, or null when the loader beside this file is
+// too old to know docs mode. `tracked` is git's check; the session start passes () => false, spawning nothing (D6).
+function docsMemoryState({ projectRoot, env = process.env, tracked = gitTracked, home = os.homedir() })
+{
+    if (!loader || typeof loader.docsMemoryDir !== 'function') return null;
+    const dir = loader.docsMemoryDir(projectRoot, { env });
+    const hash = stackMemoryRow(projectRoot);
+    const ours = (value) => hash !== null && rowMatches(value, hash);
+    const versioning = loader.variablesOf(projectRoot, { env }).values.ALFRED_CODE_DOCS_VERSIONING === 'local' ? 'local' : 'git';
+    return {
+        dir, shown: placeShown(projectRoot, dir, home), versioning,
+        refusal: loader.docsMemoryRefusal(projectRoot, { wanted: dir, tracked, ours, home }),
+        setting: loader.memoryDirSetting(projectRoot, { env, home }),
+        share: loader.docsMemoryShare(projectRoot, { env, home }),
+    };
+}
+const keptBy = (state) => (state.versioning === 'local' ? 'kept out of git' : 'committed with the docs');
+// Where docs mode stands: 'share', 'refused', 'unset', 'stale' or 'in place'.
+function docsStanding(state)
+{
+    if (state.share) return 'share';
+    if (state.refusal) return 'refused';
+    if (!state.setting) return 'unset';
+    return loader.dirKey(state.setting) === loader.dirKey(state.dir) ? 'in place' : 'stale';
+}
+function docsLines(projectRoot, state)
+{
+    switch (docsStanding(state))
+    {
+        case 'share': return [`memory: docs - shares ${state.share.member}'s docs memory, in ${placeShown(projectRoot, state.share.dir)}/`];
+        case 'refused': return [`memory: docs, but ${state.refusal.text} - Claude's own memory stays at its default place`];
+        case 'unset': return ['memory: docs, but no autoMemoryDirectory is set here - /alfred-code:update writes it'];
+        case 'stale': return [`memory: docs, but autoMemoryDirectory points at ${placeShown(projectRoot, state.setting)}, not ${state.shown}/ - /alfred-code:update re-points it`];
+        default: return [`memory: docs - Claude Code's own memory, in ${state.shown}/ (${keptBy(state)})`];
+    }
+}
+// The lines init and configure ask from, after the memory lines: whether docs mode can be written here, and - for a
+// `target` native place other than the current one - how many memory files the copy offer would carry (R5).
+function memoryPlanLines({ projectRoot, env = process.env, target = null })
+{
+    const state = docsMemoryState({ projectRoot, env });
+    if (!state) return [];
+    if (state.share) return [`memory-docs: shares ${state.share.member}'s docs memory - nothing to write here`];
+    if (state.refusal) return [`memory-docs: cannot be written - ${state.refusal.text}`];
+    const lines = [`memory-docs: can be written - ${state.shown}/, ${keptBy(state)}`];
+    if (target !== 'docs' && target !== 'default') return lines;
+    const from = loader.memoryDirsOf(projectRoot, { env });
+    const to = target === 'docs' ? [state.dir] : loader.defaultMemoryDirs(projectRoot, { env });
+    const index = (dir) => fs.existsSync(path.join(dir, 'MEMORY.md'));
+    if (from.length === 1 && to.length === 1 && loader.dirKey(from[0]) !== loader.dirKey(to[0]) && index(from[0]) && !index(to[0]))
+        lines.push(`memory-copy: ${loader.memoryFiles(from[0]).length} memory files at ${placeShown(projectRoot, from[0])}/, none at ${placeShown(projectRoot, to[0])}/`);
+    return lines;
+}
+// The main session's start line when docs mode is not in effect here (R6, and a value the folder's move left stale), else
+// ''. Files only, never a spawn (D6): a settings.local.json git tracks reads like any other, and validate names it. A
+// same-repo child sharing its member's docs memory is in effect (OD5). `<docs-path>` is shown from the main checkout.
+function memoryStartLine({ projectRoot, env = process.env, platform = process.platform, home = os.homedir(), managed = undefined })
+{
+    try
+    {
+        if (!loader || typeof loader.docsMemoryDir !== 'function' || memoryMode({ projectRoot, env }) !== 'docs') return '';
+        if (loader.docsMemoryShare(projectRoot, { env, home, platform, ...(managed ? { managed } : {}) })) return '';
+        const dir = loader.docsMemoryDir(projectRoot, { env });
+        const setting = loader.memoryDirSetting(projectRoot, { env, home, platform, ...(managed ? { managed } : {}) });
+        if (setting && loader.dirKey(setting) === loader.dirKey(dir)) return '';
+        const docs = `${placeShown(loader.mainCounterpart(projectRoot) || projectRoot, dir, home)}/`;
+        const top = loader.gitTopOf(projectRoot, { home });
+        if (!setting && top && loader.worktreeMain(top))
+            return `Memory: this worktree has no autoMemoryDirectory, so Claude's own memory reads and saves at its default place this session, not ${docs}.`;
+        // The update cannot change a value that is the user's own (P3 review finding 4): the line names the cause instead.
+        const refusal = loader.docsMemoryRefusal(projectRoot, { wanted: dir, ours: (v) => rowMatches(v, stackMemoryRow(projectRoot)), home, platform });
+        if (refusal) return `Memory: docs mode, but Claude's own memory is not in ${docs} this session: ${refusal.text}.`;
+        // Nor one a higher setting puts over the stack's row in place.
+        const read = loader.localSettingsFile(projectRoot, { home, platform });
+        const local = read ? readJsonFile(read) : null;
+        const row = local && typeof local === 'object' && typeof local.autoMemoryDirectory === 'string' ? local.autoMemoryDirectory.trim() : '';
+        const rowDir = /^~[\\/]/.test(row) ? path.join(home, row.slice(2)) : path.isAbsolute(row) ? path.resolve(row) : null;
+        if (setting && rowDir && loader.dirKey(rowDir) === loader.dirKey(dir))
+            return `Memory: docs mode, but autoMemoryDirectory points at ${placeShown(projectRoot, setting, home)} from a setting that outranks .claude/settings.local.json, so Claude's own memory is not in ${docs} this session.`;
+        const value = setting ? `points at ${placeShown(projectRoot, setting, home)}` : 'is not set';
+        return `Memory: docs mode, but autoMemoryDirectory ${value} here, so Claude's own memory is not in ${docs} this session - /alfred-code:update re-points it.`;
+    }
+    catch { return ''; }
+}
+// R7 (D7): a docs memory committed with the docs is read for what must not be committed - an absolute local path (the
+// project root, the home folder, or a /Users/ /home/ C:\Users\ path) and a secrets-store value of 8 characters or more,
+// named by file:line and key, never the value. Ten rows, then a count.
+const LOCAL_PATH = /(?:^|[\s(`'"=:])(?:\/(?:Users|home)\/[^\s/`'")]+|[A-Za-z]:\\Users\\[^\s\\`'")]+)/;
+const SECRET_MIN = 8;
+const LEAK_ROWS = 10;
+function memoryLeakRows(projectRoot, state, env = process.env)
+{
+    let chain = null;
+    try { chain = require(path.join(__dirname, '..', '..', '..', 'hooks', 'secret-chain.js')); }
+    catch { /* no store reader beside the loader: paths alone */ }
+    let values = [];
+    try { values = chain ? Object.entries(chain.chainOf(projectRoot, { env }).values).filter(([, v]) => typeof v === 'string' && v.length >= SECRET_MIN) : []; }
+    catch { values = []; }
+    const real = loader.realpathOrSelf || ((p) => p);
+    const home = os.homedir();
+    const roots = [...new Set([projectRoot, real(projectRoot), home].filter((p) => typeof p === 'string' && p.length > 1))];
+    const found = [];
+    for (const name of loader.memoryFiles(state.dir))
+    {
+        (readText(path.join(state.dir, name)) || '').split(/\r?\n/).forEach((line, i) =>
+        {
+            const at = `${state.shown}/${name}:${i + 1}`;
+            if (roots.some((r) => line.includes(r)) || LOCAL_PATH.test(line)) found.push(`!! memory: ${at} holds an absolute local path - it is committed with the docs; make it project-relative`);
+            for (const [key, value] of values) if (line.includes(value)) found.push(`!! memory: ${at} holds the value of ${key} from the secrets store - it is committed with the docs; remove it`);
+        });
+    }
+    if (found.length <= LEAK_ROWS) return found;
+    return [...found.slice(0, LEAK_ROWS), `!! memory: ${found.length - LEAK_ROWS} more in ${state.shown}/ - fix the ten above, then run /alfred-code:validate again`];
+}
+function docsValidateRows(projectRoot, env)
+{
+    const state = docsMemoryState({ projectRoot, env });
+    if (!state || state.share) return [];
+    const rows = [];
+    const standing = docsStanding(state);
+    if (standing === 'refused') rows.push(`!! memory: ALFRED_CODE_MEMORY is docs, but ${state.refusal.text} - Claude's own memory stays at its default place`);
+    else if (standing === 'unset') rows.push('!! memory: ALFRED_CODE_MEMORY is docs, but no autoMemoryDirectory is set here - run /alfred-code:update to write it');
+    else if (standing === 'stale') rows.push(`!! memory: ALFRED_CODE_MEMORY is docs, but autoMemoryDirectory points at ${placeShown(projectRoot, state.setting)}, not ${state.shown}/ - run /alfred-code:update to re-point it`);
+    if (state.versioning === 'git') rows.push(...memoryLeakRows(projectRoot, state, env));
+    return rows;
+}
+// The stack's docs row still in settings.local.json after a switch away from docs (the update removes it).
+function staleDocsRow(projectRoot, mode)
+{
+    const hash = stackMemoryRow(projectRoot);
+    const local = readJsonFile(path.join(projectRoot, '.claude', 'settings.local.json'));
+    if (!hash || !local || typeof local !== 'object' || !Object.hasOwn(local, 'autoMemoryDirectory') || !rowMatches(local.autoMemoryDirectory, hash)) return [];
+    return [`!! memory: ALFRED_CODE_MEMORY is ${mode}, but the stack's autoMemoryDirectory is still in .claude/settings.local.json - run /alfred-code:update to remove it`];
+}
+
 // What memory this project uses and where Claude's own memory stands, the lines modeLines leads with. `preview: 'custom'`
 // says what custom would use while the mode on disk is still default - init and configure ask before the installer
 // writes it (final review C1).
@@ -862,12 +1039,17 @@ function memoryLines({ projectRoot, env = process.env, preview = null })
         return [ranks.length ? `memory: custom (preview) - ${ranks.join(' > ')}; Claude's own memory goes off`
             : 'memory: custom (preview) - no memory tool is reachable here, so nothing would be stored; rank one with /capture-preferences tools'];
     }
+    const docs = mode === 'docs' || preview === 'docs' ? docsMemoryState({ projectRoot, env }) : null;
+    if (preview === 'docs' && mode !== 'docs' && docs)
+        return [docs.refusal ? `memory: docs (preview) - cannot be written here: ${docs.refusal.text}` : `memory: docs (preview) - Claude Code's own memory, in ${docs.shown}/ (${keptBy(docs)})`];
+    if (preview === 'default' && mode === 'docs') return ["memory: default (preview) - Claude Code's own memory, at its default place"];
     if (mode !== 'custom')
     {
+        const first = mode === 'docs' && docs ? docsLines(projectRoot, docs) : ["memory: default - Claude Code's own memory, at its default place"];
         if (teamSwitchOff(projectRoot, setting, env))
-            return ["memory: default - Claude Code's own memory, at its default place", `memory: autoMemoryEnabled is false in ${setting.file} - the team's custom memory switch-off, which every update keeps; set autoMemoryEnabled: true in .claude/settings.local.json to turn it on for you`];
+            return [...first, `memory: autoMemoryEnabled is false in ${setting.file} - the team's custom memory switch-off, which every update keeps; set autoMemoryEnabled: true in .claude/settings.local.json to turn it on for you`];
         const whose = stackSwitchOff(projectRoot, setting);
-        return ["memory: default - Claude Code's own memory, at its default place", ...off.map((f) => (whose
+        return [...first, ...off.map((f) => (whose
             ? `memory: autoMemoryEnabled is false in ${f} - ${whose}, which the next /alfred-code:update removes`
             : `memory: autoMemoryEnabled is false in ${f} - yours; native memory stays off until you remove it`))];
     }
@@ -881,7 +1063,7 @@ function memoryLines({ projectRoot, env = process.env, preview = null })
 // The seat 'agents' stands for in the mode lines: a stack seat holds built-ins only since 2.10.1 (seatReach).
 const AGENT_PROBE = '---\ntools: LSP, Read, Grep, Glob, Bash\n---\n';
 // The memory mode, what navigation each actor gets and whether a language server answers here, one line each - the lines
-// init, configure and status paste verbatim.
+// init, configure and status paste verbatim. `memory` previews that mode and names its copy offer (the plan lines).
 function modeLines({ projectRoot, env = process.env, memory = null })
 {
     const ranks = (o) => o.ranks.join(' > ') || 'none';
@@ -893,7 +1075,7 @@ function modeLines({ projectRoot, env = process.env, memory = null })
     else if (!main.own) nav = `navigation: the stack's order - ${ranks(main)}`;
     else if (main.fellBack) nav = `navigation: yours, from ${main.docRel}, reaches nothing here - the stack's order stands in: ${ranks(main)}`;
     else nav = `navigation: yours, from ${main.docRel} - main session: ${ranks(main)}; agents: ${ranks(agents)}${agents.fellBack ? " (the stack's order)" : ''}`;
-    return [...memoryLines({ projectRoot, env, preview: memory }), nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
+    return [...memoryLines({ projectRoot, env, preview: memory }), ...memoryPlanLines({ projectRoot, env, target: memory }), nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
 }
 
 // True once per project while it has no doc: the start line then suggests the capture. The marker is written first; one
@@ -948,7 +1130,9 @@ function validateRows(projectRoot, env = process.env)
         }
     }
     const setting = memorySetting({ projectRoot, env });
-    if (memoryMode({ projectRoot, env }) === 'custom')
+    const mode = memoryMode({ projectRoot, env });
+    rows.push(...(mode === 'docs' ? docsValidateRows(projectRoot, env) : staleDocsRow(projectRoot, mode)));
+    if (mode === 'custom')
     {
         if (!jobOrder({ projectRoot, env, job: 'memory' }).ranks.length) rows.push('!! memory: ALFRED_CODE_MEMORY is custom, but the tool order ranks no memory tool this machine reaches - rank one with /capture-preferences tools, or switch to native in /alfred-code:configure');
         // Final review M5: the user's own true in one of the project's files is kept by every update, so it stands until
@@ -1065,7 +1249,7 @@ function main(argv)
         console.log(`Next: ${nextToolsId(doc ? doc.text : '')}`);
         return 0;
     }
-    console.error('usage: tools.js lint | next | inventory [--session-tools <file>] [--label <prefix>=own:<label>] | order [--seat <file>] | validate | refresh | lsp [--changed-only] | modes [--lsp] [--memory custom]  [--project <dir>]');
+    console.error('usage: tools.js lint | next | inventory [--session-tools <file>] [--label <prefix>=own:<label>] | order [--seat <file>] | validate | refresh | lsp [--changed-only] | modes [--lsp] [--memory default|docs|custom]  [--project <dir>]');
     return 2;
 }
 
@@ -1073,7 +1257,7 @@ module.exports = {
     TOOLS_DOC, TOOLS_CAP, TOOLS_LINE_CAP, TOOLS_FIELD, PREFS_DIR, LIST_TIMEOUT_MS,
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
-    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, validateRows,
+    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, docsMemoryState, memoryPlanLines, memoryStartLine, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, validateRows,
 };
 
 if (require.main === module)

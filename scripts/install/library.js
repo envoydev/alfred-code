@@ -17,11 +17,21 @@ const { OS_LITTER } = require('./docs.js');
 
 // Every file under `p` as [relative path, content], sorted by path so the hash is stable across
 // platforms and directory orders, OS litter left out; one entry for a file; null when absent.
-function files(p)
+// `render(rel, text)` (optional) gives a file's text as the install writes it - renderSkillFile for a skill - so a hash
+// can be taken of what the copy WILL hold; a file it leaves unchanged keeps its own bytes.
+function files(p, render = null)
 {
     let stat;
     try { stat = fs.statSync(p); } catch { return null; }
-    if (stat.isFile()) return [[path.basename(p), fs.readFileSync(p)]];
+    const read = (at, rel) =>
+    {
+        const buf = fs.readFileSync(at);
+        if (!render) return buf;
+        const text = buf.toString('utf8');
+        const next = render(rel, text);
+        return next === text ? buf : Buffer.from(next);
+    };
+    if (stat.isFile()) return [[path.basename(p), read(p, path.basename(p))]];
     const out = [];
     const walk = (dir, rel) =>
     {
@@ -30,16 +40,16 @@ function files(p)
             if (OS_LITTER.has(e.name)) continue;
             const r = rel ? `${rel}/${e.name}` : e.name;
             if (e.isDirectory()) walk(path.join(dir, e.name), r);
-            else out.push([r, fs.readFileSync(path.join(dir, e.name))]);
+            else out.push([r, read(path.join(dir, e.name), r)]);
         }
     };
     walk(p, '');
     return out;
 }
 
-function hashItem(p)
+function hashItem(p, render = null)
 {
-    const list = files(p);
+    const list = files(p, render);
     if (!list) return null;
     const h = crypto.createHash('sha256');
     for (const [rel, buf] of list) h.update(`${rel}\0${buf.length}\0`).update(buf);
@@ -53,6 +63,29 @@ function hashBuffer(name, buf)
 {
     const h = crypto.createHash('sha256');
     return h.update(`${name}\0${buf.length}\0`).update(buf).digest('hex');
+}
+
+// The approval stamp's path in a skill's SKILL.md (the user's ruling of 2026-11-03). The source names the root
+// `<project root>`, which every host's model fills in; the Claude Code copy gets back `${CLAUDE_PROJECT_DIR}` - the
+// text 3.7.1 shipped - which Claude Code substitutes in a SKILL.md alone (a reference file is read as literal text), so
+// a session started in a sub-folder still writes the stamp where the dispatch hook reads it. `rel` is the file's path
+// inside the skill: only the top-level SKILL.md changes.
+const STAMP_NEUTRAL = '`<project root>/<data root>/state/approvals/';
+const STAMP_CLAUDE = '`${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/';
+function renderSkillFile(rel, text)
+{
+    return rel === 'SKILL.md' ? text.split(STAMP_NEUTRAL).join(STAMP_CLAUDE) : text;
+}
+
+// Write each file of an installed tree whose rendered text differs from what the copy holds.
+function renderTree(dir, render)
+{
+    for (const [rel, buf] of files(dir) || [])
+    {
+        const text = buf.toString('utf8');
+        const next = render(rel, text);
+        if (next !== text) fs.writeFileSync(path.join(dir, rel), next);
+    }
 }
 
 // Rules are a third kind, same shape as agents: no plugin ever carries one (there is no plugin
@@ -78,7 +111,8 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         const renderer = render[`${item.kind}/${item.name}`];
         let body = null;
         if (renderer) { try { body = Buffer.from(renderer(fs.readFileSync(item.src, 'utf8'))); } catch { body = null; } }
-        const want = body ? hashBuffer(path.basename(item.dst), body) : hashItem(item.src);
+        const tree = item.kind === 'skills' ? renderSkillFile : null;
+        const want = body ? hashBuffer(path.basename(item.dst), body) : hashItem(item.src, tree);
         if (!want) { note(`${item.label} '${item.name}' not found in the stack source`); continue; }
         const have = hashItem(item.dst);
         if (have === want) { out[item.kind][item.name] = want; continue; }
@@ -94,11 +128,15 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         fs.rmSync(item.dst, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(item.dst), { recursive: true });
         if (body) fs.writeFileSync(item.dst, body);
-        else fs.cpSync(item.src, item.dst, { recursive: true, filter: (from) => !OS_LITTER.has(path.basename(from)) });
+        else
+        {
+            fs.cpSync(item.src, item.dst, { recursive: true, filter: (from) => !OS_LITTER.has(path.basename(from)) });
+            if (tree) renderTree(item.dst, tree);
+        }
         out[item.kind][item.name] = hashItem(item.dst);
         log(`${item.label} [library]: ${item.name}`);
     }
     return out;
 }
 
-module.exports = { hashItem, hashBuffer, copyLibrary };
+module.exports = { hashItem, hashBuffer, copyLibrary, renderSkillFile };

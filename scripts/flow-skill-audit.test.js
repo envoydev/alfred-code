@@ -275,7 +275,7 @@ test('task-solve: the agents-mode approval stamp names its first line', () => {
 test('task-solve: the spec-check lookup lives in references/full-spec.md, the verdict line stays in the body', () => {
     const b = body(skill('task-solve'));
     assert.doesNotMatch(b, /```bash\nSPEC=/, 'the lookup block left the body');
-    assert.match(flat(b), /Run it by the lookup in `references\/full-spec\.md`/);
+    assert.match(flat(b), /`references\/full-spec\.md` holds what a FULL spec names and how to run `scripts\/spec-check\.js`/);
     assert.match(flat(b), /`Spec: <full\|not full> - <path> - <its reason>`/);
     const ref = read('stack/skills/task-solve/references/full-spec.md');
     assert.match(ref, /SPEC=\.claude\/skills\/task-solve\/scripts\/spec-check\.js/);
@@ -440,7 +440,7 @@ test('SKF-09 + SKF-15: the design and plan-audit descriptions each exclude the o
 test('2026-10-17: a customer-side bug opens with its symptom reproduced; a background run gets one start line', () => {
     // Item 4 (2026-10-25) moved the rule into design-rules.md, which step 4 reads; SKILL.md keeps the pointer.
     assert.match(read('stack/skills/task-design/references/design-rules.md'), /A bug seen only on the customer's side .* opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task/);
-    assert.match(skill('task-design'), /A bug seen only on the customer's side - read `references\/design-rules\.md`/);
+    assert.match(skill('task-design'), /or a bug seen only on the customer's side - read `references\/design-rules\.md` before writing the tasks/);
     const mech = read('stack/skills/task-solve/references/step-mechanics.md');
     assert.match(mech, /^## Background runs - the one start line$/m);
     assert.match(mech, /ONE wait whose\ncommand ends on the result or a crash/);

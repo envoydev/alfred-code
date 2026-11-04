@@ -705,3 +705,34 @@ through `enabledPlugins`, a removed settings file that enables it, or the `claud
 
 `/alfred-code:init` now finds a stack installed from a local folder when it offers marketplace auto-update. Nothing to
 do by hand.
+
+## after 3.7.1 - Claude's memory can live in the docs, and the commit checkpoint's receipt counts
+
+A project can keep Claude Code's own memory in its docs root's `memory/` folder, beside the docs and committed with
+them where the docs are: init's memory question recommends it for a project still on the default, and configure's
+Environment area switches it either way. The switch writes `autoMemoryDirectory` into `.claude/settings.local.json`
+(taken back on a switch away), offers to copy the memory already kept, and under git docs versioning lets `MEMORY.md` merge by union, so
+lessons added on two branches merge clean; each session start says so when docs memory is chosen but not in effect.
+
+A commit through the checkpoint is no longer refused when the reviews' reports stayed out of the reply: the receipt,
+written with the checkpoint's `receipt.js` in its own call after the reviews - its output shown, no seat the reviews
+sent still running - carries their findings and counts as their result line.
+
+Skills and rules carry the trims a billed round measured not worse: task-solve's approve ask offers 'Resume in a fresh
+session' where the session is past its fresh-session trigger, and stops on an empty request; a diagnosed plan's close
+carries its Execution line; a commit's VERIFIED line says what ran on what; a background wait says when it should
+finish; a correction you give goes to the preferences doc; and a new branch follows the repo's own branch names. A
+skill's approval stamp path reads `${CLAUDE_PROJECT_DIR}` in every installed copy, and the installer and the usage
+scripts follow a plugins root moved with `CLAUDE_CODE_PLUGIN_CACHE_DIR`.
+
+Under auto-run, an ask that recommends a billed run waits for you, and a hand-written AUTO waiver ends at the off flag
+or once a plan completes after it. The guards close the gaps the 2026-11-03 batch review named (the secret guard's
+cwd-built paths, a redirected group read as a copy, per-session commit receipts, a forge publish chained behind a push).
+Nothing to do by hand.
+
+## after 3.7.1 - session-inspector and preferred-tools follow their own main branch
+
+The catalog's `session-inspector` entry now follows `envoydev/alfred-mods` on its `main` branch instead of a pinned
+release, and its `preferred-tools` entry follows `envoydev/preferred-tools` on its `main` branch instead of a pinned
+commit. A release of either reaches you on your next plugin update with no stack release in between. The stack still
+never installs, updates or removes either. Nothing to do by hand.

@@ -2,6 +2,7 @@
 name: task-solve
 description: "Use to run a task through the gated single-chat vertical - 'run the task cycle', 'build this with approvals', 'with my sign-off'. Not a one-line edit."
 disable-model-invocation: true
+argument-hint: "<the task, feature or bug>"
 ---
 
 # Solve Task - the gated single-chat vertical
@@ -38,6 +39,8 @@ plan <docs-path>/work/plans/csv.md:
   Resume: step 4 BUILD - mode session - next task 2
   task 1 DONE (dotnet test green - 4 passed) | task 2 IN_PROGRESS
 ```
+
+Invoked with no request and no plan to resume, the one reply is an ask for the task - nothing runs before its answer.
 
 ## The stop contract
 
@@ -89,9 +92,9 @@ Next: <its first move> -> <the steps left>.
 ````
 
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
-recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL`
-with first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived under it, and take each stop's recommended option; the
-pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
+recommended without asking me'), never self-authorize silently - write `<project root>/<data root>/state/approvals/APPROVAL`,
+first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived, and take each stop's recommended option; the
+pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
 
 ## Size first
 
@@ -113,7 +116,7 @@ standard, whatever the file count.
 
 ## Full spec - design and audit as one step
 
-On `standard`, the same check decides this step. A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate below, and so does any doubt. `scripts/spec-check.js` reads the request for all five; state its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`. Run it by the lookup in `references/full-spec.md`.
+On `standard`, the same check decides this step - `references/full-spec.md` holds what a FULL spec names and how to run `scripts/spec-check.js`; any doubt keeps every gate below. State its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`.
 
 Its `path: gated` is final. Its `path: merged` you may raise to gated, never lower.
 
@@ -163,9 +166,10 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    - 'Approve - build in this session (Recommended)' - <why the tasks fit one chat>
    - 'Approve - dispatch the agent seats' - <independent tasks that build in parallel>
    - 'Not yet - changes needed' - edit the plan, or I ask what to change
+   - 'Resume in a fresh session' - required past the fresh-session trigger above
    ```
 
-   The mark moves to the seats option when the mode-fit rule picks it for THIS plan. Approval and mode arrive as one answer; a typed Other answer that
+   The mark moves to the seats option when the mode-fit rule picks it for THIS plan, and to the fresh option where the resume rule above marks it. Approval and mode arrive as one answer; a typed Other answer that
    omits the mode is re-asked, never defaulted (a mode the invocation named leaves only approve /
    not-yet - restate it). Stamp `Approved: <date> - mode <session|agents>` into the plan file, quoting
    the selected answer as the approval words - nothing builds without it.

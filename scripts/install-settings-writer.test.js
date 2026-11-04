@@ -466,6 +466,18 @@ test('settings-env: a renamed hook in a stored HOOKS_OFF is re-spelled, in the o
         .env.ALFRED_CODE_HOOKS_OFF, 'guard-b', 'a walk that answered the layer still wins');
 });
 
+// E-batch B-m6: memory-session.js retired in 2.10.1 and its host traps moved into preferences-session.js as the `host` part.
+// A stored `memory-session` switch-off is re-spelled to that part, from the manifest's own map.
+test('B-m6: a stored memory-session switch-off maps to preferences-session:host', () =>
+{
+    const renamedHooks = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed.hooks;
+    const a = envPass({ ALFRED_CODE_HOOKS_OFF: 'instrument-tool-usage,memory-session' }, { renamedHooks });
+    assert.strictEqual(a.env.ALFRED_CODE_HOOKS_OFF, 'instrument-tool-usage,preferences-session:host');
+    const overlay = { ALFRED_CODE_HOOKS_OFF: 'Memory-Session.js' };
+    envPass({}, { renamedHooks, overlay });
+    assert.strictEqual(overlay.ALFRED_CODE_HOOKS_OFF, 'preferences-session:host', 'the local overlay too');
+});
+
 // ---- the agent off-list (Phase 8, T1) --------------------------------------------------------
 // Spike S3 measured a denied seat costing -434 tokens less per session, which makes this the
 // largest per-item trim the stack has. It writes into the SAME `permissions.deny` array as the

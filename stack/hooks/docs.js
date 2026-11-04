@@ -57,7 +57,10 @@ function envOf(env, suffix)
 try { const loader = require('./layout.js'); loader.applyVariables(process.env.CLAUDE_PROJECT_DIR || loader.projectRootOf(process.cwd()).checkout); }
 catch { /* the process env as it stands */ }
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 const DOCS_ROOT = path.resolve(ROOT, docsRootEnv());
 // The architecture map's home (the capture-awareness merge, 2026-10-29): awareness/ARCHITECTURE-AWARENESS.md and its
 // ARCHITECTURE-ORIENTATION-AWARENESS.md, or - in an install /alfred-code:update has not moved yet, a first-look one
@@ -84,7 +87,8 @@ const BRANCHES = path.join(DOCS_ROOT, '.branches');
 // Cached like the git-state probes below: parseRef calls this on every bare reference, and the docs root
 // does not gain a domain mid-process. resetDomains() below is the escape hatch a fixture needs when it
 // adds a domain after the module was already required.
-const RESERVED_DOMAIN_NAMES = new Set(['references', 'history']);
+// 'memory' is Claude Code's own memory under docs mode (memory P3).
+const RESERVED_DOMAIN_NAMES = new Set(['references', 'history', 'memory']);
 let DOMAINS_CACHE;
 const domains = () => {
   if (DOMAINS_CACHE) return DOMAINS_CACHE;
@@ -436,9 +440,42 @@ function captureStamp(covers) {
   return `<!-- captured: ${head}${withList.length ? ` with: ${withList.join(', ')}` : ''} -->`;
 }
 
+// U36 (usage audit 2026-11-03): a section with no covers line, in a domain whose sections cover code, was never outgrown
+// - a capture written before a module existed read as current for good. Once a commit since its stamp ADDS a file outside
+// the data root, it is listed (reason no-covers-new-files). One rev-list call orders the stamps newest first and drops an
+// unknown sha; only the newest COVERLESS_SHAS are diffed (`--diff-filter=A <sha> HEAD`). E-batch M8: an added file counts
+// only when its TOP-LEVEL folder is missing from the stamp's tree (`ls-tree <sha>`) - U36's claim is folders arriving, and
+// any added file listed every coverless section in an active repo for good. 1s for the order, 1.2s per diff and 0.5s per
+// tree, so the added work stays under 5s of the docs hook's 10s; a failed call lists nothing, today's reading.
+const COVERLESS_SHAS = 2;
+const ADDED = new Map();
+function addedSince(sha) {
+  if (!ADDED.has(sha)) {
+    const own = [DOCS_ROOT, path.dirname(DOCS_ROOT)].map((d) => path.relative(ROOT, d).split(path.sep).join('/')).filter((d) => d && !d.startsWith('..'));
+    const out = git(['diff', '--name-only', '--diff-filter=A', sha, 'HEAD'], { timeout: 1200 });
+    const tree = out === null ? null : git(['ls-tree', '--name-only', sha], { timeout: 500 });
+    const had = new Set(tree === null ? [] : tree.split('\n').filter(Boolean));
+    ADDED.set(sha, tree === null ? [] : out.split('\n').filter(Boolean)
+      .filter((f) => !own.some((d) => f === d || f.startsWith(`${d}/`)) && f.includes('/') && !had.has(f.split('/')[0])));
+  }
+  return ADDED.get(sha);
+}
+function coverlessOutgrown(secs) {
+  const cand = secs.filter((s) => s.stamp && !s.covers.length && !COVERLESS_DOMAINS.has(fileDomain(s.file)));
+  const shas = [...new Set(cand.map((s) => s.stamp))];
+  if (!shas.length) return [];
+  const order = git(['rev-list', '--no-walk', '--ignore-missing', ...shas], { timeout: 1000 });
+  if (order === null) return [];
+  const newest = order.split('\n').filter(Boolean).slice(0, COVERLESS_SHAS);
+  const full = (sha) => newest.find((h) => h.startsWith(sha));
+  return cand.filter((s) => full(s.stamp)).map((s) => ({ s, files: addedSince(full(s.stamp)), reason: 'no-covers-new-files' })).filter((x) => x.files.length);
+}
 // A recomputed domain is never outgrown: its capture rewrites it from the code, and the session close asks for it.
+let STALE_ROWS;
+const STALE = () => STALE_ROWS || (STALE_ROWS = stale());
 function stale() {
-  return allSections().filter((s) => !s.history && !recomputed(fileDomain(s.file))).map((s) => ({ s, files: outgrownFiles(s) })).filter((x) => x.files.length);
+  const secs = allSections().filter((s) => !s.history && !recomputed(fileDomain(s.file)));
+  return [...secs.map((s) => ({ s, files: outgrownFiles(s), reason: 'covered-files-changed' })).filter((x) => x.files.length), ...coverlessOutgrown(secs)];
 }
 const orientationState = () => (!fs.existsSync(BLOCK_FILE) ? 'none' : PROVISIONAL.test(safeRead(BLOCK_FILE)) ? 'provisional' : 'captured');
 
@@ -1602,7 +1639,8 @@ function status() {
     overrides: view.map((s) => s.id),
     conflicts: view.filter((s) => s.conflict).map((s) => s.id),
     orphans: view.filter((s) => s.orphan).map((s) => s.id),
-    outgrown: stale().length,
+    outgrown: STALE().filter((r) => r.reason === 'covered-files-changed').length,
+    addedSince: STALE().filter((r) => r.reason === 'no-covers-new-files').map((r) => r.s.id),
     orientation: orientationState(),
     deletedUnmerged: stuck.deleted,
     liveOnMainline: stuck.onMainline,
@@ -2273,7 +2311,9 @@ const commands = {
   stale: () => {
     const rows = stale();
     if (orientationState() === 'provisional') console.log(`${path.relative(DOCS_ROOT, BLOCK_FILE).split(path.sep).join('/')} - provisional: stale by definition until the architecture capture replaces it`);
-    console.log(rows.length ? rows.map((r) => `${r.s.id} - ${r.files.length} covered file(s) changed since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')}`).join('\n') : 'no section has been outgrown');
+    console.log(rows.length ? rows.map((r) => (r.reason === 'no-covers-new-files'
+      ? `${r.s.id} - no covers line, ${r.files.length} file(s) added since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')} (no-covers-new-files)`
+      : `${r.s.id} - ${r.files.length} covered file(s) changed since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')}`)).join('\n') : 'no section has been outgrown');
   },
   hash: () => {
     const r = askRef(args[0]);

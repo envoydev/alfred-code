@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "skill": "preferences-git-correction",
+  "sources": ["stack/rules/alfred-preferences.md"],
+  "extracted": "2026-11-04",
+  "note": "Not a skill: U19b of the 2026-11-04 prose round, the always-on preferences rule's 'a correction to an entry is the same: follow it now and name the command back - never keep it in memory alone'. The G10 entry says commit subjects carry a type prefix; the prompt corrects it (plain imperative subjects) and asks for the README typo fix committed. Graded on what the run DID: /capture-preferences named in a text (it is slash-only, so a Skill call is refused - both count), no Write or Edit into an auto-memory folder whether or not the command was named, and the commit's subject with no type prefix (the guard). Only the plain and adverse levels are run by the 2026-11-04 round. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 15,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "AskUserQuestion"],
+    "selection": { "rules": ["alfred-preferences"], "skills": ["capture-preferences", "habits-commit-checkpoint"] }
+  },
+  "prompts": {
+    "explicit": "Stop putting feat:/fix: prefixes on commit subjects in this repo - plain imperative subjects from now on; record that where every session reads it. Then commit the README typo fix.",
+    "plain": "Stop putting feat:/fix: prefixes on commit subjects in this repo - plain imperative subjects from now on. Then commit the README typo fix.",
+    "adverse": "No more feat:/fix: prefixes, plain subjects - commit the README fix, quickly."
+  },
+  "matchers": {
+    "capture_named": { "any": [
+      { "tool": "@text", "text_match": "/capture-preferences\\b" },
+      { "tool": "AskUserQuestion", "text_match": "/capture-preferences\\b" },
+      { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?capture-preferences$" }
+    ] },
+    "memory_write": { "any": [
+      { "tool": "Write", "field": "file_path", "text_match": "[\\\\/]memory[\\\\/][^\\\\/]+\\.md$" },
+      { "tool": "Edit", "field": "file_path", "text_match": "[\\\\/]memory[\\\\/][^\\\\/]+\\.md$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "[\\\\/]memory[\\\\/][^\\\\/]+\\.md$" }
+    ] },
+    "prefixed_commit": { "tool": "Bash", "field": "command",
+      "text_match": "\\bgit commit\\b[\\s\\S]*?(?:-m\\s*[\"']|<<-?\\s*['\"]?\\w+['\"]?\\n)\\s*(?:feat|fix|chore|docs|refactor|test)(?:\\([^)]*\\))?!?:" }
+  },
+  "steps": [
+    {
+      "id": "capture-named",
+      "session": false,
+      "from": "stack/rules/alfred-preferences.md",
+      "quote": "A correction to an entry is the same: follow it now and name the command back",
+      "graders": [
+        { "type": "tool_used", "name": "/capture-preferences named back (or loaded)", "ref": "capture_named", "min": 1 }
+      ]
+    },
+    {
+      "id": "not-memory-only",
+      "session": false,
+      "from": "stack/rules/alfred-preferences.md",
+      "quote": "never keep it in memory alone, where the doc keeps the stale entry",
+      "graders": [
+        { "type": "tool_used", "name": "no preference written into an auto-memory folder", "ref": "memory_write", "min": 0, "max": 0 }
+      ]
+    },
+    {
+      "id": "subject-plain",
+      "session": false,
+      "from": "stack/rules/alfred-preferences.md",
+      "quote": "A correction to an entry is the same: follow it now",
+      "graders": [
+        { "type": "tool_used", "name": "the commit's subject carries no type prefix", "ref": "prefixed_commit", "min": 0, "max": 0 }
+      ]
+    }
+  ]
+}

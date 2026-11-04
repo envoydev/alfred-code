@@ -734,6 +734,17 @@ test('install-stamp: the ledger round-trips settings.local.json:autoMemoryEnable
     assert.deepStrictEqual(readLedger(dest), ledger);
 });
 
+// Memory P3: docs mode's row (memory-dir.js) is one more top-level key the ledger must read back, or no update, switch or
+// uninstall could take it back.
+test('stamp: settings.local.json:autoMemoryDirectory=<hash> survives a render and read', () =>
+{
+    const p = project();
+    const ledger = { ...LEDGER, settings: { ...LEDGER.settings, 'settings.local.json': { autoMemoryDirectory: valueHash(JSON.stringify('/p/.alfred/docs/memory')) } } };
+    const { dest, text } = write(p, { ledger });
+    assert.match(text, /^managed-settings: .*settings\.local\.json:autoMemoryDirectory=[0-9a-f]{64}$/m);
+    assert.deepStrictEqual(readLedger(dest), ledger);
+});
+
 test('readDataLines reads secrets: dual <by>, a bare line as by \'\', and any other value as none (item 3)', () =>
 {
     const stamp = require('./install/stamp.js');

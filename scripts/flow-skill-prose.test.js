@@ -424,7 +424,7 @@ test('item 4: the card names recorded weaknesses by title and path:line; task-de
     const b = body(skill('task-design'));
     assert.match(flat(b), /related-projects awareness doc/);
     assert.match(flat(section(b, 'Output')), /`Oriented:`[^.]*awareness/);
-    assert.match(flat(b), /A bug seen only on the customer's side - read `references\/design-rules\.md`/);
+    assert.match(flat(b), /or a bug seen only on the customer's side - read `references\/design-rules\.md` before writing the tasks/);
     assert.match(read('stack/skills/task-design/references/design-rules.md'), /A bug seen only on the customer's side/);
     assert.ok(b.length < 12000, `${b.length}`);
 });

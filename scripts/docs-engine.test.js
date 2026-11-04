@@ -1443,6 +1443,20 @@ test('a not-found ref names domain-qualified candidates in the Known list, not t
   } finally { r.rm(); }
 });
 
+// Memory P3 (Risk 5): Claude Code's own memory sits at <docs root>/memory under docs mode - never a domain, so no watch,
+// lint or overlay reads its lessons as docs.
+test('domains: memory/ is never a domain, even with a watch.json planted in it', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/memory/watch.json', '{}');
+    r.write('.claude/docs/memory/MEMORY.md', '# Memory\n- [a lesson](feedback.md)\n');
+    const docs = requireEngine(r.root);
+    assert.ok(!docs.domains().includes('memory'), docs.domains().join(', '));
+    assert.match(docs.lint('memory').problems[0], /^no domain 'memory'/);
+    assert.deepStrictEqual(docs.watchMerge('memory', [], { kinds: ['src/'] }), { error: 'not a domain name: "memory"' });
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 test('resetDomains clears the cache a fixture needs to see a domain added after the module was required', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {
@@ -2593,6 +2607,54 @@ test('namingSections keeps before it caps', () => {
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
 
+// U36 (usage audit 2026-11-03): a capture written before the code it describes existed carries no covers line, so nothing
+// ever outgrew it. Once a commit since its stamp adds a file outside the data root, stale lists it.
+test('U36: a section that covered no code is outgrown once files are added', () => {
+  const at = (iso, fn) => { process.env.GIT_COMMITTER_DATE = iso; process.env.GIT_AUTHOR_DATE = iso; try { return fn(); } finally { delete process.env.GIT_COMMITTER_DATE; delete process.env.GIT_AUTHOR_DATE; } };
+  const bare = (id, sha) => `## ${id}\n<!-- id: ${id} -->\n<!-- captured: ${sha} -->\nNo code yet.\n`;
+  const r = repo({ files: { 'README.md': 'x\n' } });
+  try {
+    const s0 = r.git('rev-parse', '--short', 'HEAD');
+    r.write('.claude/docs/architecture/ARCHITECTURE.md', `# Map\n\n${bare('overview', s0)}`);
+    r.write('.claude/docs/preferences/watch.json', '{}');
+    r.write('.claude/docs/preferences/CODE-PREFERENCES.md', `# Code preferences\n\n${bare('c1', s0)}`);
+    assert.match(r.cli(['stale']).stdout, /no section has been outgrown/, 'no file added since the stamp');
+    r.write('.claude/notes.md', 'n\n'); r.git('add', '-f', '.claude/notes.md'); r.git('commit', '-qm', 'data root only');
+    assert.match(r.cli(['stale']).stdout, /no section has been outgrown/, 'a file under the data root is no code');
+    r.write('src/app.ts', 'export {};\n'); r.git('add', 'src/app.ts'); r.git('commit', '-qm', 'code');
+    const out = r.cli(['stale']).stdout;
+    assert.match(out, /^\S*overview - no covers line, 1 file\(s\) added since [0-9a-f]+: src\/app\.ts \(no-covers-new-files\)$/m);
+    assert.doesNotMatch(out, /c1\b/, 'a preferences section is never listed');
+  } finally { r.rm(); }
+  // only the newest two stamps are diffed: the oldest of three, though files were added since it, lists nothing
+  const t = repo({ files: { 'README.md': 'x\n' } });
+  try {
+    const c1 = at('2026-01-01T00:00:00Z', () => { t.git('commit', '-q', '--allow-empty', '-m', 'one'); return t.git('rev-parse', '--short', 'HEAD'); });
+    t.write('src/x.ts', 'export {};\n'); t.git('add', 'src/x.ts');
+    const c2 = at('2026-01-02T00:00:00Z', () => { t.git('commit', '-qm', 'two'); return t.git('rev-parse', '--short', 'HEAD'); });
+    const c3 = at('2026-01-03T00:00:00Z', () => { t.git('commit', '-q', '--allow-empty', '-m', 'three'); return t.git('rev-parse', '--short', 'HEAD'); });
+    t.write('.claude/docs/architecture/A.md', `# A\n\n${bare('oldest', c1)}`);
+    t.write('.claude/docs/architecture/B.md', `# B\n\n${bare('middle', c2)}`);
+    t.write('.claude/docs/architecture/C.md', `# C\n\n${bare('newest', c3)}`);
+    assert.match(t.cli(['stale']).stdout, /no section has been outgrown/, 'the third, oldest stamp is not checked');
+    fs.rmSync(path.join(t.root, '.claude/docs/architecture/C.md'));
+    assert.match(t.cli(['stale']).stdout, /^\S*oldest - no covers line, 1 file\(s\) added since/m, 'one of the newest two, it is');
+  } finally { t.rm(); }
+});
+// E-batch M8: in an active repo every added file listed every coverless section - a near-permanent SessionStart line. U36's
+// claim is folders arriving, so only an added file whose TOP-LEVEL folder the stamp's tree lacked counts.
+test('M8: a coverless section is outgrown by a new top-level folder, never by files added to folders it already had', () => {
+  const bare = (id, sha) => `## ${id}\n<!-- id: ${id} -->\n<!-- captured: ${sha} -->\nNo covers.\n`;
+  const r = repo({ files: { 'README.md': 'x\n', 'src/a.ts': 'export {};\n' } });
+  try {
+    const s0 = r.git('rev-parse', '--short', 'HEAD');
+    r.write('.claude/docs/architecture/ARCHITECTURE.md', `# Map\n\n${bare('overview', s0)}`);
+    r.write('src/b.ts', 'export {};\n'); r.write('CHANGELOG.md', 'c\n'); r.git('add', 'src/b.ts', 'CHANGELOG.md'); r.git('commit', '-qm', 'more of the same');
+    assert.match(r.cli(['stale']).stdout, /no section has been outgrown/, 'a file in a folder the stamp had, or at the root, is no new module');
+    r.write('lib/c.ts', 'export {};\n'); r.git('add', 'lib/c.ts'); r.git('commit', '-qm', 'a new folder');
+    assert.match(r.cli(['stale']).stdout, /^\S*overview - no covers line, 1 file\(s\) added since [0-9a-f]+: lib\/c\.ts \(no-covers-new-files\)$/m, 'the new top-level folder is');
+  } finally { r.rm(); }
+});
 test('outgrown skips a recomputed domain', () => {
   const r = repo({ files: { 'src/a.cs': 'class A {}\n' } });
   try {

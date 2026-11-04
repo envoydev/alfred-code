@@ -62,7 +62,10 @@ if (require.main === module) {
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -263,7 +266,7 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
     sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
     ctxThreshold: () => null, coldFloor: () => null, worthResuming: () => false,
     freshVerdict: () => ({ pays: false }), verdictProbe: () => null, payText: () => '', notPayText: () => '',
-    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
+    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true, autoCompactWindow: () => null,
   };
 }
 fresh.use(payload);
@@ -274,6 +277,12 @@ fresh.use(payload);
 // 2026-10-21 G3, 77 of 77 compacted seats in transcripts): the model, the snapshot pointer, the hold and the offer are
 // the main session's, so none of them is written or said there.
 if (EVENT === 'SessionStart' && payload.agent_id) process.exit(0);
+// E1-3: the copied twins wired as this session begins - a twin written later is not yielded to (hook-prelude.js
+// writeTwinSnapshot). A compaction is the same session and wiring, so its start leaves the file.
+if (EVENT === 'SessionStart' && String(payload.source || '') !== 'compact' && payload.session_id) {
+  try { require('./hook-prelude.js').writeTwinSnapshot(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), String(payload.session_id)); }
+  catch { /* an install without the prelude keeps today's yield */ }
+}
 if (EVENT === 'SessionStart' || EVENT === 'PostModelSwitch') {
   fresh.recordSessionModel(EVENT === 'PostModelSwitch' ? payload.to_model : payload.model);
   if (EVENT === 'PostModelSwitch' || String(payload.source || '') !== 'compact') process.exit(0);
@@ -338,6 +347,35 @@ function writesNothing(command) {
       && !(scan.unread && scan.unread.length);
   } catch { return false; }
 }
+// U15-1 (usage audit 2026-11-03): a prompt the user typed after the answer that armed the ask route's hold is the user
+// back at the terminal - the prompt route judges that prompt's own gap - so it releases the hold. Read in the tail past
+// that answer's tool_result (a hold written before the ask id was recorded reads past its own size); a harness prompt
+// and a Stop hook's feedback row are nobody typing.
+function typedAfterAnswer(hold) {
+  if (typeof fresh.isTypedTurn !== 'function') return false;
+  try {
+    const p = payload.transcript_path;
+    const size = fs.statSync(p).size;
+    const start = Math.max(hold.ask ? 0 : Number(hold.size) || 0, size - 8 * 1024 * 1024, 0);
+    if (start >= size) return false;
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    let after = !hold.ask;
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('"user"')) continue;
+      let o;
+      try { o = JSON.parse(line); } catch { continue; }
+      if (!o || o.type !== 'user' || !o.message) continue;
+      const c = o.message.content;
+      if (!after) { after = Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.tool_use_id === hold.ask); continue; }
+      if (!fresh.isTypedTurn(o)) continue;
+      const text = typeof c === 'string' ? c : c.filter((b) => b && b.type === 'text').map((b) => String(b.text || '')).join('\n');
+      if (!harnessPrompt(text) && !/^\s*Stop hook feedback:/.test(text)) return true;
+    }
+  } catch { /* unreadable - the hold stands */ }
+  return false;
+}
 function compactHold() {
   let hold;
   try { hold = JSON.parse(fs.readFileSync(compactHoldFile(), 'utf8')); } catch { return; }
@@ -357,6 +395,7 @@ function compactHold() {
   if (unattended(payload)) return release('unattended');
   if (fresh.askAnsweredSince(since)) return release('asked');
   if (shortStepSince(since)) return release('single-short-step');
+  if (hold.via === 'ask' && typedAfterAnswer(hold)) return release('typed-after-answer');
   // the Stop branch blocked at this carry or past it since the tick: the offer was made at the close
   if (tick && Number(hold.ctx) > 0 && typeof fresh.stopOfferCtx === 'function' && fresh.stopOfferCtx() >= Number(hold.ctx)) return release('offered-at-stop');
   const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
@@ -432,7 +471,7 @@ function armAskGap() {
   if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail }); return; }
   try {
     if (fs.existsSync(compactHoldFile())) return;
-    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', gapH: ASK_GAP.gapH, gapMs: ASK_GAP.gapMs }));
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', ask: ASK_GAP.id, gapH: ASK_GAP.gapH, gapMs: ASK_GAP.gapMs }));
   } catch { return; }
   ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the idle hold armed by an ask answered after a long gap', detail });
 }
@@ -841,7 +880,9 @@ function skillHeads(root, skill) {
   const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
   const out = [nodePath.join(cfg, 'skills', bare, 'SKILL.md'), nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md'),
     nodePath.join(cfg, 'commands', `${bare}.md`), nodePath.join(root, '.claude', 'commands', `${bare}.md`)];
-  const cache = nodePath.join(cfg, 'plugins', 'cache');
+  // CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root, the cache in its cache/ folder (READER-2;
+  // code.claude.com/docs/en/plugins/loading) - hud-statusline.js reads it the same way; a hook cannot require a script.
+  const cache = nodePath.join((process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR || '').trim() || nodePath.join(cfg, 'plugins'), 'cache');
   // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known when the call carries a
   // scoped name, and is a short scan otherwise. A plugin's COMMANDS are read only under its namespace: a name with no
   // colon is a personal or project command or a built-in (audit 2026-10-20 H10: the built-in `init` matched the core's
@@ -1345,7 +1386,7 @@ function modeBanner(autoOn) {
   const name = `/${skill.replace(/^alfred-code:/, '')}`;
   const mode = autoOn
     ? `**Auto-run: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
-      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/mode-auto-run --mode-auto-run-off`.'
+      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/mode-auto-run --mode-auto-run-off`.'
     : `**Auto-run: OFF** for ${name} - each question waits for your answer.`
       + (autoRefused ? ` (auto-run did NOT start: ${autoRefused}.)`
         : autoFlags && autoFlags.late ? ' (mode flags count only right after the command: `--mode-auto-run-on` there starts auto-run.)' : '');
@@ -1356,7 +1397,8 @@ function modeBanner(autoOn) {
       ? `**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts ${where} instead of offering a fresh session.`
       : FRESH_OFF || at === null
         ? `**Context:** the fresh-session offers are off - the session compacts ${where}.`
-        : `**Context:** session refresh - past ~${tokens(at)} tokens ${window ? `of ${room}` : `(ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of ${room} is not known)`}, the run offers to resume in a fresh session from its state file instead of compacting.`;
+        // U12-2: the number is the trigger the offer waits for, never the carry now
+        : `**Context:** session refresh - the run offers to resume in a fresh session once the carry passes ~${tokens(at)} tokens ${window ? `of ${room} (a trigger, not the current size)` : `(ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of ${room} is not known; a trigger, not the current size)`}, instead of compacting.`;
   const acwNote = acwIgnoredNote();
   return `${acwNote ? `${acwNote}\n\n` : ''}${BANNER_HEAD}\n${mode}\n${ctxLine}`;
 }
@@ -1393,7 +1435,7 @@ if (auto && !auto.marker) {
   // more; one carrying a request (`/mode-output-scorer --mode-auto-run-on <request>`) runs it under the mode (final review I2)
   if (EVENT === 'UserPromptExpansion') expansionOut(auto.kept ? '' : autoFlags && autoFlags.request
     ? `auto-run is ON for this session (${auto.file}) - this line's request runs under it: each ask takes its (Recommended) `
-      + 'option; one with no marked option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), waits for the user.'
+      + 'option; one with no marked option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), waits for the user.'
     : `auto-run is ON for this session (${auto.file}) - no run started: `
       + 'the next task, capture, loop, issue or mode command runs under it, each ask taking its (Recommended) option. Do nothing else for this line.');
   process.exit(0);
@@ -1402,7 +1444,7 @@ if (auto) {
   const contract = `auto-run is ON for this /${auto.run} run: auto-run is on for this session (${auto.file} holds the user's words), and ${auto.marker} marks this run. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
-    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop) - waits for the user, so put only those; '
+    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop, spend on a billed run) - waits for the user, so put only those; '
     + "a guard's security ask (a credential shown, work discarded, a write outside the project, a desktop launch, a protective guard switched off) is never auto-run's to allow: take its safe option and list the act for the user in the close; "
     + "write every AskUserQuestion's questions and labels in English while auto-run is on - the hook reads English only and an ask it cannot read waits for the user - and the rest of the run in the user's language. "
     + `(2) Do not end a turn between steps: the Stop hook sends you back while ${auto.marker} stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. `

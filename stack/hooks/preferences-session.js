@@ -195,7 +195,7 @@ function contextOf(start) {
   const prefsDirs = [...new Set([home, ...roots].map(prefsAt))];
   let up;
   return {
-    home, bases, prefs: prefsAt(home), prefsDirs,
+    home, start: begin, bases, prefs: prefsAt(home), prefsDirs,
     // R4b: each linked workspace member's preferences, after the own ones - read on first use only, since this context is
     // built on every hook call.
     get ancestorDirs() {
@@ -597,6 +597,42 @@ function saveMarks(files, marks) {
   return false;
 }
 const dropRecord = (files) => { for (const f of files) { try { fs.rmSync(f, { force: true }); } catch {} } };
+
+// ta-M4 (T10 live check, 2026-11-04, Claude Code 2.1.318): one message's parallel Reads run their PreToolUse hooks at
+// once, so two calls could each load the record before either saved it and hand a judge the same docs twice (or drop
+// each other's read marks). A PreToolUse call's load - decide - save runs under a lock beside the record: a second call
+// waits for the first's save. A lock older than LOCK_STALE_MS is a dead call's and is taken over; one not had within
+// LOCK_WAIT_MS leaves the call unlocked, as every call ran before.
+const LOCK_WAIT_MS = 3000;
+const LOCK_STALE_MS = 10000;
+let heldLock = null;
+function lockRecord(files) {
+  const id = `${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  const pause = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* no wait: try again at once */ } };
+  for (const file of files) {
+    const lock = `${file}.lock`;
+    try { fs.mkdirSync(path.dirname(lock), { recursive: true }); } catch { continue; }
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    for (;;) {
+      try { fs.writeFileSync(lock, id, { flag: 'wx' }); heldLock = { lock, id }; return true; }
+      catch (e) {
+        if (!e || e.code !== 'EEXIST') break;   // this place takes no lock: the next one
+        let age = 0;
+        try { age = Date.now() - fs.statSync(lock).mtimeMs; } catch { continue; }   // released meanwhile: try again
+        if (age > LOCK_STALE_MS) { try { fs.rmSync(lock, { force: true }); } catch {} continue; }
+        if (Date.now() > deadline) return false;
+        pause(15);
+      }
+    }
+  }
+  return false;
+}
+function releaseRecord() {
+  if (!heldLock) return;
+  const { lock, id } = heldLock;
+  heldLock = null;
+  try { if (fs.readFileSync(lock, 'utf8') === id) fs.rmSync(lock, { force: true }); } catch { /* gone already */ }
+}
 function blockRow(ctx, input, kind, reason, extra = {}) {
   try {
     const dir = layout ? layout.statsPath(ctx.home, ['hook-blocks']) : path.resolve(ctx.home, dataRootRel(), 'statistics', 'hook-blocks');
@@ -782,6 +818,9 @@ function gitWrites(command, cwd) {
   for (const c of read.calls || []) {
     if (c.opaque) return true;
     if (!c.sub) continue;
+    // U19a: an apply that touches only the working tree is an edit, not a git write; --index, --cached and --3way (which
+    // implies --index) write the index.
+    if (c.sub === 'apply' && !c.argv.some((a) => /^(?:--index|--cached|--3way|-3)$/.test(a))) continue;
     if (shellReader.gitMutates(c.sub, c.argv)) return true;
     if (c.sub === 'branch' && c.argv.some((a) => !a.startsWith('-')) && !c.argv.some((a) => BRANCH_LIST.test(a))) return true;
     if (c.sub === 'worktree' && c.argv[0] === 'add' && c.argv.some((a) => /^-[bB]/.test(a))) return true;
@@ -1117,10 +1156,19 @@ function toolsText(ctx, seat) {
     // Custom memory with nothing to hold the lessons: the main session is told, a seat is not.
     const none = seat === null && lib.memoryMode({ projectRoot: ctx.home, env: process.env }) === 'custom'
       && !lib.jobOrder({ projectRoot: ctx.home, env: process.env, job: 'memory' }).ranks.length;
-    return [line, none ? MEMORY_NONE : ''].filter(Boolean).join('\n');
+    // Docs memory not in effect here (memory P3, R6): the main session is told, a seat is not. It is judged at the
+    // session's own checkout - a linked worktree reads its docs from the main checkout (`home`), but its memory setting
+    // where it stands. A library copy of tools.js older than this hook (the copy route) has no such line.
+    const docs = seat === null && typeof lib.memoryStartLine === 'function' ? lib.memoryStartLine({ projectRoot: sessionCheckout(ctx), env: process.env }) : '';
+    return [line, none ? MEMORY_NONE : '', docs].filter(Boolean).join('\n');
   } catch { return ''; }
 }
 const MEMORY_NONE = 'Memory: custom, but no memory tool is reachable here - nothing is stored this session; rank one with /capture-preferences tools, or /alfred-code:configure switches to native.';
+// The checkout the session runs in: the nearest folder from its start up to the git top holding an install record, else
+// the top (layout.js projectRootOf) - never a plain sub-folder, whose own docs root is no place of the project's.
+function sessionCheckout(ctx) {
+  try { return layout && ctx.start ? layout.projectRootOf(ctx.start).checkout : ctx.home; } catch { return ctx.home; }
+}
 
 function emit(event, extra) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...extra } }));
@@ -1219,6 +1267,7 @@ function main() {
   const name = String(input.tool_name || '');
   const t = input.tool_input || {};
   const cwd = typeof input.cwd === 'string' && input.cwd ? path.resolve(start, input.cwd) : start;
+  lockRecord(files);
   const marks = loadMarks(files);
   const mark = (keys) => { const fresh = keys.filter((k) => !marks[k]); if (!fresh.length) return; for (const k of fresh) marks[k] = true; saveMarks(files, marks); };
   // Who reads against the docs: a seat by its type, the main session while a review run is on.
@@ -1320,4 +1369,5 @@ function main() {
 module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
 if (require.main === module) {
   try { main(); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
+  finally { releaseRecord(); }
 }

@@ -155,6 +155,46 @@ test('Windows: a claude-hud line of another shape is stale - the old PowerShell 
     assert.strictEqual(planHud({ configDir: gone, ...opts }).statusLine.state, 'stale');
 });
 
+// E-batch m2: a launcher this repo wrote in an older release is rewritten with the current one; a launcher of anyone
+// else's - claude-hud's own install copies its statusline.mjs to the same path - is kept (PL-10's one writer per file).
+test('m2: an older launcher of ours is rewritten; a foreign one is kept', () =>
+{
+    const crypto = require('node:crypto');
+    const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
+    const OLD = fs.readFileSync(path.join(__dirname, 'fixtures', 'hud-launcher-1.0.0.txt'));
+    assert.ok(hud.OWN_LAUNCHER_SHAS.has(sha(OLD)), 'the 1.0.0 launcher is one of ours');
+    assert.ok(hud.OWN_LAUNCHER_SHAS.has(sha(LAUNCHER)), 'the current launcher is listed - a new text adds its sha');
+    const opts = { platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE) };
+    const stale = { statusLine: { type: 'command', command: 'powershell -NoProfile -File C:\\Users\\u\\.claude\\plugins\\claude-hud\\statusline.ps1' } };
+    const at = (dir) => path.join(dir, 'plugins', 'claude-hud', 'statusline.mjs');
+    const ours = account({ settings: stale });
+    fs.mkdirSync(path.dirname(at(ours)), { recursive: true });
+    fs.writeFileSync(at(ours), OLD);
+    const plan = planHud({ configDir: ours, ...opts });
+    assert.strictEqual(plan.writesLauncher, true);
+    const res = applyHud(plan);
+    assert.strictEqual(fs.readFileSync(at(ours), 'utf8'), LAUNCHER, 'rewritten with the current text');
+    assert.ok(res.lines.some((l) => /^hud: launcher refreshed - .*statusline\.mjs/.test(l)), res.lines.join('\n'));
+    const foreign = account({ settings: stale });
+    fs.mkdirSync(path.dirname(at(foreign)), { recursive: true });
+    fs.writeFileSync(at(foreign), '// claude-hud 0.15.0 scripts/statusline.mjs\nimport "./hud.mjs";\n');
+    const fres = applyHud(planHud({ configDir: foreign, ...opts }));
+    assert.strictEqual(fs.readFileSync(at(foreign), 'utf8'), '// claude-hud 0.15.0 scripts/statusline.mjs\nimport "./hud.mjs";\n', 'kept byte for byte');
+    assert.ok(fres.lines.some((l) => /^hud: launcher kept - /.test(l)), fres.lines.join('\n'));
+    // the current launcher under a stale line is left as it is, and a re-run changes nothing
+    const current = account({ settings: stale });
+    fs.mkdirSync(path.dirname(at(current)), { recursive: true });
+    fs.writeFileSync(at(current), LAUNCHER);
+    const cplan = planHud({ configDir: current, ...opts });
+    assert.strictEqual(cplan.writesLauncher, false);
+    applyHud(cplan);
+    assert.strictEqual(planHud({ configDir: ours, ...opts }).changes, 0, 'the refreshed account is current');
+    // an unreadable launcher path (a folder there) is no launcher of ours
+    const odd = account({ settings: stale });
+    fs.mkdirSync(at(odd), { recursive: true });
+    assert.strictEqual(planHud({ configDir: odd, ...opts }).writesLauncher, false);
+});
+
 test('a statusLine that is not claude-hud\'s is kept, reported with claude-hud\'s own setup route, and given no refresh interval', () =>
 {
     const mine = { type: 'command', command: '~/.claude/statusline.sh', padding: 1 };
@@ -753,4 +793,32 @@ test('the runtime\'s version is asked of the runtime itself (a node on PATH), pr
     const lines = applyHud(planHud({ configDir: dir, platform: 'darwin', env: { PATH: bin } })).lines;
     assert.ok(lines.some((l) => l.startsWith(`hud: runtime too old - ${path.join(bin, 'node')} is node 22.17.0;`)), lines.join('\n'));
     assert.strictEqual(hud.versionOf(process.execPath), process.versions.node);
+});
+
+// E-batch final review M4: a pre-3.7.0 Windows install without Git Bash holds a CURRENT line (the CMD shape never changed)
+// and the 1.0.0 launcher, blind to a moved plugins root - m2's own population, refreshed with the line left as it is.
+test('final review M4: an older launcher of ours under a current line is refreshed, the line untouched', () => {
+    const OLD = fs.readFileSync(path.join(__dirname, 'fixtures', 'hud-launcher-1.0.0.txt'));
+    const opts = { platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE) };
+    const at = (dir) => path.join(dir, 'plugins', 'claude-hud', 'statusline.mjs');
+    const dir = account({});
+    applyHud(planHud({ configDir: dir, ...opts }));
+    const settingsBefore = fs.readFileSync(path.join(dir, 'settings.json'), 'utf8');
+    fs.writeFileSync(at(dir), OLD);
+    const plan = planHud({ configDir: dir, ...opts });
+    assert.strictEqual(plan.statusLine.state, 'current');
+    assert.strictEqual(plan.writesLine, false);
+    assert.strictEqual(plan.refreshesLauncher, true);
+    assert.strictEqual(plan.changes, 1);
+    const res = applyHud(plan);
+    assert.strictEqual(fs.readFileSync(at(dir), 'utf8'), LAUNCHER);
+    assert.ok(res.lines.some((l) => /^hud: launcher refreshed - /.test(l)), res.lines.join('\n'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'), settingsBefore, 'the line is left as it is');
+    assert.strictEqual(planHud({ configDir: dir, ...opts }).changes, 0, 'a re-run changes nothing');
+    // a launcher someone else wrote under a current line is still theirs
+    fs.writeFileSync(at(dir), '// claude-hud own\n');
+    const foreign = planHud({ configDir: dir, ...opts });
+    assert.strictEqual(foreign.changes, 0);
+    applyHud(foreign);
+    assert.strictEqual(fs.readFileSync(at(dir), 'utf8'), '// claude-hud own\n');
 });

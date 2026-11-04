@@ -1,6 +1,7 @@
 # Stop done-close regex v2 (2026-11-03)
 
-The stop judge is held (the user's ruling of 2026-11-03: 'hold judge, keep regex'), so the regex reading of the
+The stop judge was held (the user's ruling of 2026-11-03: 'hold judge, keep regex') and is retired since 2026-11-04
+(`docs/stop-judge-gate-evidence.md`), so the regex reading of the
 done-close in `stack/hooks/guard-stop-contract.js` was retuned instead: cover more cases, at or above the judge's 14 to
 16 of 18, no regression, and a reply in another language read on language-neutral signals only, with no non-English text
 in plugin code. What changed is THE RETUNE in `.claude/rules/repo-hooks.md`; this file holds the method and the counts.
@@ -11,7 +12,8 @@ in plugin code. What changed is THE RETUNE in `.claude/rules/repo-hooks.md`; thi
   turn-ending main-session closes (an assistant message with text and no tool call) over 256 sessions. The live hook
   had held 157 of them as a done-close and 44 as a prose ask, and passed 3,281. The text stays in a private scratch
   folder; none of it is in this repo, and this file gives counts only.
-- **Labels.** Hold or release by the judge's own criteria (`stack/hooks/stop-judge-prompt.txt`), read by one reader -
+- **Labels.** Hold or release by the judge's own criteria (`stack/hooks/stop-judge-prompt.txt`, removed with the judge -
+  git history holds it), read by one reader -
   the retune's author, not the user. The 18 replayed closes the Haiku judge scored 14 to 16 on keep their labels. A
   seeded, stratified sample of 80 more: 26 live holds, 26 closes the live hook passed but a text-only replay of the old
   reading holds, 16 clean passes carrying a done word, and 12 in another language. 4 were marked unsure and left out:
@@ -100,7 +102,7 @@ whose owed item is in prose alone - the stated limit below.
 ## An independent reader (2026-11-03, after the merge)
 
 The labels above are the tuning seat's own. A second reader, a fresh agent shown only the judge's criteria
-(`stack/hooks/stop-judge-prompt.txt`) and the close texts - shuffled, with no label, verdict or regex - labelled 162
+(`stack/hooks/stop-judge-prompt.txt`, in git history since the judge's removal) and the close texts - shuffled, with no label, verdict or regex - labelled 162
 closes: the 94 above, the 23 v2 newly holds, 30 of its 227 new releases (seeded sample) and 15 of the 182 both versions
 hold. It marked 42 hold, 119 release, 1 unsure. Scored text-only by the same offline runner, each row's
 `stop_hook_active` and `background_tasks` as recorded:
@@ -128,4 +130,5 @@ hold. It marked 42 hold, 119 release, 1 unsure. Scored text-only by the same off
 - The live rate: each exemption that fires writes one `done-close-exempt` probe row naming it - `resume-unread`,
   `neutral-live-work` and the widened `own-work-running` included. A week of those rows is the production reading.
 - The user's own reading of the labels.
-- No billed model call ran: the judge was not re-run against the v2 corpus.
+- The judge against v2 was measured afterwards, in `docs/stop-judge-gate-evidence.md` (2026-11-04: it missed its gate
+  and was retired).

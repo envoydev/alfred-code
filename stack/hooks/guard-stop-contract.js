@@ -81,7 +81,10 @@ if (require.main === module) {
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -340,8 +343,16 @@ const LOOP_ASK_RES = [
   /\b(?:continue|stay|keep going|carry on) here\b[^.\n?]{0,60}\bor\b[^.\n?]{0,40}\b(?:a )?fresh session\b/i,
 ];
 const TYPED_VALUE_RE = /^\s+(?:the |your |its |their )?(?:[\w-]+ ){0,3}?(?:ids?|urls?|links?|paths?|ports?|e-?mails?|(?:ip )?address(?:es)?|hosts?|hostnames?|usernames?|account names?|error (?:messages?|output|lines?)|log lines?)\b(?![^.\n]*\bor\b)/i;
+// A report of what could not be confirmed ('I couldn't confirm whether the cache was warm') asks nothing: a confirm-ask
+// match with a negation earlier in its own clause is skipped (usage audit 2026-11-03 U06). The C15 offer shapes are not.
+const NEGATED_CONFIRM_RE = /\b(?:couldn['’]?t|can['’]?t|cannot|could not|did not|didn['’]?t|wasn['’]?t able to|not able to|unable to)\b/i;
 function proseAskMatch(text) {
-  const m = (text.match(PROSE_ASK_RE) || [])[0] || '';
+  let m = '';
+  for (const mm of text.matchAll(new RegExp(PROSE_ASK_RE.source, 'gi'))) {
+    if (/^confirm\b/i.test(mm[0]) && NEGATED_CONFIRM_RE.test(text.slice(0, mm.index).split(/[.!?;:\n]/).pop())) continue;
+    m = mm[0];
+    break;
+  }
   if (m && /^your call$/i.test(m.trim()) && RETRO_YOUR_CALL_RE.test(text)) return null;
   if (m) return m;
   // 'tell me THE <value>' asks for a value only the user can type - a farm id after their own login - which no option
@@ -500,7 +511,16 @@ let forgeLib = null;
 try { forgeLib = require(require('path').join(__dirname, 'forge.js')); } catch { /* no classifier: the gh regexes read */ }
 const forgeActs = (c) => { try { return forgeLib ? forgeLib.classifyCommand(String(c || ''), process.cwd()) : null; } catch { return null; } };
 const finiteWatch = (c) => { const acts = forgeActs(c); return acts ? acts.some((r) => r.concept === forgeLib.CONCEPTS.WATCH) : FINITE_WATCH_RE.test(c); };
-const finiteShell = (c) => finiteWatch(c) || (!NEVER_ENDS_RE.test(c) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c));
+// A shell variable named like a server word is no server (usage audit 2026-11-03 U07: `start=$(date +%s); npm test; echo
+// $(( $(date +%s) - start ))` read as `start`): assignments, arithmetic expansions and variable references are left out
+// of the server read - `PORT=3000 npm start` still names its server.
+const SHELL_ARITH_RE = /\$\(\((?:[^()]|\([^()]*\))*\)\)/g;
+const SHELL_ASSIGN_RE = /(?:^|[;&|\s])[A-Za-z_]\w*=(?:\$\([^)]*\)|"[^"]*"|'[^']*'|\S+)/g;
+const SHELL_VAR_RE = /\$\{?[A-Za-z_]\w*\}?/g;
+const serverText = (c) => String(c || '').replace(SHELL_ARITH_RE, ' ').replace(SHELL_ASSIGN_RE, ' ').replace(SHELL_VAR_RE, ' ');
+const finiteShell = (c) => finiteWatch(c) || (!NEVER_ENDS_RE.test(serverText(c)) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c));
+// The user's own status or time question ('How much time is left?', 'Any ETA?') - read by the done-close's status-question release.
+const STATUS_QUESTION_RE = /\b(?:how (?:long|much (?:longer|time))|time (?:is )?left|eta|status|still (?:running|going|working)|done yet|how far)\b[^?\n]*\?\s*$/i;
 // A forge READ - a change request's or a pipeline's state, through any CLI, API call or MCP tool - backs remote state.
 const FORGE_READ_RE = /\bgh\s+(?:pr|run|api|repo)\b/;
 const forgeRead = (block) => {
@@ -529,15 +549,34 @@ function registeredWork() {
   });
 }
 // Is a seat of the type `re` names still out - a `subagent` entry of the Stop registry not yet settled? The scorer
-// backstop reads it: a grader still running is the loop's own wait, a diagnoser still running has no verdict yet.
+// backstop reads it: a grader still running is the loop's own wait, a diagnoser still running has no verdict yet. A
+// harness that sends no registry is read from the transcript (sc-5): an async Agent / Task launch of that type, not ended.
 function seatLive(re) {
-  if (payload.hook_event_name !== 'Stop' || !Array.isArray(payload.background_tasks)) return false;
-  return payload.background_tasks.some((t) => !!t && typeof t === 'object' && String(t.type || '').toLowerCase() === 'subagent'
-    && !SETTLED_STATUS.test(String(t.status || '')) && re.test(String(t.agent_type || '')));
+  if (payload.hook_event_name !== 'Stop') return false;
+  if (Array.isArray(payload.background_tasks)) {
+    return payload.background_tasks.some((t) => !!t && typeof t === 'object' && String(t.type || '').toLowerCase() === 'subagent'
+      && !SETTLED_STATUS.test(String(t.status || '')) && re.test(String(t.agent_type || '')));
+  }
+  const scan = launchScan();
+  return !!scan && scan.live.some((l) => /^(?:Agent|Task)$/.test(l.name) && re.test(String(l.input.subagent_type || '')));
 }
 function liveBackgroundWork() {
   const reg = registeredWork();
   if (reg !== null) return reg;
+  const scan = launchScan();
+  if (!scan) return null;
+  if (scan.live.length) return true;
+  return scan.truncated || scan.inherited ? null : false;
+}
+// The transcript's background launches still out, each { ids, monitor, name, input }, plus whether the read was cut
+// short (truncated) or saw a notice for work launched before the window (inherited); null when there is none to read.
+// Read once per run: liveBackgroundWork and seatLive both ask.
+let launchScanMemo;
+function launchScan() {
+  if (launchScanMemo === undefined) launchScanMemo = readLaunches();
+  return launchScanMemo;
+}
+function readLaunches() {
   const p = payload.transcript_path;
   if (!p) return null;
   let text;
@@ -597,7 +636,7 @@ function liveBackgroundWork() {
           if (!finiteShell(command)) continue;
           taskId = meta.backgroundTaskId || (/running in background with ID:\s*([\w-]+)/i.exec(r) || [])[1];
         }
-        live.push({ ids: new Set([b.tool_use_id, taskId].filter(Boolean)), monitor: name === 'Monitor' });
+        live.push({ ids: new Set([b.tool_use_id, taskId].filter(Boolean)), monitor: name === 'Monitor', name, input });
         for (const id of live[live.length - 1].ids) seen.add(id);
       }
     }
@@ -621,8 +660,7 @@ function liveBackgroundWork() {
       }
     }
   }
-  if (live.length) return true;
-  return truncated || inherited ? null : false;
+  return { live, truncated, inherited };
 }
 // The words a close uses for such work when the transcript cannot be read: an agent, a review or an
 // implementer as the running noun, or a waiter that wakes the session. Read ONLY when liveBackgroundWork()
@@ -1104,6 +1142,9 @@ function walkBack(start, fallback) {
 // cycle's key, and whether the receipt was there but unbacked.
 const SCORED_RE = /(?:^|\n)\s*\**Scored\**:\s*\d+\/100/;
 const DIAGNOSER_RE = /(?:^|:)issue-diagnoser-(?:ci|runtime)$/;
+// A typed stack naming habits-adjust-agents-md grades nothing (mode-output-scorer SKILL.md), so it owes no T4 (sc-8): the
+// slash form, a `<command-name>` row, or the bare name after a usage word - the shape of hook-prelude.js STACK_RE.
+const ADJUST_STACK_RE = /(?:^|[\s(>])(?:\/(?:alfred-code:)?|(?:using|with|via|run|stack|through)\s+(?:the\s+)?)habits-adjust-agents-md(?=[\s.,;:)!?<]|$)/i;
 // a placeholder in bold or backticks (`Cause: **<pending>**`) is no verdict either (final review 2)
 const VERDICT_RE = /^\s*Cause:\s*[*_`]*(?!<pending>)[^\s*_`]/m;
 // The verdict lines an edit adds: a Cause line already in old_string is the stamp being kept, not a new verdict.
@@ -1169,11 +1210,13 @@ function scorerOwed(state, pre, root) {
       if (o.isCompactSummary || !typedMessage(o, row) || /^\s*Stop hook feedback:/.test(text)) return undefined;
       // the opening row: its uuid, else its timestamp, else the row's own hash keys the cycle
       const key = o.uuid || o.timestamp || `${payload.transcript_path}#${crypto.createHash('sha256').update(JSON.stringify(o)).digest('hex')}`;
-      return { ...seen, open: n, at: Date.parse(o.timestamp || ''), key: String(key), stacked: seen.stacked || (!flagOnly && pre.stackNamed(text)) };
+      const stacked = !ADJUST_STACK_RE.test(text) && (seen.stacked || (!flagOnly && pre.stackNamed(text)));
+      return { ...seen, open: n, at: Date.parse(o.timestamp || ''), key: String(key), stacked };
     };
   }, null);
   if (!found) {
-    ledgerRow({ tool: '', mode: 'probe', kind: 'scorer-cycle-unread', reason: 'probe: no typed prompt in the transcript - the scorer backstop judged nothing' });
+    // only while the scorer is on: off, the backstop judges nothing whatever the transcript holds (sc-11)
+    if (state.on) ledgerRow({ tool: '', mode: 'probe', kind: 'scorer-cycle-unread', reason: 'probe: no typed prompt in the transcript - the scorer backstop judged nothing' });
     return { owed: null, cycle: null };
   }
   // the scorer's own folders: this session's, and the SELF route's (R29); a log written before the cycle opened is
@@ -1233,6 +1276,37 @@ function askJustAnswered() {
         if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && ANSWER_RESULT_RE.test(resultText(b)))) return true;
         // a Stop hook's own feedback row is the harness speaking, not the user's next turn
         if (isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return false;
+        return undefined;
+      };
+    }, false);
+  } catch {
+    return false;
+  }
+}
+
+// Were this turn's two newest AskUserQuestion calls both refused by a HOOK - an error result that is no answer and no
+// user rejection (ANSWER_RESULT_RE)? One refusal is a fixable ask the model resends; two mean it cannot ask, so the
+// prose-ask hold lets the prose close stand (usage audit 2026-11-03 U06). Read by that hold alone.
+function askRefusedThisTurn() {
+  try {
+    return walkBack(() => {
+      const results = new Map();
+      let refused = 0;
+      return (o) => {
+        if (!o || !o.message) return undefined;
+        const c = o.message.content;
+        if (o.type === 'user') {
+          if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, b);
+          if (isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return false;
+          return undefined;
+        }
+        if (o.type !== 'assistant' || !Array.isArray(c)) return undefined;
+        for (const b of [...c].reverse()) {
+          if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
+          const r = results.get(b.id);
+          if (!r || r.is_error !== true || ANSWER_RESULT_RE.test(resultText(r))) return false;
+          if (++refused >= 2) return true;
+        }
         return undefined;
       };
     }, false);
@@ -1721,8 +1795,9 @@ function subagentOwnTools(file) {
   }
   return tools;
 }
-// --- the output-scorer's seal (mode-output-scorer, spec 5.10) ------------------------------------------
-// The grader's report names its score file on its first line, and this hook writes it, sealed: `seal: sha256 <hex of the
+// --- the output-scorer's seal (mode-output-scorer, spec 5.11) ------------------------------------------
+// The grader's report names its score file on one of its first three non-empty lines (a line or two of preface is
+// how a seat opens; sc-10), and this hook writes it, sealed: `seal: sha256 <hex of the
 // report>` then the report as delivered, so a card the author typed or edited never grades (scorecard.js sealOf, the
 // same hash). Only into this session's scorer folder - both sides realpathed, so macOS's /var reads as /private/var and
 // a symlinked parent leads nowhere - only a `.score.md`, and only one that does not exist yet (`wx`: a second delivery,
@@ -1735,7 +1810,7 @@ function sealScorecard(message) {
   try {
     const pre = require('./hook-prelude.js');
     const text = String(message == null ? '' : message);
-    const head = /^score-file:\s*(\S.*?)\s*$/.exec((text.split('\n').find((l) => l.trim()) || '').replace(/[*`]/g, '').trim());
+    const head = text.split('\n').filter((l) => l.trim()).slice(0, 3).map((l) => /^score-file:\s*(\S.*?)\s*$/.exec(l.replace(/[*`]/g, '').trim())).find(Boolean);
     if (head) {
       const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
       file = path.resolve(root, head[1].replace(/\\/g, '/'));
@@ -2383,6 +2458,9 @@ if (payload.hook_event_name === 'Stop') {
     // ...and a close over work this session launched that is still out, named as running or waited on, is a
     // status line (2.1.6 H4) - read late, since it is the one test that opens the transcript.
     ['own-work-running', () => ownWorkRunning(closeTail, tail)],
+    // ...and the answer to the user's own status or time question ('How much time is left?') while work this session
+    // launched is still out in the registry: a report they asked for, not a stall (usage audit 2026-11-03 U10, 629719b3).
+    ['status-question', () => STATUS_QUESTION_RE.test(newestTypedPrompt().trim()) && registeredWork() === true],
     // ...an answer to the user's question listing only other people's or deferred items (f450ea64), and the mandated
     // close after the user picked the fresh-session option this turn (69dbed46: 'Nothing is committed or pushed' read as
     // done + pending, and the resume block was forced out again at 132.4k) - audit 2026-10-10 C15.
@@ -2683,6 +2761,10 @@ if (payload.hook_event_name === 'Stop') {
     );
     process.exit(2);
   }
+  if (askRefusedThisTurn()) {
+    ledgerRow({ tool: '', mode: 'probe', kind: 'prose-after-refused-ask', reason: 'probe: two asks this turn refused by a hook, then a prose question - logged, not held' });
+    process.exit(0);
+  }
   blockDetail(proseAsk(tail) ? 'prose-ask' : 'ends-on-question',
     proseAskMatch(tail) || tail.trim().slice(-80));
   // The fresh-session cue used to be the literal '~150k tokens per message' - a number that is only
@@ -2808,7 +2890,7 @@ function blockStateFile() {
 //      once, across 109 asks - one session missed all 12 of its own stops.
 // The stale-scope note's remote half (read by freshStateReadThisTurn, so declared before the branch runs).
 const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|remote|upstream|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
-const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b/;
+const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b/;
 // AUTO-MODE answers the ask (the user's ruling, 2026-10-14). Under a live AUTO stamp nobody is at the terminal, and the
 // user's word was 'run everything with the recommended options'. So an ask whose every question marks ONE option
 // '(Recommended)' is answered with it - the documented route: `allow` with the questions echoed and an `answers` map in
@@ -2839,6 +2921,24 @@ const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:databases?|db|tables?|schemas?)\b[^\n]{0,80}\bdrop(?:s|ped|ping)?\b`,
   String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|(?<![/\w.-])(?:pay(?!\s+for\s+(?:itself|themselves|(?:the\s+|its\s+|their\s+)?(?:agent\s+)?seats?)\b)|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
 ].join('|'), 'i');
+// A BILLED run waits too (auto-run B, 2026-11-04: 'Run it, cap $5 - five billed Sonnet runs' was answered; the user's
+// 'fix the gap'). Its words are the bill (`billed`, `bills`, a paid run, spend - not spending time), a negated one
+// ('no billed runs') excluded, and a dollar amount. The pick's label and description count always; the question counts
+// when the pick does not DECLINE the spend ('Skip it', 'Defer', 'Keep 0', 'Later'), and its amount only in a forward frame
+// ('about $41', 'cap $5', '~$18') - a question quoting a cost already measured ('the same cost ($2.96 vs $3.01)') is a
+// report. A declining pick is judged on its label alone, so its description may name the bill it declines. Measured over
+// the 2,457 distinct recommended questions on the maintainer's machine (2026-11-04): it holds 45, about half real spend
+// approvals, the rest naming the billed step as deferred ('asked for separately', 'waits for your word') - a false hit
+// costs one wait, a miss spends for the user. `$1` as a regex back-reference reads as an amount (a stated ceiling).
+const AUTO_BILL_RE = /(?<!\b(?:no|not|never|non|zero)[- ]?)\b(?:bill(?:s|ed)?|paid\s+(?:runs?|tests?|probes?|proofs?|checks?|calls?|A\/Bs?|evals?|batch(?:es)?)|spend(?:s|ing)?(?!\s+(?:more\s+|less\s+|some\s+|the\s+|a\s+few\s+|a\s+bit\s+of\s+)?(?:time|minutes?|hours?|days?|effort|turns?|rounds?|a\s+while|(?:too\s+)?long)\b))\b/i;
+const AUTO_AMOUNT_RE = /(?<![\w`'"$])\$\s?\d|\b\d[\d,.]*\s?(?:USD|dollars?)\b|\bUSD\s?\d/i;
+const AUTO_FORWARD_AMOUNT_RE = /(?:\babout|\baround|~|\bup\s+to|\bat\s+most|\bcap(?:ped)?(?:\s+at)?|\bbudget(?:ed)?(?:\s+of)?|\bestimated?(?:\s+at)?|\bexpected|\bworst\s+case(?:\s+of)?|\bspend)\s*(?:of\s+)?(?<![\w`'"$])\$\s?\d|\$\s?\d[\d,.]*(?:\s?-\s?\$?\d[\d,.]*)?\s+(?:expected|estimated|cap|budget|worst\s+case|max(?:imum)?)\b/i;
+const AUTO_DECLINE_RE = /^\s*(?:skip|defer|no\b|not\b|don'?t|do\s+not|leave|hold|keep\b|wait|stop|later|none|park|cancel|decline|postpone|off\b|close\b)/i;
+function autoBilled(question, pick) {
+  if (AUTO_DECLINE_RE.test(pick.label)) return AUTO_BILL_RE.test(pick.label) || AUTO_AMOUNT_RE.test(pick.label);
+  const own = `${pick.label} ${pick.description || ''}`;
+  return AUTO_BILL_RE.test(own) || AUTO_AMOUNT_RE.test(own) || AUTO_BILL_RE.test(question) || AUTO_FORWARD_AMOUNT_RE.test(question);
+}
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;
   const answers = {};
@@ -2851,7 +2951,7 @@ function autoAnswers(questions) {
     const pick = AUTO_FRESH_RE.test(marked[0].label)
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
     if (!pick) return null;
-    if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`)) return null;
+    if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`) || autoBilled(q.question, pick)) return null;
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
     if (unreadable(`${q.question} ${pick.label}`)) return null;
     answers[q.question] = pick.label;
@@ -2999,7 +3099,14 @@ if (payload.tool_name === 'AskUserQuestion') {
       if (ctxNow > 0 && stale && paysAt('numbers', ctxNow)) numbers = { ctx: ctxNow, floor: coldFloor() };
     }
     // 8. TYPE IT INTO OTHER (OTHER_RE, above).
-    const typeIntoOther = questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => o && OTHER_RE.test(`${o.label || ''} ${o.description || ''}`)));
+    // The question and header too (usage audit 2026-11-03 U11: 'write your own in Other' sat in the question).
+    const otherQ = questions.find((q) => q && (OTHER_RE.test(`${q.question || ''} ${q.header || ''}`)
+      || (Array.isArray(q.options) && q.options.some((o) => o && OTHER_RE.test(`${o.label || ''} ${o.description || ''}`)))));
+    const typeIntoOther = !!otherQ;
+    const pickLabels = (() => {
+      const labels = (otherQ && Array.isArray(otherQ.options) ? otherQ.options : []).map((o) => String((o && o.label) || '').replace(/\s*\(Recommended\)\s*$/i, '').trim()).filter(Boolean);
+      return labels.length >= 2 ? `'${labels[0]}' / '${labels[1]}'` : "'I have them' / 'Someone else owns them' / 'Defer'";
+    })();
     // 9. THE RECOMMENDED MARK (alfred-interaction.md: 'the recommended one marked'). A single-select question with
     // options and none marked '(Recommended)', or more than one, went out in 2 of 11 questions of one session (C26,
     // bda299a8), and the mark goes on the FIRST option (lint check 61's rule for the ask templates). Denied once: a
@@ -3025,15 +3132,23 @@ if (payload.tool_name === 'AskUserQuestion') {
       const marked = q.options.filter((o) => o && /\(Recommended\)/i.test(String(o.label || '')));
       if (!said || marked.length !== 1) return false;
       const want = [...contentWords(said[1])].filter((w) => !STOP_WORDS.has(w));
-      const shares = (o) => { const have = contentWords(`${o.label || ''} ${o.description || ''}`); return want.some((w) => have.has(w)); };
-      return want.length > 0 && !shares(marked[0]) && q.options.some((o) => o && o !== marked[0] && shares(o));
+      // the marked option is read whole; another option by its LABEL alone - a word in its description is no pick
+      // (usage audit 2026-11-03 U05, ce0b76e6: 'checks' in 'Keep it open' - 'for your own checks' denied a right mark)
+      const shares = (o, whole) => { const have = contentWords(whole ? `${o.label || ''} ${o.description || ''}` : `${o.label || ''}`); return want.some((w) => have.has(w)); };
+      return want.length > 0 && !shares(marked[0], true) && q.options.some((o) => o && o !== marked[0] && shares(o, false));
     }).length;
     // 10. A NEW CYCLE IN A FINISHED CYCLE'S CHAT. task-solve: a cycle starting after a finished one in the same session
     // recommends the fresh-session hand-off in its first ask - prose, slipped in bda299a8 (C08, ~2.0M avoidable). A
     // typed prompt after this session's plan was stamped `Completed:`, then an ask with no fresh option and a carry a
     // resume would recover, is that ask.
+    // Only an ask that opens work counts: a flow stop (its `Result:` field) or an option naming a plan,
+    // task-solve, task-design, an approval or a new scope - a plain question after the cycle ('install Node 26 now?') is
+    // no new cycle (usage audit 2026-11-03 U09).
+    const NEW_CYCLE_ASK_RE = /\b(?:plans?|task-solve|task-design|approve|new (?:scope|cycle))\b/i;
+    const opensCycle = questions.some((q) => q && (/\bResult:/.test(String(q.question || ''))
+      || (Array.isArray(q.options) && q.options.some((o) => o && NEW_CYCLE_ASK_RE.test(`${o.label || ''} ${o.description || ''}`)))));
     let newCycle = null;
-    if (!FRESH_OFF && !autoRun && !questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
+    if (opensCycle && !FRESH_OFF && !autoRun && !questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
       const fs2 = flowState();
       if (fs2.flow && fs2.completed !== null && fs2.typedAfter) {
         const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
@@ -3082,6 +3197,12 @@ if (payload.tool_name === 'AskUserQuestion') {
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const k = (n) => `~${Math.round(n / 1000)}k`;
       const numberLine = numbers ? ` Measured now: ${fresh.payText(numbers.ctx, fresh.freshVerdict(numbers.ctx))}` : '';
+      // A stale figure the ask already states ('Last measured: ~157k ...') is REPLACED by the fresh one, never left beside
+      // it (usage audit 2026-11-03 U12, b2aa04d4: two contradicting figures in one ask).
+      // A token figure only - after a colon, or one with its k (final review M3: 'measured 3 suites' is a count) - and up to its
+      // sentence's end, a '.' before a space or the end (a '.' inside '1.5x' cut the question there).
+      const MEASURED_RE = /\b(?:last )?measured(?::\s*~?\d[\d.,]*k?|\s+~?\d[\d.,]*k)\b[^\n]*?\.(?=\s|$)/i;
+      const restated = (q) => !!numbers && typeof q.question === 'string' && MEASURED_RE.test(q.question);
       const MARK = /\s*\(Recommended\)/i;
       const dropBy = (test) => (opts) => {
         const kept = opts.filter((o) => !test(o));
@@ -3094,9 +3215,9 @@ if (payload.tool_name === 'AskUserQuestion') {
       const dropHandoffs = (opts) => (opts.every(isFreshHandoff) ? opts : dropBy(isFreshHandoff)(opts));
       const fixed = questions.map((q) => (q && typeof q === 'object' ? {
         ...q,
-        ...(q.question !== undefined ? { question: fix(q.question) } : {}),
+        ...(q.question !== undefined ? { question: restated(q) ? fix(q.question).replace(MEASURED_RE, numberLine.trim()) : fix(q.question) } : {}),
         ...(q.header !== undefined ? { header: fix(q.header) } : {}),
-        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : dropHandoff && !q.multiSelect ? dropHandoffs(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: (isFreshOpt(o) ? fixAbove(fix(o.description || '')) : fix(o.description || '')) + (numbers && isFreshHandoff(o) ? numberLine : '') } : o)) } : {}),
+        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : dropHandoff && !q.multiSelect ? dropHandoffs(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: (isFreshOpt(o) ? fixAbove(fix(o.description || '')) : fix(o.description || '')) + (numbers && isFreshHandoff(o) && !restated(q) ? numberLine : '') } : o)) } : {}),
       } : q));
       // check 15's drop leaves a question with one option only where it removed one; that question is refused, naming it
       const lone = (q, i) => q && Array.isArray(q.options) && q.options.length < 2
@@ -3162,7 +3283,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, misMarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove, dropHandoff };
         process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
-          + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
+          + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK (${pickLabels}).` : '')
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
           + (misMarked ? ` Put the mark on the option the question recommends, or reword the question so both say the same pick.` : '')
           + (noReview ? `${noReview.from === 'text' ? '' : ' State the cycle\'s `Size:` on the close - a trivial run has no stop, so a run that stops here is small at least.'} The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')

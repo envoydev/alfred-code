@@ -322,11 +322,15 @@ const escapeRe = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // never after a `/` (a path inside a project folder) and never bare (a bare `references/x#y` resolves after the move).
 // `late`: the pass after the move takes the engine's two ref spellings alone - `<folder>/<old>#` with nothing path-like
 // before it and the bare `<old>#` - never a path (`.alfred/docs/architecture/ARCHITECTURE.md`), never `<dir>/<old>#`.
-function keyPatterns(folder, old, { strict = false, refsOnly = false, sub = false, late = false } = {})
+// `paths` (the late pass's naming alone, E-batch 351-m4): a third pattern for a path to the old file - from the project root
+// (`.alfred/docs/architecture/ARCHITECTURE.md#x`) or relative to the citer (`../architecture/...`). respellKeys reads only
+// the first two, so a path form is named, never rewritten.
+function keyPatterns(folder, old, { strict = false, refsOnly = false, sub = false, late = false, paths = false } = {})
 {
     if (sub) return [new RegExp(`(?<![\\w/.-])${escapeRe(folder)}/${escapeRe(old)}(?=/[\\w.-]+(?:\\.md)?#)`, 'g'), /(?!)/g];
     const ref = '(?=(?:\\.md)?#)';
-    if (late) return [new RegExp(`(?<![\\w/.-])${escapeRe(folder)}/${escapeRe(old)}${ref}`, 'g'), new RegExp(`(?<![\\w/-])${escapeRe(old)}${ref}`, 'g')];
+    if (late) return [new RegExp(`(?<![\\w/.-])${escapeRe(folder)}/${escapeRe(old)}${ref}`, 'g'), new RegExp(`(?<![\\w/-])${escapeRe(old)}${ref}`, 'g'),
+        ...(paths ? [new RegExp(`(?<![\\w/.-])(?:[\\w.-]+/)+${escapeRe(folder)}/${escapeRe(old)}${ref}`, 'g')] : [])];
     return [new RegExp(`(?<![\\w-])${escapeRe(folder)}/${escapeRe(old)}\\b(?!-)${refsOnly ? ref : ''}`, 'g'),
         new RegExp(`${strict ? '(?<![\\w/-])' : '(?<![\\w-])'}${escapeRe(old)}${ref}`, 'g')];
 }
@@ -489,7 +493,7 @@ function nameForeignRefs({ projectRoot, base, keys, label = 'awareness', late = 
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
         text.split('\n').forEach((line, i) =>
         {
-            const hits = keyHits(line, keys, late ? { late: true, keep: (keep || lateKeep(projectRoot, base))(file) } : { strict: true, refsOnly: true, keep: ownFileRef(projectRoot, file) });
+            const hits = keyHits(line, keys, late ? { late: true, paths: true, keep: (keep || lateKeep(projectRoot, base))(file) } : { strict: true, refsOnly: true, keep: ownFileRef(projectRoot, file) });
             if (!hits.length) return;
             named.push(`${rel(file)}:${i + 1}`);
             log(`  !! docs migration (${label}): ${rel(file)}:${i + 1} names ${hits.join(', ')} - plan it with update-preflight.js --respell`);
@@ -977,9 +981,13 @@ const OLD_DOMAIN_OTHERS = new Set(['credentials.local.env', '.gitignore']);
 const OLD_DOMAIN_DOCS = new Set(['PROJECT-CAPABILITIES.md', 'PROJECT-AWARENESS.md', 'RELATED-PROJECTS.md']);
 function removeOldDomain(folder, log, { label, docs = new Set(), others = new Set() })
 {
+    // a folder absent before this call is no move of this run's: nothing to say
+    if (!fs.existsSync(folder)) return false;
     const watch = path.join(folder, 'watch.json');
     try { if (/^\s*\{\s*\}\s*$/.test(fs.readFileSync(watch, 'utf8'))) removeKeepingHistory(watch); } catch { /* none, or not the stack's */ }
     for (const sub of ['references', 'history']) { try { fs.rmdirSync(path.join(folder, sub)); } catch { /* none, or not empty */ } }
+    // `git rm` of a tracked watch.json takes the folder it emptied with it (351-m3)
+    if (!fs.existsSync(folder)) { if (label) log(`  docs migration (${label}): ${path.basename(folder)}/ removed - nothing is left in it`); return true; }
     if (removeIfEmpty(folder, log, label)) return true;
     let left;
     try { left = fs.readdirSync(folder).filter((n) => !OS_LITTER.has(n)).sort(); }
@@ -1045,7 +1053,9 @@ function awarenessRule({ projectRoot, docsPath, log = () => {} })
 // home it re-spells only the engine's two ref spellings in the files the stack owns and names them in the others, keeping
 // every hit a file of that name answers - beside the citer, at the project or docs root, in a docs-root folder (`lateKeep`),
 // or anywhere else in the project (`sameNamedFiles`, named in the stack's own files) - and every sub-folder ref a project
-// folder answers, so a project's own `ARCHITECTURE.md#x` still survives (the 3.5.1 review, I1 / I2). No marker, watch
+// folder answers, so a project's own `ARCHITECTURE.md#x` still survives (the 3.5.1 review, I1 / I2). It first moves any
+// branch version the merge brought back under architecture/ (351-m5), and names a path to the old file in a file it does not
+// own (`.alfred/docs/architecture/ARCHITECTURE.md#x`, `../architecture/...` - 351-m4), never rewriting one. No marker, watch
 // merge or rule write. Returns { moved, kept, merged, overlays, respelled, removed }.
 const ARCH = 'architecture';
 const ARCH_PENDING = ['state', 'migrations', 'architecture-move.pending'];
@@ -1063,8 +1073,10 @@ function migrateArchitecture({ projectRoot, docsPath, dataPath, rules = [], log 
         const keys = completedKeys(base, AWARENESS, ARCH_KEYS);
         if (!keys.length) return out;
         const opts = { projectRoot, label: 'awareness', fix: 're-run /alfred-code:update', log };
-        const targets = respellTargets(base, rules);
         const subs = ['references', 'history'].map((sub) => [sub, [[ARCH, sub]]]);
+        // a branch version a teammate's merge brought back under architecture/ moves first, so the respell reaches it (351-m5)
+        out.overlays = moveOverlays(base, [...keys, ...subs], AWARENESS, 'awareness', log);
+        const targets = respellTargets(base, rules);
         // a hit a file answers stays; one a team file of that name elsewhere answers stays too, named below in the stack's files
         const answered = lateKeep(projectRoot, base);
         const elsewhere = sameNamedFiles(projectRoot, base, [...new Set(keys.flatMap(([, homes]) => homes.map(([, old]) => old)))]);
@@ -1178,7 +1190,9 @@ function mergeArchWatch({ base, log })
         // a staged rename where git tracks it, its new content left unstaged like every respelled doc the move took
         fs.mkdirSync(path.dirname(awFile), { recursive: true });
         moveKeepingHistory(base, archFile, awFile);
-        write(moved, formatOf(archText));
+        // a write that throws puts the file back, so the resumed run finds it at the old home and prefixes the kinds (351-m6)
+        try { write(moved, formatOf(archText)); }
+        catch (err) { try { moveKeepingHistory(base, awFile, archFile); } catch { /* the write's error below is the one to name */ } throw err; }
         log('  docs migration (awareness): architecture/watch.json -> awareness/watch.json, each kind prefixed \'architecture: \'');
         return 'moved';
     }
@@ -1502,7 +1516,28 @@ const LAYOUT = require('../../stack/hooks/layout.js');
 // `leave`: base names in a row's own folder this call neither moves nor names (migrateArchitecture merges watch.json
 // itself); `tail: false` drops the .branches/ line and the `layout: current` fallback, which the update's own general call
 // prints once.
-function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves = LAYOUT.LAYOUT_MOVES, leave = [], tail = true })
+// E-batch ab-C5: the tracked files under the data root's state/ and statistics/ that its .gitignore covers - `git mv` kept
+// each tracked through the move, or a teammate committed it. Project-relative, sorted; [] with no git or no work tree.
+// `--no-index`: without it git never reports a tracked file as ignored. A file gone from disk is no longer one.
+function trackedIgnoredState(projectRoot, dataBase)
+{
+    const rel = path.relative(projectRoot, dataBase).split(path.sep).join('/');
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return [];
+    const git = (args, input) => rt.spawnCommand('git', ['-c', 'core.fsmonitor=false', '-C', projectRoot, ...args],
+        { encoding: 'utf8', timeout: 10000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, ...(input === undefined ? { stdio: ['ignore', 'pipe', 'ignore'] } : { input, stdio: ['pipe', 'pipe', 'ignore'] }) });
+    const listed = git(['ls-files', '-z', '--', `${rel}/state`, `${rel}/statistics`]);
+    if (!listed || listed.status !== 0) return [];
+    const files = String(listed.stdout || '').split('\0').filter((f) => f && fs.existsSync(path.join(projectRoot, ...f.split('/'))));
+    if (!files.length) return [];
+    const ignored = git(['check-ignore', '--no-index', '-z', '--stdin'], `${files.join('\0')}\0`);
+    // 1: none of them ignored; anything else but 0: no answer to act on
+    if (!ignored || ignored.status !== 0) return [];
+    return String(ignored.stdout || '').split('\0').filter(Boolean).sort();
+}
+
+// `told` (ab-C5): the paths the stamp's `untrack-told:` line holds - named by an earlier run, so not again. `out.untrackTold`
+// is the record to write back: those still tracked and ignored, plus the ones named now.
+function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves = LAYOUT.LAYOUT_MOVES, leave = [], tail = true, told = [] })
 {
     const docsBase = path.resolve(projectRoot, String(docsPath || ''));
     const dataBase = path.resolve(projectRoot, String(dataPath || '.alfred'));
@@ -1687,6 +1722,16 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {}, moves 
         }
     }
     for (const line of lines.length || !tail ? lines : ['  layout: current']) log(line);
+    // Once per run (the general pass, never the architecture move's own call), after every move held: name each tracked file
+    // the data root's .gitignore covers, with the command that untracks it - the update never changes the index (ab-C5).
+    if (tail)
+    {
+        const now = trackedIgnoredState(projectRoot, dataBase);
+        const before = new Set(told);
+        for (const p of now.filter((f) => !before.has(f)))
+            log(`  layout: ${p} is ignored state git still tracks - \`git rm --cached -- ${p}\` stops tracking it; committed, that deletes it from every teammate's checkout on their next pull`);
+        out.untrackTold = now.filter((f) => !f.includes(','));
+    }
     return out;
 }
 
@@ -1789,7 +1834,7 @@ function filesUnder(dir)
 // migration below still moves on (DOCS_MIGRATIONS, the usage report, layout.js LAYOUT_MOVES), the first-look map, and
 // any folder holding a watch.json (a domain by definition). Everything else under the root is the project's.
 const STACK_DOCS = new Set([
-    'architecture', 'code-style', 'preferences', 'decisions', 'tickets', 'explanations', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
+    'architecture', 'code-style', 'preferences', 'decisions', 'tickets', 'explanations', 'awareness', 'work', 'quality', 'memory', 'ORIENTATION.md', '.branches',
     ...DOCS_MIGRATIONS.map(([from]) => from.split('/')[0]), USAGE_REPORT_OLD, ...LAYOUT.LAYOUT_MOVES.map((m) => m.from),
 ]);
 function stackEntry(base, e)

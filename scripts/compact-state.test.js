@@ -590,6 +590,45 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
         { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'askgap-')) }).status, 0, 'a seat is never held');
 });
 
+// Usage audit 2026-11-03 U15-1: the user answered the long-gap ask, then typed a new prompt - they are back, and the prompt
+// route judges that prompt's own gap - yet the ask's hold still denied the first change after it.
+test('U15-1: a typed prompt after the gap answer releases the idle hold', () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const SHELL = path.join(HOOKS, 'shell-guards.js');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const rows = [
+        { ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(5.8) },
+        { type: 'assistant', timestamp: ago(4.8), message: { id: 'q', model: 'claude-opus-5-5', usage: { cache_read_input_tokens: 289900 },
+            content: [{ type: 'tool_use', id: 'toolu_ask9', name: 'AskUserQuestion', input: { questions: [{ question: 'Push now?' }] } }] } },
+        { type: 'user', timestamp: ago(0.01), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_ask9',
+            content: 'Your questions have been answered: "Push now?"="Push (Recommended)"' }] } },
+    ];
+    const setup = () => {
+        const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'askgap-typed-')) };
+        const p = project();
+        const tp = p.transcript(rows);
+        const via = (hook, tool, input) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp }, env, hook);
+        const user = (content) => fs.appendFileSync(tp, JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content } }) + '\n');
+        return { p, tp, via, user, edit: () => via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' }) };
+    };
+    const s = setup();
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0, 'a reading call arms the hold and passes');
+    s.user('go on and push it');
+    assert.strictEqual(s.edit().status, 0, 'the typed prompt released it');
+    const ledger = fs.readFileSync(path.join(s.p.root, '.alfred', 'statistics', 'hook-blocks', `${s.p.sid}.jsonl`), 'utf8');
+    assert.match(ledger, /"kind":"idle-hold"[^\n]*"outcome":"typed-after-answer"/, 'one release row names why');
+    const n = setup();
+    assert.strictEqual(n.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0);
+    n.user('<task-notification><task-id>b1</task-id><status>completed</status></task-notification>');
+    n.user([{ type: 'text', text: 'Stop hook feedback: held' }]);
+    assert.strictEqual(n.edit().status, 2, 'a harness notice or a Stop hook feedback row is no typed prompt: still held');
+    const b = setup();
+    b.user('push it now');
+    assert.strictEqual(b.edit().status, 0, 'typed before the first call after the answer: the arm and the release in one call');
+});
+
 // Usage audit 2026-11-03 U16: the idle offer waited the knob's seeded 2h, past the cache life on every route - a
 // subscription's main conversation caches for 1h, an API key's for 5m (code.claude.com/docs/en/prompt-caching) - so the
 // gap's first message had paid the cold re-write long before anyone was asked. The wait now follows the cache life the

@@ -42,6 +42,7 @@ const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
 const workspace = require('./workspace.js');
 const variables = require('./variables.js');
+const memoryDir = require('./memory-dir.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
@@ -135,7 +136,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     try { args = parseArgs(argv); }
     catch (e) { err(`${USAGE}\nerror: ${e.message}\n`); return 1; }
     // A flag 2.10.1 retired with its server, passed by a command body an older session still runs.
-    for (const line of args.ignored) log(line);
+    for (const line of [...args.ignored, ...(args.notes || [])]) log(line);
 
     const home = env.HOME || env.USERPROFILE || '';
     // With no home and no CLAUDE_CONFIG_DIR the account dir would be a RELATIVE `.claude` - the
@@ -482,7 +483,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             let text;
             try { text = fs.readFileSync(args.selection, 'utf8'); }
             catch { err(`selection file not found: ${args.selection}\n`); return 1; }
-            picked = selection.parseSelection(selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming).join('\n'));
+            const given = selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming);
+            // O4: a hand-written partial selection is closed now, not at the next update; the walk's own adds nothing.
+            picked = selection.parseSelection(selection.closeSelection(given, { graph: readJson(path.join(resolved.dir, 'meta', 'stack-graph.json')), log }).join('\n'));
             // A joined child installs its parent's set minus its ignores whatever rows the walk's selection kept.
             if (wsPrep.parentLines)
             {
@@ -622,6 +625,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept, secrets: secretsAt },
             instructionsFile: ctx.instructionsAnswer,
             ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
+            memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
+            untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile),
         });
 
         summarise(ctx, failures);
@@ -661,12 +666,18 @@ function runLayers(ctx)
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
+    // Memory P3: a `--memory docs` that cannot be written here is unset before the settings pass writes the mode.
+    try { memoryDir.gate(ctx); }
+    catch (err) { ctx.note(`docs memory could not be checked (${err.message}) - --memory docs is not applied this run`); if (ctx.args.memory === 'docs') ctx.args.memory = undefined; ctx.args.memoryCopy = false; }
     variablesStep(ctx);
     installHooksAndRules(ctx);
     if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx, path.join(ctx.claudeDir, 'settings.local.json'));
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
+    // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
+    try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal }); }
+    catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
     // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is
     // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
     if (!ctx.docsRootPending)
@@ -684,7 +695,8 @@ function runLayers(ctx)
         catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
         // After migratePlans, so superpowers/plans/ reaches plans/ first; after the .gitignore step, so a nested history/
         // .gitignore of the stack's is gone before history/ moves into the data root's state/.
-        try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
+        // ab-C5: the tracked state files it names once go back into the stamp; a throw keeps the earlier record.
+        try { ctx.untrackTold = docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log, told: stampLayer.readUntrackTold(ctx.stampFile) }).untrackTold; }
         catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
         // After migrateLayout, whose general rows it reuses; a throw past its first step leaves a marker the next update
         // reads to finish the move (docs.migrateArchitecture, D9).
@@ -825,6 +837,8 @@ function ignoreStep(ctx, docsPath)
     let mode = null;
     try { mode = copy.resolveDocsVersioning(projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot, docsPath, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }); }
     catch (err) { note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`); }
+    // The docs memory's union-merge attributes follow the versioning (memory-dir.js, R10).
+    ctx.docsVersioningMode = mode;
     let data = null;
     try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, log }); }
     catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
@@ -1421,9 +1435,11 @@ function installSkillsAndAgents(ctx)
 }
 
 // C17 / B seam: what a copy-route copy holds - the shipped text, with a seat's `alfred-code:<skill>` preloads bare on the
-// FULL copy route, since no core plugin serves that spelling there. Null when nothing changes - every plugin route.
+// FULL copy route, since no core plugin serves that spelling there (null on every plugin route), and a skill's SKILL.md
+// approval stamp path written back as `${CLAUDE_PROJECT_DIR}` on every route (library.renderSkillFile).
 function copyRender(ctx, kind)
 {
+    if (kind === 'skill') return (text, rel) => library.renderSkillFile(rel, text);
     if (kind !== 'agent' || mcp.corePluginOn(ctx.routes)) return null;
     return (text) => copy.respellPreloads(text, CORE);
 }
@@ -1748,7 +1764,7 @@ function retiredApprovals(ctx)
 // block that says what went, how to add each back and where its data stayed.
 function retiredServersStep(ctx, mcpBefore)
 {
-    liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, ledger: ctx.ledger, memory: ctx.args.memory || null, writerFollows: true, log: ctx.log, note: ctx.note });
+    ctx.memoryLift = liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, ledger: ctx.ledger, memory: ctx.args.memory || null, writerFollows: true, log: ctx.log, note: ctx.note });
     liftMcpDenied(ctx);
     dropEmptiedMcpJson(ctx, mcpBefore);
     sayRetiredServers(ctx);
@@ -1758,19 +1774,24 @@ function retiredServersStep(ctx, mcpBefore)
 // run's own settings file (settingsTarget - never the account's). The server is gone, so the switch-off goes: on the first
 // update or uninstall past the memory server's retirement (the stamp's release before its row's `retiredIn`, or a pre-stamp
 // install whose installer wrote it too), from this run's file alone. A switch-off set after that is the user's and stays.
+// E-batch mcp-A6: a file that cannot be read is retried - the answer is the settings file the stamp's `memory-lift: pending`
+// line names ('' when nothing is left to lift), and a later run at the scope that writes that file lifts it whatever the
+// stamp's release. A run at another scope carries the line as it was.
 function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, claudeDir, scope, ledger = null, memory = null, writerFollows = false, log, note })
 {
     const row = readRetiredPlugins(sourceDir).find((r) => r.name === 'alfred-memory');
     const last = stampLayer.readVersion(stampFile);
-    if (!row || !row.retiredIn || !((last && compareVersions(last, row.retiredIn) < 0) || legacyUnstamped)) return;
     const file = settings.settingsTarget(claudeDir, scope);
-    if (!fs.existsSync(file)) return;
+    const pending = stampLayer.readMemoryLift(stampFile);
+    const retry = pending === path.basename(file);
+    if (!row || !row.retiredIn || !((last && compareVersions(last, row.retiredIn) < 0) || legacyUnstamped || retry)) return pending;
+    if (!fs.existsSync(file)) return '';
     // Custom memory's switch-off (the writer's memory pass) is ledgered; the old server's never was.
-    if (Object.hasOwn(((ledger && ledger.settings) || {})[path.basename(file)] || {}, 'autoMemoryEnabled')) return;
+    if (Object.hasOwn(((ledger && ledger.settings) || {})[path.basename(file)] || {}, 'autoMemoryEnabled')) return '';
     let data;
     try { ({ data } = settings.readSettings(file)); }
-    catch (err) { note(`${err.message} - autoMemoryEnabled was not checked there`); return; }
-    if (data.autoMemoryEnabled !== false) return;
+    catch (err) { note(`${err.message} - autoMemoryEnabled was not checked there; the next update checks it again`); return path.basename(file); }
+    if (data.autoMemoryEnabled !== false) return '';
     delete data.autoMemoryEnabled;
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
     // Custom memory chosen for this file: the writer pass after this puts the switch-off straight back, ledgered, with its own
@@ -1784,8 +1805,9 @@ function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, cl
     // The merged view (D4): settings.local.json over .variables over settings.json.
     const own = variables.read(variables.fileOf(path.dirname(claudeDir), { env: {} })).values;
     const chosen = memory || (scope === 'local' ? { ...beside, ...own, ...envOf(data) } : { ...envOf(data), ...own, ...beside }).ALFRED_CODE_MEMORY;
-    if (writerFollows && chosen === 'custom' && !elsewhere) return;
+    if (writerFollows && chosen === 'custom' && !elsewhere) return '';
     log(`  ${path.basename(file)}: autoMemoryEnabled: false removed - the stack switched Claude's own memory off for its memory server, which it ships no more; set it back to keep it off`);
+    return '';
 }
 
 // The deniedMcpServers rows an earlier release wrote (the stamp's mcp-denied line) switched a broader-scope stack server off
@@ -2079,6 +2101,16 @@ function ledgerOf(ctx)
         }));
     for (const [name, rows] of Object.entries(settings.carryMemberRows({ claudeDir: ctx.claudeDir, priorSettings: prior.settings, workspaceRows: ctx.workspaceRows })))
         settingsKeys[name] = { ...(settingsKeys[name] || {}), ...rows };
+    // Docs memory's row (memory-dir.js step) is decided there on every path, so it is set or dropped here, not carried.
+    // Always last in its file: the carry puts a prior row before the workspace rows, so a kept place moved on a re-run.
+    if (ctx.memoryDirRow !== undefined)
+    {
+        const rows = { ...(settingsKeys['settings.local.json'] || {}) };
+        delete rows.autoMemoryDirectory;
+        if (ctx.memoryDirRow) rows.autoMemoryDirectory = ctx.memoryDirRow;
+        if (Object.keys(rows).length) settingsKeys['settings.local.json'] = rows;
+        else delete settingsKeys['settings.local.json'];
+    }
     // No run registers a server since 2.10.1: the .mcp.json and account rows are what an earlier run recorded and is still
     // there unchanged (retireMcps removes them on the first update past each retirement) - so a later run, or uninstall,
     // still knows them for the stack's.
@@ -2298,7 +2330,10 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     const accountHash = ((ledger.account || {})['settings.json'] || {})[workspace.INSTRUCTION_KEY];
     if (accountHash) dropAccountKey({ projectRoot, configDir, accountFile, hash: accountHash, log, note });
     const stillOff = ['settings.json', 'settings.local.json'].filter((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
-    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, and the data root ${keptRoot}/ - the docs, and whatever an earlier release's servers left there${stillOff.length ? `; autoMemoryEnabled: false stays in ${stillOff.join(' and ')} - yours, so Claude's own memory stays off until you remove it` : ''}`);
+    // Docs memory (P3): the folder is the user's lessons, kept whole; with the row gone Claude Code reads its default place.
+    const memoryAt = path.resolve(projectRoot, docsPath, 'memory');
+    const memoryKept = layout().memoryFiles(memoryAt).length ? `, the docs memory ${path.relative(projectRoot, memoryAt).split(path.sep).join('/')}/ (Claude Code reads its default place again)` : '';
+    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, and the data root ${keptRoot}/ - the docs${memoryKept}, and whatever an earlier release's servers left there${stillOff.length ? `; autoMemoryEnabled: false stays in ${stillOff.join(' and ')} - yours, so Claude's own memory stays off until you remove it` : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);
@@ -2423,4 +2458,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, BROWSER_TOOLS_OFF };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY };

@@ -134,7 +134,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "habits-execution-strategy",
-      "note": "execution strategy (2026-09-30, from the user's Execution Strategy Module, adapted): a short inline plan, one agent by default, batched calls, subagents only for independent sizeable contract-backed tracks, three check tiers (per batch, once after the change, CI parity before a push); pointed at by alfred-interaction, run by task-solve before step 3's mode ask, task-solve-cross before its mode ask and issue-diagnoser at 4b (2026-10-08: its Execution verdict names route, mode and model and sets the recommended mode; parallel whenever quality holds; every smaller task settles the same three inline from alfred-interaction), never preloaded by a seat (the dispatcher decides the split)"
+      "note": "execution strategy (2026-09-30, from the user's Execution Strategy Module, adapted): a short inline plan, one agent by default, batched calls, subagents only for independent sizeable contract-backed tracks, three check tiers (per batch, once after the change, CI parity before a push); pointed at by alfred-interaction, run by task-solve before step 3's mode ask, task-solve-cross before its mode ask, issue-diagnoser at 4b and task-version-upgrade before its gate (2026-10-08: its Execution verdict names route, mode and model and sets the recommended mode; parallel whenever quality holds; every smaller task settles the same three inline from alfred-interaction), never preloaded by a seat (the dispatcher decides the split)"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -747,7 +747,7 @@
     },
     {
       "file": "guard-secret-value.js",
-      "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files)$",
+      "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files|read_media_file)$",
       "event": "",
       "note": "the fifth read route: a filesystem server the user registers returns a file's text - the Read judgement over tool_input.path (a head as a window) or .paths, matched by the tool's name under any registration (audit 2026-10-30 HK-26)"
     },
@@ -792,17 +792,6 @@
       "matcher": "@Stop",
       "event": "",
       "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth - and once more after a plan's Completed stamp and a typed turn, whatever the growth, unless a fresh-session choice was answered since that turn (usage audit 2026-11-03 U13) - and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-run stamp naming this session, while the run's marker (`state/sessions/AUTO-RUN-<session>`) stands, a Stop is sent back to the run until its close deletes the marker - never the stamp, which only --mode-auto-run-off ends - held again only after a tool call (the Stop chain's workSince), and at most 49 times per marker: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
-    },
-    {
-      "file": "guard-stop-contract.js",
-      "matcher": "@Stop",
-      "event": "",
-      "type": "prompt",
-      "prompt": "stop-judge-prompt.txt",
-      "timeout": 30,
-      "active": false,
-      "held": true,
-      "note": "THE STOP JUDGE (audit 2026-10-30 HK-22), HELD (`held: true`, the user's ruling of 2026-11-03: hold the judge, keep the regex done check and retune it - nothing wires it, on either route, until the key goes): a prompt hook beside the stop contract on Stop - one call to Claude Code's background model (Haiku) per main-session Stop reads the closing message and sends the turn back once when it reports a step done and leaves a next action owed and unasked, released when stop_hook_active is true. It was built to replace the contract's regex done-close hold (a replay of 18 such blocks found 13 wrong, the judge got 14 to 16 of 18 right over three runs, A/B 2026-11-03); held because a prompt hook runs no stack prelude, so it would judge every repo, set up or not - the regex is retuned instead. No `model` key: the hook evaluator sends an alias as written, and `haiku` failed every live call (lint check 48b). Its text is stop-judge-prompt.txt, the one home a later host adapter reads. Parked (active: false) because the copy route wires command hooks alone; the plugin route would carry it inline once `held` goes. ALFRED_CODE_HOOKS_OFF cannot reach it - a prompt hook runs no stack code; disableAllHooks or disabling the plugin turns it off with the rest."
     },
     {
       "file": "guard-stop-contract.js",
@@ -914,9 +903,9 @@
     },
     {
       "file": "guard-desktop-exec.js",
-      "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$",
+      "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$|^mcp__.+__browser_run_code_unsafe$",
       "event": "",
-      "note": "the desktop servers' process launchers, matched by tool name under whatever server the user registered (the stack ships none since 2026-10-24): deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; and a browser server's browser_run_code_unsafe (arbitrary JavaScript in the server's own process, no flag switches it off - 2026-10-24, ruling N9); the DESKTOP-EXEC-ALLOW receipt (App, Shell, browser_run_code_unsafe, an executable, or *) honours a wanted call"
+      "note": "the desktop servers' process launchers, matched by tool name under whatever server the user registered (the stack ships none since 2026-10-24): deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees), and a server's PowerShell or execute_shell_command (the same, E-batch mcp-B-m1); App's launch / switch / resize pass; and a browser server's browser_run_code_unsafe (arbitrary JavaScript in the server's own process, no flag switches it off - 2026-10-24, ruling N9); the DESKTOP-EXEC-ALLOW receipt (App, Shell, PowerShell, execute_shell_command, browser_run_code_unsafe, an executable, or *) honours a wanted call"
     },
     {
       "file": "guard-answer.js",
@@ -1394,7 +1383,8 @@
       "macos-desktop": "macos-control"
     },
     "hooks": {
-      "guard-answer-length": "guard-answer"
+      "guard-answer-length": "guard-answer",
+      "memory-session": "preferences-session:host"
     }
   },
   "renamedTopics": {

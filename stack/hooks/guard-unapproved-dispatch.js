@@ -32,7 +32,10 @@
 // in it still passes.
 const fs = require('fs');
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
+// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 const path = require('path');
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
@@ -370,6 +373,47 @@ if (stampState && stampState.live && stampState.session && /^AUTO\b/.test(rootSt
     try { runSkill = (/^skill:[ \t]*(\S+)/m.exec(fs.readFileSync(marker, 'utf8').slice(0, 2048)) || [])[1] || ''; } catch { runSkill = ''; }
   }
 }
+// D6 (the user's ruling of 2026-11-03): a hand-written AUTO waiver (no `session:` line) covers ONE run. A plan written
+// after it that carries its `Completed:` line closes that run, and the waiver is spent: it passes no seat, implementer or
+// generic. Bounded so a dispatch never walks a large tree: the newest 50 .md files in the plan folders, none past 1 MB;
+// an unreadable folder or file is no evidence. Session-named AUTO (the run marker above), APPROVED and plan stamps are
+// untouched.
+const SPENT_SCAN_FILES = 50;
+const SPENT_SCAN_BYTES = 1024 * 1024;
+function autoSpentBy(stampFile, dirs) {
+  let stampMs;
+  try {
+    stampMs = fs.statSync(stampFile).mtimeMs;
+    if (/^session:/m.test(fs.readFileSync(stampFile, 'utf8').slice(0, 4096))) return null;
+  } catch { return null; }
+  const plans = [];
+  for (const dir of dirs) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      if (!name.endsWith('.md')) continue;
+      const file = path.join(dir, name);
+      try { const st = fs.statSync(file); if (st.isFile()) plans.push({ file, ms: st.mtimeMs, size: st.size }); } catch { /* gone: no evidence */ }
+    }
+  }
+  plans.sort((a, b) => b.ms - a.ms);
+  for (const p of plans.slice(0, SPENT_SCAN_FILES)) {
+    if (p.ms <= stampMs) break;
+    if (p.size > SPENT_SCAN_BYTES) continue;
+    let text;
+    try { text = fs.readFileSync(p.file, 'utf8'); } catch { continue; }
+    const m = /^Completed:[ \t]*(\S[^\r\n]*)$/m.exec(text);
+    if (m) return { file: p.file, completed: m[1].trim() };
+  }
+  return null;
+}
+let autoSpent = null;
+if (/^AUTO\b/.test(rootStamp.first) && layout && typeof layout.planDirs === 'function' && !(stampState && stampState.session)) {
+  let dirs = [];
+  try { dirs = layout.planDirs(root); } catch { dirs = []; }
+  autoSpent = autoSpentBy(rootStamp.file, dirs);
+  if (autoSpent) rootStamp.first = '';
+}
 // PER-PLAN APPROVALS (2026-10-20, spec Part 4): two sessions on two plans shared one APPROVAL - the later approval
 // overwrote the earlier and either session dispatched on it. A brief names its plan on a `plan: <id>` line, and only that
 // plan's stamp passes it, or a live root AUTO (auto-run with its run marker open, or a solve flow's typed waiver). A brief
@@ -415,10 +459,12 @@ if (isImplementer) {
   }
   if (approving) process.exit(0);
   const needed = planStamp || rootStamp;
-  global.BLOCK_DETAIL = { branch: needed.stale ? 'implementer-stale-stamp' : 'implementer-unapproved' };
+  global.BLOCK_DETAIL = { branch: needed.stale ? 'implementer-stale-stamp' : autoSpent ? 'implementer-auto-spent' : 'implementer-unapproved' };
   process.stderr.write(
     (needed.stale
       ? `Blocked: dispatch of ${seat} - the approval stamp at ${needed.file} is stale: older than 8h, or written before this session began, so it records another run's decision rather than this one's (measured: a 2h52m-old stamp from a closed session authorized five implementer dispatches).\n`
+      : autoSpent
+        ? `Blocked: dispatch of ${seat} - the AUTO waiver at ${rootStamp.file} predates ${autoSpent.file}'s Completed: line (${autoSpent.completed.slice(0, 80)}) - the run it waived is closed; a new run is waived by a new AUTO line in the user's words or approved through one ask.\n`
       : planId && CONSENT.test(rootStamp.first)
         ? `Blocked: dispatch of ${seat} - its brief names plan ${planId}, and no stamp records the user's approval of THAT plan (${rootStamp.file} is another run's, or a pre-2.8.0 one).\n`
         : `Blocked: dispatch of ${seat} without an approval gate.\n`) +

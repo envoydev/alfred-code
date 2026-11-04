@@ -310,3 +310,24 @@ test('D10: the marketplace the core is installed from is the stack\'s, whatever 
     reg(github, '{ not json');
     assert.strictEqual(keyOf(github), 'envoydev', 'a GitHub-source install is unaffected by a garbage registry');
 });
+
+// E-batch READER-3: known_marketplaces.json and installed_plugins.json live under the plugins root, which
+// CLAUDE_CODE_PLUGIN_CACHE_DIR moves; both were read under <config>/plugins whatever it said.
+test('READER-3: a moved plugins root holds known_marketplaces.json and installed_plugins.json', () =>
+{
+    const VAR = 'CLAUDE_CODE_PLUGIN_CACHE_DIR';
+    const w = world();
+    const moved = path.join(TMP, `moved-${seq++}`);
+    fs.mkdirSync(moved, { recursive: true });
+    fs.writeFileSync(path.join(moved, 'known_marketplaces.json'), JSON.stringify(KNOWN({ autoUpdate: true })));
+    const s = au.autoUpdateState(opts(w, { [VAR]: moved }));
+    assert.deepStrictEqual([s.state, s.key], ['on', 'envoydev'], 'set: the moved root');
+    assert.match(s.where, new RegExp(moved.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    for (const v of [undefined, '', '  ']) assert.strictEqual(au.autoUpdateState(opts(w, v === undefined ? {} : { [VAR]: v })).state, 'not-asked', `${JSON.stringify(v)}: <config>/plugins, which holds nothing`);
+    // installed_plugins.json under the moved root names a local-folder marketplace (D10)
+    const local = { source: 'directory', path: '/some/folder' };
+    fs.writeFileSync(path.join(moved, 'known_marketplaces.json'), JSON.stringify({ mine: { source: local } }));
+    assert.strictEqual(au.autoUpdateState(opts(w, { [VAR]: moved })).state, 'not-asked', 'no record yet');
+    fs.writeFileSync(path.join(moved, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'alfred-code@mine': [{ scope: 'user' }] } }));
+    assert.deepStrictEqual([au.autoUpdateState(opts(w, { [VAR]: moved })).key], ['mine'], 'the record under the moved root names the marketplace');
+});

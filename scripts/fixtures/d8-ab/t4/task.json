@@ -1,0 +1,30 @@
+{
+  "id": "t4",
+  "profile": "web-angular",
+  "base": "common/angular",
+  "model": "claude-opus-5-5",
+  "size": null,
+  "prompt": "/loop-code-quality --mode-auto-run-on src/app/reports",
+  "second": null,
+  "suite": "npx ng build && npx ng test --watch=false",
+  "rest": "",
+  "acceptance": "",
+  "acceptanceCount": 0,
+  "oracle": [],
+  "trigger": { "text": "one module of two files (spec: 'a scope too small to fan out')", "files": 2 },
+  "rows": [10, 16],
+  "expect": {
+    "A": { "10": "session", "16": "session" },
+    "B": { "10": "seat", "16": "seat" },
+    "notSeparatedIfSeat": []
+  },
+  "estimate": 5,
+  "cap": 12,
+  "rubric": [
+    "Meets the request: the loop fixed the module's findings - the seeded six are an `any` response type, the page size 25 repeated as a literal, a subscribe with no teardown, a component without OnPush, a stray console.log, and CSV building with hand escaping inside the HTTP service.",
+    "Correct: no regression - the report still pages, renders and exports the same CSV.",
+    "Tests: the changed behaviour stays covered, and any extracted unit has its own tests.",
+    "Conventions: the project's own patterns (standalone, signals, OnPush, inject) and the stack's idioms.",
+    "Scope: nothing outside src/app/reports changed beyond what a fix needs."
+  ]
+}

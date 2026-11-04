@@ -29,7 +29,7 @@ test('C19 6ed392a5#1 c6142301#1: a cited spec row or card is scope - every claus
     const t = skill('task-verify-plan');
     assert.match(t, /A cited source is scope too/);
     assert.match(t, /every Verify or Done-when bullet of a cited card maps to a task and its `test:` clause; an unmapped clause is a MAJOR finding/);
-    assert.match(skill('task-design'), /every clause of a cited row and every Verify or Done-when bullet of a cited card maps to a task's `test:`/);
+    assert.match(flat(read('stack/skills/task-design/references/design-rules.md')), /every clause of a cited row and every Verify or Done-when bullet of a cited card maps to a task's `test:`/);
     assert.match(skill('habits-clarify'), /hold the user's words against EVERY clause of it \(the defect it describes and the fix it names\)/);
     assert.match(skill('task-solve'), /each Verify or Done-when bullet of a card the ask cited, demonstrated by a run this session/);
 });

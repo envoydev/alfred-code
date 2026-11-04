@@ -90,10 +90,38 @@ test('a re-ask after a void that printed the table passes unpasted', () => {
   assert.strictEqual(runPost([...UNPASTED(), thought(), call('a1', 'AskUserQuestion', ask), result('a1', line, true), thought()]).stdout, '');
 });
 
+// E-batch ws-6: the case returned early when nothing was printed, so it passed without asserting. Run once (2026-11-03): an
+// empty result still names the agents table (its total line is the proof), so the ask is void with the paste instruction.
 test('a table run with no output read back keeps the paste instruction and prints nothing', () => {
   const r = runPost([typed('/alfred-code:init'), table('agents'), result('t1', ''), thought()]);
-  if (!r.out) return;   // nothing to prove against is no void either
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /the agents table ran but its output is not in your message - your message held no text at all/);
+  assert.match(r.out.reason, /reply with text first: the step banner, the output byte-for-byte in a fenced block, then this same ask/);
   assert.doesNotMatch(r.out.reason, /the gate printed the table/);
+});
+
+// E-batch ws-1: an ask that errored or timed out decides nothing, so the walk-back goes on past it to the table.
+test('ws-1: an errored ask does not end the walk-back', () => {
+  const r = runPost([...UNPASTED(), call('e1', 'AskUserQuestion', ask), result('e1', 'No response after 300s - the user may be away', true)]);
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /agents table ran but its output is not in your message/);
+});
+// E-batch M5: the idle timeout closes an ask with no error flag - its text is the only sign (ruling S3) - so the paste
+// check walks past it too, as the next-step check already did.
+test('M5: an ask the idle timeout closed does not end the walk-back', () => {
+  const r = runPost([...UNPASTED(), call('e1', 'AskUserQuestion', ask), result('e1', 'No response after 300s - the user may be away from keyboard. Continue.', false)]);
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /agents table ran but its output is not in your message/);
+});
+
+// E-batch ws-2: the Bash next-step denial reads 'the agents table ran, but no answered question' - it named the table, so
+// three of them spent the void valve before any ask was voided. Only the asks' own voids count.
+test('ws-2: Bash denials naming the table do not spend the void valve', () => {
+  const next = (n) => [call(`n${n}`, 'Bash', { command: 'node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table skills --recs r.json' }),
+    result(`n${n}`, 'alfred-code layer-table gate: the agents ask never happened - the agents table ran, but no answered question followed it', true)];
+  const r = runPost([...UNPASTED(), ...next(1), ...next(2), ...next(3)]);
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /agents table ran but its output is not in your message/);
 });
 
 test('PostToolUse passes a pasted ask', () => {

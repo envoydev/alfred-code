@@ -937,10 +937,52 @@ test('renamed hooks: a hook line is re-spelled once, and the read-back reads the
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+// E-batch B-m6: a rename to a hook's PART (`memory-session` -> `preferences-session:host`) is an off-list spelling, never a hook
+// name - no selection line takes it and the shipped list does not gain the old name.
+test('B-m6: a part-qualified rename value is no selection line', () =>
+{
+    const manifest = loadManifest(path.join(__dirname, '..'));
+    assert.strictEqual(manifest.renamed.hooks['memory-session'], 'preferences-session:host', 'the manifest carries the part rename');
+    assert.deepStrictEqual(sel.renameLines(['hook memory-session'], { renamed: manifest.renamed }), ['hook memory-session']);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hook-part-rename-'));
+    try
+    {
+        const claudeDir = path.join(root, '.claude');
+        fs.mkdirSync(path.join(claudeDir, 'hooks'), { recursive: true });
+        fs.writeFileSync(path.join(claudeDir, 'hooks', 'memory-session.js'), '// v2.10.0 copy\n');
+        const back = sel.readBack({ claudeDir, settings: { env: { ALFRED_CODE_HOOKS_OFF: 'memory-session' } }, routes: { hooks: false }, manifest,
+            sourceDir: path.join(__dirname, '..'), stampHooks: ['memory-session', 'docs-session'], lastHooksRoute: 'copy', log: () => {} });
+        const hooks = back.lines.filter((l) => l.startsWith('hook '));
+        assert.ok(!hooks.some((l) => l.includes(':')), hooks.join(', '));
+        assert.ok(!hooks.includes('hook memory-session'), `a retired hook read as shipped: ${hooks.join(', ')}`);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 // F5 (the 2026-10-28 workspace run): one home for the always-on lock the installer and stack-select both read.
 test('lockedLines: the always rules and skills, nothing else', () =>
 {
     assert.deepStrictEqual(sel.lockedLines({ rules: ['a'], skills: ['b'], agents: ['c'] }), new Set(['rule a', 'skill b']));
     assert.strictEqual(sel.lockedLines(undefined).size, 0);
     assert.strictEqual(sel.lockedLines({ rules: 'a' }).size, 0);
+});
+
+// E-batch O4: a hand-written partial --selection on install was applied as given - its closure came only at the next
+// update. The install route closes it (closeLines, labelled 'selection'); the walk's own closed selection is unchanged.
+test('O4: a partial --selection on install is closed', () =>
+{
+    const graph = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-graph.json'), 'utf8'));
+    const { computeClosure, emitSelectionFile } = require('./stack-select.js');
+    const logs = [];
+    const partial = ['agent angular-test-resolver', 'hook none'];
+    const closed = sel.closeSelection(partial, { graph, log: (m) => logs.push(m) });
+    for (const want of ['skill habits-done-gate', 'skill habits-root-cause']) assert.ok(closed.includes(want), want);
+    assert.ok(logs.some((l) => /^selection: required: skill habits-done-gate - /.test(l)), logs.join('\n'));
+    assert.ok(!logs.some((l) => /installed-only/.test(l)), 'the install route says selection, not installed-only');
+    assert.deepStrictEqual(sel.closeSelection(closed, { graph, log: () => {} }), closed, 'a re-run adds nothing');
+    const walk = emitSelectionFile(computeClosure(graph, { skills: ['review-code'], agents: ['angular-test-resolver'], rules: ['alfred-interaction'], mcps: [], plugins: [], hooks: [] }), { hooksAnswered: true }).split('\n');
+    const quiet = [];
+    assert.deepStrictEqual(sel.closeSelection(walk, { graph, log: (m) => quiet.push(m) }), walk, "the walk's own selection is byte-equal");
+    assert.deepStrictEqual(quiet, []);
+    assert.deepStrictEqual(sel.closeSelection(partial, { graph: null, log: () => {} }), partial, 'no graph: applied as given');
 });

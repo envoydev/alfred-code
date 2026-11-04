@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "skill": "task-solve",
+  "sources": ["stack/skills/task-solve/SKILL.md"],
+  "extracted": "2026-11-04",
+  "note": "U34 of the 2026-11-03 usage audit: /task-solve typed with no request and no plan to resume had no rule for its first reply. The fixture is the task-solve project with no plan file; the plain level types the bare command, the adverse one the bare command with the auto-run flag, which carries no request either (the explicit level, the off flag alone, is not run by the 2026-11-04 round: a request naming the step would be a request). What is graded is the reply - an ask for the task, as the AskUserQuestion call or in assistant text, a question or a request that opens a sentence ('Describe it ...', 'I need the task'; the 2026-11-04 smoke's after arm asked with no question mark) - and that nothing runs before it is answered: no write, no seat, no skill but the clarify method. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 8,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
+      "LSP"],
+    "selection": {
+      "skills": ["task-solve", "task-design", "task-verify-plan", "task-implement", "task-verify-code", "javascript",
+        "habits-clarify"],
+      "rules": ["javascript-conventions"]
+    }
+  },
+  "prompts": {
+    "explicit": "/task-solve --mode-auto-run-off",
+    "plain": "/task-solve",
+    "adverse": "/task-solve --mode-auto-run-on"
+  },
+  "matchers": {
+    "task_asked": { "any": [
+      { "tool": "AskUserQuestion", "text_match": ["\\?|(?:^|[.!:]\\s+)(?:Describe|Tell me|Send|Give me|Paste|Share|Name)\\b|\\bI need (?:the|a|your) (?:task|request)\\b", "\\b(?:[Tt][Aa][Ss][Kk]|[Ff][Ee][Aa][Tt][Uu][Rr][Ee]|[Bb][Uu][Gg]|[Cc][Hh][Aa][Nn][Gg][Ee])\\b"] },
+      { "tool": "@text", "text_match": ["\\?|(?:^|[.!:]\\s+)(?:Describe|Tell me|Send|Give me|Paste|Share|Name)\\b|\\bI need (?:the|a|your) (?:task|request)\\b", "\\b(?:[Tt][Aa][Ss][Kk]|[Ff][Ee][Aa][Tt][Uu][Rr][Ee]|[Bb][Uu][Gg]|[Cc][Hh][Aa][Nn][Gg][Ee])\\b"] }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "asks-for-task",
+      "session": false,
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "Invoked with no request and no plan to resume, the one reply is an ask for the task",
+      "graders": [
+        { "type": "tool_used", "name": "the reply asks for the task", "ref": "task_asked" }
+      ]
+    },
+    {
+      "id": "nothing-runs",
+      "session": false,
+      "from": "stack/skills/task-solve/SKILL.md",
+      "quote": "nothing runs before its answer",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no write, no seat and no skill but the clarify method before the answer",
+          "any": [
+            { "tool": "Write" },
+            { "tool": "Edit" },
+            { "tool": "MultiEdit" },
+            { "tool": "Agent" },
+            { "tool": "Task" },
+            { "tool": "Skill", "field": "skill", "text_not_match": "^([^:]*:)?habits-clarify$" }
+          ],
+          "min": 0,
+          "max": 0
+        }
+      ]
+    }
+  ]
+}

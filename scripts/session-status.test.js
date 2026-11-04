@@ -601,9 +601,14 @@ test('removeStatus takes back the status files and the exclude lines this projec
     const exclude = path.join(top, '.git', 'info', 'exclude');
     // the line the user typed for root is there before any session: nothing is added for root, so it stays theirs
     fs.writeFileSync(exclude, '# git ls-files --others --exclude-from=.git/info/exclude\n*.log\n/app/.claude/session-inspector/status/\n');
-    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env } }), 'written', base);
+    // uptime pinned: the exclude check has an 8 s deadline on the PROCESS's age, and on a slow runner this test starts past
+    // it, so every check read 'late' (the Windows VM gate on 547ede2c)
+    const fast = () => 0;
+    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env, uptime: fast } }), 'written', base);
     // a write outside SessionStart that made the folder added sub's pair itself
-    assert.deepStrictEqual(S().ensureExcluded([root, sub, other], { env: {} }), ['present', 'present', 'added']);
+    assert.deepStrictEqual(S().ensureExcluded([root, sub, other], { env: {}, uptime: fast }), ['present', 'present', 'added']);
+    // another project's pair is one in use: its status folder is there (E-batch SYS-03 sweeps a pair whose folder is gone)
+    fs.mkdirSync(path.join(other, '.claude', 'session-inspector', 'status'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
     fs.mkdirSync(path.join(root, '.claude', 'session-inspector', 'plans'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude', 'session-inspector', 'status', 'notes.txt'), 'mine\n');
@@ -640,4 +645,78 @@ test('removeStatus takes back the status files and the exclude lines this projec
     link(outside, path.join(linked, '.claude', 'session-inspector', 'status'));
     assert.strictEqual(S().removeStatus(linked, { env: { CLAUDE_PROJECT_DIR: linked } }).files, 0);
     assert.ok(fs.existsSync(path.join(outside, 'aaaa.json')), 'nothing removed through the link');
+});
+
+
+// E-batch SYS-03 (the stated ceiling it closes: a pair for a base the list dropped stayed): uninstall also sweeps every
+// stack pair - the comment with an anchored line right under it - whose status folder exists in none of the repository's
+// work trees; a pair still in use anywhere, a lone line of the user's and the root-form pair are left as they were.
+function sweepRepo()
+{
+    const { execFileSync } = require('node:child_process');
+    const gitEnv = { ...scrubbed(process.env), HOME, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(ACCOUNT, 'gitconfig') };
+    fs.writeFileSync(gitEnv.GIT_CONFIG_GLOBAL, '');
+    const top = fs.realpathSync(project());
+    const git = (...a) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...a], { cwd: top, env: gitEnv, stdio: 'pipe' });
+    git('init', '-q');
+    fs.writeFileSync(path.join(top, 'seed.txt'), 'seed\n');
+    git('add', 'seed.txt'); git('commit', '-qm', 'seed');
+    const wt = path.join(fs.realpathSync(project()), 'wt');
+    git('worktree', 'add', '-q', '-b', 'side', wt);
+    const exclude = path.join(top, '.git', 'info', 'exclude');
+    const pair = (rel) => `${S().EXCLUDE_COMMENT}\n/${rel}/.claude/session-inspector/status/\n`;
+    const folder = (at, rel) => fs.mkdirSync(path.join(at, rel, '.claude', 'session-inspector', 'status'), { recursive: true });
+    return { top, wt, exclude, pair, folder, git };
+}
+test('SYS-03: an unlisted pair whose folder is gone in every worktree is removed', () =>
+{
+    const { top, wt, exclude, pair, folder } = sweepRepo();
+    const user = '# my own lines\n*.log\nbuild/\n';
+    folder(wt, 'b');
+    folder(top, 'c');
+    fs.writeFileSync(exclude, user + pair('a') + pair('b') + pair('c') + '# trailing note of mine\n');
+    // a was listed once and dropped: the list now names none of the three
+    const list = path.join(top, '.alfred', 'state', 'sessions', 'status-folders.json');
+    fs.mkdirSync(path.dirname(list), { recursive: true });
+    fs.writeFileSync(list, JSON.stringify([]));
+    const got = S().removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top } });
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), user + pair('b') + pair('c') + '# trailing note of mine\n', 'a\'s pair goes whole, b and c stay, every user line byte-equal');
+    assert.strictEqual(got.lines, 1);
+    // a re-run changes nothing
+    assert.strictEqual(S().removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top } }).lines, 0);
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), user + pair('b') + pair('c') + '# trailing note of mine\n');
+    // CRLF rows keep their endings
+    fs.writeFileSync(exclude, (user + pair('a') + pair('c')).replace(/\n/g, '\r\n'));
+    S().removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top } });
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), (user + pair('c')).replace(/\n/g, '\r\n'));
+});
+test('SYS-03: a lone anchored line with no comment above it is not the stack\'s', () =>
+{
+    const { top, exclude, pair } = sweepRepo();
+    const text = '/d/.claude/session-inspector/status/\n' + '# unrelated comment\n/e/.claude/session-inspector/status/\n' + pair('f').split('\n')[0] + '\n\n/g/.claude/session-inspector/status/\n';
+    fs.writeFileSync(exclude, text);
+    assert.strictEqual(S().removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top } }).lines, 0);
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), text, 'a lone line, one under another comment, and a comment with a blank row under it all stay');
+});
+test('SYS-03: the root pair is removed only as today', () =>
+{
+    const { top, exclude, pair } = sweepRepo();
+    const app = path.join(top, 'app');
+    fs.mkdirSync(app, { recursive: true });
+    const rootForm = `${S().EXCLUDE_COMMENT}\n/.claude/session-inspector/status/\n`;
+    // uninstalling app: its own pair goes through the listed path, the top's root-form pair is never swept
+    fs.writeFileSync(exclude, rootForm + pair('app'));
+    assert.strictEqual(S().removeStatus(app, { env: { CLAUDE_PROJECT_DIR: app } }).lines, 1);
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), rootForm);
+    // uninstalling the top: its own root-form pair goes, as it always did
+    assert.strictEqual(S().removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top } }).lines, 1);
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), '');
+});
+test('SYS-03: no worktree listing, no sweep', () =>
+{
+    const { top, exclude, pair } = sweepRepo();
+    fs.writeFileSync(exclude, pair('a'));
+    const fail = (cmd, argv, opts) => { if (argv.includes('worktree')) throw new Error('timed out'); return require('node:child_process').execFileSync(cmd, argv, opts); };
+    assert.strictEqual(S().removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top }, exec: fail }).lines, 0);
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), pair('a'), 'today\'s behaviour: the unlisted pair stays');
 });

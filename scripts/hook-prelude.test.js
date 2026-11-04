@@ -30,7 +30,7 @@ const wiring = (file, { quoted = true } = {}) =>
     const hooks = {};
     for (const [event, blocks] of Object.entries(coreEntry().hooks))
         for (const block of blocks)
-            if (block.hooks.some((h) => String(h.command || '').includes(`/${file}"`)))   // the stop judge's prompt hook has no command (HK-22)
+            if (block.hooks.some((h) => h.command.includes(`/${file}"`)))
                 (hooks[event] = hooks[event] || []).push({ ...(block.matcher ? { matcher: block.matcher } : {}), hooks: [{ type: 'command', command, timeout: 10 }] });
     return JSON.stringify({ hooks });
 };
@@ -229,7 +229,7 @@ function scopes({ project } = {})
 const dispatcher = require('../stack/hooks/shell-guards.js');
 function coreCommand(file)
 {
-    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).filter((h) => h.type === 'command').map((h) => h.command);   // the stop judge launches nothing (HK-22)
+    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).map((h) => h.command);
     const own = all.find((c) => c.includes(`/stack/hooks/${file}`));
     if (own) return own;
     // A shell guard with no launch of its own runs inside the dispatcher: fire it there, alone.
@@ -967,6 +967,22 @@ test('HOOKS_OFF: an old hook name in the csv still switches the renamed hook off
   assert.strictEqual(prelude.hookDisabled('guard-stop-contract.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }), false, 'no other hook');
 });
 
+// E-batch B-m6: memory-session.js's host traps live on as preferences-session's `host` part, and a stored `memory-session` turns
+// that part off before any update re-spells it. A part never stands the whole hook down - here or in the config guard, whose
+// protective set holds whole-hook names only.
+test('B-m6: a stored memory-session turns the host part off before an update', () => {
+  const prelude = require('../stack/hooks/hook-prelude.js');
+  const env = { ALFRED_CODE_HOOKS_OFF: 'memory-session' };
+  assert.strictEqual(prelude.HOOK_RENAMED['memory-session'], 'preferences-session:host');
+  assert.strictEqual(prelude.partOff('preferences-session', 'host', env), true, 'the old name turns the part off');
+  assert.strictEqual(prelude.partOff('preferences-session', 'host', { ALFRED_CODE_HOOKS_OFF: 'Memory-Session.js' }), true, 'with .js, any case');
+  assert.strictEqual(prelude.partOff('preferences-session', 'tools', env), false, 'no other part');
+  assert.strictEqual(prelude.hookDisabled('preferences-session', env), false, 'never the whole hook');
+  assert.strictEqual(prelude.hookDisabled('memory-session', env), false, 'nor a hook named by the old spelling');
+  const guard = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'guard-config-protection.js'), 'utf8');
+  assert.match(guard, /\.filter\(\(n\) => PROTECTIVE_GUARDS\.includes\(n\)\)/, 'the config guard keeps whole-hook names only');
+});
+
 // The user's 'Fix ALL left gaps' (2026-10-22): a seat covers what its brief names, a review counts at its result line,
 // and the snapshot matches byte for byte only.
 test('briefTargets: a whole-change git diff, else the paths a brief names that exist, else nothing', () =>
@@ -1416,6 +1432,117 @@ test('HK-02 legitimate twin: the copy route\'s own wiring and files still stand 
     finally { p.done(); }
 });
 
+// E1-3: a twin is the one wired when the session began. A copied hook file and its entry written mid-session (a
+// `--with-sensitive` write, a stray edit) used to stand the plugin guards down on the very next call; Claude Code
+// loaded its hooks at the start, so neither ran. The snapshot `twins-<session>.json` is that start's wiring.
+const twinFile = (p, id) => path.join(p.repo, '.alfred', 'state', 'sessions', `twins-${id}.json`);
+const shellTwin = (p) => {
+    fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(copyRouteSettings(['shell-guards.js::Bash|PowerShell|Monitor'])));
+    fs.writeFileSync(path.join(p.repo, '.claude', 'hooks', 'shell-guards.js'), '// copied\n');
+};
+
+test('E1-3: a twin entry written after the session began is not yielded to', () => {
+    const { writeTwinSnapshot } = require(PRELUDE);
+    const p = twinProject();
+    try
+    {
+        assert.strictEqual(writeTwinSnapshot(p.repo, 'S', p.env), true, 'the SessionStart write, no twin wired yet');
+        shellTwin(p);
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env, { session: 'S' }), false, 'wired after S began: not yielded to');
+        assert.strictEqual(writeTwinSnapshot(p.repo, 'S2', p.env), true);
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env, { session: 'S2' }), true, 'S2 began with the twin wired');
+        assert.strictEqual(fs.existsSync(twinFile(p, 'S4')), false);
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env, { session: 'S4' }), true, 'no SessionStart write: the first call takes the wiring as it is');
+        assert.ok(fs.existsSync(twinFile(p, 'S4')), 'the first-call fallback writes the snapshot');
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env), true, 'a call naming no session yields as before');
+        fs.writeFileSync(path.join(p.repo, 'blocked'), 'a file where the data root would be');
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', { ...p.env, ALFRED_CODE_DATA_PATH: 'blocked' }, { session: 'S3' }), true,
+            'an unwritable data root keeps today\'s yield');
+        const pre = require(PRELUDE);   // one module instance: an earlier test re-requires the prelude
+        pre.useSession('S');
+        try { assert.strictEqual(pre.yieldToCopiedTwin('shell-guards', p.env), false, 'the dispatcher\'s session narrows a bare call'); }
+        finally { pre.useSession(undefined); }
+        assert.strictEqual(pre.yieldToCopiedTwin('shell-guards', p.env), true, 'the session cleared');
+        fs.writeFileSync(twinFile(p, 'S5'), '{not json');
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env, { session: 'S5' }), true, 'an unreadable snapshot keeps today\'s yield');
+        assert.strictEqual(yieldToCopiedTwin('shell-guards', p.env, { session: '../../x' }), true, 'the first-call fallback');
+        assert.ok(fs.existsSync(twinFile(p, '.._.._x')), 'an id with separators is a file name, never a path');
+        assert.strictEqual(fs.existsSync(path.join(p.repo, '.alfred', 'state', 'x.json')), false);
+    }
+    finally { p.done(); }
+});
+
+test('E1-3: SessionStart writes the snapshot - startup, resume, clear and fork; never compact', () => {
+    const p = twinProject();
+    try
+    {
+        shellTwin(p);
+        const start = (id, source) => dispatch(p, 'guard-fresh-session-start.js', { session_id: id, hook_event_name: 'SessionStart', source });
+        for (const [id, source] of [['A', 'startup'], ['B', 'resume'], ['C', 'clear'], ['F', 'fork']])
+        {
+            const r = start(id, source);
+            assert.strictEqual(r.status, 0, r.stderr);
+            const keys = JSON.parse(fs.readFileSync(twinFile(p, id), 'utf8'));
+            assert.ok(Array.isArray(keys) && keys.some((k) => k.startsWith('PreToolUse|Bash|PowerShell|Monitor|') && k.includes('shell-guards.js')), `${source}: ${JSON.stringify(keys)}`);
+        }
+        const before = fs.readFileSync(twinFile(p, 'A'), 'utf8');
+        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), '{}');
+        assert.strictEqual(start('A', 'compact').status, 0);
+        assert.strictEqual(fs.readFileSync(twinFile(p, 'A'), 'utf8'), before, 'a compaction is the same session and wiring: the file stays');
+        assert.strictEqual(start('A', 'startup').status, 0);
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(twinFile(p, 'A'), 'utf8')), [], 'a new start replaces it');
+        const seat = dispatch(p, 'guard-fresh-session-start.js', { session_id: 'G', hook_event_name: 'SessionStart', source: 'startup', agent_id: 'a1' });
+        assert.strictEqual(seat.status, 0);
+        assert.strictEqual(fs.existsSync(twinFile(p, 'G')), false, 'a seat\'s SessionStart is not the main session\'s');
+    }
+    finally { p.done(); }
+});
+
+test('E1-3: the shell dispatcher passes its session - a mid-session twin leaves the protective guards running', () => {
+    const p = twinProject();
+    try
+    {
+        assert.strictEqual(dispatch(p, 'guard-fresh-session-start.js', { session_id: 'S', hook_event_name: 'SessionStart', source: 'startup' }).status, 0);
+        shellTwin(p);
+        const r = dispatch(p, 'shell-guards.js', { session_id: 'S', ...bash('rm -rf ~') });
+        assert.strictEqual(r.status, 2, `the plugin dispatcher still judges: ${r.stderr}`);
+        const fresh = dispatch(p, 'shell-guards.js', { session_id: 'S9', ...bash('rm -rf ~') });
+        assert.strictEqual(fresh.status, 0, 'a session that began with the twin wired yields to it, as before');
+        assert.strictEqual(fresh.stdout + fresh.stderr, '');
+    }
+    finally { p.done(); }
+});
+
+test('E1-3: an in-process guard is narrowed by the dispatcher\'s session', () => {
+    const p = twinProject();
+    try
+    {
+        assert.strictEqual(dispatch(p, 'guard-fresh-session-start.js', { session_id: 'S', hook_event_name: 'SessionStart', source: 'startup' }).status, 0);
+        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(copyRouteSettings(['guard-catastrophic-rm.js::Bash|PowerShell|Monitor'])));
+        fs.writeFileSync(path.join(p.repo, '.claude', 'hooks', 'guard-catastrophic-rm.js'), '// copied\n');
+        const RM = /recursive rm of a catastrophic/;
+        const r = dispatch(p, 'shell-guards.js', { session_id: 'S', ...bash('rm -rf ~') });
+        assert.strictEqual(r.status, 2, r.stderr);
+        assert.match(r.stderr, RM, 'the plugin\'s rm guard still runs for S');
+        const none = dispatch(p, 'shell-guards.js', { session_id: undefined, ...bash('rm -rf ~') });
+        assert.doesNotMatch(none.stderr, RM, 'no session: the rm guard yields to its twin, as before (pinned)');
+    }
+    finally { p.done(); }
+});
+
+test('E1-3: the guards share the dispatcher\'s prelude - runGuard requires from the one module cache', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-share-'));
+    try
+    {
+        const fixture = path.join(dir, 'guard-share.js');
+        fs.writeFileSync(fixture, `process.stdout.write(String(require(${JSON.stringify(PRELUDE)}) === global.__E13_PRELUDE)); process.exit(0);\n`);
+        global.__E13_PRELUDE = require(PRELUDE);
+        const r = require(path.join(WORKTREE_HOOKS, 'shell-guards.js')).runGuard(fixture, Buffer.from('{}'));
+        assert.strictEqual(r.stdout, 'true', JSON.stringify(r));
+    }
+    finally { delete global.__E13_PRELUDE; fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('HK-02: the file dispatcher judges coverage per call - a twin wired on Read alone yields the Read, never the Grep', () => {
     const p = twinProject({ settings: onEvent('PreToolUse', 'Read', copied('file-guards.js')), files: ['file-guards.js'] });
     try
@@ -1457,6 +1584,31 @@ test('HK-02: standDown carries the narrowed twin rule, and a copied hook still n
     {
         assert.strictEqual(standDown('guard-secret-value', p.env, ['node', 'x.js']), false, 'a protective guard never stands down for a twin that does not cover it');
         assert.strictEqual(yieldToCopiedTwin('guard-secret-value', { CLAUDE_PROJECT_DIR: p.repo }), false, 'no plugin root: this IS the copy');
+    }
+    finally { p.done(); }
+});
+
+// E-batch final review M1: guard-desktop-exec and guard-secret-value's own routes run as their own process and stood down
+// before they read the payload - with no session, a twin wired mid-session still stood these two protective guards down.
+test('final review M1: the standalone protective guards pass their session - a mid-session twin leaves them running', () => {
+    const rows = (file) => require('../meta/stack-manifest.json').hooks.filter((h) => h.file === file && /^(?:@|\^mcp__)/.test(h.matcher)).map((h) => `${file}::${h.matcher}`);
+    const p = twinProject();
+    try
+    {
+        assert.strictEqual(dispatch(p, 'guard-fresh-session-start.js', { session_id: 'S', hook_event_name: 'SessionStart', source: 'startup' }).status, 0);
+        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(copyRouteSettings([...rows('guard-desktop-exec.js'), ...rows('guard-secret-value.js')])));
+        for (const f of ['guard-desktop-exec.js', 'guard-secret-value.js']) fs.writeFileSync(path.join(p.repo, '.claude', 'hooks', f), '// copied\n');
+        fs.writeFileSync(path.join(p.repo, '.env'), DOTENV);
+        const shell = { tool_name: `mcp__${'win'}__PowerShell`, tool_input: { command: 'Remove-Item -Recurse C:\\x' } };
+        const read = { tool_name: `mcp__${'fsx'}__read_text_file`, tool_input: { path: path.join(p.repo, '.env') } };
+        for (const [file, call] of [['guard-desktop-exec.js', shell], ['guard-secret-value.js', read]])
+        {
+            const r = dispatch(p, file, { session_id: 'S', ...call });
+            assert.strictEqual(r.status, 2, `${file}: the plugin copy still judges for S: ${r.stdout}${r.stderr}`);
+            const fresh = dispatch(p, file, { session_id: 'S9', ...call });
+            assert.strictEqual(fresh.status, 0, `${file}: a session that began with the twin wired yields to it`);
+            assert.strictEqual(fresh.stdout + fresh.stderr, '', file);
+        }
     }
     finally { p.done(); }
 });

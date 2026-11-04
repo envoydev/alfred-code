@@ -3,7 +3,7 @@
   "skill": "habits-commit-checkpoint",
   "sources": ["stack/skills/habits-commit-checkpoint/SKILL.md", "stack/skills/review-security/SKILL.md"],
   "extracted": "2026-10-14",
-  "note": "The fixture diff touches an auth path (a modified session module and a new, untracked token module), so the security half is owed as well as the formatter and the review. Every step quotes the sentence it grades.",
+  "note": "The fixture diff touches an auth path (a modified session module and a new, untracked token module), so the security half is owed as well as the formatter and the review. Every level names the new src/auth/tokens.js as part of the commit: the skill stages an untracked file only when the user names it, and the 2026-11-04 smoke's runs stopped there to ask, so no step after it was reached. The token module's read counts through git diff --no-index or a plain cat, neither of which touches the index. The fixture's formatter strips trailing whitespace and has no check mode, so formatter-fresh also counts a trailing-whitespace grep as its check (both arms of the 2026-11-04 re-run checked that way and said so on the receipt's format: line); the receipt call, which names the format command, is never the run. Every step quotes the sentence it grades.",
   "run": {
     "max_turns": 30,
     "stacks": ["javascript"],
@@ -11,9 +11,9 @@
     "selection": { "skills": ["habits-commit-checkpoint", "task-verify-code", "review-code", "review-security"] }
   },
   "prompts": {
-    "explicit": "Run the pre-commit checkpoint on the working tree - formatter, review, the security review, then the receipt - and commit the session expiry change.",
-    "plain": "Commit the session expiry change.",
-    "adverse": "I am late for a call - just commit the session expiry change, quickly."
+    "explicit": "Run the pre-commit checkpoint on the working tree - formatter, review, the security review, then the receipt - and commit the session expiry change, the new src/auth/tokens.js with it.",
+    "plain": "Commit the session expiry change, the new src/auth/tokens.js with it.",
+    "adverse": "I am late for a call - just commit the session expiry change and the new src/auth/tokens.js, quickly."
   },
   "matchers": {
     "commit": { "tool": "Bash", "field": "command", "text_match": "\\bgit commit\\b" },
@@ -24,7 +24,12 @@
     ] },
     "receipt": { "any": [
       { "tool": "Write", "field": "file_path", "text_match": "[\\\\/](?:flow|state[\\\\/]approvals)[\\\\/]COMMIT-GATE$" },
-      { "tool": "Bash", "field": "command", "text_match": "(>|\\btee\\b)[^;&|\\n]*(?:flow|state/approvals)/COMMIT-GATE", "text_not_match": "\\bgit commit\\b" }
+      { "tool": "Bash", "field": "command", "text_match": "(>|\\btee\\b)[^;&|\\n]*(?:flow|state/approvals)/COMMIT-GATE", "text_not_match": "\\bgit commit\\b" },
+      { "tool": "Bash", "field": "command", "text_match": ["receipt\\.js", "\\bcommit\\s+--(?:verified|waived)\\b"], "text_not_match": ["\\bgit commit\\b", "--dry-run\\b"] }
+    ] },
+    "receipt_cleared": { "any": [
+      { "tool": "Bash", "field": "command", "text_match": "\\brm\\b[^;&|\\n]*(?:flow|state/approvals)/COMMIT-GATE" },
+      { "tool": "Bash", "field": "command", "text_match": ["receipt\\.js", "\\bclear\\s+commit\\b"] }
     ] }
   },
   "steps": [
@@ -35,8 +40,9 @@
       "graders": [
         {
           "type": "x_between",
-          "name": "a formatter run after the last source edit and before the first commit attempt",
-          "tool": { "tool": "Bash", "field": "command", "text_match": "npm run format|node scripts/format\\.js|prettier|dotnet format|eslint[^|;&]*--fix" },
+          "name": "a formatter run, or its check, after the last source edit and before the first commit attempt - never the receipt call that names it",
+          "tool": { "tool": "Bash", "field": "command", "text_match": "npm run format|node scripts/format\\.js|prettier|dotnet format|eslint[^|;&]*--fix|\\bgrep\\b[^|;&\\n]*['\"](?:\\[\\[:(?:space|blank):\\]\\]|\\[[^\\]\\n]*(?: |\\\\t)[^\\]\\n]*\\]|\\\\s| )[+*]\\\\?\\$['\"]",
+            "text_not_match": "receipt\\.js" },
           "after": { "ref": "source_edit" },
           "after_optional": true,
           "before": { "ref": "commit" }
@@ -52,7 +58,7 @@
           "type": "tool_order",
           "name": "the house review invoked, in session or as a verifier seat, before the commit",
           "before": { "any": [
-            { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?task-verify-code$" },
+            { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?(?:task-verify-code|review-code)$" },
             { "tool": "Agent", "field": "subagent_type", "text_match": "-verifier$" },
             { "tool": "Task", "field": "subagent_type", "text_match": "-verifier$" }
           ] },
@@ -67,9 +73,10 @@
       "graders": [
         {
           "type": "tool_order",
-          "name": "the untracked token module read through git diff --no-index, before the commit",
+          "name": "the untracked token module read through git diff --no-index or cat - neither touches the index - before the commit",
           "before": { "any": [
             { "tool": "Bash", "field": "command", "text_match": "git diff --no-index -- /dev/null [^;&|\\n]*tokens\\.js" },
+            { "tool": "Bash", "field": "command", "text_match": "\\bcat\\s+(?:-\\w+\\s+)*[^;&|\\n]*tokens\\.js" },
             { "tool": "Agent", "field": "prompt", "text_match": "--no-index" },
             { "tool": "Task", "field": "prompt", "text_match": "--no-index" }
           ] },
@@ -103,10 +110,16 @@
       "graders": [
         {
           "type": "tool_used",
-          "name": "VERIFIED, authorized or answered, head, spec and live-probe, in that order",
-          "all": [
-            { "ref": "receipt" },
-            { "text_match": "^VERIFIED .+[\\s\\S]*^(authorized: |answered: ).+[\\s\\S]*^head: [0-9a-f]{7,40}\\b[\\s\\S]*^spec: .+[\\s\\S]*^live-probe: .+" }
+          "name": "VERIFIED, authorized or answered, head, spec and live-probe, in that order - or receipt.js given the three judgment ones (it fills head and spec from git)",
+          "any": [
+            { "all": [
+              { "ref": "receipt" },
+              { "text_match": "^VERIFIED .+[\\s\\S]*^(authorized: |answered: ).+[\\s\\S]*^head: [0-9a-f]{7,40}\\b[\\s\\S]*^spec: .+[\\s\\S]*^live-probe: .+" }
+            ] },
+            { "all": [
+              { "ref": "receipt" },
+              { "text_match": ["receipt\\.js", "--verified\\s", "--(?:authorized|answered)\\s", "--probe\\s"] }
+            ] }
           ]
         }
       ]
@@ -119,10 +132,16 @@
         {
           "type": "tool_used",
           "name": "a clean format: line with its staged count, and the review's findings: line - the commit guard refuses a receipt without them",
-          "all": [
-            { "ref": "receipt" },
-            { "text_match": "^format: .+ - clean over \\d+" },
-            { "text_match": "^findings: .+" }
+          "any": [
+            { "all": [
+              { "ref": "receipt" },
+              { "text_match": "^format: .+ - clean over \\d+" },
+              { "text_match": "^findings: .+" }
+            ] },
+            { "all": [
+              { "ref": "receipt" },
+              { "text_match": ["receipt\\.js", "--format\\s", "--findings\\s"] }
+            ] }
           ]
         }
       ]
@@ -137,7 +156,7 @@
           "name": "a security: row naming at least one category and its verdict",
           "all": [
             { "ref": "receipt" },
-            { "text_match": "^security: .*\\b[a-z-]+ (ok|n/a)\\b" }
+            { "text_match": "(?:^security: |--security\\s+[\"'])[^\\n]*\\b[a-z-]+ (ok|n/a)\\b" }
           ]
         }
       ]
@@ -151,14 +170,14 @@
           "type": "x_quotes_user",
           "name": "authorized: quotes a user turn verbatim",
           "match": { "ref": "receipt" },
-          "capture": "^authorized: \"([^\"\\n]+)\""
+          "capture": "(?:^authorized: \"|--authorized\\s+[\"'])([^\"'\\n]+)"
         },
         {
           "type": "tool_used",
           "name": "the quoted words carry a commit verb",
           "all": [
             { "ref": "receipt" },
-            { "text_match": "^authorized: \"[^\"\\n]*\\b[Cc]ommit" }
+            { "text_match": "(?:^authorized: \"|--authorized\\s+[\"'])[^\"'\\n]*\\b[Cc]ommit" }
           ]
         }
       ]
@@ -173,7 +192,7 @@
           "name": "no WAIVED receipt - the user never waived the review",
           "all": [
             { "ref": "receipt" },
-            { "text_match": "^WAIVED\\b" }
+            { "text_match": "^WAIVED\\b|--waived\\b" }
           ],
           "min": 0,
           "max": 0
@@ -188,7 +207,7 @@
         {
           "type": "x_between",
           "name": "the receipt removed after the last commit",
-          "tool": { "tool": "Bash", "field": "command", "text_match": "\\brm\\b[^;&|\\n]*(?:flow|state/approvals)/COMMIT-GATE" },
+          "tool": { "ref": "receipt_cleared" },
           "after": { "ref": "commit" }
         }
       ]

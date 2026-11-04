@@ -514,3 +514,107 @@ test('the 2.10.1 lift says nothing where custom memory writes the switch-off str
         }
     }
 });
+
+// E-batch mcp-A6: the first update past the retirement could not read the settings file, and the stamp moved past 2.10.1
+// anyway, so the old switch-off stayed for good. The stamp now carries `memory-lift: pending <file>` until a run reads it.
+test('A6: an unreadable settings file on the first update is lifted on the next', POSIX_ONLY, () =>
+{
+    const garbage = '{ "autoMemoryEnabled": false, "mine": 1,, }\n';
+    for (const scope of ['project', 'local'])
+    {
+        const own = scope === 'local' ? 'settings.local.json' : 'settings.json';
+        const { outs, steps } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
+            args: [['--scope', scope], ...Array(3).fill(['--installed-only', '--scope', scope])],
+            each: (repo, i) =>
+            {
+                const file = path.join(repo, '.claude', own);
+                if (i === 0) { olderStamp(repo); fs.writeFileSync(file, garbage); }
+                const read = { stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'), raw: fs.readFileSync(file, 'utf8') };
+                if (i === 1) putJson(file, { autoMemoryEnabled: false, mine: 1 });
+                // After the lift, the user switches it off again: theirs, and the next run keeps it.
+                if (i === 2) editSettings(repo, own, (d) => { d.autoMemoryEnabled = false; });
+                return read;
+            },
+        });
+        const pending = new RegExp(`^memory-lift: pending ${own.replace(/\./g, '\\.')}$`, 'm');
+        assert.strictEqual(steps[1].raw, garbage, `${scope}: the unreadable file was written\n${outs[1]}`);
+        assert.match(outs[1], /autoMemoryEnabled was not checked there/, outs[1]);
+        assert.match(steps[1].stamp, pending, `${scope}: no pending line\n${steps[1].stamp}`);
+        assert.doesNotMatch(steps[1].stamp, /^version: 2\.10\.0$/m, 'the stamp moved past the retirement');
+        assert.strictEqual(JSON.parse(steps[2].raw).autoMemoryEnabled, undefined, `${scope}: the retry left the switch-off\n${outs[2]}`);
+        assert.strictEqual(JSON.parse(steps[2].raw).mine, 1, `${scope}: another key went with it`);
+        assert.match(outs[2], new RegExp(`${own.replace(/\./g, '\\.')}: autoMemoryEnabled: false removed - `), outs[2]);
+        assert.doesNotMatch(steps[2].stamp, /^memory-lift:/m, `${scope}: the pending line stayed\n${steps[2].stamp}`);
+        assert.strictEqual(JSON.parse(steps[3].raw).autoMemoryEnabled, false, `${scope}: the user's own switch-off was taken\n${outs[3]}`);
+        assert.doesNotMatch(outs[3], /autoMemoryEnabled/, outs[3]);
+        assert.doesNotMatch(steps[3].stamp, /^memory-lift:/m);
+    }
+});
+
+test('A6: the stamp writes, reads and drops the memory-lift line', () =>
+{
+    const stamp = require('./install/stamp.js');
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'memory-lift-'));
+    try
+    {
+        const file = path.join(dir, 'alfred-code.stamp');
+        for (const [text, want] of [['memory-lift: pending settings.json\n', 'settings.json'], ['memory-lift: pending settings.local.json\n', 'settings.local.json'],
+            ['memory-lift: pending ../x.json\n', ''], ['memory-lift: done\n', ''], ['version: 3.0.0\n', '']])
+        {
+            fs.writeFileSync(file, text);
+            assert.strictEqual(stamp.readMemoryLift(file), want, text);
+        }
+        assert.strictEqual(stamp.readMemoryLift(path.join(dir, 'none')), '');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// E-batch mcp-A7c: the browser servers left in 2.10.1, and nothing outside the installer reads the list.
+test('A7c: BROWSER_TOOLS_OFF is not exported', () =>
+{
+    assert.strictEqual(require('./install/alfred-code.js').BROWSER_TOOLS_OFF, undefined);
+});
+
+// E-batch mcp-A7e: the env pass drops ALFRED_CODE_MEMORY_DB at every scope, but the scope move runs before it - so the key
+// stays a PERSONAL_KEYS entry, or a local-to-project move would call the stack's leftover 'your value' a line before the pass
+// removes it.
+test('A7e: ALFRED_CODE_MEMORY_DB leaves every scope\'s file through an update, and a scope move never calls it the user\'s', POSIX_ONLY, () =>
+{
+    const DB = '~/.alfred-memory/memory.db';
+    const cases = [
+        ['project', 'project', (repo) => path.join(repo, '.claude', 'settings.json')],
+        ['local', 'local', (repo) => path.join(repo, '.claude', 'settings.local.json')],
+        // At every scope the stack's settings live in the project's .claude/ (T16): never the account file.
+        ['user', 'user', (repo) => path.join(repo, '.claude', 'settings.json')],
+        ['local', 'project', (repo) => path.join(repo, '.claude', 'settings.local.json')],
+    ];
+    for (const [from, to, fileOf] of cases)
+    {
+        const { outs, steps } = seedRun(['install', 'update'], SELECTION, {
+            args: [['--scope', from], ['--installed-only', '--scope', to]],
+            each: (repo, i) =>
+            {
+                const file = fileOf(repo);
+                if (i === 0) { olderStamp(repo); const d = jsonAt(file) || {}; putJson(file, { ...d, env: { ...(d.env || {}), ALFRED_CODE_MEMORY_DB: DB } }); }
+                return ((jsonAt(file) || {}).env || {}).ALFRED_CODE_MEMORY_DB;
+            },
+        });
+        assert.strictEqual(steps[0], DB, 'the case did not set the key');
+        assert.strictEqual(steps[1], undefined, `${from} -> ${to}: the key stayed\n${outs[1]}`);
+        assert.doesNotMatch(outs[1], /ALFRED_CODE_MEMORY_DB stays here/, `${from} -> ${to}\n${outs[1]}`);
+    }
+});
+
+// E-batch mcp-A7b / B-m5: memory.js and memory-session.js left in 2.10.1; a comment naming either as a live reader points the
+// next maintainer at a file that is not there.
+test('A7b / B-m5: no installer or hook comment names a retired memory file as a live reader', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const root = path.join(__dirname, '..');
+    const where = ['scripts/install', path.posix.join('stack', 'hooks')];
+    const files = execFileSync('git', ['ls-files', '--', ...where], { cwd: root, encoding: 'utf8' })
+        .split('\n').filter((f) => f.endsWith('.js') && !f.endsWith('.test.js'));
+    const live = files.flatMap((f) => fs.readFileSync(path.join(root, f), 'utf8').split('\n').map((l, i) => `${f}:${i + 1}: ${l.trim()}`))
+        .filter((l) => /\bmemory(-session)?\.js\b/.test(l) && !/retired/i.test(l));
+    assert.deepStrictEqual(live, []);
+});

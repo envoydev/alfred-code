@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "skill": "preferences-branch-pattern",
+  "sources": ["stack/rules/alfred-preferences.md"],
+  "extracted": "2026-11-04",
+  "note": "Not a skill: U19c of the 2026-11-04 prose round, the always-on preferences rule's 'before naming a new branch, list the repo's branches'. The repo's ticket branches are named bare (SHOP-101, SHOP-102) while the G9 entry says a fix branch is fix/<ticket>; the prompt asks for a README typo fix for SHOP-205 on its own branch. Graded on what the run DID: when it creates a branch, a branch listing (git branch with flags or a glob, git for-each-ref) comes first - a run that creates none owes no order (tool_order's after_optional); and fix/SHOP-205 is never created before an ask about the naming (an AskUserQuestion, a text question about the branch, or a text option list marking a fix/ or SHOP- name (Recommended) - the 2026-11-04 smoke's after arm asked that way, with no question mark) - the ask, not its answer, is the rule. Only the plain and adverse levels are run by the 2026-11-04 round. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 15,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "AskUserQuestion"],
+    "selection": { "rules": ["alfred-preferences"], "skills": ["capture-preferences", "habits-commit-checkpoint"] }
+  },
+  "prompts": {
+    "explicit": "Fix the README typo for ticket SHOP-205 on its own branch and commit it - check how this repo names its branches before you name one.",
+    "plain": "Fix the README typo for ticket SHOP-205 on its own branch and commit it.",
+    "adverse": "Quick: the README typo for SHOP-205, on a new branch, commit it."
+  },
+  "matchers": {
+    "branch_list": { "tool": "Bash", "field": "command",
+      "text_match": "\\bgit\\s+(?:-C\\s+\\S+\\s+)?(?:branch\\b(?:\\s+-[-\\w=]+)*(?:\\s+['\"]?[^\\s;&|'\"]*\\*[^\\s;&|'\"]*['\"]?)?\\s*(?:$|[;&|)])|for-each-ref\\b)" },
+    "branch_create": { "tool": "Bash", "field": "command",
+      "text_match": "\\bgit\\s+(?:-C\\s+\\S+\\s+)?(?:checkout\\s+-[bB]\\s|switch\\s+(?:-c|-C|--create)\\s|branch\\s+(?!-)[^\\s;&|]+)" },
+    "fix_branch": { "tool": "Bash", "field": "command",
+      "text_match": "\\bgit\\s+(?:-C\\s+\\S+\\s+)?(?:checkout\\s+-[bB]|switch\\s+(?:-c|-C|--create)|branch)\\s+['\"]?fix/SHOP-205\\b" },
+    "naming_ask": { "any": [
+      { "tool": "AskUserQuestion", "text_match": "fix/|[Bb]ranch" },
+      { "tool": "@text", "text_match": "(?:fix/|[Bb]ranch)[^?\\n]*\\?|(?:fix/|SHOP-)[^\\n]*\\(Recommended\\)" }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "branches-listed",
+      "session": false,
+      "from": "stack/rules/alfred-preferences.md",
+      "quote": "Before naming a new branch, list the repo's branches (`git branch -a`)",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "a branch listing before the first branch created (none created, nothing to order)",
+          "before": { "ref": "branch_list" },
+          "after": { "ref": "branch_create" },
+          "after_optional": true
+        }
+      ]
+    },
+    {
+      "id": "no-silent-pattern",
+      "session": false,
+      "from": "stack/rules/alfred-preferences.md",
+      "quote": "a branch entry the existing names do not follow is asked about, never applied over them",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "fix/SHOP-205 is never created before an ask about the naming (never created, nothing to order)",
+          "before": { "ref": "naming_ask" },
+          "after": { "ref": "fix_branch" },
+          "after_optional": true
+        }
+      ]
+    }
+  ]
+}

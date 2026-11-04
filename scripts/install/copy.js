@@ -36,7 +36,8 @@ function sameContent(a, b)
 
 // The text files a copy-time `render` applies to - the ones a shipped tool name or preload can sit in.
 const RENDER_EXT = ['.md', '.mdc', '.js', '.json', '.txt'];
-const rendered = (src, render) => (render && RENDER_EXT.includes(path.extname(src)) ? Buffer.from(render(fs.readFileSync(src, 'utf8'))) : null);
+// `rel` is the file's path inside the tree syncTree copies (a skill's `SKILL.md`), for a render that touches one file.
+const rendered = (src, render, rel) => (render && RENDER_EXT.includes(path.extname(src)) ? Buffer.from(render(fs.readFileSync(src, 'utf8'), rel)) : null);
 const sameBytes = (body, dest) => { try { return fs.readFileSync(dest).equals(body); } catch { return false; } };
 
 // `render` (C17): a function of a text file's source, whose result is what the copy holds - compared
@@ -106,7 +107,7 @@ function syncTree({ src, dest, render = null })
             if (have && have.isDirectory()) fs.rmSync(d, { recursive: true, force: true });
             if (!entry.isFile()) { fs.cpSync(s, d, { recursive: true }); changed += 1; continue; }
             const mode = fs.statSync(s).mode & 0o777;
-            const body = rendered(s, render) || fs.readFileSync(s);
+            const body = rendered(s, render, r.split(path.sep).join('/')) || fs.readFileSync(s);
             if (sameBytes(body, d)) { if (have && (have.mode & 0o777) !== mode) fs.chmodSync(d, mode); continue; }
             fs.mkdirSync(to, { recursive: true });
             fs.writeFileSync(d, body);

@@ -28,7 +28,7 @@ const path = require('node:path');
 const { readLibrary, readPicked, validItemName, readSeatsRoute } = require('./install/stamp.js');
 const { headingOf, headingHash, pastHeadings } = require('./install/skill-headings.js');
 const { stampFile } = require('./install/brand.js');
-const { hashItem, hashBuffer } = require('./install/library.js');
+const { hashItem, hashBuffer, renderSkillFile } = require('./install/library.js');
 const { parseJson } = require('./install/json-file.js');
 const { resolveDocsRoot } = require('./install/copy.js');
 
@@ -65,11 +65,12 @@ function check({ project, source, configDir })
     const docsRoot = resolveDocsRoot(project);
     // The pristine SOURCE hash for one item - normalised for alfred-docs-root.md, whose source
     // content never matches an up-to-date project copy byte for byte (see the constant's comment).
-    // A single-file item is compared as the installer wrote it: the docs root substituted.
+    // An item is compared as the installer wrote it: a skill's SKILL.md with the stamp path written back
+    // (library.renderSkillFile), a single-file item with the docs root substituted.
     const upHash = (kind, name) =>
     {
         const srcFile = kind === 'skills' ? path.join(source, 'stack', 'skills', name) : path.join(source, 'stack', kind, `${name}.md`);
-        if (kind === 'skills') return hashItem(srcFile);
+        if (kind === 'skills') return hashItem(srcFile, renderSkillFile);
         if (!(kind === 'rules' && ROOTED_RULES.has(name))) return hashItem(srcFile);
         let body;
         try { body = fs.readFileSync(srcFile, 'utf8'); } catch { return hashItem(srcFile); }

@@ -12,7 +12,8 @@ failed download, a multi-release gap, a same-version re-release, old version dir
 
 ## The plugin cache IS the snapshot - the common run downloads nothing
 
-The core's cache entry at `<config>/plugins/cache/<marketplace>/alfred-code/<version>/` is the WHOLE repo, with
+The core's cache entry at `<plugins root>/cache/<marketplace>/alfred-code/<version>/` (the root is `<config>/plugins`
+unless `CLAUDE_CODE_PLUGIN_CACHE_DIR` moves it) is the WHOLE repo, with
 no `RELEASE-SOURCE` and no `.git`: its version is its own `setup-plugin/.claude-plugin/plugin.json`, its revision
 the `v<version>` tag - never probe for `RELEASE-SOURCE` there. The resolve updates the installed core
 first (latest first), picks the newest valid version dir, and copies it to `$TMP/repo`: the run works in that
@@ -35,6 +36,7 @@ else
 STATE=RESOLVED
 REPO_URL=https://github.com/envoydev/alfred-code
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+PLUGINS="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-$CFG/plugins}"   # the plugins root: the variable moves it, cache/ included
 TMP=$(mktemp -d "$TD/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
 [ -n "$TMP" ] && [ -d "$TMP" ] || { echo "MISSING a temp dir under $TD - nothing resolved"; exit 1; }
 WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
@@ -47,7 +49,7 @@ if command -v claude >/dev/null 2>&1; then
   MKT=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);print $2;exit}')
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
 fi
-SRC=$(for d in "$CFG"/plugins/cache/*/*/*; do   # one glob: zsh aborts the whole loop when any named glob matches nothing
+SRC=$(for d in "$PLUGINS"/cache/*/*/*; do   # one glob: zsh aborts the whole loop when any named glob matches nothing
   PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue   # newest valid entry, any marketplace
   [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)

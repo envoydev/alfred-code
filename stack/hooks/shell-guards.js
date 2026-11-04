@@ -779,14 +779,20 @@ function runnerResults(stdin, guards)
 // ---- the hook -----------------------------------------------------------------------------------
 function main()
 {
-    try
-    {
-        if (require('./hook-prelude.js').yieldToCopiedTwin(SELF)) process.exit(0);
-    }
-    catch { /* an install without the prelude runs every guard */ }
     let stdin;
     try { stdin = fs.readFileSync(0); }
     catch { stdin = Buffer.alloc(0); }
+    // E1-3: the session this call belongs to narrows every twin check in this process - the dispatcher's and each
+    // in-process guard's - to the twins wired when that session began (hook-prelude.js useSession).
+    let session;
+    try { const id = (JSON.parse(stdin.toString('utf8')) || {}).session_id; session = typeof id === 'string' && id ? id : undefined; } catch { session = undefined; }
+    try
+    {
+        const prelude = require('./hook-prelude.js');
+        if (prelude.useSession) prelude.useSession(session);
+        if (prelude.yieldToCopiedTwin(SELF, undefined, { session })) process.exit(0);
+    }
+    catch { /* an install without the prelude runs every guard */ }
     // the dispatcher's own checks first: a zsh fix hands every guard the command that will run
     const started = performance.now();
     let own = { stdin, results: [] };

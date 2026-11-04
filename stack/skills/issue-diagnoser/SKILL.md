@@ -168,7 +168,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    - **4b. PLAN TASKS** ('Plan the fix as tasks') - first load `habits-execution-strategy` (the Skill
      tool) over the minimal change: how the fix runs, not only what it changes. Its `Execution:` line sets the cards' split -
      units it found parallel-safe become separate cards, units that share a file or need another's
-     output stay one card or are ordered - and is stated beside the close's ask, never written into
+     output stay one card or are ordered - and rides the close ask's question as its `Execution:` line, never written into
      the findings file (task-solve decides the build mode again on the gated plan).
      Then decompose the minimal change per cause into tasks on that split, each with a contract: the files it owns, what it must not touch, its
      acceptance criterion, and the `log_points` the fix must leave behind at the seam that
@@ -200,7 +200,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    *Stop* - after 4b the close names the build as the user's own command:
 
    ```ask
-   The fix is planned in <findings path>. Build it from that file with your own /task-solve command.
+   The fix is planned in <findings path>. <the strategy's verdict line, which opens `Execution:`>. Build it from that file with your own /task-solve command.
    - 'Build it here: /task-solve <findings path> (Recommended)' - type the command in this chat; the file is the whole input
    - 'Build it in a fresh session: /task-solve <findings path>' - `/clear` first, then the command; the file is the whole input
    - 'Stop here' - the findings file keeps the cause and the tasks

@@ -2183,6 +2183,64 @@ test('audit 2026-10-20 C25: an interpreter write to a computed temp path is not 
 // Audit 2026-10-20 C25 (0685cd0b): the once-per-session Stop ask fired on a PAUSE - 'coded, but I can't build or test it
 // yet' under a background watch - and was spent there. While the harness's registry shows work still running the ask waits
 // for a later Stop, at most three times.
+// Usage audit 2026-11-03 U27-1: the Stop ask named a section the model had rewritten through `docs.js set` after its
+// change, in the same turn - the rewrite already answered it.
+test('U27-1: a section docs.js set rewrote this turn is not asked about', () => {
+  const W = JSON.stringify({ watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders', 'patterns#users'] }] });
+  const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  const setOrders = (r, body) => {
+    const hash = r.cli(['hash', 'patterns#orders']).stdout.trim();
+    const out = r.cli(['set', 'patterns#orders', '--expect', hash], section('orders', 'src/Api/Orders/**', body));
+    assert.strictEqual(out.status, 0, out.stdout);
+  };
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': W } });
+  try {
+    const s = sid(); start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    nap(20);
+    setOrders(r, 'Refunds are ledgered after auth.');
+    const { reason } = JSON.parse(r.hook(stopEv(s)).stdout);
+    assert.doesNotMatch(reason, /patterns#orders/, 'the section set after the change is not asked');
+    assert.match(reason, /set patterns#users --expect/, 'the other touched section still is');
+    const b = sid(); start(r, b);
+    setOrders(r, 'Refunds are ledgered after auth, then mailed.');
+    nap(20);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.UseCors();\napp.Run();\n');
+    assert.match(JSON.parse(r.hook(stopEv(b)).stdout).reason, /set patterns#orders --expect/, 'a set made BEFORE the change answers nothing');
+  } finally { r.rm(); }
+});
+
+// Usage audit 2026-11-03 U27-2: a `node -e` writing a scratchpad copy through a computed path was held as a source write
+// (the command named a source root inside the scratch path), and its retry held again.
+test('U27-2: a node -e writing only under the temp dir or the session scratchpad is no source write', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const scratch = path.join(os.tmpdir(), `u27-scratch-${process.pid}`, 'src');
+  const W = (dir) => `node -e 'const fs=require("fs");const dir=${JSON.stringify(dir)};fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(dir + "/out.json","x")'`;
+  try {
+    assert.ok(!denied(r.hook(pre('Bash', { command: W(scratch) }, sid()))), 'a computed write under the temp dir, outside the project');
+    if (typeof process.getuid === 'function') {
+      assert.ok(!denied(r.hook(pre('Bash', { command: W(`/tmp/claude-${process.getuid()}/u27/scratchpad/src`) }, sid()))), 'under the session scratchpad root');
+    }
+    assert.ok(denied(r.hook(pre('Bash', { command: W(path.join(r.root, 'src', 'Api', 'Orders')) }, sid()))), 'under the project - itself in the temp dir - still held');
+    assert.ok(denied(r.hook(pre('Bash', { command: `${W(scratch)} src/Api/Orders/Gen.cs` }, sid()))), 'one path word in the project: held');
+    assert.ok(denied(r.hook(pre('Bash', { command: W('$TMP/src') }, sid()))), 'a computed path word proves nothing: held as before');
+  } finally { r.rm(); fs.rmSync(path.dirname(scratch), { recursive: true, force: true }); }
+});
+
+// Usage audit 2026-11-03 U36: the session start names a capture that covered no code once files were added since it.
+test('U36: the SessionStart block names a section outgrown by new files', () => {
+  const r = repo({ files: { 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const s0 = r.git('rev-parse', '--short', 'HEAD');
+    r.write('.claude/docs/architecture/MAP.md', `# Map\n\n## Overview\n<!-- id: overview -->\n<!-- captured: ${s0} -->\nNo code yet.\n`);
+    const quiet = r.hook({ hook_event_name: 'SessionStart', session_id: sid() }).stdout;
+    assert.doesNotMatch(quiet, /no covers line/, 'nothing added yet');
+    r.write('src/app.ts', 'export {};\n'); r.git('add', 'src/app.ts'); r.git('commit', '-qm', 'code');
+    const named = r.hook({ hook_event_name: 'SessionStart', session_id: sid() }).stdout;
+    assert.match(named, /with no covers line, captured before files were added: [^\n]*MAP#overview/);
+  } finally { r.rm(); }
+});
+
 test('audit 2026-10-20 C25: the Stop ask waits while background work runs, asks at a later Stop, and waits at most three times', () => {
   const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
   const running = [{ id: 'b1', type: 'shell', status: 'running', command: 'until sc.exe query Svc | grep -q STOPPED; do sleep 2; done' }];

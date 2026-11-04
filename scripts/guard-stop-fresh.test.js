@@ -845,6 +845,52 @@ test('guard-stop-contract: a new cycle after a finished one is sent back once wi
   assert.equal(askIn(transcript('nc-fresh', [...base, next, hot]), withFresh, logEnv()).status, 0, 'an ask carrying the option passes');
 });
 
+// Usage audit 2026-11-03 U05 (ce0b76e6 L1139): 'checks' sat in the OTHER option's description, so a right mark was denied.
+test("guard-stop-contract (U05): the Recommended clause is compared with other options' labels only", () => {
+  const tp = transcript('u05', [assistantRow('u5', 'ok', { cache_read_input_tokens: 900 })]);
+  const q = [{ question: 'The browser opened for the repro is still running. Close it? Recommended: it was opened only for the repro and the checks.',
+    options: [{ label: 'Close the browser (Recommended)', description: 'end its session now' }, { label: 'Keep it open', description: 'Leave it logged in for your own checks' }] }];
+  assert.equal(askIn(tp, q).status, 0, "a word in another option's description decides nothing");
+  const r = askIn(tp, [{ ...q[0], question: 'Close it? Recommended: keep it open for the checks.' }]);
+  assert.equal(r.status, 2, "a clause naming another option's label is still denied");
+  assert.match(r.stderr, /names another option than the one marked/);
+});
+
+// Usage audit 2026-11-03 U09: a plain question after a finished cycle drew the new-cycle deny.
+test('guard-stop-contract (U09): a plain Q&A ask after a Completed: stamp is no new cycle', () => {
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
+  const rows = [{ type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
+    assistantRow('f', 'first', { cache_creation_input_tokens: 40000 }), completed,
+    { type: 'user', message: { role: 'user', content: 'which node do I have here?' } },
+    assistantRow('h', 'Node 24 is installed through nvm.', { cache_read_input_tokens: 362000 })];
+  const plain = [{ question: 'Should I install Node 26.13.0 through nvm now?', options: [{ label: 'Install it now (Recommended)', description: 'nvm install 26.13.0' }, { label: 'Leave it', description: 'stay on 24' }] }];
+  assert.equal(askIn(transcript('u09-plain', rows), plain, logEnv()).status, 0, 'a plain question opens no cycle');
+  for (const [name, opt] of [['plan', { label: 'Write the plan first (Recommended)', description: 'a plan file under docs' }],
+    ['flow', { label: 'Run it through task-solve (Recommended)', description: 'the full cycle' }], ['approve', { label: 'Approve (Recommended)', description: 'build it' }]]) {
+    const r = askIn(transcript(`u09-${name}`, rows), [{ question: 'How next?', options: [opt, { label: 'Stop', description: 'hold' }] }], logEnv());
+    assert.equal(r.status, 2, `an ask naming ${name} still opens a cycle`);
+    assert.match(r.stderr, /add a fresh-session option to this first ask of a new cycle/);
+  }
+});
+
+// Usage audit 2026-11-03 U12 (b2aa04d4 L565, L1250, L1315): the model's stale 'Last measured: ~157k' stayed beside the
+// hook's appended 'Measured now: ~335k' - two contradicting figures in one ask.
+test('guard-stop-contract (U12-1): fresh numbers replace a stale measured figure', () => {
+  const hot = transcript('u12-hot', [assistantRow('h0', 'ok', { cache_creation_input_tokens: 90000 }), assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
+  const updOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
+  const opts = [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }];
+  const stale = askIn(hot, [{ question: 'Next? Last measured: ~157k tokens per message in this session, ~67k for a fresh one. Resume or stay?', options: opts }]);
+  assert.equal(stale.status, 0, stale.stderr);
+  const out = JSON.stringify(updOf(stale));
+  assert.doesNotMatch(out, /157k/, 'the stale figure is gone');
+  assert.equal((out.match(/Measured now:/g) || []).length, 1, 'the fresh figure once, never both');
+  assert.match(updOf(stale).questions[0].question, /^Next\? Measured now: This session carries ~900k[^]* Resume or stay\?$/, 'replaced where it stood');
+  const bare = askIn(hot, [{ question: 'Next?', options: opts }]);
+  assert.equal(updOf(bare).questions[0].question, 'Next?', 'no figure in the question: it is left alone');
+  assert.match(updOf(bare).questions[0].options[0].description, /^start clean Measured now: This session carries ~900k/, 'and the option gets it appended, as before');
+});
+
 // ---------------------------------------------------------------------------------------------
 // 4. stop-denial-stale-150k - the denial printed a number that was not this session's trigger
 // ---------------------------------------------------------------------------------------------
@@ -1494,4 +1540,18 @@ test('guard-stop-contract: a /mode-auto-run run that reads the installed solve f
   // the re-read after a compaction keeps the cycle's start: a later turn's stop owes no Size again
   assert.doesNotMatch(note('ta-reread', [auto, readOf(SOLVE), assistantRow('a', `Size: standard - two modules. ${fields}`), ...answered('u1'),
     typed('use the v2 endpoint'), readOf(SOLVE), assistantRow('b', fields)], goOn), /Size/);
+});
+
+// E-batch final review M3: the replaced figure ran to the first '.', so a decimal cut it ('about 1.5x' left '5x the cold
+// floor' in the question the user reads), and a 'measured 3 suites' sentence was taken for a token figure.
+test('guard-stop-contract (final review M3): a measured figure is replaced to its sentence end, and only a token figure', () => {
+  const hot = transcript('m3-hot', [assistantRow('h0', 'ok', { cache_creation_input_tokens: 90000 }), assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
+  const updOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
+  const opts = [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }];
+  const dec = updOf(askIn(hot, [{ question: 'Next? Last measured: ~157k tokens, about 1.5x the cold floor. Resume or stay?', options: opts }]));
+  assert.match(dec.questions[0].question, /^Next\? Measured now: This session carries ~900k[^]* Resume or stay\?$/, dec.questions[0].question);
+  assert.doesNotMatch(dec.questions[0].question, /5x the cold floor|157k/);
+  const suites = updOf(askIn(hot, [{ question: 'I measured 3 suites before. Resume or stay?', options: opts }]));
+  assert.match(suites.questions[0].question, /^I measured 3 suites before\. Resume or stay\?$/, 'a count of suites is no token figure');
+  assert.match(suites.questions[0].options[0].description, /Measured now:/, 'the fresh figure goes on the option instead');
 });

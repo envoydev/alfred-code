@@ -6,7 +6,7 @@
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: init installs it from scratch into a project and, typed again after the restart, bootstraps it once (tools, status line, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "3.7.1",
+      "version": "3.8.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -148,7 +148,7 @@
             ]
           },
           {
-            "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files)$",
+            "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files|read_media_file)$",
             "hooks": [
               {
                 "type": "command",
@@ -243,7 +243,7 @@
             ]
           },
           {
-            "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$",
+            "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$|^mcp__.+__browser_run_code_unsafe$",
             "hooks": [
               {
                 "type": "command",

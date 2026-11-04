@@ -51,7 +51,7 @@ The stores and what each holds, where the docs root and the data root live, and 
   the usage audit's reports and raw transcript copies), both under the data root's `/*`, so never committed whatever the
   versioning; `docs.migrateLayout` moves an older project's folders there on update, file by file, `git mv` where tracked, a
   doc clash kept at the old path and named (so is a file standing where a folder moves, item 6), a ledger at both homes appended to the new file and any other state file left
-  to the new home's copy, the one the hooks read (final review 2026-10-20b C2: kept, the pair clashed on every run). The usage audit's copy step still checks `git check-ignore` before it copies; the
+  to the new home's copy, the one the hooks read (final review 2026-10-20b C2: kept, the pair clashed on every run). A file `git mv` kept tracked under the ignored `state/` or `statistics/` - or one a teammate committed there - is never untracked by the update (a committed `git rm --cached` deletes it from every teammate's checkout on their next pull): after the moves hold, each is named once with that command and recorded on the stamp's `untrack-told:` line (E-batch ab-C5). The usage audit's copy step still checks `git check-ignore` before it copies; the
   folder was `alfred-code-usage-report/` until 2.1.7 - `docs.migrateUsageReport`, run after this
   file is current, moves it straight to `statistics/usage-report/`, never moving raw copies to a path git would not ignore, never over a session folder the new
   one holds). A file holding a text an earlier release wrote (`DOCS_IGNORE_FORMER`) is the stack's
@@ -81,7 +81,9 @@ The stores and what each holds, where the docs root and the data root live, and 
   root it was stamped with. The launch environment is never read.
 - **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
-  checkDataPath`) - holds the docs (`<root>/docs`), the hooks' state and ledgers (`<root>/state`, `<root>/statistics`,
+  checkDataPath`; every hook reads a relative value it refuses as `.alfred` - a hand-set `.` had put `statistics/` and
+  `state/` in the project root - and keeps an absolute one, a test harness's scratch: `layout.js dataRoot`, pinned as
+  `data-root-reader`, run C) - holds the docs (`<root>/docs`), the hooks' state and ledgers (`<root>/state`, `<root>/statistics`,
   `stack/hooks/layout.js`), the stack's variables (`<root>/.variables`, 3.0.0: every catalog `ALFRED_CODE_*` key but
   `DATA_PATH` and the guard key `HOOKS_OFF`, which stay in the settings files; written by the installer and
   `scripts/variables.js set`, ledgered as `.variables` rows; tracked by git at project and user scope, whose
@@ -128,7 +130,9 @@ The stores and what each holds, where the docs root and the data root live, and 
 - **A child reads its ancestors' docs and memory, never writes them** (workspace layering, release 3, 2026-10-27). An
   ancestor's docs root is `layout.docsRootOf` - its own settings' leftover `ALFRED_CODE_DOCS_PATH`, else `<its data
   root>/docs`, never the child's env. Its memory folder is `layout.memoryDirsOf`, Claude Code's own rule: the first
-  string `autoMemoryDirectory` (the managed drop-ins last first, the managed file, the member's `settings.local.json`, its
+  string `autoMemoryDirectory` (the managed drop-ins last first, the managed file, the member's `settings.local.json` -
+  the one Claude Code reads, `layout.localSettingsFile`: the repo root's, a worktree's main checkout's, the start folder's
+  on Windows - then a leftover in the start folder (E-batch 300-memdirs: a sub-folder start read only its own), its
   `settings.json`, the account's; a leading `~` is the home folder), else `<account>/projects/<name>/memory`, `<name>`
   its git top (a linked worktree's main checkout) with every character outside `[A-Za-z0-9]` as `-`; past 200
   characters Claude Code appends `-<hash>`, so the existing `<first 200>-*` folders are listed (probe A5,

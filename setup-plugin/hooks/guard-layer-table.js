@@ -97,7 +97,7 @@ if (!['AskUserQuestion', 'Bash'].includes(payload.tool_name) || !payload.transcr
 // root's statistics/ (2.8.0, stack/hooks/layout.js; this plugin's hooks ship apart from it, so the reader is inline).
 // Best-effort; a repo never set up gets none.
 // data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
-const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
 const blocksFile = () => path.join(path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), dataRoot(), 'statistics', 'hook-blocks'),
   `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
 const appendRow = (row) => {
@@ -431,7 +431,10 @@ function unpasted(rows) {
   let table = null;   // { name, proof: RegExp | null }
   const results = {};
   const errored = new Set();   // a call a hook denied or that failed printed no table, so it is never the latest one
-  const denialTexts = [];
+  // A marker result per tool_use id, and the ids that were asks: only an ask's own void spends the valve - the Bash next-step
+  // denial reads 'the <layer> table ran' too (E-batch ws-2).
+  const denialTexts = new Map();
+  const askIds = new Set();
   let stop = false;
   let output = '';    // the table's own output, printed for the user by a void
   for (let i = rows.length - 1; i >= 0 && !stop; i--) {
@@ -445,12 +448,14 @@ function unpasted(rows) {
       if (o.type === 'assistant' && b.type === 'text' && !table) texts += `\n${b.text || ''}`;
       if (o.type === 'user' && b.type === 'tool_result') {
         const r = recorded(records, b.tool_use_id, resultText(b.content));
-        if (r.includes(MARKER)) denialTexts.push(r);
+        if (r.includes(MARKER)) denialTexts.set(b.tool_use_id, r);
         if (b.is_error) errored.add(b.tool_use_id);
         results[b.tool_use_id] = r;
       }
+      if (o.type === 'assistant' && b.type === 'tool_use' && b.name === 'AskUserQuestion') askIds.add(b.id);
+      // an ask that errored or timed out decided nothing, so the walk goes on past it (E-batch ws-1)
       if (o.type === 'assistant' && b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.id !== ownId
-          && b.id in results && !results[b.id].includes(MARKER)) {
+          && b.id in results && !results[b.id].includes(MARKER) && !errored.has(b.id) && !askTimedOut(results[b.id])) {
         stop = true;   // an answered ask: a new decision point
         break;
       }
@@ -478,7 +483,7 @@ function unpasted(rows) {
       }
     }
   }
-  const ours = table ? denialTexts.filter((t) => t.includes(`the ${table.name} ran`)) : [];
+  const ours = table ? [...denialTexts].filter(([id, t]) => askIds.has(id) && t.includes(`the ${table.name} ran`)).map(([, t]) => t) : [];
   // A void that printed this table put it on screen, so the re-ask is answered with it in view (F27).
   if (!table || !table.proof || ours.length >= MAX_DENIALS || ours.some((t) => t.includes(PRINTED)) || table.proof.test(texts)) return null;
   // F27: no text block at all since the table - the measured fact, so the model cannot read it as a paste it made. Six

@@ -1298,7 +1298,8 @@ const SETUP_ASK_TEMPLATES = {
     // -1: the memory level ask, with the memory server (the no-MCP stack, 2026-10-24).
     // +2: step 8's memory and navigation asks (spec P1 + P2, 2026-10-24).
     // +3: step 8's workspace role, one template per role (workspace roles and variables D2, 2026-10-27).
-    'setup-plugin/commands/configure.md': 13,
+    // +1: step 8's copy of the old memory files to the new place (memory P3, 2026-11-04).
+    'setup-plugin/commands/configure.md': 14,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -1321,8 +1322,9 @@ const SETUP_ASK_TEMPLATES = {
     'setup-plugin/commands/status.md': 1,
     // +2: step 4's memory and navigation asks (spec P1 + P2, 2026-10-24). +1: the account's both-instruction-files ask
     // in a joined child (workspace layering, 2026-10-26). +1: the marketplace auto-update ask, once per account (U01 of the
-    // 2026-11-03 usage audit).
-    'setup-plugin/references/init-bootstrap.md': 5,
+    // 2026-11-03 usage audit). +2: step 4's docs memory template beside the default one, and the copy ask (memory P3,
+    // 2026-11-04).
+    'setup-plugin/references/init-bootstrap.md': 7,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's
     // detection confirm and its dispute follow-up, which was asked in plain text (audit 2026-10-21 commands T2-08).
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).
@@ -3212,24 +3214,6 @@ function repoTextFiles(root = ROOT)
     return files;
 }
 
-// 48b. A `prompt` hook (audit 2026-10-30 HK-22, the stop judge) runs no file, so the launcher shape below does not apply:
-// it needs a model (the default is whatever Claude Code uses for background work), a timeout and the `$ARGUMENTS`
-// placeholder, on an event that runs one (code.claude.com/docs/en/hooks, 'Prompt-based hooks'). Its TEXT is held to the
-// prompt file through the generated block - an entry edited by hand reads as stale.
-function lintPromptHook(entry, event)
-{
-    const out = [];
-    const { PROMPT_EVENTS, modelAlias } = require('./build-marketplace.js');
-    if (!PROMPT_EVENTS.has(event)) out.push(`the core wires a prompt hook on ${event} - ${event} takes no prompt hook.`);
-    // A prompt hook's `model` reaches the API as written (measured 2026-11-03: `haiku` failed every stop-judge call), so it
-    // is left out (Claude Code's background model) or a full id.
-    if (entry.model !== undefined && (typeof entry.model !== 'string' || !entry.model.trim())) out.push(`the core's ${event} prompt hook names an empty model - leave the key out.`);
-    else if (modelAlias(entry.model)) out.push(`the core's ${event} prompt hook names the model alias '${entry.model}', which reaches the API as written and fails - leave the key out or name a full model id.`);
-    if (!Number.isInteger(entry.timeout) || entry.timeout < 1) out.push(`the core's ${event} prompt hook carries no timeout.`);
-    if (!/(^|[^\\])\$ARGUMENTS/.test(String(entry.prompt || ''))) out.push(`the core's ${event} prompt hook carries no $ARGUMENTS - the hook input would land after its answer format.`);
-    return out;
-}
-
 // 48. The stack hooks ride the CORE entry (2.0.0, 'Fold into core'), GENERATED from the manifest's
 // own hooks[] wiring table, so the plugin route and the settings.json route cannot drift while both
 // exist. A matcher edited in one place and not the other is exactly the bug this catches: the copied
@@ -3266,11 +3250,6 @@ function lintHooksEntry(liveIn)
         for (const block of blocks)
             for (const entry of block.hooks)
             {
-                if (entry.type === 'prompt')
-                {
-                    out.push(...lintPromptHook(entry, event));
-                    continue;
-                }
                 // The launcher shape is part of the contract: a bare script path needs the exec
                 // bit, which git carries into the plugin cache as committed, and never runs on Windows.
                 const m = String(entry.command).match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)"/);
@@ -3374,11 +3353,15 @@ function lintMarketplaceEntries(liveIn)
         findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands an install with no hooks and no skills (docs/plugin-cli-evidence.md S11, S16); update migrates a renamed id instead - run `npm run marketplace`');
     // An MCP server entry has its own check (53: the stack ships none). An entry from OUTSIDE this repo is the
     // marketplace's, never the placement's - but it is pinned to a full commit (SYS-07 of the 2026-11-03 system audit:
-    // preferred-tools floated on `ref: main`, so the catalog served whatever landed on that branch next).
+    // preferred-tools floated on `ref: main`, so the catalog served whatever landed on that branch next). The one
+    // exception is the user's own repo tracking its release branch: a `github` source under `envoydev/` on `ref: main`
+    // with no `sha` floats, so a release merged there reaches the catalog with no change here (the user's ruling of
+    // 2026-11-04: one marketplace for every plugin, session-inspector first). A `sha` it does carry is a full one.
+    const ownFloat = (src) => src.source === 'github' && /^envoydev\/[A-Za-z0-9._-]+$/.test(String(src.repo)) && src.ref === 'main' && !Object.hasOwn(src, 'sha');
     for (const p of live.plugins || [])
     {
-        if (p && require('./install/plugins.js').foreignEntry(p) && !/^[0-9a-f]{40}$/.test(typeof p.source.sha === 'string' ? p.source.sha : ''))
-            findings.push(`marketplace.json entry ${p.name} is fetched from outside this repo with no 40-hex \`sha\` - pin the commit you reviewed beside its \`ref\` (session-inspector's shape), or the catalog serves whatever lands on that ref next`);
+        if (p && require('./install/plugins.js').foreignEntry(p) && !ownFloat(p.source) && !/^[0-9a-f]{40}$/.test(typeof p.source.sha === 'string' ? p.source.sha : ''))
+            findings.push(`marketplace.json entry ${p.name} is fetched from outside this repo with no 40-hex \`sha\` - pin the commit you reviewed beside its \`ref\`, or the catalog serves whatever lands on that ref next; only an envoydev/ repo on \`ref: main\` with no sha floats`);
         if (!p || generated.has(p.name) || build.mcpEntry(p) || require('./install/plugins.js').foreignEntry(p)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
@@ -3484,7 +3467,6 @@ module.exports = {
     lintWorkflows,
     lintPluginPlacement,
     lintHooksEntry,
-    lintPromptHook,
     lintMcpEntries,
     lintMcpToolNames,
     lintStaleMcpToolNames,
