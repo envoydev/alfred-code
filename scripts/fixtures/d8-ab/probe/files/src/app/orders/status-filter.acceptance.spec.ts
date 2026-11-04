@@ -6,7 +6,9 @@ import { provideRouter } from '@angular/router';
 import { OrderListComponent } from './order-list.component';
 
 // Acceptance for the request: 'a select named statusFilter above the list (All, Pending, Shipped, Delivered) filters
-// the orders shown, and the choice survives a page reload'. It reads only the page and the HTTP traffic.
+// the orders shown, and the choice survives a page reload. The stored choice is validated when it is read back: an unknown
+// value shows All'. It reads only the page and the HTTP traffic, so the unknown-value case - stored under a key the
+// implementation picks - is the rubric's, not this file's.
 const ORDERS = [
   { id: 1, customer: 'Ada Lovelace', status: 'Pending', total: 120, placedAt: '2026-10-01T09:00:00Z' },
   { id: 2, customer: 'Alan Turing', status: 'Shipped', total: 75.5, placedAt: '2026-10-02T10:30:00Z' },

@@ -49,7 +49,9 @@ test('every task.json loads and is complete', () =>
 // Rows 1-3 are reached only on a `standard` or larger plan (D8 spec, 'Where the size line falls'); a `small` one
 // designs, builds and verifies inline. The probe of 2026-11-04 asked for a change a model can make in two files, sized
 // itself small, and never reached a row it was built to read. The request's own floor is the one size no run can go
-// under, so every task reading rows 1-3 floors at standard by task-solve's spec-check.
+// under, so every /task-solve task reading rows 1-3 floors at standard by task-solve's spec-check. t3 is left out: its
+// rows come from a second /task-solve call whose request is the diagnosis, unknown until the run makes it - its calibration
+// run reads that size (plan Task 9 Step 3).
 test('a task that reads rows 1-3 floors at standard by its request alone', () =>
 {
     const { classify } = require(path.join(ROOT, 'stack', 'skills', 'task-solve', 'scripts', 'spec-check.js'));

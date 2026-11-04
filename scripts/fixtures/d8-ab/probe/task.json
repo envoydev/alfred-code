@@ -21,8 +21,8 @@
   "estimate": 5,
   "cap": 10,
   "rubric": [
-    "Meets the request: every case it names works - the four options, the filtered list, the choice kept across a reload.",
-    "Correct: no regression in the list, and the implied edge cases handled (a stored value that is no status, storage that throws).",
+    "Meets the request: every case it names works - the four options, the filtered list, the choice kept across a reload, an unknown stored value showing All.",
+    "Correct: no regression in the list, and the implied edge case handled (storage that throws).",
     "Tests: the change comes with tests that would fail without it.",
     "Conventions: the project's own patterns (standalone, signals, OnPush, inject) and the stack's idioms.",
     "Scope: nothing unrequested is added or changed."

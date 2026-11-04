@@ -28,7 +28,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { placement, CORE } = require('./plugin-placement.js');
 const { timeoutFor, asyncFor, onFailureFor } = require('./install/settings.js');
-const { loadManifest, renderHook } = require('./install/manifest.js');
+const { loadManifest } = require('./install/manifest.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
@@ -206,14 +206,12 @@ function applyToMarketplace(mkt, entries, { retired = [] } = {})
 
 function parseHookWirings(sourceDir)
 {
-    const dir = sourceDir || REPO;
-    const manifest = loadManifest(dir);
-    if (!manifest.catalogs.hooks.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
-    const raw = (manifest.rows && Array.isArray(manifest.rows.hooks)) ? manifest.rows.hooks : [];
+    const { catalogs } = loadManifest(sourceDir || REPO);
+    if (!catalogs.hooks.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
     // The shell guards' rows fold into ONE shell-guards.js row: one process per shell call, not eight - and the
     // file guards' into ONE file-guards.js row (2.1.5 M3): one process per file-tool call, not three - and the turn
     // check's Stop row into history-session's (2026-10-16): one process per turn fewer.
-    const rows = historySession.wiringRows(fileGuards.wiringRows(wiringRows(raw.map(renderHook))));
+    const rows = historySession.wiringRows(fileGuards.wiringRows(wiringRows(catalogs.hooks)));
     const out = [];
     for (const line of rows)
     {
