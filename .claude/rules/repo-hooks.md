@@ -854,7 +854,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     way, and the snapshot its expansion took (no call id) counts beside a typed review that counted, started within two
     minutes of it. review-security's Report carries the line since this ruling, and loop-test-coverage-quality names its
     `**Outcome**` field. The model can write the line without the review: the rule catches an abandoned or interrupted
-    review, not a forged one.
+    review, not a forged one. The checkpoint's RECEIPT WRITER is a result line too (2026-11-04, the commit-path A/B: in 4
+    of 4 smoke runs the reviews' reports stayed in thinking, which the transcript stores empty, so no `Findings:` line
+    reached it however the refusal was worded, and no run committed; with the writer counted, 6 of 6 committed): a
+    main-session `Bash` / `PowerShell` call running `node <receipt.js> commit` with a `--findings` value and no
+    `--dry-run` - the script by its path, or by a variable the same command set to it (`R=".../receipt.js"` then
+    `node "$R" commit`; node flags, `node.exe` and a continued line allowed) - whose result carries the writer's own
+    `wrote ...COMMIT-GATE` line. Only that line proves the write: `; echo rc=$?` makes a refused writer's call read
+    as no error, and one run hid the output with `>/dev/null`. It closes every review still open before it whose line
+    is `Findings:` - never a loop's `Outcome:` - unless a seat sent after that review had not reported before the
+    call (a foreground result, a completed notification; a call refused with an error result never ran). An echo,
+    another script, a review loaded after it: no close. The refusal names this route, in its own call with its output
+    shown, when every review it lists is a Findings one. A text block is ONE result line however many `Findings` lines
+    it holds (a report's `**Findings:**` header and its closing line are one review's), so two reports need two
+    replies.
     THE TOOL-USAGE LEDGER IS NO EVIDENCE ('Fix ALL left gaps'): its row is written at PreToolUse and keeps no target, no
     result and no refusal, so a review the newest 64MB of the transcript does not hold is a review to run again.
     The snapshot reads the work tree, while a plain commit takes the index: a late file whose index stages a version of

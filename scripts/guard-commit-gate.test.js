@@ -1492,6 +1492,138 @@ test('2026-10-22 review proof: a VERIFIED line naming a review needs a run of th
   }
 });
 
+// 2026-11-04, the prose A/B's checkpoint case 87c667c8: the checkpoint loaded review-code, review-security and the done
+// gate back to back and was refused three times. A text block is one result line however many `Findings` lines it holds
+// (a report's `**Findings:**` header and its closing `Findings:` line are one review's), so each review's report needs a
+// reply of its own, and the refusal says so.
+test('a text block is one result line: a second review needs a reply of its own', () => {
+  const dir = scratchRepo();
+  const skill = (id, name) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `t${id}`, name: 'Skill', input: { skill: name } }] } });
+  const SEC = 'security: auth ok, secrets ok, injection ok, data-access n/a - over 3 files\n';
+  const loads = [skill('a', 'review-code'), skill('b', 'review-security'), skill('c', 'habits-done-gate')];
+  const oneBlock = writeTranscript(dir, 'one-block', [...loads,
+    resultRow(undefined, '## review-code\n**Findings:**\n| # | file |\nFindings: 0 BLOCKER, 0 MATERIAL, 2 MINOR\n\n## review-security\nFindings: none')]);
+  const twoReplies = writeTranscript(dir, 'two-replies', [...loads,
+    resultRow(undefined, '## review-code\nFindings: 0 BLOCKER, 0 MATERIAL, 2 MINOR'), resultRow(undefined, '## review-security\nFindings: none')]);
+  const noLine = writeTranscript(dir, 'no-line', [...loads, resultRow(undefined, 'The review found nothing blocking.')]);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code and review-security over the change' }) + SEC);
+  const one = gateWith(dir, 'git commit -am x', { transcript_path: oneBlock });
+  assert.equal(one.status, 2, 'one block closes one review, however many Findings lines it holds');
+  assert.match(one.stderr, /names review-code, but no run of it/);
+  assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: twoReplies }).status, 0, 'a reply per report closes both');
+  const none = gateWith(dir, 'git commit -am x', { transcript_path: noLine });
+  assert.equal(none.status, 2);
+  assert.match(none.stderr, /names review-code, review-security, but no run of them/);
+  assert.match(none.stderr, /print each review's report as text in a reply of its own - its `Findings:` line, never only in thinking - then commit again/);
+  assert.match(none.stderr, /or write the receipt with the checkpoint's receipt\.js in its own call after the reviews, its output shown and no seat they sent still running: that call's `wrote` line is their result line; then commit in the next call/);
+});
+
+// 2026-11-04, the commit-path A/B's smoke (4 of 4 runs, both arms): the reviews' reports land in thinking, which the
+// transcript stores empty, so no `Findings:` line ever reaches it. The checkpoint's receipt writer, run after the reviews,
+// carries their Findings field in `--findings`: that call is their result line once the writer said it wrote the commit
+// receipt. Only `node <receipt.js> commit` counts - the script by its path or through a variable the same command set to
+// it - never an echo, another script, a dry run or a push receipt.
+const CP_PATH = '.claude/skills/habits-commit-checkpoint/scripts/receipt.js';
+const CP_ARGS = "--verified 'review-code and review-security over the change' --authorized 'commit it' --probe 'npm test' --format 'npm run format - clean' --findings 'review-code none; review-security none' --security 'auth ok'";
+const CP_RECEIPT = `R="${CP_PATH}"\nnode "$R" commit ${CP_ARGS}`;
+const CP_WROTE = 'wrote .alfred/state/approvals/COMMIT-GATE:\nVERIFIED review-code and review-security over the change\n';
+const cpSkill = (id, name) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `t${id}`, name: 'Skill', input: { skill: name } }] } });
+const cpBash = (id, command) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `t${id}`, name: 'Bash', input: { command } }] } });
+const cpResult = (id, text, error) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${id}`, content: text, ...(error ? { is_error: true } : {}) }] } });
+const CP_REVIEWS = [cpSkill('a', 'review-code'), cpSkill('b', 'review-security'), cpSkill('c', 'habits-done-gate')];
+const CP_SEC = 'security: auth ok, secrets ok, injection ok, data-access n/a - over 3 files\n';
+
+test('the receipt writer run after the reviews is their result line', () => {
+  const dir = scratchRepo();
+  const after = (name, command, text = CP_WROTE, error) => writeTranscript(dir, name, [...CP_REVIEWS, cpBash('r', command), ...(text === null ? [] : [cpResult('r', text, error)])]);
+  // every transcript first: a receipt counts only when written after its session began
+  const counted = {
+    'a variable': after('variable', CP_RECEIPT),
+    'its path': after('direct', `node ${CP_PATH} commit ${CP_ARGS}`),
+    'a braced variable': after('braces', CP_RECEIPT.replace('"$R"', '"${R}"')),
+    'a node flag': after('flags', CP_RECEIPT.replace('node "$R"', 'node --no-warnings "$R"')),
+    'node.exe': after('exe', CP_RECEIPT.replace('node "$R"', 'node.exe "$R"')),
+    'a continued line': after('continued', CP_RECEIPT.replace('"$R" commit', '"$R" \\\n  commit')),
+  };
+  // the command-side checks are isolated: each of these gets the writer's own success line
+  const missed = {
+    'a refused call': after('refused', CP_RECEIPT, 'receipt.js: missing --format', true),
+    'a call with no result': after('no-result', CP_RECEIPT, null),
+    'a result with no wrote line': after('no-wrote', CP_RECEIPT, 'receipt.js: nothing to write'),
+    'a push receipt': after('push', CP_RECEIPT.replace(' commit ', ' push ')),
+    'a dry run': after('dry', `${CP_RECEIPT} --dry-run`),
+    'an echo': after('echo', `echo node ${CP_PATH} commit ${CP_ARGS}`),
+    'another script': after('other', `cat ${CP_PATH}; node build.js commit ${CP_ARGS}`),
+    'a variable never set to it': after('unset', CP_RECEIPT.replace('node "$R"', 'node "$X"')),
+    'a receipt before the reviews': writeTranscript(dir, 'before', [cpBash('r', CP_RECEIPT), cpResult('r', CP_WROTE), ...CP_REVIEWS]),
+  };
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code and review-security over the change' }) + CP_SEC);
+  const run = (tp) => gateWith(dir, 'git commit -am x', { transcript_path: tp });
+  for (const [name, tp] of Object.entries(counted)) {
+    const r = run(tp);
+    assert.equal(r.status, 0, `${name}: ${r.stderr.slice(0, 300)}`);
+  }
+  for (const [name, tp] of Object.entries(missed)) {
+    const r = run(tp);
+    assert.equal(r.status, 2, name);
+    assert.match(r.stderr, /names review-code, review-security, but no run of them/, name);
+  }
+});
+
+// A seat sent after a review and still running when the receipt is written means the review had not finished: the
+// receipt closes it only once every seat sent after it reported - a foreground result, a completed notification. A
+// call refused with an error result never ran and holds nothing; a seat sent before the review is not its seat.
+test('a seat still running when the receipt is written holds its review open', () => {
+  const dir = scratchRepo();
+  const agent = (id, bg) => ({ type: 'assistant', message: { id: `m${id}`, content: [{ type: 'tool_use', id, name: 'Agent',
+    input: { subagent_type: 'general-purpose', prompt: 'review the diff', ...(bg ? { run_in_background: true } : {}) } }] } });
+  const launched = (id) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id,
+    content: [{ type: 'text', text: 'Async agent launched successfully. agentId: x' }] }] }, toolUseResult: { status: 'async_launched' } });
+  const note = (id, status) => ({ type: 'user', message: { role: 'user',
+    content: `<task-notification>\n<task-id>x1</task-id>\n<tool-use-id>${id}</tool-use-id>\n<status>${status}</status>\n<summary>Agent done</summary>\n</task-notification>` } });
+  const report = (id, error) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id,
+    content: error ? 'refused by a hook' : 'No blocking issues.', ...(error ? { is_error: true } : {}) }] } });
+  const write = [cpBash('r', CP_RECEIPT), cpResult('r', CP_WROTE)];
+  const held = {
+    'a background seat still running': [...CP_REVIEWS, agent('s', true), launched('s'), ...write],
+    'a seat that reported after the receipt': [...CP_REVIEWS, agent('s', true), launched('s'), ...write, note('s', 'completed')],
+    'a seat that failed': [...CP_REVIEWS, agent('s', true), launched('s'), note('s', 'failed'), ...write],
+    'a foreground seat with no result': [...CP_REVIEWS, agent('s'), ...write],
+  };
+  const closed = {
+    'a seat that reported before the receipt': [...CP_REVIEWS, agent('s', true), launched('s'), note('s', 'completed'), ...write],
+    'a foreground report': [...CP_REVIEWS, agent('s'), report('s'), ...write],
+    'a refused seat call': [...CP_REVIEWS, agent('s'), report('s', true), ...write],
+    'a seat sent before the reviews': [agent('s', true), launched('s'), ...CP_REVIEWS, ...write],
+  };
+  const tp = {};
+  for (const [name, rows] of Object.entries({ ...held, ...closed })) tp[name] = writeTranscript(dir, name.replace(/\W+/g, '-'), rows);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code and review-security over the change' }) + CP_SEC);
+  for (const name of Object.keys(held)) {
+    const r = gateWith(dir, 'git commit -am x', { transcript_path: tp[name] });
+    assert.equal(r.status, 2, name);
+    assert.match(r.stderr, /names review-code, review-security, but no run of them/, name);
+  }
+  for (const name of Object.keys(closed)) {
+    const r = gateWith(dir, 'git commit -am x', { transcript_path: tp[name] });
+    assert.equal(r.status, 0, `${name}: ${r.stderr.slice(0, 300)}`);
+  }
+});
+
+// A loop's result line is `Outcome:`, never a receipt's findings: the receipt writer closes no loop, and the refusal
+// asks for the loop's own line without offering the receipt route.
+test('the receipt writer closes no loop review', () => {
+  const dir = scratchRepo();
+  const tp = writeTranscript(dir, 'loop', [cpSkill('l', 'loop-test-coverage-quality'),
+    cpBash('r', `node ${CP_PATH} commit --verified x --findings 'none'`), cpResult('r', CP_WROTE)]);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED loop-test-coverage-quality over the change' }));
+  const r = gateWith(dir, 'git commit -am x', { transcript_path: tp });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /names loop-test-coverage-quality, but no run of it/);
+  assert.match(r.stderr, /print the review's report in your reply - its `Outcome:` line as text, never only in thinking - then commit again/);
+  assert.doesNotMatch(r.stderr, /receipt\.js in its own call/);
+});
+
 // 2026-10-29: the coverage loop is loop-test-coverage-quality; a VERIFIED line naming either spelling is met by its run.
 test('a VERIFIED line naming loop-test-coverage-quality is met by its run', () => {
   const dir = scratchRepo();

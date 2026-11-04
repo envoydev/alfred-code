@@ -806,10 +806,36 @@ function transcriptScan() {
   const seatIds = new Set();
   const seatDone = new Set();
   const agentAt = new Map();
+  // when each Agent / Task call reported: a foreground result that is neither an error nor a launch notice, or a
+  // background seat's completed notification
+  const agentDoneAt = new Map();
+  // A text block is one proof however many result lines it holds: a report's `**Findings:**` header and its closing
+  // `Findings:` line are one review's (2026-11-04: counting every line let one report close two reviews).
   const proofsIn = (text, at, after = 0) => {
     for (const [kind, re] of Object.entries(REVIEW_PROOF)) if (re.test(text)) proofs.push({ at, kind, after });
   };
   const textOf = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('\n') : '');
+  // The checkpoint's receipt writer is a result line too (2026-11-04, the commit-path A/B's smoke: in 4 of 4 runs the
+  // reviews' reports stayed in thinking, stored empty, and no Findings line reached the transcript whatever the refusal
+  // said). The call counts when it runs `node <receipt.js> commit` with a `--findings` value and no `--dry-run` - the
+  // script named by its path, or by a variable the same command set to that path (`R=".../receipt.js"` then
+  // `node "$R" commit`, the shape every smoke run used) - and its result is the writer's own `wrote ...COMMIT-GATE` line.
+  // It closes every review still open whose result line is Findings (never a loop's Outcome), unless a seat sent after
+  // that review had not reported before the call. An echo, another script, or a call with no such result is no receipt.
+  const RECEIPT_RUN = /(?:^|[;&|(\n])[ \t]*(?:[A-Za-z_]\w*=(?:"[^"\n]*"|'[^'\n]*'|[^\s;&|]*)[ \t]+)*(?:[^\s;&|"']*[\\/])?node(?:\.exe)?(?:[ \t]+-[^\s;&|]*)*[ \t]+("[^"\n]*"|'[^'\n]*'|[^\s;&|"']+)(?:[ \t]|\\\r?\n)+commit(?=[\s;&|]|$)/g;
+  const receiptCommit = (cmd) => {
+    if (typeof cmd !== 'string' || !/(?:^|\s)--findings(?:=|\s+)\S/.test(cmd) || /(?:^|\s)--dry-run\b/.test(cmd)) return false;
+    for (const m of cmd.matchAll(RECEIPT_RUN)) {
+      const script = m[1].replace(/^(["'])(.*)\1$/, '$2');
+      if (/(?:^|[\\/])receipt\.js$/.test(script)) return true;
+      const v = /^\$(?:\{(\w+)\}|(\w+))$/.exec(script);
+      const name = v && (v[1] || v[2]);
+      if (name && new RegExp(`(?:^|[\\s;&|(])\\$?${name}[ \\t]*=[ \\t]*(["']?)[^\\n;"']*receipt\\.js\\1(?=[\\s;&|]|$)`).test(cmd)) return true;
+    }
+    return false;
+  };
+  const receiptPending = new Map();
+  const receipts = [];
   let rowNo = 0;
   let fd;
   try {
@@ -824,7 +850,7 @@ function transcriptScan() {
       // each row's place in the transcript, a block's place inside its row
       const at = ++rowNo * 1000;
       if (line.length < 1024 * 1024 && (/"name"\s*:\s*"(?:Skill|Agent|Task)"/.test(line) || line.includes('"answers"')
-        || (/"type"\s*:\s*"assistant"/.test(line) && /Findings|Outcome/.test(line)))) {
+        || (/"type"\s*:\s*"assistant"/.test(line) && /Findings|Outcome|receipt\.js/.test(line)))) {
         let row = null;
         try { row = JSON.parse(line); } catch { row = null; }
         const c = row && row.message && row.message.content;
@@ -833,6 +859,7 @@ function transcriptScan() {
             if (!b) return;
             if (b.type === 'text' && typeof b.text === 'string') proofsIn(b.text, at + i);
             if (b.type !== 'tool_use' || !b.input) return;
+            if ((b.name === 'Bash' || b.name === 'PowerShell') && b.id && receiptCommit(b.input.command)) receiptPending.set(String(b.id), at + i);
             if (/^(?:Agent|Task)$/.test(b.name) && b.id) agentAt.set(String(b.id), at + i);
             const named = b.name === 'Skill' ? String(b.input.skill || b.input.command || '') : /^(?:Agent|Task)$/.test(b.name) ? String(b.input.subagent_type || '') : '';
             if (!named) return;
@@ -862,7 +889,7 @@ function transcriptScan() {
         for (const id of new Set([...line.matchAll(/"tool_use_id"\s*:\s*"([^"]+)"/g)].map((m) => m[1]))) {
           const sentAt = agentAt.get(id);
           if (sentAt === undefined) continue;
-          if (line.length >= 1024 * 1024) { if (seatIds.has(id)) seatDone.add(id); continue; }
+          if (line.length >= 1024 * 1024) { if (seatIds.has(id)) seatDone.add(id); if (!agentDoneAt.has(id)) agentDoneAt.set(id, at); continue; }
           let row = null;
           try { row = JSON.parse(line); } catch { row = null; }
           const c = row && row.message && row.message.content;
@@ -871,7 +898,22 @@ function transcriptScan() {
           const text = textOf(own.content);
           if ((row.toolUseResult && row.toolUseResult.status === 'async_launched') || /^\s*Async agent launched/.test(text)) continue;
           if (seatIds.has(id)) seatDone.add(id);
+          if (!agentDoneAt.has(id)) agentDoneAt.set(id, at);
           proofsIn(text, at, sentAt);
+        }
+      }
+      // the receipt writer's own result: it wrote the commit receipt
+      if (receiptPending.size && line.includes('"tool_result"') && line.length < 1024 * 1024) {
+        for (const id of new Set([...line.matchAll(/"tool_use_id"\s*:\s*"([^"]+)"/g)].map((m) => m[1]))) {
+          const callAt = receiptPending.get(id);
+          if (callAt === undefined) continue;
+          let row = null;
+          try { row = JSON.parse(line); } catch { row = null; }
+          const c = row && row.message && row.message.content;
+          const own = Array.isArray(c) && c.find((x) => x && x.type === 'tool_result' && String(x.tool_use_id) === id);
+          if (!own || own.is_error === true || !/^\s*wrote\s[^\n]*COMMIT-GATE/m.test(textOf(own.content))) continue;
+          receiptPending.delete(id);
+          receipts.push({ at: callAt, receipt: true });
         }
       }
       // a background seat's completion, and the report it carries
@@ -884,6 +926,7 @@ function transcriptScan() {
           const id = (/<tool-use-id>([^<]+)<\/tool-use-id>/.exec(block) || [])[1];
           if (!id || !agentAt.has(id) || (/<status>([a-z_]+)<\/status>/.exec(block) || [])[1] !== 'completed') continue;
           if (seatIds.has(id)) seatDone.add(id);
+          if (!agentDoneAt.has(id)) agentDoneAt.set(id, at);
           if (text !== line) proofsIn(block, at, agentAt.get(id));
         }
       }
@@ -947,9 +990,18 @@ function transcriptScan() {
   const reviewCalls = calls.filter((k) => k.review && !(k.id && _scan.refused.has(k.id)));
   const open = [];
   const proven = new Set();
-  const events = [...reviewCalls.map((k) => ({ at: k.at, call: k })), ...proofs.map((p) => ({ at: p.at, proof: p }))].sort((a, b) => a.at - b.at);
+  const events = [...reviewCalls.map((k) => ({ at: k.at, call: k })), ...proofs.map((p) => ({ at: p.at, proof: p })), ...receipts].sort((a, b) => a.at - b.at);
+  // a seat sent after the review, never refused, that had not reported before the receipt call: the review was unfinished
+  const seatRunning = (from, to) => [...agentAt].some(([id, sent]) => sent > from && sent < to && !_scan.refused.has(id)
+    && !(agentDoneAt.has(id) && agentDoneAt.get(id) < to));
   for (const e of events) {
     if (e.call) { open.push(e.call); continue; }
+    if (e.receipt) {
+      for (let j = open.length - 1; j >= 0; j--) {
+        if (reviewProof(open[j].review) === 'findings' && !seatRunning(open[j].at, e.at)) proven.add(open.splice(j, 1)[0]);
+      }
+      continue;
+    }
     const top = open[open.length - 1];
     if (top && reviewProof(top.review) === e.proof.kind && (!e.proof.after || e.proof.after > top.at)) proven.add(open.pop());
   }
@@ -1358,7 +1410,16 @@ function judgeReceipt(body, opts) {
   // family - the rename left this arm matching nothing, so a receipt naming the loop minted consent.
   const notRun = field('carried') ? [] : reviewsNotRun(first);
   if (notRun.length) {
-    r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load. A review you finished: print the review's report in your reply - its \`Findings:\` line as text, never only in thinking - then commit again. If this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
+    // each review's own result line; a text block is one result line, and the receipt writer stands in for Findings only
+    const kinds = new Set(notRun.map((n) => reviewProof(n)));
+    const lineName = kinds.size > 1 ? 'result line (`Findings:`, a loop\'s `Outcome:`)' : kinds.has('outcome') ? '`Outcome:` line' : '`Findings:` line';
+    const ask = notRun.length > 1
+      ? `Reviews you finished: print each review's report as text in a reply of its own - its ${lineName}, never only in thinking - then commit again`
+      : `A review you finished: print the review's report in your reply - its ${lineName} as text, never only in thinking - then commit again`;
+    const route = kinds.size === 1 && kinds.has('findings') ? (notRun.length > 1
+      ? ' - or write the receipt with the checkpoint\'s receipt.js in its own call after the reviews, its output shown and no seat they sent still running: that call\'s `wrote` line is their result line; then commit in the next call'
+      : ' - or write the receipt with the checkpoint\'s receipt.js in its own call after the review, its output shown and no seat it sent still running: that call\'s `wrote` line is its result line; then commit in the next call') : '';
+    r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load. ${ask}${route}. If this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
   }
   // A commit line that names NO review still needs one (2026-10-22, a side agent's note; the user's ruling 'Need any
