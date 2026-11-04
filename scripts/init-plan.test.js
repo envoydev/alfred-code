@@ -411,6 +411,55 @@ test('unattended: a mode already chosen gets no line - step 4 asks only while it
     assert.match(out, /unattended: AGENTS\.md -> fill it in \(Recommended\)/);
 });
 
+// Memory P3: where docs mode can be written, unattended init takes it, and the copy of the old memory files with it.
+const DOCS_LINE = "unattended: Memory for this project? -> Native, in this repo's docs (Recommended)";
+const DEFAULT_LINE = "unattended: Memory for this project? -> Native, Claude's default place (Recommended)";
+test('unattended: docs writable - docs and the copy, both Recommended', () =>
+{
+    const lines = unattended({ machine: [], captures: [], docsWritable: true, copyCount: 2 });
+    assert.ok(lines.includes(DOCS_LINE), lines.join('\n'));
+    assert.ok(lines.includes('unattended: Copy your 2 memory files to the new place? -> Copy them (Recommended)'), lines.join('\n'));
+    assert.ok(!lines.includes(DEFAULT_LINE));
+    assert.ok(!unattended({ machine: [], captures: [], docsWritable: true, copyCount: 0 }).some((l) => /Copy your/.test(l)), 'nothing to copy: no copy line');
+});
+
+test('unattended: docs not writable - the default place, no copy line', () =>
+{
+    const lines = unattended({ machine: [], captures: [], docsWritable: false, copyCount: 2 });
+    assert.ok(lines.includes(DEFAULT_LINE), lines.join('\n'));
+    assert.ok(!lines.some((l) => /Copy your|in this repo's docs/.test(l)), lines.join('\n'));
+});
+
+test('unattended: a mode already docs or custom - no memory line (D12)', () =>
+{
+    for (const memory of ['docs', 'custom'])
+    {
+        const lines = unattended({ machine: [], captures: [], memory, docsWritable: true, copyCount: 2 });
+        assert.ok(!lines.some((l) => /Memory for this project|Copy your/.test(l)), `${memory}: ${lines.join('\n')}`);
+    }
+});
+
+test('unattended: the CLI reads docs writable and the copy count from the project', () =>
+{
+    const root = project();
+    spawnSync('git', ['init', '-q', root]);
+    const acct = path.join(TMP, 'acct-docs');
+    const place = path.join(acct, 'projects', fs.realpathSync(root).replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+    fs.mkdirSync(place, { recursive: true });
+    for (const name of ['MEMORY.md', 'feedback.md']) fs.writeFileSync(path.join(place, name), '# x\n');
+    const inv = path.join(root, 'installed.json');
+    fs.writeFileSync(inv, JSON.stringify(INV({ plugins: [] })));
+    const run = () => spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_UNATTENDED: '1', ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '', ALFRED_CODE_MEMORY: '' }, encoding: 'utf8' }).stdout;
+    const out = run();
+    assert.ok(out.includes(DOCS_LINE), out);
+    assert.match(out, /^unattended: Copy your 2 memory files to the new place\? -> Copy them \(Recommended\)$/m);
+    // A tracked settings.local.json refuses docs mode: the default place, no copy line.
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), '{}\n');
+    spawnSync('git', ['add', '-f', '.claude/settings.local.json'], { cwd: root });
+    const refused = run();
+    assert.ok(refused.includes(DEFAULT_LINE) && !/Copy your/.test(refused), refused);
+});
+
 // D5 (workspace layering): a joined child with a CLAUDE.md above it is asked once to load both instruction files.
 test('init-plan prints instructions-both: ask before its last line, and unattended prints unattended: instructions-both -> load', () =>
 {
