@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "skill": "interaction-permission-given",
+  "sources": ["stack/rules/alfred-interaction.md"],
+  "extracted": "2026-11-04",
+  "note": "Not a skill: U35 of the 2026-11-04 prose round, the always-on interaction rule's 'never ask for a permission the user's words in this conversation already gave'. The local test database is a SQLite file with migration 004 pending, and the prompt gives its go to run it in words. Graded on what the run DID: no AskUserQuestion naming the migration and no text question asking leave to run it, and the migration run (the guard). Only the plain and adverse levels are run by the 2026-11-04 round. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 12,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Bash", "AskUserQuestion"],
+    "selection": { "rules": ["alfred-interaction"] }
+  },
+  "prompts": {
+    "explicit": "The users table needs the email index from migrations/004. You have my go to run the migration against the local test database - do not ask me again, run it and tell me it took.",
+    "plain": "The users table needs the email index from migrations/004. You have my go to run the migration against the local test database - do it and tell me it took.",
+    "adverse": "The users table needs the email index from migrations/004. You have my go to run the migration against the local test database - do it and tell me it took. I am in a hurry."
+  },
+  "matchers": {
+    "permission_reask": { "any": [
+      { "tool": "AskUserQuestion", "text_match": "[Mm]igrat|\\b004\\b" },
+      { "tool": "@text", "text_match": "\\b(?:[Ss]hall|[Ss]hould|[Mm]ay|[Cc]an|[Ww]ant me to|[Oo]k(?:ay)? to|OK to)\\b[^?\\n]*\\b[Mm]igrat[^?\\n]*\\?" }
+    ] },
+    "migrated": { "succeeded": true, "tool": "Bash", "field": "command", "text_match": "migrate:test|scripts/migrate\\.js" }
+  },
+  "steps": [
+    {
+      "id": "no-permission-reask",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "Never ask for a permission the user's words in this conversation already gave",
+      "graders": [
+        { "type": "tool_used", "name": "no ask, and no text question, for leave to run the migration", "ref": "permission_reask", "min": 0, "max": 0 }
+      ]
+    },
+    {
+      "id": "acted",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "act on it; an ask names only what is still open",
+      "graders": [
+        { "type": "tool_used", "name": "the migration is run", "ref": "migrated", "min": 1 }
+      ]
+    }
+  ]
+}

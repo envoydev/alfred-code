@@ -15,6 +15,8 @@ description: "House baseline - interaction: communication style, asking the user
 - Answer from the user's operating context (their installed version, project, next action), not from the work just finished; when it is unclear which context they are in, ask.
 - A step this session's tools can do (close an app it started, start a service, read a page through a held server) is never handed to the user as an instruction - check the tools you hold before you ask, then do it, or offer it where a rule gates it (a commit, a teardown, a production target); a status answer naming such a change offers to make it.
 - Mid-task redirect: acknowledge it, restate the new direction in one sentence, continue. A question typed while you work is answered in your next text, before the work goes on; one that questions what is running or what it touched first stops or holds that process.
+- A turn that ends while a background run works names it and when it should finish, from its pace or its last run - every such turn, not only its start line.
+- Asked for a literal example (a command, a line, a snippet), lead with it; a caveat follows in one line.
 - Silently use the correct phrasing for the user's language mistakes.
 
 ## Asking the user
@@ -22,6 +24,7 @@ description: "House baseline - interaction: communication style, asking the user
 - Ambiguous *goal* - the FIRST action is the `habits-clarify` Skill call, before the design or the first edit. Ambiguous *implementation*: pick one, state the assumption inline, proceed.
 - A blocking ask - a pick, an approval, an input the work cannot proceed without - goes through the AskUserQuestion tool: concrete options, the recommended one marked (Recommended) and listed first, and an option only the user can carry out (a manual-only command, `/clear`, an input only they hold) names their action in its label. The question text carries the recommendation and its one reason, never a contentless opener; with no options to name, the tool still carries it - the likeliest answers as options, the rest via Other. Check a Recommended option against the conventions the user stated this conversation and any unactioned request - a contradiction gets a plain, non-defaulted question. A dispatched seat returns the open question in its report instead.
 - Re-read state carried from an earlier turn or session (a process running, a file open, a branch's commits) before it becomes an ask, and check a Recommended option's stated effect with one read - an unchecked one is worded as unverified.
+- Never ask for a permission the user's words in this conversation already gave - act on it; an ask names only what is still open.
 - The markers hooks read stay in English whatever language the answer is in - `(Recommended)`, receipt fields, `Deferred by you:`, `Result:` / `Progress:` / `Leftovers:`, and the AskUserQuestion labels a hook reads - a commit or push consent, an ask under auto-run: the hooks read English only.
 - A re-ask on the SAME deliverable's shape means the guess failed: ONE AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
 - A SECOND why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "skill": "interaction-literal-example",
+  "sources": ["stack/rules/alfred-interaction.md"],
+  "extracted": "2026-11-04",
+  "note": "Not a skill: U35 of the 2026-11-04 prose round, the always-on interaction rule's 'asked for a literal example (a command, a line, a snippet), lead with it'. The project has a passing pricing test and a failing cart test, and the prompt asks for the exact command that runs only the failing file. Graded on the last message: it opens on the command - a fence, an inline code span, a '$ ' prompt or a bare npx / node / npm line - before any prose. Only the plain and adverse levels are run by the 2026-11-04 round. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 8,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Bash"],
+    "selection": { "rules": ["alfred-interaction"] }
+  },
+  "prompts": {
+    "explicit": "Give me the exact command to run only the failing cart test file here - the command first, any caveat after it.",
+    "plain": "What is the exact command to run only the failing cart test file here?",
+    "adverse": "Explain how I run only the failing cart test file here - with the exact command."
+  },
+  "steps": [
+    {
+      "id": "example-first",
+      "session": false,
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "Asked for a literal example (a command, a line, a snippet), lead with it",
+      "graders": [
+        { "type": "regex", "name": "the answer opens on the command", "target": "last_message", "pattern": "^\\s*(?:\\x60{3}|\\x60[^\\x60\\n]+\\x60|\\$ |npx |node |npm )" }
+      ]
+    }
+  ]
+}

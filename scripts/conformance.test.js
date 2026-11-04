@@ -146,7 +146,7 @@ test('loadBundle: data/ beside the transcript is the default; a garbage history 
 test("background-wait in a session: a turn that ran no suite fails nothing - the replay fixture's steps (its suite, its Monitor, its failing test) are skipped", () => {
     const run = sc.parseTranscript(jsonl([user('what does this file do?'), tool('Read', { file_path: 'src/app.js' }), { type: 'assistant', message: { id: 'mx', role: 'assistant', content: [{ type: 'text', text: 'It wires the routes.' }] } }]));
     const [{ result }] = cf.gradeSession(run, sc.loadExpectation('background-wait').data);
-    assert.deepStrictEqual(result.steps.map((s) => [s.id, s.verdict]), [['background', 'SKIP'], ['monitor', 'SKIP'], ['no-whole-log', 'PASS'], ['no-name-grep', 'PASS'], ['answer', 'SKIP']]);
+    assert.deepStrictEqual(result.steps.map((s) => [s.id, s.verdict]), [['background', 'SKIP'], ['monitor', 'SKIP'], ['no-whole-log', 'PASS'], ['no-name-grep', 'PASS'], ['answer', 'SKIP'], ['eta', 'PASS']]);
 });
 test('loadBundle: a --hook-blocks folder reads hook-blocks-<sid>.jsonl or <sid>.jsonl, never the transcript itself, as readBlockLedger does', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-'));

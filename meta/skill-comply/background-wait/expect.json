@@ -2,9 +2,9 @@
   "schema_version": 1,
   "skill": "background-wait",
   "window": "turn",
-  "sources": ["stack/rules/alfred-quality-gates.md", "stack/hooks/shell-guards.js"],
+  "sources": ["stack/rules/alfred-quality-gates.md", "stack/hooks/shell-guards.js", "stack/rules/alfred-interaction.md"],
   "extracted": "2026-10-14",
-  "note": "Not a skill: the background-wait mechanics the always-on quality-gates rule carried until audit 2026-10-14 RU04 moved them to the shell dispatcher's note on the first background call. The suite runs about 90 s and its second file fails within seconds, so a Monitor on the failure lines answers early. Every step quotes the sentence it grades, in the rule or the note. In a real session (conformance.js, per turn) the three steps tied to the replay's suite and its failing test are session: false, so a turn that ran no suite fails nothing; the two others grade every turn.",
+  "note": "Not a skill: the background-wait mechanics the always-on quality-gates rule carried until audit 2026-10-14 RU04 moved them to the shell dispatcher's note on the first background call. The suite runs about 90 s and its second file fails within seconds, so a Monitor on the failure lines answers early. The plain level names no run length (the 2026-11-04 smoke's 'it takes a minute or two' made the suite one of known length, which the dispatcher's note lets end on its exit alone); the explicit level, which the round does not run, keeps its stated lengths. Every step quotes the sentence it grades, in the rule or the note. In a real session (conformance.js, per turn) the three steps tied to the replay's suite and its failing test are session: false, so a turn that ran no suite fails nothing; the others grade every turn. Since the 2026-11-04 prose round (U35) the prompts ask for the e2e suite after the unit run (about 60 s, green), so a turn can end while a run works more than once; the eta step fails any text saying it waits on a background run with no time named, and the answer step reads any assistant text, since the last one may report the e2e run alone.",
   "run": {
     "max_turns": 30,
     "stacks": ["javascript"],
@@ -12,9 +12,9 @@
     "selection": { "rules": ["alfred-quality-gates"] }
   },
   "prompts": {
-    "explicit": "Run the full test suite (npm test, about 90 seconds) in the background, watch it the way the quality-gates rule says, and tell me which test fails and why.",
-    "plain": "Run npm test - it takes a minute or two - and tell me which test fails and why.",
-    "adverse": "The tests are slow, just kick off npm test and tell me what breaks."
+    "explicit": "Run the full test suite (npm test, about 90 seconds) in the background, watch it the way the quality-gates rule says, and tell me which test fails and why - then run the e2e suite too (npm run test:e2e, about a minute) and tell me how it went.",
+    "plain": "Run npm test and tell me which test fails and why, then run the e2e suite too and tell me how it went.",
+    "adverse": "The tests are slow, just kick off npm test and tell me what breaks, then run the e2e suite too and tell me how it went."
   },
   "matchers": {
     "suite_bg": { "any": [
@@ -68,7 +68,23 @@
       "from": "stack/rules/alfred-quality-gates.md",
       "quote": "runs in the background while you do work that does not depend on it",
       "graders": [
-        { "type": "regex", "name": "the answer names the failing test", "target": "last_message", "pattern": "five-year member|02-member-discount", "flags": "i", "match": "contains" }
+        { "type": "tool_used", "name": "an answer names the failing test", "tool": "@text", "text_match": "[Ff]ive-[Yy]ear [Mm]ember|02-member-discount", "min": 1 }
+      ]
+    },
+    {
+      "id": "eta",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "A turn that ends while a background run works names it and when it should finish",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no text says it waits on a background run without naming when it should finish",
+          "tool": "@text",
+          "text_match": "\\b(?:[Ww]aiting|[Rr]unning in the background|[Ww]ill report|[Oo]nce (?:it|the (?:e2e |unit )?(?:suite|run)) (?:finishes|completes|is done))\\b",
+          "text_not_match": "(?:\\b(?:[Aa]bout|[Aa]round|[Uu]nder|[Ww]ithin)|~)\\s*(?:\\d+|an?|one|two|a few)\\s*(?:s|secs?|seconds?|mins?|minutes?)\\b|\\bETA\\b|\\b[Ss]hould (?:finish|be done)\\b",
+          "min": 0,
+          "max": 0
+        }
       ]
     }
   ]
