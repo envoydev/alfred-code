@@ -978,11 +978,17 @@ function loadRulesDir(dir) {
 // plus 147 more named `tool-usage-<sid>` / `hook-blocks-<sid>` inside the bundles.
 const NON_SESSION_DIRS = new Set(['subagents', 'tools-usage', 'tool-usage', 'hook-blocks']);
 const LEDGER_FILE_RE = /^(?:tools?-usage|hook-blocks)-/;
+// A folder the collector wrote (`collected.json` beside the transcript) carries the session's stores as JSONL of
+// other shapes - docs-log, hook temp files, a copied plan - under these names; none of them is a session.
+const BUNDLE_DIRS = new Set(['data', 'tmp', 'docs', 'context', 'tool-results']);
 function findSessionFiles(root, depth = 0, out = []) {
-  for (const e of dirEntries(root)) {
+  const entries = dirEntries(root);
+  const collected = entries.some((e) => e.isFile() && e.name === 'collected.json');
+  for (const e of entries) {
     const full = path.join(root, e.name);
     if (e.isDirectory()) {
       if (NON_SESSION_DIRS.has(e.name) || e.name.startsWith('.')) continue;
+      if (collected && BUNDLE_DIRS.has(e.name)) continue;
       if (depth < 6) findSessionFiles(full, depth + 1, out);
     } else if (e.isFile() && e.name.endsWith('.jsonl') && !LEDGER_FILE_RE.test(e.name)) {
       out.push(full);
@@ -4877,7 +4883,7 @@ function sessionsDirOf(cwd, configDir) {
   return path.join(configDir, 'projects', String(cwd).replace(/[^a-zA-Z0-9]/g, '-'));
 }
 
-module.exports = { classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf, JUDGMENT_HEAD_RE };
+module.exports = { findSessionFiles, classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf, JUDGMENT_HEAD_RE };
 
 // ---------- entry ----------
 

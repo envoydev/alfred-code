@@ -2584,3 +2584,24 @@ test('the untranscribed line names a compaction call too', () => {
   assert.match(execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' }), /post-turn recap or compaction call\(s\) are billed/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('rollup walk skips a collected bundle\'s data, tmp, docs, context and tool-results', () => {
+  const au = require('./analyze-usage.js');
+  const corpus = fs.mkdtempSync(path.join(os.tmpdir(), 'au-collected-'));
+  try {
+    const put = (rel, text = line({ ts: '2026-11-01T10:00:00.000Z' })) => {
+      const f = path.join(corpus, ...rel.split('/'));
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, text);
+    };
+    put('p/S/S.jsonl');
+    put('p/S/collected.json', JSON.stringify({ collector: 1, session: 'S' }));
+    for (const rel of ['data/statistics/docs-log.jsonl', 'tmp/a.jsonl', 'docs/b.jsonl', 'context/c.jsonl', 'tool-results/d.jsonl']) put(`p/S/${rel}`);
+    // the same folder names with no collected.json beside them are walked as before
+    put('p/plain/data/y.jsonl');
+    const got = au.findSessionFiles(corpus).map((f) => path.relative(corpus, f).split(path.sep).join('/')).sort();
+    assert.deepStrictEqual(got, ['p/S/S.jsonl', 'p/plain/data/y.jsonl']);
+  } finally {
+    fs.rmSync(corpus, { recursive: true, force: true });
+  }
+});
