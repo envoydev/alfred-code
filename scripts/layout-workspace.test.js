@@ -466,9 +466,12 @@ test('300-memdirs: an untrusted read takes the root settings.local.json', () =>
         'r': { git: true },
         'r/sub': { settings: JSON.stringify({ autoMemoryDirectory: '/r-sub-settings' }) },
     });
-    assert.deepStrictEqual(memOf(m, 'p/sub'), [path.resolve('/p-root-local')], 'the repo root\'s settings.local.json first');
-    assert.deepStrictEqual(memOf(m, 'q/sub'), [path.resolve('/q-sub-leftover')], 'then the start folder\'s leftover');
-    assert.deepStrictEqual(memOf(m, 'r/sub'), [path.resolve('/r-sub-settings')], 'then settings.json');
+    // The root-first reading is the macOS / Linux one, named explicitly: on a Windows runner the default platform is win32,
+    // where the start folder's own file is the one read (the win32 line below) - CI 547ede2c, windows 2/2.
+    const posix = { platform: 'linux' };
+    assert.deepStrictEqual(memOf(m, 'p/sub', posix), [path.resolve('/p-root-local')], 'the repo root\'s settings.local.json first');
+    assert.deepStrictEqual(memOf(m, 'q/sub', posix), [path.resolve('/q-sub-leftover')], 'then the start folder\'s leftover');
+    assert.deepStrictEqual(memOf(m, 'r/sub', posix), [path.resolve('/r-sub-settings')], 'then settings.json');
     assert.deepStrictEqual(memOf(m, 'p/sub', { platform: 'win32' }), [path.resolve('/p-sub-leftover')], 'win32: the start folder\'s own file (localSettingsFile)');
     assert.deepStrictEqual(memOf(m, 'p'), [path.resolve('/p-root-local')], 'started at the root: one file, read once');
     // a worktree reads its main checkout's
@@ -477,7 +480,7 @@ test('300-memdirs: an untrusted read takes the root settings.local.json', () =>
     const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: p, stdio: 'ignore' });
     git('add', '.gitignore', '.claude/settings.json'); git('commit', '-qm', 'i');
     git('worktree', 'add', '-q', path.join(m.at('.'), 'p-wt'), '-b', 'feat');
-    assert.deepStrictEqual(memOf(m, 'p-wt'), [path.resolve('/p-root-local')], 'a worktree reads the main checkout\'s settings.local.json');
+    assert.deepStrictEqual(memOf(m, 'p-wt', posix), [path.resolve('/p-root-local')], 'a worktree reads the main checkout\'s settings.local.json');
 });
 
 // E-batch mcp-A7d: `key` read another tool's variable by its exact name (UV_EXCLUDE_NEWER) for a server launcher that left in
