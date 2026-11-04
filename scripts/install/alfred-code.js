@@ -485,7 +485,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             catch { err(`selection file not found: ${args.selection}\n`); return 1; }
             const given = selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming);
             // O4: a hand-written partial selection is closed now, not at the next update; the walk's own adds nothing.
-            picked = selection.parseSelection(selection.closeSelection(given, { graph: readJson(path.join(resolved.dir, 'meta', 'stack-graph.json')), log }).join('\n'));
+            const selGraph = readJson(path.join(resolved.dir, 'meta', 'stack-graph.json'));
+            let closedSel = selection.closeSelection(given, { graph: selGraph, log });
+            // The locked always-on rules and skills join it now too: the first update adopts them whatever the file
+            // said, so leaving them to it made the install and its first update disagree (burn-down Task 5's finding).
+            // An always seat stays the selection's word - its off-switch is the deny the walk's answer writes.
+            const adoptedSel = selection.adoptAlways({ lines: closedSel, always, log, coreOn: false, label: 'selection' });
+            if (adoptedSel.length > closedSel.length) closedSel = selection.closeSelection(adoptedSel, { graph: selGraph, log });
+            picked = selection.parseSelection(closedSel.join('\n'));
             // A joined child installs its parent's set minus its ignores whatever rows the walk's selection kept.
             if (wsPrep.parentLines)
             {

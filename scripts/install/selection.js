@@ -200,8 +200,9 @@ function adoptHooks({ lines, catalog = [], shippedBefore = [], log = () => {} })
 // adopted into any install that carries skills or rules (2.1.0: no plugin carries them, so a copy is
 // the only way an install has them). An always SEAT rides the core and its off-switch is the deny,
 // so it is adopted only while the core loads it (`coreOn`) and only when `deny` does not name it -
-// on the full copy route absence on disk is its off-state, and adopting there would undo a drop.
-function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = false })
+// on the full copy route absence on disk is its off-state, and adopting there would undo a drop. `label` heads each
+// log line: `installed-only` on the update's read-back, `selection` on an install's --selection.
+function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = false, label = 'installed-only' })
 {
     const out = [...lines];
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
@@ -209,7 +210,7 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
     {
         if (out.includes(`${category} ${name}`)) return;
         out.push(`${category} ${name}`);
-        log(`installed-only: adopting ${category} ${name} - always shipped by this release and absent here`);
+        log(`${label}: adopting ${category} ${name} - always shipped by this release and absent here`);
     };
     if (out.some((l) => l.startsWith('rule '))) for (const name of always.rules || []) adopt('rule', name);
     if (out.some((l) => /^(skill|rule) /.test(l))) for (const name of always.skills || []) adopt('skill', name);

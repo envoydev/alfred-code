@@ -75,7 +75,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     the hooks' record list is NOT extended, so they stay down until that update writes the stamp.
   - A `--selection` file on INSTALL is closed from its own picks before it is applied (`selection.closeSelection`, each
     added line logged `selection: required: ...`; E-batch O4: a hand-written partial one waited for the next update's
-    closure) - the walk's own selection gains nothing. `--github-cli`, the old spelling of `--forge-cli`, reads as it with
+    closure) - the walk's own selection gains nothing. The locked always-on rules and skills join it too (`adoptAlways`,
+    `label: 'selection'`, `coreOn: false` - an always seat stays the file's word), so the first update adopts nothing more
+    (burn-down Task 5's finding: a partial file left 149 files to that update). `--github-cli`, the old spelling of `--forge-cli`, reads as it with
     one note line (E-batch fn-11).
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,

@@ -986,3 +986,26 @@ test('O4: a partial --selection on install is closed', () =>
     assert.deepStrictEqual(quiet, []);
     assert.deepStrictEqual(sel.closeSelection(partial, { graph: null, log: () => {} }), partial, 'no graph: applied as given');
 });
+
+// Burn-down Task 5's finding: a hand-written partial --selection on install left out the locked always-on rules and
+// skills, which the first update then adopted - the install and its first update disagreed. The install adopts them as
+// the update does (labelled 'selection'); an always seat stays the selection's word, since its off-switch is the deny.
+test('a partial --selection on install takes the locked always-on rules and skills, and the first update adds none', require('./seed-sandbox.js').POSIX_ONLY, () =>
+{
+    const { seedRun } = require('./seed-sandbox.js');
+    const always = require('../meta/recommendations.json').always;
+    const missing = (repo) => [
+        ...always.rules.filter((n) => !fs.existsSync(path.join(repo, '.claude', 'rules', `${n}.md`))).map((n) => `rule ${n}`),
+        ...always.skills.filter((n) => !fs.existsSync(path.join(repo, '.claude', 'skills', n, 'SKILL.md'))).map((n) => `skill ${n}`),
+    ];
+    const { steps, outs } = seedRun(['install', 'update'], 'skill csharp\nrule markdown-docs\nhook none\n', {
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]),
+        args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
+        each: (repo) => missing(repo),
+    });
+    assert.deepStrictEqual(steps[0], [], 'every locked row is on disk after the install');
+    assert.match(outs[0], /^(?:==> )?selection: adopting rule alfred-security - /m, outs[0].split('\n').filter((l) => /adopting/.test(l)).join('\n'));
+    assert.doesNotMatch(outs[0], /installed-only: adopting/, 'the install route says selection');
+    assert.doesNotMatch(outs[1], /adopting (?:rule|skill) /, 'the first update adopts nothing more');
+    assert.deepStrictEqual(steps[1], []);
+});

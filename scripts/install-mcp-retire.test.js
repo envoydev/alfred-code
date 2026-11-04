@@ -573,7 +573,9 @@ test('seed install (plugin route): the skills are copied, no seat is, and every 
             stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
         }),
     });
-    assert.deepStrictEqual(result.skills, [...closed.skills].sort(), 'every picked skill, the seat\'s preloads included, is a copy');
+    // Burn-down Task 5's finding: the install adopts the locked always-on skills, as its first update would.
+    const always = require('../meta/recommendations.json').always.skills;
+    assert.deepStrictEqual(result.skills, [...new Set([...closed.skills, ...always])].sort(), 'every picked skill, the seat\'s preloads and the always-on set included, is a copy');
     assert.deepStrictEqual(result.agents, [], 'no seat is copied - the core carries them');
     const seats = Object.keys(graph.agents);
     const denied = result.deny.filter((d) => d.startsWith('Agent('));
