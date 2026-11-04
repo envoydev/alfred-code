@@ -54,7 +54,8 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   resumed session re-writes it only from the user's waiver words typed in THAT session, else the
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
-  re-dispatch under AUTO rides the still-live waiver.
+  re-dispatch under AUTO rides the still-live waiver. A plan written after the stamp that carries its `Completed:`
+  line spends it too: the dispatch hook passes no seat on it, so a next run needs the user's waiver words again.
 - **The hand-written stamp goes LAST.** Step 6 deletes it only after the close stop's ask is answered, or after
   the close printed when nothing is pending - never before the ask. With the stamp gone the hooks read the session
   as attended, so the ask waits for a user who is away (usage audit 2026-11-03: deleted first, a close ask sat 3.8 hours).

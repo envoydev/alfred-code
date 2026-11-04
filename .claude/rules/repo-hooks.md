@@ -717,7 +717,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     audit 2026-10-08). An
     `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny). The APPROVAL
     root is `CLAUDE_PROJECT_DIR`, else the payload's `cwd`, as its ledger reads it, and every block row names its branch
-    (`symbol-question`, `diagnoser-pin`, `implementer-unapproved` / `-stale-stamp` / `-ask-timed-out`,
+    (`symbol-question`, `diagnoser-pin`, `implementer-unapproved` / `-stale-stamp` / `-ask-timed-out` / `-auto-spent`,
     `generic-while-stamped`). Audit 2026-10-20 H5: a live stamp naming THIS session whose `skill:` dispatches generic seats
     by design (`GENERIC_DISPATCH_SKILLS`: `capture-usage-report`, whose bundle authors are generic seats on a named model)
     passes a generic dispatch; another session's or a hand-written stamp naming no session is no exemption, and the
@@ -726,7 +726,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     user's `--mode-auto-run-on` right after the command; a hand-written AUTO waiver belongs to task-solve and task-solve-cross
     alone. Ruling S3: an implementer dispatch on an APPROVED or AUTO stamp written after an ask the idle timeout closed
     (the answer hook's marker, under the hook temp dir) is denied once - 'the question timed out - re-ask' - and the
-    marker is spent; a stamp older than the timeout stands.
+    marker is spent; a stamp older than the timeout stands. D6 (the user's ruling of 2026-11-03): a hand-written root
+    `AUTO` (no `session:` line) is SPENT once a `.md` under `layout.planDirs` newer than the stamp carries `^Completed:\s*\S`
+    - it passes no seat, implementer or generic, and the implementer denial names the plan and its line
+    (`implementer-auto-spent`). Bounded per dispatch: the newest 50 plan files, none past 1 MB, an unreadable folder or
+    file no evidence; a session-named AUTO, `APPROVED` and the plan stamps are untouched.
     Its `no-execution-verdict` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16: 85 rows nobody
     read, and an 8MB transcript read on every main-session Agent call (+23ms on a 226MB transcript).
     A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
