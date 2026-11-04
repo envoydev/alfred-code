@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "skill": "designer-seat-decisions",
+  "sources": ["stack/agents/console-solution-designer.md", "stack/skills/task-design/references/design-rules.md"],
+  "extracted": "2026-11-04",
+  "note": "ab-Q2 and CAP-2 of the 2026-11-04 prose round, measured on the seat. ab-Q2 rewords the ten designers' shared preference sentence (each Decisions row a preference decides names that preference's id, where it read 'names the preference id it meets' - a row no preference decides had nothing to name and invented one); one seat measures the shared text (R8). CAP-2 moved task-design's cited-card rule, which the seat preloads with the skill body, behind a pointer into references/design-rules.md. The dispatcher runs on Haiku and only dispatches; the seat runs on its frontmatter pin, and every step reads the seat's own rows (run.trace seat - the stream's parent_tool_use_id rows, forwarded with --forward-subagent-text). Graded on the seat's report: a Decisions row naming the order store seam names A1, no Decisions row names a preference-shaped id but A1 (a task id spelled T<n> reads as one - the same in both arms), and each Verify bullet's key phrase (header row, doubled, 403) on a test: line or in a backticked test name (the seat's card stamp is `acceptance`, its tests named like `A_quote_in_a_note_is_doubled`). The preference id reads in either case: the doc heads the entry A1 and its id comment says a1, and the 2026-11-04 smoke's after arm wrote a1. The dispatch guard passes a designer before it reads any approval stamp, so the scaffold writes none. Only the plain level is run by the 2026-11-04 round. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 15,
+    "stacks": ["console"],
+    "model": "haiku",
+    "trace": "seat",
+    "allowed_tools": ["Read", "Glob", "Grep", "Bash", "Skill", "Agent", "LSP", "WebFetch"],
+    "selection": {
+      "agents": ["console-solution-designer"]
+    }
+  },
+  "prompts": {
+    "explicit": "Dispatch the console-solution-designer seat with `.alfred/docs/work/briefs/order-export.md` as its whole brief; it designs against the project's preferences docs. Do not design anything yourself; when it returns, stop.",
+    "plain": "Dispatch the console-solution-designer seat with `.alfred/docs/work/briefs/order-export.md` as its whole brief. Do not design anything yourself; when it returns, stop.",
+    "adverse": "Dispatch the console-solution-designer seat with `.alfred/docs/work/briefs/order-export.md` as its whole brief - a rough plan is enough, keep it fast. Do not design anything yourself; when it returns, stop."
+  },
+  "steps": [
+    {
+      "id": "pref-row-id",
+      "session": false,
+      "from": "stack/agents/console-solution-designer.md",
+      "quote": "each `## Decisions` row a preference decides names that preference's id",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "a Decisions row naming the order store seam names A1 (or a1, the doc's id comment)",
+          "target": "last_message",
+          "flags": "m",
+          "pattern": "^(?:#{1,4}[ \\t]*|\\*\\*)Decisions\\b[^\\n]*\\n(?:(?!#|\\*\\*)[^\\n]*\\n)*?(?!#|\\*\\*)[^\\n]*(?:(?:I?OrderStore|[Ss]tore seam|[Oo]rder store)[^\\n]*\\b[Aa]1\\b|\\b[Aa]1\\b[^\\n]*(?:I?OrderStore|[Ss]tore seam|[Oo]rder store))"
+        }
+      ]
+    },
+    {
+      "id": "no-invented-id",
+      "session": false,
+      "from": "stack/agents/console-solution-designer.md",
+      "quote": "each `## Decisions` row a preference decides names that preference's id",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "no Decisions row names a preference-shaped id but A1",
+          "target": "last_message",
+          "flags": "m",
+          "match": "not_contains",
+          "pattern": "^(?:#{1,4}[ \\t]*|\\*\\*)Decisions\\b[^\\n]*\\n(?:(?!#|\\*\\*)[^\\n]*\\n)*?(?!#|\\*\\*)[^\\n]*\\b(?!A1\\b)[PCAGT]\\d+\\b"
+        }
+      ]
+    },
+    {
+      "id": "verify-mapped",
+      "session": false,
+      "from": "stack/skills/task-design/references/design-rules.md",
+      "quote": "every Verify or Done-when bullet of a cited card maps to a task's `test:`",
+      "graders": [
+        { "type": "regex", "name": "'header row' on a test: line or in a test name", "target": "last_message", "flags": "m", "pattern": "^[^\\n]*(?:\\b[Tt]ests?:[^\\n]*|`[A-Z][A-Za-z0-9]*_[A-Za-z0-9_]*)[Hh]eader[ _]row" },
+        { "type": "regex", "name": "'doubled' on a test: line or in a test name", "target": "last_message", "flags": "m", "pattern": "^[^\\n]*(?:\\b[Tt]ests?:[^\\n]*|`[A-Z][A-Za-z0-9]*_[A-Za-z0-9_]*)[Dd]oubl(?:ed|es|ing)(?:\\b|_)" },
+        { "type": "regex", "name": "'403' on a test: line or in a test name", "target": "last_message", "flags": "m", "pattern": "^[^\\n]*(?:\\b[Tt]ests?:[^\\n]*|`[A-Z][A-Za-z0-9]*_[A-Za-z0-9_]*)(?:\\b|_)403(?:\\b|_)" }
+      ]
+    }
+  ]
+}

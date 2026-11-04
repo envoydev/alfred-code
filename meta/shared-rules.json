@@ -7983,43 +7983,43 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row a preference decides names that preference's id; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         }
       ]
     },

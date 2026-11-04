@@ -692,7 +692,9 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
             assert.match(b, / -p --output-format stream-json --verbose --max-turns \d+ --permission-mode dontAsk --setting-sources user,project,local /);
             assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u ALFRED_CODE_DATA_PATH /);
             assert.match(b, / -u ALFRED_CODE_DOCS_PATH /, 'a retired key the hooks still read is scrubbed too');
-            assert.match(b, /--max-budget-usd 1\.5 --model=claude-sonnet-4-5 > /);
+            // a fixture's own run.model wins over --model (the designer seat's dispatcher runs on haiku)
+            const fixture = b.match(/[\\/]([^\\/]+)[\\/](?:explicit|plain|adverse)[\\/]transcript\.jsonl\)$/)[1];
+            assert.ok(b.includes(`--max-budget-usd 1.5 --model=${sc.loadExpectation(fixture).data.run.model || 'claude-sonnet-4-5'} > `), fixture);
             assert.ok(b.includes(`CLAUDE_CONFIG_DIR=${path.join(out, 'config')}`));
         }
         assert.ok(billed.every((b) => !/mcp__/.test(b)), 'no fixture allows a stack server tool - the stack ships none');

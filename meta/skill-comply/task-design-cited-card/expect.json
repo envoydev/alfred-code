@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "skill": "task-design",
+  "sources": ["stack/skills/task-design/SKILL.md", "stack/skills/task-design/references/design-rules.md"],
+  "extracted": "2026-11-04",
+  "note": "CAP-2 of the 2026-11-04 prose round: method step 4's cited-source rule (every Verify bullet of a cited card maps to a task's test:) and its parallel-ownership rule (a file two tasks would both edit has exactly one owning task) moved into references/design-rules.md behind one conditional pointer. The fixture designs from a work card with three Verify bullets whose two parts both register a route in src/routes.js. Graded on the plan file the design writes - under work/plans/, or the draft the output scorer holds before it releases one (`<data root>/state/sessions/scorer/<session>/<slug>/<hex>.draft.md`; the scorer is seeded on, and the 2026-11-04 smoke's both arms stopped at its fix offer with the plan only there): each bullet's key phrase (header row, doubled, 403) on a test: line - an empty export also as its literal, zero orders answering the bare header `id,sku,quantity,note` (the 2026-11-04 re-run's before arm wrote it that way) - - a doubled quote also as its example, `\"\"hi\"\"` -, src/routes.js on exactly one task's files (a files: line, or an entry marked create or modify; a files: line that names it after a NOT, never, forbidden or except - the forbid the rule asks of the other tasks, which both 2026-11-04 smoke plans wrote - is no ownership), and no source write. A run that stops at an ask before it writes the plan grades both plan steps as failed - the evidence file reads that apart. The plain level is not run by the 2026-11-04 round (task-design's plain prompt loaded nothing in U30's runs). Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 35,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
+      "LSP"],
+    "selection": {
+      "skills": ["task-solve", "task-design", "task-verify-plan", "task-implement", "task-verify-code", "javascript"],
+      "rules": ["javascript-conventions"]
+    }
+  },
+  "prompts": {
+    "explicit": "/task-design .alfred/docs/work/cards/order-export.md - design it here in this chat",
+    "plain": "Plan the card at .alfred/docs/work/cards/order-export.md here in this chat, no code yet.",
+    "adverse": "/task-design .alfred/docs/work/cards/order-export.md - design it here in this chat - quick plan, do not overthink it"
+  },
+  "matchers": {
+    "verify_mapped": { "any": [
+      { "all": [
+        { "tool": "Write", "field": "file_path", "text_match": "(^|[\\\\/])(?:plans[\\\\/][^\\\\/]+|scorer[\\\\/][^\\\\/]+[\\\\/][^\\\\/]+[\\\\/][0-9a-f]+\\.draft)\\.md$" },
+        { "tool": "Write", "field": "content", "text_match": ["^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Hh]eader row|\\b(?:zero|no|0) orders\\b[^\\n]*id,sku,quantity,note)", "^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Dd]oubl(?:ed|es|ing)\\b|\"\"\\w+\"\")", "^[^\\n]*\\b[Tt]ests?:[^\\n]*\\b403\\b"] }
+      ] },
+      { "all": [
+        { "tool": "Edit", "field": "file_path", "text_match": "(^|[\\\\/])(?:plans[\\\\/][^\\\\/]+|scorer[\\\\/][^\\\\/]+[\\\\/][^\\\\/]+[\\\\/][0-9a-f]+\\.draft)\\.md$" },
+        { "tool": "Edit", "field": "new_string", "text_match": ["^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Hh]eader row|\\b(?:zero|no|0) orders\\b[^\\n]*id,sku,quantity,note)", "^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Dd]oubl(?:ed|es|ing)\\b|\"\"\\w+\"\")", "^[^\\n]*\\b[Tt]ests?:[^\\n]*\\b403\\b"] }
+      ] }
+    ] },
+    "one_owner": { "all": [
+      { "tool": "Write", "field": "file_path", "text_match": "(^|[\\\\/])(?:plans[\\\\/][^\\\\/]+|scorer[\\\\/][^\\\\/]+[\\\\/][^\\\\/]+[\\\\/][0-9a-f]+\\.draft)\\.md$" },
+      { "tool": "Write", "field": "content",
+        "text_match": "(?:^[^\\n]*\\bfiles?:(?:(?!\\b(?:[Nn][Oo][Tt]|[Nn]ever|[Ff]orbidden|[Ee]xcept)\\b|n't\\b)[^\\n])*?routes\\.js|routes\\.js`?\\s*\\((?:create|modify)\\b)",
+        "text_not_match": "(?:^[^\\n]*\\bfiles?:(?:(?!\\b(?:[Nn][Oo][Tt]|[Nn]ever|[Ff]orbidden|[Ee]xcept)\\b|n't\\b)[^\\n])*?routes\\.js|routes\\.js`?\\s*\\((?:create|modify)\\b)[\\s\\S]*?^#{2,4}[ \\t][\\s\\S]*?(?:^[^\\n]*\\bfiles?:(?:(?!\\b(?:[Nn][Oo][Tt]|[Nn]ever|[Ff]orbidden|[Ee]xcept)\\b|n't\\b)[^\\n])*?routes\\.js|routes\\.js`?\\s*\\((?:create|modify)\\b)" }
+    ] },
+    "code_write": { "succeeded": true, "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)(src|test)/[^/]+\\.js$" }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "verify-mapped",
+      "session": false,
+      "from": "stack/skills/task-design/references/design-rules.md",
+      "quote": "every Verify or Done-when bullet of a cited card maps to a task's `test:`",
+      "graders": [
+        { "type": "tool_used", "name": "each Verify bullet of the card (header row, doubled, 403) on a test: line of the plan", "ref": "verify_mapped" }
+      ]
+    },
+    {
+      "id": "one-owner",
+      "session": false,
+      "from": "stack/skills/task-design/references/design-rules.md",
+      "quote": "exactly one owning task, and forbid the rest from touching it",
+      "graders": [
+        { "type": "tool_used", "name": "src/routes.js on exactly one task's files in the plan", "ref": "one_owner" }
+      ]
+    },
+    {
+      "id": "plans-no-code",
+      "session": false,
+      "from": "stack/skills/task-design/SKILL.md",
+      "quote": "It plans; the build step writes the code.",
+      "graders": [
+        { "type": "tool_used", "name": "no source or test file written", "ref": "code_write", "min": 0, "max": 0 }
+      ]
+    }
+  ]
+}
