@@ -147,6 +147,25 @@ test('a merge whose head carries commits the review never saw is denied', () => 
   assert.match(r.stderr, /never saw/);
 });
 
+// PR merges go through a forge MCP server (the user, 2026-11-04), not `gh pr merge`: the tool carries the change's number,
+// so the head check runs there too - an MCP merge of a change whose head the review never saw is denied, the reviewed one passes.
+test('an MCP merge_pull_request whose head carries commits the review never saw is denied; the reviewed head passes', () => {
+  const { dir, git } = pushRepo();
+  const reviewed = headOf(dir);
+  pushHead(git, reviewed, 'refs/pull/5/head');
+  receipt(dir, reviewed);
+  const ok = run(dir, mcp('merge_pull_request', { owner: 'o', repo: 'r', pull_number: 5, merge_method: 'squash' }));
+  assert.strictEqual(ok.status, 0, ok.stderr);
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'later\n');
+  git('add', '-A'); git('commit', '-qm', 'unreviewed');
+  pushHead(git, headOf(dir), 'refs/pull/7/head');
+  git('reset', '-q', '--hard', reviewed);
+  receipt(dir, reviewed);   // one receipt covers one publish: the merge above used the first
+  const r = run(dir, mcp('merge_pull_request', { owner: 'o', repo: 'r', pull_number: 7, merge_method: 'squash' }));
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /never saw/);
+});
+
 test('a merge with no change ref on the remote falls back to the local rule', () => {
   const { dir } = pushRepo();
   receipt(dir, headOf(dir));
