@@ -3361,7 +3361,7 @@ function lintMarketplaceEntries(liveIn)
     for (const p of live.plugins || [])
     {
         if (p && require('./install/plugins.js').foreignEntry(p) && !ownFloat(p.source) && !/^[0-9a-f]{40}$/.test(typeof p.source.sha === 'string' ? p.source.sha : ''))
-            findings.push(`marketplace.json entry ${p.name} is fetched from outside this repo with no 40-hex \`sha\` - pin the commit you reviewed beside its \`ref\` (preferred-tools' shape), or the catalog serves whatever lands on that ref next; only an envoydev/ repo on \`ref: main\` with no sha floats`);
+            findings.push(`marketplace.json entry ${p.name} is fetched from outside this repo with no 40-hex \`sha\` - pin the commit you reviewed beside its \`ref\`, or the catalog serves whatever lands on that ref next; only an envoydev/ repo on \`ref: main\` with no sha floats`);
         if (!p || generated.has(p.name) || build.mcpEntry(p) || require('./install/plugins.js').foreignEntry(p)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);

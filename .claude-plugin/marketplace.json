@@ -14,8 +14,7 @@
       "source": {
         "source": "github",
         "repo": "envoydev/preferred-tools",
-        "ref": "main",
-        "sha": "33f60bf31df899e3f33d7a0d20c2646d35b1830c"
+        "ref": "main"
       },
       "description": "The MCP servers and Claude Code plugins its owner has tested and likes, with their install, update, rename and fix procedures: /preferred-tools:install, /preferred-tools:configure, /preferred-tools:update and /preferred-tools:fix.",
       "author": {

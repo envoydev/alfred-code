@@ -49,15 +49,16 @@ test('session-inspector is listed from alfred-mods on its main branch, and forei
     assert.ok([...require('./install/plugins.js').foreignEntries(ROOT)].includes('session-inspector'));
 });
 
-// SYS-07 of the 2026-11-03 system audit: preferred-tools floated on `ref: main` with no sha, so the catalog served
-// whatever landed on that branch next. It is pinned: the branch it tracks plus the commit reviewed, and every entry
-// from outside this repo carries a full sha (lint check 49 fails one without) - save an envoydev/ repo on `main` with
-// no sha, the user's own release branch (2026-11-04).
-test('preferred-tools is pinned to a reviewed commit beside its branch, and every foreign entry carries a full sha or floats on its own main', () => {
+// SYS-07 of the 2026-11-03 system audit pinned preferred-tools to the commit reviewed, after it had floated on
+// `ref: main` with no sha. The user's ruling of 2026-11-04 lets their own repos float on their release branch:
+// preferred-tools follows `main` with no sha, as session-inspector does, so a release merged there reaches an install
+// on its next update once its own plugin.json bumps the version, with no change here. Every other entry from outside
+// this repo still carries a full sha (lint check 49 fails one without).
+test('preferred-tools follows its own main branch, and every foreign entry carries a full sha or floats on its own main', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
     const entry = mp.plugins.find((x) => x.name === 'preferred-tools');
     assert.ok(entry, 'the preferred-tools entry');
-    assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/preferred-tools', ref: 'main', sha: '33f60bf31df899e3f33d7a0d20c2646d35b1830c' });
+    assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/preferred-tools', ref: 'main' });
     for (const p of mp.plugins.filter(foreignEntry))
     {
         const floats = p.source.source === 'github' && /^envoydev\//.test(p.source.repo) && p.source.ref === 'main' && !Object.hasOwn(p.source, 'sha');

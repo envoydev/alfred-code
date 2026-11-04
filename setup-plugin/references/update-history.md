@@ -706,8 +706,9 @@ through `enabledPlugins`, a removed settings file that enables it, or the `claud
 `/alfred-code:init` now finds a stack installed from a local folder when it offers marketplace auto-update. Nothing to
 do by hand.
 
-## after 3.7.1 - session-inspector follows its own main branch
+## after 3.7.1 - session-inspector and preferred-tools follow their own main branch
 
 The catalog's `session-inspector` entry now follows `envoydev/alfred-mods` on its `main` branch instead of a pinned
-release, so a mod release reaches you on your next plugin update with no stack release in between. The stack still
-never installs, updates or removes it. Nothing to do by hand.
+release, and its `preferred-tools` entry follows `envoydev/preferred-tools` on its `main` branch instead of a pinned
+commit. A release of either reaches you on your next plugin update with no stack release in between. The stack still
+never installs, updates or removes either. Nothing to do by hand.
