@@ -178,6 +178,8 @@ function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note =
     catch (err) { note(`${err.message} - its ${arrayPath} rows are kept as recorded`); return { rows: mine, changed: false, created: false, refused: true }; }
     const at = arrayAt(data, arrayPath, { make: true });
     if (!at.holder) { note(`${path.basename(file)}: ${arrayPath} is not under an object - left as it is`); return { rows: mine, changed: false, created: false, refused: true }; }
+    // A value at the key that is not a list is the user's, never replaced by the stack's list (R070).
+    if (!at.list && Object.hasOwn(at.holder, at.key)) { note(`${path.basename(file)}: ${arrayPath} is not a list - left as it is`); return { rows: mine, changed: false, created: false, refused: true }; }
     const list = at.list ? [...at.list] : [];
     const wantHash = new Map(want.map((v) => [valueHash(v), v]));
     const rows = {};

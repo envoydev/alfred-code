@@ -23,7 +23,7 @@
 //   policy-rev: current|none|stale installed=<hash|none> snapshot=<hash|none>
 //   migration: <id>\t<detect kind>          (one line per DETECTED entry; none -> no lines)
 //   migrations: none detected               (only when none fired)
-//   new: <category> <name>\t<verdict>\t<entry|->[\t<take|leave>][\tenables=<csv>][\tcopies=<csv>][\tfrom=<old>][\twas-off]
+//   new: <category> <name>\t<verdict>\t<entry|->[\t<take|leave>][\tenables=<csv>][\tcopies=<csv>][\tfrom=<old>][\twas-off][\tparent-held]
 //                                           (one line per item the release ADDED or RENAMED,
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
@@ -323,6 +323,23 @@ function pickedByKind(stampFile, splitPick)
     return picks && { skill: names(picks.skills), agent: names(picks.agents) };
 }
 
+// R063 (burn-down 2026-11-04): the lines a linked child inherits - its parent's read-back (`--parent-plan`, else the
+// installer's own read of the parent) minus this child's ignore lines - or none when it is no linked child or the read
+// failed. An offer among them arrives whatever the answer, so its 'no' must be a --drop.
+function parentHeld(root, snapshot)
+{
+    let w = null;
+    try
+    {
+        w = require('./install/workspace.js').prepare({ projectRoot: root, env: process.env,
+            args: { action: 'update', parentPlan: arg('--parent-plan') || undefined }, sourceDir: snapshot });
+    }
+    catch { return new Set(); }
+    if (!w || !w.on || !w.parentLines) return new Set();
+    const ignored = new Set((w.ignores || []).map((i) => `${i.category} ${i.name}`));
+    return new Set(w.parentLines.filter((l) => !ignored.has(l)));
+}
+
 function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines, routes })
 {
     const { classifyNew, splitPick } = require('./derive-state.js');
@@ -363,14 +380,19 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
         picked: pickedByKind(stampFile, splitPick),
     });
     if (!rows.length) return ['new: none'];
+    const held = rows.some((r) => r.verdict === 'offer') ? parentHeld(root, snapshot) : new Set();
+    const isHeld = (r) => r.verdict === 'offer' && held.has(`${r.category} ${r.name}`);
+    // A parent-held offer arrives from the parent either way, so it is marked take: an unattended run's 'Take the
+    // recommended' keeps it, and only a person's no ignores it here.
     return rows.map((r) => [
         `new: ${r.category} ${r.name}`, r.verdict, r.entry || '-',
-        ...(r.recommend ? [r.recommend] : []),
+        ...(isHeld(r) ? ['take'] : r.recommend ? [r.recommend] : []),
         ...(r.enables && r.enables.length ? [`enables=${r.enables.join(',')}`] : []),
         ...(r.copies && r.copies.length ? [`copies=${r.copies.map((c) => c.split(' ')[1]).join(',')}`] : []),
         ...(r.from ? [`from=${r.from}`] : []),
         ...(r.oldOnDisk ? ['old-on-disk'] : []),
         ...(r.wasOff ? ['was-off'] : []),
+        ...(isHeld(r) ? ['parent-held'] : []),
     ].join('\t'));
 }
 

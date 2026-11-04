@@ -153,6 +153,8 @@ function status(out)
     for (const n of linked.notes) out(n);
     const parent = linked.members[0];
     out(`workspace: parent ${parent ? parent.rel : 'none'}`);
+    // R067: the excludes are written for every stamped folder above, joined or not - validate's load check keys on this.
+    out(`installed-above: ${ws.workspaceOn({ env, projectRoot: root }) ? ws.stampedAncestors(root, { env }).length : 0}`);
     const stampFile = stamp.stampFiles({ projectRoot: root }).read;
     const ownPicks = (stampFile && stamp.readOwnPicks(stampFile)) || [];
     out(`own: ${list(ownPicks)}`);

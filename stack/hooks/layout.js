@@ -276,7 +276,9 @@ function wsLine(raw)
     const line = raw.trim();
     if (line === '' || line.startsWith('#')) return { kind: 'comment' };
     const [word, ...rest] = line.split(/\s+/);
-    const value = rest.join(' ');
+    // The text after the keyword and its separators, inner whitespace kept - parseLine's reading (R062): a child named
+    // `a  b` read as `a b` never matched its back-reference, so the hooks saw no chain for it.
+    const value = line.slice(word.length).replace(/^\s+/, '');
     if (word === 'parent')
     {
         if (value === 'none') return { key: 'parent', kind: 'parent-none', raw: line };
@@ -705,6 +707,11 @@ function autoMemorySetting(root, { account, home, managed, trusted = false, untr
 // [A-Za-z0-9] as `-`. Past 200 characters Claude Code cuts the name and appends `-<hash>`: every existing match is named.
 // [] when CLAUDE_CODE_PROJECT_DIR_NAME renames the folder and no setting names it.
 const MEMORY_NAME_MAX = 200;
+// Claude Code's own rule for that name (code.claude.com/docs/en/sessions, 'Name the project directory yourself', read
+// 2026-11-04): only beside CLAUDE_CONFIG_DIR, and only 1-64 letters, digits, - or _ that spell no Windows device name;
+// any other value keeps the derived folder (R069).
+const WIN_DEVICE_RE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+const projectDirNamed = (env) => Boolean(env.CLAUDE_CONFIG_DIR) && /^[A-Za-z0-9_-]{1,64}$/.test(String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '')) && !WIN_DEVICE_RE.test(String(env.CLAUDE_CODE_PROJECT_DIR_NAME));
 // The `autoMemoryDirectory` Claude Code applies here, or null: the first read memoryDirsOf makes, with no trust filter.
 function memoryDirSetting(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
@@ -719,7 +726,7 @@ function memoryDirsOf(root, { env = process.env, home = require('os').homedir(),
 function defaultMemoryDirs(root, { env = process.env, home = require('os').homedir(), platform = process.platform } = {})
 {
     const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
-    if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
+    if (projectDirNamed(env)) return [];
     const top = gitTopOf(root, { home });
     const name = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
     const projects = path.join(account, 'projects');

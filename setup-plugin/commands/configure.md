@@ -102,7 +102,8 @@ comparable banner by banner; the content varies, the skeleton never does.
   note). `workspace: parent none` - a standalone install, nothing more. `workspace: parent <rel>` - a child: read the parent's
   set once, `(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node
   "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" >
-  "$TMP/parent.out" 2>&1) ; echo "parent-read: $?"`, and every `--table` call of the walk adds `--inherited
+  "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo
+  "parent-read: $?"`, and every `--table` call of the walk adds `--inherited
   "$TMP/parent.json"`, so its rows read `from root` and `ignored` (`references/walk.md`). A `parent-read:` other than 0
   walks without it and says the inherited rows could not be marked.
 

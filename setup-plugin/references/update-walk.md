@@ -44,8 +44,7 @@ standalone, nothing. Add `--rescan` to `plan` when the user asks to find install
 local scope, and at every other scope the stack keys `settings.local.json` holds. A fork install passes `--repo <owner/name>`; a
 non-default stamp or settings path passes `--stamp` / `--settings`.) This is the WHOLE pre-install read - never
 hand-write a second probe for anything it already prints, and never open `meta/migrations.json` yourself: the script
-evaluates its declarative `detect` rules (measured: the hand-run form cost four API round trips and pulled a
-2,000-character maintainer `_comment` into context for a three-line existence check). A printed release-notes section
+evaluates its declarative `detect` rules (measured: the hand-run form cost four API round trips). A printed release-notes section
 is reported in step 7 beside the installer lines it explains.
 
 It prints, in order:
@@ -99,13 +98,14 @@ Then route, as numbered actions:
 1. **Name the compare signal**, if one applied, in your narration now - `no-stamp` (exit 2 - no baseline, refreshing
    unaffected), `compare-unreachable` (exit 3 - same), or a `TRUNCATED` line (third after the version and base lines:
    the compare caps at 300 files, so the file list may be incomplete). Step 7 repeats it as its COMPARE line, and a
-   `TRUNCATED` one routes the reconcile to `/alfred-code:configure` there (audit 2026-10-20 C15, a72fdfbc: a
-   truncated compare went out as 'Fast path: no migrations, no offers', the signal never named).
+   `TRUNCATED` one routes the reconcile to `/alfred-code:configure` there (audit 2026-10-20 C15:
+   a truncated compare went out unnamed).
 2. **Prune list EMPTY** -> step 3, the fast path. **NON-EMPTY** -> read `update-slow-path.md` and run its step 4.
 
 **New items - ONE ask, and only when a `new:` line says `offer`.** Put every offer through one
 AskUserQuestion before the installer runs, each named with its entry or 'copied', the entries its
-`enables=` field names, and the reason in a few words - this template when at least one offer says `take`:
+`enables=` field names, and the reason in a few words ('held by the parent - a no ignores it here' for a `parent-held`
+one) - this template when at least one offer says `take`:
 
 ```ask
 Add what this release brings? <each offer: its name, its entry or 'copied', the entries it enables, the reason in a few words>.
@@ -124,7 +124,9 @@ Add what this release brings? <each offer, as above> - none is marked take.
 
 A free-text answer names the ones to take. Each taken offer becomes one `--add "<category> <name>"` on the installer call of whichever
 path runs, and so does every `renamed` row, unasked; every `was-off` row becomes one
-`--drop "<category> <name>"`, so the user's switch-off carries onto the new name. `arrives`, `off` and `unknown` are never
+`--drop "<category> <name>"`, so the user's switch-off carries onto the new name. A `parent-held` offer is marked `take` -
+it arrives from the parent either way - and one not taken becomes one `--drop "<category> <name>"` too, recorded as
+this project's ignore line. `arrives`, `off` and `unknown` are never
 asked - they go in the step-7 report. No offer, no ask: this is still the no-questions refresh. Unattended, the ask
 takes its Recommended option (adding the recommended items only adds), logged as one `unattended: <question> ->
 <choice>` line.
@@ -229,8 +231,8 @@ user's own invocation names a value - read `update-slow-path.md`'s 'Flags' secti
 the run then pays turns re-finding its own installer. Pass `timeout: 600000`, open the call with
 `set -o pipefail;`, append `; echo "install exit: $?"` and read THAT number. A NON-ZERO exit stops the run - report
 the log's last lines verbatim as a blocker with the fix they name, and never continue to the prune, the close, or
-ad-hoc repair work (measured: 14 messages and 1.69M tokens of improvised forensics after exit 1, then 226 files
-changed under the user's `.claude` with no ask).
+ad-hoc repair work (measured: 1.69M tokens of improvised forensics after exit 1, then 226 files changed
+with no ask).
 
 The refresh updates each stack plugin at EVERY scope it is installed at (`plugin update [<scope>]: <entry>` as
 `x -> y`, `installed this run` or `already newest`; `plugin current [<scope>]` for one the resolve already took to
@@ -286,5 +288,5 @@ Then:
   grep step 3 names, and no hand-written probe for anything step 2's preflight already printed.
 - **A fail-soft `!!` line is not a re-run trigger.** The installers log `!!` for a step that fell
   back and CONTINUED - the fallback is the designed behaviour, and the line usually says so.
-  Report it; never re-run the installer end to end to feel sure (measured: one run did, at about
-  half the session's total cost, and changed nothing).
+  Report it; never re-run the installer end to end to feel sure (measured: one run did, at
+  half the session's cost, and changed nothing).

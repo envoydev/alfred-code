@@ -550,14 +550,15 @@ when it names THIS credential in THIS file; then the row is one report line, 'ro
 and any other credential row is still the ask (one run skipped it on a ruling about a different file, and its
 close was blocked and re-sent - audit 2026-10-20 C16, b1c22192).
 
-Then, in a child of an installed folder, the load check - one logged-out `claude -p` in a throwaway account dir,
-which names every file above this project that loads twice:
+Then, below an installed folder - joined or not, since the excludes are written for every stamped folder above - the
+load check: one logged-out `claude -p` in a throwaway account dir, which names every file above this project that
+loads twice:
 
 ```bash
-node "$TMP/repo/scripts/workspace.js" status --root . | grep -q '^workspace: parent \.\.' && node "$TMP/repo/scripts/workspace.js" check-loads --root .
+node "$TMP/repo/scripts/workspace.js" status --root . | grep -qE '^installed-above: [1-9]' && node "$TMP/repo/scripts/workspace.js" check-loads --root .
 ```
 
-Nothing printed is a standalone project. Paste every `check-loads:` line in the same fenced block, with no ask; a `!!
+Nothing printed is a project with no installed folder above it. Paste every `check-loads:` line in the same fenced block, with no ask; a `!!
 check-loads: <file> loaded twice` row's fix is `/alfred-code:update`, on the close.
 
 Then the tool order's rows, from the preferences capture's own script:

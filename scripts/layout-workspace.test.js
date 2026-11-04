@@ -253,6 +253,24 @@ test('CLAUDE_CODE_PROJECT_DIR_NAME gives [], but an autoMemoryDirectory still na
     assert.deepStrictEqual(memOf(m, 'q', renamed), [path.resolve('/custom/mem')]);
 });
 
+// R069 (burn-down 2026-11-04; code.claude.com/docs/en/sessions, 'Name the project directory yourself', read 2026-11-04):
+// Claude Code ignores the name without CLAUDE_CONFIG_DIR, and any value but 1-64 letters, digits, - or _ (a Windows
+// device name included) - it then keeps the derived folder, and so must the memory reads.
+test('R069: the memory default is computed unless CLAUDE_CONFIG_DIR is set and well-formed', () =>
+{
+    const m = memTree({ 'p': { git: true } });
+    const derived = (acct) => [path.join(acct, 'projects', sanitized(m.at('p')), 'memory')];
+    const withName = (name, env = m.env) => memOf(m, 'p', { env: { ...env, CLAUDE_CODE_PROJECT_DIR_NAME: name } });
+    assert.deepStrictEqual(withName('renamed', {}), derived(path.join(m.home, '.claude')), 'no CLAUDE_CONFIG_DIR: the name is ignored');
+    assert.deepStrictEqual(withName('x'.repeat(65)), derived(m.acct), 'a 65-character name is ignored');
+    assert.deepStrictEqual(withName('a.b'), derived(m.acct), 'a dot is outside the name rule');
+    assert.deepStrictEqual(withName('con'), derived(m.acct), 'a Windows device name is ignored');
+    assert.deepStrictEqual(withName('COM1'), derived(m.acct));
+    assert.deepStrictEqual(withName(''), derived(m.acct), 'an empty value is no name');
+    assert.deepStrictEqual(withName('x'.repeat(64)), [], 'a 64-character name applies');
+    assert.deepStrictEqual(withName('tenant_a-1'), []);
+});
+
 test('a garbage settings.json or a non-string autoMemoryDirectory / ALFRED_CODE_DOCS_PATH falls through to the default', () =>
 {
     const m = memTree({ 'p': { git: true, settings: '{ not json', local: JSON.stringify({ autoMemoryDirectory: 42, env: { ALFRED_CODE_DOCS_PATH: ['x'] } }) } });

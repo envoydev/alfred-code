@@ -5648,6 +5648,43 @@ test('guard-cross-project-write: an autoMemoryDirectory the account settings nam
   } finally { w.rm(); }
 });
 
+// R071 (burn-down 2026-11-04): realpath fixes the case only of a folder that exists, and APFS opens either spelling.
+test('guard-cross-project-write: R071 a member memory path typed in another case is denied on darwin; the child\'s own memory path is allowed', { skip: process.platform !== 'darwin' && 'darwin-only' }, () => {
+  const w = memWs();
+  try {
+    const name = path.basename(path.dirname(w.mem('ws')));
+    assert.ok(!fs.existsSync(w.mem('ws')), 'the member memory folder is absent');
+    const typed = path.join(w.acct, 'projects', name.toUpperCase(), 'memory', 'MEMORY.md');
+    for (const r of [w.write('ws/api', typed), w.run('ws/api', { tool_name: 'Bash', tool_input: { command: `echo note >> '${typed}'` } })]) {
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.stderr, /memory of/, r.stderr);
+    }
+    assert.equal(w.write('ws/api', path.join(w.mem('ws/api'), 'MEMORY.md')).status, 0, 'its own memory');
+    const ownUpper = path.join(w.acct, 'projects', path.basename(path.dirname(w.mem('ws/api'))).toUpperCase(), 'memory', 'MEMORY.md');
+    assert.equal(w.write('ws/api', ownUpper).status, 0, 'its own memory in another case');
+  } finally { w.rm(); }
+});
+
+// R072 (burn-down 2026-11-04): a glob kept its `*` through realish, matched no member and fell to the account-dir allowance.
+test('guard-cross-project-write: R072 a glob that can match a member\'s memory is denied; a glob matching only the child\'s own is allowed', () => {
+  const w = memWs();
+  try {
+    const projects = path.join(w.acct, 'projects');
+    const root = path.basename(path.dirname(w.mem('ws')));
+    const own = path.basename(path.dirname(w.mem('ws/api')));
+    fs.mkdirSync(w.mem('ws/api'), { recursive: true });
+    const bash = (command) => w.run('ws/api', { tool_name: 'Bash', tool_input: { command } });
+    // The last one diverges from the project AT the glob, which the name bail-out used to pass whatever it reached.
+    for (const command of [`cp f '${projects}'/${root.slice(0, -2)}*/memory/`, `echo x > '${projects}'/*/memory/x.md`, `cp f '${projects}'/${root.slice(0, -1)}?/memory/MEMORY.md`, `echo x > '${w.top}'/h*/.claude/projects/${root}/memory/x.md`]) {
+      const r = bash(command);
+      assert.equal(r.status, 2, `${command}: ${r.stderr}`);
+      assert.match(r.stderr, /memory of/, r.stderr);
+    }
+    const mine = bash(`cp f '${projects}'/${own.slice(0, -1)}?/memory/x.md`);
+    assert.equal(mine.status, 0, mine.stderr);
+  } finally { w.rm(); }
+});
+
 test('guard-cross-project-write: an autoMemoryDirectory a repo can ship opens nothing - settings.json or a tracked settings.local.json naming ~/.ssh or a folder beside the project', () => {
   const w = memWs();
   try {

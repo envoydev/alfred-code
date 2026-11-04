@@ -342,10 +342,32 @@ function memoryOf() {
   } catch { /* fail open: no member memory to guard */ }
   return memoryDirs;
 }
+// Member memory is compared case-folded on darwin too (R071): realish fixes the case only of a folder that exists, and
+// APFS opens either spelling, so `-ROOT/memory` reached a member's folder not made yet. Only this deny side folds there -
+// an allowance folded on a case-sensitive volume would open a sibling.
+const memFold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? String(p).toLowerCase() : String(p));
+const memInside = (target, dir) => {
+  const t = memFold(realish(target));
+  const d = memFold(dir);
+  return t === d || t.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
+};
+// A target holding a glob (R072) is a member's memory when it CAN expand into one: its first segments, as many as the
+// folder has, each match that folder's segment (`*` and `?` within a segment, a `[...]` class), the rest anything.
+const GLOB_CHAR = /[*?[]/;
+const segGlob = (seg) => new RegExp(`^${seg.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.').replace(/\[!/g, '[^')}$`, 's');
+function globReaches(target, dir) {
+  const t = memFold(realish(target)).split(path.sep);
+  const d = memFold(dir).split(path.sep);
+  if (t.length < d.length) return false;
+  return d.every((seg, i) => {
+    if (!GLOB_CHAR.test(t[i])) return t[i] === seg;
+    try { return segGlob(t[i]).test(seg); } catch { return true; }
+  });
+}
 function memberMemory(t) {
   const { members, own } = memoryOf();
-  const hit = members.find((m) => inside(t, m.dir));
-  return hit && !own.some((o) => inside(o, hit.dir) && inside(t, o)) ? hit : null;
+  const hit = members.find((m) => memInside(t, m.dir)) || (GLOB_CHAR.test(String(t)) && members.find((m) => globReaches(t, m.dir)));
+  return hit && !own.some((o) => memInside(o, hit.dir) && memInside(t, o)) ? hit : null;
 }
 // The memory folder the user's own settings name outside the account dir (the managed or account settings.json, or a
 // settings.local.json git does not track - never a file a clone can carry), whatever the switch says - unless it holds
@@ -797,7 +819,8 @@ function judge(rawIn, index, what, verb) {
   if (!PLUGIN_ONLY && recordAt(abs, recordKind(what, verb))) recordBlock(what, explicit ? raw : abs);
   if (recordKind(what, verb) === 'remove') judgeRemoval(abs, what, explicit ? raw : abs);
   if (allowed(abs)) return;
-  if (/[*?\[]/.test(otherProjectName(abs))) return;
+  // ...unless the glob can reach a member's memory (R072), which block() names.
+  if (/[*?\[]/.test(otherProjectName(abs)) && !memberMemory(realish(abs))) return;
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands
   block(what, explicit ? raw : abs, abs);
 }

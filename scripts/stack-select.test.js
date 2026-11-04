@@ -1150,6 +1150,49 @@ test("stack-select --table marks a row the parent holds 'from root' in fresh mod
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// R066 (burn-down 2026-11-04): a parent read-back that exited 0 while reporting failures, unreadable files or a blind
+// plugin listing still marked rows `from root` the install then never inherits (its readPlan refuses such a plan).
+test('R066: an inherited plan reporting failures prints one !! line and is treated as none', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'inherited-bad-'));
+    const sel = path.join(dir, 'raw.json');
+    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: [], plugins: [], hooks: [] }));
+    const script = path.join(__dirname, 'stack-select.js');
+    const graphPath = path.join(__dirname, '..', 'meta', 'stack-graph.json');
+    const set = { skills: ['sqlite'], rules: [], agents: [], mcps: [], plugins: [], hooks: [], root: 'x' };
+    const cases = [
+        [{ failures: 2 }, /the plan's run reported 2 failure\(s\)/],
+        [{ failures: 0, unreadable: ['.claude/settings.json'] }, /could not read \.claude\/settings\.json/],
+        [{ failures: 0, blind: true }, /blind/],
+    ];
+    for (const [extra, why] of cases)
+    {
+        const inh = path.join(dir, 'parent.json');
+        fs.writeFileSync(inh, JSON.stringify({ ...set, ...extra }));
+        const r = spawnSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'skills', '--inherited', inh], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.doesNotMatch(r.stdout, /from root/, `${JSON.stringify(extra)}: no row is marked from root`);
+        assert.doesNotMatch(r.stdout, /!! inherited/, 'the table stays paste-clean');
+        const lines = r.stderr.split('\n').filter((l) => l.startsWith('!! inherited: '));
+        assert.strictEqual(lines.length, 1, r.stderr);
+        assert.match(lines[0], why);
+        assert.match(lines[0], /no row is marked from root/);
+        const check = spawnSync('node', [script, '--inherited-check', inh], { encoding: 'utf8' });
+        assert.strictEqual(check.status, 1, `${JSON.stringify(extra)}: the read-time check fails`);
+        assert.match(check.stdout, /^!! inherited: /m);
+    }
+    fs.writeFileSync(path.join(dir, 'ok.json'), JSON.stringify({ ...set, failures: 0 }));
+    const ok = spawnSync('node', [script, '--inherited-check', path.join(dir, 'ok.json')], { encoding: 'utf8' });
+    assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+    assert.strictEqual(ok.stdout, 'inherited: ok\n');
+    const gone = spawnSync('node', [script, '--inherited-check', path.join(dir, 'none.json')], { encoding: 'utf8' });
+    assert.strictEqual(gone.status, 1);
+    assert.match(gone.stdout, /^!! inherited: no plan was written/m);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // F5, F11, F21 (the 2026-10-28 workspace run): the walk counted the table by hand and got it wrong, and an always-on rule
 // read as freely droppable. The table marks the always-on baseline `locked` and prints the counts the walk copies.
 const { tableRows } = require('./stack-select.js');

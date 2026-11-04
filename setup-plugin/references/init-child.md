@@ -23,12 +23,13 @@ this project installs as its child`.
 ## The parent's set - read once, right after screen A
 
 ```bash
-(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) ; echo "parent-read: $?"
+(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?"
 ```
 
-`--print-plan` writes nothing there. `parent-read: 0` -> go on as a child. Anything else -> say `the install at <rel>
-could not be read - installing standalone; /alfred-code:update offers the join later` and run `init-install.md` as a
-standalone install, none of the rest of this file.
+`--print-plan` writes nothing there; the check fails a read-back that ran but reported failures, unreadable files or a
+blind listing. `parent-read: 0` -> go on as a child. Anything else -> paste its `!! inherited:` line when it printed one,
+say `the install at <rel> could not be read - installing standalone; /alfred-code:update offers the join later` and run
+`init-install.md` as a standalone install, none of the rest of this file.
 
 ## The walk and screen B
 

@@ -1048,3 +1048,37 @@ test('a child whose child line was deleted by hand gets workspace: role-ask rejo
     assert.strictEqual(fs.readFileSync(path.join(p.parent, '.alfred', 'workspace'), 'utf8'), 'child project\n');
     assert.doesNotMatch(p.full(), /^workspace:/m);
 });
+
+// R063 (burn-down 2026-11-04): in a linked child, a 'no' to a release-added offer the parent's set holds was overridden -
+// the installer adds every parent line the child does not ignore. Such an offer carries `parent-held`, so the walk turns
+// a decline into a --drop, which the installer records as the child's ignore line; it is marked take, never leave.
+test('R063: a declined release-added item the parent holds stays declined in a child-only update', () =>
+{
+    const fixture = { files: [{ status: 'added', filename: 'stack/skills/dotnet-web-backend/SKILL.md' }, { status: 'added', filename: 'stack/skills/npm/SKILL.md' }] };
+    const { snap, install, fixtureFile } = scaffold({ fixture });
+    const parent = path.dirname(install);
+    fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
+    execFileSync('git', ['init', '-q', install]);
+    fs.mkdirSync(path.join(parent, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(parent, '.alfred', 'workspace'), 'role root\nchild project\n');
+    fs.mkdirSync(path.join(install, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.alfred', 'workspace'), 'parent ..\n');
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };
+    delete env.ALFRED_CODE_UNATTENDED;
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const plan = path.join(parent, 'parent.json');
+    fs.writeFileSync(plan, JSON.stringify({ root: require('./install/workspace.js').realKey(parent), failures: 0, skills: ['dotnet-web-backend'], agents: [], rules: [], hooks: [], mcps: [], plugins: [] }));
+    const rows = (extra = []) => run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing, '--parent-plan', plan, ...extra], env).out.split('\n').filter((l) => l.startsWith('new: '));
+    const got = rows();
+    assert.match(got.find((r) => r.startsWith('new: skill dotnet-web-backend')) || '', /^new: skill dotnet-web-backend\toffer\t-\ttake\tparent-held$/, got.join('\n'));
+    // It arrives from the parent either way, so it is marked take: an unattended run's 'Take the recommended' keeps it, and
+    // only a person's no ignores it here.
+    assert.match(got.find((r) => r.startsWith('new: skill npm')) || '', /^new: skill npm\toffer\t-\tleave$/, 'an offer the parent does not hold is a plain offer');
+    fs.writeFileSync(path.join(install, '.alfred', 'workspace'), 'parent ..\nignore skill dotnet-web-backend\n');
+    assert.match(rows().find((r) => r.startsWith('new: skill dotnet-web-backend')) || '', /^new: skill dotnet-web-backend\toffer\t-\tleave$/, 'an item this child already ignores is no parent-held offer');
+    fs.writeFileSync(path.join(install, '.alfred', 'workspace'), 'parent ..\n');
+    fs.writeFileSync(path.join(parent, '.alfred', 'workspace'), 'role root\n');
+    assert.match(rows().find((r) => r.startsWith('new: skill dotnet-web-backend')) || '', /^new: skill dotnet-web-backend\toffer\t-\tleave$/, 'an unlinked project inherits nothing');
+});
