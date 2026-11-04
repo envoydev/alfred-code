@@ -198,8 +198,13 @@ macOS 8/8 PASS, every row exact. So `layout.memoryDirsOf` names the one folder p
 and a child sharing its root's first 200 characters gets the root's folder as its memory line, and the Edit deny and the
 write guard cover it (tests 'a 201-character name is <first 200>-<hash of the git top>...', 'workspaceMemoryOf past
 200 characters...', 'guard-cross-project-write: R068 ...'). On Windows the hash is of the TYPED case, which no hook
-knows, so there it still lists every `<first 200>-*` folder (case ignored) beside the computed one - the old ceiling
-stands on Windows alone. Not run: the Windows re-run.
+knows, so there it still lists every `<first 200>-*` folder (case ignored) beside the computed one, leaving out each
+ancestor's computed folder, so a child never takes its root's for its own - the old ceiling stands on Windows alone,
+for a root folder made under a typed case. Not run: the Windows re-run.
+
+The same code keys a worktree as Claude Code does (`layout.memoryKeyOf`): the main checkout only when
+`<admin>/gitdir` links back to the worktree's `.git` (one moved without `git worktree repair` keys by itself), and a
+bare repository's worktree by the bare folder (test 'memoryDirsOf keys a bare repository's worktree ...').
 
 R069, the same day, logged out: `CLAUDE_CODE_PROJECT_DIR_NAME=probe_x-1` beside a throwaway `CLAUDE_CONFIG_DIR` named the
 folder `probe_x-1`; `con`, `a/b`, a 65-character value and the value without `CLAUDE_CONFIG_DIR` each kept the derived

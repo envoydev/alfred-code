@@ -90,7 +90,7 @@ What else to show?
 - 'Environment + Usage + Generated docs & data' - areas 6-8
 ```
  'All eight areas' ticked beside another shows all eight; an answer naming no area is no pick - put the same ask once
-more. Render only the chosen areas, in this fixed order:
+more; a second answer naming no area takes the Recommended row. Render only the chosen areas, in this fixed order:
 
 ```
  1 skills   2 agents   3 rules   4 hooks   5 plugins

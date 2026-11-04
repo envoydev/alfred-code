@@ -404,6 +404,49 @@ test('memoryDirsOf past 200 on win32 lists a folder named in another case; on a 
     assert.deepStrictEqual(of('darwin'), [path.join(m.acct, 'projects', ccName(long), 'memory')], 'darwin: the computed folder alone');
 });
 
+// R068's review (2026-11-04): Claude Code keys a worktree by its main checkout only through a back-link it can check -
+// `<gitdir>/gitdir` naming this worktree's `.git` - and a bare repository's worktree by the bare folder itself.
+test('memoryDirsOf keys a bare repository\'s worktree by the bare folder, and a worktree moved without repair by itself', () =>
+{
+    const m = memTree({});
+    const base = fs.realpathSync.native(m.at('.'));
+    const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, stdio: 'ignore' });
+    const src = path.join(base, 'src');
+    fs.mkdirSync(src); g(src, 'init', '-q'); fs.writeFileSync(path.join(src, 'f'), 'x'); g(src, 'add', 'f'); g(src, 'commit', '-qm', 'i');
+    g(base, 'clone', '-q', '--bare', src, path.join(base, 'bare.git'));
+    g(path.join(base, 'bare.git'), 'worktree', 'add', '-q', path.join(base, 'wt'), '-b', 'w');
+    const named = (dir) => [path.join(m.acct, 'projects', sanitized(dir), 'memory')];
+    assert.deepStrictEqual(memOf(m, 'wt'), named(path.join(base, 'bare.git')), 'a bare repository\'s worktree: the bare folder');
+    g(src, 'worktree', 'add', '-q', path.join(base, 'wt1'), '-b', 'w1');
+    assert.deepStrictEqual(memOf(m, 'wt1'), named(src), 'a linked worktree: its main checkout');
+    fs.renameSync(path.join(base, 'wt1'), path.join(base, 'wt2'));
+    assert.deepStrictEqual(memOf(m, 'wt2'), named(path.join(base, 'wt2')), 'moved without git worktree repair: the back-link fails, so itself');
+});
+
+// R068's review: on Windows every `<first 200>-*` folder is listed, and a child shares its root's first 200, so once the
+// root's folder existed the child read it as its own - the deny came and went with the folder. An ancestor's computed
+// folder is never this project's.
+test('memoryDirsOf past 200 on win32 never lists an ancestor\'s computed folder as its own, so the child\'s root line holds once the folder exists', () =>
+{
+    const m = memTree({});
+    const base = m.at('.');
+    const ws = path.join(base, 'w'.repeat(Math.max(1, 205 - (sanitized(base).length + 1))));
+    for (const [dir, file] of [[ws, 'child api\n'], [path.join(ws, 'api'), 'parent ..\n']])
+    {
+        fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), STAMP); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+        execFileSync('git', ['init', '-q'], { cwd: dir });
+    }
+    const api = path.join(ws, 'api');
+    const root = path.join(m.acct, 'projects', ccName(ws), 'memory');
+    const own = path.join(m.acct, 'projects', ccName(api), 'memory');
+    const line = () => layout.workspaceMemoryOf(api, { env: m.env, home: m.home, managed: m.managed, platform: 'win32' });
+    assert.strictEqual(line(), root, 'before the folders exist');
+    for (const d of [root, own]) fs.mkdirSync(d, { recursive: true });
+    assert.ok(!layout.memoryDirsOf(api, { env: m.env, home: m.home, managed: m.managed, platform: 'win32' }).includes(root), 'the root\'s folder is not the child\'s');
+    assert.strictEqual(line(), root, 'after the folders exist');
+});
+
 // ---- release 3 review: a child's linked worktree reads the chain its main checkout holds ----------------------------
 test('a child\'s linked worktree, with no workspace file of its own, reads its main checkout\'s preferences folders and root memory', () =>
 {

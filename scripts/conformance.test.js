@@ -299,4 +299,9 @@ test('background-wait: $(cat list.txt) feeding a run is no whole-log read; a sub
     assert.strictEqual(verdict(['node --test $(cat list.txt)', 'node --test $(cat list.txt) > run.log']), 'PASS');
     assert.strictEqual(verdict(['(cat run.log)', 'ls && (cat run.log)']), 'FAIL');
     assert.strictEqual(verdict(['cat run.log', 'echo x; cat run.out']), 'FAIL');
+    // R068's review: the exemption is a .txt list fed to a command; a log, an .out or an .output read through $( ) is
+    // still the whole log.
+    // (the step allows one whole read, so each command runs twice)
+    assert.strictEqual(verdict(['for f in $(cat files.txt); do echo "$f"; done', 'for f in $(cat files.txt); do echo "$f"; done']), 'PASS');
+    for (const cmd of ['echo $(cat run.log)', 'echo "$(cat run.out)"', 'x=$(cat build.output)']) assert.strictEqual(verdict([cmd, cmd]), 'FAIL', cmd);
 });

@@ -1771,4 +1771,6 @@ test('configure\'s and status\'s area asks offer the whole walk as their Recomme
         assert.doesNotMatch(a.q, /None ticked/, `${name}: no promise for an empty pick`);
     }
     for (const name of ['configure', 'status']) assert.doesNotMatch(cmdBody(name), /None ticked|an empty pick (?:shows|walks|means)/, `${name}: no body text relies on an empty pick`);
+    // R068's review: the re-ask needs an end - a second answer naming no area takes the Recommended row.
+    for (const name of ['configure', 'status']) assert.match(cmdBody(name).replace(/\s+/g, ' '), /a second answer naming no area takes the Recommended row/, `${name}: the re-ask ends`);
 });

@@ -731,13 +731,38 @@ function memoryDirsOf(root, { env = process.env, home = require('os').homedir(),
     const set = memoryDirSetting(root, { env, home, managed, platform });
     return set ? [set] : defaultMemoryDirs(root, { env, home, platform });
 }
+// The folder Claude Code keys a git top's memory by (2.1.318's own rule, R068's review): a linked worktree's main
+// checkout only when the worktree's admin folder links back to this `.git` (a worktree moved without `git worktree
+// repair` keys by itself), and a bare repository's worktree by the bare folder. Any doubt keys by the top itself.
+function memoryKeyOf(top)
+{
+    try
+    {
+        const dotGit = path.join(top, '.git');
+        if (!fs.lstatSync(dotGit, { throwIfNoEntry: false })?.isFile()) return top;
+        const text = fs.readFileSync(dotGit, 'utf8').trim();
+        if (!text.startsWith('gitdir:')) return top;
+        const regular = (f) => fs.lstatSync(f, { throwIfNoEntry: false })?.isFile();
+        const admin = path.resolve(top, text.slice(7).trim());
+        if (!regular(path.join(admin, 'commondir'))) return top;
+        const common = path.resolve(admin, fs.readFileSync(path.join(admin, 'commondir'), 'utf8').trim());
+        if (path.resolve(path.dirname(admin)) !== path.join(common, 'worktrees')) return top;
+        if (!regular(path.join(admin, 'gitdir'))) return top;
+        const back = fs.readFileSync(path.join(admin, 'gitdir'), 'utf8').trim();
+        if (path.sep === '/' && [top, admin, back, common].some((p) => p.includes('\\'))) return top;
+        if (fs.realpathSync(path.resolve(admin, back)) !== path.join(fs.realpathSync(top), '.git')) return top;
+        if (path.basename(common) !== '.git') return fs.existsSync(path.join(common, '.git')) ? top : common;
+        return path.dirname(common);
+    }
+    catch { return top; }
+}
 // The default place alone, whatever a setting names: what docs mode's switch back to default would use (memory P3).
 function defaultMemoryDirs(root, { env = process.env, home = require('os').homedir(), platform = process.platform } = {})
 {
     const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
     if (projectDirNamed(env)) return [];
     const top = gitTopOf(root, { home });
-    const spelled = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC');
+    const spelled = realpathOrSelf(top ? memoryKeyOf(top) : root).normalize('NFC');
     const name = spelled.replace(/[^A-Za-z0-9]/g, '-');
     const projects = path.join(account, 'projects');
     if (name.length <= MEMORY_NAME_MAX) return [path.join(projects, name, 'memory')];
@@ -745,9 +770,16 @@ function defaultMemoryDirs(root, { env = process.env, home = require('os').homed
     const exact = path.join(projects, `${head}${memoryNameHash(spelled)}`, 'memory');
     if (platform !== 'win32') return [exact];
     // Claude Code names the folder from the cwd as TYPED, and on Windows that case need not be the real one (probe A5),
-    // so neither the name's case nor its hash is known there: every `<first 200>-*` folder is listed, case ignored.
+    // so neither the name's case nor its hash is known there: every `<first 200>-*` folder is listed, case ignored - but
+    // an ancestor's own computed folder, which a workspace child shares the first 200 with, is never this project's.
+    const ancestors = new Set();
+    for (let up = path.dirname(spelled); up !== path.dirname(up); up = path.dirname(up))
+    {
+        if (up.replace(/[^A-Za-z0-9]/g, '-').length <= MEMORY_NAME_MAX) break;
+        ancestors.add(`${head}${memoryNameHash(up)}`.toLowerCase());
+    }
     let names = [];
-    try { names = fs.readdirSync(projects).filter((n) => n.toLowerCase().startsWith(head.toLowerCase()) && n.length > head.length); }
+    try { names = fs.readdirSync(projects).filter((n) => n.toLowerCase().startsWith(head.toLowerCase()) && n.length > head.length && !ancestors.has(n.toLowerCase())); }
     catch { /* no projects folder yet */ }
     const listed = names.sort().map((n) => path.join(projects, n, 'memory'));
     return listed.some((d) => d.toLowerCase() === exact.toLowerCase()) ? listed : [exact, ...listed];
@@ -936,8 +968,8 @@ function topMember(projectRoot, { env = process.env } = {})
 }
 
 // R6: the workspace root's (the top member's) memory folder, read-only to a child. Null at a root or with the switch at 0,
-// past an `ignore memory root` here or in a nearer member (R0), unless exactly one folder matches, and when it is one of
-// the child's own (a shared account-level value): that is not the root's memory to show.
+// past an `ignore memory root` here or in a nearer member (R0), and unless exactly one of the root's folders is not one of
+// the child's own (a shared account-level value is the child's own memory, not the root's to show).
 function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
     if (!workspaceOn({ env, projectRoot })) return null;
@@ -946,10 +978,10 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
     if (!members.length) return null;
     const ignored = (ignores) => (ignores || []).some((i) => i.category === 'memory' && i.name === 'root');
     if (ignored(chain.ignores) || members.slice(0, -1).some((m) => ignored(m.ignores))) return null;
-    const found = memoryDirsOf(members[members.length - 1].root, { env, home, managed, platform });
-    if (found.length !== 1) return null;
+    // The child's own folders come off first: on Windows past 200 the root's listing holds the child's folder too.
     const own = new Set(memoryDirsOf(projectRoot, { env, home, managed, platform }).map(dirKey));
-    return own.has(dirKey(found[0])) ? null : found[0];
+    const found = memoryDirsOf(members[members.length - 1].root, { env, home, managed, platform }).filter((d) => !own.has(dirKey(d)));
+    return found.length === 1 ? found[0] : null;
 }
 
 module.exports = {

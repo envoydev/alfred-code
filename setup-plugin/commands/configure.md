@@ -203,7 +203,7 @@ Which areas to adjust this run?
 - 'Hooks + Plugins' - the hook layer, the status line and the LSP picks
 - 'Environment' - the stack's values, the memory mode, navigation and the workspace role
 ```
- 'All six areas' ticked beside another walks all six; an answer naming no area is no pick - put the same ask once more. Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
+ 'All six areas' ticked beside another walks all six; an answer naming no area is no pick - put the same ask once more; a second answer naming no area takes the Recommended row. Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
 installer run at step 11, which works from the whole selection - and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
 
 ## The walk - steps 3-7, one layer at a time
