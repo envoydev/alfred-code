@@ -176,6 +176,11 @@ test('docsMemoryShare: a same-repo child inheriting docs shares its member\'s ro
     writeLocal(parent, {});
     assert.strictEqual(layout.docsMemoryShare(child, opts), null, 'the parent wrote no row');
     writeLocal(parent, { autoMemoryDirectory: dir });
+    // A hook's or a script's loader applies the member's docs to its process env first (applyVariables): still shared.
+    const applied = { ...r.env };
+    layout.applyVariables(child, applied);
+    assert.strictEqual(applied.ALFRED_CODE_MEMORY, 'docs', 'the loader carried the member\'s value');
+    assert.deepStrictEqual(layout.docsMemoryShare(child, { ...opts, env: applied }), { member: '..', dir }, 'the applied env is no value of the child\'s own');
     fs.writeFileSync(path.join(child, '.alfred', '.variables'), 'ALFRED_CODE_MEMORY=docs\n');
     assert.strictEqual(layout.docsMemoryShare(child, opts), null, 'the child\'s own docs is no share');
 });

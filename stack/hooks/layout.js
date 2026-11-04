@@ -712,9 +712,13 @@ function memoryDirSetting(root, { env = process.env, home = require('os').homedi
 }
 function memoryDirsOf(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
-    const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
     const set = memoryDirSetting(root, { env, home, managed, platform });
-    if (set) return [set];
+    return set ? [set] : defaultMemoryDirs(root, { env, home, platform });
+}
+// The default place alone, whatever a setting names: what docs mode's switch back to default would use (memory P3).
+function defaultMemoryDirs(root, { env = process.env, home = require('os').homedir(), platform = process.platform } = {})
+{
+    const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
     if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
     const top = gitTopOf(root, { home });
     const name = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
@@ -827,13 +831,16 @@ function memoryFiles(dir)
 
 // OD5: a workspace child in the same repository that reads `docs` from a member, and whose effective setting is already
 // that member's docs memory (Claude Code reads the repository root's settings.local.json, the member's row): it shares
-// it, so nothing is written here. { member: <rel>, dir } or null. The chain starts where variablesOf starts it.
+// it, so nothing is written here. { member: <rel>, dir } or null. The chain starts where variablesOf starts it, and the
+// mode's source is read from the files and the members alone: a hook's or a script's loader has already applied the
+// members' values to its process env (applyVariables), where they would read as a launch value of the child's own.
 function docsMemoryShare(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
     const at = path.resolve(root);
-    const { values, from } = variablesOf(at, { env });
+    const chainEnv = Object.fromEntries(['CLAUDE_CONFIG_DIR', SWITCH_KEY].filter((k) => env[k] !== undefined).map((k) => [k, env[k]]));
+    const { values, from } = variablesOf(at, { env: chainEnv });
     if (values.ALFRED_CODE_MEMORY !== 'docs') return null;
-    const member = workspaceChain(mainCounterpart(at) || at, { env }).members.find((m) => m.rel === from.ALFRED_CODE_MEMORY);
+    const member = workspaceChain(mainCounterpart(at) || at, { env: chainEnv }).members.find((m) => m.rel === from.ALFRED_CODE_MEMORY);
     if (!member) return null;
     const setting = memoryDirSetting(at, { env, home, managed, platform });
     const dir = docsMemoryDir(member.root, { env });
@@ -900,7 +907,7 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, memoryDirSetting, trustedMemoryDir, localSettingsFile, docsRootOf, topMember,
+    memoryDirsOf, defaultMemoryDirs, memoryDirSetting, trustedMemoryDir, localSettingsFile, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };
