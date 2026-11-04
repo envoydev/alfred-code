@@ -22,6 +22,7 @@ const { frontmatterOf, frontmatterValue, injectedRuleText, listedTools } = requi
 const { findDuplicates } = require('./find-duplicate-rules.js');
 const { scrubbed, strayWrites, strayRoots } = require('./hook-test-env.js');
 const { BRAND } = require('./install/brand.js');
+const { pluginsRoot } = require('../stack/skills/capture-preferences/scripts/plugins-root.js');
 
 const ROOT = path.join(__dirname, '..');
 // The listing truncates each entry here unless settings say otherwise (skillListingMaxDescChars, the skills docs).
@@ -87,7 +88,8 @@ function accountPaths({ configDir, env = process.env, home = os.homedir() })
     const dir = configDir || env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
     // The installer's own rule: the account file sits in CLAUDE_CONFIG_DIR when one is set, else in the home dir.
     const accountFile = configDir || env.CLAUDE_CONFIG_DIR ? path.join(dir, '.claude.json') : path.join(home, '.claude.json');
-    return { dir, accountFile };
+    // The registry, the marketplace list and cache/ sit in the plugins root, which CLAUDE_CODE_PLUGIN_CACHE_DIR moves.
+    return { dir, accountFile, plugins: pluginsRoot(env, dir) };
 }
 
 // Every settings layer the session merges, lowest first; each one read or reported unreadable.
@@ -126,15 +128,15 @@ const ownerOfPlugin = (spec, inventory) =>
 function pluginComponents(spec, account, projectRoot)
 {
     const [name, market] = spec.split('@');
-    const registry = readJson(path.join(account.dir, 'plugins', 'installed_plugins.json')).value || {};
+    const registry = readJson(path.join(account.plugins, 'installed_plugins.json')).value || {};
     const rows = ((registry.plugins || {})[spec] || []);
     const here = realOr(projectRoot);
     const row = rows.find((r) => r.scope !== 'user' && r.projectPath && realOr(r.projectPath) === here)
         || rows.find((r) => r.scope === 'user') || rows[0];
     if (!row || !row.installPath || !isDir(row.installPath)) return { name, market, missing: true };
     const root = row.installPath;
-    const markets = readJson(path.join(account.dir, 'plugins', 'known_marketplaces.json')).value || {};
-    const mpDir = (markets[market] && markets[market].installLocation) || path.join(account.dir, 'plugins', 'marketplaces', market);
+    const markets = readJson(path.join(account.plugins, 'known_marketplaces.json')).value || {};
+    const mpDir = (markets[market] && markets[market].installLocation) || path.join(account.plugins, 'marketplaces', market);
     const catalog = readJson(path.join(mpDir, '.claude-plugin', 'marketplace.json')).value || {};
     const entry = ((catalog.plugins || []).find((p) => p && p.name === name)) || {};
     const manifest = readJson(path.join(root, '.claude-plugin', 'plugin.json')).value || {};

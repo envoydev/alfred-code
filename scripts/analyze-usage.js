@@ -58,6 +58,7 @@ const readline = require('readline');
 const { createHash } = require('crypto');
 const { loadManifest } = require('./install/manifest.js');
 const { parseJson } = require('./install/json-file.js');
+const { pluginsRoot } = require('../stack/skills/capture-preferences/scripts/plugins-root.js');
 
 // ---------- small helpers ----------
 
@@ -1046,11 +1047,12 @@ function loadPluginLayers(claudeDir) {
     enabled = Object.keys(s.enabledPlugins || {}).filter((k) => (s.enabledPlugins || {})[k] !== false);
   }
   catch { return out; }
-  const cfg = process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
+  // The cache sits under the plugins root, which CLAUDE_CODE_PLUGIN_CACHE_DIR moves (plugins-root.js).
+  const plugins = pluginsRoot(process.env, process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '', '.claude'));
   for (const id of enabled) {
     const [plugin, market] = String(id).split('@');
     if (!plugin || !market) continue;
-    const base = path.join(cfg, 'plugins', 'cache', market, plugin);
+    const base = path.join(plugins, 'cache', market, plugin);
     for (const e of dirEntries(base)) {
       if (!e.isDirectory()) continue;
       const root = path.join(base, e.name);
@@ -1239,13 +1241,18 @@ function pluginDeclarations(root, name, marketDir) {
 // had. The config dir (the registry's grandparent, when it sits in `plugins/`) gives the user
 // settings and the marketplace list beside it.
 function loadPlugins(explicit) {
+  // Each candidate carries the config dir its user settings sit in: the registry sits in the plugins root, which
+  // CLAUDE_CODE_PLUGIN_CACHE_DIR moves away from the config dir (plugins-root.js); a registry handed in names it by place.
   const cands = [];
-  if (explicit) cands.push(explicit);
+  if (explicit) cands.push({ f: explicit, configDir: path.basename(path.dirname(explicit)) === 'plugins' ? path.dirname(path.dirname(explicit)) : null });
   else {
-    if (process.env.CLAUDE_CONFIG_DIR) cands.push(path.join(process.env.CLAUDE_CONFIG_DIR, 'plugins', 'installed_plugins.json'));
-    cands.push(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'));
+    const home = path.join(os.homedir(), '.claude');
+    for (const cfg of process.env.CLAUDE_CONFIG_DIR ? [process.env.CLAUDE_CONFIG_DIR, home] : [home]) {
+      const f = path.join(pluginsRoot(process.env, cfg), 'installed_plugins.json');
+      if (!cands.some((c) => c.f === f)) cands.push({ f, configDir: cfg });
+    }
   }
-  for (const f of cands) {
+  for (const { f, configDir } of cands) {
     const j = readJsonOr(f, null);
     if (!j) continue;
     const markets = readJsonOr(path.join(path.dirname(f), 'known_marketplaces.json'), {}) || {};
@@ -1265,7 +1272,6 @@ function loadPlugins(explicit) {
       }
       byPlugin.set(name, e);
     }
-    const configDir = path.basename(path.dirname(f)) === 'plugins' ? path.dirname(path.dirname(f)) : null;
     return { list: [...byPlugin.values()].sort(byName), source: f, configDir, settings: new Map() };
   }
   return { list: null, source: 'unknown', configDir: null, settings: new Map() };

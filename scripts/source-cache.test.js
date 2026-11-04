@@ -657,3 +657,53 @@ test('READER-1: the snapshot reads a moved plugins root; unset, empty or blank r
     }
     finally { fs.rmSync(cfg, { recursive: true, force: true }); fs.rmSync(moved, { recursive: true, force: true }); }
 });
+
+// Run C item 4 (Task 12 ruling 87): CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root, cache/ included, so both
+// snippets read the cache there - as source.js pluginsBase does - instead of falling through to the release archive.
+function movedRootFixture(home) {
+    plantThree(home);
+    const moved = path.join(home, 'moved-plugins');
+    fs.renameSync(path.join(home, '.claude', 'plugins'), moved);
+    const PATH = stubClaude(home, '[]');
+    // a fetch is the fall-through this guards against: the stub records it and fails, so nothing leaves the machine
+    fs.writeFileSync(path.join(home, 'bin', 'curl'), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(path.join(home, 'curl.log'))}\nexit 22\n`, { mode: 0o755 });
+    return { moved, env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), CLAUDE_CODE_PLUGIN_CACHE_DIR: moved, PATH } };
+}
+
+test("the protocol's bash snippet reads the cache under a moved plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR)", () => {
+    const home = work();
+    const script = path.join(home, 'resolve.sh');
+    let tmp = '';
+    try
+    {
+        const { env } = movedRootFixture(home);
+        fs.writeFileSync(script, protocolSnippet('bash', 0));
+        const r = spawnSync('bash', [script], { cwd: home, encoding: 'utf8', env });
+        const m = r.stdout.match(/RESOLVED TMP=(\S+) (\S+)/);
+        if (m) tmp = nativePath(m[1]);
+        assert.ok(!fs.existsSync(path.join(home, 'curl.log')), `it fetched the archive over the moved cache:\n${r.stdout}\n${r.stderr}`);
+        assert.ok(m, `the snippet printed no RESOLVED line:\n${r.stdout}\n${r.stderr}`);
+        assert.strictEqual(m[2], '0.10.0', 'the newest valid entry under the moved root');
+    }
+    finally
+    {
+        const mark = markOf(home);
+        for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test("the protocol's PowerShell snippet reads the cache under a moved plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR)", { skip: skipNoPwsh }, () => {
+    const home = work();
+    const script = path.join(home, 'resolve.ps1');
+    try
+    {
+        const { moved, env } = movedRootFixture(home);
+        fs.writeFileSync(script, `${protocolSnippet('powershell', 0)}\nWrite-Output "PS-SRC=$Src"\nWrite-Output "PS-VER=$Ver"\nWrite-Output "PS-TMP=$TMP"\n`);
+        const out = execFileSync('pwsh', ['-NoProfile', '-File', script], { cwd: home, encoding: 'utf8', env });
+        assert.match(out, /PS-VER=0\.10\.0/, `the ps snippet read a different version:\n${out}`);
+        assert.strictEqual(fs.realpathSync.native(out.match(/PS-SRC=(.+)/)[1].trim()), fs.realpathSync.native(path.join(moved, 'cache', 'envoydev', 'alfred-code', '0.10.0')));
+        fs.rmSync(out.match(/PS-TMP=(.+)/)[1].trim(), { recursive: true, force: true });
+    }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

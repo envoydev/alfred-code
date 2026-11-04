@@ -285,7 +285,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   (`pluginCache`, `scripts/install/source.js`): `<config>/plugins/cache/<marketplace>/alfred-code/<version>/` - under the
   plugins root `CLAUDE_CODE_PLUGIN_CACHE_DIR` moves (`pluginsBase`, through the snapshot's own
   `capture-preferences/scripts/plugins-root.js`; a snapshot without it reads `<config>/plugins`, E-batch READER-1; the
-  protocol's two snippets still read `<config>/plugins/cache` and fall through to the archive there) -
+  protocol's two snippets read the same root, `${CLAUDE_CODE_PLUGIN_CACHE_DIR:-$CFG/plugins}`, run C item 4) -
   is the whole repo, because every marketplace entry is sourced from the repo ROOT (measured on a real
   install) - but with NO `RELEASE-SOURCE` and no `.git`, so its revision is the `v<version>` tag of its
   own `plugin.json` (`readRevision`, shared with `stamp-compare.js`). The NEWEST valid entry across

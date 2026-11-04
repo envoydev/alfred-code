@@ -368,3 +368,21 @@ test('usage: no project is exit 2, a missing directory exit 1', () =>
     assert.equal(quiet(() => main([])), 2);
     assert.equal(quiet(() => main([path.join(os.tmpdir(), 'no-such-project-surface')])), 1);
 });
+
+// Run C item 4 (Task 12 ruling 87): CLAUDE_CODE_PLUGIN_CACHE_DIR moves the whole plugins root - the registry, the
+// marketplace list and cache/ - so a plugin installed under it is read there, never a dangling row.
+test('a plugin under a moved plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR) is read from there', () =>
+{
+    const fx = install({ plugins: { 'alfred-code@envoydev': { files: { 'skills/core/SKILL.md': skill('core', 'Use when moved.') } } } });
+    const moved = path.join(fx.root, 'moved-plugins');
+    fs.renameSync(path.join(fx.acct, 'plugins'), moved);
+    const reg = path.join(moved, 'installed_plugins.json');
+    const j = JSON.parse(fs.readFileSync(reg, 'utf8'));
+    for (const rows of Object.values(j.plugins)) for (const r of rows) r.installPath = r.installPath.replace(path.join(fx.acct, 'plugins'), moved);
+    fs.writeFileSync(reg, JSON.stringify(j));
+    const s = fx.run({ env: { ...process.env, CLAUDE_CODE_PLUGIN_CACHE_DIR: moved } });
+    assert.deepEqual(flagsOf(s, 'dangling'), [], 'no dangling row');
+    assert.ok(rowsAt(s, 'session-start').some((r) => r.listing === 'skill' && /alfred-code:core$/.test(r.note)), 'the moved plugin\'s skill is listed');
+    const unmoved = fx.run({ env: { ...process.env, CLAUDE_CODE_PLUGIN_CACHE_DIR: '' } });
+    assert.match(flagsOf(unmoved, 'dangling')[0].detail, /alfred-code@envoydev is enabled \(project\) but not in the plugin cache/, 'unset, the config dir\'s plugins/ is read');
+});
