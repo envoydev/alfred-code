@@ -210,3 +210,14 @@ test('watch-merge --own', () =>
     }
     finally { r.rm(); }
 });
+
+// R080 (M4): the doc shape's example id is the slug of its own title, as the shape's rule says.
+test('the assessment shape\'s example title slugs to its id', () =>
+{
+    const shape = read(AQ_SHAPE);
+    const m = /^### W3 - (.+)\n<!-- id: ([\w-]+) -->/m.exec(shape);
+    assert.ok(m, 'the W3 example');
+    const slug = (h) => h.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+    assert.strictEqual(slug(m[1]), m[2]);
+    assert.ok(shape.includes(`**W3 - ${m[1]}.**`), 'the quoted entry carries the same title');
+});

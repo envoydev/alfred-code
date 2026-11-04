@@ -1254,7 +1254,7 @@ const ASK_FLOW_TEMPLATES = {
     'task-solve': 11, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
     'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
     // capture-quality's chain (2026-10-29): one template per part state, the mode question and the description match's part pick.
-    'capture-quality': 7,
+    'capture-quality': 8, // R127: absent and unstamped ask apart
     // capture-awareness's router (2026-10-30): the chain's run ask and mode ask and the description match's part pick.
     'capture-awareness': 3,
     // stack audit 2026-10-20 row 13: task-solve's per-judgment ask, issue-diagnoser's 4a / 4c close, task-version-upgrade's
@@ -2901,6 +2901,22 @@ function lintPageScripts({ file = 'docs/alfred-code.html', html } = {})
         const line = at ? bodyStart + Number(at[1]) - 1 : bodyStart;
         const why = ((r.stderr || '').split('\n').find((l) => /Error/.test(l)) || `exit ${r.status}`).trim();
         out.push(`${file}:${line} - its inline script fails node --check (${why}), so the page renders no table`);
+    }
+    // R139: a row string goes into insertAdjacentHTML unescaped, so a placeholder written raw (`<data root>`, `<id>`,
+    // `IOptions<T>`) is parsed as an element and the browser drops it. Inside each string literal of each inline script,
+    // a `<name ...>` whose name is no tag the page renders is flagged with its escape.
+    const BODY = new Set(['a', 'b', 'br', 'code', 'details', 'div', 'em', 'h2', 'h3', 'hr', 'i', 'kbd', 'li', 'ol', 'p', 'pre', 'small', 'span', 'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul']);
+    for (const m of text.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g))
+    {
+        const bodyAt = m.index + m[0].indexOf('>') + 1;
+        for (const lit of m[1].matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g))
+            for (const tag of lit[0].matchAll(/<([A-Za-z][\w-]*)([^<>]*)>/g))
+            {
+                if (BODY.has(tag[1].toLowerCase()) && /^(?:\s+[\w-]+(?:=(?:\\?"[^"]*?\\?"|'[^']*'|[^\s>]+))?)*\s*$/.test(tag[2])) continue;
+                const line = text.slice(0, bodyAt + lit.index + tag.index).split('\n').length;
+                const inner = tag[0].slice(1, -1);
+                out.push(`${file}:${line} - a row string holds \`${tag[0]}\`, which the browser drops as an element - write &lt;${inner}&gt;`);
+            }
     }
     return out;
 }

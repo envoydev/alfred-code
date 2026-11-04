@@ -124,12 +124,20 @@ No part recommends a skip. The two assessments keep no zero-drift shortcut, beca
 decision or a shipped fix changes the answer even when the code did not; the coverage part's own update gate
 recommends the re-measure and keeps its report-only answer.
 
-For `absent` or `unstamped`, any part:
+For `absent`, any part:
 
 ```ask
 Run the <part> capture? <DOC> does not exist yet.
 - 'Run it (Recommended)' - the part's first run; it writes <DOC>
 - 'Skip it' - nothing runs for <part>
+```
+
+For `unstamped`, any part:
+
+```ask
+<DOC> has no stamp, so its state is unknown. Refresh it?
+- 'Refresh it (Recommended)' - the part runs again and stamps <DOC>
+- 'Skip it' - <DOC> stays as it is
 ```
 
 For `stale`, the two assessments:

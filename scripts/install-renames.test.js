@@ -998,6 +998,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     const pairs = { ...RENAMED.skills, ...RENAMED.agents };
     const old = new RegExp(`(?<![A-Za-z0-9_-])(${Object.keys(pairs).join('|')})(?![A-Za-z0-9_-])`, 'g');
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
+    const TOPICS = manifest.renamedTopics || {};
     assert.ok(old.test(JSON.stringify(manifest.renamed)) && old.test(JSON.stringify(manifest.retired)), 'positive control: the scan sees the map and the retired lists');
     old.lastIndex = 0;
     const SKIP_DIRS = new Set(['.git', 'node_modules', '.claude', '.serena', '.superpowers', '.memory-mcp', '.playwright', '.idea']);
@@ -1025,8 +1026,10 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
             // the skew window (the capture-awareness merge, spec 2.3): a code line that must still spell an old name - a
             // retired text kept byte for byte, an older copy a reader still meets - says so with a `// legacy` comment
             if (/\.js$/.test(rel) && /\/\/ legacy\b/.test(line)) return;
-            const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)` \|$/.exec(line);
-            if (rel === 'setup-plugin/references/update-history.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
+            // R126: a renamed skill that became a part of a merged one is sent to its topic form (`/capture-quality code-quality`);
+            // the bare form is no longer the map's own pair for it
+            const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)(?: ([a-z0-9-]+))?` \|$/.exec(line);
+            if (rel === 'setup-plugin/references/update-history.md' && row && pairs[row[1]] === row[2] && (row[3] || null) === (TOPICS[row[1]] || null)) { tableRows.push(row[1]); return; }
             hits.push(`${rel}:${i + 1}: ${found.join(', ')}`);
         });
     };

@@ -156,3 +156,43 @@ test('the capture reports the by-hand counts and leaves the judging to a review'
     assert.ok(measure.includes('judge every id a `by hand:` line names'), 'the owner sentence keeps its marker');
     assert.ok(measure.includes('here the run only reports how many entries the line names'), 'the capture itself judges nothing');
 });
+
+// ---- The burn-down's prose fixes (R073-R079) ---------------------------------------------------------------------------
+// R073 + R074: every quoter judges what the owner names - every entry a `skipped:` line names, an unparseable Check:
+// included - and its older-script fallback reads as the copy, never as the diff under review.
+test('every quoter judges every entry a skipped line names, and names the older copy plainly', () =>
+{
+    assert.ok(read(CAPTURE).includes('every entry a `skipped:` line names'), 'the owner\'s wording');
+    for (const rel of [...verifiers(), 'stack/agents/integration-reviewer.md', VERIFY, PASSES, 'stack/skills/task-verify-code/references/passes.md'])
+    {
+        const text = read(rel).replace(/\s+/g, ' ');
+        assert.ok(text.includes('and every entry a `skipped:` line names'), `${rel}: the owner's wording`);
+        assert.ok(!text.includes('every entry with no `Check:` a `skipped:` line names'), `${rel}: no narrower reading`);
+        assert.ok(text.includes('(an older script copy prints none)') && !text.includes('(a script copy from before this change)'), `${rel}: the older copy named plainly`);
+    }
+});
+
+// R075: the refute pass never drops a seam bypass as taste - both copies of pass 7 name its failure.
+test('pass 7 names a seam bypass as a wrong result in both copies', () =>
+{
+    for (const rel of [PASSES, 'stack/skills/task-verify-code/references/passes.md'])
+        assert.ok(read(rel).replace(/\s+/g, ' ').includes('A `seam` bypass is a wrong result, never taste: a test\'s fixed clock or log scope misses the raw call.'), rel);
+});
+
+// R077: NORMALIZE's field list names Example: beside the others.
+test('NORMALIZE lists Example: among the entry fields', () =>
+{
+    const first = section(read(CAPTURE), '2. NORMALIZE').split('\n\n')[1] || '';
+    assert.ok(first.includes('`Example:`'), first.slice(0, 200));
+    assert.ok(/Field names stay English \([^)]*`Example:`/.test(first), 'the English field names include it');
+});
+
+// R079: integration-reviewer's gate 1 keeps the preferences check in sentences of its own.
+test('integration-reviewer gate 1 states the preferences check in its own sentences', () =>
+{
+    const gate = read('stack/agents/integration-reviewer.md').split('\n').find((l) => l.startsWith('1. **Every affected domain signed off.**')) || '';
+    const sentences = gate.split(/(?<=[.;]) (?=[A-Z])/);
+    const check = sentences.find((x) => x.includes('judge every id a `by hand:` line names')) || '';
+    assert.ok(check && !check.includes('accepted risk') && !check.includes('stays out of scope'), check);
+    assert.ok(gate.includes('Under that brief the user\'s preferences check moves here'), gate.slice(0, 200));
+});

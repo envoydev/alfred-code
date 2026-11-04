@@ -515,3 +515,13 @@ test('the recorded style reaches the analyzer once: the brief names its sections
     assert.ok(!seat.includes('the pasted sections of the recorded code style'), 'the seat no longer expects them pasted in the brief');
     assert.match(seat, /the recorded code style's sections the brief names by id - one your start did not paste, read with `node \.claude\/hooks\/docs\.js show PROJECT-CODE-PREFERENCES#<id>` \(or a ranged Read of that section\)/, 'the seat reads a named section its start did not bring');
 });
+
+// R127: an unstamped doc is asked about as one whose state is unknown, never as one that does not exist.
+test('capture-quality asks an absent and an unstamped doc with their own templates', () =>
+{
+    const text = read('stack/skills/capture-quality/SKILL.md');
+    const asks = [...text.matchAll(/```ask\n([^\n]*)\n/g)].map((m) => m[1]);
+    assert.ok(asks.includes('Run the <part> capture? <DOC> does not exist yet.'), 'absent');
+    assert.ok(asks.includes('<DOC> has no stamp, so its state is unknown. Refresh it?'), 'unstamped');
+    assert.ok(text.includes('For `absent`, any part:') && text.includes('For `unstamped`, any part:'), 'one template each');
+});

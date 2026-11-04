@@ -278,9 +278,13 @@ test('note after by hand outside git', () =>
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// The seed the installer writes, as a project holds it: the date filled in.
+const SEED = path.join(ROOT, 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md');
+const seeded = () => fs.readFileSync(SEED, 'utf8').replace(/__TODAY__/g, '2026-10-21');
+
 test('git area lists G1-G5 by hand', () =>
 {
-    const p = project({ prefs: { GIT: seededGit() } });
+    const p = project({ prefs: { GIT: seeded() } });
     try
     {
         assert.ok(run(p.dir, 'check', '--all', '--area', 'git').lines.includes('by hand: 5 entries carry no Check: - judge each against the change: G1, G2, G3, G4, G5'));
@@ -554,10 +558,6 @@ test('a Check: holding $( or a pipe is rejected by lint as a command', () =>
     assert.strictEqual(parseDoc(doc('Code preferences', '## C1 - Sub\n<!-- id: c1 -->\n- Rule: x.\n- Check: $(rm -rf .)'))[0].check, null, 'a command is never parsed into a check');
 });
 
-// The seed the installer writes, as a project holds it: the date filled in.
-const SEED = path.join(ROOT, 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md');
-const seeded = () => fs.readFileSync(SEED, 'utf8').replace(/__TODAY__/g, '2026-10-21');
-function seededGit() { return fs.readFileSync(path.join(ROOT, 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md'), 'utf8').replace(/__TODAY__/g, '2026-10-21'); }
 
 test('lint passes the seeded git doc as it is, and fails one missing a locked entry, naming each key and the update that puts it back', () =>
 {

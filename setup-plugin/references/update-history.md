@@ -219,10 +219,10 @@ who asks about a name the log did not print.
 | `/project-diagnose-failure` | `/issue-diagnoser` |
 | `/project-ci-failure-signatures` | `/issue-signatures-ci` |
 | `/project-runtime-failure-signatures` | `/issue-signatures-runtime` |
-| `/project-architecture-analyzer` | `/capture-awareness` |
-| `/project-architecture-quality-analyzer` | `/capture-quality` |
-| `/project-code-style-analyzer` | `/capture-awareness` |
-| `/project-test-coverage-analyzer` | `/capture-quality` |
+| `/project-architecture-analyzer` | `/capture-awareness architecture` |
+| `/project-architecture-quality-analyzer` | `/capture-quality architecture-quality` |
+| `/project-code-style-analyzer` | `/capture-awareness project-code-style` |
+| `/project-test-coverage-analyzer` | `/capture-quality test-coverage-quality` |
 | `/project-related-context` | `/capture-awareness` |
 | `/project-agent-capabilities` | `/capture-awareness` |
 | `/project-stack-usage-analyzer` | `/capture-usage-report` |
@@ -241,15 +241,15 @@ who asks about a name the log did not print.
 | `/capture-agent-capabilities` | `/capture-awareness` |
 | `/capture-project-capabilities` | `/capture-awareness` |
 | `/alfred-capture-agent-capabilities` | `/capture-awareness` |
-| `/alfred-capture-architecture` | `/capture-awareness` |
-| `/alfred-capture-architecture-quality` | `/capture-quality` |
-| `/alfred-capture-code-quality` | `/capture-quality` |
-| `/alfred-capture-code-style` | `/capture-awareness` |
-| `/capture-code-style` | `/capture-awareness` |
+| `/alfred-capture-architecture` | `/capture-awareness architecture` |
+| `/alfred-capture-architecture-quality` | `/capture-quality architecture-quality` |
+| `/alfred-capture-code-quality` | `/capture-quality code-quality` |
+| `/alfred-capture-code-style` | `/capture-awareness project-code-style` |
+| `/capture-code-style` | `/capture-awareness project-code-style` |
 | `/alfred-capture-first-look` | `/capture-first-look` |
 | `/alfred-capture-project-capabilities` | `/capture-awareness` |
 | `/alfred-capture-related-projects` | `/capture-awareness` |
-| `/alfred-capture-test-coverage` | `/capture-quality` |
+| `/alfred-capture-test-coverage` | `/capture-quality test-coverage-quality` |
 | `/alfred-capture-usage-report` | `/capture-usage-report` |
 | `/alfred-habits-adjust-agents-md` | `/habits-adjust-agents-md` |
 | `/alfred-habits-clarify` | `/habits-clarify` |
@@ -538,9 +538,9 @@ and selection line across and prunes the old copies, one `renamed:` line each - 
 
 | Before | Now |
 |---|---|
-| `/capture-architecture-quality` | `/capture-quality` |
-| `/capture-code-quality` | `/capture-quality` |
-| `/capture-test-coverage` | `/capture-quality` |
+| `/capture-architecture-quality` | `/capture-quality architecture-quality` |
+| `/capture-code-quality` | `/capture-quality code-quality` |
+| `/capture-test-coverage` | `/capture-quality test-coverage-quality` |
 | `/loop-test-coverage` | `/loop-test-coverage-quality` |
 
 A part runs by its topic word: `/capture-quality architecture-quality`, `/capture-quality code-quality` and
@@ -589,8 +589,8 @@ prunes the old copies, one `renamed:` line each - report them.
 
 | Before | Now |
 |---|---|
-| `/capture-project-code-style` | `/capture-awareness` |
-| `/capture-architecture` | `/capture-awareness` |
+| `/capture-project-code-style` | `/capture-awareness project-code-style` |
+| `/capture-architecture` | `/capture-awareness architecture` |
 
 A part runs by its topic word: `/capture-awareness project-code-style` (or `code-style`) and `/capture-awareness
 architecture` (a target path may follow); `project`, `related-projects` (or `related`) and `agents` pick the other

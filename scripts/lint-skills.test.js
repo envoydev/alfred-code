@@ -1250,6 +1250,11 @@ test('lintPageScripts flags an inline page script node --check refuses, and the 
     assert.strictEqual(broken.length, 1, broken.join('\n'));
     assert.match(broken[0], /docs\/p\.html:6 .*node --check.*SyntaxError/, 'the finding names the page line, the tool and the error');
     assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: '<html><body>no script</body></html>' }), [], 'no inline script, nothing to check');
+    // R139: a raw `<word>` in a row string is an element the browser drops; the escaped form is text and passes
+    const raw = lintPageScripts({ file: 'docs/p.html', html: page('const rows = [\n  ["h", "under <data root>/state and <id>"],\n];') });
+    assert.strictEqual(raw.length, 2, raw.join('\n'));
+    assert.match(raw[0], /docs\/p\.html:6 .*`<data root>`.*&lt;data root&gt;/, 'the finding names the line, the token and its escape');
+    assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: page('const rows = [\n  ["h", "under &lt;data root&gt;/state, <code>x</code> and <a href=\\"y\\">z</a>"],\n];') }), [], 'escaped placeholders and real tags pass');
     assert.deepStrictEqual(lintPageScripts(), [], 'docs/alfred-code.html: its script parses');
 });
 
