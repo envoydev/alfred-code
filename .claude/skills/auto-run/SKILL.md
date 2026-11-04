@@ -50,9 +50,10 @@ names, else `docs/superpowers/<YYYY-MM-DD>-auto-run.md` under the project root.
   the act under `Left for you`. Only the user's own pick of its unsafe option opens it; a reply that merely implies it
   does not (2026-11-04: a discard guard refused a receipt written on such a reply).
 - A plan so broken that every path forward is a guess.
-- The approval of a design - a graded spec or plan, or a bounded in-chat design (the user's ruling). Only words that
-  name those approvals - 'approve the graded specs and plans yourself' - waive them, all kinds at once, never the
-  trigger words above; with the waiver, the score path or the design is reported in place of the ask.
+- The approval of a design - a graded spec or plan, or a bounded in-chat design (the user's ruling). Words in the
+  user's request that name plans, specs or their approval waive them, all kinds at once - 'approve the graded specs and
+  plans yourself', 'even plans approval must be done by you', 'plans included' (B2, ruled 2026-11-04) - never the
+  trigger words above alone; with the waiver, the score path or the design is reported in place of the ask.
 - A stop names the one decision it needs.
 
 ## Scope
