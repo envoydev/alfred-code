@@ -939,6 +939,27 @@ function memoryPlanLines({ projectRoot, env = process.env, target = null })
         lines.push(`memory-copy: ${loader.memoryFiles(from[0]).length} memory files at ${placeShown(projectRoot, from[0])}/, none at ${placeShown(projectRoot, to[0])}/`);
     return lines;
 }
+// The main session's start line when docs mode is not in effect here (R6, and a value the folder's move left stale), else
+// ''. Files only, never a spawn (D6): a settings.local.json git tracks reads like any other, and validate names it. A
+// same-repo child sharing its member's docs memory is in effect (OD5). `<docs-path>` is shown from the main checkout.
+function memoryStartLine({ projectRoot, env = process.env, platform = process.platform, home = os.homedir() })
+{
+    try
+    {
+        if (!loader || typeof loader.docsMemoryDir !== 'function' || memoryMode({ projectRoot, env }) !== 'docs') return '';
+        if (loader.docsMemoryShare(projectRoot, { env, home, platform })) return '';
+        const dir = loader.docsMemoryDir(projectRoot, { env });
+        const setting = loader.memoryDirSetting(projectRoot, { env, home, platform });
+        if (setting && loader.dirKey(setting) === loader.dirKey(dir)) return '';
+        const docs = `${placeShown(loader.mainCounterpart(projectRoot) || projectRoot, dir, home)}/`;
+        const top = loader.gitTopOf(projectRoot, { home });
+        if (!setting && top && loader.worktreeMain(top))
+            return `Memory: this worktree has no autoMemoryDirectory, so Claude's own memory reads and saves at its default place this session, not ${docs}.`;
+        const value = setting ? `points at ${placeShown(projectRoot, setting, home)}` : 'is not set';
+        return `Memory: docs mode, but autoMemoryDirectory ${value} here, so Claude's own memory is not in ${docs} this session - /alfred-code:update re-points it.`;
+    }
+    catch { return ''; }
+}
 // R7 (D7): a docs memory committed with the docs is read for what must not be committed - an absolute local path (the
 // project root, the home folder, or a /Users/ /home/ C:\Users\ path) and a secrets-store value of 8 characters or more,
 // named by file:line and key, never the value. Ten rows, then a count.
@@ -1222,7 +1243,7 @@ module.exports = {
     TOOLS_DOC, TOOLS_CAP, TOOLS_LINE_CAP, TOOLS_FIELD, PREFS_DIR, LIST_TIMEOUT_MS,
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
-    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, docsMemoryState, memoryPlanLines, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, validateRows,
+    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, docsMemoryState, memoryPlanLines, memoryStartLine, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, validateRows,
 };
 
 if (require.main === module)

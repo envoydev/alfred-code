@@ -49,7 +49,7 @@ function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECT
     };
     const hook = (payload, extra = {}, file = HOOK) => spawnSync(process.execPath, [file], { cwd: root, input: typeof payload === 'string' ? payload : JSON.stringify({ cwd: root, ...payload }), encoding: 'utf8', env: env(extra) });
     return {
-        root, write, hook,
+        root, config, write, hook,
         read: (rel) => fs.readFileSync(path.join(root, rel), 'utf8'),
         exists: (rel) => fs.existsSync(path.join(root, rel)),
         rm: () => { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(config, { recursive: true, force: true }); },
@@ -1713,6 +1713,119 @@ test('custom memory with a rank, and default memory: no memory line', () =>
             const text = pushed(p.hook(start(sid(), 'startup')));
             assert.ok(!text.includes('Memory: custom'), `${JSON.stringify(settings)}\n${text}`);
         }
+        finally { p.rm(); }
+    }
+});
+
+// Docs memory (memory P3, R6): the main start says so when docs mode is not in effect here, and only then. The start
+// reads files alone (D6), so a settings.local.json git tracks is invisible to it.
+const TOOLS_JS = path.join(HOOKS, '..', 'skills', 'capture-preferences', 'scripts', 'tools.js');
+const DOCS_MEMORY = '.alfred/docs/memory';
+const memoryLine = (text) => text.split('\n').filter((l) => l.startsWith('Memory: docs mode') || l.startsWith('Memory: this worktree'));
+function docsProject({ mode = 'docs', value, docs = false } = {})
+{
+    const p = project({ ...(docs ? {} : { docs: {} }), tools: true });
+    p.write('.alfred/.variables', `ALFRED_CODE_MEMORY=${mode}\n`);
+    if (value !== undefined) p.write('.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: value }));
+    p.want = path.join(p.root, ...DOCS_MEMORY.split('/'));
+    p.start = () => pushed(p.hook(start(sid(), 'startup')));
+    return p;
+}
+
+test('start: docs in place - no memory line', () =>
+{
+    const p = docsProject();
+    try
+    {
+        p.write('.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: p.want }));
+        const text = p.start();
+        assert.match(text, /Tool order/, 'the tools part ran');
+        assert.deepStrictEqual(memoryLine(text), [], text);
+    }
+    finally { p.rm(); }
+});
+
+test('start: the row in a settings.local.json git tracks - no memory line (D6: start never spawns git)', () =>
+{
+    const p = docsProject();
+    try
+    {
+        p.write('.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: p.want }));
+        spawnSync('git', ['add', '-f', '.claude/settings.local.json'], { cwd: p.root });
+        assert.deepStrictEqual(memoryLine(p.start()), [], 'Claude Code reads the value in a trusted folder: nothing to say');
+        const validate = spawnSync(process.execPath, [TOOLS_JS, 'validate', '--project', p.root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: p.config } });
+        assert.match(validate.stdout, /settings\.local\.json is tracked in git/, `validate names the tracked file\n${validate.stdout}${validate.stderr}`);
+    }
+    finally { p.rm(); }
+});
+
+test('start: docs with a stale value names /alfred-code:update', (t) =>
+{
+    const p = docsProject({ value: '/old/place/memory' });
+    try
+    {
+        const lines = memoryLine(p.start());
+        assert.deepStrictEqual(lines, [`Memory: docs mode, but autoMemoryDirectory points at /old/place/memory here, so Claude's own memory is not in ${DOCS_MEMORY}/ this session - /alfred-code:update re-points it.`]);
+        t.diagnostic(`stale line: ${lines[0].length} chars`);
+    }
+    finally { p.rm(); }
+});
+
+test('start: docs with no value in the main checkout names /alfred-code:update', (t) =>
+{
+    const p = docsProject();
+    try
+    {
+        const lines = memoryLine(p.start());
+        assert.deepStrictEqual(lines, [`Memory: docs mode, but autoMemoryDirectory is not set here, so Claude's own memory is not in ${DOCS_MEMORY}/ this session - /alfred-code:update re-points it.`]);
+        t.diagnostic(`unset line: ${lines[0].length} chars`);
+    }
+    finally { p.rm(); }
+});
+
+test('start: a seat\'s start never carries the memory line', () =>
+{
+    const p = docsProject({ value: '/old/place/memory' });
+    try
+    {
+        const seat = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a1', agent_type: 'general-purpose' });
+        assert.deepStrictEqual(memoryLine(String(out(seat).additionalContext || '')), []);
+        assert.strictEqual(memoryLine(p.start()).length, 1, 'the main start of the same project is told');
+        const off = pushed(p.hook(start(sid(), 'startup'), { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' }));
+        assert.deepStrictEqual(memoryLine(off), [], 'the tools part switched off silences it');
+    }
+    finally { p.rm(); }
+});
+
+test('start: a session in a linked worktree is judged as the worktree, not the main checkout holding the docs (R6)', () =>
+{
+    const p = docsProject({ docs: true });
+    try
+    {
+        const git = (...args) => spawnSync('git', args, { cwd: p.root, encoding: 'utf8' });
+        git('add', '.gitignore', 'src/app.ts');
+        git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init');
+        const wt = `${p.root}-wt`;
+        git('worktree', 'add', '-q', wt);
+        try
+        {
+            const startAt = () => pushed(p.hook({ ...start(sid(), 'startup'), cwd: wt }, { CLAUDE_PROJECT_DIR: wt }));
+            assert.match(startAt(), /put behaviour on the type that owns the data|Tool order/, 'the main checkout\'s docs are read');
+            assert.deepStrictEqual(memoryLine(startAt()), ["Memory: this worktree has no autoMemoryDirectory, so Claude's own memory reads and saves at its default place this session, not .alfred/docs/memory/."]);
+            p.write('.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: p.want }));
+            if (process.platform !== 'win32') assert.deepStrictEqual(memoryLine(startAt()), [], 'the main checkout\'s row is the worktree\'s on darwin and linux');
+        }
+        finally { fs.rmSync(wt, { recursive: true, force: true }); }
+    }
+    finally { p.rm(); }
+});
+
+test('start: default and custom modes - no new line', () =>
+{
+    for (const mode of ['default', 'custom'])
+    {
+        const p = docsProject({ mode, value: '/old/place/memory' });
+        try { assert.deepStrictEqual(memoryLine(p.start()), [], mode); }
         finally { p.rm(); }
     }
 });

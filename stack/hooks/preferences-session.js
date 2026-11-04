@@ -195,7 +195,7 @@ function contextOf(start) {
   const prefsDirs = [...new Set([home, ...roots].map(prefsAt))];
   let up;
   return {
-    home, bases, prefs: prefsAt(home), prefsDirs,
+    home, start: begin, bases, prefs: prefsAt(home), prefsDirs,
     // R4b: each linked workspace member's preferences, after the own ones - read on first use only, since this context is
     // built on every hook call.
     get ancestorDirs() {
@@ -1120,10 +1120,19 @@ function toolsText(ctx, seat) {
     // Custom memory with nothing to hold the lessons: the main session is told, a seat is not.
     const none = seat === null && lib.memoryMode({ projectRoot: ctx.home, env: process.env }) === 'custom'
       && !lib.jobOrder({ projectRoot: ctx.home, env: process.env, job: 'memory' }).ranks.length;
-    return [line, none ? MEMORY_NONE : ''].filter(Boolean).join('\n');
+    // Docs memory not in effect here (memory P3, R6): the main session is told, a seat is not. It is judged at the
+    // session's own checkout - a linked worktree reads its docs from the main checkout (`home`), but its memory setting
+    // where it stands. A library copy of tools.js older than this hook (the copy route) has no such line.
+    const docs = seat === null && typeof lib.memoryStartLine === 'function' ? lib.memoryStartLine({ projectRoot: sessionCheckout(ctx), env: process.env }) : '';
+    return [line, none ? MEMORY_NONE : '', docs].filter(Boolean).join('\n');
   } catch { return ''; }
 }
 const MEMORY_NONE = 'Memory: custom, but no memory tool is reachable here - nothing is stored this session; rank one with /capture-preferences tools, or /alfred-code:configure switches to native.';
+// The checkout the session runs in: the nearest folder from its start up to the git top holding an install record, else
+// the top (layout.js projectRootOf) - never a plain sub-folder, whose own docs root is no place of the project's.
+function sessionCheckout(ctx) {
+  try { return layout && ctx.start ? layout.projectRootOf(ctx.start).checkout : ctx.home; } catch { return ctx.home; }
+}
 
 function emit(event, extra) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...extra } }));

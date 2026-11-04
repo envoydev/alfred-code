@@ -1128,6 +1128,63 @@ test('memory lines: a same-repo child sharing its member\'s docs memory - the sh
     finally { s.done(); }
 });
 
+// R6: a linked worktree reads the main checkout's settings.local.json on darwin and linux, and its own on win32.
+function docsWorktree()
+{
+    const s = docsSandbox();
+    const git = (...args) => spawnSync('git', args, { cwd: s.root, encoding: 'utf8' });
+    s.write(path.join(s.root, 'README.md'), 'x\n');
+    git('add', 'README.md');
+    git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init');
+    s.wt = path.join(s.work, 'wt');
+    git('worktree', 'add', '-q', s.wt);
+    return s;
+}
+
+test('start: a linked worktree reading the main checkout\'s row (darwin/linux) - no line', () =>
+{
+    const s = docsWorktree();
+    try
+    {
+        assert.ok(fs.statSync(path.join(s.wt, '.git')).isFile(), 'a linked worktree');
+        for (const platform of ['darwin', 'linux']) assert.strictEqual(tools.memoryStartLine({ projectRoot: s.wt, env: s.env, platform }), '', platform);
+        assert.strictEqual(tools.memoryStartLine({ projectRoot: s.root, env: s.env, platform: 'linux' }), '', 'the main checkout itself');
+    }
+    finally { s.done(); }
+});
+
+test('start: a linked worktree with no row on win32 gets the R6 line', (t) =>
+{
+    const s = docsWorktree();
+    try
+    {
+        const line = tools.memoryStartLine({ projectRoot: s.wt, env: s.env, platform: 'win32' });
+        assert.strictEqual(line, "Memory: this worktree has no autoMemoryDirectory, so Claude's own memory reads and saves at its default place this session, not .alfred/docs/memory/.");
+        t.diagnostic(`R6 line: ${line.length} chars`);
+        // The worktree's own row in place: nothing to say.
+        s.write(path.join(s.wt, '.claude', 'settings.local.json'), { autoMemoryDirectory: s.want });
+        assert.strictEqual(tools.memoryStartLine({ projectRoot: s.wt, env: s.env, platform: 'win32' }), '');
+    }
+    finally { s.done(); }
+});
+
+test('start: a same-repo child sharing its member\'s docs memory - no line', () =>
+{
+    const s = docsSandbox();
+    try
+    {
+        const child = path.join(s.root, 'api');
+        s.write(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+        s.write(path.join(child, '.alfred', 'workspace'), 'parent ..\n');
+        s.write(path.join(s.root, '.alfred', 'workspace'), 'child api\n');
+        assert.strictEqual(tools.memoryStartLine({ projectRoot: child, env: s.env, platform: 'linux' }), '');
+        // The member's row gone: the child shares nothing, and is told its memory is not in place.
+        s.local({});
+        assert.match(tools.memoryStartLine({ projectRoot: child, env: s.env, platform: 'linux' }), /^Memory: docs mode, but autoMemoryDirectory is not set here/);
+    }
+    finally { s.done(); }
+});
+
 test('validate R7: a home path and a secret value are named by file:line and key, the value never printed', () =>
 {
     const s = docsSandbox();
