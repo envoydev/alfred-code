@@ -194,16 +194,16 @@ a9e06780: an improvised step-1 ask listed the marked stop last of three, and the
 
 ## 2. Choose the areas
 
-One multi-pick: which areas to adjust this run - rules, agents, skills, hooks, plugins, environment (default: all). The AskUserQuestion tool caps a question at 4 options, so present exactly this fixed grouping rather than improvising one per run (measured: an ad hoc 5-option split errored once before self-healing): AskUserQuestion has no pre-selection, so the question says what an empty pick means (audit 2026-10-21 C-T4-01):
+One multi-pick: which areas to adjust this run - rules, agents, skills, hooks, plugins, environment (default: all). The AskUserQuestion tool caps a question at 4 options, so present exactly this fixed grouping rather than improvising one per run (measured: an ad hoc 5-option split errored once before self-healing). AskUserQuestion has no pre-selection (audit 2026-10-21 C-T4-01) and Claude Code reads a submit with nothing ticked as unanswered (R115), so the whole walk is its own first option:
 
 ```ask
-Which areas to adjust this run? None ticked walks all four.
-- 'Rules + Agents + Skills (Recommended)' - the three catalog layers, walked first
-- 'Hooks' - the hook layer
-- 'Plugins' - the status line and the LSP picks
+Which areas to adjust this run?
+- 'All six areas (Recommended)' - rules, agents, skills, hooks, plugins and environment, in that order
+- 'Rules + Agents + Skills' - the three catalog layers, walked first
+- 'Hooks + Plugins' - the hook layer, the status line and the LSP picks
 - 'Environment' - the stack's values, the memory mode, navigation and the workspace role
 ```
- Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
+ 'All six areas' ticked beside another walks all six; an answer naming no area is no pick - put the same ask once more. Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
 installer run at step 11, which works from the whole selection - and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
 
 ## The walk - steps 3-7, one layer at a time

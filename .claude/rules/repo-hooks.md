@@ -1789,7 +1789,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     cut at a line, the path alone under 300 left (Claude Code swaps a hook context past 10,000 characters for a preview).
     `guard-cross-project-write.js` denies a write into ANY linked member's memory folder before the account-dir allowance,
     with no allow route (branch `ancestor-memory`, the block naming the child's own memory); a folder the child also owns
-    stays writable.
+    stays writable. A folder a member's `settings.local.json` names counts only while git answers 'no match' for that
+    file (`untrackedLocal`, Claude Code's own trust test). Known ceiling (R172, accepted 2026-11-04): an archive that
+    ships its own `.git` with an index leaving the file out reads as untracked - no git check tells a crafted index from
+    a real one, so trusting such a folder is the user's act when they open it.
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
     wired; its Stop process also runs the turn build check, above) - a machine-local record per session under `<data root>/state/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
     one file keeps it out, and an update removes the `*` file earlier releases wrote; no `watch.json`, so no docs domain): at `Stop` it

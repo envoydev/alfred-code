@@ -288,3 +288,15 @@ test('loadBundle reads seats from subagents/ beside the transcript', () => {
         assert.strictEqual(seats[0].agentType, 'general-purpose');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+// R051 (burn-down 2026-11-04): the whole-log matcher's `(` alternative also opened on `$(`, so a file list fed to a run
+// (`node --test $(cat list.txt)`) read as a whole-log read. A substitution is a list; a subshell's cat is still a read.
+test('background-wait: $(cat list.txt) feeding a run is no whole-log read; a subshell cat of a log still is', () => {
+    const verdict = (cmds) => {
+        const run = sc.parseTranscript(jsonl([user('what does this file do?'), ...cmds.map((command) => tool('Bash', { command })), { type: 'assistant', message: { id: 'mx', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } }]));
+        const [{ result }] = cf.gradeSession(run, sc.loadExpectation('background-wait').data);
+        return result.steps.find((s) => s.id === 'no-whole-log').verdict;
+    };
+    assert.strictEqual(verdict(['node --test $(cat list.txt)', 'node --test $(cat list.txt) > run.log']), 'PASS');
+    assert.strictEqual(verdict(['(cat run.log)', 'ls && (cat run.log)']), 'FAIL');
+    assert.strictEqual(verdict(['cat run.log', 'echo x; cat run.out']), 'FAIL');
+});

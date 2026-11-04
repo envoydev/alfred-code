@@ -1753,3 +1753,22 @@ test('validate: a catalog row\'s follow word is valid, named in the INVALID rule
     assert.match(text, /an hour count that is no non-negative number and not the row's `follow` word/, 'the hour shape accepts the follow word');
     for (const row of rows) assert.ok(text.includes(`\`${row.validate.follow}\``), `${row.key}: '${row.validate.follow}' is named valid in the INVALID rule`);
 });
+
+// R115 (burn-down 2026-11-04): Claude Code reads a multi-select submitted with nothing ticked as unanswered, so an
+// area ask that promised 'None ticked walks all four' left the default pick unreachable. The whole walk is now the
+// ask's own first option, marked Recommended, and no ask promises anything for an empty pick.
+test('configure\'s and status\'s area asks offer the whole walk as their Recommended first option, never an empty pick', () =>
+{
+    const askOf = (body, q) => { const m = new RegExp('```ask\\n(' + q + '[^\\n]*)\\n((?:- .*\\n)+)```').exec(body); assert.ok(m, `the '${q}' ask`); return { q: m[1], opts: m[2].trim().split('\n') }; };
+    const configure = askOf(cmdBody('configure'), 'Which areas to adjust this run\\?');
+    assert.match(configure.opts[0], /^- 'All six areas \(Recommended\)' - /);
+    const status = askOf(cmdBody('status'), 'What else to show\\?');
+    assert.match(status.opts[0], /^- 'All eight areas \(Recommended\)' - /);
+    for (const [name, a] of [['configure', configure], ['status', status]])
+    {
+        assert.strictEqual(a.opts.length, 4, `${name}: the tool's four-option cap`);
+        assert.strictEqual(a.opts.filter((o) => o.includes('(Recommended)')).length, 1, `${name}: one mark`);
+        assert.doesNotMatch(a.q, /None ticked/, `${name}: no promise for an empty pick`);
+    }
+    for (const name of ['configure', 'status']) assert.doesNotMatch(cmdBody(name), /None ticked|an empty pick (?:shows|walks|means)/, `${name}: no body text relies on an empty pick`);
+});
