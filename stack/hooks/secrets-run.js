@@ -126,7 +126,7 @@ function main()
         process.exit(1);
     }
     const { spawn } = require('child_process');
-    const child = spawn(plan.cmd, plan.args, { ...plan.opts, windowsHide: true });
+    const child = spawn(plan.cmd, plan.args, plan.opts);
     // stderr line by line, so a value split across two chunks is still masked whole
     const { StringDecoder } = require('string_decoder');
     const decoder = new StringDecoder('utf8');

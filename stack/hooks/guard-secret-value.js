@@ -1185,7 +1185,7 @@ if (process.argv[2] === '--with-sensitive') {
     process.stderr.write(`# with-sensitive: ${keys.length} value(s) in the environment (${sources.map(([rel, ks]) => `${shown(chain.files[rel])}: ${ks.join(', ')}`).join('; ')}), each shown as <KEY> in this output\n`);
   }
   const { spawn } = require('child_process');
-  const child = spawn(line, { shell: true, windowsHide: true, env: { ...process.env, ...values }, stdio: ['inherit', 'pipe', 'pipe'] });
+  const child = spawn(line, { shell: true, env: { ...process.env, ...values }, stdio: ['inherit', 'pipe', 'pipe'] });
   const pipe = (from, to) => {
     const { StringDecoder } = require('string_decoder');
     const decoder = new StringDecoder('utf8');
@@ -4083,7 +4083,7 @@ function walkLeaks(stage, cwd = probeCwd()) {
   // The probe runs the system grep, which reads a directory operand and `-3` the GNU way; the Bash tool's ugrep walks
   // both. `-r` first makes the probe walk what the tool will (audit 2026-10-11 SD01) - a superset, the safe side.
   const r = require('child_process').spawnSync(w[0], w[0] === 'rg' ? args : ['-r', ...args], {
-    cwd, windowsHide: true, timeout: 3000, maxBuffer: 8 * 1024 * 1024,
+    cwd, timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, RIPGREP_CONFIG_PATH: '' },
   });
   if (r.error || (r.status !== 0 && r.status !== 1 && !r.stdout.length)) return true;

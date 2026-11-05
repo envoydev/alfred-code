@@ -36,7 +36,7 @@ const path = require('path');
 const { execSync, execFileSync, spawnSync } = require('child_process');
 // Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
 // inline when the prelude is absent, since a protective read must not skip git or run a repository's own program.
-const gitSafe = (() => { try { return require('./hook-prelude.js').gitSafe; } catch { return (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, windowsHide: true, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }]; } })();
+const gitSafe = (() => { try { return require('./hook-prelude.js').gitSafe; } catch { return (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }]; } })();
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
@@ -636,7 +636,7 @@ if (projectDir && gitTop && gitTop === topOf(projectDir)) root = projectDir;
 else if (gitTop) root = gitTop;
 // git's own stderr stays out of the hook's: the @{u} probes print `fatal: no upstream` on every
 // first push, and the harness shows the model the hook's stderr as the denial reason.
-const git = (args) => execSync(`git -c core.fsmonitor=false ${args}`, { cwd: root, windowsHide: true, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).toString().trim();
+const git = (args) => execSync(`git -c core.fsmonitor=false ${args}`, { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).toString().trim();
 // The files this act would commit. The stack's own docs root is excluded: the receipt is written
 // INTO it moments before the act, so counting it inflated both the trivial-diff bar and the spec
 // check - a conformant `spec: 3 files` read as covering 3 of 4 because the fourth was the receipt.
