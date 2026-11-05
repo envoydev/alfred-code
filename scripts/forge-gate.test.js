@@ -404,7 +404,7 @@ test('R015 review: a merge chained behind a push of its branch is judged by what
   receipt(r.dir, amended);
   const alone = run(r.dir, bash('gh pr merge --squash'));
   assert.strictEqual(alone.status, 2, 'alone, the remote still holds the commit the amend replaced');
-  for (const cmd of ['git push --force-with-lease && gh pr merge --squash', 'git push -f origin feature && gh pr merge --squash', 'git push -f origin HEAD && gh pr merge', 'git push --force-with-lease; gh pr merge feature']) {
+  for (const cmd of ['git push --force-with-lease && gh pr merge --squash', 'git push -f origin feature && gh pr merge --squash', 'git push -f origin HEAD && gh pr merge', 'git push --force-with-lease && gh pr merge feature', 'git push --force-with-lease 2>&1 && gh pr merge --squash']) {
     receipt(r.dir, amended);
     const got = run(r.dir, bash(cmd));
     assert.strictEqual(got.status, 0, `${cmd}: ${got.stderr}`);
@@ -413,6 +413,48 @@ test('R015 review: a merge chained behind a push of its branch is judged by what
   assert.strictEqual(run(r.dir, bash('git push -f origin other && gh pr merge --squash')).status, 2, 'a push of another branch lands nothing the merge reads');
   receipt(r.dir, amended);
   assert.strictEqual(run(r.dir, bash(`git push --force-with-lease && gh pr merge --squash --match-head-commit ${r.reviewed}`)).status, 2, 'a named head is still checked');
+});
+
+// R015's second review (2026-11-05): a push lands the merge's branch only when `&&` alone joins it to the merge, it is no
+// dry run and it goes to the remote the head is read from - and what it lands is checked against the receipt, never
+// skipped: a rejected push (`;`, `||`), a dry run or a push elsewhere left a collaborator's commit to be merged unreviewed.
+test('R015 review 2: a chained push counts only when && joins it, it is no dry run and it goes to the read remote', () => {
+  const r = featureRepo();
+  fs.writeFileSync(path.join(r.dir, 'a.txt'), 'amended\n');
+  r.git('add', '-A'); r.git('commit', '-q', '--amend', '-m', 'amended');
+  const amended = headOf(r.dir);
+  const backup = path.join(path.dirname(r.dir), `backup-${Math.random().toString(36).slice(2, 8)}.git`);
+  spawnSync('git', ['init', '-q', '--bare', backup], { encoding: 'utf8' });
+  r.git('remote', 'add', 'backup', backup);
+  for (const cmd of ['git push; gh pr merge --squash', 'git push || gh pr merge --squash', 'git push --force-with-lease; gh pr merge --squash',
+    'git push --dry-run && gh pr merge --squash', 'git push -n && gh pr merge --squash', 'git push -fn origin feature && gh pr merge --squash',
+    'git push backup && gh pr merge --squash', 'git push -f backup feature && gh pr merge --squash', 'git push && git status && gh pr merge --squash',
+    'git push | cat && gh pr merge --squash']) {
+    receipt(r.dir, amended);
+    const got = run(r.dir, bash(cmd));
+    assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
+    assert.match(got.stderr, /never saw/, cmd);
+  }
+  for (const cmd of ['git push --force-with-lease && gh pr merge --squash', 'git push -f origin feature && gh pr merge --squash']) {
+    receipt(r.dir, amended);
+    const got = run(r.dir, bash(cmd));
+    assert.strictEqual(got.status, 0, `${cmd}: ${got.stderr}`);
+  }
+});
+
+test('R015 review 2: a push of another local branch lands that branch\'s tip, checked against the receipt', () => {
+  const r = featureRepo();
+  fs.writeFileSync(path.join(r.dir, 'c.txt'), 'unreviewed\n');
+  r.git('add', '-A'); r.git('commit', '-qm', 'unreviewed on feature');
+  r.git('checkout', '-qb', 'other', r.reviewed);
+  receipt(r.dir, r.reviewed);
+  const got = run(r.dir, bash('git push -f origin feature && gh pr merge feature --squash'));
+  assert.strictEqual(got.status, 2, `local feature's tip is not the reviewed head: ${got.stderr}`);
+  assert.match(got.stderr, /never saw/);
+  r.git('branch', '-f', 'feature', r.reviewed);
+  receipt(r.dir, r.reviewed);
+  const ok = run(r.dir, bash('git push -f origin feature && gh pr merge feature --squash'));
+  assert.strictEqual(ok.status, 0, `local feature at the reviewed head: ${ok.stderr}`);
 });
 
 // R015's review: a named branch is read on its own remote; a push remote (branch.<b>.pushRemote, else remote.pushDefault)

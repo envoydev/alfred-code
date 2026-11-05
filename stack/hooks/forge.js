@@ -848,20 +848,45 @@ function branchHead(cwd, branch) {
   if (merge && merge !== `refs/heads/${b}`) return null;
   return tipOf(cwd, own || remoteOf(cwd), b);
 }
-// R015's review: whether a push earlier in the same command writes the branch a merge reads - the remote's tip read now is
-// then the one the push replaces, and the merge lands what the push sends. `argvs`: each such push's argv (`push` first);
-// `branch`: the merge's selector, '@' for the current branch (a numbered merge counts as it). A push of every ref lands it.
-function pushLands(argvs, branch, cwd) {
-  const names = new Set();
-  if (branch && branch !== '@') names.add(String(branch));
-  else {
-    const cur = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
-    if (cur) names.add(cur);
-    const up = cur && gitOut(cwd, ['config', `branch.${cur}.merge`]);
-    if (up && up.startsWith('refs/heads/')) names.add(up.slice('refs/heads/'.length));
+// R015's review: the sha a push lands on the branch a merge reads, or null when it lands none there - the merge then lands
+// that sha, which the caller checks against the receipt (unseenHead's `sha`). `argv`: the push's words after `push`;
+// `branch`: the merge's selector, '@' for the current branch. A dry run, a push to a remote other than the one the
+// merge's head is read from (branchHead's order: pushRemote, pushDefault, the branch's own, the checkout's), a delete, a
+// tags-only push or a refspec writing another branch lands none (the second review, 2026-11-05: each of those let a
+// collaborator's commit on the remote be merged unchecked).
+const pushDry = (w) => w === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(w);
+function readRemote(cwd, b) {
+  return gitOut(cwd, ['config', `branch.${b}.pushRemote`]) || gitOut(cwd, ['config', 'remote.pushDefault'])
+    || gitOut(cwd, ['config', `branch.${b}.remote`]) || remoteOf(cwd);
+}
+function pushLanding(argv, branch, cwd) {
+  const words = (argv || []).map(String);
+  if (words.some(pushDry)) return null;
+  const b = branch && branch !== '@' ? String(branch) : gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
+  if (!b || !branchNameOk(b)) return null;
+  const positional = [];
+  for (let k = 0; k < words.length; k++) {
+    if (PUSH_VALUE.has(words[k])) { k++; continue; }
+    if (!/^-/.test(words[k])) positional.push(words[k]);
   }
-  if (!names.size) return false;
-  return (argvs || []).some((argv) => { const t = pushTargets(argv, cwd); return t === null || t.some((n) => names.has(n)); });
+  const remote = readRemote(cwd, b);
+  if (!remote || (positional.length && positional[0] !== remote)) return null;
+  const local = (ref) => gitOut(cwd, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) || null;
+  const current = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
+  const upstream = (name) => { const m = name && gitOut(cwd, ['config', `branch.${name}.merge`]); return m ? m.replace(/^refs\/heads\//, '') : name; };
+  if (words.some((w) => /^--(?:all|mirror|branches)$/.test(w))) return local(`refs/heads/${b}`);
+  const specs = positional.slice(1);
+  if (!specs.length) return words.includes('--tags') || !current || upstream(current) !== b ? null : local('HEAD');
+  for (const spec of specs) {
+    const s = spec.replace(/^\+/, '');
+    if (!s || s.startsWith(':')) continue;
+    const cut = s.indexOf(':');
+    const src = cut < 0 ? s : s.slice(0, cut);
+    let dst = (cut < 0 ? s : s.slice(cut + 1)).replace(/^refs\/heads\//, '');
+    if (!dst || dst === 'HEAD' || dst === '@') dst = upstream(current);
+    if (dst === b) return local(src === '@' ? 'HEAD' : src);
+  }
+  return null;
 }
 // Why a merge's head is NOT covered by the review a receipt names, or null when it is (or cannot be judged - no head:
 // line in a waiver, no change ref, no network: the local-HEAD rule the receipt already passed stands). Covered: the head
@@ -912,4 +937,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushLands, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushLanding, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

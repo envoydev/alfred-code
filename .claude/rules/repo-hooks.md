@@ -1883,8 +1883,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     check (`forge.js unseenHead`, the receipt read up to that merge), and a push that moves nothing writes no push row.
     A merge naming no number checks its branch's tip (R015, `forge.js branchSelector` / `branchHead`: the current or the
     named branch on its push remote - `branch.<b>.pushRemote`, else `remote.pushDefault` - else its own remote, else the
-    checkout's; a branch checked out from a PR ref reads that change's head; a push earlier in the command that lands the
-    branch leaves the local rule, `pushLands`, while a numbered merge still reads its change head - review 2026-11-05);
+    checkout's; a branch checked out from a PR ref reads that change's head; a push right before the merge, joined by `&&`
+    alone, no dry run and to that same remote, makes the sha it sends the head checked, `pushLanding` - a `;` / `||` join,
+    a dry run or a push elsewhere lands nothing - while a numbered merge still reads its change head - reviews 2026-11-05);
     `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -

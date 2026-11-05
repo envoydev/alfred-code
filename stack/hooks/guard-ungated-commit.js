@@ -1614,15 +1614,17 @@ if (publishMatch) {
     let text = command.slice(0, at);
     try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
     const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
-    // R015's review: a push earlier in this command lands the merge's branch first, so its remote tip read now is the one
-    // the push replaces - the merge lands what the push sends, which the receipt's local-HEAD rule covers. A named head
-    // (--match-head-commit) is still checked, and so is a merge named by number: it reads the change's own ref, which a
-    // push of a branch does not settle (Task 4b).
-    const pushedFirst = calls.filter((c) => c.sub === 'push' && c.at < at).map((c) => c.argv || []);
-    let landed = false;
-    try { landed = !m.head && !m.change && pushedFirst.length > 0 && !!forgeLib.pushLands && forgeLib.pushLands(pushedFirst, m.branch || '@', gitCwd); } catch { landed = false; }
+    // R015's review: a push right before the merge, joined by `&&` alone (a redirect beside it allowed), lands the merge's
+    // branch first, so the remote tip read now is the one it replaces - the merge lands the sha the push sends, and THAT is
+    // checked against the receipt (forge.js pushLanding). A `;` / `||` / pipe join, a dry run or a push elsewhere lands
+    // nothing and leaves the remote's tip the head (the second review). A named head (--match-head-commit) and a merge
+    // named by number - it reads the change's own ref, which a push of a branch does not settle (Task 4b) - keep their rule.
+    const prior = calls.filter((c) => c.sub === 'push' && c.at < at && typeof c.stop === 'number' && c.stop <= at).pop();
+    const joined = prior && /^(?:\s*\d*(?:>>?|<)&?\s*[^\s&|;]+)*\s*&&\s*$/.test(command.slice(prior.stop, at));
+    let landing = null;
+    try { landing = !m.head && !m.change && joined && forgeLib.pushLanding ? forgeLib.pushLanding(prior.argv || [], m.branch || '@', gitCwd) : null; } catch { landing = null; }
     let unseen = null;
-    if (!landed) { try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; } }
+    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: landing || m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
     if (unseen) {
       process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
         'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');
