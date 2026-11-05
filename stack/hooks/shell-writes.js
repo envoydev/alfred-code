@@ -674,6 +674,9 @@ function commandWordsOf(cmd, assigns, events) {
       break;
     }
     const word = dq(k);
+    // `time` is the shell's reserved word, not a program: it takes a whole pipeline, a keyword included (`time until
+    // gh pr merge; do ...; done`, the seventh R015 review)
+    if (wrapper === 'time' && KEYWORDS.has(raw)) continue;
     if (word.startsWith('-')) { afterFlag = true; continue; }
     if (/^\d[\w.]*$/.test(word) || ASSIGN.test(raw)) { afterFlag = false; continue; }
     const c = cand(k, wrapper);

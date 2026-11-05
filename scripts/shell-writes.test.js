@@ -267,6 +267,11 @@ test('commandIndex walks past a body keyword, a group opener, ! and setsid', () 
   assert.strictEqual(at('setsid bash -c x'), 'bash');
   assert.strictEqual(at('echo rm'), 'echo');
 });
+test('commandWords: `time` takes a whole pipeline, a body keyword included (the seventh R015 review, 2026-11-05)', () => {
+  const names = (c) => { const g = shell.gitText(c, process.cwd()); return shell.commandWords(g.command, g.parsed).map((w) => w.name); };
+  assert.ok(names('time until gh pr merge --squash; do :; done').includes('gh'), 'time until');
+  assert.ok(names('time ! gh pr merge --squash').includes('gh'), 'time !');
+});
 
 test('dequote: a bare Windows path on win32 keeps its backslashes - bash escapes everywhere else (2.1.7, the windows-2025 job)', () => {
   // Read as bash, `C:\Users\x\f.txt` was `C:Usersxf.txt`: a relative name, so on Windows every guard took an out-of-project

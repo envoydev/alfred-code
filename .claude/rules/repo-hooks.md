@@ -1885,17 +1885,25 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     named branch on its push remote - `branch.<b>.pushRemote`, else `remote.pushDefault` - else its own remote, else the
     checkout's; a branch checked out from a PR ref reads that change's head). The merge is judged on the repository and
     its remote as they stand BEFORE the command runs, so under a reviewed head only a merge nothing runs ahead of is
-    judged (`runsFirst`): any command before it but a plain git read (`GIT_READS`, literal, no setting, `--output` or
-    file redirect; a carried script runs where its carrier stands), one inside its words other than `cat` / `echo` /
-    `printf` or such a read, a pipeline peer, a part sent to the background or a loop refuses it, naming what runs first - six reviews 2026-11-05 broke every reading of what runs first (a push's join, remote, refspec and
-    sources, a pull, reset, checkout or config write, an exported HOME, a function, an expansion); the cost is one call
-    more for `git push && gh pr merge`. The push gate reads a push's words with `forge.js pushRead`: a dry run goes
+    judged (`runsFirst`), and every merge the command names is judged, not only the lead one: any command before it but
+    a plain git read (`GIT_READS`, literal, no setting, `--output` or file redirect; a carried script runs where its
+    carrier stands), one inside its words other than `cat` / `echo` / `printf` or such a read, a word in front of it
+    other than an assignment (`setsid -f`, `time`), a pipeline peer other than an output filter after it (`tail`,
+    `head`, `cat`, `grep`, `wc`), a lone `&` anywhere outside quotes, heredoc bodies and comments, a loop keyword
+    anywhere, or a substitution the shared reader never opened (`${X:-$(...)}`, `$(( $(...) ))`, an unquoted heredoc
+    body) refuses it, naming what runs first - seven reviews 2026-11-05 broke every reading of what runs first (a push's
+    join, remote, refspec and sources, a pull, reset, checkout or config write, an exported HOME, a function, an
+    expansion); the cost is one call more for `git push && gh pr merge`. The push gate reads a push's words with `forge.js pushRead`: a dry run goes
     ungated only when certain (an unknown or abbreviated option, a later `--no-dry-run`, `--end-of-options`, a word the
     shell expands - `$X`, `$(...)`, a brace list, a glob - or `--exec` / `--receive-pack` read as a real push; `-on` is
     the push option 'n'), and a dry run or a push with nothing ahead goes ungated only as the command's ONE push
     (`pushAlone`: no other push or built git subcommand, only plain git reads before it, nothing beside or inside it, no
     loop, background part, carried script, prefix, call-level setting or checkout - audit 2026-10-08's `git status &&
-    git push` stays ungated); a git call whose subcommand the shell builds (`git $S`, `xargs git`) is gated as a push;
+    git push` stays ungated). 'Nothing ahead' is git's own answer (`forge.js pushWouldMove`: the push's words, push
+    options left out, as `git push --dry-run --porcelain --no-verify`, 6s cap; a move, an error or no answer is ahead),
+    since `push.default=matching`, a remote's push refspec, a local upstream or a stale tracking ref send what HEAD
+    against `@{u}` calls level. A git call whose subcommand the shell builds (`git $S`, `xargs git`, `xargs -I{} git
+    {}`) or that sits in a substitution the reader never opened is gated as a push;
     `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -

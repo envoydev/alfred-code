@@ -136,10 +136,70 @@ const pushDry = (argv) => { try { return require('./forge.js').pushDryRun(argv);
 const pushPlain = (argv) => { try { return require('./forge.js').pushPlain(argv); } catch { return false; } };
 // The shape both one-act rules read: a loop runs its body again after what follows, and a part sent to the background
 // runs beside what follows it.
+// The seventh review (2026-11-05): a loop keyword need not lead its command (`{ until ...`, `! until`, `time until`), and a
+// `&` after a subshell's `)` ends no list element - so both read the text: any word that is a loop keyword, and any lone
+// `&` outside quotes, heredoc bodies and comments.
 const LOOP_WORDS = new Set(['for', 'while', 'until', 'select', 'coproc']);
 const wordAt = (k, i = 0) => (k.words[i] ? command.slice(k.words[i].s, k.words[i].e) : '');
-const loops = (cmds) => cmds.find((k) => LOOP_WORDS.has(wordAt(k)));
-const backgrounds = () => !!parsed && parsed.elems.some((e) => /^\s*&(?![&>])/.test(command.slice(e.to)));
+const loops = (cmds) => cmds.find((k) => k.words.some((w) => LOOP_WORDS.has(command.slice(w.s, w.e))));
+let bareText = null; // the command with heredoc bodies and comments blanked, positions kept
+const bare = () => { if (bareText === null) { try { bareText = sw.blankComments(sw.blankHeredocs(command)); } catch { bareText = command; } } return bareText; };
+const backgrounds = () => {
+  const t = bare();
+  const spans = sw.quotedSpans(t);
+  for (let i = t.indexOf('&'); i >= 0; i = t.indexOf('&', i + 1)) {
+    const prev = t[i - 1] || '', next = t[i + 1] || '';
+    if (prev === '&' || next === '&' || next === '>' || prev === '>' || prev === '<' || prev === '|' || prev === '\\') continue;
+    if (!spans.some(([a, b]) => i > a && i < b)) return true;
+  }
+  return false;
+};
+// The first command substitution the shell runs that the shared reader never opened - inside `${X:-$(...)}`, `$(( $(...) ))`
+// or an unquoted heredoc body (the seventh review, 2026-11-05) - at its `$(` or backtick, or -1. Single-quoted text, a
+// quoted heredoc's body and a comment are literal (heredoc bodies are blanked before comments are found, so a body's `#`
+// is no comment); arithmetic `$((` and a file read `$(< f)` run nothing. `gitNamed` keeps only one whose own text, up to
+// its closing `)` or backtick, names git.
+function unopenedAt(gitNamed = false) {
+  if (!parsed) return -1;
+  let docs = [];
+  let noDocs = command;
+  try { docs = sw.heredocsOf(command); noDocs = sw.blankHeredocs(command); } catch { docs = []; }
+  const t = bare();
+  const comment = (i) => noDocs[i] !== t[i];
+  const singles = sw.quotedSpans(t).filter(([a]) => t[a] === "'");
+  const literal = (i) => comment(i) || singles.some(([a, b]) => i > a && i < b)
+    || docs.some((h) => i >= h.bodyStart && i < h.bodyEnd && /['"\\]/.test(command.slice(h.index + 2, h.openEnd)));
+  const starts = new Set(parsed.cmds.filter((k) => k.words.length).map((k) => k.words[0].s));
+  const opened = (p) => { let q = p; while (q < command.length && /[\s(]/.test(command[q])) q++; return starts.has(q) || command[q] === '<'; };
+  const closeOf = (open, tickOpen) => {
+    if (tickOpen) { let j = open; while (j < command.length && !(command[j] === '`' && command[j - 1] !== '\\')) j++; return j; }
+    let depth = 1, j = open;
+    for (; j < command.length && depth; j++) { if (command[j] === '(') depth++; else if (command[j] === ')') depth--; }
+    return j;
+  };
+  let tick = false;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (c !== '\\' && c !== '$' && c !== '`') continue;
+    if (literal(i)) continue;
+    if (c === '\\') { i++; continue; }
+    let open = -1;
+    if (c === '$' && command[i + 1] === '(' && command[i + 2] !== '(') open = i + 2;
+    else if (c === '`') { tick = !tick; if (tick) open = i + 1; }
+    if (open < 0 || opened(open)) continue;
+    if (!gitNamed || /\bgit\b/.test(command.slice(open, closeOf(open, c === '`')))) return i;
+  }
+  return -1;
+}
+// `xargs -I {}` / `-i` / `--replace`: the subcommand word may be the replace-string, so the call's subcommand is the input's
+const xargsReplaces = (c) => {
+  if (!c.xargs || !parsed) return false;
+  const k = parsed.cmds.filter((x) => x.words.length && x.words[0].s <= c.at).pop();
+  if (!k) return true;
+  const before = k.words.filter((w) => w.s < c.at).map((w) => command.slice(w.s, w.e));
+  const from = before.lastIndexOf('xargs');
+  return before.slice(from + 1).some((w) => /^-(?!-)\S*[Ii]/.test(w) || /^--re/.test(w));
+};
 // The git subcommands that only read - no ref, config or index write - so a command made only of them may run before a push
 // the gate lets out ungated (audit 2026-10-08: `git status && git push` on a level branch moves nothing): a literal call
 // with no prefix, no call-level setting or other checkout, no `--output` and no redirect but a dup or /dev/null.
@@ -160,7 +220,8 @@ const plainRead = (k) => {
 // went out with no receipt.
 const pushAlone = (c) => {
   if (!c || c.sub !== 'push' || !plainCall(c) || !pushPlain(c.argv) || !parsed || parsed.tooDeep || gitRead.unreadAt >= 0 || gitRead.regions.length !== 1) return false;
-  if (calls.some((x) => x !== c && (x.sub === 'push' || x.opaque || (x.xargs && !x.sub)))) return false;
+  if (unopenedAt() >= 0) return false;
+  if (calls.some((x) => x !== c && (x.sub === 'push' || x.opaque || (x.xargs && (!x.sub || xargsReplaces(x)))))) return false;
   const cmds = parsed.cmds.filter((k) => k.words.length);
   const own = cmds.find((k) => k.words[0].s === c.at);
   if (!own || loops(cmds) || backgrounds()) return false;
@@ -172,12 +233,17 @@ const pushAlone = (c) => {
 // git read building its text;
 // beside it: a pipeline peer or a command sent to the background; around it: a loop, which runs it again after what follows.
 const MERGE_TEXT_TOOLS = new Set(['cat', 'echo', 'printf']);
+const MERGE_PIPE_TOOLS = new Set(['tail', 'head', 'cat', 'grep', 'wc']);
 function runsFirst(at) {
-  if (!parsed || parsed.tooDeep || gitRead.unreadAt >= 0) return 'part of this command is one the hook could not read';
+  if (!parsed || parsed.tooDeep || gitRead.unreadAt >= 0 || unopenedAt() >= 0) return 'part of this command is one the hook could not read';
   const cmds = parsed.cmds.filter((k) => k.words.length);
   const textOf = (k) => `\`${command.slice(k.words[0].s, k.words[k.words.length - 1].e).replace(/\s+/g, ' ').slice(0, 80)}\``;
   const own = cmds.filter((k) => k.words[0].s <= at && at < k.elem.to).pop();
   if (!own) return 'the hook could not place the merge in this command';
+  // only variable assignments may stand in front of the merge on its own line: a wrapper (`setsid -f`, `time`, `nohup`) can
+  // fork it or run it again (the seventh review)
+  const wrap = own.words.filter((w) => w.s < at && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(command.slice(w.s, w.e)));
+  if (wrap.length) return `it runs under \`${wrap.map((w) => command.slice(w.s, w.e)).join(' ').slice(0, 60)}\``;
   const loop = loops(cmds);
   if (loop) return `${textOf(loop)} loops, so what follows the merge can run before it again`;
   if (backgrounds()) return 'the command sends a part of it to the background';
@@ -186,7 +252,11 @@ function runsFirst(at) {
     const s = k.words[0].s;
     const within = s > own.words[0].s && s < own.elem.to;
     if (within && (MERGE_TEXT_TOOLS.has(wordAt(k)) || plainRead(k))) continue; // building its text: `cat`, `echo`, `printf`, a git read
-    if (k.elem.from === own.elem.from && k.elem.to === own.elem.to) return `${textOf(k)} runs beside it in a pipeline`;
+    if (k.elem.from === own.elem.from && k.elem.to === own.elem.to) {
+      // an output filter reading the merge's output after it in the pipeline (`| tail -5`) moves nothing
+      if (s > own.words[own.words.length - 1].e && MERGE_PIPE_TOOLS.has(wordAt(k))) continue;
+      return `${textOf(k)} runs beside it in a pipeline`;
+    }
     if (within) return `${textOf(k)} runs inside its words`;
     if (gitRead.orderOf(s, at) < 0 && !plainRead(k)) return `${textOf(k)} runs before it in this command`;
   }
@@ -378,7 +448,11 @@ if (forgeLib || PUSH_GATE_ON) {
     const push = calls.find((c) => c.sub === 'push');
     // A git call whose subcommand the shell builds (`git $S`, `xargs git` fed its words) may be a push: with no literal
     // push in the command it is the gate's act, never a dry run or one with nothing ahead (the sixth review, 2026-11-05).
-    const hidden = push ? null : calls.find((c) => c.opaque || (c.xargs && !c.sub));
+    let hidden = push ? null : calls.find((c) => c.opaque || (c.xargs && (!c.sub || xargsReplaces(c))));
+    if (!push && !hidden) {
+      const u = unopenedAt(true);
+      if (u >= 0) hidden = { at: u, stop: Math.min(command.length, u + 80), sub: null, argv: [], dirs: [], config: [], configEnv: [], gitDir: null, workTree: null, opaque: true, xargs: false };
+    }
     let acts = [];
     if (!push && parsed && forgeLib) { try { acts = forgeLib.classifyCommand(command, gitCwd, { parsed }); } catch { acts = []; } }
     const pub = acts.find(known);
@@ -1647,6 +1721,14 @@ if (publishMatch) {
   // the lead act publishes, or a forge publish act chained behind a push that moves nothing does (Task 4b)
   // the act ledger's push rows read what the lead push moves; the gate lets a dry run or a push with nothing ahead out only
   // as the command's one act (pushAlone)
+  // 'Nothing ahead' is git's own answer, not HEAD against a local @{u} (the seventh review, 2026-11-05: push.default=matching,
+  // a remote's push refspec, a local upstream or a stale tracking ref published with no receipt): the lone push's words as
+  // a dry run (forge.js pushWouldMove); a move, an error or no answer counts as ahead.
+  if (isGitPush && alone && !dryRun && !ahead) {
+    let moves = null;
+    try { moves = forgeLib ? forgeLib.pushWouldMove(publishMatch.call.argv, gitCwd) : null; } catch { moves = null; }
+    if (moves !== false) ahead = true;
+  }
   const leadMoves = !dryRun && ahead;
   const leadPublishes = leadMoves || (isGitPush && !alone);
   const gated = leadPublishes || chainedPublish.length > 0;
@@ -1678,10 +1760,16 @@ if (publishMatch) {
   // (forge.js unseenHead - read with plain git, so on every forge and transport; no change ref or no network leaves the
   // local-HEAD rule above standing). The atomic receipt in the command is the newest, then the file.
   // Every merge in the command: the lead act, and each chained behind a push (Task 4b).
-  const merges = !forgeLib ? [] : [
-    ...(leadPublishes && publishMatch.forge && publishMatch.forge.concept === forgeLib.CONCEPTS.MERGE ? [{ m: publishMatch.forge, at: publishMatch.index, shown: act }] : []),
-    ...chainedPublish.filter((a) => a.concept === forgeLib.CONCEPTS.MERGE).map((a) => ({ m: a, at: a.at, shown: actOf(a) })),
-  ];
+  // Every merge the command names, whatever leads it (the seventh review: `gh pr merge 3 && gh pr merge 4` judged the lead
+  // alone): an MCP call's own act, else each merge the shell command names.
+  let merges = [];
+  if (forgeLib && isMcpCall) {
+    if (publishMatch.forge && publishMatch.forge.concept === forgeLib.CONCEPTS.MERGE) merges = [{ m: publishMatch.forge, at: publishMatch.index, shown: act }];
+  } else if (forgeLib) {
+    let named = [];
+    try { named = forgeLib.classifyCommand(command, gitCwd, { parsed }) || []; } catch { named = []; }
+    merges = named.filter((a) => a && a.strength === 'known' && a.concept === forgeLib.CONCEPTS.MERGE).map((a) => ({ m: a, at: a.at, shown: actOf(a) }));
+  }
   for (const { m, at, shown: mergeAct } of merges) {
     let text = command.slice(0, at);
     try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }

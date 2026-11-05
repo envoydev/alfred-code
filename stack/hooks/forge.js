@@ -888,6 +888,36 @@ function pushRead(argv) {
 }
 const pushDryRun = (argv) => { const r = pushRead(argv); return r.certain && r.dry; };
 const pushPlain = (argv) => pushRead(argv).certain;
+// What git itself says a push would move - its own words run as `git push --dry-run --porcelain --no-verify` (no hook, no
+// prompt, the network capped as lsRemote's): true when a ref would be created, updated, forced or deleted, false when every
+// line is up to date or rejected, null when git gave no answer it can read (an error, a timeout) or the words could undo
+// the dry run or run something (`--no-dry-run`, `--verify`, `--recurse-submodules`, `--signed`, an uncertain word).
+function pushWouldMove(argv, cwd) {
+  const words = (argv || []).map(String);
+  if (!pushPlain(words) || words.some((w) => /^--(no-dry-run|verify|no-no-verify|recurse-submodules|signed)(=|$)/.test(w))) return null;
+  // a push option moves no ref, and a remote that takes none fails the whole dry run on it (`-o ci.skip` to a local bare
+  // repository): left out of the question
+  const asked = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w === '--' || w === '--end-of-options') { asked.push(...words.slice(i)); break; }
+    if (w === '--push-option') { i++; continue; }
+    if (w.startsWith('--push-option=')) continue;
+    if (/^-[^-]/.test(w) && w.includes('o')) {
+      const o = w.indexOf('o');
+      if (o === w.length - 1) i++;
+      if (o > 1) asked.push(w.slice(0, o));
+      continue;
+    }
+    asked.push(w);
+  }
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'push', '--dry-run', '--porcelain', '--no-verify', ...asked],
+    { cwd, timeout: LS_REMOTE_MS, encoding: 'utf8', env: networkEnv(cwd), stdio: ['ignore', 'pipe', 'pipe'] });
+  if (r.error) return null;
+  const lines = String(r.stdout || '').split('\n').filter((l) => /^[ +\-*!=]\t/.test(l));
+  if (!lines.length) return r.status === 0 ? false : null;
+  return lines.some((l) => /^[ +\-*]\t/.test(l));
+}
 // Why a merge's head is NOT covered by the review a receipt names, or null when it is (or cannot be judged - no head:
 // line in a waiver, no change ref, no network: the local-HEAD rule the receipt already passed stands). Covered: the head
 // is the reviewed sha or an ancestor of it.
@@ -937,4 +967,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushDryRun, pushPlain, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushDryRun, pushPlain, pushWouldMove, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
