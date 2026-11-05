@@ -277,10 +277,18 @@ function copyStep(ctx, mode)
     const show = (dir) => shown(dir, root);
     if (mode === 'custom') { say('memory: copy skipped - custom memory has no place of Claude\'s own to copy into'); return; }
     if (ctx.memoryFrom.length !== 1) { say('memory: copy skipped - the old place is not one folder here'); return; }
-    const to = layout.memoryDirsOf(root, { env: memoryEnv(ctx) });
+    const platform = ctx.platform || process.platform;
+    const to = layout.memoryDirsOf(root, { env: memoryEnv(ctx), platform });
     if (to.length !== 1) { say('memory: copy skipped - the new place is not one folder here'); return; }
     const [from] = ctx.memoryFrom;
     if (!fs.existsSync(path.join(from, 'MEMORY.md'))) { say(`memory: copy skipped - nothing at ${show(from)}/`); return; }
+    // G3: on Windows past 200 characters Claude Code names the folder from the path as typed, so the computed name may never
+    // be the one it makes - nothing is copied until a folder is there.
+    if (platform === 'win32' && path.basename(path.dirname(to[0])).length > layout.MEMORY_NAME_MAX && !fs.existsSync(path.dirname(to[0])))
+    {
+        say(`memory: copy skipped - on Windows Claude Code names a folder past 200 characters from the path as typed, and it has not made one here yet; copy the .md files from ${show(from)}/ by hand once it has`);
+        return;
+    }
     if (fs.existsSync(path.join(to[0], 'MEMORY.md'))) { say(`memory: copy skipped - ${show(to[0])}/ already has a MEMORY.md`); return; }
     copyMemory({ from, to: to[0], log: say, show });
 }
@@ -361,4 +369,4 @@ function staleLocalStep(ctx)
     catch (err) { ctx.note(`old settings.local.json files could not be checked for autoMemoryDirectory (${err.message})`); }
 }
 
-module.exports = { gate, step, staleLocalStep, memoryEnv, rowHash, outrankLines, shown, copyMemory, attributesStep, ATTRIBUTES_TEXT };
+module.exports = { gate, step, staleLocalStep, memoryEnv, rowHash, outrankLines, shown, copyMemory, copyStep, attributesStep, ATTRIBUTES_TEXT };

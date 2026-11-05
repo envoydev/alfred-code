@@ -509,6 +509,46 @@ test('copy: without --memory-copy nothing is copied', POSIX_ONLY, () =>
     assert.doesNotMatch(r.outs[1], /memory: cop(ied|y skipped)/);
 });
 
+// G3 (2026-11-05): on Windows past 200 characters Claude Code names the folder from the path as typed, so the computed one
+// may never be the one it makes - the copy waits until a folder is there. Off Windows, and at 200 or under, it copies.
+test('copy: on win32 past 200, no copy until Claude Code has made the folder', () =>
+{
+    const top = real(fs.mkdtempSync(path.join(os.tmpdir(), 'g3-')));
+    const configDir = path.join(top, 'acct');
+    const projects = path.join(configDir, 'projects');
+    const from = path.join(top, 'old-memory');
+    fs.mkdirSync(from);
+    fs.writeFileSync(path.join(from, 'MEMORY.md'), '# index\n');
+    const san = (p) => p.normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
+    const rootOf = (n, stem) => { const r = path.join(top, stem + 'x'.repeat(n - (san(top).length + 1) - stem.length)); fs.mkdirSync(r); assert.strictEqual(san(r).length, n); return r; };
+    const run = (root, platform) =>
+    {
+        const lines = [];
+        memoryDir.copyStep({ projectRoot: root, configDir, platform, memoryFrom: [from], log: (m) => lines.push(m), note: (m) => lines.push(`note: ${m}`) }, 'default');
+        return lines.join('\n');
+    };
+    const listed = () => (fs.existsSync(projects) ? fs.readdirSync(projects) : []);
+    try
+    {
+        const long = rootOf(205, 'w32-');
+        const out = run(long, 'win32');
+        assert.match(out, /memory: copy skipped - on Windows Claude Code names a folder past 200 characters from the path as typed, and it has not made one here yet; copy the \.md files from .*old-memory\/ by hand once it has/);
+        assert.deepStrictEqual(listed(), [], 'no folder made under projects');
+        const [to] = layout.memoryDirsOf(long, { env: { CLAUDE_CONFIG_DIR: configDir }, platform: 'win32' });
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        assert.match(run(long, 'win32'), /memory: copied 1 files from/);
+        assert.strictEqual(readOr(path.join(to, 'MEMORY.md')), '# index\n', 'copied once Claude Code made the folder');
+        const lin = rootOf(206, 'lnx-');
+        assert.match(run(lin, 'linux'), /memory: copied 1 files from/, 'off Windows the change is inert');
+        for (const n of [199, 200])
+        {
+            const r = rootOf(n, `b${n}-`);
+            assert.match(run(r, 'win32'), /memory: copied 1 files from/, `${n} characters: no hash, no case doubt - copied`);
+        }
+    }
+    finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
 test('copy: a renamed project folder skips the copy', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update'], SEL, {
