@@ -314,8 +314,8 @@ test('background-wait: a quoted, stderr-redirected or ||-ended cat of a log is a
         return result.steps.find((s) => s.id === 'no-whole-log').verdict;
     };
     // (the step allows one whole read, so each command runs twice)
-    for (const cmd of ['cat "run.log"', "cat 'run.out'", 'cat run.log 2>/dev/null', 'cat run.log || true', 'cat run.log||true', 'cat "build.output" 2>&1', '(cat "notes.txt")'])
+    for (const cmd of ['cat "run.log"', "cat 'run.out'", 'cat run.log 2>/dev/null', 'cat run.log 2> /dev/null', 'cat "notes.txt" 2> err.txt', 'cat run.log || true', 'cat run.log||true', 'cat "build.output" 2>&1', '(cat "notes.txt")'])
         assert.strictEqual(verdict([cmd, cmd]), 'FAIL', cmd);
-    for (const cmd of ['cat run.log | tail -20', 'cat "run.log" | grep -c fail', 'cat run.log 2>/dev/null | tail -5', 'cat run.log > copy.log', 'node --test $(cat "list.txt")'])
+    for (const cmd of ['cat run.log | tail -20', 'cat "run.log" | grep -c fail', 'cat run.log 2>/dev/null | tail -5', 'cat run.log 2> /dev/null | tail -5', 'cat run.log > copy.log', 'node --test $(cat "list.txt")'])
         assert.strictEqual(verdict([cmd, cmd]), 'PASS', cmd);
 });
