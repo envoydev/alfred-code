@@ -305,3 +305,17 @@ test('background-wait: $(cat list.txt) feeding a run is no whole-log read; a sub
     assert.strictEqual(verdict(['for f in $(cat files.txt); do echo "$f"; done', 'for f in $(cat files.txt); do echo "$f"; done']), 'PASS');
     for (const cmd of ['echo $(cat run.log)', 'echo "$(cat run.out)"', 'x=$(cat build.output)']) assert.strictEqual(verdict([cmd, cmd]), 'FAIL', cmd);
 });
+// G1: a quoted file name, a stderr redirect after it or a `||` end hid a whole-log read from the matcher; a single `|`
+// after the name stays a bounded read, a `>` a copy.
+test('background-wait: a quoted, stderr-redirected or ||-ended cat of a log is a whole-log read; a piped one is not', () => {
+    const verdict = (cmds) => {
+        const run = sc.parseTranscript(jsonl([user('what does this file do?'), ...cmds.map((command) => tool('Bash', { command })), { type: 'assistant', message: { id: 'mx', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } }]));
+        const [{ result }] = cf.gradeSession(run, sc.loadExpectation('background-wait').data);
+        return result.steps.find((s) => s.id === 'no-whole-log').verdict;
+    };
+    // (the step allows one whole read, so each command runs twice)
+    for (const cmd of ['cat "run.log"', "cat 'run.out'", 'cat run.log 2>/dev/null', 'cat run.log || true', 'cat run.log||true', 'cat "build.output" 2>&1', '(cat "notes.txt")'])
+        assert.strictEqual(verdict([cmd, cmd]), 'FAIL', cmd);
+    for (const cmd of ['cat run.log | tail -20', 'cat "run.log" | grep -c fail', 'cat run.log 2>/dev/null | tail -5', 'cat run.log > copy.log', 'node --test $(cat "list.txt")'])
+        assert.strictEqual(verdict([cmd, cmd]), 'PASS', cmd);
+});
