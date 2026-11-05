@@ -730,7 +730,8 @@ test('deep review: the manifest wires docs-session on SubagentHandback as its ow
   const pre = (entry.hooks.PreToolUse || []).filter((g) => g.matcher === 'SubagentHandback');
   assert.strictEqual(pre.length, 1);
   // the group also carries the output-scorer's seal (guard-stop-contract, 2026-10-25); docs-session is its own command in it
-  assert.strictEqual(pre[0].hooks.filter((h) => /stack\/hooks\/docs-session\.js"$/.test(h.command)).length, 1, pre[0].hooks.map((h) => h.command).join(' | '));
+  const launch = (h) => [h.command, ...(h.args || [])].join(' ');
+  assert.strictEqual(pre[0].hooks.filter((h) => /stack\/hooks\/docs-session\.js$/.test(launch(h))).length, 1, pre[0].hooks.map(launch).join(' | '));
 });
 
 // Task 6b review, finding 7: a warning-only ask-answer row reads sections: [], outcome: 'unchanged' - the
@@ -2711,6 +2712,21 @@ test('recomputed: a seat is never asked a weakness section, even one naming its 
   } finally { r.rm(); }
 });
 
+test('R083: a seat\'s "you changed" line names only the files of its durable hits', () => {
+  const r = qrepo({ quality: [weak('w1', ['src/Legacy/**'])], rows: [['w1', 'src/Legacy/**']] });
+  try {
+    const s = sid(); start(r, s, GIT);
+    r.hook(subStart(s, 'agent-q2'), GIT);
+    touchBy(r, s, 'q2');
+    wroteBy(r, s, 'q2', 'src/Legacy/Old.cs', 'class Old { int q; }\n');
+    const back = r.hook(handBack(s, 'q2', 'status: DONE'), GIT);
+    assert.ok(denied(back), back.stdout);
+    const reason = JSON.parse(back.stdout).hookSpecificOutput.permissionDecisionReason;
+    assert.match(reason, /you changed src\/Api\/Program\.cs/);
+    assert.doesNotMatch(reason, /src\/Legacy\/Old\.cs/, 'the recomputed hit\'s file is the close\'s to ask');
+  } finally { r.rm(); }
+});
+
 test('recomputed: the close skips a hit the capture saw this session; a later change, no capture, and a deletion keep it (AC17)', () => {
   const r = qrepo({ quality: [weak('w1', ['src/Legacy/**'])], rows: [['w1', 'src/Legacy/**']] });
   const at = (rel, sec) => { const t = new Date(Date.now() + sec * 1000); fs.utimesSync(`${r.root}/${rel}`, t, t); };
@@ -2778,6 +2794,34 @@ test('a dead Scope is named in every documented spelling: a folder, a bare path,
       assert.match(stopReason(r, s), new RegExp(`A2 - its Scope: \`${scopeRe}\` reaches no file`), scope);
     } finally { r.rm(); }
   }
+});
+
+// R081: the dead-Scope read is cached - a Stop lists the tree again only when a file a live Scope reached is gone or
+// the preference docs changed. Counted through a git on PATH that logs each call (POSIX: the shim is a shell script).
+test('R081: a second Stop with nothing changed spawns no ls-files', { skip: process.platform === 'win32' && 'the git shim is a shell script' }, () => {
+  // an architecture domain with no watch rows: the Stop's only question is a dead Scope
+  const r = repo({ tracked: true, files: { 'src/Gone/x.cs': 'class X {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const shim = fs.mkdtempSync(path.join(os.tmpdir(), 'git-shim-'));
+  const log = path.join(shim, 'calls.log');
+  const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  fs.writeFileSync(path.join(shim, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 });
+  const env = { PATH: `${shim}${path.delimiter}${process.env.PATH}` };
+  const lsFiles = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter((l) => /(^| )ls-files( |$)/.test(l)).length : 0);
+  try {
+    r.write(ARCH_PREFS_DOC, PREFS_A2);
+    r.git('add', '-A'); r.git('commit', '-qm', 'prefs');
+    const s = sid(); start(r, s, env);
+    r.hook(stopEv(s), env);
+    const first = lsFiles();
+    assert.ok(first > 0, 'the first Stop read the tree');
+    r.hook(stopEv(s), env);
+    assert.strictEqual(lsFiles() - first, 0, 'the second read nothing');
+    r.git('rm', '-qf', 'src/Gone/x.cs');
+    const beforeMiss = lsFiles();
+    assert.match(stopReason(r, s, env), /A2 - its Scope: `src\/Gone\/\*\*` reaches no file/, 'a deletion still names the Scope');
+    // final review m8: the miss listed the tree for the witnesses, then again for the dead rows - once now
+    assert.strictEqual(lsFiles() - beforeMiss, 1, 'a miss with a dead Scope lists the tree once');
+  } finally { r.rm(); fs.rmSync(shim, { recursive: true, force: true }); }
 });
 
 test('a dead Scope with no preferences engine beside the hooks adds nothing (AC21)', () => {

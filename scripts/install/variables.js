@@ -79,6 +79,8 @@ const render = (lines, eol) => (lines.length ? `${lines.join(eol)}${eol}` : '');
 // Writes `updates` into `file` under its lock. { changed } - false with no `why` when the file already says it.
 // A rename onto a file another process holds open fails on Windows for a moment (the hook loader reads it at every hook
 // start): those three codes are retried inside the lock's own budget, any other failure is not.
+// The lock's wait is three rename budgets (W1, burn-down 2026-11-04): a live holder may spend all of `retryMs` on its
+// rename before it lets go, so a waiter that gave up at that same budget read a live run as 'locked' (Windows CI).
 const BUSY = new Set(['EPERM', 'EACCES', 'EBUSY']);
 function write(file, updates, { order = layout.VARIABLE_KEYS, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000, rename = fs.renameSync } = {})
 {
@@ -88,7 +90,7 @@ function write(file, updates, { order = layout.VARIABLE_KEYS, now = Date.now, sl
     let held = false;
     try
     {
-        held = takeLock(lock, { now, sleep, retryMs, staleMs });
+        held = takeLock(lock, { now, sleep, retryMs: retryMs * 3, staleMs });
         if (!held) return { changed: false, why: 'locked' };
         const current = read(file);
         const after = render(applied(current.lines, updates, order), current.eol);

@@ -1539,6 +1539,26 @@ test('init-child: the local-scope hygiene lines come from git-hygiene.js --local
     assert.match(hy, /no `!\.claude\/AGENTS\.md` re-include/);
 });
 
+// R063 (burn-down 2026-11-04): in a linked child, a 'no' to an offer the parent holds passed nothing, and the parent's
+// set added it back. The walk turns it into a --drop, which the installer records as the child's ignore line.
+test('R063: the new-items ask names a parent-held offer and a no to it becomes a --drop', () =>
+{
+    const walk = flat(refBody('update-walk'));
+    assert.match(walk, /and one not taken becomes one `--drop "<category> <name>"` too, recorded as this project's ignore line/);
+    assert.match(walk, /'held by the parent - a no ignores it here'/);
+    assert.match(walk, /A `parent-held` offer is marked `take` - it arrives from the parent either way/);
+});
+
+// R066 (burn-down 2026-11-04): the parent read gated on the read-back's exit code alone, so one that exited 0 while
+// reporting failures marked `from root` rows the install then never inherited.
+test('R066: both parent reads check the read-back before the walk marks a row from root', () =>
+{
+    const CHECK = /--plan-out "\$TMP\/parent\.json" > "\$TMP\/parent\.out" 2>&1\) && node "\$TMP\/repo\/scripts\/stack-select\.js" --inherited-check "\$TMP\/parent\.json" ; echo "parent-read: \$\?"/;
+    assert.match(flat(refBody('init-child')), CHECK);
+    assert.match(flat(cmdBody('configure')), CHECK);
+    assert.match(flat(refBody('init-child')), /paste its `!! inherited:` line when it printed one/);
+});
+
 test('update-workspace.md is cat only behind a workspace line', () =>
 {
     const walk = flat(refBody('update-walk'));
@@ -1732,4 +1752,25 @@ test('validate: a catalog row\'s follow word is valid, named in the INVALID rule
     const text = flat(rule[0]);
     assert.match(text, /an hour count that is no non-negative number and not the row's `follow` word/, 'the hour shape accepts the follow word');
     for (const row of rows) assert.ok(text.includes(`\`${row.validate.follow}\``), `${row.key}: '${row.validate.follow}' is named valid in the INVALID rule`);
+});
+
+// R115 (burn-down 2026-11-04): Claude Code reads a multi-select submitted with nothing ticked as unanswered, so an
+// area ask that promised 'None ticked walks all four' left the default pick unreachable. The whole walk is now the
+// ask's own first option, marked Recommended, and no ask promises anything for an empty pick.
+test('configure\'s and status\'s area asks offer the whole walk as their Recommended first option, never an empty pick', () =>
+{
+    const askOf = (body, q) => { const m = new RegExp('```ask\\n(' + q + '[^\\n]*)\\n((?:- .*\\n)+)```').exec(body); assert.ok(m, `the '${q}' ask`); return { q: m[1], opts: m[2].trim().split('\n') }; };
+    const configure = askOf(cmdBody('configure'), 'Which areas to adjust this run\\?');
+    assert.match(configure.opts[0], /^- 'All six areas \(Recommended\)' - /);
+    const status = askOf(cmdBody('status'), 'What else to show\\?');
+    assert.match(status.opts[0], /^- 'All eight areas \(Recommended\)' - /);
+    for (const [name, a] of [['configure', configure], ['status', status]])
+    {
+        assert.strictEqual(a.opts.length, 4, `${name}: the tool's four-option cap`);
+        assert.strictEqual(a.opts.filter((o) => o.includes('(Recommended)')).length, 1, `${name}: one mark`);
+        assert.doesNotMatch(a.q, /None ticked/, `${name}: no promise for an empty pick`);
+    }
+    for (const name of ['configure', 'status']) assert.doesNotMatch(cmdBody(name), /None ticked|an empty pick (?:shows|walks|means)/, `${name}: no body text relies on an empty pick`);
+    // R068's review: the re-ask needs an end - a second answer naming no area takes the Recommended row.
+    for (const name of ['configure', 'status']) assert.match(cmdBody(name).replace(/\s+/g, ' '), /a second answer naming no area takes the Recommended row/, `${name}: the re-ask ends`);
 });

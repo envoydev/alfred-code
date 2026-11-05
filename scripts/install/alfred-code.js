@@ -485,7 +485,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             catch { err(`selection file not found: ${args.selection}\n`); return 1; }
             const given = selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming);
             // O4: a hand-written partial selection is closed now, not at the next update; the walk's own adds nothing.
-            picked = selection.parseSelection(selection.closeSelection(given, { graph: readJson(path.join(resolved.dir, 'meta', 'stack-graph.json')), log }).join('\n'));
+            const selGraph = readJson(path.join(resolved.dir, 'meta', 'stack-graph.json'));
+            let closedSel = selection.closeSelection(given, { graph: selGraph, log });
+            // The locked always-on rules and skills join it now too: the first update adopts them whatever the file
+            // said, so leaving them to it made the install and its first update disagree (burn-down Task 5's finding).
+            // An always seat stays the selection's word - its off-switch is the deny the walk's answer writes.
+            const adoptedSel = selection.adoptAlways({ lines: closedSel, always, log, coreOn: false, label: 'selection' });
+            if (adoptedSel.length > closedSel.length) closedSel = selection.closeSelection(adoptedSel, { graph: selGraph, log });
+            picked = selection.parseSelection(closedSel.join('\n'));
             // A joined child installs its parent's set minus its ignores whatever rows the walk's selection kept.
             if (wsPrep.parentLines)
             {
@@ -678,6 +685,7 @@ function runLayers(ctx)
     // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
     try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal }); }
     catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
+    memoryDir.staleLocalStep(ctx);
     // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is
     // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
     if (!ctx.docsRootPending)
@@ -710,9 +718,6 @@ function runLayers(ctx)
         try { docs.ensureQualityNotOwned({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
         catch (err) { ctx.note(`quality/watch.json under ${docsPath} could not be updated (${err.message}) - add COVERAGE-QUALITY.md to its notOwned list by hand`); }
     }
-    // The language-server check writes into the data root, never the docs root, so a docs root still waiting on update's ask
-    // skips nothing of it (final review M8): every run checks.
-    docs.lspCoverageLines(ctx.projectRoot, ctx.log, { dataPath: ctx.dataInfo.root });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited, only while
     // the install works with AGENTS.md (on a CLAUDE.md answer that file already has the name the user picked), and only
     // when no name answer came this run: an answer renames through renameInstructionFiles below.
@@ -797,6 +802,10 @@ function runLayers(ctx)
     if (plugins.corePluginOn(ctx.routes))
         selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, docsPath, log: ctx.log, note: ctx.note });
     dataRootLayer(ctx, docsPath);
+    // The language-server check writes into the data root, never the docs root, so a docs root still waiting on update's ask
+    // skips nothing of it (final review M8): every run checks - after the data root layer, so a --data-path move's old root
+    // is pruned before the walk reads the project's files (R097: it counted them, and the next update rewrote the result).
+    docs.lspCoverageLines(ctx.projectRoot, ctx.log, { dataPath: ctx.dataInfo.root });
     mcp.keepMcpOrder({ mcpFile: ctx.mcpFile, before: mcpBefore });
 }
 
@@ -1571,7 +1580,7 @@ function forgeCliStep(ctx)
     try
     {
         const fsn = require('../../stack/hooks/forge-session.js');
-        plan = fsn.cliPlan(fsn.profile(ctx.projectRoot, { ...ctx.env, CLAUDE_PROJECT_DIR: ctx.projectRoot }), { platform: ctx.rt.platform || process.platform, hasBrew: Boolean(ctx.rt.which('brew', { env: ctx.env })) });
+        plan = fsn.cliPlan(fsn.profile(ctx.projectRoot, { ...ctx.env, CLAUDE_PROJECT_DIR: ctx.projectRoot }), { platform: ctx.rt.platform || process.platform, hasBrew: Boolean(ctx.rt.which('brew', { env: ctx.env })), env: ctx.env });
     }
     catch (err) { ctx.note(`forge CLI: the forge could not be read (${err.message}) - nothing installed`); return; }
     if (plan.action === 'none') return ctx.log('  forge CLI: none known for this forge - nothing installed');
@@ -2333,7 +2342,10 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     // Docs memory (P3): the folder is the user's lessons, kept whole; with the row gone Claude Code reads its default place.
     const memoryAt = path.resolve(projectRoot, docsPath, 'memory');
     const memoryKept = layout().memoryFiles(memoryAt).length ? `, the docs memory ${path.relative(projectRoot, memoryAt).split(path.sep).join('/')}/ (Claude Code reads its default place again)` : '';
-    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, and the data root ${keptRoot}/ - the docs${memoryKept}, and whatever an earlier release's servers left there${stillOff.length ? `; autoMemoryEnabled: false stays in ${stillOff.join(' and ')} - yours, so Claude's own memory stays off until you remove it` : ''}`);
+    // R169 (burn-down 2026-11-04): a .variables still holding the user's own values after the stack's rows went is named.
+    const varsLeft = Object.keys((layout().readDotenv(variables.fileOf(projectRoot, { env: {}, dataRoot: keptRoot })) || {}).values || {}).length;
+    const varsKept = varsLeft ? `, ${keptRoot}/.variables (${varsLeft} of your keys - nothing reads them once the stack is gone)` : '';
+    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, and the data root ${keptRoot}/ - the docs${memoryKept}${varsKept}, and whatever an earlier release's servers left there${stillOff.length ? `; autoMemoryEnabled: false stays in ${stillOff.join(' and ')} - yours, so Claude's own memory stays off until you remove it` : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);

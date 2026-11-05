@@ -11,6 +11,8 @@ const { CORE_DEP_PLUGINS, foreignEntry } = require('./install/plugins.js');
 const SCRIPT = path.join(__dirname, 'build-marketplace.js');
 const run = (args, opts = {}) => execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts });
 
+// A hook's whole launch line: exec form's command and args, or shell form's command.
+const line = (h) => [h.command, ...(h.args || [])].join(' ');
 const entries = buildEntries();
 const byName = Object.fromEntries(entries.map(e => [e.name, e]));
 
@@ -114,10 +116,26 @@ test('applying to a marketplace drops the folded hooks entry, and nothing else i
     assert.ok(after.plugins.find((p) => p.name === 'third-party'), 'a hand entry is kept');
 });
 
+test('every core hook runs in exec form: node itself, the script its first argument, no shell', () => {
+    // On Windows a shell-form hook starts three processes (Git Bash's launcher, bash, node) and a Git Bash console;
+    // exec form starts node alone (code.claude.com/docs/en/hooks, 'Exec form and shell form', Claude Code 2.1.139+).
+    const core = coreEntry();
+    const hooks = Object.values(core.hooks).flat().flatMap((g) => g.hooks);
+    assert.ok(hooks.length > 20, 'the core carries the stack hooks');
+    for (const h of hooks) {
+        assert.strictEqual(h.command, 'node', `exec form runs node itself: ${JSON.stringify(h)}`);
+        assert.ok(Array.isArray(h.args) && h.args.length >= 1, `exec form has args: ${JSON.stringify(h)}`);
+        const m = /^\$\{CLAUDE_PLUGIN_ROOT\}\/((?:stack|setup-plugin)\/hooks\/[\w-]+\.js)$/.exec(h.args[0]);
+        assert.ok(m, `the first argument is the script under the plugin root, unquoted: ${h.args[0]}`);
+        assert.ok(fs.existsSync(path.join(__dirname, '..', m[1])), `the script exists: ${m[1]}`);
+        for (const a of h.args) assert.ok(!/["'\s]/.test(a), `an argument carries no quote or blank: ${a}`);
+    }
+});
+
 test('the core carries every stack hook inline, its own two first in each event', () => {
     const core = coreEntry();
     const stack = hooksBlock(parseHookWirings());
-    const commands = (block, event) => (block[event] || []).flatMap((g) => g.hooks.map((h) => `${g.matcher}|${h.command}|${h.timeout}`));
+    const commands = (block, event) => (block[event] || []).flatMap((g) => g.hooks.map((h) => `${g.matcher}|${line(h)}|${h.timeout}`));
     for (const event of Object.keys(stack))
         for (const c of commands(stack, event))
             assert.ok(commands(core.hooks, event).includes(c), `the core must carry ${event} ${c}`);
@@ -126,12 +144,12 @@ test('the core carries every stack hook inline, its own two first in each event'
         'the core keeps its own two hooks, the layer gate on three wirings');
     // F4 (2026-10-28): the paste check voids at PostToolUse, where the ask's own message is on disk.
     const post = core.hooks.PostToolUse.find((g) => g.matcher === 'AskUserQuestion');
-    assert.match(post.hooks[0].command, /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer gate leads PostToolUse AskUserQuestion');
-    assert.match(core.hooks.PreToolUse[0].hooks[0].command, /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer-table guard leads PreToolUse');
+    assert.match(line(post.hooks[0]), /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer gate leads PostToolUse AskUserQuestion');
+    assert.match(line(core.hooks.PreToolUse[0].hooks[0]), /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer-table guard leads PreToolUse');
     // 2026-10-21: the walk's next step is judged too - on Bash, spawned only for a `node` call.
     const bash = core.hooks.PreToolUse.find((g) => g.matcher === 'Bash');
-    assert.deepStrictEqual([bash.hooks[0].if, /guard-layer-table\.js/.test(bash.hooks[0].command)], ['Bash(node *)', true], 'the layer gate rides Bash behind its if filter');
-    assert.match(core.hooks.SessionStart[0].hooks[0].command, /setup-plugin\/hooks\/library-stamp\.js/, 'the library-stamp line leads SessionStart');
+    assert.deepStrictEqual([bash.hooks[0].if, /guard-layer-table\.js/.test(line(bash.hooks[0]))], ['Bash(node *)', true], 'the layer gate rides Bash behind its if filter');
+    assert.match(line(core.hooks.SessionStart[0].hooks[0]), /setup-plugin\/hooks\/library-stamp\.js/, 'the library-stamp line leads SessionStart');
     const total = (block) => Object.values(block).flat().reduce((n, g) => n + g.hooks.length, 0);
     assert.strictEqual(total(core.hooks), total(stack) + 4, 'nothing doubled, nothing lost');
 });
@@ -306,7 +324,7 @@ test('the core entry wires the library-stamp line at a startup, a clear and a re
     assert.ok(Array.isArray(start) && start.length >= 1, JSON.stringify(core.hooks));
     assert.strictEqual(start[0].matcher, 'startup|clear|resume|fork', 'its own group leads the event (loading audit 2026-10-21 G12; a fork, audit 2026-10-30 HK-24)');
     assert.strictEqual(start[0].hooks.length, 1, 'no stack hook shares its matcher');
-    assert.match(start[0].hooks[0].command, /setup-plugin\/hooks\/library-stamp\.js/);
+    assert.match(line(start[0].hooks[0]), /setup-plugin\/hooks\/library-stamp\.js/);
     assert.strictEqual(start[0].hooks[0].timeout, 10);
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'setup-plugin', 'hooks', 'library-stamp.js')));
 });
@@ -318,7 +336,7 @@ test('the README trust surface counts what the core entry carries', () =>
 {
     const core = coreEntry();
     const files = new Set(Object.values(core.hooks).flat().flatMap((g) => g.hooks)
-        .map((h) => /\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/.exec(h.command)[1]));
+        .map((h) => /^\$\{CLAUDE_PLUGIN_ROOT\}\/(.+)$/.exec(h.args[0])[1]));
     // A dispatcher is a runner, not a hook: the guards it runs in-process are the hooks.
     const dispatcher = require('../stack/hooks/shell-guards.js');
     const fileDispatcher = require('../stack/hooks/file-guards.js');
@@ -327,7 +345,7 @@ test('the README trust surface counts what the core entry carries', () =>
     const fileDispatched = files.delete(`stack/hooks/${fileDispatcher.SELF}.js`);
     if (fileDispatched) for (const g of fileDispatcher.NAMES) files.add(`stack/hooks/${g}.js`);
     // So is a hook history-session's Stop process runs (the turn build check, 2026-10-16).
-    const ridden = (core.hooks.Stop || []).some((g) => g.hooks.some((h) => /history-session\.js"/.test(h.command)));
+    const ridden = (core.hooks.Stop || []).some((g) => g.hooks.some((h) => /history-session\.js$/.test(line(h))));
     if (ridden) for (const g of require('../stack/hooks/history-session.js').RIDERS) files.add(`stack/hooks/${g}.js`);
     const own = [...files].filter((f) => f.startsWith('setup-plugin/')).length;
     const UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',

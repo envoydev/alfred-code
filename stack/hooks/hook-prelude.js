@@ -46,7 +46,9 @@
 // silently and writes no ledger row, as under GATE 4. Judged from the payload ALONE, never from the
 // environment: a `claude` session in Cursor's integrated terminal inherits Cursor's variables and keeps
 // every hook. A hook makes the check itself, right after it parsed its own payload (cursorStandDown), so no
-// stdin is read or patched here; anything unparseable is a Claude payload.
+// stdin is read or patched here; anything unparseable is a Claude payload. The plugin's own rows are exec form
+// (2026-11-05), which Cursor's schema lacks - a bridge of them runs a bare node that fails open - so in Cursor
+// this gate serves the copy route's shell-form rows.
 //
 // Every gate FAILS OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
 // guard that goes silent on a malformed file is a guard an attacker turns off by corrupting a file.
@@ -233,7 +235,9 @@ function coreRows()
             for (const block of Array.isArray(blocks) ? blocks : [])
                 for (const h of block && Array.isArray(block.hooks) ? block.hooks : [])
                 {
-                    const file = /([\w.-]+)\.js(?=["'\s]|$)/.exec(String((h && h.command) || ''));
+                    // Exec form names the script in `args` (build-marketplace.js launch); shell form in the command line.
+                    const line = [h && h.command, ...(h && Array.isArray(h.args) ? h.args : [])].filter((x) => typeof x === 'string').join(' ');
+                    const file = /([\w.-]+)\.js(?=["'\s]|$)/.exec(line);
                     if (!file) continue;
                     const name = file[1].toLowerCase();
                     if (!rows.has(name)) rows.set(name, []);
@@ -1073,7 +1077,9 @@ function autoRunFor(input, env, flags)
     {
         const payload = input && typeof input === 'object' ? input : {};
         if (flags && flags.autoRun === 'off') return false;
-        if (flags && flags.autoRun === 'on' && !autoRunRefusal(payload, env, flags)) return true;
+        // the prompt's own -on counts only while the hook that writes the stamp runs (R092): with it switched off no
+        // stamp is written, so only a live stamp says ON
+        if (flags && flags.autoRun === 'on' && !hookDisabled('guard-fresh-session-start', env) && !autoRunRefusal(payload, env, flags)) return true;
         const stamp = approvalStamp(payload, env);
         return Boolean(stamp && stamp.live && stamp.session && stamp.session === String(payload.session_id || '') && /^AUTO\b/.test(stamp.first));
     }
@@ -1099,23 +1105,27 @@ function runMarkerSkill(flags)
     }
     return '';
 }
-// The same skill and prompt already on disk leave the file and its mtime: the cap of 50 counts per marker mtime, and a
-// second expansion of one typed line must not reset it (round-3 M2).
-function writeRunMarker(root, sessionId, skill, promptText, env = process.env)
+// The same skill, prompt and prompt id already on disk leave the file and its mtime: the cap of 50 counts per marker
+// mtime, and a second expansion of one typed line must not reset it (round-3 M2). The line typed again is a new prompt
+// with its own `prompt_id` (code.claude.com/docs/en/hooks, 'Common input fields'), so it rewrites the file and the cap
+// counts from 1 (R096); a payload with no id keeps the skill and hash rule.
+function writeRunMarker(root, sessionId, skill, promptText, env = process.env, promptId = '')
 {
     const file = runMarkerFile(root, sessionId, env);
     if (!file || !skill) return false;
     const prompt = require('node:crypto').createHash('sha1').update(String(promptText || '')).digest('hex').slice(0, 12);
+    const id = String(promptId || '').replace(/[^\w-]/g, '').slice(0, 64);
     try
     {
         const old = fs.readFileSync(file, 'utf8');
-        if ((/^skill:[ \t]*(\S+)/m.exec(old) || [])[1] === skill && (/^prompt:[ \t]*(\S+)/m.exec(old) || [])[1] === prompt) return true;
+        if ((/^skill:[ \t]*(\S+)/m.exec(old) || [])[1] === skill && (/^prompt:[ \t]*(\S+)/m.exec(old) || [])[1] === prompt
+            && ((/^prompt-id:[ \t]*(\S+)/m.exec(old) || [])[1] || '') === id) return true;
     }
     catch { /* none yet */ }
     try
     {
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, `skill: ${skill}\nprompt: ${prompt}\nat: ${new Date().toISOString()}\n`);
+        fs.writeFileSync(file, `skill: ${skill}\nprompt: ${prompt}\nat: ${new Date().toISOString()}\n${id ? `prompt-id: ${id}\n` : ''}`);
         return true;
     }
     catch { return false; }

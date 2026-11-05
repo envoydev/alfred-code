@@ -1,7 +1,7 @@
 'use strict';
 // The cache-aware fresh-session verdict (fresh-session.js `freshVerdict`): a fresh session is offered only when it pays
 // back within P messages with the prompt cache warm - its floor priced as a full new write, this session's carry as a
-// cached re-read. Spec docs/superpowers/specs/2026-10-28-fresh-session-cache-design.md, sections 1 and 3.
+// cached re-read. The fresh-session cache design of 2026-10-28; its measurements are docs/fresh-session-cache-evidence.md.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');

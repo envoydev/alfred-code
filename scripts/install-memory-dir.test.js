@@ -194,6 +194,122 @@ test('outrankLines: a managed autoMemoryDirectory is named as outranking the row
     finally { fs.rmSync(top, { recursive: true, force: true }); }
 });
 
+// R171: an old start-folder settings.local.json - Claude Code 2.1.211+ keeps the file at the repository root - is named
+// with the move, on every run until it is moved; the walk is bounded in entries and depth.
+const OLD_LOCAL = path.join('packages', 'api', '.claude', 'settings.local.json');
+const R171_LINE = /!! memory: packages\/api\/\.claude\/settings\.local\.json sets autoMemoryDirectory; .* move the key into \.claude\/settings\.local\.json/;
+test('R171: an update names an old start-folder settings.local.json and the root file to move it to', POSIX_ONLY, () =>
+{
+    const mem = path.join(os.tmpdir(), 'r171-mem');
+    const prepare = (repo) => { fs.mkdirSync(path.dirname(path.join(repo, OLD_LOCAL)), { recursive: true }); fs.writeFileSync(path.join(repo, OLD_LOCAL), JSON.stringify({ autoMemoryDirectory: mem })); };
+    const r = seedRun(['install', 'update'], SEL, { prepare,
+        each: (repo) => ({ old: readOr(path.join(repo, OLD_LOCAL)), local: readOr(path.join(repo, '.claude', 'settings.local.json')), stamp: noDates(stampOf(repo)) }) });
+    assert.match(r.outs[0], R171_LINE, r.outs[0]);
+    assert.match(r.outs[1], R171_LINE, 'it stands until moved');
+    assert.strictEqual(r.steps[1].old, r.steps[0].old, 'the old file is untouched');
+    assert.strictEqual(JSON.parse(r.steps[1].old).autoMemoryDirectory, mem);
+    assert.strictEqual(r.steps[1].local, r.steps[0].local, 'the root file is not written');
+    assert.strictEqual(r.steps[1].stamp, r.steps[0].stamp, 'the stamp is equal bar its dates');
+    assert.doesNotMatch(seedRun('install', SEL).out, /!! memory: .*sets autoMemoryDirectory/, 'no sub-folder file, no line');
+    const rel = seedRun('install', SEL, { prepare: (repo) => { fs.mkdirSync(path.dirname(path.join(repo, OLD_LOCAL)), { recursive: true }); fs.writeFileSync(path.join(repo, OLD_LOCAL), JSON.stringify({ autoMemoryDirectory: 'mem' })); } });
+    assert.doesNotMatch(rel.out, /!! memory: .*sets autoMemoryDirectory/, 'a relative value is no setting');
+});
+
+// R171's review (2026-11-05): a file the repository supplies (tracked, or under a symlinked .claude) is never offered as a
+// move into the trusted root file, nor a folder that holds the project or home - the write guard never opens either.
+// With the top's file setting its own key, Claude Code ignores the old one: rootSets, so the advice is to remove it.
+test('R171 review: staleLocalMemory offers no move for a tracked file, a linked .claude, or a folder holding the project or home; rootSets when the top sets its own', POSIX_ONLY, () =>
+{
+    const top = real(fs.mkdtempSync(path.join(os.tmpdir(), 'r171-trust-')));
+    try
+    {
+        const home = path.join(top, 'home');
+        fs.mkdirSync(home);
+        const repo = path.join(top, 'repo');
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        git(repo, 'init', '-q');
+        const api = path.join(repo, 'api');
+        fs.mkdirSync(path.join(api, '.claude'), { recursive: true });
+        const old = path.join(api, '.claude', 'settings.local.json');
+        const rootFile = path.join(repo, '.claude', 'settings.local.json');
+        const mem = path.join(top, 'mem');
+        const of = (extra = {}) => layout.staleLocalMemory(api, { platform: 'linux', home, ...extra });
+        fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: mem }));
+        assert.deepStrictEqual(of(), { file: old, dir: mem, rootFile, rootSets: false });
+        assert.strictEqual(of({ tracked: (f) => f === old }), null, 'a tracked file is the repository\'s');
+        assert.deepStrictEqual(layout.staleLocalMemoryFiles(repo, { platform: 'linux', home, tracked: () => true }).found, [], 'the walk asks the same');
+        for (const v of ['~/', home, repo, top])
+        {
+            fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: v }));
+            assert.strictEqual(of(), null, `${v} holds the project or home`);
+        }
+        fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: path.join(api, 'notes') }));
+        assert.ok(of(), 'a folder inside the project holds neither');
+        fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: mem }));
+        fs.writeFileSync(rootFile, JSON.stringify({ autoMemoryDirectory: path.join(top, 'mem2') }));
+        assert.strictEqual(of().rootSets, true, 'the top sets its own');
+        fs.writeFileSync(rootFile, JSON.stringify({ autoMemoryDirectory: 'relative' }));
+        assert.strictEqual(of().rootSets, false, 'a relative value is no setting');
+        fs.rmSync(rootFile);
+        const elsewhere = path.join(top, 'claude-real');
+        fs.mkdirSync(elsewhere);
+        fs.writeFileSync(path.join(elsewhere, 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: mem }));
+        fs.rmSync(path.join(api, '.claude'), { recursive: true });
+        fs.symlinkSync(elsewhere, path.join(api, '.claude'));
+        assert.strictEqual(of(), null, 'a symlinked .claude is the repository\'s');
+    }
+    finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
+test('R171 review: an update offers no move for a tracked old file, and names a removal when the top sets its own key', POSIX_ONLY, () =>
+{
+    const mem = path.join(os.tmpdir(), 'r171-mem');
+    const tracked = seedRun('install', SEL, { prepare: (repo) =>
+    {
+        fs.mkdirSync(path.dirname(path.join(repo, OLD_LOCAL)), { recursive: true });
+        fs.writeFileSync(path.join(repo, OLD_LOCAL), JSON.stringify({ autoMemoryDirectory: mem }));
+        git(repo, 'add', '-f', OLD_LOCAL);
+    } });
+    assert.doesNotMatch(tracked.out, /!! memory: .*sets autoMemoryDirectory/, 'a tracked old file is the repository\'s');
+    const both = seedRun('install', SEL, { prepare: (repo) =>
+    {
+        fs.mkdirSync(path.dirname(path.join(repo, OLD_LOCAL)), { recursive: true });
+        fs.writeFileSync(path.join(repo, OLD_LOCAL), JSON.stringify({ autoMemoryDirectory: mem }));
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: path.join(os.tmpdir(), 'r171-mem2') }));
+    }, inspect: (repo) => JSON.parse(readOr(path.join(repo, '.claude', 'settings.local.json'))).autoMemoryDirectory });
+    assert.match(both.out, /!! memory: packages\/api\/\.claude\/settings\.local\.json sets autoMemoryDirectory, which Claude Code 2\.1\.211\+ ignores while \.claude\/settings\.local\.json sets its own - remove the key from packages\/api\/\.claude\/settings\.local\.json/, both.out);
+    assert.doesNotMatch(both.out, /move the key into/);
+    assert.strictEqual(both.result, path.join(os.tmpdir(), 'r171-mem2'), 'the top\'s own value stays');
+});
+
+test('R171: staleLocalMemoryFiles - win32 finds none; maxEntries 9 / 10 / 11 on a 10-entry tree; maxDepth 6 finds 5 and 6, not 7', () =>
+{
+    const top = real(fs.mkdtempSync(path.join(os.tmpdir(), 'r171-walk-')));
+    try
+    {
+        assert.deepStrictEqual(layout.staleLocalMemoryFiles(top, { platform: 'win32' }), { found: [], cut: false });
+        // exactly 10 entries below the top: a/ b/ f1 f2, a/c/ a/f3 a/f4, b/f5, a/c/f6 a/c/f7
+        const flat = path.join(top, 'flat');
+        for (const d of ['a/c', 'b']) fs.mkdirSync(path.join(flat, d), { recursive: true });
+        for (const f of ['f1', 'f2', 'a/f3', 'a/f4', 'b/f5', 'a/c/f6', 'a/c/f7']) fs.writeFileSync(path.join(flat, f), 'x');
+        for (const [max, cut] of [[9, true], [10, false], [11, false]]) assert.strictEqual(layout.staleLocalMemoryFiles(flat, { maxEntries: max, platform: 'linux' }).cut, cut, `maxEntries ${max}`);
+        // depth: a git repo whose old file sits 5, 6 and 7 folders below its top
+        const repo = path.join(top, 'deep');
+        fs.mkdirSync(repo);
+        git(repo, 'init', '-q');
+        const mem = path.join(top, 'mem');
+        const at = (n) => path.join(repo, ...Array.from({ length: n }, (_, i) => `d${n}-${i}`));
+        for (const n of [5, 6, 7]) { fs.mkdirSync(path.join(at(n), '.claude'), { recursive: true }); fs.writeFileSync(path.join(at(n), '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: mem })); }
+        const found = layout.staleLocalMemoryFiles(repo, { platform: 'linux' }).found.map((x) => x.file);
+        assert.deepStrictEqual(found.sort(), [5, 6].map((n) => path.join(at(n), '.claude', 'settings.local.json')).sort());
+        const one = layout.staleLocalMemoryFiles(repo, { platform: 'linux' }).found[0];
+        assert.strictEqual(one.dir, mem);
+        assert.strictEqual(one.rootFile, path.join(repo, '.claude', 'settings.local.json'));
+    }
+    finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
 test('docs: the row committed after the write is removed by the next update (D11)', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update', 'update'], SEL, {
@@ -461,6 +577,46 @@ test('copy: without --memory-copy nothing is copied', POSIX_ONLY, () =>
     assert.doesNotMatch(r.outs[1], /memory: cop(ied|y skipped)/);
 });
 
+// G3 (2026-11-05): on Windows past 200 characters Claude Code names the folder from the path as typed, so the computed one
+// may never be the one it makes - the copy waits until a folder is there. Off Windows, and at 200 or under, it copies.
+test('copy: on win32 past 200, no copy until Claude Code has made the folder', () =>
+{
+    const top = real(fs.mkdtempSync(path.join(os.tmpdir(), 'g3-')));
+    const configDir = path.join(top, 'acct');
+    const projects = path.join(configDir, 'projects');
+    const from = path.join(top, 'old-memory');
+    fs.mkdirSync(from);
+    fs.writeFileSync(path.join(from, 'MEMORY.md'), '# index\n');
+    const san = (p) => p.normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
+    const rootOf = (n, stem) => { const r = path.join(top, stem + 'x'.repeat(n - (san(top).length + 1) - stem.length)); fs.mkdirSync(r); assert.strictEqual(san(r).length, n); return r; };
+    const run = (root, platform) =>
+    {
+        const lines = [];
+        memoryDir.copyStep({ projectRoot: root, configDir, platform, memoryFrom: [from], log: (m) => lines.push(m), note: (m) => lines.push(`note: ${m}`) }, 'default');
+        return lines.join('\n');
+    };
+    const listed = () => (fs.existsSync(projects) ? fs.readdirSync(projects) : []);
+    try
+    {
+        const long = rootOf(205, 'w32-');
+        const out = run(long, 'win32');
+        assert.match(out, /memory: copy skipped - on Windows Claude Code names a folder past 200 characters from the path as typed, and it has not made one here yet; copy the \.md files from .*old-memory\/ by hand once it has/);
+        assert.deepStrictEqual(listed(), [], 'no folder made under projects');
+        const [to] = layout.memoryDirsOf(long, { env: { CLAUDE_CONFIG_DIR: configDir }, platform: 'win32' });
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        assert.match(run(long, 'win32'), /memory: copied 1 files from/);
+        assert.strictEqual(readOr(path.join(to, 'MEMORY.md')), '# index\n', 'copied once Claude Code made the folder');
+        const lin = rootOf(206, 'lnx-');
+        assert.match(run(lin, 'linux'), /memory: copied 1 files from/, 'off Windows the change is inert');
+        for (const n of [199, 200])
+        {
+            const r = rootOf(n, `b${n}-`);
+            assert.match(run(r, 'win32'), /memory: copied 1 files from/, `${n} characters: no hash, no case doubt - copied`);
+        }
+    }
+    finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
 test('copy: a renamed project folder skips the copy', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update'], SEL, {
@@ -592,4 +748,60 @@ test('docs: an empty settings.local.json takes the row', POSIX_ONLY, () =>
     assert.strictEqual(r.result.local && r.result.local.autoMemoryDirectory, r.result.want, r.out);
     assert.strictEqual(r.result.mode, 'docs');
     assert.doesNotMatch(r.out, /not valid JSON/);
+});
+
+// ---------- the burn-down of 2026-11-04 (R161-R163) ----------
+// R163: D11's refusal took the row out of a TRACKED settings.local.json and deleted the file when nothing else was left -
+// a tracked deletion a commit spreads to every teammate. A tracked file stays, as {}.
+test('a tracked settings.local.json holding only the stack\'s row ends as {} and stays tracked', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [['--memory', 'docs'], []],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.claude', 'settings.local.json');
+            if (i === 0)
+            {
+                writeLocal(repo, { autoMemoryDirectory: localOf(repo).autoMemoryDirectory });
+                git(repo, 'add', '-f', '.claude/settings.local.json');
+            }
+            return { text: readOr(file), tracked: git(repo, 'ls-files', '--', '.claude/settings.local.json').trim() };
+        },
+    });
+    assert.strictEqual(r.steps[1].text, '{}\n', r.outs[1]);
+    assert.strictEqual(r.steps[1].tracked, '.claude/settings.local.json', 'still in the index');
+    assert.match(r.outs[1], /settings\.local\.json kept as \{\} - git tracks it/);
+});
+
+// R162: --memory-copy while a hand-set docs root waits on update's ask dropped the copy without a word.
+test('--memory-copy while the docs root is pending says the copy was not made', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [[], ['--memory', 'docs', '--memory-copy']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const file = path.join(repo, '.claude', 'settings.json');
+            const s = json(file);
+            s.env = { ...(s.env || {}), ALFRED_CODE_DOCS_PATH: 'docs' };
+            fs.writeFileSync(file, JSON.stringify(s, null, 2));
+            fs.mkdirSync(path.join(repo, 'docs', 'architecture'), { recursive: true });
+            fs.writeFileSync(path.join(repo, 'docs', 'architecture', 'ARCHITECTURE.md'), '# mine\n');
+            return null;
+        },
+    });
+    assert.match(r.outs[1], /docs was set by hand - nothing moved yet/, r.outs[1]);
+    assert.match(r.outs[1], /memory: copy not made - the docs root waits on \/alfred-code:update's ask; an update with --memory-copy after it makes the copy/, r.outs[1]);
+});
+
+// R161: a user's own .gitattributes in the docs memory printed 'kept - yours' on every flag-less docs-mode update.
+test('a user .gitattributes prints no kept line on a flag-less update', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update', 'update'], SEL, {
+        args: [['--memory', 'docs'], [], ['--installed-only', '--memory', 'docs']],
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(ATTR(repo), '*.md text eol=lf\n'); return readOr(ATTR(repo)); },
+    });
+    assert.strictEqual(r.steps[1], '*.md text eol=lf\n', 'the user\'s file stays');
+    assert.doesNotMatch(r.outs[1], /\.gitattributes/, r.outs[1]);
+    assert.match(r.outs[2], /memory: \.alfred\/docs\/memory\/\.gitattributes kept - not the stack's text, so it is yours/, 'a run that asks names it');
 });

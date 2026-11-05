@@ -143,6 +143,94 @@ function remoteDefault(cwd, remote)
     }
 }
 
+// A branch held in a variable (review 16: `b=main; git push -f origin "$b"` passed): the binding that runs last before the
+// use, when it is a LITERAL, is read as its value; one that asks git for the branch checked out, as the branch checked out
+// where it was assigned (review 17, 4: a `git checkout "$BR"` back to it reads no branch). Anything else - a loop or `read`
+// name, a value any other substitution computes, a binding that runs after the use (review 19, F3: a carried checkout read
+// back to a later one) - stays unread and passes, as in 3.8.0: reviews 17-19 each found new false blocks in reading loop
+// words, so a loop over branches is a stated ceiling. Each variable in the word is read (`$B:$B`).
+const CURRENT_CMD = String.raw`\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)(?:\s+2>(?:&1|\s*/dev/null))?\s*`;
+const CURRENT_BRANCH = new RegExp(`^"?(?:\\$\\(${CURRENT_CMD}\\)|\`${CURRENT_CMD}\`)"?$`);
+// ... and the same substitution written into the push itself (`git push -f origin "$(git branch --show-current)"` on main
+// passed - a side note to review 16): HEAD as the push runs
+const CURRENT_SUB = new RegExp(`\\$\\(${CURRENT_CMD}\\)|\`${CURRENT_CMD}\``, 'g');
+// The branch checked out where the SHELL stands at `at` - a substitution runs there, never in a push's `-C` checkout
+// (review 20, F2: `BR=$(git branch --show-current) && cd ../other && git push -f origin "$BR"` read the other checkout).
+// Past a checkout the replay cannot read it is unknown, as in 3.8.0 (review 21, F1: `for b in feat-a feat-b; do git
+// checkout "$b" && git push --force-with-lease origin "$(git branch --show-current)"; done` on main read main).
+function shellHeadAt(read, at)
+{
+    const here = { at, dirs: [] };
+    const st = headStateAt(read, here, read.callDir(here));
+    return st && !st.unsure && st.name && !st.name.includes('$') ? st.name : null;
+}
+function heldValues(read, call, name)
+{
+    const ev = read.vars.eventOf(name, call.at);
+    if (!ev || ev.bound || read.orderOf(ev.at, call.at) >= 0)
+    {
+        return null;
+    }
+    const lit = read.vars.literalOf(name, call.at);
+    if (lit !== null)
+    {
+        return [lit];
+    }
+    if (!CURRENT_BRANCH.test(String(ev.raw)))
+    {
+        return null;
+    }
+    const head = shellHeadAt(read, ev.at);
+    return head ? [head] : null;
+}
+function heldRefs(read, call, dir)
+{
+    const held = new Map();
+    const valuesOf = (name) =>
+    {
+        if (!held.has(name))
+        {
+            held.set(name, heldValues(read, call, name));
+        }
+        return held.get(name);
+    };
+    return (raw) =>
+    {
+        const word = String(raw).replace(CURRENT_SUB, (m) =>
+        {
+            const name = shellHeadAt(read, call.at);
+            return name === null ? m : checkoutOf(read.callDir({ at: call.at, dirs: [] })) === checkoutOf(dir) ? 'HEAD' : name;
+        });
+        const vs = read.vars ? [...word.matchAll(/\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g)] : [];
+        if (!vs.length)
+        {
+            return [word];
+        }
+        let outs = [''];
+        let last = 0;
+        for (const v of vs)
+        {
+            const vals = valuesOf(v[1] || v[2]);
+            const opts = vals && vals.length ? vals : [v[0]];
+            const next = [];
+            for (const o of outs)
+            {
+                for (const x of opts)
+                {
+                    if (next.length < 64)
+                    {
+                        next.push(o + word.slice(last, v.index) + x);
+                    }
+                }
+            }
+            outs = next;
+            last = v.index + v[0].length;
+        }
+        outs = outs.map(o => o + word.slice(last));
+        return outs.includes(word) ? outs : [word, ...outs];
+    };
+}
+
 // The push's words with each option's VALUE dropped: `-o ci.skip` read `ci.skip` as a refspec, so `git push -f -o
 // ci.skip origin` on main was no bare push and passed (audit 2026-10-08). A value attached with `=` is one word already.
 const VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
@@ -279,16 +367,67 @@ function checkoutOf(dir)
     return dir;
 }
 
-// The branch HEAD names when `push` runs in `dir`: every switch before it in that checkout replayed in run order.
+// The branch HEAD names when `push` runs in `dir`: every switch before it in that checkout replayed in run order, once
+// per point (review 19, F3: a switch to a held branch asks where HEAD was when it was bound, so eighteen `BR=$(git branch
+// --show-current); ... git checkout "$BR"` rounds took 15s). A point asked while it is being replayed names no branch.
+const HEAD_AT = new WeakMap();
 function headAt(read, push, dir)
+{
+    const st = headStateAt(read, push, dir);
+    return st ? st.name : null;
+}
+function headStateAt(read, push, dir)
+{
+    let memo = HEAD_AT.get(read);
+    if (!memo)
+    {
+        HEAD_AT.set(read, (memo = new Map()));
+    }
+    const key = `${checkoutOf(dir)}\0${push.at}`;
+    if (!memo.has(key))
+    {
+        memo.set(key, null);
+        memo.set(key, replayHead(read, push, dir));
+    }
+    return memo.get(key);
+}
+// The calls in run order: a carried script's sit after the whole command in the text, but run where its carrier
+// stands (review 20, F1: `./scripts/sync-main.sh && git checkout main && git push -f` replayed the script's checkout back
+// to the feature branch last, and passed)
+const RUN_ORDER = new WeakMap();
+// ... with each `gh pr checkout`, a switch no git call names (review 21, F1)
+function callsInRunOrder(read)
+{
+    if (!RUN_ORDER.has(read))
+    {
+        const gh = [];
+        for (const k of (read.parsed && read.parsed.cmds) || [])
+        {
+            const w = k.words.map(x => x.raw);
+            const pr = w.indexOf('pr');
+            if (pr > 0 && /(?:^|[\\/])gh(?:\.exe)?$/i.test(w[0]) && /^(?:checkout|co)$/.test(w[pr + 1] || ''))
+            {
+                gh.push({ at: k.words[0].s, dirs: [], gh: true });
+            }
+        }
+        RUN_ORDER.set(read, read.calls.concat(gh).sort((x, y) => read.orderOf(x.at, y.at)));
+    }
+    return RUN_ORDER.get(read);
+}
+function replayHead(read, push, dir)
 {
     const key = checkoutOf(dir);
     let cur = { kind: 'current' };
     let prev = { kind: 'previous' };
-    for (const c of read.calls)
+    for (const c of callsInRunOrder(read))
     {
-        if ((c.sub !== 'switch' && c.sub !== 'checkout') || read.orderOf(c.at, push.at) >= 0)
+        if ((!c.gh && c.sub !== 'switch' && c.sub !== 'checkout') || read.orderOf(c.at, push.at) >= 0)
         {
+            continue;
+        }
+        if (c.gh)
+        {
+            cur = checkoutOf(read.callDir(c)) === key ? { ...cur, unsure: true } : cur;
             continue;
         }
         const cDir = read.callDir(c);
@@ -296,7 +435,7 @@ function headAt(read, push, dir)
         {
             continue;
         }
-        const t = switchTarget(c);
+        let t = switchTarget(c);
         if (!t)
         {
             continue;
@@ -306,6 +445,22 @@ function headAt(read, push, dir)
             [cur, prev] = [prev, cur];
             continue;
         }
+        if (t.branch && t.branch.includes('$'))
+        {
+            // a target held in a variable is read as a pushed one is (review 18, F2: `git checkout "$BR"` back to the branch
+            // a current-branch binding held stayed on main); one it cannot read still leaves for a branch, and a checkout of
+            // it is skipped, both as before (review 19, F2: `git checkout -b "feature/${TICKET}"` stayed on main)
+            const vals = heldRefs(read, c, cDir)(unquote(t.branch)).filter(v => !v.includes('$'));
+            if (vals.length)
+            {
+                t = { ...t, branch: vals[0] };
+            }
+            else if (t.verify)
+            {
+                cur = { ...cur, unsure: true };
+                continue;
+            }
+        }
         if (t.verify && !PROTECTED.includes(t.branch) && !namesBranch(cDir, t.branch))
         {
             continue; // a path or a commit, not a branch
@@ -313,16 +468,8 @@ function headAt(read, push, dir)
         prev = cur;
         cur = t.detached ? { kind: 'detached' } : { kind: 'branch', name: t.branch };
     }
-    if (cur.kind === 'current')
-    {
-        return currentBranch(dir);
-    }
-    if (cur.kind === 'previous')
-    {
-        return previousBranch(dir);
-    }
-
-    return cur.kind === 'branch' ? cur.name : null;
+    const name = cur.kind === 'current' ? currentBranch(dir) : cur.kind === 'previous' ? previousBranch(dir) : cur.kind === 'branch' ? cur.name : null;
+    return { name, unsure: !!cur.unsure };
 }
 
 // ---- refspecs from config (audit 2026-10-30 HK-15) --------------------------------------------------------------
@@ -507,6 +654,12 @@ function ghForce(read)
 function isProtectedForcePush(command, cwd)
 {
     const read = shellWrites.gitText(command, cwd);
+    // A reader that failed (an exception, not text it chose to leave) on a command naming a push: judged as the push
+    // (review 15, 7) - unread text in general stays out of this guard's model, as the header says
+    if (read.failed && /\b(?:push|send-pack)\b/.test(command))
+    {
+        return 'unread';
+    }
     const viaGh = read.parsed ? ghForce(read) : null;
     if (viaGh)
     {
@@ -519,8 +672,11 @@ function isProtectedForcePush(command, cwd)
         {
             continue;
         }
-        const after = pushWords(call.argv);
         const gitCwd = read.callDir(call);
+        // a variable is read past the remote only: a loop over remotes keeps a bare force bare (review 17, 1)
+        const words = pushWords(call.argv);
+        const ri = words.findIndex(t => !t.startsWith('-'));
+        const after = ri < 0 ? words : words.slice(0, ri + 1).concat(words.slice(ri + 1).flatMap(heldRefs(read, call, gitCwd)));
         // HEAD and @ name the branch checked out where git runs when the push runs - `git push -f origin HEAD` on main
         // is the bare force spelled out, and read literally it named no protected branch and passed.
         let head;
@@ -691,5 +847,25 @@ function main()
         'give them the exact command to type themselves (a `!` prefix runs it in this session), never a way around this guard.\n');
     process.exit(2);
 }
+
+// Every git these helpers run is asked once per directory and name in a run (review 18, F3: each push replayed every
+// earlier checkout and spawned a git for each - 8.5 s for 40 chained branch pushes)
+const askedOnce = (fn) =>
+{
+    const seen = new Map();
+    return (...args) =>
+    {
+        const key = args.map(String).join('\0');
+        if (!seen.has(key))
+        {
+            seen.set(key, fn(...args));
+        }
+        return seen.get(key);
+    };
+};
+namesBranch = askedOnce(namesBranch);
+currentBranch = askedOnce(currentBranch);
+previousBranch = askedOnce(previousBranch);
+remoteDefault = askedOnce(remoteDefault);
 
 main();

@@ -1254,7 +1254,7 @@ const ASK_FLOW_TEMPLATES = {
     'task-solve': 11, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
     'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
     // capture-quality's chain (2026-10-29): one template per part state, the mode question and the description match's part pick.
-    'capture-quality': 7,
+    'capture-quality': 8, // R127: absent and unstamped ask apart
     // capture-awareness's router (2026-10-30): the chain's run ask and mode ask and the description match's part pick.
     'capture-awareness': 3,
     // stack audit 2026-10-20 row 13: task-solve's per-judgment ask, issue-diagnoser's 4a / 4c close, task-version-upgrade's
@@ -2683,6 +2683,10 @@ function main()
         });
         for (const finding of lintUmbrellaTopics({ umbrellas, renamedTopics: renamed.topics, renamedSkills: renamed.skills })) flag(finding);
     }
+    // 71. A test compares paths through scripts/test-paths.js; the older non-native realpath calls stay pinned.
+    for (const finding of lintRealpathPins(repoTextFiles())) flag(finding);
+    // 72. No tracked comment cites a file under the machine-local docs/superpowers/.
+    for (const finding of lintSuperpowersCites(repoTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2898,6 +2902,22 @@ function lintPageScripts({ file = 'docs/alfred-code.html', html } = {})
         const why = ((r.stderr || '').split('\n').find((l) => /Error/.test(l)) || `exit ${r.status}`).trim();
         out.push(`${file}:${line} - its inline script fails node --check (${why}), so the page renders no table`);
     }
+    // R139: a row string goes into insertAdjacentHTML unescaped, so a placeholder written raw (`<data root>`, `<id>`,
+    // `IOptions<T>`) is parsed as an element and the browser drops it. Inside each string literal of each inline script,
+    // a `<name ...>` whose name is no tag the page renders is flagged with its escape.
+    const BODY = new Set(['a', 'b', 'br', 'code', 'details', 'div', 'em', 'h2', 'h3', 'hr', 'i', 'kbd', 'li', 'ol', 'p', 'pre', 'small', 'span', 'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul']);
+    for (const m of text.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g))
+    {
+        const bodyAt = m.index + m[0].indexOf('>') + 1;
+        for (const lit of m[1].matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g))
+            for (const tag of lit[0].matchAll(/<([A-Za-z][\w-]*)([^<>]*)>/g))
+            {
+                if (BODY.has(tag[1].toLowerCase()) && /^(?:\s+[\w-]+(?:=(?:\\?"[^"]*?\\?"|'[^']*'|[^\s>]+))?)*\s*$/.test(tag[2])) continue;
+                const line = text.slice(0, bodyAt + lit.index + tag.index).split('\n').length;
+                const inner = tag[0].slice(1, -1);
+                out.push(`${file}:${line} - a row string holds \`${tag[0]}\`, which the browser drops as an element - write &lt;${inner}&gt;`);
+            }
+    }
     return out;
 }
 
@@ -3037,6 +3057,123 @@ function lintOldLocations(files)
     }
     return out;
 }
+// 71. A test compares two paths through scripts/test-paths.js (samePath / realLong), never a JS-resolver realpath
+// (O1, burn-down 2026-11-04): Windows spells one folder several ways (a slash, a drive letter's case, CI's 8.3 temp
+// RUNNER~1) and `fs.realpathSync` keeps the spelling it was handed, so such a compare went red on Windows only - 3.7.1's
+// drive-less roots, bdf3b1c1's RUNNER~1. The calls already in the tree stay pinned per file (some meet a value production
+// computes with the same resolver, so a blanket switch would break them); a file over its pin is a new call, a file under
+// it lowers the pin. `node scripts/lint-skills.js --print-realpath-pins` prints the table from the tree.
+const REALPATH_TEST_FILE = /\.test\.[cm]?js$/;
+const REALPATH_PINS = {
+    'scripts/analyze-usage.test.js': 1,
+    'scripts/audit-2026-10-30-fixpass-gaps.test.js': 2,
+    'scripts/audit-2026-10-30-fixpass-receipts.test.js': 2,
+    'scripts/audit-2026-10-30-fixpass-shell.test.js': 2,
+    'scripts/audit-2026-11-03-guard-asks.test.js': 12,
+    'scripts/code-quality.test.js': 1,
+    'scripts/docs-engine.test.js': 2,
+    'scripts/docs-versioning-rule.test.js': 1,
+    'scripts/guard-commit-gate.test.js': 1,
+    'scripts/guard-hooks.test.js': 6,
+    'scripts/guard-read-write.test.js': 7,
+    'scripts/guard-secret-value.test.js': 3,
+    'scripts/guard-sensitive-data.test.js': 2,
+    'scripts/habits-scorer-card.test.js': 2,
+    'scripts/handoff-engine.test.js': 1,
+    'scripts/history-session.test.js': 3,
+    'scripts/hook-prelude.test.js': 10,
+    'scripts/hooks-entry.test.js': 1,
+    'scripts/init-plan.test.js': 1,
+    'scripts/install-args.test.js': 1,
+    'scripts/install-mcp-migrate.test.js': 3,
+    'scripts/install-renames.test.js': 2,
+    'scripts/install-runtime.test.js': 1,
+    'scripts/install-uninstall.test.js': 1,
+    'scripts/install-workspace.test.js': 5,
+    'scripts/layout-variables.test.js': 2,
+    'scripts/lsp-coverage.test.js': 1,
+    'scripts/mcp-prose.test.js': 2,
+    'scripts/memory-docs-hooks.test.js': 1,
+    'scripts/mode-flags.test.js': 1,
+    'scripts/preferences-session.test.js': 2,
+    'scripts/preferences.test.js': 4,
+    'scripts/profile-fixture.test.js': 1,
+    'scripts/scan-evidence.test.js': 1,
+    'scripts/secret-chain.test.js': 1,
+    'scripts/secrets-run.test.js': 1,
+    'scripts/session-scope.test.js': 1,
+    'scripts/session-status.test.js': 3,
+    'scripts/session-surface.test.js': 1,
+    'scripts/setup-plugin.test.js': 1,
+    'scripts/shell-guards.test.js': 7,
+    'scripts/shell-writes.test.js': 1,
+    'scripts/source-cache.test.js': 2,
+    'scripts/tools-doc.test.js': 1,
+    'scripts/tools-inventory.test.js': 1,
+    'scripts/tools-order.test.js': 1,
+    'scripts/tools-refresh.test.js': 1,
+    'scripts/workspace.test.js': 1,
+};
+function nonNativeRealpathCalls(text)
+{
+    return (String(text).match(/(?<![\w$])realpathSync\s*\(/g) || []).length;
+}
+function realpathPinsFor(files)
+{
+    const pins = {};
+    for (const { file, text } of [...files].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0)))
+    {
+        if (!REALPATH_TEST_FILE.test(file)) continue;
+        const n = nonNativeRealpathCalls(text);
+        if (n > 0) pins[file] = n;
+    }
+    return pins;
+}
+function lintRealpathPins(files, pins = REALPATH_PINS)
+{
+    const out = [];
+    const seen = new Set();
+    for (const { file, text } of files)
+    {
+        if (!REALPATH_TEST_FILE.test(file)) continue;
+        seen.add(file);
+        const n = nonNativeRealpathCalls(text);
+        const pin = pins[file] || 0;
+        if (n > pin)
+        {
+            const lines = String(text).split('\n');
+            let last = 0;
+            lines.forEach((l, i) => { if (nonNativeRealpathCalls(l) > 0) last = i + 1; });
+            out.push(`${file}:${last} holds ${n} non-native realpath calls, its pin is ${pin} - compare paths with samePath from scripts/test-paths.js (check 71)`);
+        }
+        else if (n < pin) out.push(`${file} holds ${n} non-native realpath calls - lower its pin from ${pin} to ${n} in REALPATH_PINS (check 71)`);
+    }
+    for (const [file, pin] of Object.entries(pins))
+        if (!seen.has(file) && pin > 0) out.push(`${file} holds 0 non-native realpath calls - lower its pin from ${pin} to 0 in REALPATH_PINS (check 71)`);
+    return out;
+}
+
+// 72. A tracked comment never cites a spec, plan or ledger file under docs/superpowers/ (R167, burn-down 2026-11-04):
+// that folder is git-ignored and machine-local, so the pointer leads nowhere for any other reader of a public repo. The
+// comment states the rule it needs in place. Code comment lines only (a trimmed line opening with //, # or *) under
+// scripts/, stack/ and setup-plugin/ - a string is a fixture, a folder named with no file points at no design, and a
+// path inside another root (.alfred/docs/...) is not this repo's.
+const SUPERPOWERS_CITE = /(?<![\w./-])docs\/superpowers\/(?:specs|plans|sdd)\/(?:[\w.-]+\/)*[\w.-]+\.md/;
+function lintSuperpowersCites(files)
+{
+    const out = [];
+    for (const { file, text } of files)
+    {
+        if (!/^(?:scripts|stack|setup-plugin)\//.test(file) || /\.(?:md|json)$/i.test(file)) continue;
+        String(text).split('\n').forEach((line, i) =>
+        {
+            if (/^\s*(?:\/\/|#|\*)/.test(line) && SUPERPOWERS_CITE.test(line))
+                out.push(`${file}:${i + 1} cites a file under docs/superpowers/, which is git-ignored and machine-local - state the rule the comment needs in place (check 72)`);
+        });
+    }
+    return out;
+}
+
 // 70. capture-quality holds the three quality captures, the coverage loop is loop-test-coverage-quality and the coverage
 // doc is quality/COVERAGE-QUALITY.md (2026-10-29); a text naming an old one sends the model to a skill the update
 // pruned or a doc it moved. What names them on purpose is exempt by file or key, never by judgment: the manifest's
@@ -3250,12 +3387,13 @@ function lintHooksEntry(liveIn)
         for (const block of blocks)
             for (const entry of block.hooks)
             {
-                // The launcher shape is part of the contract: a bare script path needs the exec
-                // bit, which git carries into the plugin cache as committed, and never runs on Windows.
-                const m = String(entry.command).match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)"/);
+                // The launcher shape is part of the contract: exec form, `node` itself with the script its first
+                // argument - no shell, so Windows starts one process per hook and never a Git Bash console; a bare
+                // script path needs the exec bit, which git carries into the plugin cache as committed.
+                const m = entry.command === 'node' && Array.isArray(entry.args) ? String(entry.args[0] || '').match(/^\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)$/) : null;
                 if (!m)
                 {
-                    out.push(`the core's stack hooks run \`${entry.command}\` - every hook launches as node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>".`);
+                    out.push(`the core's stack hooks run \`${[entry.command, ...(entry.args || [])].join(' ')}\` - every hook launches in exec form: command node, args ["\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>"].`);
                     continue;
                 }
                 const file = m[1];
@@ -3477,6 +3615,11 @@ module.exports = {
     lintLegacyNames,
     lintOldLocations,
     lintRetiredQuality,
+    nonNativeRealpathCalls,
+    realpathPinsFor,
+    lintRealpathPins,
+    REALPATH_PINS,
+    lintSuperpowersCites,
     lintUmbrellaTopics,
     repoTextFiles,
     lintCoreDependencies,
@@ -3536,6 +3679,12 @@ module.exports = {
 
 if (require.main === module)
 {
+    if (process.argv.includes('--print-realpath-pins'))
+    {
+        const pins = realpathPinsFor(repoTextFiles());
+        process.stdout.write(Object.entries(pins).map(([file, n]) => `    '${file}': ${n},\n`).join(''));
+        return;
+    }
     require('../stack/hooks/hook-prelude.js').blockingStdio();
     main();
 }

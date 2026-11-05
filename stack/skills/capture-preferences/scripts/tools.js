@@ -24,6 +24,7 @@ const { spawnSync } = require('node:child_process');
 const prefs = require('./preferences.js');
 const client = require('./mcp-client.js');
 const lsp = require('./lsp-coverage.js');
+const { pluginsRoot } = require('./plugins-root.js');
 // The stack's variables (D4) set on the process env before the first read: the hooks' loader, at ../../../hooks/ in the
 // plugin and in a project's .claude/ (bundle-gate.js's route); a copy with no loader beside it reads the env as it is.
 let loader = null;
@@ -49,7 +50,6 @@ const LIST_TIMEOUT_MS = 30000;
 const PLUGIN_LIST_TIMEOUT_MS = 45000;
 
 const readText = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
-const isLink = (file) => { try { return fs.lstatSync(file).isSymbolicLink(); } catch { return false; } };
 const shown = (projectRoot, abs) =>
 {
     const rel = path.relative(projectRoot, abs);
@@ -74,17 +74,28 @@ const isOwn = (type) => String(type).startsWith('own:');
 // repo could point one anywhere (the rule preferences.js keeps, audit 2026-10-21 PF-1).
 // `dirs` is a reader's list (prefs.readDirs: the own dirs, then the ancestors'); the default is the project's own alone,
 // which every capture verb keeps.
-function readToolsDoc(projectRoot, { dirs } = {})
+// The first doc in place, read; one that is a link or not a regular file (a FIFO would block the read) is returned as
+// `{ skipped, why }` unread, so the start line and lint can name it (R042).
+function findToolsDoc(projectRoot, { dirs } = {})
 {
     for (const { dir, skip } of dirs || prefs.prefsDirs(projectRoot).map((d) => ({ dir: d })))
     {
         if (skip && skip.has(TOOLS_DOC)) continue;
         const abs = path.join(dir, TOOLS_DOC);
-        if (isLink(abs)) return null;
+        let st;
+        try { st = fs.lstatSync(abs); } catch { continue; }
+        const rel = shown(projectRoot, abs);
+        if (st.isSymbolicLink()) return { skipped: 'link', why: 'a link', abs, rel };
+        if (!st.isFile()) return { skipped: 'not a file', why: 'not a regular file', abs, rel };
         const text = readText(abs);
-        if (text !== null) return { text, abs, rel: shown(projectRoot, abs) };
+        if (text !== null) return { text, abs, rel };
     }
     return null;
+}
+function readToolsDoc(projectRoot, opts = {})
+{
+    const found = findToolsDoc(projectRoot, opts);
+    return found && !found.skipped ? found : null;
 }
 
 // One `Order:` rank: a built-in alone, or a type followed by the tools of it that serve the job.
@@ -123,7 +134,7 @@ function parseToolsDoc(text, adapters = readAdapters())
             return { type, tool: tool || null };
         });
         return {
-            id: s.id, heading: s.heading, job: f.Job === undefined ? null : f.Job.trim(), hasOrder: f.Order !== undefined, ranks,
+            id: s.id, heading: s.heading, job: f.Job === undefined ? null : f.Job.trim().toLowerCase(), hasOrder: f.Order !== undefined, ranks,
             purpose: f.Purpose || '', held: String(f.Held || '').split(',').map((x) => x.trim()).filter(Boolean), deny, why: f.Why || '',
         };
     });
@@ -136,6 +147,19 @@ const ownServer = (inventory, type) => Object.values((inventory && inventory.ser
 // Problems fail lint; notes are true of this machine only (a teammate's own: type) or are a choice worth naming.
 // `shapeOnly` leaves out what is true of this machine or this release - a ranked tool its server or pin lacks: the start
 // line skips that rank and names it, and only a doc whose shape is broken loses the defaults.
+// Letters to add, drop or change to turn one name into the other - a job one or two from a table job is a typo of it.
+function editDistance(a, b)
+{
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++)
+    {
+        const row = [i];
+        for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        prev = row;
+    }
+    return prev[b.length];
+}
+
 function lintToolsDoc(text, { adapters = readAdapters(), inventory = null, shapeOnly = false } = {})
 {
     const problems = [];
@@ -149,11 +173,16 @@ function lintToolsDoc(text, { adapters = readAdapters(), inventory = null, shape
     const types = adapters.types || {};
     const denied = parsed.entries.filter((e) => e.job === 'deny').flatMap((e) => e.deny);
     const jobs = new Map();
+    const tableJobs = Object.keys(adapters.jobs || {});
     for (const e of parsed.entries)
     {
         if (!e.id) { problems.push(`\`## ${e.heading}\` has no T<n> id`); continue; }
         if (!e.id.startsWith('T')) { problems.push(`${e.id} is not a T<n> id - this doc's entries are T1, T2, ...`); continue; }
         if (!e.job) { problems.push(`${e.id}: no Job: line`); continue; }
+        if (!/^[a-z][a-z0-9 -]*$/.test(e.job)) { problems.push(`${e.id}: job '${e.job}' is not a name - use lower-case letters, digits, spaces and dashes`); continue; }
+        // A misspelt table job is told as the user's own while the table job quietly takes the defaults.
+        const near = e.job === 'deny' || tableJobs.includes(e.job) ? null : tableJobs.map((j) => [j, editDistance(e.job, j)]).find(([, d]) => d <= 2);
+        if (near) { problems.push(`${e.id}: ${e.job} is ${near[1]} letter${near[1] > 1 ? 's' : ''} from the table's ${near[0]} job - spell the table job exactly, or give your own job a name further from it`); continue; }
         if (e.job === 'deny')
         {
             if (e.hasOrder) problems.push(`${e.id}: the deny entry takes Deny:, not Order:`);
@@ -173,7 +202,7 @@ function lintToolsDoc(text, { adapters = readAdapters(), inventory = null, shape
             if (shapeOnly) { /* a tool's presence is this machine's or this pin's fact */ }
             else if (known)
             {
-                for (const tool of r.tools) if (!known.tools.includes(tool)) problems.push(`${e.id}: ${r.type} ${tool} is not a tool of ${r.type} at ${known.version}`);
+                for (const tool of r.tools) if (!known.tools.includes(tool)) problems.push(`${e.id}: ${r.type} ${tool} is not a tool of ${r.type}${known.version ? ` at ${known.version}` : ''}`);
             }
             else
             {
@@ -242,7 +271,16 @@ function registrationsAt(scope, { projectRoot, accountFile })
         const projects = (data && data.projects) || {};
         let real = projectRoot;
         try { real = fs.realpathSync(projectRoot); } catch { /* the path as given */ }
-        servers = (projects[projectRoot] || projects[real] || {}).mcpServers;
+        // The CLI keys a project by the path it was started from, so a symlinked or differently spelt key (`/var` for
+        // `/private/var`, `C:/` for `C:\`) is found by what it resolves to.
+        let hit = projects[projectRoot] || projects[real];
+        if (!hit) for (const [key, value] of Object.entries(projects))
+        {
+            let resolved;
+            try { resolved = fs.realpathSync(key); } catch { continue; }
+            if (resolved === real) { hit = value; break; }
+        }
+        servers = (hit || {}).mcpServers;
     }
     return { state: 'read', servers: servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {} };
 }
@@ -695,13 +733,13 @@ function resolveOrder({ entries, adapters = readAdapters(), inventory = null, re
 
 const PROBLEM_LINES = 3;
 // The start line: one line per job that has a rank, then what was skipped, the doc's problems and the suggestion.
-function startLine({ jobs, docRel = null, defaults = false, problems = [], suggest = false, load = true, fillNote = true })
+function startLine({ jobs, docRel = null, defaults = false, problems = [], suggest = false, load = true, fillNote = true, skippedDoc = null })
 {
     const stated = jobs.filter((j) => j.ranks.length);
     const skipped = jobs.flatMap((j) => j.skipped);
     if (!stated.length && !skipped.length && !problems.length) return '';
     const filled = !defaults && stated.some((j) => j.isDefault) ? ' (the stack\'s defaults for the jobs it leaves out)' : '';
-    const source = defaults ? `the stack's defaults (no ${TOOLS_DOC})` : `the user's, from ${docRel}${filled}`;
+    const source = defaults ? (skippedDoc ? `the stack's defaults (${skippedDoc.rel} is ${skippedDoc.why} - not read)` : `the stack's defaults (no ${TOOLS_DOC})`) : `the user's, from ${docRel}${filled}`;
     const render = (withLoad) =>
     {
         const lines = [`Tool order - ${source}: in each job use the first rank that serves the target before the next.`];
@@ -716,7 +754,7 @@ function startLine({ jobs, docRel = null, defaults = false, problems = [], sugge
         if (problems.length > PROBLEM_LINES) lines.push(`... and ${problems.length - PROBLEM_LINES} more - run tools.js lint`);
         if (!load && stated.some((j) => j.ranks.some((r) => r.names.length && !r.builtin))) lines.push('Call them directly - your tools grant them.');
         if (load && !withLoad) lines.push('Load clauses cut for size: load a rank\'s tools with ToolSearch by name before its first call.');
-        if (suggest) lines.push('The user can rank their own with /capture-preferences tools.');
+        if (suggest) lines.push(SUGGEST_LINE);
         return lines;
     };
     // Past the line's cap the Load clauses go first, then the tail - the head keeps the jobs the doc ranks first.
@@ -747,7 +785,8 @@ function orderFor({ projectRoot, env = process.env, seat = null })
     const main = mainReach({ projectRoot, env, adapters, inventory });
     const reach = seat && typeof seat === 'object' ? seatReach(seat.frontmatter, main) : main;
     const agent = seat !== null && seat !== undefined;
-    const doc = readToolsDoc(projectRoot, { dirs: prefs.readDirs(projectRoot, { env }) });
+    const found = findToolsDoc(projectRoot, { dirs: prefs.readDirs(projectRoot, { env }) });
+    const doc = found && !found.skipped ? found : null;
     let entries = defaultEntries(adapters);
     let problems = [];
     if (doc)
@@ -758,15 +797,15 @@ function orderFor({ projectRoot, env = process.env, seat = null })
         // An over-cap doc states nothing but its problem: its entries are what overran.
         entries = doc.text.length > TOOLS_CAP ? [] : problems.length ? own : [...own, ...entries.filter((e) => !ranked.has(e.job))];
     }
-    return { jobs: resolveOrder({ entries, adapters, inventory, reach, agent }), doc, problems, reach, agent };
+    return { jobs: resolveOrder({ entries, adapters, inventory, reach, agent }), doc, problems, reach, agent, skipped: found && found.skipped ? found : null };
 }
 
 function toolsLine({ projectRoot, env = process.env, seat = null, suggest = false })
 {
     try
     {
-        const { jobs, doc, problems, reach, agent } = orderFor({ projectRoot, env, seat });
-        return startLine({ jobs, docRel: doc ? doc.rel : null, defaults: !doc, problems: agent ? [] : problems, suggest: suggest && !agent, load: reach.load, fillNote: !agent });
+        const { jobs, doc, problems, reach, agent, skipped } = orderFor({ projectRoot, env, seat });
+        return startLine({ jobs, docRel: doc ? doc.rel : null, defaults: !doc, problems: agent ? [] : problems, suggest: suggest && !agent, load: reach.load, fillNote: !agent, skippedDoc: skipped });
     }
     catch { return ''; }
 }
@@ -1016,6 +1055,13 @@ function docsValidateRows(projectRoot, env)
     if (state.versioning === 'git') rows.push(...memoryLeakRows(projectRoot, state, env));
     return rows;
 }
+// R160 (burn-down 2026-11-04): a docs memory left committed after a switch away from docs is still read for leaks.
+function leftDocsLeakRows(projectRoot, env)
+{
+    const state = docsMemoryState({ projectRoot, env });
+    if (!state || state.share || state.versioning !== 'git' || !loader.memoryFiles(state.dir).length) return [];
+    return memoryLeakRows(projectRoot, state, env);
+}
 // The stack's docs row still in settings.local.json after a switch away from docs (the update removes it).
 function staleDocsRow(projectRoot, mode)
 {
@@ -1078,15 +1124,50 @@ function modeLines({ projectRoot, env = process.env, memory = null })
     return [...memoryLines({ projectRoot, env, preview: memory }), ...memoryPlanLines({ projectRoot, env, target: memory }), nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
 }
 
-// True once per project while it has no doc: the start line then suggests the capture. The marker is written first; one
-// that cannot be written still says yes, so an unwritable state folder costs a repeat, never the line.
+// The start line suggests the capture once per project while no doc is in place. The hook asks `wantsSuggest`, builds the
+// line, and calls `markSuggested` only when the line it sends carries SUGGEST_LINE - an empty or cut line spends nothing
+// (R043b). A marker that cannot be written costs a repeat, never the line.
+const SUGGEST_LINE = 'The user can rank their own with /capture-preferences tools.';
+const suggestMarker = (projectRoot) => path.resolve(projectRoot, prefs.dataRoot(projectRoot), 'state', 'tool-preferences', 'suggested');
+function wantsSuggest(projectRoot)
+{
+    if (findToolsDoc(projectRoot, { dirs: prefs.readDirs(projectRoot) })) return false;
+    return !fs.existsSync(suggestMarker(projectRoot));
+}
+function markSuggested(projectRoot)
+{
+    const marker = suggestMarker(projectRoot);
+    try { fs.mkdirSync(path.dirname(marker), { recursive: true }); fs.writeFileSync(marker, `${new Date().toISOString()}\n`); } catch { /* said again next start */ }
+}
+// The older single call, kept for a hook copy that still makes it: asks and marks in one step.
 function suggestOnce(projectRoot)
 {
-    if (readToolsDoc(projectRoot, { dirs: prefs.readDirs(projectRoot) })) return false;
-    const marker = path.resolve(projectRoot, prefs.dataRoot(projectRoot), 'state', 'tool-preferences', 'suggested');
-    if (fs.existsSync(marker)) return false;
-    try { fs.mkdirSync(path.dirname(marker), { recursive: true }); fs.writeFileSync(marker, `${new Date().toISOString()}\n`); } catch { /* said again next start */ }
+    if (!wantsSuggest(projectRoot)) return false;
+    markSuggested(projectRoot);
     return true;
+}
+
+// Another plugin's seat `<plugin>:<seat>`: its definition under the plugin's install folder, from the install record that
+// reaches this project (the narrowest scope first), or null - the hook then gives it the main session's reach (R040).
+function pluginAgentFile(projectRoot, plugin, seat, env = process.env)
+{
+    if (!/^[\w.-]+$/.test(String(plugin)) || !/^[\w.-]+$/.test(String(seat)) || seat === '.' || seat === '..') return null;
+    const registry = readJsonFile(path.join(pluginsRoot(env), 'installed_plugins.json'));
+    const here = realOf(projectRoot);
+    const records = [];
+    for (const [key, list] of Object.entries((registry && typeof registry.plugins === 'object' && registry.plugins) || {}))
+    {
+        if (key.split('@')[0] !== plugin || !Array.isArray(list)) continue;
+        for (const r of list)
+            if (r && typeof r.installPath === 'string' && r.installPath && (!r.projectPath || realOf(String(r.projectPath)) === here)) records.push(r);
+    }
+    records.sort((a, b) => scopeRank(a) - scopeRank(b));
+    for (const r of records)
+    {
+        const file = path.join(r.installPath, 'agents', `${seat}.md`);
+        try { if (fs.statSync(file).isFile()) return file; } catch { /* the next record */ }
+    }
+    return null;
 }
 
 // The `!! tools:` rows validate prints: a ranked type this machine cannot serve, and a registration changed since the
@@ -1131,7 +1212,7 @@ function validateRows(projectRoot, env = process.env)
     }
     const setting = memorySetting({ projectRoot, env });
     const mode = memoryMode({ projectRoot, env });
-    rows.push(...(mode === 'docs' ? docsValidateRows(projectRoot, env) : staleDocsRow(projectRoot, mode)));
+    rows.push(...(mode === 'docs' ? docsValidateRows(projectRoot, env) : [...staleDocsRow(projectRoot, mode), ...leftDocsLeakRows(projectRoot, env)]));
     if (mode === 'custom')
     {
         if (!jobOrder({ projectRoot, env, job: 'memory' }).ranks.length) rows.push('!! memory: ALFRED_CODE_MEMORY is custom, but the tool order ranks no memory tool this machine reaches - rank one with /capture-preferences tools, or switch to native in /alfred-code:configure');
@@ -1174,7 +1255,9 @@ function checkLsp(projectRoot)
 
 function lintCommand(projectRoot)
 {
-    const doc = readToolsDoc(projectRoot);
+    const found = findToolsDoc(projectRoot);
+    if (found && found.skipped) { console.log(`tools: ${found.rel} is ${found.why} - not read; the stack's defaults apply`); return 1; }
+    const doc = found;
     if (!doc) { console.log(`tools: no ${TOOLS_DOC} - the stack's defaults apply`); return 0; }
     const { problems, notes } = lintToolsDoc(doc.text, { inventory: usableInventory(readInventory(projectRoot)) });
     for (const p of problems) console.log(`${doc.rel}: ${p}`);
@@ -1257,7 +1340,7 @@ module.exports = {
     TOOLS_DOC, TOOLS_CAP, TOOLS_LINE_CAP, TOOLS_FIELD, PREFS_DIR, LIST_TIMEOUT_MS,
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
-    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, docsMemoryState, memoryPlanLines, memoryStartLine, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, validateRows,
+    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, docsMemoryState, memoryPlanLines, memoryStartLine, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, wantsSuggest, markSuggested, SUGGEST_LINE, findToolsDoc, pluginAgentFile, validateRows,
 };
 
 if (require.main === module)

@@ -848,7 +848,7 @@ test('check 48: a drifted matcher, a missing file and a missing gate are all fin
         'a changed matcher must change the generated block, which is what check 48 compares');
 
     const ghost = build.hooksBlock([{ file: 'guard-not-here.js', event: 'Stop' }]);
-    assert.match(ghost.Stop[0].hooks[0].command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/guard-not-here\.js"$/,
+    assert.deepStrictEqual([ghost.Stop[0].hooks[0].command, ...ghost.Stop[0].hooks[0].args], ['node', '${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-not-here.js'],
         'a wiring naming a missing file still generates, so the lint is what catches it');
 });
 
@@ -1250,6 +1250,11 @@ test('lintPageScripts flags an inline page script node --check refuses, and the 
     assert.strictEqual(broken.length, 1, broken.join('\n'));
     assert.match(broken[0], /docs\/p\.html:6 .*node --check.*SyntaxError/, 'the finding names the page line, the tool and the error');
     assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: '<html><body>no script</body></html>' }), [], 'no inline script, nothing to check');
+    // R139: a raw `<word>` in a row string is an element the browser drops; the escaped form is text and passes
+    const raw = lintPageScripts({ file: 'docs/p.html', html: page('const rows = [\n  ["h", "under <data root>/state and <id>"],\n];') });
+    assert.strictEqual(raw.length, 2, raw.join('\n'));
+    assert.match(raw[0], /docs\/p\.html:6 .*`<data root>`.*&lt;data root&gt;/, 'the finding names the line, the token and its escape');
+    assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: page('const rows = [\n  ["h", "under &lt;data root&gt;/state, <code>x</code> and <a href=\\"y\\">z</a>"],\n];') }), [], 'escaped placeholders and real tags pass');
     assert.deepStrictEqual(lintPageScripts(), [], 'docs/alfred-code.html: its script parses');
 });
 
@@ -1678,4 +1683,82 @@ test('check 69 flags a skill script folder with no CommonJS marker', () =>
         assert.deepStrictEqual(checkSkillScriptMarkers(path.join(__dirname, '..')), [], 'every shipped skill script folder carries it');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// O1 (burn-down 2026-11-04): Windows path spelling broke tests again and again (a drive-less root in 3.7.1, CI's 8.3
+// RUNNER~1 temp in bdf3b1c1) - each time a test compared a JS-resolver realpath with a path production spelled another
+// way. Check 71 pins each test file's count of non-native realpath calls: a new one goes through scripts/test-paths.js.
+// The call is built from parts so this file holds none itself.
+const REALPATH_CALL = 'fs.realpath' + 'Sync(p)';
+
+test('nonNativeRealpathCalls counts every non-native call, two on one line twice, and never a native one', () =>
+{
+    const { nonNativeRealpathCalls } = require('./lint-skills.js');
+    assert.strictEqual(nonNativeRealpathCalls(`a(${REALPATH_CALL}, ${REALPATH_CALL});\n`), 2);
+    assert.strictEqual(nonNativeRealpathCalls('fs.realpathSync.native(p); (fs.realpathSync.native || fs.realpathSync)(p);\n'), 0);
+    assert.strictEqual(nonNativeRealpathCalls(''), 0);
+});
+
+test('a test file gaining a non-native realpathSync call over its pin is flagged', () =>
+{
+    const { lintRealpathPins } = require('./lint-skills.js');
+    const files = [{ file: 'scripts/x.test.js', text: `a();\n${REALPATH_CALL};\n${REALPATH_CALL};\n` }];
+    const found = lintRealpathPins(files, { 'scripts/x.test.js': 1 });
+    assert.strictEqual(found.length, 1, found.join(' | '));
+    assert.match(found[0], /^scripts\/x\.test\.js:3 .*2 .*pin is 1.*samePath.*\(check 71\)$/);
+    assert.deepStrictEqual(lintRealpathPins(files, { 'scripts/x.test.js': 2 }), [], 'at its pin passes');
+});
+
+test('a file under its pin is told to lower it', () =>
+{
+    const { lintRealpathPins } = require('./lint-skills.js');
+    const found = lintRealpathPins([{ file: 'scripts/x.test.js', text: `${REALPATH_CALL};\n` }], { 'scripts/x.test.js': 3 });
+    assert.strictEqual(found.length, 1, found.join(' | '));
+    assert.match(found[0], /^scripts\/x\.test\.js .*lower its pin from 3 to 1 .*\(check 71\)$/);
+    const gone = lintRealpathPins([], { 'scripts/gone.test.js': 2 });
+    assert.match(gone.join(' | '), /scripts\/gone\.test\.js .*lower its pin from 2 to 0/, 'a pinned file that left the tree is told too');
+});
+
+test('a file not in the pin table holding one is flagged', () =>
+{
+    const { lintRealpathPins } = require('./lint-skills.js');
+    const files = [
+        { file: 'scripts/y.test.js', text: `${REALPATH_CALL};\n` },
+        { file: 'scripts/helper.js', text: `${REALPATH_CALL};\n` },
+        { file: 'scripts/z.test.js', text: 'fs.realpathSync.native(p);\n' },
+    ];
+    const found = lintRealpathPins(files, {});
+    assert.strictEqual(found.length, 1, found.join(' | '));
+    assert.match(found[0], /^scripts\/y\.test\.js:1 .*1 .*pin is 0.*\(check 71\)$/);
+});
+
+test('check 71: the pin table matches the tree, as --print-realpath-pins prints it', () =>
+{
+    const { lintRealpathPins, realpathPinsFor, REALPATH_PINS, repoTextFiles } = require('./lint-skills.js');
+    const files = repoTextFiles();
+    assert.deepStrictEqual(lintRealpathPins(files), []);
+    assert.deepStrictEqual(realpathPinsFor(files), REALPATH_PINS);
+});
+
+// R167 (burn-down 2026-11-04): docs/superpowers/ is git-ignored and machine-local, so a tracked comment citing a spec,
+// plan or ledger there points nowhere for every other reader of a public repo. The path is built from parts so this
+// file holds none itself.
+test('a comment line citing a spec, plan or sdd file under docs/superpowers is flagged', () =>
+{
+    const { lintSuperpowersCites } = require('./lint-skills.js');
+    const p = 'docs/super' + 'powers/';
+    const files = [
+        { file: 'scripts/a.js', text: `'use strict';\n// spec 4.4 of ${p}specs/2026-01-01-x-design.md\n` },
+        { file: 'stack/hooks/b.js', text: ` * the plan (${p}plans/2026-01-01-y.md)\n` },
+        { file: 'setup-plugin/c.sh', text: `# ledger ${p}sdd/2026-01-01-y/progress.md\n` },
+        { file: 'scripts/d.test.js', text: `const fixture = '${p}plans/2026-01-01-y.md';\n` },
+        { file: 'scripts/e.js', text: `// the stack's own .alfred/${p}plans/x.md\n` },
+        { file: 'scripts/run-tests.js', text: `// never ${p}sdd/ - a folder, no file\n` },
+        { file: 'docs/f.js', text: `// ${p}specs/z.md\n` },
+        { file: 'stack/skills/g/SKILL.md', text: `# ${p}specs/z.md\n` },
+    ];
+    const found = lintSuperpowersCites(files);
+    assert.deepStrictEqual(found.map((f) => f.split(' ')[0]), ['scripts/a.js:2', 'stack/hooks/b.js:1', 'setup-plugin/c.sh:1']);
+    assert.match(found[0], /git-ignored.*\(check 72\)$/);
+    assert.deepStrictEqual(lintSuperpowersCites(require('./lint-skills.js').repoTextFiles()), [], 'the tree holds none');
 });

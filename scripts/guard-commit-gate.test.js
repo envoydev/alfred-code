@@ -23,6 +23,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
+// R173: the sweep check's timeout seam, wide here so a loaded runner never turns an add into a timeout denial.
+process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS = '60000';
 // A session where a review ran: every commit receipt needs one since 2026-10-22, so a case judging another of its lines
 // runs the guard over this transcript unless it hands its own.
 const REVIEWED = reviewedTranscript(TMP);
@@ -2228,4 +2230,54 @@ test('2.8.0 layout: a PUSH-GATE receipt under state/approvals/ opens the push, a
   assert.match(denied.stderr, /\.alfred[\\/]state[\\/]approvals[\\/]PUSH-GATE/);
   writeStateReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir)));
   assert.equal(gateIn(dir, 'git push'), 0);
+});
+
+// ---------- the burn-down of 2026-11-04 (O8, O9, O10) ----------
+// O8 / O10 (the user, 2026-11-04): a consuming project's session, on 3.7.1, ran its reviews, compacted, and its commit
+// was refused - the reviews' reports had stayed in thinking, which the transcript stores empty, so no `Findings:` line
+// reached it. 3.8.0's receipt writer is their result line (8889292a); this pins it across a compaction boundary.
+const thinking = (id) => ({ type: 'assistant', message: { id: `th${id}`, content: [{ type: 'thinking', thinking: '', signature: 'sig' }] } });
+const boundary = { type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'auto', preTokens: 180000 } };
+const summary = { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued from a previous conversation. The reviews ran.' } };
+const O10_REVIEWS = [cpSkill('v1', 'task-verify-code'), thinking('1'), boundary, summary, cpSkill('v2', 'task-verify-code'), thinking('2')];
+const O10_ARGS = "--verified 'task-verify-code over the change' --authorized 'commit it' --probe 'npm test' --format 'npm run format - clean' --findings 'task-verify-code none'";
+const O10_WROTE = 'wrote .alfred/state/approvals/COMMIT-GATE:\nVERIFIED task-verify-code over the change\n';
+
+test('reviews whose reports stayed in thinking, across a compaction, are credited by the receipt writer after them', () => {
+  const dir = scratchRepo();
+  const tp = writeTranscript(dir, 'o10-credited', [...O10_REVIEWS, cpBash('r', `node ${CP_PATH} commit ${O10_ARGS}`), cpResult('r', O10_WROTE)]);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED task-verify-code over the change' }));
+  const r = gateWith(dir, 'git commit -am x', { transcript_path: tp });
+  assert.equal(r.status, 0, r.stderr.slice(0, 400));
+});
+
+test('a review whose report never reached any text, seat report or receipt writer still refuses', () => {
+  const dir = scratchRepo();
+  const tp = writeTranscript(dir, 'o10-unseen', O10_REVIEWS);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED task-verify-code over the change' }));
+  const r = gateWith(dir, 'git commit -am x', { transcript_path: tp });
+  assert.equal(r.status, 2);
+  // the guard names a review by its kind - task-verify-code is read as verify-code
+  assert.match(r.stderr, /names verify-code, but no run of it/);
+});
+
+// O9 (the user, 2026-11-04): a WAIVED receipt quoting the owner's permission to commit (no review-skip words) was refused
+// while the reviews already run could not be credited - the refusal named the waiver words and never the receipt route,
+// so the session went round in circles. When a Findings review ran unseen, the refusal names the route too.
+test('the WAIVED refusal names the receipt route when a review ran unseen', () => {
+  const dir = scratchRepo();
+  const quote = 'I allow you to ' + 'commit, push';
+  const unseen = writeTranscript(dir, 'o9-unseen', [cpSkill('a', 'review-code'), thinking('a')]);
+  const none = writeTranscript(dir, 'o9-none', [cpSkill('a', 'review-code'), cpResult('a', 'Launching skill: review-code'), resultRow(undefined, 'Findings: none')]);
+  writeReceipt(dir, 'COMMIT-GATE', `WAIVED - "${quote}"\n`);
+  const r = gateWith(dir, 'git commit -am x', { transcript_path: unseen });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /waives nothing/);
+  assert.match(r.stderr, /review-code ran in this session but no result line reached the transcript/);
+  assert.match(r.stderr, /write the receipt with the checkpoint's receipt\.js in its own call after the review/);
+  const s = gateWith(dir, 'git commit -am x', { transcript_path: none });
+  assert.equal(s.status, 2);
+  assert.match(s.stderr, /waives nothing/);
+  // the denial's fixed footer names receipt.js for every refusal; the route sentence is what an unseen review adds
+  assert.doesNotMatch(s.stderr, /ran in this session but no result line reached/, 'no review left unseen, no route');
 });

@@ -53,7 +53,9 @@ function parseLine(raw)
     const line = raw.trim();
     if (line === '' || line.startsWith('#')) return { kind: 'comment', raw };
     const [word, ...rest] = line.split(/\s+/);
-    const value = rest.join(' ');
+    // The value is the text after the keyword and its separators, inner whitespace kept: a child folder named
+    // `a  b` must read back as itself, or the back-reference never matches the real folder (R062).
+    const value = line.slice(word.length).replace(/^\s+/, '');
     if (word === 'parent')
     {
         if (value === 'none') return { kind: 'parent-none', raw };
@@ -964,6 +966,16 @@ function excludeGlobs(paths, platform = process.platform)
 
 // ------------------------------------------------------------------ the installer's steps (spec 2.1-2.5)
 
+// Why a parent's plan cannot be inherited from - its run reported failures, could not read a file, or could not read its
+// plugin listing - or null when it can. stack-select's --inherited reads the same three (R066).
+function planDoubt(plan)
+{
+    if (Number(plan.failures) > 0) return `the plan's run reported ${plan.failures} failure(s)`;
+    if (Array.isArray(plan.unreadable) && plan.unreadable.length) return `the plan's run could not read ${plan.unreadable.join(' and ')}`;
+    if (plan.blind) return 'the plan is blind - its plugin listing could not be read';
+    return null;
+}
+
 // The parent's plan-out as JSON, or { why } - absent, unparseable, or one whose run could not see the parent's set.
 function readPlan(file)
 {
@@ -971,10 +983,8 @@ function readPlan(file)
     try { plan = JSON.parse(fs.readFileSync(file, 'utf8')); }
     catch (e) { return { why: e.code === 'ENOENT' ? 'no plan was written' : 'the plan does not parse' }; }
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) return { why: 'the plan does not parse' };
-    if (Number(plan.failures) > 0) return { why: `the plan's run reported ${plan.failures} failure(s)` };
-    if (Array.isArray(plan.unreadable) && plan.unreadable.length) return { why: `the plan's run could not read ${plan.unreadable.join(' and ')}` };
-    if (plan.blind) return { why: 'the plan is blind - its plugin listing could not be read' };
-    return { plan };
+    const doubt = planDoubt(plan);
+    return doubt ? { why: doubt } : { plan };
 }
 
 // The env a project's settings apply: settings.local.json over settings.json.
@@ -1647,7 +1657,7 @@ module.exports = {
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs,
-    readPlan, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
+    readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
     releaseChildren, leaveParent, managedSettingsFile, checkLoads, writeLike,

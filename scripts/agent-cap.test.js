@@ -1,5 +1,5 @@
 'use strict';
-// ALFRED_CODE_MAXIMUM_RUN_AGENTS (the user's task of 2026-10-27, spec docs/superpowers/specs/2026-10-27-maximum-run-agents-design.md):
+// ALFRED_CODE_MAXIMUM_RUN_AGENTS (the user's task of 2026-10-27, the maximum-run-agents design):
 // how many of a session's agents may run at once. The registry under <data root>/state/sessions/, the dispatch guard's
 // deny, the start and stop events, the Stop reconcile and its one continuation, and the line the flows read.
 const test = require('node:test');
@@ -81,6 +81,24 @@ test('the start and stop events (AC3)', () =>
     assert.strictEqual(entry(reg, 'R', 'a3').stop, undefined, 'a resume clears it');
 });
 
+// R085 (burn-down 2026-11-04): a start took the oldest pending file when no type matched, and its parent with it.
+test('R085: two pendings of other types: no parent is taken over; the type compare is normalised', () =>
+{
+    const T = Date.now();
+    const a = freshReg();
+    cap.addPending(a.reg, 'toolu_a', { type: 'alfred-code:wpf-verifier', parent: 'seatA', now: T });
+    cap.addPending(a.reg, 'toolu_b', { type: 'Explore', parent: 'seatB', now: T + 1000 });
+    cap.startAgent(a.reg, { agentId: 'x1', type: 'Plan', now: T + 2000 });
+    assert.strictEqual(entry(a.reg, 'R', 'x1').parent, '', 'no parent taken over');
+    assert.strictEqual(names(a.reg).filter((n) => n.includes('-P-')).length, 1, 'one pending went, so the count stays right');
+    const b = freshReg();
+    cap.addPending(b.reg, 'toolu_c', { type: 'Explore', parent: 'seatC', now: T });
+    cap.addPending(b.reg, 'toolu_d', { type: 'alfred-code:wpf-verifier', parent: 'seatD', now: T + 1000 });
+    cap.startAgent(b.reg, { agentId: 'x2', type: 'WPF-Verifier', now: T + 2000 });
+    assert.strictEqual(entry(b.reg, 'R', 'x2').parent, 'seatD', 'a bare, other-case type takes the prefixed pending of its type');
+    assert.deepStrictEqual(names(b.reg), ['AGENT-CAP-sess-1-P-toolu_c', 'AGENT-CAP-sess-1-R-x2']);
+});
+
 test('a stop stores a reported transcript only inside the session\'s folder (AC13)', () =>
 {
     const { reg } = freshReg();
@@ -141,6 +159,21 @@ test('the count: a seat waiting on its own agent counts past 12 minutes (AC4)', 
     assert.strictEqual(c.running, 2);
     assert.ok(names(reg).includes('AGENT-CAP-sess-1-R-seat'));
     assert.deepStrictEqual(c.types.sort(), ['evidence-gatherer', 'issue-diagnoser-ci']);
+});
+
+// R084 (burn-down 2026-11-04): a counted child kept a parent counted after the parent's own SubagentStop.
+test('R084: a stopped parent with a running child counts one', () =>
+{
+    const now = Date.now();
+    const { reg } = freshReg();
+    put(reg, 'R', 'seat', { type: 'Plan', at: now - 2 * MIN, parent: '', stop: now - MIN });
+    put(reg, 'R', 'child', { type: 'Explore', at: now - 1000, parent: 'seat' });
+    const c = cap.count(reg, { now, probe: () => {} });
+    assert.strictEqual(c.running, 1);
+    assert.deepStrictEqual([...c.counted], ['R-child']);
+    const sent = touched(path.join(TMP, 'tr', 'r084-sent.jsonl'), now - 10 * 1000);
+    put(reg, 'R', 'seat', { type: 'Plan', at: now - 2 * MIN, parent: '', stop: now - MIN, transcript: sent });
+    assert.strictEqual(cap.count(reg, { now, probe: () => {} }).running, 2, 'a parent a hold sent back still counts');
 });
 
 test('the lock: held past 1.5 s fails, older than 5 s is broken (AC8)', () =>
@@ -261,6 +294,16 @@ test('the Stop reconcile (S4 event 4.1)', () =>
     put(c.reg, 'P', 'main', { type: 'Explore', at: now - 1000, parent: '' });
     assert.strictEqual(cap.reconcile(c.reg, undefined, { now, probe: () => {} }), 0);
     assert.strictEqual(names(c.reg).length, 2);
+});
+
+// R086 (burn-down 2026-11-04): the task type was compared case-sensitively, unlike the stop contract's reader.
+test('R086: a Subagent task in flight keeps its running file', () =>
+{
+    const now = Date.now();
+    const { reg } = freshReg();
+    put(reg, 'R', 'k1', { type: 'Explore', at: now - MIN, parent: '' });
+    cap.reconcile(reg, [{ type: 'Subagent', id: 'k1', status: 'running' }], { now, probe: () => {} });
+    assert.deepStrictEqual(names(reg), ['AGENT-CAP-sess-1-R-k1']);
 });
 
 test('the copy route ships agent-cap.js beside the copied hooks (AC16)', () =>
@@ -509,12 +552,34 @@ test('a resume through SendMessage is judged against the cap (AC17)', () =>
     assert.strictEqual(send(room.root, 'old', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 0);
     const [p] = pendings(room.reg);
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(room.reg.dir, p), 'utf8')).type, 'alfred-code:aspnet-verifier');
-    for (const to of ['researcher', 'run0'])
-    {
-        const s = setup();
-        assert.strictEqual(send(s.root, to, { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 0, to);
-        assert.deepStrictEqual(pendings(s.reg), [], `${to}: a name or a running agent passes untouched`);
-    }
+    const named = setup();
+    const byName = send(named.root, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' });
+    assert.strictEqual(byName.status, 2, 'a name at the cap is refused (R087)');
+    assert.match(byName.stderr, /the cap is full - wait for an agent to finish, then send it\./);
+    assert.deepStrictEqual(pendings(named.reg), []);
+    assert.deepStrictEqual(blockRows(named.root).map((r) => [r.detail.branch, r.detail.byName]), [['agent-cap', true]]);
+    const running = setup();
+    assert.strictEqual(send(running.root, 'run0', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 0, 'a running agent passes untouched');
+    assert.deepStrictEqual(pendings(running.reg), []);
+});
+
+test('a SendMessage by name one under, at and one over the cap, with no cap, or from a seat (R087)', () =>
+{
+    const send = (root, to, env, extra = {}) => callHook(GUARD, root, { hook_event_name: 'PreToolUse', tool_name: 'SendMessage', tool_use_id: 'toolu_n', session_id: 's1', cwd: root, tool_input: { to, message: 'go on' }, ...extra }, env);
+    const two = () => { const root = project(); runningFiles(regOf(root), ['Explore', 'Plan']); return root; };
+    const under = two();
+    assert.strictEqual(send(under, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 0, 'one under the cap passes');
+    assert.deepStrictEqual(anyCapFile(under), [], 'no pending file, no .denied');
+    assert.strictEqual(send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 2, 'at the cap is refused');
+    const over = send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '1' });
+    assert.strictEqual(over.status, 2, 'one over the cap is refused');
+    assert.match(over.stderr, /^2 of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is 1/);
+    assert.strictEqual(send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' }).status, 0, 'no cap passes');
+    const seatRoot = two();
+    const seat = send(seatRoot, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }, { agent_id: 'a0123456789abcdef' });
+    assert.strictEqual(seat.status, 2, 'a seat at the cap is refused');
+    assert.match(seat.stderr, /the cap is full - wait for an agent to finish, then send it\./);
+    assert.deepStrictEqual(anyCapFile(seatRoot).filter((n) => n.endsWith('.denied')), [], 'a seat never writes .denied');
 });
 
 test('a held lock lets the dispatch through with one agent-cap-unjudged row (AC8)', () =>
@@ -570,7 +635,7 @@ test('the generated hooks block wires the guard on SubagentStart, SubagentStop a
 {
     const entries = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')).entries;
     const hooks = entries[0].hooks;
-    const wired = (event) => (hooks[event] || []).filter((m) => m.hooks.some((h) => /guard-unapproved-dispatch\.js/.test(h.command)));
+    const wired = (event) => (hooks[event] || []).filter((m) => m.hooks.some((h) => /guard-unapproved-dispatch\.js/.test([h.command, ...(h.args || [])].join(' '))));
     assert.deepStrictEqual(wired('PreToolUse').map((m) => m.matcher), ['Task|Agent|SendMessage']);
     assert.strictEqual(wired('SubagentStart').length, 1);
     assert.strictEqual(wired('SubagentStop').length, 1);
@@ -618,11 +683,23 @@ test('a denial with room again continues the turn once, and the next Stop passes
     const logEnv = stopEnv(root);
     const first = stopCall(root, { background_tasks: inflight('a1'), logEnv });
     assert.strictEqual(first.status, 2, first.stderr);
-    assert.match(first.stderr, /The agent cap denied a dispatch this turn, and 4 of the agents it counted have stopped since - send that dispatch again now\./);
+    assert.match(first.stderr, /Since the user's last message the agent cap denied a dispatch, and 4 of the agents it counted have stopped - send that dispatch again now\./);
     assert.ok(!fs.existsSync(cap.deniedOf(reg)), '.denied goes before the exit');
     assert.deepStrictEqual(kinds(root), ['agent-cap-continue']);
     const second = stopCall(root, { background_tasks: inflight('a1'), stop_hook_active: true, logEnv });
     assert.strictEqual(second.status, 0, second.stderr);
+});
+
+// R088 (burn-down 2026-11-04): the denial may come from an earlier turn of the same prompt, so 'this turn' was wrong.
+test('R088: the continuation says since the user\'s last message', () =>
+{
+    const root = project();
+    const reg = deniedAt(root);
+    put(reg, 'R', 'a1', { type: 'Explore', at: Date.now(), parent: '' });
+    const r = stopCall(root, { background_tasks: inflight('a1'), logEnv: stopEnv(root) });
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /since the user's last message/i);
+    assert.doesNotMatch(r.stderr, /this turn/);
 });
 
 test('still at the cap, a seat\'s Stop, the gates off: no continuation (AC15)', () =>
@@ -739,5 +816,7 @@ test('a resume by agent id is judged after its stopped file is gone - past 2 min
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(regOf(room).dir, p), 'utf8')).type, 'agent');
     const named = project();
     runningFiles(regOf(named), ['Explore', 'Plan']);
-    assert.strictEqual(send(named, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 0, 'a name is still out of model');
+    const late = send(named, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' });
+    assert.strictEqual(late.status, 2, 'a name at the cap is refused (R087)');
+    assert.match(late.stderr, /the cap is full - wait for an agent to finish, then send it\./);
 });

@@ -147,6 +147,25 @@ test('a merge whose head carries commits the review never saw is denied', () => 
   assert.match(r.stderr, /never saw/);
 });
 
+// PR merges go through a forge MCP server (the user, 2026-11-04), not `gh pr merge`: the tool carries the change's number,
+// so the head check runs there too - an MCP merge of a change whose head the review never saw is denied, the reviewed one passes.
+test('an MCP merge_pull_request whose head carries commits the review never saw is denied; the reviewed head passes', () => {
+  const { dir, git } = pushRepo();
+  const reviewed = headOf(dir);
+  pushHead(git, reviewed, 'refs/pull/5/head');
+  receipt(dir, reviewed);
+  const ok = run(dir, mcp('merge_pull_request', { owner: 'o', repo: 'r', pull_number: 5, merge_method: 'squash' }));
+  assert.strictEqual(ok.status, 0, ok.stderr);
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'later\n');
+  git('add', '-A'); git('commit', '-qm', 'unreviewed');
+  pushHead(git, headOf(dir), 'refs/pull/7/head');
+  git('reset', '-q', '--hard', reviewed);
+  receipt(dir, reviewed);   // one receipt covers one publish: the merge above used the first
+  const r = run(dir, mcp('merge_pull_request', { owner: 'o', repo: 'r', pull_number: 7, merge_method: 'squash' }));
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /never saw/);
+});
+
 test('a merge with no change ref on the remote falls back to the local rule', () => {
   const { dir } = pushRepo();
   receipt(dir, headOf(dir));
@@ -228,11 +247,12 @@ test('with the push half off, what it lets through is still ledgered', () => {
 
 // fn-9: a command that pushes and then merges is two acts, and the ref watch reads both - the merge rode along unledgered
 // behind the push.
-test('fn-9: git push && gh pr merge ledgers both acts', () => {
+test('fn-9: git push && gh pr merge ledgers both acts (under a waiver - a reviewed head refuses the pair, R015)', () => {
   const { dir, git } = pushRepo();
   fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
   git('add', '-A'); git('commit', '-qm', 'b');
   receipt(dir, headOf(dir));
+  fs.writeFileSync(path.join(dir, '.alfred', 'state', 'approvals', 'PUSH-GATE'), 'WAIVED - "Skip the review, push and merge it"\n');
   const r = run(dir, bash('git push origin main && gh pr merge 4 --squash'));
   assert.strictEqual(r.status, 0, r.stderr);
   assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref || a.change]), [['branch.write', 'main'], ['change.merge', '4']]);
@@ -240,7 +260,7 @@ test('fn-9: git push && gh pr merge ledgers both acts', () => {
 
 // Task 4b (a side review of fn-9): the push leads the command, so the merge-only checks never saw the merge behind it -
 // its unseen-head check, and, with nothing ahead to push, the receipt itself.
-test('4b: a merge chained after a push is checked against the change head the review saw', () => {
+test('4b: a merge chained after a push is refused (R015: it runs after the push); alone it is checked against the change head', () => {
   const { dir, git } = pushRepo();
   fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
   git('add', '-A'); git('commit', '-qm', 'b');
@@ -252,10 +272,13 @@ test('4b: a merge chained after a push is checked against the change head the re
   receipt(dir, reviewed);
   const r = run(dir, bash('git push origin main && gh pr merge 7 --squash'));
   assert.strictEqual(r.status, 2, r.stderr);
-  assert.match(r.stderr, /never saw/);
+  assert.match(r.stderr, /so it judges only a merge that runs first/);
   assert.match(r.stderr, /gh pr merge 7/);
+  const alone = run(dir, bash('gh pr merge 7 --squash'));
+  assert.strictEqual(alone.status, 2, alone.stderr);
+  assert.match(alone.stderr, /never saw/);
   pushHead(git, reviewed, 'refs/pull/8/head');
-  const ok = run(dir, bash('git push origin main && gh pr merge 8 --squash'));
+  const ok = run(dir, bash('gh pr merge 8 --squash'));
   assert.strictEqual(ok.status, 0, `the reviewed head merges: ${ok.stderr}`);
 });
 
@@ -270,7 +293,13 @@ test('4b: a push with nothing ahead, or a dry run, does not carry a chained merg
   assert.deepStrictEqual(acts(dir), [], 'a denied act is not ledgered');
   receipt(dir, headOf(dir));
   const r = run(dir, bash('git push origin main && gh pr merge 4 --squash'));
-  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /so it judges only a merge that runs first/, 'a reviewed head is never compared behind a push (R015)');
+  assert.deepStrictEqual(acts(dir), [], 'a denied act is not ledgered');
+  // under a waiver there is no reviewed head to compare, so the pair passes - and the level push moved nothing
+  fs.writeFileSync(path.join(dir, '.alfred', 'state', 'approvals', 'PUSH-GATE'), 'WAIVED - "Skip the review, push and merge it"\n');
+  const w = run(dir, bash('git push origin main && gh pr merge 4 --squash'));
+  assert.strictEqual(w.status, 0, w.stderr);
   assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref || a.change]), [['change.merge', '4']], 'the level push moved nothing, so only the merge is an act');
   assert.strictEqual(run(dir, bash('git push origin main')).status, 0, 'a level push alone still needs nothing');
 });
@@ -314,4 +343,299 @@ test('opening a change request from a branch no remote holds needs the publish r
   const ok = run(dir, bash('gh pr create --fill'));
   assert.strictEqual(ok.status, 0, ok.stderr);
   assert.deepStrictEqual(acts(dir).map((a) => a.concept), ['change.create'], 'and the act is ledgered for the ref watch');
+});
+
+// --- R015: a merge with no number reads the head of its branch -----------------------------------------------------------
+// `gh pr merge --squash` merges the current branch's change, `gh pr merge feature-x` names one: the branch's tip on the
+// remote (or a `gh pr checkout` branch's refs/pull/<n>/head) is the change's head, so the unseen-head check runs.
+const featureRepo = () => {
+  const r = pushRepo();
+  r.git('checkout', '-qb', 'feature');
+  r.git('config', 'branch.feature.remote', 'origin');
+  r.git('config', 'branch.feature.merge', 'refs/heads/feature');
+  r.reviewed = headOf(r.dir);
+  pushHead(r.git, r.reviewed, 'refs/heads/feature');
+  receipt(r.dir, r.reviewed);
+  return r;
+};
+// One commit the review never saw, left in the checkout's objects; the work tree goes back to the reviewed head.
+const unreviewedCommit = (r) => {
+  fs.writeFileSync(path.join(r.dir, 'b.txt'), 'later\n');
+  r.git('add', '-A'); r.git('commit', '-qm', 'later');
+  const sha = headOf(r.dir);
+  r.git('reset', '-q', '--hard', r.reviewed);
+  return sha;
+};
+
+test('R015: a merge with no number checks the tip of its branch on the remote', () => {
+  const r = featureRepo();
+  assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'the reviewed tip passes');
+  const later = unreviewedCommit(r);
+  pushHead(r.git, later, 'refs/heads/feature');
+  receipt(r.dir, r.reviewed);
+  const blocked = run(r.dir, bash('gh pr merge --squash'));
+  assert.strictEqual(blocked.status, 2, 'an unreviewed tip is refused');
+  assert.match(blocked.stderr, /never saw/);
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge feature --subject "fix it"')).status, 2, 'a named branch reads its tip');
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('glab mr merge --squash')).status, 2, 'glab reads it too');
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge --squash -R other/repo')).status, 0, '-R keeps today\'s rule');
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge nobranch')).status, 0, 'no such remote branch keeps today\'s rule');
+});
+
+test('R015: a branch tracking a fork reads the fork\'s tip, not origin\'s', () => {
+  const r = featureRepo();
+  const fork = path.join(path.dirname(r.dir), 'fork.git');
+  spawnSync('git', ['init', '-q', '--bare', fork], { encoding: 'utf8' });
+  r.git('remote', 'add', 'fork', fork);
+  r.git('config', 'branch.feature.remote', 'fork');
+  const later = unreviewedCommit(r);
+  pushHead(r.git, later, 'refs/heads/feature');
+  r.git('push', '-q', 'fork', `${r.reviewed}:refs/heads/feature`);
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'the fork holds the reviewed tip');
+  r.git('push', '-q', '-f', 'fork', `${later}:refs/heads/feature`);
+  r.git('push', '-q', '-f', 'origin', `${r.reviewed}:refs/heads/feature`);
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 2, 'the fork holds an unreviewed tip');
+});
+
+// R015's reviews (2026-11-05): the hook judges a merge on the repository and its remote as they stand BEFORE the command
+// runs, so it judges only a merge nothing runs ahead of. Six reviews broke every reading of what runs first - a push's join,
+// remote, refspec and sources, a pull, reset, checkout or config write, an exported HOME, a function, a carried script, an
+// expansion - so anything before or beside the merge refuses the pair, and the denial names it. After the merge, anything.
+const amendedRepo = () => {
+  const r = featureRepo();
+  fs.writeFileSync(path.join(r.dir, 'a.txt'), 'amended\n');
+  r.git('add', '-A'); r.git('commit', '-q', '--amend', '-m', 'amended');
+  r.amended = headOf(r.dir);
+  return r;
+};
+const verdictOf = (r, cmd) => { receipt(r.dir, headOf(r.dir)); return run(r.dir, bash(cmd)); };
+const RUNS_FIRST = /so it judges only a merge that runs first/;
+test('R015 reviews: a merge with anything run before or beside it in its command is refused, naming what runs first', () => {
+  const r = featureRepo();
+  r.git('branch', 'wip', unreviewedCommit(r));
+  for (const cmd of ['git push && gh pr merge --squash', 'git push -u origin HEAD && gh pr merge --squash --delete-branch', 'git push; gh pr merge --squash',
+    'git push -f origin wip:feature && gh pr merge --squash', 'git push -f origin :/later:feature && gh pr merge --squash',
+    'git push -n origin feature && gh pr merge --squash', 'git fetch && gh pr merge --squash', 'cd . && gh pr merge --squash',
+    'git checkout -q wip && git push -f origin HEAD:feature && gh pr merge --squash', 'git config push.default matching && git push && gh pr merge feature --squash',
+    'HOME=/nowhere git push && gh pr merge --squash', "bash -c 'git push -f origin wip:feature' && gh pr merge --squash",
+    "eval 'git push -f origin wip:feature' && gh pr merge --squash", 'S=push; git $S -f origin wip:feature && gh pr merge --squash',
+    'm() { gh pr merge --squash; }; git push -f origin wip:feature && m', 'gh pr merge $(git push -qf origin wip:feature; echo --squash)',
+    'for p in 1; do gh pr merge --squash; git push -f origin wip:feature; done', 'while gh pr merge --squash; do git push -f origin wip:feature; done',
+    'gh pr merge --squash & git push -f origin wip:feature', 'gh pr merge --squash | git push -f origin wip:feature',
+    '{ gh pr merge --squash; } & git push -f origin wip:feature', 'git log --output=.git/x && gh pr merge --squash',
+    'gh pr merge --squash --body "$(git branch -f feature wip; echo x)"',
+    // the seventh review: a merge after another forge act, a loop not leading its command, a backgrounded subshell or a
+    // forking wrapper, and the substitutions the shared reader never opens
+    'gh pr merge 3 --squash && gh pr merge --squash', 'gh api -X PATCH repos/o/r/git/refs/heads/feature -f sha=abc -F force=true && gh pr merge --squash',
+    '{ until gh pr merge --squash; do git push -q origin wip:feature; done; }', '! until gh pr merge --squash; do git push; done',
+    'time until gh pr merge --squash; do git push; done', '( gh pr merge --squash ) & git push -q origin wip:feature',
+    'setsid -f gh pr merge --squash; git push -q origin wip:feature', 'gh pr merge --squash --body ${X:-$(git push -q origin wip:feature; echo x)}',
+    'gh pr merge --squash --body $(( $(git push -q origin wip:feature >/dev/null; echo 1) ))',
+    'gh pr merge --squash --body-file - <<EOF\n$(git push -q origin wip:feature)\nEOF',
+    // the eighth review (retry): a text tool inside the merge's words or a filter after it that writes a file - the
+    // current branch gh reads from .git/HEAD among them - runs ahead of it; a trap's action and a backtick inside quotes
+    // are read as commands
+    'gh pr merge --squash --body "$(cat .git/x > .git/HEAD)"', 'gh pr merge --squash --body "$(echo x > .git/HEAD)"',
+    'gh pr merge --squash | cat .git/x > .git/HEAD', "trap 'git push -f origin wip:feature' EXIT; gh pr merge --squash",
+    'gh pr merge --squash --body "`git push -f origin wip:feature`"']) {
+    const got = verdictOf(r, cmd);
+    assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
+    assert.match(got.stderr, RUNS_FIRST, cmd);
+  }
+  for (const cmd of ['gh pr merge --squash', 'gh pr merge --squash && git checkout -q main', 'gh pr merge --squash; git status',
+    'gh pr merge --squash --body "$(cat <<\'EOF\'\nthe body\nEOF\n)"', 'GH_PROMPT_DISABLED=1 gh pr merge --squash',
+    'git status && gh pr merge --squash', 'gh pr merge --squash --body "$(git log -1 --format=%B)"',
+    'gh pr merge --squash --delete-branch 2>&1 | tail -5', 'gh pr merge --squash --body-file - <<\'EOF\'\n$(not run)\nEOF',
+    // a comment runs nothing, backticks and `$(` included
+    '# run `git push` and $(git push) by hand first\ngh pr merge --squash',
+    'gh pr merge --squash --body "$(cat notes.md)"', 'gh pr merge --squash | grep -v x > /dev/null']) {
+    const got = verdictOf(r, cmd);
+    assert.strictEqual(got.status, 0, `${cmd}: ${got.stderr}`);
+  }
+});
+test('R015 reviews: after an amend the merge alone is refused on the remote tip; once the push has run on its own it passes', () => {
+  const r = amendedRepo();
+  const alone = verdictOf(r, 'gh pr merge --squash');
+  assert.strictEqual(alone.status, 2, 'the remote still holds the commit the amend replaced');
+  assert.match(alone.stderr, /never saw/);
+  assert.doesNotMatch(alone.stderr, RUNS_FIRST, 'nothing runs before it');
+  r.git('push', '-q', '-f', 'origin', `${r.amended}:refs/heads/feature`);
+  assert.strictEqual(verdictOf(r, 'gh pr merge --squash').status, 0, 'the push ran on its own first');
+});
+// The sixth review: a dry run or a push with nothing ahead goes ungated only as the command's one act - a second push, an
+// expanded subcommand, xargs, a prefix, a call-level setting or a config write beside it can each send what no one saw.
+// The seventh review: 'nothing ahead' read HEAD against its local @{u}, so push.default=matching, a remote's push refspec,
+// a local upstream or a stale tracking ref published with no receipt. The hook now asks git: the push's own words as a
+// dry run (--porcelain), exempt only when no ref would move.
+test('push gate: a push is let out as nothing ahead only when git says no ref would move', () => {
+  const r = featureRepo();
+  const later = unreviewedCommit(r);
+  const gateFile = path.join(r.dir, '.alfred', 'state', 'approvals', 'PUSH-GATE');
+  const bare = (cmd) => { fs.rmSync(gateFile, { force: true }); return run(r.dir, bash(cmd)); };
+  assert.strictEqual(bare('git push').status, 0, 'control: a level push alone');
+  r.git('branch', 'other', later);
+  r.git('push', '-q', 'origin', `${r.reviewed}:refs/heads/other`);
+  r.git('config', 'push.default', 'matching');
+  assert.strictEqual(bare('git push').status, 2, 'push.default=matching sends other');
+  r.git('config', '--unset', 'push.default');
+  r.git('config', 'remote.origin.push', 'refs/heads/other:refs/heads/feature');
+  assert.strictEqual(bare('git push').status, 2, "a remote's push refspec sends other to feature");
+  assert.strictEqual(bare('git push origin feature').status, 0, 'a refspec on the line wins over remote.origin.push');
+  r.git('config', '--unset', 'remote.origin.push');
+  r.git('branch', 'mirror', later);
+  r.git('reset', '-q', '--hard', later);
+  r.git('branch', '-u', 'mirror');
+  assert.strictEqual(bare('git push origin feature').status, 2, 'a local upstream at HEAD hides what origin lacks');
+  r.git('update-ref', 'refs/remotes/origin/feature', later);
+  r.git('branch', '-u', 'origin/feature');
+  assert.strictEqual(bare('git push').status, 2, 'a stale tracking ref at HEAD hides what origin lacks');
+});
+test('push gate: a dry run or a push with nothing ahead goes ungated only as the command\'s one act', () => {
+  const r = featureRepo();
+  r.git('branch', 'wip', unreviewedCommit(r));
+  const gateFile = path.join(r.dir, '.alfred', 'state', 'approvals', 'PUSH-GATE');
+  const bare = (cmd) => { fs.rmSync(gateFile, { force: true }); return run(r.dir, bash(cmd)); };
+  for (const cmd of ['git push -n origin feature; git push -f origin wip:feature', 'git push origin feature && git push -f origin wip:feature',
+    'S=push; git $S -f origin wip:feature', 'echo push -f origin wip:feature | xargs git', 'GIT_SSH_COMMAND=true git push -n origin feature',
+    'git -c core.sshCommand=true push -n origin feature', 'git push -n --exec=true origin feature', 'git push -n --receive-pack=true origin feature',
+    'git config remote.origin.push refs/heads/wip:refs/heads/feature && git push', 'git push -n origin feature | cat',
+    'git show HEAD:a.txt > .git/x && git push', 'git log --output=x && git push', 'for i in 1; do git push; done', 'git push & true',
+    'git branch -f other wip && git push', '{ git push -n origin feature; }',
+    ': ${X:-$(git push -q -f origin wip:feature)}', 'cat <<EOF\n$(git push -q -f origin wip:feature)\nEOF',
+    'git push -n origin feature <<EOF\n$(git push -f origin wip:feature)\nEOF', 'echo push | xargs -I{} git {} -f origin wip:feature',
+    'echo push | xargs -I SUB git SUB -f origin wip:feature',
+    // the eighth review's leads, each a push the shared reader never saw: ANSI-C quoting, a `$((` that bash runs as a
+    // substitution, a heredoc opener inside quotes or a comment
+    "echo $'a\\'b' ; git push -f origin wip:feature", 'echo $((git push -f origin wip:feature) )',
+    'echo "<<\'EOF\'"\ngit push -f origin wip:feature\nEOF', 'echo hi # <<EOF\ngit push -f origin wip:feature\nEOF',
+    // the eighth review (retry): a backtick holding a quote inside double quotes, a trap's action, `#` after a
+    // substitution's `)`, a case arm inside `$(`, a `<<` in `${ }`, a `$((` across lines, quotes inside `$((`
+    'echo "`echo "\'"`" ; git push -f origin wip:feature', "trap 'git push -f origin wip:feature' EXIT",
+    'git push -n origin feature; trap \'git push -f origin wip:feature\' EXIT', 'echo $(echo a)#x ; git push -f origin wip:feature',
+    'echo "$(case a in a) echo "\'" ;; esac)" ; git push -f origin wip:feature', 'echo ${x/<<EOF/y}\ngit push -f origin wip:feature\nEOF',
+    'echo $((\n1 <<EOF\n))\ngit push -f origin wip:feature\nEOF', "echo $((git push -f origin wip:feature; echo '))') )"]) {
+    const got = bare(cmd);
+    assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
+    assert.match(got.stderr, /PUSH-GATE/, cmd);
+  }
+  for (const cmd of ['git push -n origin feature', 'git push --dry-run', 'git push', 'git push origin feature', 'git push -n origin feature 2>&1',
+    'git status && git push', 'git log --oneline -3 2>/dev/null; git push -n origin feature', 'git push && git status', 'git push; git checkout -q main'])
+    assert.strictEqual(bare(cmd).status, 0, `${cmd} alone sends nothing`);
+});
+// The seventh fuzz pass: text the shared reader leaves unread names git, so the commit half gates it as a commit - but
+// with nothing to commit that passed, and the publish half never looked. Inside shell-guards.js the cross-write guard
+// refuses unread text; this gate must not lean on it (a guard switched off per install).
+test('push gate: a command the shared reader leaves unread is gated as a push, with nothing to commit too', () => {
+  const r = featureRepo();
+  r.git('branch', 'wip', unreviewedCommit(r));
+  const gateFile = path.join(r.dir, '.alfred', 'state', 'approvals', 'PUSH-GATE');
+  const bare = (cmd) => { fs.rmSync(gateFile, { force: true }); return run(r.dir, bash(cmd)); };
+  // zsh pushes the first, bash 5 the second; each is unread
+  for (const cmd of ["x=$(( (a) <<'E'\nit's\nE\n) ); git push -f origin wip:feature", "x=$(cat <<E)\nit's\nE\ngit push -f origin wip:feature"]) {
+    const got = bare(cmd);
+    assert.strictEqual(got.status, 2, `${JSON.stringify(cmd)}: ${got.stderr}`);
+    assert.match(got.stderr, /PUSH-GATE/, cmd);
+  }
+  assert.strictEqual(bare("echo $(( 1 + 2 )); git status").status, 0, 'control: a read command');
+});
+// The push gate's dry run (forge.js pushDryRun): a dry run publishes nothing and is not gated, so only a CERTAIN one counts -
+// an option it does not know, an abbreviation, a later --no-dry-run or --end-of-options make the push a real one, gated.
+test('push gate: only a certain dry run goes ungated; -on, --no-dry-run, abbreviations and --end-of-options are gated', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  for (const cmd of ['git push -on origin main', 'git push -n --no-dry-run origin main', 'git push --dry-run --no-dry-run origin main',
+    'git push --rep -n origin main', 'git push --pu -n origin main', 'git push --end-of-options -nx main', 'git push --dry origin main',
+    'git push -- -n main', 'X=--no-dry-run; git push -n $X origin main', 'git push -n $(echo --no-dry-run) origin main',
+    'git push -n {--no-dry-run,origin} main', 'git push -n ${U:---no-dry-run} origin main']) {
+    const got = run(dir, bash(cmd));
+    assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
+    assert.match(got.stderr, /PUSH-GATE/, cmd);
+  }
+  for (const cmd of ['git push -n origin main', 'git push --dry-run origin main', 'git push -vn origin main', 'git push --repo origin -n main', 'git push -o ci.skip -n origin main'])
+    assert.strictEqual(run(dir, bash(cmd)).status, 0, `${cmd} is a dry run`);
+});
+
+// R015's review: a named branch is read on its own remote; a push remote (branch.<b>.pushRemote, else remote.pushDefault)
+// comes first, as gh finds the change through it - a stale same-named branch on origin is no false block.
+test('R015 review: a named branch reads its own remote, and a push remote comes first', () => {
+  const setUp = () => {
+    const r = featureRepo();
+    const fork = path.join(path.dirname(r.dir), `fork-${Math.random().toString(36).slice(2, 8)}.git`);
+    spawnSync('git', ['init', '-q', '--bare', fork], { encoding: 'utf8' });
+    r.git('remote', 'add', 'fork', fork);
+    const later = unreviewedCommit(r);
+    pushHead(r.git, later, 'refs/heads/feature');
+    r.git('push', '-q', 'fork', `${r.reviewed}:refs/heads/feature`);
+    return r;
+  };
+  {
+    const r = setUp();
+    r.git('config', 'branch.feature.remote', 'fork');
+    r.git('checkout', '-qb', 'other');
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash('gh pr merge feature --squash'));
+    assert.strictEqual(got.status, 0, `the named branch's own remote holds the reviewed tip: ${got.stderr}`);
+  }
+  {
+    const r = setUp();
+    r.git('config', 'branch.feature.pushRemote', 'fork');
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash('gh pr merge --squash'));
+    assert.strictEqual(got.status, 0, `branch.feature.pushRemote is read first: ${got.stderr}`);
+  }
+  {
+    const r = setUp();
+    r.git('config', 'remote.pushDefault', 'fork');
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash('gh pr merge --squash'));
+    assert.strictEqual(got.status, 0, `remote.pushDefault is read first: ${got.stderr}`);
+  }
+  {
+    const r = setUp();
+    r.git('config', 'branch.feature.pushRemote', 'origin');
+    receipt(r.dir, r.reviewed);
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 2, 'a push remote holding the unreviewed tip is refused');
+  }
+});
+
+test('R015: a branch tracking another branch, a PR ref, a garbage merge ref or a detached HEAD reads the right head', () => {
+  {
+    const r = featureRepo();
+    r.git('config', 'branch.feature.merge', 'refs/heads/main');
+    const later = unreviewedCommit(r);
+    pushHead(r.git, later, 'refs/heads/main');
+    receipt(r.dir, r.reviewed);
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'a branch tracking main has no change head to read: today\'s rule');
+  }
+  {
+    const r = featureRepo();
+    r.git('config', 'branch.feature.merge', 'refs/pull/9/head');
+    pushHead(r.git, r.reviewed, 'refs/pull/9/head');
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'the PR ref at the reviewed head passes');
+    const later = unreviewedCommit(r);
+    pushHead(r.git, later, 'refs/pull/9/head');
+    receipt(r.dir, r.reviewed);
+    const blocked = run(r.dir, bash('gh pr merge --squash'));
+    assert.strictEqual(blocked.status, 2, 'the PR ref at an unreviewed head is refused');
+    assert.match(blocked.stderr, /never saw/);
+  }
+  {
+    const r = featureRepo();
+    r.git('config', 'branch.feature.merge', 'refs/garbage');
+    receipt(r.dir, r.reviewed);
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'a garbage merge ref keeps today\'s rule');
+  }
+  {
+    const r = featureRepo();
+    r.git('checkout', '-q', '--detach');
+    receipt(r.dir, r.reviewed);
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'a detached HEAD keeps today\'s rule');
+  }
 });

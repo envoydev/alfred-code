@@ -18,8 +18,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
   gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 100 and `file-guards.js`'s 70 (10 for each guard a dispatcher runs), from the
-  `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
-  never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
+  `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches in exec form - `"command": "node"`, `"args":
+  ["${CLAUDE_PLUGIN_ROOT}/<file>", ...]` (`build-marketplace.js` `launch`, Claude Code 2.1.139+) - so no shell starts it: on
+  Windows a shell-form hook ran Git Bash's launcher, bash and then node, three processes a hook, and the user reported bash
+  windows and PreToolUse timeouts there. Measured 2026-11-05 with Claude Code 2.1.318, a logged-out session's nine start hooks
+  on a Windows 11 VM: 14 bash processes and 653-784 ms a SessionStart hook in shell form, none and 304-474 ms in exec form
+  (macOS: 800 ms against 725 ms over the nine). Through `node`, since a bare path needs the exec bit
+  and never runs on Windows. Lint holds every core hook to the form, and a reader of a hook's line joins `command` and `args`.
+  The cost, which 2.1.6 M3 refused: Cursor's hook schema has only `command` (cursor.com/docs/reference/third-party-hooks), so a
+  Cursor bridge of the plugin's rows runs a bare `node` that exits 1 on the payload and fails open - GATE 6's four protective
+  guards run in Cursor only from the copy route's rows, which stay shell form in `settings.json`, the file Cursor reads.
+  `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
   `ALFRED_CODE_HOOKS_OFF`. The six gates live in `hook-prelude.js`, never inlined: the csv opt-out;
   the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret,
@@ -86,9 +95,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `<data root>/state/approvals/APPROVAL` (`AUTO - "<the typed words>"`, `session:`, `skill:`, `at:`, `taken-from:` on a
   takeover) is written by the first `--mode-auto-run-on` or `/mode-auto-run <request>` (its typed request is its own
   `-on`), kept while live for the session and deleted only by `--mode-auto-run-off`. The RUN MARKER
-  `<data root>/state/sessions/AUTO-RUN-<session>` (`skill:`, `prompt:` the typed line's 12-hex sha1, `at:`) is written by
-  each typed family command while the stamp is live - none by a flag-only `mode-` line; a writer finding the same
-  `skill:` and `prompt:` leaves the file and its mtime - and deleted by that run's close or `-off`. The typed route is
+  `<data root>/state/sessions/AUTO-RUN-<session>` (`skill:`, `prompt:` the typed line's 12-hex sha1, `at:`, `prompt-id:`
+  the payload's `prompt_id` when it has one) is written by each typed family command while the stamp is live - none by a
+  flag-only `mode-` line; a writer finding the same `skill:`, `prompt:` and `prompt-id:` leaves the file and its mtime, so
+  the line typed again (a new `prompt_id`) counts its Stop cap from 1 (R096) - and deleted by that run's close or `-off`;
+  a typed run whose marker cannot be written gets the contract with one `!!` line and no hold clause (R095), and a Skill
+  route with no marker open names none (R094). The typed route is
   `UserPromptExpansion`; the model's `Skill` call writes or keeps the stamp only, never a marker, and only when its own
   args lead with the flag and the user's newest TYPED prompt's `modeFlags` gives `family` and `autoRun: 'on'` (audit
   HK04: a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt); a seat never starts one.
@@ -96,7 +108,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   written in the last 10 minutes), a data root that cannot be written, an empty `/mode-auto-run`, a seat - is asked by
   the start hook and the ON line alike; a refused start writes an `auto-start-refused` row and its banner says why. A
   start over another session's idle stamp writes `taken-from:` and an `auto-takeover` row, and the losing session's next
-  typed prompt gets the takeover notice once (`AUTO-TAKEN-<session>`). Each run under the mode gets the full contract as
+  typed prompt gets the takeover notice once per taker (`AUTO-TAKEN-<session>` holds the taker it was said for, R091).
+  An empty `/mode-auto-run` under this session's own live stamp is said as already ON, never refused (R090), and the ON
+  line counts a prompt's `-on` only while this start hook runs (R092). Each run under the mode gets the full contract as
   `additionalContext`, naming its marker, so its own offers and every person-directed hook read the session as
   unattended. `/mode-auto-run <request>`'s ON contract carries a `Solve flow:` line naming the library copy of
   `task-solve/SKILL.md` (`skillCopyState`: personal, then project, `on` or `user-invocable-only`; `switched off here` when
@@ -149,7 +163,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left).
   **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*`
   command (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
-  expansion fires once per typed command and the lines forbid a repeat: `**Auto-run: ON**` (each ask answered with its
+  lines forbid a repeat, and a prompt expanded twice (a stacked line) gets them and the contract on its first expansion
+  alone (`AUTO-SAID-<session>`: the `prompt_id`, else the line's hash for 10 s - R093; `prompt_id` is a documented
+  common field, but that a stacked expansion keeps it is measured behaviour, not a documented promise - if a release
+  gave each expansion its own, the banner and contract would be said twice, the fail-safe side, and R096's Stop cap
+  would count from 1 again for the second - one more capped run of holds, never an unbounded one; final review m9,
+  LIMIT): `**Auto-run: ON**` (each ask answered with its
   Recommended option, an outward one or an unmarked one still waiting; on for the session until `--mode-auto-run-off`)
   or `**Auto-run: OFF**` (each ask waits; a refused start says why, and a flag past the leading run is said to count only
   right after the command), then `**Context:**` - auto-run or
@@ -447,7 +466,40 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Heredoc spans come from `heredocsOf` in this guard and the secret guard alike, so every opener spelling it accepts
     (`<<\EOT`, `<<-'EOT'`, `<< 'EOT'`) is judged the same (seam M1; a table test runs each spelling through both), a runtime
     or shell here-string is read as its inline flag, `deno` / `bun` / `pwsh` bodies are judged, and an unquoted heredoc's `$(...)`
-    is a command (m2, m5). TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
+    is a command (m2, m5). Quotes, comments and heredocs come from ONE pass, `lexShell` (the eighth R015 review,
+    2026-11-05: three scanners - heredocsOf, blankComments, quotedSpans - each read quoting its own way, and each place
+    one disagreed with bash hid a `git push` from every guard). Its context stack (the top, `$( )`, a backtick, `${ }`,
+    arithmetic) gives each its own quote state, open `(` count and open `case` count: a `<<` in quotes, a comment, `${ }`
+    or arithmetic opens no heredoc, and a body starts after the first unquoted newline past its opener; a backtick inside
+    double quotes runs; a `#` after a substitution's `)` is word text, after a subshell's `)` a comment; a `case` arm's
+    `)` closes no `$(` and `esac` closes it wherever it stands (the parser counts `case` per context too); `$'...'`
+    honours its escapes (`ansiQuoteAt`). The ninth review (2026-11-05) made the lexer the one authority for where an
+    expansion ends: a `$((` / `((` is decided lazily, as bash does - arithmetic when its inner group closes right before a
+    `)`, else read again as a substitution holding a subshell, each open once and past a re-read budget of 4x the text
+    every later one a substitution; `regions` hands the parser each `${ }`, arithmetic and `$[ ]` region, read as one
+    word part that still opens the `$( )` and backticks inside it; a backtick ends at its first unescaped backtick in any
+    quote state (bash); a heredoc delimiter is any shell word (`END-X`, `E"O"F`). Check a new reading against the shells
+    before a review: run each shape in bash 3.2, bash 5 and zsh with a fake `git` on PATH that only logs its first word,
+    and compare what ran with what `gitText` reads (an opaque call counts as a push, as the gate takes it). bash 3.2 ending a
+    heredoc inside `$( )` at the `)` is out of model: bash 5 and zsh read on to the terminator, and matching 3.2 would leave a
+    commit message holding `a)` unread. The tenth review: a backtick and a `$((` read as a substitution are STRINGS
+    first in every shell (`stringEnd`, bash's parse_matched_pair), so a heredoc opened in one ends with it; one opened in a
+    `$( )` that closes on its line has no body in zsh and bash 3.2 but takes the next lines in bash 5 - read as no body,
+    and unread. A delimiter holding `${E}`, `$(x)` or a backtick is lexed in place. Past the re-read budget, a string
+    frame closing where bash would not, or nesting past `MAX_NEST` (skipped to the lexer's close), the text is unread
+    (`doubt`), never guessed. So is a quote at an arithmetic scan's own level whose text holds a paren, a backtick, a
+    backslash, a line or an expansion, or never closes: zsh scans `$((` and `((` as a double-quoted string, where a
+    quote is a character, and the two shells end the scan apart - and a `$[` holding a separator or never closed, which
+    dash (`sh` on Debian and Ubuntu) reads as text. What `echo`, `printf` or a `cat` of a heredoc prints is
+    carried wherever it reaches a shell: a group or subshell piped in (a group after `then`, `do` or `time` too),
+    `/dev/stdin`, `<( )`, a word of `-c` or `eval` with each substitution replaced by what it prints (split into words
+    when unquoted, as the shell splits it), `env -S` (with a backslash-newline also kept as the line break BSD env keeps),
+    busybox. echo and printf print their parser words with each print substitution's output in place (else kept whole;
+    prints nested past 8 deep, or inside a parameter expansion, are unread), and a heredoc whose line a carried script ends has no body, so the script
+    joined after it is never read as one. An unquoted heredoc body that leaves a substitution open is unread: dash
+    parses it on past the terminator line. Lexer and parser stay linear in the text: `dequote` takes a word's substitutions from its parse's
+    lex (`allSubs`) and never lexes again (a test holds 800,000 characters of `case `, 400,000 of `$((1)` and a 48,000-
+    character nest under 8 s). `trap`'s action is a carried script like `eval`'s. TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
     budget of `hook-prelude.js` `SCAN_LIMITS` (8MB of text, 3 script levels, 48 judged git calls) that the shared reader spends.
     Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
     on any machine: each judging step charges the characters it reads, the two thresholds at the top of each guard
@@ -749,7 +801,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     The three event branches run first and exit 0 before any dispatch rule (a SubagentStart payload has no
     `subagent_type` and would read as `general-purpose`): SubagentStart takes the oldest pending file of its type and
     tells a seat its number ('Agents at once: <n> (ALFRED_CODE_MAXIMUM_RUN_AGENTS)', nothing at 5), SubagentStop marks
-    the file, and a `SendMessage` to a STOPPED seat is judged like a dispatch. A dispatch at or past the cap - a seat's
+    the file, and a `SendMessage` to a STOPPED seat is judged like a dispatch, and one sent by NAME is refused at the cap (R087: a name
+  cannot be told from a resume; under the cap it passes untouched, `byName: true` on the block row). A dispatch at or past the cap - a seat's
     own included - is denied with the running count and up to eight types, one `branch: agent-cap` row; the text never
     says how to lift it (the setting is the user's), a seat is told to do the step itself, and a main-session denial
     writes `.denied`. A later rule's exit 2 drops the call's pending file (a second exit wrapper after the shared
@@ -930,7 +983,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     read from where it meets HEAD. The git calls are read by shell-writes.js's walker (`gitCalls`), as are the
     git aliases and carried scripts (`expandGitAliases`, `carriedScripts`, above): each alias is expanded in place and each carried script, its own aliases expanded, joins
     the command after a newline; an alias still standing after 5 steps, a lookup git cannot answer, an xargs-fed
-    subcommand, or text past the scan budget that names git gates the call as a commit, unread - and so do a runtime
+    subcommand, or text past the scan budget that names git gates the call as a commit, unread, and as a push (any
+    unread text naming git: with nothing to commit the commit half passed a push zsh runs, the seventh fuzz pass) - and so do a runtime
     script spawning `git commit` (node exec / spawn, python `subprocess` / `os.system`, ruby / perl `system` and backticks,
     a PowerShell body), `update-ref` on `refs/heads/*` or `HEAD`, a `commit-tree` fed into a reset / merge / branch /
     checkout / switch, and `rebase --exec` / `-x` running `git commit` (audit 2026-10-30 HK-17; literal words only, a
@@ -1182,10 +1236,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     since that could start a model call - a local command and a `!` line cannot, a tool result can - and the context at
     or over `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS`, else 200,000). That VERDICT decides COMPACT-STATE's `trigger: auto
     (idle)` and the compact start's line (no fresh session, no hold); the HOLD - the 50-minute gap alone, since
-    PreCompact's count runs 1-5k under the boundary's `preTokens` - marks the point `held`, which counts toward no
+    PreCompact's count runs 1-5k under the boundary's `preTokens`, or an unknown gap: a last reply with no time, no
+    reply at all, or a boundary with no time (R133; never CALLED idle, so `trigger: auto` stays) - marks the point `held`, which counts toward no
     trigger until `fresh-session.js settleCompactPoints` reads its transcript: once per process, one binary-searched
     window per run of points under 15 min apart (never the whole file - real ones reach 214 MB; 32 MB a window, 64 MB a
-    pass, the rest waiting for the next), a point decided only once that read reached past it (a
+    pass, the rest waiting for the next; a later window reads only the room the pass has left and, cut by it, decides
+    nothing - R130; a transcript that cannot be read, a directory among them, skips its run and the next settles - R131;
+    a session named like a device, `CON` or `nul`, is never opened - R132), a point decided only once that read reached past it (a
     probe inside a row of over 1 MB takes the nearest timestamp behind it), the notice drops it, a boundary 30 s past
     with none settles it, and an UNTIED point (no transcript 10 min on, no boundary while the session went on 10 min, or
     an hour on with no boundary or no read reaching it) is dropped - a kept one could hold a wrong trigger 30 days, a
@@ -1595,6 +1652,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     no `systemMessage`. A seat's prompt carries none: the session that receives its report grades what it acts on.
     After its stdout write it hands `modesText`'s own `autoRun` and `scorer` to `session-status.js onPrompt`, under
     `standDown('history-session')`, which rewrites the status file only when one of the two changed (spec section 4).
+    The stand-down runs as the write's gate, after the compare (R137): every prompt pays the module's require and one
+    small read (~2.5 ms measured, 2026-11-04) even where history-session is off - the trade for no stand-down stats on
+    the common prompt (final review m7, WONTFIX).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is exactly "1". It runs `async: true` on both routes (`settings.js asyncFor`, the one async hook since the stop contract's shell-result halves went in the deep hooks review 2026-10-16 - a log never
     blocks or decides, so no call waits on its spawn; code.claude.com/docs/en/hooks, 'Run hooks in the background').
@@ -1639,7 +1699,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     unmarked and the retry hands it over, every doc after it waiting its turn (`codeParts` `later`), and only an entry no
     room holds whole is cut once with a Read line - `preferences.js lint` fails one past 5,000; a designer's start, which has
     no retry, names what did not fit. A glob reaching no file would hide its entry from every edit, so `preferences.js lint`
-    notes it and every update names it (`docs.deadScopeLines`, through the capture's `deadScopes`; the hook reads
+    notes it and every update names it (`docs.deadScopeLines`, through the capture's `deadScopes`; the Stop check
+    re-reads them only when a preferences doc moved or the one file it saw under a live Scope is gone, `state.scopes`,
+    so a turn with nothing changed runs no `ls-files` - R081; `watch-merge --doc` adopts an older capture's entries for
+    that doc once, `docAdopted`, so a hand-added entry outside its kinds survives the next merge - R082; the hook reads
     `Scope:` through the script's own `scopeOf`, one reader since review 2026-10-23, so the two cannot drift); a glob aimed at the wrong EXISTING folder no script can
     judge, so `preferences.js reach` shows what each `Scope:` takes (count, file types, three paths - the capture reports
     it; the capture asks the user to confirm each new glob's reach) and `lint` and every update name a `Check:` that measures files its `Scope:` does not reach (`reachIn`, `docs.mismatchLines` through the capture's `scopeMismatches`) - and the FIRST git write (`shell-writes.js` `gitMutates`, plus a branch, tag or worktree branch made by
@@ -1728,10 +1791,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     that resolve plus three of its problems, never a default; an over-cap one states nothing but its problem. The line has its own
     cap (`TOOLS_LINE_CAP`, 4,000 chars): past it the Load clauses go, then the tail, so the personal push before it and the
     line together stay well under Claude Code's hook-output cap. Once
-    per project with no doc it suggests `/capture-preferences tools` (`suggestOnce`, a `<data root>/state/tool-preferences/
-    suggested` marker; one that cannot be written says it again). Every SubagentStart but Claude Code's two guides
+    per project with no doc it suggests `/capture-preferences tools` (`wantsSuggest`, then `markSuggested` only when the line
+    sent carries it - an empty or cut line spends nothing, R043b; a `<data root>/state/tool-preferences/suggested` marker;
+    one that cannot be written says it again). A doc that is a link or not a regular file (a FIFO would block the read) is
+    never read and named in the line's source and by `tools.js lint` (R042); a `Job:` is read in any case (R041). Every SubagentStart but Claude Code's two guides
     (`claude-code-guide`, `statusline-setup`) gets the seat's own order after any doc push: a seat whose definition the hook
-    finds - the core's `stack/agents/<seat>.md` for `alfred-code:<seat>`, else the project's `.claude/agents/<name>.md` -
+    finds - the core's `stack/agents/<seat>.md` for `alfred-code:<seat>`, else the project's `.claude/agents/<name>.md`;
+    another plugin's `<plugin>:<seat>` from `agents/<seat>.md` under the install record in `installed_plugins.json` that
+    reaches this project, narrowest scope first (`pluginAgentFile`, R040) -
     only the ranks its `tools:` / `disallowedTools:` grant, with no load line when it has a `tools:` line; any other seat
     the main session's, no suggestion; a seat's own compaction re-sends its order. `preferences-session:tools` in
     `ALFRED_CODE_HOOKS_OFF` switches the line off and nothing else. Measured on a default install (no doc, no
@@ -1767,7 +1834,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     cut at a line, the path alone under 300 left (Claude Code swaps a hook context past 10,000 characters for a preview).
     `guard-cross-project-write.js` denies a write into ANY linked member's memory folder before the account-dir allowance,
     with no allow route (branch `ancestor-memory`, the block naming the child's own memory); a folder the child also owns
-    stays writable.
+    stays writable. A folder a member's `settings.local.json` names counts only while git answers 'no match' for that
+    file (`untrackedLocal`, Claude Code's own trust test). Known ceiling (R172, accepted 2026-11-04): an archive that
+    ships its own `.git` with an index leaving the file out reads as untracked - no git check tells a crafted index from
+    a real one, so trusting such a folder is the user's act when they open it.
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
     wired; its Stop process also runs the turn build check, above) - a machine-local record per session under `<data root>/state/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
     one file keeps it out, and an update removes the `*` file earlier releases wrote; no `watch.json`, so no docs domain): at `Stop` it
@@ -1806,7 +1876,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the hand-written `AUTO` stamp `autoRunFor` refuses) - else fresh-session's rule; a Stop whose second read finds
     `autoRun` changed rebuilds. Written at SessionStart (always), at Stop
     when a field but `updatedAt` changed (an unchanged file over 24 hours old gets its mtime moved) and at
-    guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). The
+    guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). A
+    prompt's write re-reads the file just before its rename and keeps a `handoffPrompt` a Stop wrote since its first read
+    (R135); a Stop landing between that re-read and the rename (the build-and-write span) is still lost, and the next
+    Stop, which recomputes the field from history, writes it back - a stated residual, no lock on every prompt (final
+    review m6, WONTFIX). The
     gates are this hook's (`historyOff`, Cursor), so `HOOKS_OFF=history-session` stops it at all three events. The
     SessionStart prunes every status file past 7 days (`now - mtime > 7 days`, the session's own kept) under the `cwd` and
     each base in `<data root>/state/sessions/status-folders.json` (at most 32), and puts an anchored
@@ -1824,7 +1898,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `docs/install-footprint.md` lists both writes.
   - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
     stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
-    `<data root>/forge-lexicon.json`) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,
+    `<data root>/forge-lexicon.json`: words under the keys the base has, and R013's three open maps - a host's kind in
+    `hints.kinds`, a known kind's CLI in `hints.clis`, its `how` (https) and tap-less `brew` in `hints.install`, never an
+    `after`; every other new key is named in the start's `Forge:` line, never dropped silently) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,
     not a list of CLIs or servers). `forge.js` reads any call as a concept by its WORDS - a CLI's noun then verb, an API
     call's method and path, an MCP tool's name and its selector values - so `guard-ungated-commit.js` gates a merge or a
     branch write on every transport and `preferences-session.js` holds the first one; a forge noun with no known verb is
@@ -1846,20 +1922,52 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     own concept (`forge.js classifyCommand`; E-batch fn-9: `git push && gh pr merge 4` ledgered the push alone), each
     with its `tool_use_id`; the watch trusts a row once its PostToolUse confirmed it. A forge publish act chained behind a
     push is gated as if it stood alone (E-batch 4b, a side review of fn-9): it needs the receipt when the push moves
-    nothing (a dry run, nothing ahead - the denial names the chained act), each merge in the command gets the unseen-head
-    check (`forge.js unseenHead`, the receipt read up to that merge), and a push that moves nothing writes no push row.
+    nothing (a dry run, nothing ahead - the denial names the chained act), and a push that moves nothing writes no push
+    row; a merge behind it is refused under a reviewed head (R015 below) and passes under a waiver.
+    A merge naming no number checks its branch's tip (R015, `forge.js branchSelector` / `branchHead`: the current or the
+    named branch on its push remote - `branch.<b>.pushRemote`, else `remote.pushDefault` - else its own remote, else the
+    checkout's; a branch checked out from a PR ref reads that change's head). The merge is judged on the repository and
+    its remote as they stand BEFORE the command runs, so under a reviewed head only a merge nothing runs ahead of is
+    judged (`runsFirst`), and every merge the command names is judged, not only the lead one: any command before it but
+    a plain git read (`GIT_READS`, literal, no setting, `--output` or file redirect; a carried script runs where its
+    carrier stands), one inside its words other than `cat` / `echo` / `printf` or such a read, a word in front of it
+    other than an assignment (`setsid -f`, `time`), a pipeline peer other than an output filter after it (`tail`,
+    `head`, `cat`, `grep`, `wc`; a text tool or filter only when it writes nothing - a redirect that reads, duplicates or
+    goes to /dev/null, so `cat x > .git/HEAD` cannot move the branch gh reads), a lone `&` anywhere outside quotes, heredoc bodies and comments, a loop keyword
+    anywhere, or a substitution the shared reader never opened (`${X:-$(...)}`, `$(( $(...) ))`, an unquoted heredoc
+    body) refuses it, naming what runs first - seven reviews 2026-11-05 broke every reading of what runs first (a push's
+    join, remote, refspec and sources, a pull, reset, checkout or config write, an exported HOME, a function, an
+    expansion); the cost is one call more for `git push && gh pr merge`. The push gate reads a push's words with `forge.js pushRead`: a dry run goes
+    ungated only when certain (an unknown or abbreviated option, a later `--no-dry-run`, `--end-of-options`, a word the
+    shell expands - `$X`, `$(...)`, a brace list, a glob - or `--exec` / `--receive-pack` read as a real push; `-on` is
+    the push option 'n'), and a dry run or a push with nothing ahead goes ungated only as the command's ONE push
+    (`pushAlone`: no other push or built git subcommand, only plain git reads before it, nothing beside or inside it, no
+    loop, background part, carried script, prefix, call-level setting or checkout - audit 2026-10-08's `git status &&
+    git push` stays ungated). 'Nothing ahead' is git's own answer (`forge.js pushWouldMove`: the push's words, push
+    options left out, as `git push --dry-run --porcelain --no-verify`, 6s cap; a move, an error or no answer is ahead),
+    since `push.default=matching`, a remote's push refspec, a local upstream or a stale tracking ref send what HEAD
+    against `@{u}` calls level. A git call whose subcommand the shell builds (`git $S`, `xargs git`, `xargs -I{} git
+    {}`) or that sits in a substitution the reader never opened is gated as a push;
+    `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
     a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,
     `GIT_TERMINAL_PROMPT=0`, ssh BatchMode, 6s cap - the hook's network egress, stated in its header and kept by ruling,
     audit 2026-10-30 HK-27); PostToolUse after a merge, branch write, release or unknown call
     re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read
-    (an allowlist of read tools), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
+    (an allowlist of read tools; `sed` with no `-i` / `-f`, no `e` command or flag and no `w` / `W`, and `awk` / `gawk`
+    with no `-f` / `-i` / `-l` / `-E` and no `system(`, pipe, `>` or `@` in the program are reads too - R011; an unknown or
+    abbreviated long option, or an awk cluster ending in a program file, is none - review 2026-11-05), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
     running. An act covers the ref it aims at; one naming no ref lands ONE move (at its head, else the single loud
     candidate - with several it covers none and says so); an armed auto-merge persists across turns until it lands.
     Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit a local branch holds, any
     tag - blocked once per cycle; the rest is one summary `systemMessage`. An ASKED act covers nothing (Task 6 ruling,
-    revising Task 2's). `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
+    revising Task 2's). A loud move no act of this session covers, but a confirmed, aimed act of ANOTHER session in the
+    repo does (R020, `otherActs`: the 20 newest other `ACTS-*.jsonl` by mtime inside the window `state.at - 1000`), is
+    one `systemMessage` line naming that act - '<ref> moved <a>..<b> by another session's gated <merge | release | branch
+    write>' (review 2026-11-05) - never a block; strict, so a
+    push carrying its head lands only that tip, an act naming no ref lands only the move at its head, an asked,
+    unconfirmed or all-refs act lands nothing, and none is used up. `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
     asked call. Unreachable is `not checked (<why>)`, never clean. `forge-session:watch` in `ALFRED_CODE_HOOKS_OFF` off,
     `ALFRED_CODE_FORGE_WATCH=loud-only` drops the summary (the session line says so). A check that fails or takes over 3 s
     (a key waiting for a touch, an approval dialog) pauses the catch-all for 30 min (`PAUSE-<session>.json`, said once);

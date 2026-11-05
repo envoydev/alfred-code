@@ -67,7 +67,9 @@ for (const route of Object.keys(ROUTES))
         assert.ok(!calls.some((c) => /^mcp add /.test(c)), 'no claude mcp add');
         assert.match(result.stamp, /^action: install$/m, 'the stamp names the action');
         // E-batch O4: install closes a hand-written selection - the markdown-docs rule requires docs-as-code, as update added before
-        assert.match(result.stamp, /^picked-skills: markdown-style,docs-as-code$/m, 'the stamp records the pick and its closure - a copy, no plugin home (2.1.0)');
+        // the pick, its closure and (burn-down Task 5's finding) the locked always-on skills the install adopts - plain names
+        const picked = (/^picked-skills: (.*)$/m.exec(result.stamp) || [])[1] || '';
+        assert.deepStrictEqual(picked.split(',').sort(), [...new Set(['markdown-style', 'docs-as-code', ...require('../meta/recommendations.json').always.skills])].sort(), 'the stamp records the pick, its closure and the always-on skills - a copy, no plugin home (2.1.0)');
         assert.match(result.stamp, route === 'plugin' ? /^seats-route: plugin$/m : /^seats-route: copy$/m, 'how the seats came');
         assert.strictEqual(result.settings.env.ALFRED_CODE_DATA_PATH, '.alfred', 'the settings env is seeded');
         assert.strictEqual(result.settings.env.ALFRED_CODE_DOCS_PATH, undefined, 'and the retired docs key is never written');

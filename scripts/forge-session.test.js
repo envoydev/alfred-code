@@ -168,6 +168,16 @@ test('a malformed lexicon overlay is named to the user at start, once - the line
   assert.strictEqual(JSON.parse(runHook(dir, { hook_event_name: 'SessionStart', source: 'startup' }, env).stdout).systemMessage, undefined);
 });
 
+test('R013: an overlay host kind teaches a self-hosted forge', () => {
+  const dir = repo('https://git.acme.example/g/r.git');
+  fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.alfred', 'forge-lexicon.json'), JSON.stringify({ hints: { kinds: { 'git.acme.example': 'gitlab', 'bad.example': 'nonsense' } } }));
+  assert.strictEqual(profile(dir, envFor(dir)).kind, 'gitlab');
+  const start = JSON.parse(runHook(dir, { hook_event_name: 'SessionStart', source: 'startup' }, { ...envFor(dir), PATH: process.env.PATH }).stdout);
+  assert.match(start.systemMessage, /^Forge: the forge-lexicon\.json overlay at .* names keys the vocabulary does not read - ignored: hints\.kinds\.bad\.example \(not a known kind\)/);
+  assert.match(start.hookSpecificOutput.additionalContext, /\(gitlab\)/);
+});
+
 // --- the ref watch: every branch and tag, diffed after a strong call and at the end of a turn -----------------------
 // A local bare repo is `origin`; a teammate's clone moves refs the session never made. The baseline is the start
 // snapshot the SessionStart child takes (`--snapshot`, run inline here so the case never races a detached process).
@@ -243,6 +253,118 @@ test('a gated push of one branch does not cover a move of another', () => {
   assert.strictEqual(out(stop(w.dir)).decision, 'block');
 });
 
+// R020: another session's confirmed act in this repo explains a move with one line, never a block.
+// The spec's line (R020): '<ref> moved by another session's gated <act>' - the act named (review, 2026-11-05).
+const R020_LINE = /^Ref watch: main moved [0-9a-f]{7}\.\.[0-9a-f]{7} by another session's gated (?:branch write|merge)\.$/m;
+const forgeDir = (w) => path.dirname(forge.actsPath(w.dir, SID, watchEnv(w.dir)));
+// One act row as recordAct writes it, with its own `at`, and the ledger's mtime set (both ms since the epoch).
+function actRow(w, session, act, at = Date.now(), mtime = at) {
+  const file = forge.actsPath(w.dir, session, watchEnv(w.dir));
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, `${JSON.stringify({ concept: 'branch.write', change: null, ref: 'main', head: null, asked: false, ...act, at })}\n`);
+  fs.utimesSync(file, new Date(mtime), new Date(mtime));
+  return file;
+}
+const mateLands = (w) => { const y = w.mateCommit(`m${Math.random().toString(16).slice(2, 8)}`); w.mate('push', '-q', 'origin', 'main'); return y; };
+
+test('R020: another session\'s confirmed act explains a move - no block, one line', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  fs.writeFileSync(path.join(w.dir, 'b.txt'), 'b\n');
+  w.git('add', '-A'); w.git('commit', '-qm', 'b');
+  forge.recordAct(w.dir, 'watch-s2', { concept: 'branch.write', ref: 'main', head: w.git('rev-parse', 'HEAD').stdout.trim() }, watchEnv(w.dir));
+  w.git('push', '-q', 'origin', 'main');
+  const r = stop(w.dir);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const o = out(r);
+  assert.strictEqual(o.decision, undefined, r.stdout);
+  assert.match(o.systemMessage, R020_LINE);
+  // The window after a strong call says it once; the Stop does not repeat it.
+  const v = watchRepo();
+  assert.strictEqual(snap(v.dir).status, 0);
+  const y = mateLands(v);
+  forge.recordAct(v.dir, 'watch-s2', { concept: 'branch.write', ref: 'main', head: y }, watchEnv(v.dir));
+  const p = post(v.dir, 'mcp__gitlab__pull_request_frobnicate', { iid: 4 });
+  assert.strictEqual(p.status, 0, p.stderr);
+  assert.strictEqual(out(p).decision, undefined, p.stdout);
+  assert.match(out(p).systemMessage, R020_LINE);
+  assert.doesNotMatch(stop(v.dir).stdout, /another session/);
+});
+
+test('R020: another session\'s asked, unconfirmed or all-refs act, or one on another ref, explains nothing', () => {
+  for (const act of [{ asked: true }, { tool_use_id: 'tu-x' }, { all: true }, { ref: 'feature' }]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const y = mateLands(w);
+    forge.recordAct(w.dir, 'watch-s2', { concept: 'branch.write', ref: 'main', head: y, ...act }, watchEnv(w.dir));
+    const r = stop(w.dir);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(out(r).decision, 'block', JSON.stringify(act));
+  }
+});
+
+test('R020: another session\'s push explains only the tip it pushed', () => {
+  for (const [act, want] of [[{ concept: 'branch.write', head: 'd'.repeat(40) }, 'block'], [{ concept: 'branch.write' }, 'line'],
+    [{ concept: 'change.merge', head: 'e'.repeat(40) }, 'line']]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const y = mateLands(w);
+    forge.recordAct(w.dir, 'watch-s2', { ref: 'main', head: y, ...act }, watchEnv(w.dir));
+    const o = out(stop(w.dir));
+    if (want === 'block') assert.strictEqual(o.decision, 'block', JSON.stringify(act));
+    else {
+      assert.strictEqual(o.decision, undefined, JSON.stringify(act));
+      assert.match(o.systemMessage, R020_LINE);
+      assert.match(o.systemMessage, act.concept === 'change.merge' ? /gated merge\.$/m : /gated branch write\.$/m, 'the act is named');
+    }
+  }
+});
+
+test('R020: only the 20 newest other ledgers inside the window are read', () => {
+  // 25 other sessions' ledgers, newest first by mtime; the one act naming main sits at rank 19 (one under), 20 (at the
+  // bound) or 21 (one over), then rank 21 touched newest.
+  for (const [rank, want, touch] of [[19, undefined], [20, undefined], [21, 'block'], [21, undefined, true]]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const y = mateLands(w);
+    const top = Date.now() + 60000;
+    let held = null;
+    for (let i = 1; i <= 25; i += 1) {
+      const f = actRow(w, `watch-o${i}`, i === rank ? { head: y } : { ref: `other-${i}` }, Date.now(), top - i * 1000);
+      if (i === rank) held = f;
+    }
+    if (touch) fs.utimesSync(held, new Date(top + 1000), new Date(top + 1000));
+    const o = out(stop(w.dir));
+    assert.strictEqual(o.decision, want, `rank ${rank}${touch ? ' touched' : ''}: ${JSON.stringify(o)}`);
+  }
+});
+
+test('R020: the window edge is state.at - 1000', () => {
+  for (const [off, want] of [[-1001, 'block'], [-1000, undefined], [-999, undefined]]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const at = JSON.parse(fs.readFileSync(path.join(forgeDir(w), `REFS-${SID}.json`), 'utf8')).at;
+    const y = mateLands(w);
+    actRow(w, 'watch-s2', { head: y }, at + off, at + off);
+    assert.strictEqual(out(stop(w.dir)).decision, want, `state.at ${off}`);
+  }
+});
+
+test('R020: a garbage or truncated other ledger is skipped, never a crash', () => {
+  for (const withGood of [true, false]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const y = mateLands(w);
+    const bad = forge.actsPath(w.dir, 'watch-s2', watchEnv(w.dir));
+    fs.mkdirSync(path.dirname(bad), { recursive: true });
+    fs.writeFileSync(bad, 'not json at all\n{"concept":"branch.write","ref":"main","he');
+    if (withGood) forge.recordAct(w.dir, 'watch-s3', { concept: 'branch.write', ref: 'main', head: y }, watchEnv(w.dir));
+    const r = stop(w.dir);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(out(r).decision, withGood ? undefined : 'block', `with the good ledger: ${withGood}`);
+  }
+});
+
 test('teammate feature branch is summary', () => {
   const w = watchRepo();
   assert.strictEqual(snap(w.dir).status, 0);
@@ -307,6 +429,49 @@ test('read-only turn skips the diff', () => {
   const reads = [['Read', { file_path: 'a.txt' }], ['Bash', { command: 'git status && git diff --stat && ls -la | head -5' }], ['Grep', { pattern: 'x' }], ['mcp__gitlab__get_merge_request', { merge_request_iid: 1 }]];
   assert.strictEqual(stop(w.dir, reads).stdout, '', 'no ls-remote ran, so nothing was not checked');
   assert.match(out(stop(w.dir, [['Bash', { command: 'npm test' }]])).systemMessage, /^Ref watch: not checked \('.+gone\.git' does not appear to be a git repository\)\.\n/);
+});
+
+// R011's review (2026-11-05): a long option is a read only when it is on the known-safe list - an abbreviation GNU getopt
+// takes (`--expr=`), a value-taking one judged without its value (`--line-length 70`), an awk short cluster holding f, i,
+// l or E (`-bf`), gawk's -W and the dump / profile / pretty-print letters all make the turn a non-read.
+test('R011 review: unknown or abbreviated long options, value-taking options and awk clusters keep the verdict honest', () => {
+  const { callIsRead } = require(HOOK);
+  const isRead = (command) => callIsRead({ name: 'Bash', input: { command } }, TMP);
+  for (const command of ["sed --expr='1e git push' a.txt", "sed --line-length 70 '1e git push' a.txt", "sed --in-pl 's/a/b/' a.txt",
+    'gawk -bf p.awk a.txt', 'gawk --fi p.awk a.txt', 'gawk -W exec=p.awk a.txt', "gawk -d'/tmp/d' 1 a.txt", "gawk --dump-variables 1 a.txt",
+    "gawk -o 1 a.txt", "gawk --profile=p 1 a.txt", 'awk --brand-new 1 a.txt'])
+    assert.strictEqual(isRead(command), false, command);
+  for (const command of ["sed --line-length 70 -n 1p a.txt", "sed --line-length=70 -n 1p a.txt", "sed --quiet --regexp-extended 's/a/b/' a.txt",
+    "sed --posix -n 1p a.txt", "awk -vfoo=1 '{print foo}' a.txt", "awk -F, '{print $1}' a.txt", "gawk --assign x=1 '{print x}' a.txt",
+    "gawk --field-separator=, '{print $1}' a.txt", "gawk -b '{print}' a.txt", "gawk --posix '{print}' a.txt"])
+    assert.strictEqual(isRead(command), true, command);
+});
+
+test('R011: sed and awk reads keep the turn a read; a form that can write or run still checks', () => {
+  // A check of a gone remote prints 'not checked' and pauses the catch-all, so each form that checks gets its own repo.
+  const gone = () => { const w = watchRepo(); assert.strictEqual(snap(w.dir).status, 0); w.git('remote', 'set-url', 'origin', path.join(w.base, 'gone.git')); return w; };
+  const r = gone();
+  for (const command of ['sed -n 1,5p a.txt', "sed -n '/wolf/p' a.txt", "sed 's/new/old/g' a.txt", 'sed -n -e 1p -e 3p a.txt',
+    "awk '{print $1}' a.txt", "awk -F: 'NR<3' a.txt"]) {
+    const s = stop(r.dir, [['Bash', { command }]]);
+    assert.strictEqual(s.status, 0, s.stderr);
+    assert.strictEqual(s.stdout, '', command);
+  }
+  for (const command of ["sed 'e ls' a.txt", "sed -n '1w out.txt' a.txt", "sed 's/a/b/e' a.txt", "sed 's/a/b/w o.txt' a.txt",
+    "sed -n -e 1p -e '2w x' a.txt", "sed --expression='1w x' a.txt", "sed -i 's/a/b/' a.txt", 'sed -ni 1p a.txt',
+    'sed -f x.sed a.txt', "awk 'BEGIN{system(\"ls\")}'", "awk '{print | \"sh\"}' a.txt", "awk '{print > \"o.txt\"}' a.txt",
+    'awk -f x.awk a.txt', "gawk --source='BEGIN{system(\"ls\")}' a.txt", "awk -e 1 -e 'BEGIN{system(\"ls\")}' a.txt",
+    "gawk 'BEGIN{f=\"system\"; @f(\"ls\")}'", 'gawk -l filefuncs 1 a.txt']) {
+    const s = stop(gone().dir, [['Bash', { command }]]);
+    assert.strictEqual(s.status, 0, s.stderr);
+    assert.match(out(s).systemMessage || '', /^Ref watch: not checked/, command);
+  }
+  // malformed: no crash, and the verdict the definitions give
+  for (const command of ["sed '' a.txt", 'sed -e', "awk '' a.txt", "sed -n '1p a.txt"]) {
+    const s = stop(r.dir, [['Bash', { command }]]);
+    assert.strictEqual(s.status, 0, s.stderr);
+    assert.strictEqual(s.stdout, '', command);
+  }
 });
 
 test('a seat dispatch and an unknown tool count as a non-read turn', () => {
@@ -710,6 +875,22 @@ test('no CLI is planned for an unknown forge, one already on PATH, or no remote'
   assert.deepStrictEqual(cliPlan(profile(hub, env), { platform: 'darwin', hasBrew: true }), { action: 'present', cli: 'gh' });
   const none = repo(null);
   assert.strictEqual(cliPlan(profile(none, envFor(none)), { platform: 'darwin', hasBrew: true }).action, 'none');
+});
+
+// Review 2026-11-05 (#8): the plan reads the PROFILED project's vocabulary, as profile() does (R013) - never the overlay of
+// the folder this process happens to run in.
+test('R013 review: the CLI plan reads the overlay of the profiled project, not of the process folder', () => {
+  // Only an overlay can name a CLI for a kind the base gives none (bitbucket) and that CLI's install line (OPEN_KEYS).
+  const dir = repo('https://bitbucket.acme.example/g/r.git');
+  fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.alfred', 'forge-lexicon.json'), JSON.stringify({ hints: { clis: { bitbucket: 'bbcli' }, install: { bbcli: { how: 'https://bitbucket.acme.example/tools/bbcli' } } } }));
+  const env = envFor(dir);
+  const p = profile(dir, env);
+  assert.strictEqual(p.kind, 'bitbucket');
+  assert.notStrictEqual(path.resolve(process.cwd()), path.resolve(dir), 'the test runs outside the profiled project');
+  assert.deepStrictEqual(cliPlan(p, { platform: 'linux', hasBrew: false, env }), { action: 'manual', cli: 'bbcli', need: 'bbcli', how: 'install bbcli by hand: https://bitbucket.acme.example/tools/bbcli' });
+  onPath(env, 'bbcli');
+  assert.deepStrictEqual(cliPlan(profile(dir, env), { platform: 'linux', hasBrew: false, env }), { action: 'present', cli: 'bbcli' });
 });
 
 // The CLI runs git, so its PATH keeps the machine's dirs - minus any that hold a forge CLI this machine happens to have.

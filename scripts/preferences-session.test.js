@@ -1279,6 +1279,24 @@ test('a quality run is read by its part: code and the chain review, architecture
     finally { p.rm(); }
 });
 
+// R124 (burn-down 2026-11-04): an expansion with no command_args read no topic, so every typed run was the chain.
+test('R124: a typed capture-quality expansion carrying only the prompt reads its part from the prompt', () =>
+{
+    const p = project();
+    try
+    {
+        const layout = require(path.join(HOOKS, 'layout.js'));
+        const marks = (s) => JSON.parse(fs.readFileSync(layout.statePath(p.root, 'sessions', `preferences-${s}-main.json`), 'utf8'));
+        for (const [prompt, part] of [['/capture-quality code', 'code-quality'], ['/capture-quality --mode-auto-run-on coverage', 'test-coverage-quality'], ['/capture-quality', 'chain']])
+        {
+            const s = sid();
+            p.hook({ hook_event_name: 'UserPromptExpansion', session_id: s, expansion_type: 'slash_command', command_name: 'capture-quality', prompt });
+            assert.strictEqual(marks(s).part, part, prompt);
+        }
+    }
+    finally { p.rm(); }
+});
+
 // The architecture seat judged nothing, so its briefs listed the entries by hand (the user's answer 'Hook pushes the arch
 // doc'): inside an architecture quality run its start hands it the architecture entries alone - never the code docs -
 // and its first reads the rest. The map capture dispatches the same seat to describe the code as it is, so outside such
@@ -1551,6 +1569,50 @@ test('a built-in seat gets the main session\'s line without the suggestion; the 
         for (const type of ['claude-code-guide', 'statusline-setup']) assert.strictEqual(p.hook(seatStart(type)).stdout, '', type);
     }
     finally { p.rm(); }
+});
+
+// R040: another plugin's seat is resolved through installed_plugins.json to its own definition, so one whose tools grant
+// LSP is told to call it, not to load it; a plugin the registry does not hold stays on the main session's line.
+test('a foreign seat granting LSP gets no Load clause', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        const install = path.join(p.config, 'plugins', 'cache', 'mkt', 'other-plugin', '1.0.0');
+        fs.mkdirSync(path.join(install, 'agents'), { recursive: true });
+        fs.writeFileSync(path.join(install, 'agents', 'helper.md'), '---\nname: helper\ndescription: x\ntools: Read, Grep, LSP\n---\nbody\n');
+        fs.writeFileSync(path.join(p.config, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: {
+            'other-plugin@mkt': [{ scope: 'user', installPath: install, version: '1.0.0' }],
+            'elsewhere@mkt': [{ scope: 'project', projectPath: path.join(p.config, 'another-project'), installPath: install, version: '1.0.0' }],
+        } }));
+        const text = seatText(p.hook(seatStart('other-plugin:helper')));
+        assert.match(text, /- navigation \([^)]*\): LSP > Grep\./, text);
+        assert.ok(!text.includes('Load:'), text);
+        assert.ok(seatText(p.hook(seatStart('elsewhere:helper'))).includes('Load: ToolSearch select:'), 'another project\'s install reaches nothing here');
+        assert.ok(seatText(p.hook(seatStart('unknown-plugin:helper'))).includes('Load: ToolSearch select:'), 'an unknown plugin keeps the main line');
+    }
+    finally { p.rm(); }
+});
+
+// R043b: the one suggestion is spent only by a line that carries it - a start whose tools line came back empty keeps it.
+test('the suggestion is marked only when the line holds it', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    const lone = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-lone-'));
+    try
+    {
+        fs.cpSync(HOOKS, path.join(lone, 'hooks'), { recursive: true });
+        fs.cpSync(path.join(HOOKS, '..', 'skills', 'capture-preferences'), path.join(lone, 'skills', 'capture-preferences'), { recursive: true });
+        fs.writeFileSync(path.join(lone, 'skills', 'capture-preferences', 'scripts', 'tool-adapters.json'), 'not json');
+        const r = p.hook(start(sid(), 'startup'), {}, path.join(lone, 'hooks', 'preferences-session.js'));
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.ok(!pushed(r).includes('/capture-preferences'), pushed(r));
+        assert.ok(!suggested(p), 'an empty line leaves the suggestion unspent');
+        const next = pushed(p.hook(start(sid(), 'startup')));
+        assert.ok(next.endsWith('\nThe user can rank their own with /capture-preferences tools.'), next);
+        assert.ok(suggested(p), 'the start that shows it spends it');
+    }
+    finally { p.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
 });
 
 test('a seat\'s own compaction re-sends its tools line', () =>

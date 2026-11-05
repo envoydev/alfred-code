@@ -78,17 +78,19 @@ One table, no ask - it is seven rows and every other area reads against it:
 ## 3. One question - what else to show
 
 One AskUserQuestion multi-select (the tool caps a question at four options, so the areas ship in
-this FIXED grouping; AskUserQuestion has no pre-selection, so an empty pick shows all four - audit 2026-10-21
-C-T4-01); a typed answer names single area numbers:
+this FIXED grouping; AskUserQuestion has no pre-selection - audit 2026-10-21 C-T4-01 - and Claude Code reads a submit
+with nothing ticked as unanswered, R115, so showing every area is its own first option); a typed answer names single
+area numbers:
 
 ```ask
-What else to show? None ticked shows all four.
-- 'Skills + Agents + Rules (Recommended)' - areas 1-3
+What else to show?
+- 'All eight areas (Recommended)' - areas 1-8
+- 'Skills + Agents + Rules' - areas 1-3
 - 'Hooks + Plugins' - areas 4-5, where the health column lives
-- 'Environment' - area 6
-- 'Usage + Generated docs & data' - areas 7-8
+- 'Environment + Usage + Generated docs & data' - areas 6-8
 ```
- Render only the chosen areas, in this fixed order:
+ 'All eight areas' ticked beside another shows all eight; an answer naming no area is no pick - put the same ask once
+more; a second answer naming no area takes the Recommended row. Render only the chosen areas, in this fixed order:
 
 ```
  1 skills   2 agents   3 rules   4 hooks   5 plugins

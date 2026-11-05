@@ -634,6 +634,151 @@ test('guard-protected-force-push: the protected-branch matrix', () => {
   }
 });
 
+test('guard-protected-force-push: a branch held in a variable is read - a plain literal, the current branch (review 16)', () => {
+  const fp = (c) => bash('guard-protected-force-push.js', c);
+  for (const c of ['b=main; git push -f origin "$b"', 'b=main; git push -f origin $b', 'BR=develop; git push --force origin "${BR}"',
+    "b='master'; git push origin \"+$b\""]) {
+    assert.equal(fp(c), 2, `must block: ${c}`);
+  }
+  for (const c of ['b=feature/x; git push -f origin "$b"', 'for b in feat-a feat-b; do git push -f origin "$b"; done', 'b=main; git push origin "$b"']) {
+    assert.equal(fp(c), 0, `must allow: ${c}`);
+  }
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const cur = 'BR=$(git branch --show-current); git push --force origin "$BR"';
+  assert.equal(at(cur, scratchRepoOn('main')), 2, 'the current branch, on main');
+  assert.equal(at(cur, scratchRepoOn('feature/x')), 0, 'the current branch, on a feature branch');
+  for (const c of ['git push --force origin "$(git branch --show-current)"', 'git push -f origin $(git rev-parse --abbrev-ref HEAD)', 'git push origin "+`git symbolic-ref --short HEAD`"']) {
+    assert.equal(at(c, scratchRepoOn('main')), 2, `written into the push, on main: ${c}`);
+    assert.equal(at(c, scratchRepoOn('feature/x')), 0, `written into the push, on a feature branch: ${c}`);
+  }
+});
+
+test('guard-protected-force-push: a held branch: the remote left alone, the branch at its binding (review 17)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // 1: a loop over remotes keeps a bare force a bare force
+  for (const c of ['for r in origin backup; do git push --force $r; done', 'for remote in origin upstream; do git push --force-with-lease "$remote"; done']) {
+    assert.equal(at(c, onMain), 2, `bare force on main: ${c}`);
+  }
+  assert.equal(at('for r in origin backup; do git send-pack --force "$r"; done', onFeature), 2, 'a forced send-pack naming no ref');
+  // 2, 3: a loop over branches stays unread, as in 3.8.0 (reviews 17-19 each found new false blocks in reading it)
+  for (const c of ['for b in $(git branch --merged main | grep -v main); do git push origin --delete "$b"; done',
+    "for b in $(git branch -r --merged | grep -v -e main -e develop | sed 's#origin/##'); do git push origin --delete $b; done",
+    'for b in main develop; do git checkout $b && git pull origin $b; done; for b in feat-a feat-b; do git push -f origin $b; done',
+    '# never force main: for b in main develop we only pull\nfor b in $(cat branches.txt); do git push -f origin "$b"; done']) {
+    assert.equal(at(c, onFeature), 0, `must allow: ${c}`);
+  }
+  // 4: a current-branch variable is the branch at its assignment, whatever HEAD is by the push
+  for (const c of ['BR=$(git rev-parse --abbrev-ref HEAD); git checkout main; git pull; git checkout $BR; git rebase main; git push -f origin $BR',
+    'BR=$(git branch --show-current); git stash && git checkout main && git pull --ff-only && git checkout "$BR" && git stash pop && git rebase main && git push -f origin "$BR"']) {
+    assert.equal(at(c, onFeature), 0, `back on the feature branch: ${c}`);
+    assert.equal(at(c.replace(/git checkout main/, 'git checkout feature/x'), onMain), 2, `started on main: ${c}`);
+  }
+  // the spellings a held branch also takes
+  for (const c of ['BR=$(git branch --show-current 2>/dev/null); git push -f origin "$BR"', 'BR=`git branch --show-current`; git push -f origin "$BR"',
+    'B=main; git push -f origin "$B:$B"']) {
+    assert.equal(at(c, onMain), 2, `must block on main: ${c}`);
+  }
+  // 5: linear in the number of loops
+  const t0 = Date.now();
+  at(Array.from({ length: 3000 }, (_, i) => `for b in f${i} g${i}; do git push origin "$b"; done; `).join(''), onFeature);
+  assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
+});
+
+test('guard-protected-force-push: a held branch: a switch back through a variable, each git asked once (review 18)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // a held literal inside a carried script
+  for (const c of ['b=main; bash -c "git push -f origin $b"', 'b=main; eval "git push --force origin $b"']) {
+    assert.equal(at(c, onFeature), 2, `must block: ${c}`);
+  }
+  // F2: a checkout back to the branch a current-branch binding held
+  const back = 'BR=$(git branch --show-current); git checkout main && git pull && git checkout "$BR" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"';
+  assert.equal(at(back, onFeature), 0, 'back on the feature branch');
+  assert.equal(at(back.replace('git checkout main', 'git checkout feature/x'), onMain), 2, 'back on main');
+  // F3: each git asked once per name
+  const t0 = Date.now();
+  at(Array.from({ length: 40 }, (_, i) => `git checkout feat-${i} && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"`).join(' && '), onFeature);
+  assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
+});
+
+test('guard-protected-force-push: a held branch in run order, a loop name unread, an unread switch off main, no recursion blow-up (review 19)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // F1: a loop name, bound again after the loop or not, is unread
+  for (const c of ['for branch in main develop; do git fetch origin $branch; done; branch=$(git branch --show-current); git rebase origin/develop && git push --force-with-lease origin "$branch"',
+    'for b in main develop; do git checkout $b && git pull --ff-only; done; git checkout feature/x; b=feature/x; git rebase develop && git push --force-with-lease origin "$b"',
+    'push_branch() { local b="$1"; git push --force-with-lease origin "$b"; }; for b in main develop; do git fetch origin $b; done; push_branch feature/x',
+    'for b in main develop; do git fetch origin $b; done; read b < .branch; git push -f origin "$b"']) {
+    assert.equal(at(c, onFeature), 0, `must allow: ${c.slice(0, 90)}`);
+  }
+  // F2: a switch or a new branch the guard cannot read still leaves main
+  for (const c of ["for b in $(git branch --format='%(refname:short)' | grep '^feat-'); do git switch \"$b\" && git rebase main && git push --force-with-lease; done",
+    'rp() { git switch "$1" && git rebase main && git push --force-with-lease; }; rp feat-a; rp feat-b',
+    'BRANCH="fix/login-$(date +%Y%m%d)"; git switch -c "$BRANCH" && git push --force-with-lease -u origin HEAD',
+    'git checkout -b "feature/${TICKET}" && git push -f -u origin HEAD', 'b=feature/new; git switch -c "$b" && git push -f -u origin HEAD']) {
+    assert.equal(at(c, onMain), 0, `must allow: ${c.slice(0, 90)}`);
+  }
+  // F3: linear, and a carried checkout before a later binding never recurses for ever
+  const t0 = Date.now();
+  at(`${'BR=$(git branch --show-current); git checkout main && git pull && git checkout "$BR" && git rebase main; '.repeat(18)}git push --force-with-lease origin HEAD`, onFeature);
+  assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
+  assert.notEqual(at('BR=$(git branch --show-current); bash -c "git checkout \\"$BR\\""; BR=$(git branch --show-current); git push -f origin "$BR"', onMain), 1, 'no stack overflow - a crash exits 1 and lets the push through');
+});
+
+test('guard-protected-force-push: checkouts replayed in run order, the current branch read where the shell runs it (review 20)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // F1: a script file's checkouts run where the script runs, before the checkout after it
+  fs.mkdirSync(path.join(onFeature, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(onFeature, 'scripts', 'sync-main.sh'), 'BR=$(git branch --show-current); git checkout main; git pull --ff-only; git checkout "$BR"\n');
+  fs.writeFileSync(path.join(onFeature, 'scripts', 'update-main.sh'), 'git checkout main && git pull --ff-only\n');
+  for (const c of ['./scripts/sync-main.sh && git checkout main && git push -f', 'bash scripts/sync-main.sh; git checkout main; git push --force-with-lease']) {
+    assert.equal(at(c, onFeature), 2, `ends on main: ${c}`);
+  }
+  for (const c of ['./scripts/update-main.sh && git checkout feature/x && git rebase main && git push --force-with-lease', 'bash scripts/sync-main.sh && git rebase main && git push -f']) {
+    assert.equal(at(c, onFeature), 0, `ends on the feature branch: ${c}`);
+  }
+  // F2: the branch checked out where the shell stands, not where the push runs
+  for (const c of [`BR=$(git branch --show-current) && cd ${onMain} && git push -f origin "$BR"`, `git -C ${onMain} push --force-with-lease origin "$(git branch --show-current)"`]) {
+    assert.equal(at(c, onFeature), 0, `the feature branch, pushed from the main checkout: ${c}`);
+  }
+  for (const c of [`BR=$(git branch --show-current) && cd ${onFeature} && git push -f origin "$BR"`, `git -C ${onFeature} push --force-with-lease origin "$(git branch --show-current)"`]) {
+    assert.equal(at(c, onMain), 2, `main, pushed from the feature checkout: ${c}`);
+  }
+});
+
+test('guard-protected-force-push: the current branch unread past an unread checkout, a trap at exit, the work tree root (review 21)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // F1: past a checkout the guard cannot read, the current branch is unknown, as in 3.8.0
+  for (const c of ['for b in feat-a feat-b; do git checkout "$b" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"; done',
+    'while read -r b; do git checkout "$b" && BR=$(git branch --show-current) && git push -f origin "$BR"; done < branches.txt',
+    'sync() { git checkout "$1" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"; }; sync feat-a',
+    'gh pr checkout 12 && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"']) {
+    assert.equal(at(c, onMain), 0, `must allow: ${c.slice(0, 90)}`);
+  }
+  assert.equal(at('git checkout "$b"; git checkout main; git push -f origin "$(git branch --show-current)"', onMain), 2, 'a readable checkout after it');
+  // F2: a trap's action runs at exit, after the push
+  for (const c of ['ORIG=$(git branch --show-current); git checkout main; trap \'git checkout "$ORIG"\' EXIT; git pull; git push -f',
+    "git checkout main && trap 'git checkout -' EXIT && git pull && git push -f"]) {
+    assert.equal(at(c, onFeature), 2, `ends on main before the trap: ${c}`);
+  }
+  assert.equal(at("git checkout feature/x; trap 'git checkout main' EXIT; git rebase main; git push --force-with-lease", onFeature), 0, 'the trap runs after the push');
+  // F3: `$(git rev-parse --show-toplevel)` is the work tree holding the shell
+  fs.mkdirSync(path.join(onMain, 'src'), { recursive: true });
+  for (const [c, cwd] of [['cd "$(git rev-parse --show-toplevel)" && git push --force-with-lease', onMain], ['cd `git rev-parse --show-toplevel` && git push -f origin HEAD', onMain],
+    ['git -C "$(git rev-parse --show-toplevel)" push -f', onMain], ['cd "$(git rev-parse --show-toplevel 2>/dev/null)" && git push -f', path.join(onMain, 'src')]]) {
+    assert.equal(at(c, cwd), 2, `the work tree on main: ${c}`);
+  }
+  assert.equal(at('cd "$(git rev-parse --show-toplevel)" && git push --force-with-lease', onFeature), 0, 'the work tree on a feature branch');
+});
+
 test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {
   const dir = scratchRepoOn('main');
   const fp = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
@@ -5637,6 +5782,95 @@ test('guard-cross-project-write: a root whose autoMemoryDirectory holds the chil
   } finally { w.rm(); }
 });
 
+// R171: Claude Code 2.1.211+ keeps settings.local.json at the repository root; a start-folder copy (the older place) it still
+// reads is one this guard never trusts, so the denial names the move instead of the generic cross-project route.
+test('guard-cross-project-write: R171 a write into the memory folder an old start-folder settings.local.json names is refused with the move', { skip: process.platform === 'win32' && 'Claude Code keeps the file in the start folder on Windows' }, () => {
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'xp-r171-')));
+  try {
+    const home = path.join(top, 'home');
+    const acct = path.join(home, '.claude');
+    fs.mkdirSync(acct, { recursive: true });
+    const repo = path.join(top, 'repo');
+    const api = path.join(repo, 'packages', 'api');
+    fs.mkdirSync(path.join(api, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    spawnSync('git', ['init', '-q', repo]);
+    const mem = path.join(top, 'mem');
+    const sid = 'r171-guard';
+    const write = (root, file) => {
+      const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+      delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
+      delete env.ALFRED_CODE_WORKSPACE;
+      return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
+        input: JSON.stringify({ cwd: root, session_id: sid, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env });
+    };
+    const rows = () => {
+      const out = [];
+      const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (e.name === `${sid}.jsonl`) out.push(...fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))); } };
+      walk(repo);
+      return out;
+    };
+    const old = path.join(api, '.claude', 'settings.local.json');
+    const rootFile = path.join(repo, '.claude', 'settings.local.json');
+    fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: mem }));
+    const r = write(api, path.join(mem, 'x.md'));
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /in the memory folder .*mem that .*packages\/api\/\.claude\/settings\.local\.json names/);
+    assert.match(r.stderr, /Move the autoMemoryDirectory key into .*\/\.claude\/settings\.local\.json, remove it from/);
+    assert.ok(rows().some((x) => x.detail && x.detail.branch === 'stale-local-memory'), JSON.stringify(rows()));
+    // moved into the root file (untracked): the folder is the project's own memory
+    fs.rmSync(old);
+    fs.writeFileSync(rootFile, JSON.stringify({ autoMemoryDirectory: mem }));
+    assert.strictEqual(write(api, path.join(mem, 'x.md')).status, 0, 'the root file is trusted');
+    assert.strictEqual(write(repo, path.join(mem, 'x.md')).status, 0, 'a session started at the top, the root file alone');
+    // garbage JSON in the start-folder file: the generic cross-project denial, no crash
+    fs.rmSync(rootFile);
+    fs.writeFileSync(old, '{"autoMemoryDirectory": ');
+    const g = write(api, path.join(mem, 'x.md'));
+    assert.strictEqual(g.status, 2, g.stderr);
+    assert.match(g.stderr, /outside this session's project/);
+    assert.doesNotMatch(g.stderr, /names\. Claude Code 2\.1\.211/);
+  } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
+// R171's review: a tracked old file is the repository's - the generic denial, never the move; with the top's own key set,
+// the denial names the removal.
+test('guard-cross-project-write: R171 review - a tracked old file gets the generic denial; with the top setting its own key the denial names the removal', { skip: process.platform === 'win32' && 'Claude Code keeps the file in the start folder on Windows' }, () => {
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'xp-r171r-')));
+  try {
+    const home = path.join(top, 'home');
+    const acct = path.join(home, '.claude');
+    fs.mkdirSync(acct, { recursive: true });
+    const repo = path.join(top, 'repo');
+    const api = path.join(repo, 'packages', 'api');
+    fs.mkdirSync(path.join(api, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    spawnSync('git', ['init', '-q', repo]);
+    const mem = path.join(top, 'mem');
+    const write = (root, file) => {
+      const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+      delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
+      delete env.ALFRED_CODE_WORKSPACE;
+      return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
+        input: JSON.stringify({ cwd: root, session_id: 'r171-review', tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env });
+    };
+    const old = path.join(api, '.claude', 'settings.local.json');
+    fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: mem }));
+    spawnSync('git', ['add', '-f', 'packages/api/.claude/settings.local.json'], { cwd: repo });
+    const t = write(api, path.join(mem, 'x.md'));
+    assert.strictEqual(t.status, 2, t.stderr);
+    assert.match(t.stderr, /outside this session's project/);
+    assert.doesNotMatch(t.stderr, /autoMemoryDirectory key/);
+    spawnSync('git', ['rm', '-q', '--cached', 'packages/api/.claude/settings.local.json'], { cwd: repo });
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: path.join(top, 'mem2') }));
+    const r = write(api, path.join(mem, 'x.md'));
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /sets its own autoMemoryDirectory, so Claude Code ignores this one/);
+    assert.match(r.stderr, /Remove the autoMemoryDirectory key from .*packages\/api\/\.claude\/settings\.local\.json/);
+    assert.doesNotMatch(r.stderr, /Move the autoMemoryDirectory key into/);
+  } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
 test('guard-cross-project-write: an autoMemoryDirectory the account settings name outside the account dir is writable - a root, a child, the switch at 0, a renamed project folder', () => {
   const w = memWs();
   try {
@@ -5645,6 +5879,95 @@ test('guard-cross-project-write: an autoMemoryDirectory the account settings nam
       const r = w.write(rel, path.join(w.at('mem/shared'), 'MEMORY.md'), extra);
       assert.equal(r.status, 0, `${rel} ${JSON.stringify(extra)}: ${r.stderr}`);
     }
+  } finally { w.rm(); }
+});
+
+// R068 (burn-down 2026-11-04): past 200 characters every `<first 200>-*` folder was both the root's and the child's, so the
+// own-memory rule dropped them all and a child wrote into its root's memory. Claude Code names one folder per git top, its
+// hash written out here (Claude Code 2.1.318's own rule) so the test is no copy of layout.js.
+test('guard-cross-project-write: R068 past 200 characters a child\'s write into the root\'s memory is denied, before and after the folders exist; its own passes', { skip: process.platform === 'win32' && 'win32 lists every <first 200>-* folder (the typed case is unknown)' }, () => {
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'xp-long-')));
+  try {
+    const ws = path.join(top, 'w'.repeat(Math.max(1, 205 - (top.length + 1))));
+    const api = path.join(ws, 'api');
+    for (const [dir, file] of [[ws, 'child api\n'], [api, 'parent ..\n']]) {
+      fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n'); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+      spawnSync('git', ['init', '-q'], { cwd: dir });
+    }
+    const home = path.join(top, 'home');
+    const acct = path.join(home, '.claude');
+    fs.mkdirSync(acct, { recursive: true });
+    const hash = (p) => { let h = 0; for (let i = 0; i < p.length; i++) h = ((h << 5) - h + p.charCodeAt(i)) | 0; return Math.abs(h).toString(36); };
+    const mem = (p) => { const n = p.normalize('NFC').replace(/[^A-Za-z0-9]/g, '-'); assert.ok(n.length > 200); return path.join(acct, 'projects', `${n.slice(0, 200)}-${hash(p.normalize('NFC'))}`, 'memory'); };
+    const write = (file) => {
+      const env = { ...process.env, CLAUDE_PROJECT_DIR: api, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+      delete env.CLAUDE_CODE_PROJECT_DIR_NAME; delete env.ALFRED_CODE_WORKSPACE;
+      return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: api, input: JSON.stringify({ cwd: api, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env });
+    };
+    for (const made of [false, true]) {
+      if (made) for (const p of [ws, api]) fs.mkdirSync(mem(p), { recursive: true });
+      const r = write(path.join(mem(ws), 'MEMORY.md'));
+      assert.equal(r.status, 2, `folders made: ${made} - ${r.stderr}`);
+      assert.match(r.stderr, /memory of/, r.stderr);
+      assert.equal(write(path.join(mem(api), 'MEMORY.md')).status, 0, `its own memory, folders made: ${made}`);
+    }
+  } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
+// R071 (burn-down 2026-11-04): realpath fixes the case only of a folder that exists, and APFS opens either spelling.
+test('guard-cross-project-write: R071 a member memory path typed in another case is denied on darwin; the child\'s own memory path is allowed', { skip: process.platform !== 'darwin' && 'darwin-only' }, () => {
+  const w = memWs();
+  try {
+    const name = path.basename(path.dirname(w.mem('ws')));
+    assert.ok(!fs.existsSync(w.mem('ws')), 'the member memory folder is absent');
+    const typed = path.join(w.acct, 'projects', name.toUpperCase(), 'memory', 'MEMORY.md');
+    for (const r of [w.write('ws/api', typed), w.run('ws/api', { tool_name: 'Bash', tool_input: { command: `echo note >> '${typed}'` } })]) {
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.stderr, /memory of/, r.stderr);
+    }
+    assert.equal(w.write('ws/api', path.join(w.mem('ws/api'), 'MEMORY.md')).status, 0, 'its own memory');
+    const ownUpper = path.join(w.acct, 'projects', path.basename(path.dirname(w.mem('ws/api'))).toUpperCase(), 'memory', 'MEMORY.md');
+    assert.equal(w.write('ws/api', ownUpper).status, 0, 'its own memory in another case');
+  } finally { w.rm(); }
+});
+
+// R072 (burn-down 2026-11-04): a glob kept its `*` through realish, matched no member and fell to the account-dir allowance.
+test('guard-cross-project-write: R072 a glob that can match a member\'s memory is denied; a glob matching only the child\'s own is allowed', () => {
+  const w = memWs();
+  try {
+    const projects = path.join(w.acct, 'projects');
+    const root = path.basename(path.dirname(w.mem('ws')));
+    const own = path.basename(path.dirname(w.mem('ws/api')));
+    fs.mkdirSync(w.mem('ws/api'), { recursive: true });
+    const bash = (command) => w.run('ws/api', { tool_name: 'Bash', tool_input: { command } });
+    // The last one diverges from the project AT the glob, which the name bail-out used to pass whatever it reached.
+    for (const command of [`cp f '${projects}'/${root.slice(0, -2)}*/memory/`, `echo x > '${projects}'/*/memory/x.md`, `cp f '${projects}'/${root.slice(0, -1)}?/memory/MEMORY.md`, `echo x > '${w.top}'/h*/.claude/projects/${root}/memory/x.md`]) {
+      const r = bash(command);
+      assert.equal(r.status, 2, `${command}: ${r.stderr}`);
+      assert.match(r.stderr, /memory of/, r.stderr);
+    }
+    const mine = bash(`cp f '${projects}'/${own.slice(0, -1)}?/memory/x.md`);
+    assert.equal(mine.status, 0, mine.stderr);
+  } finally { w.rm(); }
+});
+
+// Final review m5: a `**` segment (bash globstar) matches any number of folders, but the segment-by-segment compare took
+// it as one, so a glob shorter than the member's memory path - `projects/**/memory/x.md` - never reached it.
+test('guard-cross-project-write: R072 a ** glob that can reach a member\'s memory is denied; one inside the child\'s own memory is allowed', () => {
+  const w = memWs();
+  try {
+    const projects = path.join(w.acct, 'projects');
+    const own = path.basename(path.dirname(w.mem('ws/api')));
+    fs.mkdirSync(w.mem('ws/api'), { recursive: true });
+    const bash = (command) => w.run('ws/api', { tool_name: 'Bash', tool_input: { command } });
+    for (const command of [`echo x > '${projects}'/**/memory/x.md`, `cp f '${w.acct}'/**/x.md`, `echo x > '${projects}'/**/**/memory/x.md`]) {
+      const r = bash(command);
+      assert.equal(r.status, 2, `${command}: ${r.stderr}`);
+      assert.match(r.stderr, /memory of/, r.stderr);
+    }
+    const mine = bash(`cp f '${projects}'/${own}/memory/**/x.md`);
+    assert.equal(mine.status, 0, mine.stderr);
   } finally { w.rm(); }
 });
 
@@ -6380,7 +6703,7 @@ test('B-m1: an MCP PowerShell or execute_shell_command tool is gated', () => {
     assert.equal(call(tool, session([rc.typed('clean it')])).status, 0, `${tool} is not this guard's`);
   // the generated core wiring reaches both tool names
   const core = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8')).plugins.find((p) => p.name === 'alfred-code');
-  const group = core.hooks.PreToolUse.find((g) => g.hooks.some((h) => /guard-desktop-exec\.js/.test(h.command)));
+  const group = core.hooks.PreToolUse.find((g) => g.hooks.some((h) => /guard-desktop-exec\.js/.test([h.command, ...(h.args || [])].join(' '))));
   for (const [tool] of TOOLS) assert.match(tool, new RegExp(group.matcher), `the core matcher takes ${tool}`);
   assert.doesNotMatch('mcp__win__PowerShellX', new RegExp(group.matcher));
 });

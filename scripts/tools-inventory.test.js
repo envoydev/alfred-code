@@ -82,6 +82,23 @@ test('local scope finds the project by its real path', () =>
     finally { s.done(); }
 });
 
+test('local scope finds the project when the account key is another spelling of its real path', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const link = path.join(s.work, 'link');
+        fs.symlinkSync(s.root, link);
+        // The key the CLI wrote is the symlinked spelling; the update runs from the project folder itself.
+        s.account({ projects: { [link]: { mcpServers: { l: { command: 'l' } } } } });
+        assert.deepStrictEqual(tools.registrations({ projectRoot: s.root, accountFile: path.join(s.config, '.claude.json') }).local.servers, { l: { command: 'l' } });
+        // A key that resolves nowhere is skipped, never thrown on.
+        s.account({ projects: { [path.join(s.work, 'gone')]: { mcpServers: { g: { command: 'g' } } } } });
+        assert.deepStrictEqual(tools.registrations({ projectRoot: s.root, accountFile: path.join(s.config, '.claude.json') }).local.servers, {});
+    }
+    finally { s.done(); }
+});
+
 test('classify', () =>
 {
     assert.deepStrictEqual(tools.classify({}, { plugin: 'alfred-navigation', adapters }), { type: 'serena', version: '2.1.0', atPin: true });

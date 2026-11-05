@@ -1,5 +1,5 @@
 'use strict';
-// The session status file (2026-10-29, spec docs/superpowers/specs/2026-10-29-session-status-file-design.md): the plan
+// The session status file (the session-status-file design of 2026-10-29): the plan
 // read's one home in history.js (openPlan, entryFor) and session-status.js, the file a main session keeps under its cwd.
 const test = require('node:test');
 const SUITE = require('./hook-test-env').isolateHookSuite();
@@ -294,8 +294,9 @@ test('a 3.3.0 file under auto-run is corrected at the next Stop', () =>
         const prompt = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
         const stop = S.onStop({ ...${P}, hook_event_name: 'Stop' }, null);
         return { prompt, stop, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
-    assert.strictEqual(got.prompt, 'unchanged', 'the prompt compares autoRun and scorer only: stale for one turn');
-    assert.deepStrictEqual([got.stop, got.s.autoRun, got.s.fullContext], ['written', true, 'compact']);
+    // R116: the prompt no longer leaves an auto-run file reading anything but compact for a turn.
+    assert.strictEqual(got.prompt, 'written', 'the prompt corrects it at once');
+    assert.deepStrictEqual([got.stop, got.s.autoRun, got.s.fullContext], ['unchanged', true, 'compact']);
 });
 
 // buildStatus calls history.entryFor when the fields carry no entry and no handoffPrompt - after the Stop's first read
@@ -305,11 +306,102 @@ test('the second read\'s autoRun decides fullContext', () =>
     for (const [from, to, want] of [[false, true, 'compact'], [true, false, 'fresh-session']])
     {
         const { root, P, FILE } = sonnetSession();
-        const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: from, scorer: null }, { fullContext: from ? 'compact' : 'fresh-session', model: null })}
-            const entryFor = () => { fs.writeFileSync(${FILE}, JSON.stringify({ ...JSON.parse(fs.readFileSync(${FILE}, 'utf8')), autoRun: ${to} })); return null; };
-            const r = S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, {}, { when: 'changed', deps: { history: { entryFor } } });
-            return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
+        // R117: the rebuild carries the first build's handoffPrompt (entryFor read once) and the second read's scorer.
+        const b = writePlan(root, 'b.md', '# B\n\nResume: task 4 - write the router\n');
+        records(root, [{ session: 'r2', branch: 'feat/x', plan: b }]);
+        const scorer = { on: true, level: 80, rounds: 2 };
+        const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: from, scorer: { on: false, level: 70, rounds: 1 } }, { fullContext: from ? 'compact' : 'fresh-session', model: null })}
+            let calls = 0;
+            const entryFor = () => { calls++; fs.writeFileSync(${FILE}, JSON.stringify({ ...JSON.parse(fs.readFileSync(${FILE}, 'utf8')), autoRun: ${to}, scorer: ${JSON.stringify(scorer)} })); return { branch: 'feat/x' }; };
+            const history = { ...require(${JSON.stringify(path.join(HOOKS, 'history.js'))}), entryFor };
+            const r = S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, {}, { when: 'changed', deps: { history } });
+            return { r, calls, want: S.handoffPrompt(${JSON.stringify(root)}, 'feat/x', {}), s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
         assert.deepStrictEqual([got.r, got.s.autoRun, got.s.fullContext], ['written', to, want], `autoRun ${from} then ${to}`);
+        assert.ok(got.want, 'the plan gives a handoff prompt');
+        assert.strictEqual(got.s.handoffPrompt, got.want, 'the handoff prompt is carried into the rebuild');
+        assert.deepStrictEqual(got.s.scorer, scorer, 'the second read\'s scorer');
+        assert.strictEqual(got.calls, 1, 'entryFor is read once');
+    }
+});
+
+// R116 (burn-down 2026-11-04): the prompt's early return compared autoRun and scorer only.
+test('R116: a prompt over a file reading autoRun true and not compact rewrites it compact', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: true, scorer: null }, { fullContext: 'fresh-session' })}
+        const r = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
+    assert.deepStrictEqual([got.r, got.s.fullContext], ['written', 'compact']);
+});
+
+// R137 (burn-down 2026-11-04): guard-answer ran history-session's stand-down on every prompt, before the compare.
+test('R137: the prompt\'s stand-down runs only when a write is due', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const got = inChild({ CLAUDE_PROJECT_DIR: root }, `let n = 0; const gate = () => { n++; return true; };
+        const p = { ...${P}, hook_event_name: 'UserPromptSubmit' };
+        const a = S.onPrompt(p, { autoRun: false, scorer: null }, gate); const na = n;
+        const b = S.onPrompt(p, { autoRun: false, scorer: null }, gate); const nb = n;
+        const c = S.onPrompt({ ...p, session_id: 's2' }, { autoRun: false, scorer: null }, () => false);
+        return [a, na, b, nb, c, require('fs').existsSync(${FILE}.replace('s1.json', 's2.json'))];`);
+    assert.deepStrictEqual(got, ['written', 1, 'unchanged', 1, 'skipped', false]);
+});
+
+// R118 (burn-down 2026-11-04): the prelude's answer went into the file as given.
+test('R118: a truthy non-boolean autoRunFor reads true, a falsy one false', () =>
+{
+    const root = project();
+    for (const [given, want] of [['yes', true], [1, true], [0, false], ['', false], [null, false]])
+        assert.strictEqual(S().buildStatus({ session_id: 's1', cwd: root }, {}, { env: {}, prelude: { autoRunFor: () => given } }).autoRun, want, JSON.stringify(given));
+});
+
+// R135 (burn-down 2026-11-04): the prompt's write renamed over a handoffPrompt a Stop wrote after its read.
+test('R135: a prompt\'s write keeps a handoffPrompt written between its read and its rename', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: false, scorer: null, handoffPrompt: 'Read OLD' }, {})}
+        const fresh = { ...F, use(p) { fs.writeFileSync(${FILE}, JSON.stringify({ ...JSON.parse(fs.readFileSync(${FILE}, 'utf8')), handoffPrompt: 'Read NEW' })); return F.use(p); } };
+        const r = S.writeStatus({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null }, { when: 'modes', deps: { fresh } });
+        return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
+    assert.deepStrictEqual([got.r, got.s.autoRun, got.s.handoffPrompt], ['written', true, 'Read NEW']);
+});
+
+// R136 (burn-down 2026-11-04): the Stop carried a hand-edited "false" string, which read as true.
+test('R136: a hand-edited "false" autoRun and a string scorer read false and null at the next Stop', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: false, scorer: null }, { autoRun: 'false', scorer: 'on' })}
+        const r = S.onStop({ ...${P}, hook_event_name: 'Stop' }, null);
+        return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
+    assert.deepStrictEqual([got.r, got.s.autoRun, got.s.scorer], ['written', false, null]);
+    assert.notStrictEqual(got.s.fullContext, 'compact');
+});
+
+// R134 (burn-down 2026-11-04): the folder list was read with no regular-file test or size cap.
+test('R134: the folder list as a link to a FIFO, or a large file, reads as none - within a second', () =>
+{
+    const cases = [['a large file', (list) => fs.writeFileSync(list, JSON.stringify(Array.from({ length: 5000 }, (_, i) => `/x/${'y'.repeat(20)}${i}`)))]];
+    if (process.platform !== 'win32') cases.push(['a link to a FIFO', (list) => { const fifo = path.join(path.dirname(list), 'pipe'); assert.strictEqual(spawnSync('mkfifo', [fifo]).status, 0); fs.symlinkSync(fifo, list); }]);
+    for (const [why, make] of cases)
+    {
+        const root = project();
+        const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
+        fs.mkdirSync(path.dirname(list), { recursive: true });
+        make(list);
+        const p = JSON.stringify({ session_id: 's1', cwd: root, hook_event_name: 'SessionStart' });
+        const code = `const S = require(${JSON.stringify(STATUS)}); const fs = require('fs');
+            const r = S.writeStatus(${p}, { autoRun: false, scorer: null, handoffPrompt: null }, {});
+            const written = JSON.parse(fs.readFileSync(${JSON.stringify(list)}, 'utf8'));
+            const n = S.pruneStatus(${JSON.stringify(root)}, ${JSON.stringify(root)}, 's1', Date.now(), {});
+            process.stdout.write(JSON.stringify({ r, n, list: written }));`;
+        const t0 = Date.now();
+        const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 5000, env: { ...scrubbed(process.env), HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root } });
+        assert.ok(!r.error, `${why}: ${r.error}`);
+        assert.strictEqual(r.status, 0, `${why}: ${r.stderr}`);
+        assert.ok(Date.now() - t0 < 3000, `${why}: ${Date.now() - t0} ms`);
+        const got = JSON.parse(r.stdout);
+        assert.strictEqual(got.r, 'written', why);
+        assert.deepStrictEqual(got.list, [root.split(path.sep).join('/')], `${why}: the list holds this base alone`);
     }
 });
 

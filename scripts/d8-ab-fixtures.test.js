@@ -1,5 +1,5 @@
 'use strict';
-// The D8 billed A/B's fixture builder (plan docs/superpowers/plans/2026-11-03-d8-ab.md, Tasks 2-3): every task.json
+// The D8 billed A/B's fixture builder (the D8 A/B plan of 2026-11-03, its fixture tasks): every task.json
 // is complete, a `from` task inherits, no fixture file is a test the repo runs, and `build` never lays `reference/`.
 // Offline and spawn-free, so it passes on every CI OS; the real build and check are the plan's own free steps.
 const test = require('node:test');

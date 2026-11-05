@@ -75,7 +75,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     the hooks' record list is NOT extended, so they stay down until that update writes the stamp.
   - A `--selection` file on INSTALL is closed from its own picks before it is applied (`selection.closeSelection`, each
     added line logged `selection: required: ...`; E-batch O4: a hand-written partial one waited for the next update's
-    closure) - the walk's own selection gains nothing. `--github-cli`, the old spelling of `--forge-cli`, reads as it with
+    closure) - the walk's own selection gains nothing. The locked always-on rules and skills join it too (`adoptAlways`,
+    `label: 'selection'`, `coreOn: false` - an always seat stays the file's word), so the first update adopts nothing more
+    (burn-down Task 5's finding: a partial file left 149 files to that update). `--github-cli`, the old spelling of `--forge-cli`, reads as it with
     one note line (E-batch fn-11).
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
@@ -242,7 +244,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   members, and the stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits; in a linked
   child it syncs `permissions.additionalDirectories` to the ancestor docs roots (none past an `ignore docs root` here or
   in a nearer member) and `permissions.deny` to an `Edit(//<path>/**)` row over each of them and over every member's
-  memory folder that is not the child's own (`ancestorAccess`, `editDenyRule`, `//c/...` on Windows; release 3); then
+  memory folder that is not the child's own (`ancestorAccess`, `editDenyRule`, `//c/...` on Windows; release 3 - such a
+  deny matches the requested path or the file it resolves to, and on macOS and Linux one written through a symlinked
+  folder matches its real location too from Claude Code 2.1.268: the permissions docs, 'Symlinks', G4); then
   `mcpHint` prints one `mcp <name>:` line per member's local-scope server this project cannot see - a hint, never a
   copy (D8; an earlier release's copies stay as the user's registrations, only their record goes). Joining prunes
   the child's own seeds a member answers (`pruneOnJoin`); leaving - configure's leave, or the parent's uninstall

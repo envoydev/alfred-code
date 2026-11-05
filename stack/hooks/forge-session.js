@@ -46,7 +46,7 @@ const watchSetting = (env) => String(envOf(env, 'FORGE_WATCH') || '').trim().toL
 const partOff = (part, env) => !!prelude && prelude.partOff('forge-session', part, env);
 
 const LINE_MAX = 200;
-const hints = () => { try { return forge.loadLexicon(null).hints || {}; } catch { return {}; } };
+const hints = (root = null, env = process.env) => { try { return forge.loadLexicon(root, env).hints || {}; } catch { return {}; } };
 const readJson = (file) => { try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; } };
 
 // The host a remote URL names: scp form (git@host:path), a URL (ssh://, https://), or a local path ('local').
@@ -76,10 +76,12 @@ function clisOnPath(names, env) {
   return names.filter((name) => dirs.some((dir) => exts.some((ext) => runnable(path.join(dir, name + ext)) || runnable(path.join(dir, name + ext.toLowerCase())))));
 }
 
-// { host, kind, remote, clis, mcp, watch: 'on' | 'off' | 'loud-only' | 'publish-only', why } for the repo at `cwd`.
+// { host, kind, remote, clis, mcp, watch: 'on' | 'off' | 'loud-only' | 'publish-only', why, root } for the repo at `cwd`; `root` is
+// the project whose vocabulary was read, so cliPlan reads the same one.
 function profile(cwd, env = process.env) {
-  const h = hints();
   const root = env.CLAUDE_PROJECT_DIR || forge.gitOut(cwd, ['rev-parse', '--show-toplevel']) || cwd;
+  // The vocabulary of the project profiled (its overlay may name a self-hosted forge - R013), not this process's folder.
+  const h = hints(root, env);
   const remote = forge.remoteOf(cwd);
   const url = remote ? forge.gitOut(cwd, ['remote', 'get-url', remote]) : null;
   const host = remote ? hostOf(url) : null;
@@ -91,7 +93,7 @@ function profile(cwd, env = process.env) {
   if (partOff('watch', env)) { watch = 'off'; why = 'switched off'; }
   else if (!remote) { watch = 'off'; why = 'no remote'; }
   else if (watchSetting(env) === 'loud-only' || watchSetting(env) === 'publish-only') watch = watchSetting(env);
-  return { host, kind: remote ? kindOf(host, h.kinds) : null, remote, clis, mcp, watch, why };
+  return { host, kind: remote ? kindOf(host, h.kinds) : null, remote, clis, mcp, watch, why, root };
 }
 
 // The line, at most LINE_MAX chars: long lists keep their first names and count the rest.
@@ -111,9 +113,10 @@ function profileLine(p) {
 
 // The forge CLI a profile needs, and how it gets on PATH (--forge-cli, init's ask, the prerequisite check): `none` - no CLI
 // is known for this forge or there is no remote; `present` - already on PATH; `brew` - Homebrew on macOS installs it,
-// then runs `after` (az's devops extension); `manual` - what the user installs by hand, `need` naming it.
-function cliPlan(p, { platform = process.platform, hasBrew = false } = {}) {
-  const h = hints();
+// then runs `after` (az's devops extension); `manual` - what the user installs by hand, `need` naming it. The vocabulary is
+// the profiled project's (`p.root`, its overlay - R013), never this process's folder (review 2026-11-05, #8).
+function cliPlan(p, { platform = process.platform, hasBrew = false, env = process.env } = {}) {
+  const h = hints(p && p.root, env);
   const cli = p && p.remote ? (h.clis || {})[p.kind] : null;
   if (!cli) return { action: 'none' };
   if ((p.clis || []).includes(cli)) return { action: 'present', cli };
@@ -286,34 +289,39 @@ function actTarget(ref, remote) {
 // ref; a merge also covers the deletion of the branch its head sat on (deleted on merge). A push naming refs it does not
 // list (`all`: --all, --tags, --mirror) covers every move. An act naming no ref lands ONE move: the one at its head, else
 // the one loud move it could be - with several, it explains none of them and says so (`ambiguous`). An ASKED act, or one
-// whose call PostToolUse never confirmed, covers nothing. `used`: the armed acts that explained a move.
+// whose call PostToolUse never confirmed, covers nothing. `used`: the armed acts that explained a move. `strict` (another
+// session's acts, R020): an act naming no ref lands only the move at its head, a push that carries its head lands only that
+// tip on its ref (a different tip landing there is still loud), and nothing is used up.
 const ACT_WORD = { 'change.merge': 'merge', 'release.write': 'release', 'branch.write': 'branch write' };
-function explain(moves, acts, remote, ctx) {
-  const { MERGE, RELEASE } = forge.CONCEPTS;
+function explain(moves, acts, remote, ctx, { strict = false } = {}) {
+  const { MERGE, RELEASE, BRANCH } = forge.CONCEPTS;
   const open = new Set(moves);
   const used = new Set();
+  const by = new Map();
   const ambiguous = [];
   const atHead = (a, sha) => { const h = String(a.head || ''); return !!sha && h.length >= 7 && (sha.startsWith(h) || h.startsWith(sha)); };
   const fits = (a, m) => (a.concept === RELEASE ? isTag(m.ref) : a.concept === MERGE ? !isTag(m.ref) : true);
-  const take = (a, m) => { open.delete(m); if (a.armed && a.id) used.add(a.id); };
+  const take = (a, m) => { open.delete(m); by.set(m, a); if (!strict && a.armed && a.id) used.add(a.id); };
+  const lands = (a, m) => !strict || a.concept !== BRANCH || !a.head || atHead(a, m.to);
   const loose = [];
   for (const a of (acts || []).filter((x) => x && !x.asked && x.confirmed !== false)) {
-    if (a.all) { for (const m of [...open]) take(a, m); continue; }
+    if (a.all) { if (!strict) for (const m of [...open]) take(a, m); continue; }
     if (a.concept === MERGE) for (const m of [...open]) if (!m.to && !isTag(m.ref) && atHead(a, m.from)) take(a, m);
     const target = actTarget(a.ref, remote);
     if (target === null) { loose.push(a); continue; }
-    for (const m of [...open]) if (short(m.ref) === target && fits(a, m)) take(a, m);
+    for (const m of [...open]) if (short(m.ref) === target && fits(a, m) && lands(a, m)) take(a, m);
   }
   for (const a of loose) {
     const can = [...open].filter((m) => m.to && fits(a, m) && (a.concept !== RELEASE || !m.from));
     const hit = can.find((m) => atHead(a, m.to));
     const loud = can.filter((m) => tierOf(m, ctx) === 'loud');
     if (hit) take(a, hit);
+    else if (strict) continue;
     else if (loud.length === 1) take(a, loud[0]);
     else if (loud.length > 1) ambiguous.push({ act: a, moves: loud });
     else if (can.length === 1) take(a, can[0]);
   }
-  return { open: [...open], used, ambiguous: ambiguous.map((x) => ({ ...x, moves: x.moves.filter((m) => open.has(m)) })).filter((x) => x.moves.length > 1) };
+  return { open: [...open], used, by, ambiguous: ambiguous.map((x) => ({ ...x, moves: x.moves.filter((m) => open.has(m)) })).filter((x) => x.moves.length > 1) };
 }
 function moveText(m) {
   const name = isTag(m.ref) ? `tag ${short(m.ref)}` : short(m.ref);
@@ -321,6 +329,8 @@ function moveText(m) {
   if (!m.to) return `${name} was deleted (was ${s7(m.from)})`;
   return `${name} moved ${s7(m.from)}..${s7(m.to)}`;
 }
+// The spec's line (R020): the move, then the act of the other session that explains it.
+const otherLine = (m, a) => `Ref watch: ${moveText(m)} by another session's gated ${(a && ACT_WORD[a.concept]) || 'act'}.`;
 const loudLine = (m, ctx, when = 'this turn') => `Ref watch: ${moveText(m)} ${when}; no gated act explains it - if a tool in this session did it, it bypassed the gate${m.to && ctx.local.has(m.to) ? ` (${s7(m.to)} is a commit in this checkout)` : ''}.`;
 const SUMMARY_NAMES = 8;
 function summaryLine(moves, lead) {
@@ -330,13 +340,17 @@ function summaryLine(moves, lead) {
   return `Ref watch: ${lead}: ${shown} - teammates or this session.`;
 }
 // The loud and summary moves among `moves` that no act covers, the line naming each act that could be one of several, and
-// the armed acts used up.
-function judge(cwd, remote, state, prefsRoot, moves, acts) {
+// the armed acts used up. `byOthers`: the loud moves this session's acts leave that another session's confirmed act
+// explains (R020), each `{ m, a }` with the act that explains it - told in one line naming the act, never a block.
+function judge(cwd, remote, state, prefsRoot, moves, acts, others = []) {
   const ctx = tierContext(cwd, remote, state, prefsRoot, moves);
   const { open, used, ambiguous } = explain(moves, acts, remote, ctx);
-  const loud = open.filter((m) => tierOf(m, ctx) === 'loud');
+  const loudAll = open.filter((m) => tierOf(m, ctx) === 'loud');
+  const theirs = loudAll.length && others.length ? explain(loudAll, others, remote, ctx, { strict: true }) : null;
+  const left = theirs ? new Set(theirs.open) : null;
+  const byOthers = left ? loudAll.filter((m) => !left.has(m)).map((m) => ({ m, a: theirs.by.get(m) })) : [];
   const notes = ambiguous.map((x) => `Ref watch: one gated ${ACT_WORD[x.act.concept] || 'act'} this turn explains at most one of: ${x.moves.map((m) => short(m.ref)).join(', ')}.`);
-  return { ctx, loud, summary: open.filter((m) => !loud.includes(m)), used, notes };
+  return { ctx, loud: loudAll.filter((m) => !byOthers.some((x) => x.m === m)), summary: open.filter((m) => !loudAll.includes(m)), used, notes, byOthers };
 }
 // The acts that can explain a move now: this cycle's (since the baseline, a second of clock slack), and an armed merge from
 // any earlier turn of the session until it explains one landing - an auto-merge lands when its checks pass.
@@ -344,6 +358,22 @@ function windowActs(root, session, state, env) {
   const consumed = new Set((state && state.consumed) || []);
   const since = Number((state && state.at) || 0) - 1000;
   return forge.readActs(root, session, env).filter((a) => Number(a.at) >= since || (a.armed && a.id && !consumed.has(a.id)));
+}
+// The acts of this repo's OTHER sessions that can explain a move now (R020): confirmed and aimed (never asked, never
+// all-refs), inside this cycle's window; only the OTHER_LEDGERS newest ledgers by mtime, so a busy repo costs a bounded
+// read. A ledger that cannot be read explains nothing.
+const OTHER_LEDGERS = 20;
+function otherActs(root, session, state, env) {
+  try {
+    const since = Number((state && state.at) || 0) - 1000;
+    const mine = forge.actsPath(root, session, env);
+    const dir = path.dirname(mine);
+    const files = fs.readdirSync(dir).filter((n) => /^ACTS-[A-Za-z0-9_-]+\.jsonl$/.test(n) && n !== path.basename(mine))
+      .map((n) => { try { return { n, t: Math.round(fs.statSync(path.join(dir, n)).mtimeMs) }; } catch { return null; } })
+      .filter((x) => x && x.t >= since).sort((a, b) => b.t - a.t).slice(0, OTHER_LEDGERS);
+    return files.flatMap((x) => forge.readActs(root, x.n.slice('ACTS-'.length, -'.jsonl'.length), env)
+      .filter((a) => a && a.confirmed && !a.asked && !a.all && Number(a.at) >= since));
+  } catch { return []; }
 }
 const consumedAfter = (state, used) => [...new Set([...((state && state.consumed) || []), ...(used || [])])].slice(-200);
 async function baselineOf(root, session, env, waitMs) {
@@ -428,7 +458,7 @@ function turnCalls(file) {
 // boundary - anything else, a script or a build included, makes the Stop diff.
 const READ_PROGRAMS = new Set(['ls', 'cat', 'head', 'tail', 'grep', 'rg', 'egrep', 'fgrep', 'wc', 'pwd', 'echo', 'printf', 'stat',
   'which', 'type', 'file', 'diff', 'sort', 'uniq', 'cut', 'tr', 'basename', 'dirname', 'realpath', 'readlink', 'tree', 'jq',
-  'cd', 'pushd', 'popd', 'true', 'false', 'test', '[', 'date', 'du', 'df', 'find',
+  'cd', 'pushd', 'popd', 'true', 'false', 'test', '[', 'date', 'du', 'df', 'find', 'sed', 'awk', 'gawk',
   'get-childitem', 'gci', 'dir', 'get-content', 'gc', 'select-string', 'sls', 'get-item', 'get-location', 'test-path',
   'write-output', 'write-host', 'measure-object', 'select-object', 'sort-object', 'format-table', 'format-list',
   'out-string', 'resolve-path', 'split-path', 'join-path']);
@@ -437,6 +467,90 @@ const GIT_LOCAL = new Set(['status', 'diff', 'log', 'show', 'rev-parse', 'ls-fil
   'symbolic-ref', 'branch', 'tag', 'add', 'commit', 'restore', 'checkout', 'switch', 'stash', 'reset', 'merge', 'rebase',
   'cherry-pick', 'revert', 'config', 'remote', 'init', 'clone', 'worktree', 'mv', 'rm', 'clean', 'apply', 'format-patch',
   'bisect', 'notes', 'gc', 'fsck', 'pull', 'version', 'help', 'check-ignore', 'count-objects', 'range-diff', 'whatchanged']);
+// R011: sed and awk are reads only in a form that can neither write a file nor run a command. A letter left in a sed
+// script once every s / y body and every regex address is taken out is a command letter (or label or text - over-counted,
+// never under): e runs a command, w / W write a file.
+function sedCommands(script) {
+  const s = String(script);
+  let out = '';
+  let i = 0;
+  const skip = (d, parts) => { for (let n = 0; n < parts && i < s.length; i += 1) { if (s[i] === '\\') { i += 1; continue; } if (s[i] === d) n += 1; } };
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '/') { i += 1; skip('/', 1); continue; }
+    if (c === '\\' && i + 1 < s.length) { const d = s[i + 1]; i += 2; skip(d, 1); continue; }
+    if ((c === 's' || c === 'y') && i + 1 < s.length && !/[\s;}\\]/.test(s[i + 1])) { const d = s[i + 1]; out += c; i += 2; skip(d, 2); continue; }
+    out += c; i += 1;
+  }
+  return out;
+}
+// R011's review: a long option is a read only on these lists - GNU getopt takes an abbreviation (`--expr=`), and an option
+// that takes a value must not have its value judged as the script. Anything else makes the turn a non-read.
+const SED_SAFE_LONG = new Set(['--quiet', '--silent', '--debug', '--posix', '--regexp-extended', '--separate', '--sandbox', '--unbuffered', '--null-data', '--zero-terminated', '--binary', '--follow-symlinks', '--help', '--version']);
+const AWK_SAFE_LONG = new Set(['--characters-as-bytes', '--traditional', '--copyright', '--help', '--lint', '--lint-old', '--bignum', '--use-lc-numeric', '--non-decimal-data', '--optimize', '--no-optimize', '--posix', '--re-interval', '--sandbox', '--version', '--csv']);
+// gawk short letters that neither take a program file, write a file nor run anything; v and F take a value, e a program.
+const AWK_SAFE_SHORT = 'bcCghMnNOPrsStV';
+function sedIsRead(argv) {
+  const args = (argv || []).map(String);
+  const scripts = [];
+  let first = null;
+  let named = false;
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (/^--(?:in-place|file)(?:=|$)/.test(a)) return false;
+    if (a === '-e' || a === '--expression') { named = true; if (i + 1 < args.length) scripts.push(args[++i]); continue; }
+    if (a.startsWith('--expression=')) { named = true; scripts.push(a.slice('--expression='.length)); continue; }
+    if (a === '--') { if (first === null && i + 1 < args.length) first = args[i + 1]; break; }
+    if (a === '--line-length') { i += 1; continue; }
+    if (a.startsWith('--line-length=')) continue;
+    if (a.startsWith('--')) { if (SED_SAFE_LONG.has(a)) continue; return false; }
+    if (/^-./.test(a)) {
+      const body = a.slice(1);
+      for (let k = 0; k < body.length; k += 1) {
+        const ch = body[k];
+        if (ch === 'i' || ch === 'I' || ch === 'f') return false;
+        if (ch === 'e') { named = true; const rest = body.slice(k + 1); if (rest) scripts.push(rest); else if (i + 1 < args.length) scripts.push(args[++i]); break; }
+        // GNU -l N takes a value, BSD -l none: the next word is judged as a script either way
+        if (ch === 'l') { if (!body.slice(k + 1) && i + 1 < args.length) scripts.push(args[++i]); break; }
+      }
+      continue;
+    }
+    if (first === null) first = a;
+  }
+  if (!named && first !== null) scripts.push(first);
+  return scripts.every((x) => !/[ewW]/.test(sedCommands(x)));
+}
+// awk: no program file, include, extension load or exec; no program text that runs a command (system(, a pipe), writes
+// a file (>), or calls a function by name (gawk's @f()).
+function awkIsRead(argv) {
+  const args = (argv || []).map(String);
+  const progs = [];
+  let first = null;
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === '--') { if (first === null && i + 1 < args.length) first = args[i + 1]; break; }
+    if (a === '--source') { if (i + 1 < args.length) progs.push(args[++i]); continue; }
+    if (a.startsWith('--source=')) { progs.push(a.slice('--source='.length)); continue; }
+    if (a === '--assign' || a === '--field-separator') { i += 1; continue; }
+    if (a.startsWith('--')) { if (/^--(?:assign|field-separator)=/.test(a) || AWK_SAFE_LONG.has(a.split('=')[0])) continue; return false; }
+    if (/^-./.test(a)) {
+      // a short cluster, letter by letter: f, i, l, E, W, d, o, p, D or an unknown letter is no read; v / F end it with
+      // their value (here or the next word), e with its program, L with its optional level
+      const body = a.slice(1);
+      for (let k = 0; k < body.length; k += 1) {
+        const ch = body[k];
+        if (ch === 'v' || ch === 'F') { if (!body.slice(k + 1)) i += 1; break; }
+        if (ch === 'e') { const rest = body.slice(k + 1); if (rest) progs.push(rest); else if (i + 1 < args.length) progs.push(args[++i]); break; }
+        if (ch === 'L') break;
+        if (!AWK_SAFE_SHORT.includes(ch)) return false;
+      }
+      continue;
+    }
+    if (first === null) first = a;
+  }
+  const text = progs.length ? progs : first !== null ? [first] : [];
+  return !text.some((p) => /system\s*\(|\||>|@/.test(p));
+}
 function shellIsRead(command, cwd) {
   let sw;
   try { sw = require(path.join(__dirname, 'shell-writes.js')); } catch { return false; }
@@ -452,6 +566,8 @@ function shellIsRead(command, cwd) {
     if (name === 'git' || forgeReads.has(w.at)) continue;
     if (!READ_PROGRAMS.has(name)) return false;
     if (name === 'find' && (w.argv || []).some((a) => /^-(?:exec|execdir|ok|okdir|delete)$/.test(String(a)))) return false;
+    if (name === 'sed' && !sedIsRead(w.argv)) return false;
+    if ((name === 'awk' || name === 'gawk') && !awkIsRead(w.argv)) return false;
   }
   return true;
 }
@@ -505,12 +621,15 @@ async function postCall(payload, env) {
   const reported = state.reported || {};
   const moves = diffRefs(state.refs, now.refs).filter((m) => reported[m.ref] !== (m.to || ''));
   // An armed act is used up at the Stop, which judges these moves again.
-  const { ctx, loud, notes } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env));
-  if (!loud.length) return told ? { systemMessage: told } : null;
-  for (const m of loud) reported[m.ref] = m.to || '';
+  const { ctx, loud, notes, byOthers } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env), otherActs(root, session, state, env));
+  const quiet = [...byOthers.map((x) => otherLine(x.m, x.a)), told].filter(Boolean);
+  if (!loud.length && !byOthers.length) return told ? { systemMessage: told } : null;
+  // Told once: the Stop does not repeat a move this window reported or explained by another session.
+  for (const m of [...loud, ...byOthers.map((x) => x.m)]) reported[m.ref] = m.to || '';
   writeJson(file, { ...state, reported });
+  if (!loud.length) return { systemMessage: quiet.join('\n') };
   const when = state.skipped ? sinceLast(state.at) : 'right after this call';
-  return { decision: 'block', reason: `${[...loud.map((m) => loudLine(m, ctx, when)), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.`, ...(told ? { systemMessage: told } : {}) };
+  return { decision: 'block', reason: `${[...loud.map((m) => loudLine(m, ctx, when)), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.`, ...(quiet.length ? { systemMessage: quiet.join('\n') } : {}) };
 }
 
 // Work still running when the turn ends can move a ref after this diff, so the next Stop diffs too - the Stop input's
@@ -538,6 +657,7 @@ async function stopTurn(payload, env) {
   if (ran && held && marked && !(marked.skipped && marked.dirty)) writeJson(sessionFile(root, session, env), { ...marked, skipped: true, dirty: true });
   const loudLines = [...((note && note.loud) || [])];
   const notes = [];
+  const quiet = [];
   if (note && note.summary && !loudOnly(env)) notes.push(note.summary);
   if (ran && !held) {
     const state = await baselineOf(root, session, env, 1500);
@@ -551,9 +671,10 @@ async function stopTurn(payload, env) {
     } else {
       const reported = state.reported || {};
       const moves = diffRefs(state.refs, now.refs).filter((m) => reported[m.ref] !== (m.to || ''));
-      const { ctx, loud, summary, used, notes: unsure } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env));
+      const { ctx, loud, summary, used, notes: unsure, byOthers } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env), otherActs(root, session, state, env));
       const when = state.skipped ? sinceLast(state.at) : 'this turn';
       loudLines.push(...loud.map((m) => loudLine(m, ctx, when)), ...unsure);
+      quiet.push(...byOthers.map((x) => otherLine(x.m, x.a)));
       const line = loudOnly(env) ? null : summaryLine(summary, `other branches moved ${when}`);
       if (line) notes.push(line);
       writeJson(sessionFile(root, session, env), { ...now, head: state.head || now.head, reported: {}, consumed: consumedAfter(state, used), dirty: live });
@@ -563,7 +684,7 @@ async function stopTurn(payload, env) {
   }
   const told = pauseLine(root, session, env);
   const ssh = ran && !held && watchSetting(env) !== 'publish-only' ? sshNotice(cwd, remote, root, env, !told) : null;
-  const forUser = [told, ssh].filter(Boolean);
+  const forUser = [...quiet, told, ssh].filter(Boolean);
   if (loudLines.length && !(prelude && prelude.stopHeldThisCycle('forge-session', payload, env))) {
     if (prelude) prelude.markStopHeld('forge-session', payload, env);
     return { decision: 'block', reason: [...loudLines, ...notes, 'Tell the user what moved before anything else; do not try to undo it unless they ask.'].join('\n'), ...(forUser.length ? { systemMessage: forUser.join('\n') } : {}) };

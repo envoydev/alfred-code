@@ -41,6 +41,7 @@ plan <docs-path>/work/plans/csv.md:
 ```
 
 Invoked with no request and no plan to resume, the one reply is an ask for the task - nothing runs before its answer.
+A fresh cycle (no plan stamp) with `left <feature>` above 0 finds an earlier run's notes under the same name: fold what outlives it into `## Decisions`, purge, report `stale notes purged: <names>`.
 
 ## The stop contract
 

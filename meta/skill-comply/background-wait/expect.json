@@ -23,7 +23,7 @@
     ] },
     "whole_log_read": { "any": [
       { "tool": "Read", "field": "file_path", "text_match": "\\.(log|out|output|txt)$" },
-      { "tool": "Bash", "field": "command", "text_match": "(^|[;&|(]\\s*)cat\\s+[^|;&<>]*\\.(log|out|output|txt)\\s*($|[;&)])" }
+      { "tool": "Bash", "field": "command", "text_match": "(^|[;&|(]\\s*)cat\\s+[\"']?[^|;&<>\"']*\\.(log|out|output)[\"']?(\\s+2>\\s*\\S+)?\\s*($|[;&)]|\\|\\|)|(^|[;&|]\\s*|(^|[^$])\\(\\s*)cat\\s+[\"']?[^|;&<>\"']*\\.txt[\"']?(\\s+2>\\s*\\S+)?\\s*($|[;&)]|\\|\\|)" }
     ] },
     "name_grep": { "tool": "Bash", "field": "command", "text_match": "\\bpgrep\\s+(-\\w+\\s+)*(node|npm)\\b|\\bps\\b[^|\\n]*\\|\\s*grep\\s+(-\\w+\\s+)*['\"]?(node|npm)\\b" }
   },

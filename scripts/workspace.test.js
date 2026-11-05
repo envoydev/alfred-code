@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const ws = require('./install/workspace.js');
+const { samePath } = require('./test-paths.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -278,6 +279,19 @@ test('chain follows parent lines nearest first and needs the back-reference', ()
     const cut = ws.chain(at('ws/api/tool'), { env: env0 });
     assert.deepStrictEqual(cut.members.map((m) => m.rel), ['..']);
     assert.deepStrictEqual(cut.notes, ['!! workspace: parent .. in ../.alfred/workspace ignored - ../.. does not list this folder as a child']);
+});
+
+test('R062: a child name holding a double space or a tab round-trips', () =>
+{
+    for (const name of ['a  b', 'a\tb', 'x/a  b'])
+    {
+        const text = `role root\nchild ${name}\n`;
+        assert.deepStrictEqual(ws.viewOf(ws.parseWorkspace(text)).children, [name], JSON.stringify(name));
+        assert.strictEqual(ws.renderWorkspace(ws.parseWorkspace(text)), text);
+    }
+    assert.deepStrictEqual(ws.viewOf(ws.parseWorkspace('child   api\n')).children, ['api'], 'the run of separators after the keyword is not part of the name');
+    const at = tree({ 'ws': { stamp: true, file: 'child a  b\n' }, 'ws/a  b': { stamp: true, file: 'parent ..\n' } });
+    assert.deepStrictEqual(ws.chain(at('ws/a  b'), { env: env0 }).members.map((m) => m.rel), ['..'], 'the back-reference matches the real folder');
 });
 
 test('chain reads the project\'s own file from ownDataRoot', () =>
@@ -840,7 +854,9 @@ test('AC1: the file round-trips role root, role standalone, above .. and above n
     assert.ok(ws.writeWorkspace(root, (m) => ws.addIgnore(m, 'skill', 'y'), { env: {} }).wrote);
     assert.strictEqual(fs.readFileSync(fileOf(root), 'utf8'), 'role standalone\nignore skill x\nignore skill y\n', 'rewritten at the next write');
     const lines = ['role root', 'role standalone', 'role child', 'role', 'above ..', 'above ../..', 'above none', 'above x', 'above /abs',
-        'parent ..', 'parent none', 'parent x', 'child api', 'child ../a', 'ignore skill x', 'ignore colour x', 'ignore docs root', '# c', '', 'colour red'];
+        'parent ..', 'parent none', 'parent x', 'child api', 'child ../a', 'ignore skill x', 'ignore colour x', 'ignore docs root', '# c', '', 'colour red',
+        // R062: the hooks' twin reader kept inner whitespace too, or a spaced child never matched its back-reference.
+        'child a  b', 'child a\tb', 'child x/a  b', 'child   api'];
     for (const line of lines)
     {
         const a = ws.parseLine(line);
@@ -848,6 +864,14 @@ test('AC1: the file round-trips role root, role standalone, above .. and above n
         assert.strictEqual(b.kind, a.kind, line);
         assert.strictEqual(b.value, a.value, line);
     }
+});
+
+test('R062: the hooks\' chain reads a child named with a double space as a member of its root', () =>
+{
+    const at = tree({ 'ws': { stamp: true, file: 'child a  b\n' }, 'ws/a  b': { stamp: true, file: 'parent ..\n' } });
+    const members = layoutLib.workspaceChain(layoutLib.chainProjectOf(at('ws/a  b'))).members.map((m) => m.root);
+    assert.strictEqual(members.length, 1, JSON.stringify(members));
+    assert.ok(samePath(members[0], at('ws')), `${members[0]} is the root`);
 });
 
 test('roleOf: child of .., root of 2 children, a root with no child, standalone, and standalone not asked', () =>

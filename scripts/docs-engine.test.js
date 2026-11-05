@@ -2624,7 +2624,7 @@ test('U36: a section that covered no code is outgrown once files are added', () 
     r.write('src/app.ts', 'export {};\n'); r.git('add', 'src/app.ts'); r.git('commit', '-qm', 'code');
     const out = r.cli(['stale']).stdout;
     assert.match(out, /^\S*overview - no covers line, 1 file\(s\) added since [0-9a-f]+: src\/app\.ts \(no-covers-new-files\)$/m);
-    assert.doesNotMatch(out, /c1\b/, 'a preferences section is never listed');
+    assert.doesNotMatch(out, /#c1\b/, 'a preferences section is never listed'); // `#c1`: a short sha may end in c1
   } finally { r.rm(); }
   // only the newest two stamps are diffed: the oldest of three, though files were added since it, lists nothing
   const t = repo({ files: { 'README.md': 'x\n' } });
@@ -2733,6 +2733,22 @@ test('watch-merge --doc takes in an older free-text entry and keeps one naming a
     const out = merge(r, 'awareness', ['--kinds', 'run book: ', '--doc', 'PROJECT-AWARENESS'], [entry('run book: build and test commands', ['PROJECT-AWARENESS#build'])]);
     assert.strictEqual(out.stdout.trim(), 'watch-merge awareness: kept 1, replaced 1 with 1');
     assert.deepStrictEqual(JSON.parse(r.read(AW)).watch.map((e) => e.kind), ['run book: build and test commands', 'mixed']);
+  } finally { r.rm(); }
+});
+
+test('R082: a hand-added entry naming only the run book doc survives a second --doc merge', () => {
+  const r = repo();
+  try {
+    r.write(AW, JSON.stringify({ watch: [entry('build and test commands', ['RUN-AND-DEBUG-AWARENESS#build'])] }));
+    const flags = ['--kinds', 'run book: ', '--doc', 'RUN-AND-DEBUG-AWARENESS'];
+    const book = [entry('run book: build', ['RUN-AND-DEBUG-AWARENESS#build'])];
+    assert.strictEqual(merge(r, 'awareness', flags, book).status, 0);
+    assert.deepStrictEqual(JSON.parse(r.read(AW)).watch.map((e) => e.kind), ['run book: build'], 'the first merge adopts the old capture\'s entry');
+    const j = JSON.parse(r.read(AW));
+    j.watch.push(entry('my check', ['RUN-AND-DEBUG-AWARENESS#debug']));
+    r.write(AW, JSON.stringify(j, null, 2) + '\n');
+    assert.strictEqual(merge(r, 'awareness', flags, book).status, 0);
+    assert.deepStrictEqual(JSON.parse(r.read(AW)).watch.map((e) => e.kind), ['run book: build', 'my check'], 'the hand-added entry survives the second');
   } finally { r.rm(); }
 });
 
@@ -2935,5 +2951,18 @@ test('lint --no-map leaves the architecture part\'s newModule row out, --map kee
     const ops = /ops\/watch\.json 'newModule' names a section that does not exist: OPS#nope/;
     assert.match(r.cli(['lint', 'ops', '--no-map']).stdout, ops);
     assert.doesNotMatch(r.cli(['lint', 'ops', '--map']).stdout, ops);
+  } finally { r.rm(); }
+});
+
+// O3 (burn-down 2026-11-04): the collector keeps a session's docs-log rows by their `session`, and the engine wrote
+// none - a doc the session set through this CLI from Bash never reached its bundle.
+test('a docs-log row written from a session carries its id', () => {
+  const r = repo({ docsPath: 'docs', files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 10.'), { CLAUDE_CODE_SESSION_ID: 'sess-1' }).status, 0);
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 20.'), { CLAUDE_CODE_SESSION_ID: undefined }).status, 0);
+    const rows = r.read('.alfred/statistics/docs-log.jsonl').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(rows.map((o) => [o.event, o.session]), [['doc-set', 'sess-1'], ['doc-set', undefined]]);
+    assert.ok(!Object.hasOwn(rows[1], 'session'), 'no session, no key');
   } finally { r.rm(); }
 });

@@ -127,6 +127,19 @@ function audit(root)
             }
         }
     }
+    // R171: an old start-folder settings.local.json that sets autoMemoryDirectory (Claude Code 2.1.211+ keeps the file at
+    // the repository root); a walk that throws adds no row.
+    try
+    {
+        const layout = require(path.join(__dirname, '..', 'stack', 'hooks', 'layout.js'));
+        const rel = (p) => path.relative(root, p).split(path.sep).join('/');
+        const { staleTracked } = require(path.join(__dirname, 'install', 'memory-dir.js'));
+        for (const x of layout.staleLocalMemoryFiles(layout.gitTopOf(root) || root, { tracked: staleTracked }).found)
+            rows.push(x.rootSets
+                ? { severity: 'medium', where: rel(x.file), finding: `${rel(x.file)} sets autoMemoryDirectory, which Claude Code 2.1.211+ ignores while ${rel(x.rootFile)} sets its own`, fix: `remove the key from ${rel(x.file)}` }
+                : { severity: 'medium', where: rel(x.file), finding: `${rel(x.file)} sets autoMemoryDirectory, which Claude Code 2.1.211+ reads only while ${rel(x.rootFile)} sets none and the write guard never trusts`, fix: `move the key into ${rel(x.rootFile)}` });
+    }
+    catch { /* no row */ }
     for (const rel of ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md', '.mcp.json', '.claude/settings.json'])
     {
         const p = path.join(root, rel);

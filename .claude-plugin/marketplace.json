@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules and hooks, installed and updated via the alfred-code plugin.",
-    "version": "3.8.0"
+    "version": "3.9.0"
   },
   "plugins": [
     {
@@ -41,7 +41,7 @@
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: init installs it from scratch into a project and, typed again after the restart, bootstraps it once (tools, status line, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "3.8.0",
+      "version": "3.9.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -129,12 +129,18 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -145,7 +151,10 @@
               {
                 "type": "command",
                 "if": "Bash(node *)",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -155,7 +164,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js"
+                ],
                 "timeout": 100,
                 "onFailure": "block"
               }
@@ -166,7 +178,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js"
+                ],
                 "timeout": 70,
                 "onFailure": "block"
               }
@@ -177,7 +192,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -187,7 +205,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -197,7 +218,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -207,12 +231,18 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -222,12 +252,18 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -237,12 +273,18 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -252,7 +294,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -262,7 +307,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-config-protection.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-config-protection.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -272,7 +320,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -282,7 +333,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-desktop-exec.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-desktop-exec.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -292,7 +346,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -302,7 +359,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -312,7 +372,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"
+                ],
                 "timeout": 10,
                 "async": true
               }
@@ -325,12 +388,18 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -340,7 +409,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -350,7 +422,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -362,7 +437,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/library-stamp.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/library-stamp.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -371,32 +449,50 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -406,7 +502,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -417,22 +516,34 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -443,17 +554,26 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -464,22 +584,34 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js"
+                ],
                 "timeout": 60
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -491,7 +623,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -501,7 +636,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -512,7 +650,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -523,12 +664,18 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"
+                ],
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"
+                ],
                 "timeout": 10
               }
             ]
@@ -539,7 +686,10 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"
+                ],
                 "timeout": 10
               }
             ]

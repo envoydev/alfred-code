@@ -136,8 +136,9 @@ let capRelease = null;
 // One denial, both routes: the block row's branch, the three lines, and `.denied` for the main session's Stop.
 const capDeny = (g, c) => {
   global.BLOCK_DETAIL = { branch: 'agent-cap', running: c.running, cap: g.n };
+  if (c.byName) global.BLOCK_DETAIL.byName = true;
   if (!payload.agent_id) agentCap.markDenied(g.reg, c, g.n);
-  process.stderr.write(agentCap.denialText(c, g.n, { seat: Boolean(payload.agent_id) }));
+  process.stderr.write(agentCap.denialText(c, g.n, { seat: Boolean(payload.agent_id), byName: !!c.byName }));
   process.exit(2);
 };
 const capProbe = (g) => agentCap.probeWriter(g.root, payload, path.basename(__filename));
@@ -164,10 +165,14 @@ if (payload.tool_name === 'SendMessage') {
   const to = agentCap ? agentCap.cleanId((payload.tool_input || {}).to, { agent: true }) : '';
   if (g && to) {
     // A message to a STOPPED seat resumes it, so it is judged like a dispatch - one its registry file names, or any agent id
-    // once that file is gone (kept 2 minutes, or dropped by a Stop reconcile); a name, a teammate or a running agent passes.
+    // once that file is gone (kept 2 minutes, or dropped by a Stop reconcile); a running agent passes. A NAME (a teammate,
+    // a seat's name) cannot be told from a resume, so at the cap it is refused and under it passes untouched (R087).
     const judged = agentCap.withLock(g.reg, () => {
       const target = agentCap.readEntry(agentCap.fileOf(g.reg, 'R', to));
-      if (!target && !agentCap.AGENT_ID.test(to)) return null;
+      if (!target && !agentCap.AGENT_ID.test(to)) {
+        const c = agentCap.count(g.reg, { probe: capProbe(g) });
+        return c.running >= g.n ? { ...c, byName: true } : null;
+      }
       const c = agentCap.count(g.reg, { probe: capProbe(g) });
       if (c.counted.has(`R-${to}`)) return null;
       if (c.running >= g.n) return c;

@@ -15,6 +15,9 @@ const fileDispatcher = require('../stack/hooks/file-guards.js');
 const historySession = require('../stack/hooks/history-session.js');
 const wirings = parseHookWirings();
 const block = hooksBlock(wirings);
+// A hook's launch line - exec form's command and args (build-marketplace.js launch) - and the script it names under stack/hooks/.
+const launchLine = (h) => [h.command, ...(h.args || [])].join(' ');
+const scriptOf = (h) => launchLine(h).replace(/^node \$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\//, '');
 
 test('the wirings come from the installer table, not a second list', () => {
     assert.ok(wirings.length >= 26, `expected the installer's whole HOOKS table, got ${wirings.length}`);
@@ -47,7 +50,7 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
     assert.ok(wirings.some(w => w.file === 'guard-fresh-session-start.js' && w.event === 'PostModelSwitch'), '... beside its @PostModelSwitch row');
 });
 
-// Shell form, launched through `node`, the path QUOTED - the spelling the docs give for a plugin
+// Exec form, `node` itself with the script its first argument - the spelling the docs give for a plugin
 // script ('Exec form and shell form', code.claude.com/docs/en/hooks: 'the node plus script-path
 // pattern works on every platform'). A bare script path needs the exec bit and a shebang the
 // platform honours: five hooks were committed 100644, and Windows runs neither.
@@ -57,14 +60,14 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
 // 2026-10-16 dropped that probe, so the tool-usage log is the one async hook and the stop contract wires no shell result.
 test('only the log-only hook runs async - the tool-usage log - so every guard can still block', () => {
     const async = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.async === true)
-        .map((h) => `${event} ${h.command.replace(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\//, '').replace(/"$/, '')}`))).sort();
+        .map((h) => `${event} ${scriptOf(h)}`))).sort();
     assert.deepStrictEqual(async, ['PreToolUse instrument-tool-usage.js']);
     for (const [event, groups] of Object.entries(block))
         for (const h of groups.flatMap((b) => b.hooks))
-            if (/guard-stop-contract\.js/.test(h.command)) assert.ok(!h.async && !/^PostToolUse/.test(event), `the stop contract's ${event} half must block, and no shell result is wired`);
+            if (/guard-stop-contract\.js/.test(launchLine(h))) assert.ok(!h.async && !/^PostToolUse/.test(event), `the stop contract's ${event} half must block, and no shell result is wired`);
     const core = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')));
-    assert.match(core, /instrument-tool-usage\.js\\"","timeout":10,"async":true/, 'the generated entry carries it');
-    assert.strictEqual((core.match(/guard-stop-contract\.js\\"","timeout":10,"async":true/g) || []).length, 0, 'and no stop-contract half');
+    assert.match(core, /instrument-tool-usage\.js"\],"timeout":10,"async":true/, 'the generated entry carries it');
+    assert.strictEqual((core.match(/guard-stop-contract\.js"\],"timeout":10,"async":true/g) || []).length, 0, 'and no stop-contract half');
     // the copy route writes the same table, and backfills it onto an older blocking entry
     const { asyncFor } = require('./install/settings.js');
     for (const event of ['Stop', 'SubagentStop', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure']) assert.ok(!asyncFor('guard-stop-contract.js', event), event);
@@ -82,47 +85,47 @@ test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 an
                 // check-turn-build.js runs a real build at Stop - the one wiring allowed past 10s - and since 2026-10-16
                 // it rides history-session's Stop process, which takes its 60 (history-session.js wiringRows).
                 // Each dispatcher runs its guards in one process: their 10s each, summed.
-                const expected = event === 'Stop' && /(check-turn-build|history-session)\.js"/.test(h.command) ? 60
-                    : /shell-guards\.js"/.test(h.command) ? 10 * dispatcher.GUARDS.length
-                    : /file-guards\.js"/.test(h.command) ? 10 * fileDispatcher.GUARDS.length : 10;
-                assert.strictEqual(h.timeout, expected, `${event} wiring must carry timeout ${expected}: ${h.command}`);
-                assert.match(h.command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/[a-z-]+\.js"( \S+)*$/,
-                    `${event} command must launch through node, quoted, from the plugin root: ${h.command}`);
-                // Exec form was built and reverted in 2.1.6 (M3): about 5ms per launch on macOS, and Cursor's hook
-                // schema has no args, so a copied row there ran a bare node and let every protective guard through.
-                assert.ok(!('args' in h), `${event}: an args array switches to exec form, which needs a real executable - keep args in the string`);
+                const script = scriptOf(h).split(' ')[0];
+                const expected = event === 'Stop' && /^(check-turn-build|history-session)\.js$/.test(script) ? 60
+                    : script === 'shell-guards.js' ? 10 * dispatcher.GUARDS.length
+                    : script === 'file-guards.js' ? 10 * fileDispatcher.GUARDS.length : 10;
+                assert.strictEqual(h.timeout, expected, `${event} wiring must carry timeout ${expected}: ${launchLine(h)}`);
+                // Exec form (2026-11-05, reversing 2.1.6 M3): no shell starts the hook, so Windows runs node alone, not Git
+                // Bash's launcher, bash and node - three processes a hook, and the bash windows the user saw on every call.
+                // M3's cost stands for the plugin route: Cursor's hook schema has only `command`
+                // (cursor.com/docs/reference/third-party-hooks), so a Cursor bridge of these rows runs a bare node, which
+                // exits 1 on the payload and fails open. The copy route's settings.json rows, which Cursor reads, stay shell form.
+                assert.strictEqual(h.command, 'node', `${event} hook runs node itself: ${launchLine(h)}`);
+                assert.ok(Array.isArray(h.args) && /^\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/[a-z-]+\.js$/.test(h.args[0]),
+                    `${event} hook's first argument is its script under the plugin root: ${launchLine(h)}`);
+                for (const a of h.args) assert.doesNotMatch(a, /["'\s]/, `${event}: each argument is one word - no shell reads it, so nothing is quoted: ${a}`);
             }
     }
 });
 
 // The launcher may not depend on the file's MODE: git carries the bit into the plugin cache
 // verbatim, and a 100644 hook run as a bare path died 'permission denied' (exit 126) before a line
-// of it ran. So each generated command runs here through sh, the way Claude Code runs a shell-form
-// hook, against a stub that is NOT executable, under a root whose path holds a space - once with
-// the placeholder exported, once substituted as text.
+// of it ran. So each generated launch runs here the way Claude Code runs exec form - node spawned
+// directly, the placeholder substituted as plain text into each argument - against a stub that is
+// NOT executable, under a root whose path holds a space.
 test('every generated hook command runs a non-executable script, under a root with a space', { skip: process.platform === 'win32' && 'no mode bits on Windows' }, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hook launcher '));
     try
     {
         const commands = new Set();
         for (const blocks of Object.values(coreEntry().hooks))
-            for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
+            for (const b of blocks) for (const h of b.hooks) commands.add(JSON.stringify(h.args));
         assert.ok(commands.size >= 14, `expected the seventeen hooks (the shell and file guards through their two dispatchers, the turn check through history-session's Stop) plus the core's own two, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)
         {
-            const stub = path.join(root, command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"\s]+)/)[1]);
+            const args = JSON.parse(command).map((a) => a.replaceAll('${CLAUDE_PLUGIN_ROOT}', root));
+            const stub = args[0];
             fs.mkdirSync(path.dirname(stub), { recursive: true });
             fs.writeFileSync(stub, '#!/usr/bin/env node\nprocess.exit(0);\n');
             fs.chmodSync(stub, 0o644);
-            for (const [how, line, extra] of [
-                ['exported', command, { CLAUDE_PLUGIN_ROOT: root }],
-                ['substituted', command.replaceAll('${CLAUDE_PLUGIN_ROOT}', root), {}],
-            ])
-            {
-                const run = spawnSync('sh', ['-c', line], { env: { ...env, ...extra }, input: '{}', encoding: 'utf8' });
-                assert.strictEqual(run.status, 0, `${how}: ${command} -> exit ${run.status}: ${String(run.stderr).trim()}`);
-            }
+            const run = spawnSync(process.execPath, args, { env, input: '{}', encoding: 'utf8' });
+            assert.strictEqual(run.status, 0, `${command} -> exit ${run.status}: ${String(run.stderr).trim()}`);
         }
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -185,11 +188,11 @@ function replayPreToolUse(tool, toolInput, cwd)
     for (const g of coreEntry().hooks.PreToolUse.filter(b => matches(b.matcher, tool)))
         for (const h of g.hooks)
         {
-            const line = h.command.replaceAll('${CLAUDE_PLUGIN_ROOT}', repo);
+            const args = (h.args || []).map((a) => a.replaceAll('${CLAUDE_PLUGIN_ROOT}', repo));
             const env = { ...process.env, CLAUDE_PROJECT_DIR: cwd };
             delete env.ALFRED_CODE_DOCS_PATH;
             delete env.CLAUDE_CODE_ENTRYPOINT;
-            out.push(spawnSync('sh', ['-c', line], { cwd, env, encoding: 'utf8',
+            out.push(spawnSync(process.execPath, args, { cwd, env, encoding: 'utf8',
                 input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'monitor-route', cwd, tool_name: tool, tool_input: toolInput }) }));
         }
     return out;
@@ -197,7 +200,7 @@ function replayPreToolUse(tool, toolInput, cwd)
 const denied = (runs) => runs.some(r => r.status === 2 || /"permissionDecision":"deny"/.test(r.stdout));
 const rewrittenTo = (runs) => runs.map(r => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command; } catch { return null; } }).find(Boolean) || null;
 
-test('the Monitor route: the shell guards judge a Monitor command through the generated wiring', { skip: process.platform === 'win32' && 'sh launcher' }, () => {
+test('the Monitor route: the shell guards judge a Monitor command through the generated wiring', { skip: process.platform === 'win32' && 'replayed on POSIX only' }, () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'monitor-route-'));
     try
     {
@@ -220,13 +223,13 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
     // offer no longer spawns on every prompt. A matcher with any character past letters, digits, `_`, `-`,
     // spaces, `,` and `|` is an unanchored JavaScript regex - evaluated here the way Claude Code evaluates it.
     const file = 'guard-fresh-session-start.js';
-    const slash = (block.UserPromptExpansion || []).filter((b) => b.hooks.some((h) => h.command.includes(file)));
+    const slash = (block.UserPromptExpansion || []).filter((b) => b.hooks.some((h) => launchLine(h).includes(file)));
     assert.strictEqual(slash.length, 1, 'wired once on UserPromptExpansion');
     const matches = (name) => new RegExp(slash[0].matcher).test(name);
     const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', file), 'utf8');
     // UserPromptSubmit carries ONLY the auto-mode end (2026-10-14) and the idle-gap route (audit 2026-10-10 C09): the
     // branch ends a session's own auto-mode or offers on a gap, and exits, so the slash offer never runs on an ordinary prompt.
-    const submit = (block.UserPromptSubmit || []).filter((b) => b.hooks.some((h) => h.command.includes(file)));
+    const submit = (block.UserPromptSubmit || []).filter((b) => b.hooks.some((h) => launchLine(h).includes(file)));
     assert.ok(submit.length <= 1, 'at most once on UserPromptSubmit');
     assert.match(src, /if \(EVENT === 'UserPromptSubmit'\) \{\s*if \(!modePrompt\(\)\) idleGapOffer\(\);\s*process\.exit\(0\);\s*\}/, 'and that route is the mode prompt or the idle gap, then out');
     const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
@@ -282,13 +285,13 @@ test('the hooks audit\'s currency rows follow the hooks reference: DirectoryAdde
 // hook of the user's, and a re-run changes nothing.
 test('the shell-guard dispatcher alone blocks the call when it fails - plugin and copy routes, backfilled once (HK07)', () => {
     const flagged = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.onFailure !== undefined)
-        .map((h) => `${event} ${b.matcher} ${h.onFailure} ${h.command.replace(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\//, '').replace(/"$/, '')}`)));
+        .map((h) => `${event} ${b.matcher} ${h.onFailure} ${scriptOf(h)}`)));
     // audit 2026-10-30 HK-21: the file dispatcher carries it too
     assert.deepStrictEqual(flagged.sort(), [`PreToolUse ${dispatcher.MATCHER} block shell-guards.js`, `PreToolUse ${fileDispatcher.MATCHER} block file-guards.js`].sort());
     const core = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')));
     assert.strictEqual((core.match(/"onFailure":"block"/g) || []).length, 2, 'the generated entry carries it once per dispatcher');
-    assert.match(core, /shell-guards\.js\\"","timeout":\d+,"onFailure":"block"/, 'on the dispatcher');
-    assert.match(core, /file-guards\.js\\"","timeout":\d+,"onFailure":"block"/, 'on the file dispatcher');
+    assert.match(core, /shell-guards\.js"\],"timeout":\d+,"onFailure":"block"/, 'on the dispatcher');
+    assert.match(core, /file-guards\.js"\],"timeout":\d+,"onFailure":"block"/, 'on the file dispatcher');
     const { onFailureFor, writeSettings, hookCommand } = require('./install/settings.js');
     assert.strictEqual(onFailureFor('shell-guards.js', 'PreToolUse'), 'block');
     assert.strictEqual(onFailureFor('file-guards.js', 'PreToolUse'), 'block');

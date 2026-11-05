@@ -55,62 +55,448 @@ const resolveOn = (p, anchor, P = path, platform = process.platform) => {
 // load crashed with exit 1 - failing open (2.1.7, the windows-2025 job). HOME answers then: Git Bash expands `~` from it.
 const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return nativePath(process.env.HOME || ''); } };
 
-// ---- heredocs ----------------------------------------------------------------------------------------------------
-// A heredoc BODY is DATA, not shell - a plan that DESCRIBES a command is inert text, and matching it blocks a document
-// write for its own prose. Every heredoc of a text, in order, in ONE pass (re-verify 3 R3-M3): the lines are indexed
-// once, and each opener finds its terminator line by a binary search in that index - a lazy regex rescanned to the end
-// of the text for every opener with no terminator (a 0.99MB script of `cat <<EOF` lines timed out). An opener inside
-// arithmetic (`$((y<<shift))`, `((n<<2))`) or a here-string (`<<<`) is no heredoc; an opener with no terminator line
-// opens nothing. Several openers on one line take their bodies in turn, as the shell does. Each heredoc: `index` (its
-// `<<`), `delim`, `lineStart` / `lineEnd` (its opener line), `bodyStart` / `bodyEnd` (the body, up to the terminator
-// line) and `end` (the end of the terminator line).
-// A line holding only a delimiter (blanks around it allowed): the terminator candidates, found in one pass.
-const DELIM_LINES = /^[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*\r?$/gm;
-const OPENER = /<<(-?)[ \t]*\\?(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/y;
-function heredocsOf(text) {
-  const out = [];
-  let next = text.indexOf('<<');
-  if (next < 0) return out;
-  const byText = new Map(); // delimiter -> the start of every line holding only it, in order
-  for (const m of text.matchAll(DELIM_LINES)) {
-    let list = byText.get(m[1]);
-    if (!list) byText.set(m[1], (list = []));
-    list.push(m.index);
+// ---- the lexer: quotes, comments, heredocs and expansion regions in ONE pass ----------------------------------------
+// Three scanners read quoting their own way until the eighth R015 review (2026-11-05) - heredocsOf, blankComments and
+// quotedSpans - and every place one disagreed with bash hid a command from every guard. One pass now reads them all, as
+// bash does, with a stack of contexts - the top, a `$( )`, a backtick, a `${ }`, an arithmetic `$(( ))` / `(( ))` /
+// `$[ ]` - each with its own quote state, open `(` / `{` / `[` count and open `case` count:
+//  - a `$((` or `((` is arithmetic only when the group its second `(` opens closes right before a `)`; when it closes on
+//    anything else the region is read again as a substitution holding a subshell (`$((git push) )`), each open decided
+//    once, and past a re-read budget every later one reads as a substitution - parsed as commands, never hidden;
+//  - a backtick ends at the first unescaped backtick, inside quotes too (bash; zsh honours the quotes, and bash's
+//    reading shows more), and a comment inside one ends there;
+//  - a `case` word opens arms whose `)` close nothing; `esac` closes it wherever it stands (`in esac`, `a) esac`);
+//  - a heredoc's delimiter is a shell WORD (`END-X`, `E"O"F`, `'1'`), its body starts after the first unquoted newline
+//    past its opener, several openers on a line take their bodies in turn, and an opener in quotes, a comment, `${ }`
+//    or arithmetic, or a here-string, is none. A terminator line matches with blanks around it - looser than bash, so a
+//    body may end early and its rest read as commands, never the other way. A body with no terminator line runs to the
+//    end of the text (bash and zsh read it so) - inside a backtick, to the backtick; inside a `$( )` the shells disagree
+//    (bash 3.2 ends it at the `)`, bash 5 and zsh run it on), so its opener is `unsure`: unread to every guard.
+// It yields:
+//  - `spans`: quoted spans [start, end) with their quotes; a substitution inside double quotes pauses the span around it;
+//  - `comments`: [start, end) of each comment (a `#` at a word start - not in `a#b`, `$#`, `${#x}`, after a substitution's
+//    `)` or a backtick), and a PowerShell `<# ... #>` block in a shell context (the PowerShell route shares this parser);
+//  - `docs`: each heredoc - `index` (its `<<`), `delim`, `strip`, `openEnd`, `lineStart` / `lineEnd`, `bodyStart` /
+//    `bodyEnd` (up to the terminator line) and `end` (the end of the terminator line);
+//  - `regions`: the open index of each `${ }`, arithmetic `$(( ))` / `(( ))` and `$[ ]` -> the index of its last char,
+//    so the parser reads each as one word part and still opens the substitutions inside it;
+//  - `close`: the text that shuts what the end leaves open - a body running to the end (its terminator line), a quote, a
+//    `${ }` / `$[ ]`, a trailing backslash - so a script joined after it (gitText's carried ones) is read as commands.
+// `subs` lists each `$( )` / backtick no other substitution holds - { open, close, kind }, one left open running to the
+// end. `lexShell(body, true)` reads an UNQUOTED heredoc body the way bash expands it before its command reads it (only
+// `\`, `$` and the backtick are special there), and `carriedOf` carries each of its `subs` as a script.
+// A HEREDOC BODY is data, not shell: a plan that DESCRIBES a command is inert text.
+const LEX_SPECIAL = new Uint8Array(128); // the characters the lexer reads; a run of any other is plain word text
+for (const ch of '\\$()"\'`#<{}[]\n;&| \t') LEX_SPECIAL[ch.charCodeAt(0)] = 1;
+const COMMENT_AFTER = new Set([' ', '\t', '\r', '\n', '\f', '\v', ';', '&', '|', '(', '>']);
+const CMD_BEFORE = new Set([';', '&', '|', '(', '\n', '`']);
+const CMD_KEYWORD_BEFORE = /(?:^|[\s;&|(`])(?:then|do|else|elif|if|while|until|\{|!)$/;
+const WORD_END = /[\s;&|()<>]/;
+// An ANSI-C quote (`$'...'`) opens at a `'` after an odd run of `$` none of which is escaped (`$$'x'` is the PID, then a
+// plain quote); inside it a backslash escapes the next character, the closing quote included.
+function ansiQuoteAt(text, i, escaped) {
+  let k = i - 1;
+  while (k >= 0 && text[k] === '$' && k !== escaped) k--;
+  return (i - 1 - k) % 2 === 1;
+}
+function ansiCloseFrom(text, i) {
+  for (let j = i; j < text.length; j++) { if (text[j] === '\\') j++; else if (text[j] === "'") return j; }
+  return -1;
+}
+// The next unescaped backtick after `j`, or the end of the text.
+function backtickAfter(text, j) {
+  let k = text.indexOf('`', j + 1);
+  while (k > 0 && text[k - 1] === '\\') k = text.indexOf('`', k + 1);
+  return k < 0 ? text.length : k;
+}
+// Where a construct opened just before `from` ends, read as a string the way bash's parse_matched_pair reads one: `)`
+// counts parens and `}` braces, quotes, escapes, backticks and nested `$( )` / `${ }` are skipped whole, and nothing is
+// a comment or a heredoc. A `$((` that is no arithmetic is such a string first, so a heredoc in it ends with it (the
+// tenth R015 review, 2026-11-05). The index of the closer, or the end of the text (`lim`).
+function stringEnd(text, from, closer, lim = text.length) {
+  const want = [closer];
+  const depth = [0];
+  for (let j = from; j < lim; j++) {
+    const c = text[j];
+    const top = want[want.length - 1];
+    if (c === '\\') { j++; continue; }
+    if (top === '"') {
+      if (c === '"') { want.pop(); depth.pop(); } else if (c === '`') j = backtickAfter(text, j);
+      else if (c === '$' && (text[j + 1] === '(' || text[j + 1] === '{')) { want.push(text[j + 1] === '(' ? ')' : '}'); depth.push(0); j++; }
+      continue;
+    }
+    if (c === "'") { const e = text.indexOf("'", j + 1); if (e < 0) return lim; j = e; continue; }
+    if (c === '"') { want.push('"'); depth.push(0); continue; }
+    if (c === '`') { j = backtickAfter(text, j); continue; }
+    if (c === '$' && (text[j + 1] === '(' || text[j + 1] === '{')) { want.push(text[j + 1] === '(' ? ')' : '}'); depth.push(0); j++; continue; }
+    if (c === (top === ')' ? '(' : '{')) depth[depth.length - 1]++;
+    else if (c === top) {
+      if (depth[depth.length - 1]) depth[depth.length - 1]--;
+      else { want.pop(); depth.pop(); if (!want.length) return j; }
+    }
   }
+  return lim;
+}
+// The heredoc delimiter WORD at `p`: its text with quotes and backslashes removed, whether any part was quoted, where it
+// ends, and its quoted parts (spans). Any shell word is one: `$(x)`, `${E:-EOF}` and a backtick are read whole and kept
+// as written. `lim` is where the backtick or string the opener stands in ends. Null when there is none.
+function heredocWord(text, p, lim = text.length) {
+  let j = p;
+  let delim = '';
+  let quoted = false;
+  const quotes = [];
+  while (j < lim && !WORD_END.test(text[j])) {
+    const c = text[j];
+    if (c === "'" || c === '"') {
+      const e = text.indexOf(c, j + 1);
+      if (e < 0 || e >= lim) return null;
+      delim += text.slice(j + 1, e); quotes.push([j, e + 1]); quoted = true; j = e + 1;
+      continue;
+    }
+    if (c === '\\') { if (j + 1 < lim) delim += text[j + 1]; quoted = true; j += 2; continue; }
+    if ((c === '$' && (text[j + 1] === '(' || text[j + 1] === '{')) || c === '`') {
+      const e = c === '`' ? backtickAfter(text, j) : stringEnd(text, j + 2, text[j + 1] === '(' ? ')' : '}', lim);
+      if (e >= lim) return null;
+      delim += text.slice(j, e + 1); j = e + 1;
+      continue;
+    }
+    delim += c; j++;
+  }
+  return delim && !delim.includes('\n') ? { delim, quoted, end: Math.min(j, lim), quotes } : null;
+}
+// `eof` false reads a text whose heredoc bodies were BLANKED (blankComments, quotedSpans, parseShell): there a missing
+// terminator line was blanked with its body, so an opener with none opens nothing - read as the raw text ran to its end,
+// the joined carried scripts after it went unread (the fuzzer's second pass, 2026-11-05).
+const lexMemo = [0, 1, 2].map(() => ({ text: null, out: null })); // one per mode
+function lexShell(raw, doc = false, eof = true) {
+  const text = String(raw || '');
+  const memo = lexMemo[doc ? 1 : eof ? 0 : 2];
+  if (memo.text !== text) { memo.out = lexCore(text, doc, eof); memo.text = text; }
+  return memo.out;
+}
+// The lexer itself, unmemoised: a word's own read (`dequote`) never evicts the command's.
+function lexCore(text, doc, eof = true) {
+  const n = text.length;
+  const spans = [];
+  const comments = [];
+  const docs = [];
+  const regions = new Map();
+  const regionOrder = [];
+  const subs = [];
+  const allSubs = []; // every `$( )` and backtick at any depth, [open, close]: a word's own substitutions, without a re-lex
+  let unsure = -1; // a heredoc opener with no terminator line inside a `$( )`
+  let doubt = -1; // the first place the reading stopped trusting itself: unread to every guard, never guessed
+  let doubtWhy = '';
+  const doubtAt = (at, why) => { if (doubt < 0 || at < doubt) { doubt = at; doubtWhy = why; } };
+  const BUDGET_WHY = 'arithmetic read again past the re-read budget';
+  // dash (sh on Debian and Ubuntu) reads `$[` as text, bash and zsh as arithmetic: a separator in it, or no `]`, splits
+  // the command in dash alone (the eighth fuzz pass)
+  const DASH_WHY = 'a $[ holding a separator or never closed: dash reads it as text, bash and zsh as arithmetic';
+  // a doubt that outlives a rollback: what made it is in the text whichever way the region is read again
+  let sticky = -1;
+  let stickyWhy = '';
+  // A quote at an arithmetic frame's own level: bash reads a quote, zsh (which scans `$((` as a double-quoted string) a
+  // character. They end the scan apart when the quoted text holds a paren, a backtick, a backslash, a line or an
+  // expansion, or never closes (the seventh fuzz pass: 173 cases pushed in zsh alone).
+  const arithQuote = (i, q) => {
+    const close = text.indexOf(q, i + 1);
+    const span = text.slice(i + 1, close < 0 ? n : close);
+    if ((close < 0 || /[()`\\\n]|\$[({[]/.test(span)) && (sticky < 0 || i < sticky)) { sticky = i; stickyWhy = 'a quote in an arithmetic scan: bash reads a quote, zsh a character'; }
+  };
+  let caseCount = 0; // the `case` words counted so far: an arithmetic frame holds one when the count grew since it opened
+  let btDepth = 0; // the backtick frames open
+  let subDepth = 0; // the `$( )` and backtick frames open
+  const forced = new Set(); // an arithmetic open read again as a substitution
+  let reread = 0; // characters read again; past 4n every later `$((` / `((` reads as a substitution
+  // `lim`: where the innermost backtick or string around the frame ends; `sframe`: that frame (a heredoc in it ends there)
+  const newFrame = (kind, open) => ({ kind, open, q: null, ansi: false, start: 0, parens: 0, cases: 0, snap: null, lim: n, sframe: null, end: undefined, cased0: 0 });
+  const frames = [newFrame('top', -1)];
+  let f = frames[0];
+  if (doc) f.q = 'H'; // the body of an unquoted heredoc
+  let escaped = -1; // the index the last backslash escaped (ansiQuoteAt)
+  let opClose = -1; // the last `)` that closed a subshell or a case pattern: a `#` after it starts a comment
+  let blockEnds = true; // false once no `#>` is left
+  let pending = []; // heredoc openers waiting for the end of their command line
+  let lines = null; // a terminator line's text (blanks trimmed) -> the start of every such line, in order
+  let lastCase = -1; // the word caseWord read last (a word is reached from more than one side)
+  let nextBt = -1; // the next unescaped backtick at or after the scan point
+  const lineEndAt = (pos) => { const e = text.indexOf('\n', pos); return e < 0 ? n : e; };
   const firstAtOrAfter = (list, pos) => {
     let lo = 0;
     let hi = list.length;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid] < pos) lo = mid + 1; else hi = mid; }
     return lo < list.length ? list[lo] : -1;
   };
-  const lineEndAt = (pos) => { const e = text.indexOf('\n', pos); return e < 0 ? text.length : e; };
-  while (next >= 0) {
-    const ls = text.lastIndexOf('\n', next) + 1;
-    const le = lineEndAt(next);
-    let lastEnd = -1; // the end of the terminator line of the last body this line opened
-    let arith = 0;
-    let cursor = ls;
-    for (let i = next; i >= 0 && i < le; i = text.indexOf('<<', i + 2)) {
-      for (; cursor < i; cursor++) { // `((` / `))` between the last opener and this one
-        if (text[cursor] === '(' && text[cursor + 1] === '(') { arith++; cursor++; } else if (text[cursor] === ')' && text[cursor + 1] === ')' && arith) { arith--; cursor++; }
-      }
-      if (text[i + 2] === '<') { i += 1; cursor = Math.max(cursor, i + 2); continue; } // a here-string
-      if (arith) continue;
-      OPENER.lastIndex = i;
-      const m = OPENER.exec(text);
-      if (!m || OPENER.lastIndex > le) continue;
-      const bodyStart = Math.min((lastEnd >= 0 ? lastEnd : le) + 1, text.length);
-      const term = firstAtOrAfter(byText.get(m[3]) || [], bodyStart);
-      if (term < 0) continue;
-      const end = lineEndAt(term);
-      out.push({ index: i, delim: m[3], strip: m[1] === '-', openEnd: OPENER.lastIndex, lineStart: ls, lineEnd: le, bodyStart, bodyEnd: term, end });
-      lastEnd = end;
-      cursor = Math.max(cursor, OPENER.lastIndex);
+  const backtickFrom = (pos) => {
+    if (nextBt >= pos) return nextBt;
+    let j = text.indexOf('`', pos);
+    while (j > 0 && text[j - 1] === '\\') j = text.indexOf('`', j + 1);
+    nextBt = j < 0 ? n : j;
+    return nextBt;
+  };
+  const inBacktick = () => btDepth > 0;
+  const shellFrame = () => f.kind === 'top' || f.kind === '$(' || f.kind === '`';
+  const push = (kind, at, snap) => {
+    if (f.q && f.q !== 'H') spans.push([f.start, at]); // the quote around a substitution pauses at it
+    const parent = f;
+    f = newFrame(kind, at);
+    f.snap = snap || null;
+    f.lim = parent.lim;
+    f.sframe = parent.sframe;
+    if (kind === '`') { btDepth++; f.lim = Math.min(f.lim, backtickFrom(at + 1)); f.sframe = f; }
+    if (kind === 'arith') f.cased0 = caseCount;
+    frames.push(f);
+    if (kind === '$(' || kind === '`') subDepth++;
+  };
+  const pop = (at, region) => {
+    if (frames.length < 2) return;
+    const done = frames.pop();
+    if (done.kind === '`') btDepth--;
+    if ((done.kind === '$(' || done.kind === '`') && pending.length && pending[pending.length - 1].index > done.open) {
+      // a heredoc opened in it with no body yet has none: a backtick or a `$((` read as a string ends there in every
+      // shell, a `$( )` in zsh and bash 3.2 - bash 5 reads its body from the next lines, so that one is unread
+      if (done.sframe !== done) doubtAt(pending.find((p) => p.index > done.open).index, 'a heredoc opened in a $( ) that closes on its line: zsh and bash 3.2 give it no body, bash 5 reads the next lines');
+      pending = pending.filter((p) => p.index < done.open);
     }
-    const resume = (lastEnd >= 0 ? lastEnd : le) + 1;
-    next = resume < text.length ? text.indexOf('<<', resume) : -1;
+    if (done.end !== undefined && at !== done.end) doubtAt(done.open, 'a $(( read again ends where bash does not');
+    if (done.kind === '$(' || done.kind === '`') allSubs.push([done.open, at]);
+    if (region) { regions.set(done.open, at); regionOrder.push(done.open); }
+    if ((done.kind === '$(' || done.kind === '`') && --subDepth === 0) subs.push({ open: done.open, close: at, kind: done.kind });
+    f = frames[frames.length - 1];
+    if (f.q) f.start = at + 1; // and resumes after it
+  };
+  const snapshot = (at) => ({ at, spans: spans.length, comments: comments.length, docs: docs.length, subs: subs.length, allSubs: allSubs.length, unsure, doubt, doubtWhy, pending: pending.slice(), escaped, opClose, depth: frames.length, subDepth, btDepth });
+  // the arithmetic frame on top closed on something but `)`: read its region again as a substitution
+  const rollback = () => {
+    const s = f.snap;
+    spans.length = s.spans; comments.length = s.comments; docs.length = s.docs; subs.length = s.subs; allSubs.length = s.allSubs; unsure = s.unsure; doubt = s.doubt; doubtWhy = s.doubtWhy; btDepth = s.btDepth;
+    pending = s.pending; escaped = s.escaped; opClose = s.opClose;
+    frames.length = s.depth;
+    f = frames[frames.length - 1];
+    subDepth = s.subDepth; // the frames under the arithmetic one are the snapshot's: a recount walks every open frame
+    while (regionOrder.length && regionOrder[regionOrder.length - 1] > s.at) regions.delete(regionOrder.pop());
+    forced.add(s.at);
+    lastCase = -1; nextBt = -1;
+    return s.at - 1;
+  };
+  const arithOpen = (at) => !forced.has(at) && reread <= 4 * n;
+  // the first non-blank past a blank run is found once per run (the twelfth review: from every blank, a heredoc body - blanked
+  // to spaces - of one 118,000-character line took 11 s)
+  let runFrom = -1;
+  let runTo = -1;
+  const caseWord = (at) => {
+    let j = at + 1;
+    if (j >= runFrom && j <= runTo) j = runTo;
+    else { runFrom = j; while (j < n && (text[j] === ' ' || text[j] === '\t')) j++; runTo = j; }
+    if (j === lastCase) return;
+    const w = text.startsWith('case', j) ? 'case' : text.startsWith('esac', j) ? 'esac' : null;
+    if (!w || (j + 4 < n && !WORD_END.test(text[j + 4]))) return;
+    lastCase = j;
+    if (w === 'esac') { if (f.cases) f.cases--; return; }
+    let k = j - 1;
+    while (k >= 0 && (text[k] === ' ' || text[k] === '\t')) k--;
+    if (k < 0 || CMD_BEFORE.has(text[k]) || CMD_KEYWORD_BEFORE.test(text.slice(Math.max(0, k - 5), k + 1))) {
+      f.cases++;
+      caseCount++; // an arithmetic frame open around it is read as a substitution: bash 5 does
+    }
+  };
+  const bodies = (nl) => { // the newline at `nl` ends the openers' command line: their bodies follow, in turn
+    if (!lines) {
+      lines = new Map();
+      for (let s = 0; s < n;) {
+        const e = lineEndAt(s);
+        const key = text.slice(s, e).replace(/\r$/, '').replace(/^[ \t]+|[ \t]+$/g, '');
+        if (key) { let l = lines.get(key); if (!l) lines.set(key, (l = [])); l.push(s); }
+        s = e + 1;
+      }
+    }
+    let at = nl + 1;
+    let last = nl;
+    const limit = f.lim; // a backtick, or a `$((` read as a string, ends every body inside it
+    const sf = f.sframe; // and only the heredocs opened in it take their bodies at its newlines
+    const take = sf ? pending.filter((p) => p.index > sf.open) : pending;
+    const keep = sf ? pending.filter((p) => p.index <= sf.open) : [];
+    for (const p of take) {
+      const bodyStart = Math.min(at, limit);
+      let term = firstAtOrAfter(lines.get(p.delim) || [], bodyStart);
+      if (term >= limit) term = -1;
+      if (term < 0) { // no terminator line
+        if (!eof) continue;
+        // the innermost substitution decides: a backtick ends the body, a `$( )` leaves it unsure, none runs it on
+        let k = frames.length - 1;
+        while (k > 0 && frames[k].kind !== '$(' && frames[k].kind !== '`') k--;
+        if (frames[k].kind !== '$(' || frames[k].end !== undefined) {
+          docs.push({ index: p.index, delim: p.delim, strip: p.strip, quoted: p.quoted, openEnd: p.openEnd, lineStart: text.lastIndexOf('\n', p.index) + 1, lineEnd: nl, bodyStart, bodyEnd: limit, end: limit });
+          last = Math.max(nl, limit - 1);
+          break;
+        }
+        if (unsure < 0) unsure = p.index;
+        continue;
+      }
+      const end = lineEndAt(term);
+      docs.push({ index: p.index, delim: p.delim, strip: p.strip, quoted: p.quoted, openEnd: p.openEnd, lineStart: text.lastIndexOf('\n', p.index) + 1, lineEnd: nl, bodyStart, bodyEnd: term, end });
+      at = end + 1;
+      last = end;
+    }
+    pending = keep;
+    return last;
+  };
+  // `$((` at `i` (the `$`): an arithmetic frame, or a substitution once it was read again
+  const dollarParen = (i) => {
+    if (text[i + 2] === '(') {
+      if (arithOpen(i)) { push('arith', i, snapshot(i)); return i + 2; }
+      if (!forced.has(i)) doubtAt(i, BUDGET_WHY);
+    }
+    push('$(', i);
+    if (text[i + 2] === '(' && reread <= 4 * n) { // bash reads it as a string to the `)` its parens match
+      f.end = stringEnd(text, i + 2, ')', f.lim);
+      reread += f.end - i;
+      f.lim = Math.min(f.lim, f.end);
+      f.sframe = f;
+    }
+    caseWord(i + 1); return i + 1;
+  };
+  caseWord(-1);
+  for (let i = 0; i < n; i++) {
+    const code = text.charCodeAt(i);
+    if (code >= 128 || !LEX_SPECIAL[code]) continue;
+    const c = text[i];
+    if (f.q === "'") { // single quotes: nothing but the closing quote (and, in `$'...'`, an escaped character)
+      const close = f.ansi ? ansiCloseFrom(text, i) : text.indexOf("'", i);
+      if (f.kind === '`' || inBacktick()) { // bash ends a backtick at its first unescaped backtick, quotes or not
+        const bt = backtickFrom(i);
+        if (bt < n && (close < 0 || bt < close)) { spans.push([f.start, bt]); f.q = null; f.ansi = false; i = bt - 1; continue; }
+      }
+      if (close < 0) { spans.push([f.start, n]); f.q = null; break; }
+      spans.push([f.start, close + 1]); f.q = null; f.ansi = false; i = close;
+      continue;
+    }
+    if (c === '\\') { escaped = i + 1; i++; continue; }
+    if (f.q === 'H') { // an unquoted heredoc body: quotes are text, a substitution runs
+      if (c === '`') { push('`', i); caseWord(i); }
+      else if (c === '$' && text[i + 1] === '(') i = dollarParen(i);
+      else if (c === '$' && text[i + 1] === '{') { push('${', i); i++; }
+      else if (c === '$' && text[i + 1] === '[') { push('$[', i); i++; }
+      continue;
+    }
+    if (f.q === '"') { // double quotes: a substitution opens a context of its own
+      if (c === '"') { spans.push([f.start, i + 1]); f.q = null; }
+      else if (c === '$' && text[i + 1] === '(') i = dollarParen(i);
+      else if (c === '`') {
+        if (f.kind === '`') { spans.push([f.start, i]); f.q = null; pop(i); } else { push('`', i); caseWord(i); }
+      }
+      continue;
+    }
+    switch (c) {
+      case "'": if (f.kind === 'arith') arithQuote(i, c); f.q = "'"; f.start = i; f.ansi = ansiQuoteAt(text, i, escaped); break;
+      case '"': if (f.kind === 'arith') arithQuote(i, c); f.q = '"'; f.start = i; break;
+      case '`': if (f.kind === '`') pop(i); else { push('`', i); caseWord(i); } break;
+      case '$':
+        if (text[i + 1] === '(') i = dollarParen(i);
+        else if (text[i + 1] === '{') { push('${', i); i++; }
+        else if (text[i + 1] === '[') { push('$[', i); i++; }
+        break;
+      case '{': if (f.kind === '${') f.parens++; break;
+      case '}': if (f.kind === '${') { if (f.parens) f.parens--; else pop(i, true); } break;
+      case '[': if (f.kind === '$[') f.parens++; break;
+      case ']': if (f.kind === '$[') { if (f.parens) f.parens--; else pop(i, true); } break;
+      case '(':
+        if (f.kind === 'arith' || f.kind === '$[' || f.kind === '${') { if (f.kind === 'arith') f.parens++; break; }
+        if (text[i + 1] === '(') {
+          if (arithOpen(i)) { push('arith', i, snapshot(i)); i++; break; } // `(( ... ))`
+          if (!forced.has(i)) doubtAt(i, BUDGET_WHY);
+        }
+        f.parens++;
+        caseWord(i);
+        break;
+      case ')':
+        if (f.kind === 'arith') {
+          if (f.parens) { f.parens--; break; }
+          // `))`: arithmetic - unless a `$((` holds a `case` (bash 5 reads it as a substitution) or a `;`, which no
+          // arithmetic holds: then it is read again as one
+          if (text[i + 1] === ')' && !(text[f.open] === '$' && (caseCount > f.cased0 || f.semi))) { pop(i + 1, true); i++; break; }
+          if (reread + (i - f.open) > 4 * n) { doubtAt(f.open, BUDGET_WHY); pop(i, true); break; } // linear, and unread
+          reread += i - f.open;
+          i = rollback(); // the inner group closed on something else: a substitution holding a subshell
+          break;
+        }
+        if (f.kind !== 'top' && f.kind !== '$(' && f.kind !== '`') break;
+        if (f.parens) { f.parens--; opClose = i; break; }
+        if (f.cases) { opClose = i; caseWord(i); break; } // a case arm's pattern
+        if (f.kind === '$(') { pop(i); break; }
+        opClose = i; // a stray `)`: a top-level case arm
+        break;
+      case '#': // a word start - never right after an escaped character (`a\ #b` is one word)
+        if (shellFrame() && (i === 0 || (escaped !== i - 1 && (COMMENT_AFTER.has(text[i - 1]) || (text[i - 1] === ')' && opClose === i - 1))))) {
+          let e = lineEndAt(i);
+          e = Math.min(e, f.lim); // a backtick or a string ends it
+          comments.push([i, e]);
+          i = e - 1;
+        }
+        break;
+      case '<':
+        if (!shellFrame()) break;
+        if (text[i + 1] === '#') { // a PowerShell block comment
+          const end = blockEnds ? text.indexOf('#>', i + 2) : -1;
+          if (end < 0) blockEnds = false;
+          if (end > 0) { comments.push([i, end + 2]); i = end + 1; }
+          break;
+        }
+        if (text[i + 1] !== '<') break;
+        if (text[i + 2] === '<') { i += 2; break; } // a here-string
+        {
+          let j = i + 2;
+          const strip = text[j] === '-';
+          if (strip) j++;
+          while (j < n && (text[j] === ' ' || text[j] === '\t')) j++;
+          const w = heredocWord(text, j, f.lim);
+          if (!w) { i++; break; }
+          pending.push({ index: i, delim: w.delim, strip, quoted: w.quoted, openEnd: w.end });
+          if (/[$`]/.test(text.slice(j, w.end))) { i = j - 1; break; } // `<<${E}`: the parser looks its region up
+          for (const q of w.quotes) spans.push(q);
+          i = w.end - 1;
+        }
+        break;
+      case '\n':
+        if (f.kind === '$[') doubtAt(f.open, DASH_WHY);
+        if (pending.length && shellFrame()) i = bodies(i);
+        if (shellFrame()) caseWord(i);
+        break;
+      case ';': case '&': case '|': case ' ': case '\t':
+        if (shellFrame()) caseWord(i);
+        else if (c === ';' && f.kind === 'arith') f.semi = true;
+        else if (f.kind === '$[' && c !== ' ' && c !== '\t') doubtAt(f.open, DASH_WHY);
+        break;
+      default: break;
+    }
   }
-  return out;
+  if (f.q && f.q !== 'H') spans.push([f.start, n]);
+  if (sticky >= 0) doubtAt(sticky, stickyWhy);
+  for (const x of frames) if (x.kind === '$[') doubtAt(x.open, DASH_WHY);
+  if (subDepth) { // a substitution the text leaves open runs to its end
+    const k = frames.findIndex((x) => x.kind === '$(' || x.kind === '`');
+    subs.push({ open: frames[k].open, close: n, kind: frames[k].kind });
+    for (const x of frames) if (x.kind === '$(' || x.kind === '`') allSubs.push([x.open, n]);
+  }
+  let close = '';
+  const open = docs.length && docs[docs.length - 1].end === n && docs[docs.length - 1].bodyEnd === n ? docs[docs.length - 1] : null;
+  if (open) close = `\n${open.delim}`; // the body runs on: its terminator line ends it
+  else {
+    if (escaped === n) close = ' '; // a trailing backslash would join the next line
+    for (let k = frames.length - 1; k >= 0; k--) {
+      const x = frames[k];
+      if (x.q === "'" || x.q === '"') close += x.q;
+      if (x.kind === '${') close += '}'.repeat(x.parens + 1);
+      else if (x.kind === '$[') close += ']'.repeat(x.parens + 1);
+    }
+    // a heredoc whose line the text ends has no body (bash: 'delimited by end-of-file'): what is joined after is not one
+    if (pending.length) close += `\n${pending.map((p) => p.delim).join('\n')}`;
+  }
+  allSubs.sort((a, b) => a[0] - b[0]);
+  return { spans, comments, docs, regions, subs, allSubs, unsure, doubt, doubtWhy, close };
+}
+function heredocsOf(text) {
+  return lexShell(text).docs;
 }
 const bodyOf = (text, h) => text.slice(h.bodyStart, h.bodyEnd);
 // A heredoc's body as the shell hands it over (no trailing newline), and whether the shell expands nothing in it: a quoted
@@ -121,25 +507,8 @@ const heredocVerbatim = (text, h) => /[\\'"]/.test(text.slice(h.index + 2, h.ope
 // The `$( ... )` and backtick substitutions an UNQUOTED heredoc body has the shell expand, as { from, to } spans of each one's
 // inner text (a heredoc body holds no quotes, so none is read; `$((` is arithmetic). The guards judge each as a command
 // where the body is data: `cat <<EOF > f` / `key: $(cat .env)` / `EOF` reads the file (seam m5).
-function heredocSubstitutions(body) {
-  const out = [];
-  for (let i = 0; i < body.length; i++) {
-    const c = body[i];
-    if (c === '\\') { i++; continue; }
-    if (c === '$' && body[i + 1] === '(' && body[i + 2] !== '(') {
-      let depth = 1;
-      let j = i + 2;
-      for (; j < body.length && depth; j++) { if (body[j] === '(') depth++; else if (body[j] === ')') depth--; }
-      out.push({ from: i + 2, to: depth ? j : j - 1 });
-      i = j - 1;
-    } else if (c === '`') {
-      const j = body.indexOf('`', i + 1);
-      if (j < 0) break;
-      out.push({ from: i + 1, to: j });
-      i = j;
-    }
-  }
-  return out;
+function heredocSubstitutions(body) { // lexShell's heredoc mode: one reader of a body's substitutions for every guard
+  return lexShell(String(body || ''), true).subs.map((x) => ({ from: x.open + (x.kind === '$(' ? 2 : 1), to: x.close }));
 }
 // Blank every heredoc body (and its terminator line), keep the length. The opener's own line stays: `cat <<'EOF' >
 // ../other/f.txt` carries its redirect THERE, and blanking the whole match let that classic shell write through.
@@ -159,93 +528,29 @@ function blankHeredocs(rawCommand, known) {
   return parts.join('');
 }
 
-// A COMMENT is not shell either: bash ignores a word that starts with `#` to the end of its line, so
-// nothing in one can write - and an apostrophe in one ('the model's') flipped every quoted span after
-// it, so `x=>/@(...)` inside a later single-quoted `node -e` program read as a redirection to `/@` (the
-// source-protocol snippet init runs, 2026-09-27). Blank it, keep the length. A `#` starts a comment only
-// at a word start outside quotes - not in `a#b`, `$#`, `${#x}`, or a quoted string. The PowerShell route
-// shares this parser: its `<# ... #>` block comment ends at `#>`, not at the line end, so it is blanked as
-// its own span and a `#` after `<` starts no line comment (review A, M1: `<# note #> echo x > <outside>` lost
-// its redirect). Bash's `$'...'` honours backslash escapes, so `$'it\'s # x'` stays one quoted word.
-const COMMENT_BEFORE = new Set([' ', '\t', '\r', '\n', '\f', '\v', ';', '&', '|', '(', ')', '>']);
+// A COMMENT is not shell either: bash ignores a word that starts with `#` to the end of its line, so nothing in one can
+// write - and an apostrophe in one ('the model's') flipped every quoted span after it (the source-protocol snippet init
+// runs, 2026-09-27). Blank each comment lexShell finds, keep the length and every newline.
 function blankComments(command) {
-  const n = command.length;
+  const spans = lexShell(command, false, false).comments;
+  if (!spans.length) return command;
   const parts = [];
   let cursor = 0;
-  const blank = (from, to) => { // blank [from, to), keeping every newline
-    parts.push(command.slice(cursor, from));
-    let i = from;
-    for (let nl = command.indexOf('\n', i); nl >= 0 && nl < to; nl = command.indexOf('\n', i)) { parts.push(' '.repeat(nl - i), '\n'); i = nl + 1; }
-    parts.push(' '.repeat(to - i));
+  for (const [from, to] of spans) {
+    parts.push(command.slice(cursor, from), command.slice(from, to).replace(/[^\n]/g, ' '));
     cursor = to;
-  };
-  let q = '';
-  let ansi = false;
-  let blockEnds = true; // false once no `#>` is left after the scan point - never search for it again
-  for (let i = 0; i < n; i++) {
-    const c = command[i];
-    if (q) {
-      if (c === '\\' && (q === '"' || ansi)) { i++; continue; }
-      if (c === q) { q = ''; ansi = false; }
-      continue;
-    }
-    if (c === '\\') { i++; continue; }
-    if (c === "'" && i > 0 && command[i - 1] === '$') { q = c; ansi = true; continue; }
-    if (c === '"' || c === "'") { q = c; continue; }
-    if (c === '<' && command[i + 1] === '#') {
-      const end = blockEnds ? command.indexOf('#>', i + 2) : -1;
-      if (end < 0) blockEnds = false;
-      if (end > 0) { blank(i, end + 2); i = end + 1; }
-      continue;
-    }
-    if (c === '#' && (i === 0 || COMMENT_BEFORE.has(command[i - 1]))) {
-      let e = command.indexOf('\n', i);
-      if (e < 0) e = n;
-      blank(i, e);
-      i = e - 1;
-    }
   }
-  if (!parts.length) return command;
   parts.push(command.slice(cursor));
   return parts.join('');
 }
 
-// Quoted spans: a `>` or a verb inside '...' / "..." is text an outer command carries (a commit
-// message, an echo, a grep pattern), never a write of its own. The write TARGET may still be
-// quoted - the rules below dequote it - only the verb's own position is checked.
-// A `$( ... )` inside a double-quoted span is SHELL again, with its own quoting: bash does not end
-// the outer span on the `"` of `"$(grep -o 'Sdk="[^"]*"' f)"`. Reading it as the closing quote
-// flipped every span after it, and a later `sed 's/<OutputType>//'` then read as a redirection to
-// `//` - replayed at exit 2, ~112k tokens re-sent. So the substitution is tracked as its own
-// context: the outer span pauses at `$(`, the inside is judged on its own (a real redirect in
-// there still counts), and the outer span resumes after the matching `)`.
-const QS_CLASS = new Uint8Array(128); // the characters quotedSpans reads outside single quotes
-for (const ch of '\\$)"\'') QS_CLASS[ch.charCodeAt(0)] = 1;
+// Quoted spans: a `>` or a verb inside '...' / "..." is text an outer command carries (a commit message, an echo, a grep
+// pattern), never a write of its own. The write TARGET may still be quoted - the rules below dequote it - only the verb's
+// own position is checked. A `$( ... )` or a backtick inside a double-quoted span is SHELL again, with its own quoting
+// (`"$(grep -o 'Sdk="[^"]*"' f)"` once flipped every span after it - replayed at exit 2, ~112k tokens re-sent): lexShell
+// pauses the outer span there and resumes it after the substitution.
 function quotedSpans(command) {
-  const quoted = [];
-  const stack = []; let q = null; let start = 0;
-  const n = command.length;
-  for (let i = 0; i < n; i++) {
-    if (q === "'") { // nothing inside single quotes but the closing quote
-      const close = command.indexOf("'", i);
-      if (close < 0) break;
-      quoted.push([start, close + 1]); q = null; i = close;
-      continue;
-    }
-    const code = command.charCodeAt(i);
-    if (code >= 128 || !QS_CLASS[code]) continue;
-    const c = command[i];
-    if (c === '\\') { i++; continue; }
-    if (c === '$' && command[i + 1] === '(') {
-      if (q) quoted.push([start, i]);          // the outer span pauses here
-      stack.push(q); q = null; i++; continue;
-    }
-    if (!q && c === ')' && stack.length) { q = stack.pop(); start = i + 1; continue; }
-    if (!q && (c === '"' || c === "'")) { q = c; start = i; }
-    else if (q && c === q) { quoted.push([start, i + 1]); q = null; }
-  }
-  if (q) quoted.push([start, n]);
-  return quoted;
+  return lexShell(command, false, false).spans;
 }
 // Is index `i` inside a quoted span (its quotes excluded)? The spans never overlap - a `$( ... )` pauses the one around
 // it - so the last span opening before `i` is the only candidate: a binary search.
@@ -294,21 +599,51 @@ function shellWords(text) {
 }
 // One shell word as the shell reads it: quotes removed, a backslash escape outside single quotes resolved (inside
 // double quotes only before `$`, a backtick, `"`, `\` or a newline), `$'...'` read with its escapes.
-const ESCAPES = { n: '\n', t: '\t', r: '\r', '\\': '\\', a: '', b: '', f: '', v: '', e: '', c: '', "'": "'", '"': '"' };
-const unescape = (s) => String(s).replace(/\\(0[0-7]{0,3}|[ntr\\abfvec'"])/g,
-  (m, c) => (c[0] === '0' ? String.fromCharCode(parseInt(c.slice(1) || '0', 8)) : ESCAPES[c]));
+// `$'...'`'s escapes as bash and zsh read them: the letters, \NNN octal, \xHH, \uHHHH, \UHHHHHHHH, \cX a control character,
+// \' \" \? (review 14: `$'\x67\x69\x74' push` and `eval $'gi\x74 push'` ran a push read as no git)
+const unescape = (s) => {
+  const str = String(s);
+  let out = '';
+  for (let i = 0; i < str.length;) {
+    const j = str.indexOf('\\', i);
+    if (j < 0) { out += str.slice(i); break; }
+    out += str.slice(i, j);
+    if (str[j + 1] === 'c' && j + 2 < str.length) { out += String.fromCharCode(str.charCodeAt(j + 2) & 31); i = j + 3; continue; }
+    const e = escapeAt(str, j, true);
+    if (e.len === 1 && j + 1 < str.length) { // an escape neither knows: bash keeps the backslash, zsh drops it (`$'g\it'`)
+      readingsDiffer = true;
+      if (!bashReading) { i = j + 1; continue; }
+    }
+    out += e.text;
+    i = j + e.len;
+  }
+  const nul = out.indexOf('\0');
+  return nul < 0 ? out : out.slice(0, nul); // a NUL ends the word in every shell (review 15: `$'git\0x' push`)
+};
 const PLAIN_WORD = /^[^"'\\$]*$/;
 // A Windows path written bare on Windows (`C:\Users\x\f.txt`, `\\server\share\f`, `if=C:\x`) is the path the session
 // means, never bash's escape of each letter. Read as bash it collapsed to `C:Usersxf.txt`, a relative name, so every
 // guard judged an out-of-project write, a `-C` into a sibling repo and a credential read as this project's own file
 // (2.1.6 CI: the windows-2025 job red on 30 guard cases; the reader before the one-shell rewrite kept the backslashes).
 const WIN_PATH_WORD = /^(?:[\w.-]*=)?(?:[A-Za-z]:\\|\\\\)[^"'$`]*$/;
-function dequote(raw, platform = process.platform) {
+// The outermost substitutions of the word at [s, e) of a lexed text, as word offsets: a binary search of the lex's
+// `allSubs`, so a word nested 4,000 deep costs no lex of its own (the tenth review: each word's re-lex was quadratic).
+function subsIn(lex, s, e) {
+  const a = lex.allSubs;
+  const map = new Map();
+  const firstFrom = (lo, at) => { let hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m][0] < at) lo = m + 1; else hi = m; } return lo; };
+  for (let k = firstFrom(0, s); k < a.length && a[k][0] < e; k = firstFrom(k + 1, a[k][1] + 1)) map.set(a[k][0] - s, Math.min(a[k][1], e - 1) - s);
+  return map;
+}
+function dequote(raw, platform = process.platform, subsHint = null) {
   if (PLAIN_WORD.test(raw)) return raw;
   if (platform === 'win32' && WIN_PATH_WORD.test(raw)) return raw;
+  // a substitution is kept as written: bash removes no quote inside one (`"echo `echo '`"` hands on `echo `echo '``)
+  const subAt = subsHint || (/\$\(|`/.test(raw) ? new Map(lexCore(raw, false).subs.map((x) => [x.open, x.close])) : null);
   let out = '';
   for (let i = 0; i < raw.length; i++) {
     const c = raw[i];
+    if (subAt && subAt.has(i)) { out += raw.slice(i, subAt.get(i) + 1); i = subAt.get(i); continue; }
     if (c === '$' && raw[i + 1] === "'") {
       let j = i + 2;
       let body = '';
@@ -326,6 +661,7 @@ function dequote(raw, platform = process.platform) {
     }
     if (c === '"') {
       for (i++; i < raw.length && raw[i] !== '"'; i++) {
+        if (subAt && subAt.has(i)) { out += raw.slice(i, subAt.get(i) + 1); i = subAt.get(i); continue; }
         if (raw[i] === '\\' && '$`"\\\n'.includes(raw[i + 1] || '')) i++;
         out += raw[i];
       }
@@ -375,7 +711,7 @@ const joinContinuations = (command) => command.replace(/(^|[^\\])((?:\\\\)*)\\(\
 // quoted (`'git'`), split (`gi""t`), with `.exe`, or through a variable assigned a literal earlier in the same command
 // (`GIT=git; $GIT commit`); on macOS and Windows, whose file systems fold case, `Git` runs git (re-verify 3 R3-m6).
 const WRAPPERS = new Set(['sudo', 'doas', 'env', 'xargs', 'time', 'nohup', 'nice', 'ionice', 'stdbuf', 'timeout', 'gtimeout', 'caffeinate',
-  'command', 'exec', 'builtin', 'eval', 'coproc', 'npx', 'bunx', 'chronic', 'unbuffer', 'setsid']);
+  'command', 'exec', 'builtin', 'eval', 'coproc', 'npx', 'bunx', 'chronic', 'unbuffer', 'setsid', 'busybox', 'toybox']);
 const RUN_TOOLS = new Set(['uv', 'poetry', 'pipenv', 'pdm', 'hatch', 'rye']);
 // Heads whose later words are data or files, never a command they run: `echo git push`, `grep git log`, `man git x`.
 const DATA_HEADS = new Set(['echo', 'printf', 'cat', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'ls', 'll', 'man', 'which', 'whereis', 'type',
@@ -394,7 +730,7 @@ const NO_CHAIN = Object.freeze([]);
 const NO_REDIRS = Object.freeze([]);
 // One word of a parsed command: where it stands, its text as written (`raw`, cut on first use) and dequoted (`dq`).
 class Tok {
-  constructor(src, s, e) { this.src = src; this.s = s; this.e = e; this.dq = undefined; this._raw = undefined; }
+  constructor(src, s, e, lex) { this.src = src; this.s = s; this.e = e; this.lex = lex || null; this.dq = undefined; this._raw = undefined; }
   get raw() { return this._raw === undefined ? (this._raw = this.src.slice(this.s, this.e)) : this._raw; }
 }
 // The walker's character classes: 0 a plain word character, 1 a blank (never a newline, which ends a list element),
@@ -416,7 +752,11 @@ function normCmd(word, assigns) {
 
 function parseShell(command, opts = {}) {
   const n = command.length;
-  const spans = sortedByStart(quotedSpans(command));
+  const lex = lexShell(command, false, false); // the caller blanked its heredoc bodies
+  const spans = sortedByStart(lex.spans);
+  // a `${ }`, `$(( ))` or `$[ ]` region (lexShell's `regions`) is part of its word: its text is data, but a `$( )` or a
+  // backtick inside it still runs - each region on this stack ends at its last char
+  let region = [];
   const inQuotes = spanTest(spans);
   const cmds = [];
   const elems = [];
@@ -431,6 +771,7 @@ function parseShell(command, opts = {}) {
   const cmdOf = () => {
     if (!ctx.cmd) {
       ctx.cmd = { words: [], redirs: NO_REDIRS, frame: ctx.frame, stage: ctx.stage, elem: null, cands: null, index: cmds.length, end: undefined };
+      ctx.kwOnly = true; // every word of the command so far is a keyword (`if`, `then`, `!`...)
       cmds.push(ctx.cmd);
       ctx.cmds.push(ctx.cmd);
     }
@@ -438,10 +779,15 @@ function parseShell(command, opts = {}) {
   };
   const endWord = (i) => {
     if (wStart < 0) return;
-    const t = new Tok(command, wStart, i);
+    const t = new Tok(command, wStart, i, lex);
     wStart = -1;
     if (redir) { redir.target = t; const cmd = cmdOf(); if (cmd.redirs === NO_REDIRS) cmd.redirs = []; cmd.redirs.push(redir); redir = null; return; }
     cmdOf().words.push(t);
+    const lead = ctx.kwOnly;
+    if (!KEYWORDS.has(t.raw)) ctx.kwOnly = false; // a flag, not a walk of the words: a long command stays linear
+    // `case` as a command word opens arms whose `)` close nothing; `esac` closes it wherever it stands (`case a in esac`)
+    if (t.raw === 'case' && lead) ctx.cases = (ctx.cases || 0) + 1;
+    else if (t.raw === 'esac' && ctx.cases > 0) ctx.cases--;
   };
   const endCmd = () => { ctx.cmd = null; };
   const endElem = (at, next) => {
@@ -457,15 +803,29 @@ function parseShell(command, opts = {}) {
     ctx.stage = 0;
   };
   const open = (kind, i, len) => {
-    const frame = { kind, open: i, close: undefined, parent: ctx.frame };
+    // the commands made while a frame is open are its own, a contiguous run of indexes [cmdFrom, cmdTo)
+    const frame = { kind, open: i, close: undefined, parent: ctx.frame, cmdFrom: cmds.length, cmdTo: undefined };
     frames.push(frame);
     if (++depth > MAX_NEST) tooDeep = true;
-    stack.push({ frame, ctx, wStart, redir });
+    stack.push({ frame, ctx, wStart, redir, region });
+    region = [];
     if (kind === '(') { endElem(i, i + len); stack[stack.length - 1].ctx = ctx; }
     ctx = newCtx(i + len, frame);
     wStart = -1;
     redir = null;
     return frame;
+  };
+  // Past MAX_NEST a substitution is word text to the lexer's close of it: the reading is unread anyway (`tooDeep`), and
+  // building every deeper command made a 48,000-character nest quadratic (the tenth review). -1 below the cap.
+  let subClose = null;
+  const deepSkip = (i) => {
+    if (depth < MAX_NEST) return -1;
+    if (!subClose) subClose = new Map(lex.allSubs);
+    const e = subClose.get(i);
+    if (e === undefined) return -1;
+    tooDeep = true;
+    if (wStart < 0) wStart = i;
+    return e;
   };
   const close = (i) => {
     const top = stack.pop();
@@ -473,7 +833,9 @@ function parseShell(command, opts = {}) {
     endWord(i);
     endElem(i, i + 1);
     top.frame.close = i;
+    top.frame.cmdTo = cmds.length;
     ctx = top.ctx;
+    region = top.region || [];
     if (top.frame.kind === '(') { ctx.from = i + 1; wStart = -1; redir = top.redir; return; }
     // a substitution is part of the word that holds it: that word runs on past the closing mark
     wStart = top.wStart >= 0 ? top.wStart : top.frame.open;
@@ -481,27 +843,49 @@ function parseShell(command, opts = {}) {
   };
   let sp = 0;
   for (let i = 0; i < n; i++) {
+    while (region.length && i > region[region.length - 1]) region.pop();
+    if (region.length) {
+      if (i === region[region.length - 1]) { region.pop(); continue; } // the region's last char
+      while (sp < spans.length && spans[sp][0] < i) sp++;
+      if (sp < spans.length && spans[sp][0] === i) { i = Math.max(i, spans[sp][1] - 1); sp++; continue; }
+      const r = command[i];
+      if (r === '\\') { i++; continue; }
+      if (r === '$' && (command[i + 1] === '(' || command[i + 1] === '{' || command[i + 1] === '[')) {
+        const e = lex.regions.get(i);
+        if (e !== undefined) { region.push(e); i++; continue; }
+        if (command[i + 1] === '(') { const e = deepSkip(i); if (e >= 0) i = e; else { open('$(', i, 2); i++; } }
+        continue;
+      }
+      if (r === '`') {
+        if (stack.length && stack[stack.length - 1].frame.kind === '`') close(i);
+        else { const e = deepSkip(i); if (e >= 0) i = e; else open('`', i, 1); }
+      }
+      continue;
+    }
+    // a quoted span first: one resuming after a substitution starts on any character (`"$(date) is; now"`), and the
+    // runs below read past it (the fuzzer's fourth pass)
+    while (sp < spans.length && spans[sp][0] < i) sp++;
+    if (sp < spans.length && spans[sp][0] === i) { // a quoted span: part of the word, whatever it holds
+      if (wStart < 0) wStart = i;
+      i = Math.max(i, spans[sp][1] - 1);
+      sp++;
+      continue;
+    }
     const code = command.charCodeAt(i);
     const cls = code < 128 ? CHAR_CLASS[code] : 0;
+    const next = sp < spans.length ? spans[sp][0] : n; // a run stops where the next span starts
     if (cls === 0) { // a run of plain word characters
       if (wStart < 0) wStart = i;
       let j = i + 1;
-      while (j < n) { const k = command.charCodeAt(j); if (k < 128 && CHAR_CLASS[k] !== 0) break; j++; }
+      while (j < next) { const k = command.charCodeAt(j); if (k < 128 && CHAR_CLASS[k] !== 0) break; j++; }
       i = j - 1;
       continue;
     }
     if (cls === 1) { // a run of blanks
       endWord(i);
       let j = i + 1;
-      while (j < n && CHAR_CLASS[command.charCodeAt(j)] === 1) j++;
+      while (j < next && CHAR_CLASS[command.charCodeAt(j)] === 1) j++;
       i = j - 1;
-      continue;
-    }
-    while (sp < spans.length && spans[sp][0] < i) sp++;
-    if (sp < spans.length && spans[sp][0] === i) { // a quoted span: part of the word, whatever it holds
-      if (wStart < 0) wStart = i;
-      i = Math.max(i, spans[sp][1] - 1);
-      sp++;
       continue;
     }
     const c = command[i];
@@ -547,34 +931,32 @@ function parseShell(command, opts = {}) {
       endWord(i); open('(', i, 1); continue;
     }
     if (c === ')') {
-      if (stack.length) { close(i); continue; }
-      endWord(i); endElem(i, i + 1); // a `case` arm's `)`: a command starts after it
+      endWord(i);
+      // a `case` arm's `)` - at the top, or inside a substitution whose `case` is open - ends its pattern: a command
+      // starts after it; any other closes the context it is in
+      if (stack.length && !(ctx.cases > 0)) { close(i); continue; }
+      endElem(i, i + 1);
       continue;
     }
     if (c === '`') {
       if (stack.length && stack[stack.length - 1].frame.kind === '`') { close(i); continue; }
+      const e = deepSkip(i);
+      if (e >= 0) { i = e; continue; }
       open('`', i, 1);
       continue;
     }
     if (c === '$') {
       const d = command[i + 1];
-      if (d === '(' && command[i + 2] === '(') { // arithmetic: part of the word
-        if (wStart < 0) wStart = i;
-        let lvl = 0;
-        let j = i + 1;
-        for (; j < n; j++) { if (command[j] === '(') lvl++; else if (command[j] === ')' && --lvl === 0) break; }
-        i = j;
-        continue;
+      if (d === '(' || d === '{' || d === '[') { // `$((` arithmetic, `${ }`, `$[ ]`: part of the word, as lexShell reads it
+        const e = lex.regions.get(i);
+        if (e !== undefined || d === '{') {
+          if (wStart < 0) wStart = i;
+          region.push(e !== undefined ? e : n - 1);
+          i++;
+          continue;
+        }
       }
-      if (d === '(') { open('$(', i, 2); i++; continue; }
-      if (d === '{') { // a parameter expansion: part of the word
-        if (wStart < 0) wStart = i;
-        let lvl = 0;
-        let j = i + 1;
-        for (; j < n; j++) { if (command[j] === '{') lvl++; else if (command[j] === '}' && --lvl === 0) break; }
-        i = j;
-        continue;
-      }
+      if (d === '(') { const e = deepSkip(i); if (e >= 0) { i = e; continue; } open('$(', i, 2); i++; continue; }
       if (wStart < 0) wStart = i;
       continue;
     }
@@ -604,6 +986,7 @@ function parseShell(command, opts = {}) {
   while (stack.length) { // an unclosed substitution or subshell: what it holds is still read, in no subshell
     const top = stack.pop();
     endElem(n, n);
+    top.frame.cmdTo = cmds.length;
     ctx = top.ctx;
   }
   endElem(n, n);
@@ -631,7 +1014,8 @@ function noteAssign(assigns, events, tok) {
   const m = raw.indexOf('=') > 0 ? ASSIGN_NAME.exec(raw) : null;
   if (!m) return false;
   const v = raw.slice(m[0].length);
-  const d = /[$`]/.test(v) ? '' : dequote(v);
+  // a `$'...'` part is quoting, no expansion (review 15: `x=$'git'; bash -c "$x push"` read no push)
+  const d = /[$`]/.test(v.replace(/\$'(?:[^'\\]|\\[\s\S])*'/g, '')) ? '' : dequote(v);
   if (d) assigns.set(m[1], d);
   // `raw` keeps the value as written (a single-quoted `'$HOME'` is text, never expanded - shellVars reads it)
   events.push({ at: tok.s, kind: 'set', name: m[1], value: dequote(v), raw: v });
@@ -640,7 +1024,7 @@ function noteAssign(assigns, events, tok) {
 // The command words of one simple command: { at (its index in words), name (normalised), word (dequoted), via (the
 // wrapper before it, if any), args (the argument words that command reads: to the end of the simple command, or to
 // an -exec action's `;` / `+`) }.
-const dqTok = (t) => (t.dq === undefined ? (t.dq = dequote(t.raw)) : t.dq);
+const dqTok = (t) => (t.dq === undefined ? (t.dq = dequote(t.raw, process.platform, t.lex && /[$`]/.test(t.raw) ? subsIn(t.lex, t.s, t.e) : null)) : t.dq);
 // One command word: its `args` (the tokens it reads) and `argv` (those dequoted) are made on first use - most command
 // words are never asked, and a megabyte of script is a hundred thousand of them.
 class Cand {
@@ -653,12 +1037,15 @@ class Cand {
   get argv() { return this._argv || (this._argv = this.args.map(dqTok)); }
 }
 const FINDS = new Set(['find', 'gfind']);
+const LOOKUP_FLAG = /^-[pvV]*[vV][pvV]*$/; // `command -v`, `-V`, `-pv`: a lookup, no run
 function commandWordsOf(cmd, assigns, events) {
   const w = cmd.words;
   const out = [];
   const dq = (k) => dqTok(w[k]);
   let wrapper = null;
   let afterFlag = false;
+  let lookup = false;
+  let maybeValue = false; // the wrapper word just read may be the previous flag's value (`env -u command -v git push`)
   let k = 0;
   const chain = [];
   const cand = (at, via) => { const word = dq(at); const c = new Cand(cmd, at, word, normCmd(word, assigns), via, chain.length ? chain.slice() : NO_CHAIN); out.push(c); return c; };
@@ -669,15 +1056,21 @@ function commandWordsOf(cmd, assigns, events) {
       if (ASSIGN.test(raw)) { noteAssign(assigns, events, w[k]); continue; }
       if (KEYWORDS.has(raw)) continue;
       const c = cand(k, null);
-      if (WRAPPERS.has(c.name)) { wrapper = c.name; chain.push(c.name); afterFlag = false; continue; }
+      if (WRAPPERS.has(c.name)) { wrapper = c.name; maybeValue = false; chain.push(c.name); afterFlag = false; continue; }
       if (RUN_TOOLS.has(c.name) && w[k + 1] && dq(k + 1) === 'run') { wrapper = c.name; chain.push(c.name); afterFlag = false; k++; continue; }
       break;
     }
     const word = dq(k);
+    // `time` is the shell's reserved word, not a program: it takes a whole pipeline, a keyword included (`time until
+    // gh pr merge; do ...; done`, the seventh R015 review)
+    if (wrapper === 'time' && KEYWORDS.has(raw)) continue;
+    // `command -v` / `-V` looks the words after it up and runs none of them (the source-protocol snippet's PATH check,
+    // `for T in git tr ...; do command -v "$T"`, read as an unknown git call once a loop name took its list)
+    if (wrapper === 'command' && !maybeValue && LOOKUP_FLAG.test(word)) { lookup = true; break; }
     if (word.startsWith('-')) { afterFlag = true; continue; }
     if (/^\d[\w.]*$/.test(word) || ASSIGN.test(raw)) { afterFlag = false; continue; }
     const c = cand(k, wrapper);
-    if (WRAPPERS.has(c.name)) { wrapper = c.name; chain.push(c.name); afterFlag = false; continue; }
+    if (WRAPPERS.has(c.name)) { wrapper = c.name; maybeValue = afterFlag; chain.push(c.name); afterFlag = false; continue; }
     if (RUN_TOOLS.has(c.name) && w[k + 1] && dq(k + 1) === 'run') { wrapper = c.name; chain.push(c.name); afterFlag = false; k++; continue; }
     if (afterFlag) { afterFlag = false; continue; } // perhaps the flag's value: the next word may be the command
     break;
@@ -687,7 +1080,7 @@ function commandWordsOf(cmd, assigns, events) {
   // stack never heard of does not hide it (2.1.6 re-verify 4 R4-M2 - the base gated any word sequence that reached
   // git). A package runner counts only right after its run / exec verb: `npm run lint -- --fix git x` names a script
   // argument.
-  if (out.length && k < w.length) {
+  if (out.length && k < w.length && !lookup) {
     const head = out[out.length - 1].name;
     if (head !== 'git' && !DATA_HEADS.has(head) && !DECLARERS.has(head) && !FINDS.has(head)) {
       const pkg = PACKAGE_RUNNERS.has(head);
@@ -752,9 +1145,11 @@ function commandIndex(words, tokenize = shellWords) {
     const run = RUN_TOOLS.has(name) && wordOf(words[k + 1]) === 'run';
     if (!run && (!WRAPPERS.has(name) || NOT_A_PREFIX.has(name))) break;
     const row = WRAPPER_FLAGS[name] || { value: '' };
+    const at = k;
     if (run) k++;
     for (k++; k < words.length; k++) {
       const a = wordOf(words[k]);
+      if (name === 'command' && LOOKUP_FLAG.test(a)) return at; // a lookup: `command` is the command
       if (a === '--') { k++; break; }
       if (row.assigns && ASSIGN.test(a)) continue;
       if (!/^-./.test(a)) break;
@@ -1380,6 +1775,14 @@ function commandWords(text, P) {
 // the shell `rm -f "$B"/*/x` denied, the identical unlink through `python3 - <<'PY' … f.unlink()` allowed. Mirrors
 // guard-read-whole-file.js's `runtimeDump`. Only a body actually FED to an interpreter is read: a heredoc going to
 // `cat > plan.md` stays inert prose. And only a LITERAL path is taken - an interpolated or computed one is left alone.
+// The words after a command's name as the shell hands them over, each substitution kept whole - what echo and printf
+// print (`wordsFrom` ended a double-quoted word at a quote inside its substitution, the eighth fuzz pass)
+function wordsAfter(src, cmd, c) {
+  return cmd.words.slice(c.at + 1).map((t) => {
+    const w = src.slice(t.s, t.e);
+    return dequote(w, process.platform, t.lex && /[$`]/.test(w) ? subsIn(t.lex, t.s, t.e) : null);
+  });
+}
 // The runtime must be a COMMAND word (past sudo, env, a path spelling, or behind `uv run` / `poetry run`), never a
 // runtime word anywhere before the `<<` on its line: `cat > run-node.txt <<'EOF'` read the file's text as node code
 // (2.1.6 misc report, concern 1). A heredoc counts when a stage of the pipeline its `<<` opens is a runtime (`cat
@@ -1603,8 +2006,10 @@ function heredocOwners(P, heredocs) {
 //     at the end of a pipe, a `cp` / `mv` / `install` of another script - is read from that text instead.
 // A file is read only as a regular text file (a NUL in its first line is a binary the shell will not run; a NUL later
 // is dropped, as bash drops it), resolved against a cwd unless its path is absolute. A shell told not to run its
-// script (`-n`, `-o noexec`) and `make -n` carry none. What `curl` or any other command prints does not exist until
-// that command runs, so nothing here reads it - the same as `sh -c "$(printf ...)"`.
+// script (`-n`, `-o noexec`) and `make -n` carry none. What `echo`, `printf` and a `cat` of a heredoc, a here-string or a
+// file print is read wherever it reaches a shell: a pipe from a group or a subshell, `/dev/stdin`, `<( )`, a substitution
+// that is the whole script word of `-c` or `eval`, `env -S` (the tenth R015 review, 2026-11-05). What `curl` or any
+// other program prints does not exist until it runs, so nothing here reads it (`eval "$(ssh-agent -s)"`).
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish']);
 // Does a `#!` line run a shell? Its interpreter word, or the word `env` runs past its own flags, names one.
 function shebangShell(line) {
@@ -1742,34 +2147,167 @@ function readScript(run, abs, direct) {
   run.files.set(key, res);
   return res;
 }
-// What `echo` and `printf` print: echo's words joined (its -n / -e / -E flags dropped, `\n` read as the newline a dash
-// `echo` prints); printf's format cycled over its arguments - `%s` takes one as written, `%b` with its escapes, `%%` is a
-// percent - until they run out (`printf -v` prints nothing).
-function echoOut(words) {
-  const w = words.slice();
-  while (w.length && /^-[neE]+$/.test(w[0])) w.shift();
-  return w.join(' ').replace(/\\n/g, '\n');
+// What `echo` and `printf` print, read as the union of bash, dash and zsh so a guard sees what any of them runs. echo
+// joins its words with blanks and ends the line (`-n` or `\c` leave it open); its escapes are always read, since dash's
+// and zsh's echo read them unasked. printf cycles its format over its arguments until they run out, reading the format's
+// escapes as it goes (`\045s` prints `%s`, never a conversion) and the conversions `%s %b %c %q %d %i %u %o %x %X %%` with
+// their flags, width and precision; `%q` quotes its argument so a shell reads it back as one word. What the reader does
+// not model - a `*` width, a float, an unknown conversion - is `odd`: the text then stays unread, never guessed (the
+// eleventh review: `printf 'git\x20push\n' | sh`, `printf '%.3s push\n' gitx | sh` and `echo -e '\x67it push' | sh` each ran a
+// push nobody read). `printf -v` prints nothing.
+const LETTER_ESCAPES = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v', '\\': '\\' };
+// The escape at `s[i]`, a backslash: { text, len, stop }. `fmt` reads printf's format (`\NNN`, `\"`, `\'`, `\?`), else echo's
+// and `%b`'s (`\0NNN` and `\NNN`). `\c` ends the output in both - zsh's printf ends at one in its format, where bash and dash
+// print it (the twelfth review). Any other backslash prints as written.
+function escapeAt(s, i, fmt) {
+  const d = s[i + 1];
+  if (d === undefined) return { text: '\\', len: 1 };
+  if (d === 'c') return { text: '', len: 2, stop: true };
+  if (Object.prototype.hasOwnProperty.call(LETTER_ESCAPES, d)) return { text: LETTER_ESCAPES[d], len: 2 };
+  if (fmt && (d === '"' || d === "'" || d === '?')) return { text: d, len: 2 };
+  const rest = s.slice(i + 1, i + 10);
+  let m = fmt ? null : /^0([0-7]{0,3})/.exec(rest);
+  if (m) return { text: String.fromCharCode(parseInt(m[1] || '0', 8) & 255), len: 1 + m[0].length };
+  if ((m = /^[0-7]{1,3}/.exec(rest))) return { text: String.fromCharCode(parseInt(m[0], 8) & 255), len: 1 + m[0].length };
+  if ((m = /^x([0-9A-Fa-f]{1,2})/.exec(rest))) return { text: String.fromCharCode(parseInt(m[1], 16)), len: 1 + m[0].length };
+  if ((m = /^u([0-9A-Fa-f]{1,4})/.exec(rest) || /^U([0-9A-Fa-f]{1,8})/.exec(rest)) && parseInt(m[1], 16) <= 0x10ffff) {
+    return { text: String.fromCodePoint(parseInt(m[1], 16)), len: 1 + m[0].length };
+  }
+  return { text: '\\', len: 1 };
 }
-function printfOut(words) {
+function escapesOut(s) {
+  let out = '';
+  for (let i = 0; i < s.length;) {
+    const j = s.indexOf('\\', i);
+    if (j < 0) { out += s.slice(i); break; }
+    out += s.slice(i, j);
+    const e = escapeAt(s, j, false);
+    if (e.stop) return { text: out, stop: true };
+    out += e.text;
+    i = j + e.len;
+  }
+  return { text: out, stop: false };
+}
+// Every command is read two ways where the shells part (the twelfth gate, the thirteenth review). The first reading is
+// zsh's and sh's: echo reads its escapes whatever -e / -E says (sh and dash print `-E` and still read them), a printf
+// format ends at `\c`, and a print whose stdout goes to a file or stderr joins no stream. The second is bash's: echo
+// reads escapes only after -e (the last of -e / -E decides), a printf format prints `\c` and goes on, and every print
+// joins the stream - zsh's multios sends a pipe stage's redirected output down the pipe too, and an enclosing `2>&1`,
+// `|&` or `exec` sends stderr there. A pass sets `readingsDiffer` when one of these met a text where the two part, and
+// carriedScripts then reads the command again with `bashReading` on.
+let bashReading = false;
+let readingsDiffer = false;
+function echoPrint(words) {
+  const w = words.slice();
+  let line = true;
+  let mode = null;
+  while (w.length && /^-[neE]+$/.test(w[0])) { for (const ch of w[0].slice(1)) { if (ch === 'n') line = false; else mode = ch; } w.shift(); }
+  const said = w.join(' ');
+  const r = escapesOut(said);
+  const read = r.text + (line && !r.stop ? '\n' : '');
+  const bash = mode === 'e' ? read : said + (line ? '\n' : '');
+  if (bash !== read) readingsDiffer = true;
+  return { text: bashReading ? bash : read, odd: false };
+}
+// A printf number: a leading quote is the next character's code, else C's decimal, octal and hex forms; null for any other
+function printfNumber(a) {
+  if (a === '') return 0;
+  if (a[0] === "'" || a[0] === '"') return a.length > 1 ? a.codePointAt(1) : 0;
+  if (/^[+-]?0[xX][0-9A-Fa-f]+$/.test(a)) return parseInt(a, 16);
+  if (/^[+-]?0[0-7]*$/.test(a)) return parseInt(a, 8);
+  if (/^[+-]?\d+$/.test(a)) return parseInt(a, 10);
+  return null;
+}
+const PRINT_CAP = 1 << 20;
+const PRINTF_SPEC = /%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?([A-Za-z%])/y;
+function printfPrint(words) {
   const w = words.slice();
   if (w[0] === '--') w.shift();
-  if (!w.length || w[0] === '-v') return '';
-  const format = unescape(w[0]);
+  if (!w.length || w[0] === '-v') return { text: '', odd: false };
+  const format = w[0];
   const args = w.slice(1);
+  const pad = (t, flags, width) => {
+    const n = Number(width) || 0;
+    if (t.length >= n) return t;
+    return flags.includes('-') ? t + ' '.repeat(n - t.length) : ' '.repeat(n - t.length) + t;
+  };
+  const cut = (t, prec) => (prec === undefined ? t : t.slice(0, Number(prec) || 0));
   let out = '';
   let i = 0;
   for (let pass = 0; pass < 1000; pass++) {
     let used = false;
-    out += format.replace(/%(%|[-+ #0]*\d*(?:\.\d+)?[sbdiouxXcqeEfgG])/g, (m, spec) => {
-      if (spec === '%') return '%';
+    for (let k = 0; k < format.length;) {
+      const ch = format[k];
+      if (ch === '\\') {
+        const e = escapeAt(format, k, true);
+        if (e.stop && bashReading) { out += '\\c'; k += e.len; continue; } // bash, sh and dash print it and go on
+        if (e.stop) { readingsDiffer = true; return { text: out, odd: false }; }
+        out += e.text;
+        k += e.len;
+        continue;
+      }
+      if (ch !== '%') { const j = format.slice(k).search(/[\\%]/); const end = j < 0 ? format.length : k + j; out += format.slice(k, end); k = end; continue; }
+      PRINTF_SPEC.lastIndex = k;
+      const m = PRINTF_SPEC.exec(format);
+      if (!m) return { text: out, odd: true };
+      k = PRINTF_SPEC.lastIndex;
+      const [, flags, width, prec, conv] = m;
+      if (conv === '%') { out += '%'; continue; }
+      if (width === '*' || prec === '*') return { text: out, odd: true };
       used = true;
       const a = i < args.length ? args[i++] : '';
-      return spec.endsWith('b') ? unescape(a) : a;
-    });
+      if (conv === 's') out += pad(cut(a, prec), flags, width);
+      else if (conv === 'q') out += pad(runnerQuote(a), flags, width);
+      else if (conv === 'b') {
+        const r = escapesOut(a);
+        out += pad(cut(r.text, prec), flags, width);
+        if (r.stop) return { text: out, odd: false };
+      } else if (conv === 'c') out += pad(a ? String.fromCodePoint(a.codePointAt(0)) : '', flags, width);
+      else if ('diouxX'.includes(conv)) {
+        const n = printfNumber(a);
+        if (n === null || flags.includes('#') || (n < 0 && 'ouxX'.includes(conv))) return { text: out, odd: true };
+        let digits = Math.abs(n).toString(conv === 'o' ? 8 : conv === 'x' || conv === 'X' ? 16 : 10);
+        if (conv === 'X') digits = digits.toUpperCase();
+        if (prec !== undefined) digits = digits.padStart(Number(prec) || 0, '0');
+        const sign = n < 0 ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
+        const n0 = Number(width) || 0;
+        if (flags.includes('0') && !flags.includes('-') && prec === undefined) digits = digits.padStart(n0 - sign.length, '0');
+        out += pad(sign + digits, flags, width);
+      } else return { text: out, odd: true };
+    }
     if (!used || i >= args.length) break;
+    if (out.length > PRINT_CAP) return { text: '', odd: true }; // cycling a long format: not modelled (the twelfth review)
   }
-  return out;
+  return { text: out, odd: false };
 }
+// Where a command's stdout ends up once its own redirects apply, in order: 'out' (its pipe, or the stream it prints into),
+// 'err' or 'away'. A print sent to a file, /dev/null or stderr joins no stream a shell reads (the twelfth review: `{ printf
+// 'git '; printf status >/dev/null; echo push; } | sh` ran a push read as `git status`).
+const STDOUT_FILES = new Set(['/dev/stdout', '/dev/fd/1', '/proc/self/fd/1']);
+const STDERR_FILES = new Set(['/dev/stderr', '/dev/fd/2', '/proc/self/fd/2']);
+function stdoutOf(cmd, text) {
+  let fd1 = 'out';
+  let fd2 = 'err';
+  for (const r of cmd.redirs || []) {
+    if (!r.target || !/^(?:>|>>|>\||>&|&>|&>>)$/.test(r.op)) continue;
+    const t = dequote(r.target.raw);
+    const to = STDOUT_FILES.has(t) ? fd1 : STDERR_FILES.has(t) ? fd2 : 'away';
+    if (r.op === '&>' || r.op === '&>>') { fd1 = to; fd2 = to; continue; }
+    let j = r.at;
+    while (j > 0 && text[j - 1] >= '0' && text[j - 1] <= '9') j--;
+    const fd = j < r.at && (j === 0 || /[\s;&|()]/.test(text[j - 1])) ? text.slice(j, r.at) : null;
+    let v = to;
+    if (r.op === '>&') {
+      if (/^\d+$/.test(t) || t === '-') v = t === '1' ? fd1 : t === '2' ? fd2 : 'away';
+      else if (fd === null) { fd1 = to; fd2 = to; continue; } // bash's `>&file`: both
+    }
+    if ((fd || '1') === '1') fd1 = v;
+    else if (fd === '2') fd2 = v;
+  }
+  return fd1;
+}
+const echoOut = (words) => echoPrint(words).text;
+const printfOut = (words) => printfPrint(words).text;
 
 // ---- package scripts and make recipes ----------------------------------------------------------------------------
 const PKG_RUN = { npm: new Set(['run', 'run-script', 'rum', 'urn']), pnpm: new Set(['run', 'run-script']), yarn: new Set(['run']), bun: new Set(['run']) };
@@ -2036,8 +2574,8 @@ function writtenScripts(P, raw, heredocs, anchor, run) {
     const c = cmd.cands[0];
     if (!c) return null;
     const at = cmd.words[c.at].s;
-    if (c.name === 'echo') return echoOut(wordsFrom(raw, cmd.words[c.at].e));
-    if (c.name === 'printf') return printfOut(wordsFrom(raw, cmd.words[c.at].e));
+    if (c.name === 'echo') return echoOut(wordsAfter(raw, cmd, c));
+    if (c.name === 'printf') return printfOut(wordsAfter(raw, cmd, c));
     if (c.name === 'cat') {
       const files = c.argv.filter((a) => a && !a.startsWith('-'));
       const h = docOf.get(cmd);
@@ -2159,13 +2697,149 @@ function sensitiveRuns(raw, opts = {}) {
   return out;
 }
 
+// The commands of `P` with an index in [from, to) that write where a command in `base` writes: in `base` itself or a subshell of
+// it, never inside a substitution or a process substitution, whose output is their own (the eleventh review: the commands
+// nested in a substitution were read as printing beside it, so `eval "$(echo "$(echo "git push")")"` read the push twice
+// over, and a nested `echo '"'` opened a quote over it). A frame's commands are contiguous, so a skipped one is passed whole.
+function levelOf(P, base, from, to) {
+  const out = [];
+  for (let i = from; i < to; i++) {
+    const c = P.cmds[i];
+    let skip = null;
+    for (let f = c.frame; f && f !== base; f = f.parent) if (f.kind !== '(') skip = f;
+    if (skip) { if (skip.cmdTo !== undefined) i = Math.max(i, skip.cmdTo - 1); continue; }
+    out.push(c);
+  }
+  return out;
+}
+// The words that open and close a block whose output is one stream: a group, a loop, an if, a case
+const BLOCK_OPEN = new Map([['{', '{'], ['for', 'loop'], ['while', 'loop'], ['until', 'loop'], ['select', 'loop'], ['if', 'if'], ['case', 'case']]);
+const BLOCK_CLOSE = new Map([['}', '{'], ['done', 'loop'], ['fi', 'if'], ['esac', 'case']]);
+// Whether offset `i` of the parsed command stands in a single-quoted (or `$'...'`) span, where nothing expands
+function singleQuoted(P, i) {
+  const sp = P.spans;
+  let lo = 0;
+  let hi = sp.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (sp[m][0] <= i) lo = m + 1; else hi = m; }
+  const q = sp[lo - 1];
+  return !!q && i < q[1] && (P.command[q[0]] === "'" || (P.command[q[0]] === '$' && P.command[q[0] + 1] === "'"));
+}
+// The code a zsh glob qualifier list runs for each file the glob matches (`*(e:'git push':)`, `*(.oe{...})`, `*(+fn)`): each `e`
+// string, dequoted as zsh reads it, and each `+` command name. `u`, `g`, `f` and `P` take a delimited argument, skipped.
+const QUAL_PAIRS = { '(': ')', '[': ']', '{': '}', '<': '>' };
+const QUAL_AFTER = /[^\s$<>=|&;()`{]/; // the character a qualifier list opens after: the end of a glob word
+// zsh's `${(flags)name}`: the flags run matched once, never backtracked (the twelfth review: 30 s on an open run; the
+// thirteenth: a bound of 32 missed a longer run)
+const PARAM_E = /\$\{\((?=([^()$]*))\1\)([A-Za-z_]\w*)/g;
+function qualifierCode(q) {
+  const out = [];
+  const closeOf = (from, d) => {
+    const end = QUAL_PAIRS[d] || d;
+    for (let j = from; j < q.length; j++) {
+      if (q[j] === '\\') { j++; continue; }
+      if (q[j] === end) return j;
+      if (q[j] === "'" || q[j] === '"') { const c = q.indexOf(q[j], j + 1); if (c < 0) return -1; j = c; }
+    }
+    return -1;
+  };
+  for (let i = 0; i < q.length; i++) {
+    const ch = q[i];
+    const d = q[i + 1];
+    if ('eugfP'.includes(ch) && d !== undefined && !/[\w\s]/.test(d)) {
+      const c = closeOf(i + 2, d);
+      if (c < 0) break;
+      if (ch === 'e') out.push(dequote(q.slice(i + 2, c)));
+      i = c;
+    } else if (ch === '[') {
+      const c = q.indexOf(']', i);
+      if (c < 0) break;
+      i = c;
+    } else if (ch === '+' && d !== undefined && /[A-Za-z_]/.test(d)) {
+      const m = /^[A-Za-z_][\w:.-]*/.exec(q.slice(i + 1));
+      out.push(m[0]);
+      i += m[0].length;
+    }
+  }
+  return out.filter((t) => t.trim());
+}
+
+// Frames by open and close, each command by where it ends, and each `}`, `done`, `fi` or `esac` by the command that opened
+// it in the same frame - once per parse (carriedOf's pipe producers, its loop reading and the force-push guard's held
+// branches share it)
+const BLOCK_MAPS = new WeakMap();
+function blockMaps(P) {
+  let maps = BLOCK_MAPS.get(P);
+  if (maps) return maps;
+  maps = { byOpen: new Map(), byClose: new Map(), endAt: new Map(), opener: new Map() };
+  for (const fr of P.frames) { maps.byOpen.set(fr.open, fr); if (fr.close !== undefined) maps.byClose.set(fr.close, fr); }
+  const stacks = new Map();
+  for (const c of P.cmds) {
+    let e = c.words.length ? c.words[c.words.length - 1].e : -1;
+    for (const r of c.redirs) if (r.target && r.target.e > e) e = r.target.e;
+    if (e >= 0) maps.endAt.set(e, c);
+    if (!c.words.length) continue;
+    let st = stacks.get(c.frame);
+    if (!st) stacks.set(c.frame, (st = new Map()));
+    const shut = BLOCK_CLOSE.get(c.words[0].raw);
+    if (shut && st.has(shut) && st.get(shut).length) maps.opener.set(c, st.get(shut).pop());
+    const lead = c.cands && c.cands.length ? c.cands[c.cands.length - 1].at : c.words.length - 1;
+    for (let w = 0; w <= lead && w < c.words.length; w++) {
+      const o = BLOCK_OPEN.get(c.words[w].raw);
+      if (o) { if (!st.has(o)) st.set(o, []); st.get(o).push(c); }
+    }
+  }
+  BLOCK_MAPS.set(P, maps);
+  return maps;
+}
+// A frame is `outer` or inside it: a set in a subshell or a substitution ends with it
+function frameWithin(inner, outer) {
+  for (let fr = inner, n = 0; n < 64; fr = fr.parent, n++) { if (fr === outer) return true; if (!fr) return false; }
+  return false;
+}
+// The loops binding each name: name -> Map(head command -> { close: index of its `done`, list: its words, nameAt }), a
+// head counted where the parser opens its block (`do for t in ...`, `then for ...`) - once per parse
+const LOOP_HEADS = new WeakMap();
+const HEADS_MAX = 1024;
+function loopHeadsIn(P) {
+  let heads = LOOP_HEADS.get(P);
+  if (heads) return heads;
+  heads = new Map();
+  for (const [close, open] of blockMaps(P).opener) {
+    if (close.words[0].raw !== 'done') continue;
+    const w = open.words;
+    const lead = open.cands && open.cands.length ? open.cands[open.cands.length - 1].at : w.length - 1;
+    let k = 0;
+    while (k <= lead && k < w.length && w[k].raw !== 'for' && w[k].raw !== 'select') k++;
+    if (k + 2 >= w.length || k > lead || w[k + 2].raw !== 'in') continue;
+    const nm = w[k + 1].raw;
+    if (!heads.has(nm)) heads.set(nm, new Map());
+    const m = heads.get(nm);
+    const h = m.get(open);
+    if (!h) m.set(open, { close: close.index, list: w.slice(k + 3), nameAt: w[k + 1].s });
+    else if (close.index < h.close) h.close = close.index;
+  }
+  LOOP_HEADS.set(P, heads);
+  return heads;
+}
+// The loop words `name` holds at `cmd`: its innermost enclosing `for` / `select` binding the name, and each same-name
+// loop that opened inside that body before `cmd` - { best, words } (tokens), or null outside any such body
+function loopAt(P, name, cmd) {
+  const heads = loopHeadsIn(P).get(name);
+  if (!heads || heads.size > HEADS_MAX || !cmd) return null;
+  let best = null;
+  for (const [open, h] of heads) if (open.index < cmd.index && cmd.index < h.close && frameWithin(cmd.frame, open.frame) && (!best || open.index > best.index)) best = open;
+  if (!best) return null;
+  const words = heads.get(best).list.slice();
+  for (const [open, h] of heads) if (open.index > best.index && open.index < cmd.index) for (const w of h.list) words.push(w);
+  return { best, words };
+}
 function carriedOf(P, raw, heredocs, opts, run) {
   const cwd = opts.cwd || null;
   const files = opts.files !== undefined ? !!opts.files : !!cwd;
   const anchor = cwd ? (at) => compiledAnchor(P.cds, cwd, normPath)(at) : () => null;
   let writtenMap = null; // read only when a script file is looked for: most commands run none
   const written = { get: (abs) => { if (!writtenMap) writtenMap = files ? writtenScripts(P, raw, heredocs, anchor, run) : new Map(); return writtenMap.get(abs); } };
-  const unread = (at, why, p) => run.unread.push({ at, why, path: p || null });
+  const unread = (at, why, p, force) => run.unread.push({ at, why, path: p || null, ...(force ? { force: true } : {}) });
   // A shell-run string that is one `$NAME` / `${NAME}` the same command bound to a LITERAL before the use is carried as
   // that literal - the newest assignment, `shellVars` `literalOf` (final review 2026-10-30, FC: `C='rm -rf ~'; bash -c
   // "$C"` passed the rm guard, and so did `sh -c`, `eval` and the runner's line). The word is bare or double-quoted, so the
@@ -2184,6 +2858,18 @@ function carriedOf(P, raw, heredocs, opts, run) {
     const inner = t.raw[0] === '"' ? (t.raw.length > 1 && t.raw.endsWith('"') ? t.raw.slice(1, -1) : null) : t.raw;
     return inner === null ? null : boundText(inner, t.s);
   };
+  // A word's text with its substitutions taken out: what quotes it as a whole, never a quote inside a substitution
+  const outsideSubs = (t) => {
+    if (!t.lex) return t.raw;
+    let out = '';
+    let last = 0;
+    for (const [off, end] of [...subsIn(t.lex, t.s, t.e)].sort((x, y) => x[0] - y[0])) { out += t.raw.slice(last, off); last = end + 1; }
+    return out + t.raw.slice(last);
+  };
+  // The words a shell splits an expansion into, as a line that reads back the same words: each is literal - no tilde,
+  // variable or quote in it is read again, and `;`, `|` or `&` is text - so any word holding one is quoted; a glob still
+  // expands on a split word, so `*`, `?` and `[ ]` stay bare
+  const literalWords = (text) => String(text).split(/[ \t\n]+/).filter(Boolean).map((w) => (/^[\w@%+=:,./*?[\]-]+$/.test(w) ? w : runnerQuote(w))).join(' ');
   // A script file named by `word` (its token `tok`, for a glob) at `at`: { text, cwd } | null, noting an unread one.
   const fromFile = (word, at, direct, tok) => {
     if (!files || !word) return null;
@@ -2208,6 +2894,678 @@ function carriedOf(P, raw, heredocs, opts, run) {
   const push = (s) => { if (typeof s.text === 'string' && s.text.trim()) out.push(s); };
   const heredocAt = heredocs.filter((h) => !P.inQuotes(h.index));
   const owners = heredocOwners(P, heredocAt);
+  // The heredocs each command owns, and each pipeline's, read once
+  const docsOf = new Map();
+  const docsByElem = new Map();
+  for (const h of heredocAt) {
+    const o = owners.get(h.index);
+    if (!o) continue;
+    if (!docsOf.has(o)) docsOf.set(o, []);
+    docsOf.get(o).push(h);
+    if (o.elem) { if (!docsByElem.has(o.elem)) docsByElem.set(o.elem, []); docsByElem.get(o.elem).push(h); }
+  }
+  // What a list of commands prints into one stream, as far as the text shows it: echo, printf and a cat of a heredoc or
+  // here-string, joined as the shell writes them - echo ends its line, printf adds nothing (the eleventh review:
+  // `{ printf 'git '; echo push; } | sh` read as two scripts, `git` and `push`) - plus each file a cat prints, a script of its own
+  const reaches = (k, text) => {
+    if (stdoutOf(k, text) === 'out') return true;
+    readingsDiffer = true;
+    return bashReading;
+  };
+  const printedBy = (cmds, at) => {
+    let stream = '';
+    let parts = 0;
+    let only = null; // a file that is all the stream holds stays whole, its own directory with it
+    let markAt = -1; // an unread print is marked where it prints: the text after it is what a reader of the mark sees
+    resetPrint();
+    for (const k of cmds) {
+      const c = k.cands && k.cands[k.cands.length - 1];
+      if (!c || !reaches(k, P.command)) continue;
+      if (c.name === 'echo' || c.name === 'printf') { stream += printText(c.name, printedWords(raw, k, c, 0)); parts++; }
+      else if (c.name === 'cat') { // its heredoc, here-string and files, in the stream's own order (the twelfth review, 1)
+        for (const h of docsOf.get(k) || []) { stream += lineEnd(bodyText(raw, h, 0)); parts++; }
+        for (const r of k.redirs) if (r.op === '<<<' && r.target) { stream += `${hereString(raw, r.target, 0)}\n`; parts++; }
+        for (const a of c.argv.filter((x) => !x.startsWith('-'))) { const t = fromFile(a, at); if (t) { stream += t.text; parts++; only = t; } }
+      }
+      if (markAt < 0 && (deepPrint || paramPrint || oddPrint)) markAt = k.words[0].s;
+    }
+    if (stream && !run.budget.take(stream.length)) { deepPrint = true; stream = ''; } // the twelfth review, 10
+    flagged(markAt >= 0 ? markAt : at);
+    return !stream ? [] : [parts === 1 && only ? only : { text: stream }];
+  };
+  const blankAt = (k) => P.command[k] === ' ' || P.command[k] === '\t';
+  // The `|` (or `|&`) that feeds the command at `pos`, through the `(` / `{` it stands first in: -1 for none
+  const pipeBefore = (pos) => {
+    let k = pos - 1;
+    for (;;) {
+      while (k >= 0 && blankAt(k)) k--;
+      if (k >= 0 && (P.command[k] === '(' || (P.command[k] === '{' && (k === 0 || blankAt(k - 1) || P.command[k - 1] === '|')))) { k--; continue; }
+      break;
+    }
+    if (k >= 1 && P.command[k] === '&' && P.command[k - 1] === '|') k--;
+    return k >= 0 && P.command[k] === '|' && P.command[k - 1] !== '|' ? k : -1;
+  };
+  // ... or that feeds a subshell it runs in (`printf x | (cd d && sh)`)
+  const feedOf = (cmd) => {
+    if (!cmd.words.length) return -1;
+    let p = pipeBefore(cmd.words[0].s);
+    for (let fr = cmd.frame, n = 0; p < 0 && fr && n < 8; fr = fr.parent, n++) if (fr.kind === '(') p = pipeBefore(fr.open);
+    return p;
+  };
+  // Lookups built once, so a pipe, a block or a process substitution costs no walk of the whole command (the eleventh
+  // review: `{ echo a; } | sh;` repeated ran near 10 s at 400,000 characters): frames by open and close, each command by
+  // where it ends, and each `}`, `done`, `fi` or `esac` by the command that opened it in the same frame - an opener counted among a
+  // command's words up to its last command word (`{ echo`, `if true`, `do for b`), never in its arguments
+  const mapsOf = () => blockMaps(P);
+  // The commands that write into the pipe at `p`, at its level: a subshell, a group, a loop, an if or a case closing right
+  // before it - a redirect after it too (the eleventh review: `{ echo git push; } 2>/dev/null | sh` and `for ...; done | sh`
+  // were read as feeding nothing) - else the one command ending there
+  const producersAt = (p) => {
+    const M = mapsOf();
+    let k = p - 1;
+    while (k >= 0 && blankAt(k)) k--;
+    if (k < 0) return [];
+    const subshell = (close) => { const fr = M.byClose.get(close); return fr && fr.kind === '(' ? levelOf(P, fr, fr.cmdFrom, fr.cmdTo) : null; };
+    if (P.command[k] === ')') { const sub = subshell(k); if (sub) return sub; }
+    const c = M.endAt.get(k + 1);
+    if (!c) return [];
+    if (!c.words.length) { // `( ... ) 2>/dev/null`: the redirect is a command of its own, after the subshell
+      let j = c.redirs[0].at - 1;
+      while (j >= 0 && (blankAt(j) || /[0-9&]/.test(P.command[j]))) j--;
+      return (j >= 0 && P.command[j] === ')' && subshell(j)) || [];
+    }
+    const o = M.opener.get(c);
+    return o ? levelOf(P, c.frame, o.index, c.index) : [c];
+  };
+  // What a shell reading its stdin at `at` is fed: a heredoc anywhere in its pipeline, a here-string, a file on its
+  // stdin, the stage before its pipe (walked back past tee and bare cat), or a group, a subshell or a command piped in
+  const stdinTexts = (cmd, el, at) => {
+    const texts = [];
+    resetPrint();
+    for (const h of docsByElem.get(el) || []) texts.push({ text: bodyText(raw, h, 0) });
+    for (const r of cmd.redirs) {
+      if (r.op === '<<<' && r.target) texts.push({ text: hereString(raw, r.target, 0) });
+      if (r.op === '<' && r.target) { const t = fromFile(dequote(r.target.raw), at, false, r.target); if (t) texts.push(t); }
+    }
+    flagged(at);
+    const stages = el.cmds;
+    const me = stages.indexOf(cmd);
+    for (let j = me - 1; j >= 0 && me - j <= 16; j--) {
+      const prev = stages[j].cands[stages[j].cands.length - 1]; // the command past its wrappers (`time echo`)
+      if (!prev) break;
+      const pargs = prev.argv.filter((a) => !a.startsWith('-'));
+      if (prev.name === 'tee' || (prev.name === 'cat' && !pargs.length)) continue;
+      texts.push(...printedBy([stages[j]], at));
+      break;
+    }
+    const p = feedOf(cmd);
+    if (p >= 0) texts.push(...printedBy(producersAt(p), at));
+    const seen = new Set();
+    return texts.filter((t) => !seen.has(t.text) && seen.add(t.text));
+  };
+  // What the substitution at [a, e) of `src` prints through echo, printf or a cat of a heredoc or here-string - the one
+  // stream its own commands write (never those of a substitution inside it, already in place), its trailing newlines
+  // removed as a substitution removes them: null when none prints. Prints nested past PRINT_DEPTH, or past the parser's
+  // nesting limit, are unread (`deepPrint`); each level parses its text once, and what it parses and makes is charged to the
+  // scan budget, so no nest of prints grows past it unread
+  let deepPrint = false;
+  let paramPrint = false; // a print inside a parameter expansion: unread, as `deepPrint`
+  let oddPrint = false; // a printf conversion the reader does not model
+  const resetPrint = () => { deepPrint = false; paramPrint = false; oddPrint = false; };
+  const PRINT_DEPTH = 8;
+  const printText = (name, words) => { const r = name === 'echo' ? echoPrint(words) : printfPrint(words); if (r.odd) oddPrint = true; return r.text; };
+  const lineEnd = (t) => (!t || t.endsWith('\n') ? t : `${t}\n`);
+  const printOf = (src, a, e, depth) => {
+    const bt = src[a] === '`';
+    let inner = src.slice(a + (bt ? 1 : 2), e - 1);
+    if (bt) inner = inner.replace(/\\([$`\\])/g, '$1');
+    if (!run.budget.take(inner.length)) { deepPrint = true; return null; }
+    const docs = heredocsOf(inner);
+    const Q = parseShell(joinContinuations(blankComments(blankHeredocs(inner, docs))));
+    if (Q.tooDeep) { deepPrint = true; return null; }
+    const own = heredocOwners(Q, docs);
+    const docsBy = new Map();
+    for (const h of docs) { const o = own.get(h.index); if (o) { if (!docsBy.has(o)) docsBy.set(o, []); docsBy.get(o).push(h); } }
+    let out = '';
+    let any = false;
+    for (const k of levelOf(Q, null, 0, Q.cmds.length)) {
+      const c = k.cands && k.cands[k.cands.length - 1];
+      if (!c) continue;
+      if (!reaches(k, Q.command)) continue;
+      if (c.name === 'echo' || c.name === 'printf') { out += printText(c.name, printedWords(inner, k, c, depth + 1)); any = true; }
+      else if (c.name === 'cat') {
+        for (const h of docsBy.get(k) || []) { out += lineEnd(bodyText(inner, h, depth + 1)); any = true; }
+        for (const r of k.redirs) if (r.op === '<<<' && r.target) { out += `${hereString(inner, r.target, depth + 1)}\n`; any = true; }
+      }
+    }
+    if (!any) return null;
+    out = out.replace(/\n+$/, '');
+    if (!run.budget.take(out.length)) { deepPrint = true; return null; }
+    return out;
+  };
+  // A heredoc body as its command reads it: an unquoted one with each `$( )` and backtick replaced by what it prints, where
+  // that is an echo, printf or cat (the eleventh review: `sh <<E` holding `$(echo git push)` fed sh a push); another program's
+  // output stays as written
+  // `$NAME` / `${NAME}` in text the shell expands, as the literal the command bound it to - an escaped one, or one
+  // bound to anything else, stays as written (the twelfth review, 3: `x="git push"; sh <<<"$x"` ran a push read as `$x`)
+  const boundIn = (text, at) => {
+    if (!text.includes('$')) return text;
+    const re = /\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g;
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(text))) {
+      let k = m.index;
+      while (k > 0 && text[k - 1] === '\\') k--;
+      if ((m.index - k) % 2) continue; // an escaped `$` (the thirteenth review: a backslash run backtracked 23 s)
+      if (!vars) vars = shellVars(P, {});
+      const v = vars.literalOf(m[1] || m[2], at);
+      if (v === null) continue;
+      if (!run.budget.take(v.length)) { deepPrint = true; return text; } // the thirteenth review: 3 GB unread
+      out += text.slice(last, m.index) + v;
+      last = re.lastIndex;
+    }
+    return out + text.slice(last);
+  };
+  const bodyText = (src, h, depth) => {
+    const body = bodyOf(src, h);
+    if (h.quoted || !/[$`]/.test(body)) return body;
+    if (depth > PRINT_DEPTH) { deepPrint = true; return body; }
+    const vs = (t) => (src === raw ? boundIn(t, h.index) : t);
+    let out = '';
+    let last = 0;
+    for (const sub of lexShell(body, true).subs) {
+      if (sub.close >= body.length) break;
+      const p = printOf(body, sub.open, sub.close + 1, depth);
+      if (p === null) continue;
+      out += vs(body.slice(last, sub.open)) + p;
+      last = sub.close + 1;
+    }
+    return out + vs(body.slice(last));
+  };
+  // A here-string's text: its word expanded with no splitting, a substitution's output in place (the eleventh review:
+  // `bash <<<"$(echo git push)"` ran a push read as the text `$(echo git push)`)
+  const hereString = (src, t, depth) => {
+    const p = /[$`]/.test(t.raw) ? subPrintIn(src, t, depth, true) : null;
+    if (p !== null) return p;
+    if (src === raw && /[$`]/.test(t.raw)) {
+      const y = expandWord(t, t.s, null);
+      if (y && y.fields) {
+        // bash 3.2 splits an unquoted here-string's value and joins the fields; bash 5 and zsh keep it whole, newlines
+        // and all (review 14, 4: `x="true<newline>git push"; bash <<< $x` pushes in zsh)
+        const split = y.fields.join(' ');
+        const w = expandWord(t, t.s, null, true);
+        const whole = w && w.fields ? w.fields.join(' ') : split;
+        if (whole !== split) readingsDiffer = true;
+        return bashReading ? split : whole;
+      }
+    }
+    return dequote(t.raw);
+  };
+  // A word holding substitutions (`"$(cat <<'EOF' ... EOF)"`, `"eval "$(echo x)""`, a backtick): its text with each one
+  // replaced by what it prints - null when any one is another program's, whose output does not exist until it runs
+  const subPrintIn = (src, t, depth, whole) => {
+    if (!t || !t.lex) return null;
+    if (depth > PRINT_DEPTH) { deepPrint = true; return null; }
+    const m = subsIn(t.lex, t.s, t.e);
+    if (!m.size) return null;
+    const outs = [];
+    const mark = (k) => `\u0001${k}\u0001`;
+    let word = '';
+    let last = t.s;
+    let dq = false; // inside double quotes where the scan stands: an unquoted substitution's output is split into words
+    let braces = 0; // the `${` open there: a variable's value decides where an output inside one lands
+    const scan = (from, to) => {
+      for (let i = from; i < to; i++) {
+        const ch = src[i];
+        if (ch === '\\') i++;
+        else if (ch === "'" && !dq && !braces) { const j = src.indexOf("'", i + 1); i = j < 0 ? to : j; }
+        else if (ch === '"') dq = !dq;
+        else if (ch === '$' && src[i + 1] === '{') { braces++; i++; }
+        else if (ch === '}' && braces) braces--;
+      }
+    };
+    for (const [off, end] of [...m].sort((x, y) => x[0] - y[0])) {
+      const p = printOf(src, t.s + off, t.s + end + 1, depth);
+      if (p === null) return null;
+      scan(last, t.s + off);
+      if (braces) { paramPrint = true; return null; } // `${y:=$(echo a; git push)}` (the tenth fuzz pass)
+      word += src.slice(last, t.s + off) + mark(outs.length);
+      outs.push(dq || whole ? p : p.split(/[ \t\n]+/).filter(Boolean).join(' ')); // eval joins the words with blanks
+      last = t.s + end + 1;
+    }
+    let text = dequote(word + src.slice(last, t.e));
+    outs.forEach((p, k) => { text = text.split(mark(k)).join(p); });
+    return text;
+  };
+  // echo's or printf's words with each substitution's output in place where it prints, else kept as written (the ninth
+  // fuzz pass: a printed `$(echo 'a')` kept whole held quotes the next shell never sees)
+  const printedWords = (src, k, c, depth) => k.words.slice(c.at + 1).map((t) => {
+    const p = /[$`]/.test(t.raw) ? subPrintIn(src, t, depth) : null;
+    return p !== null ? p : dequote(src.slice(t.s, t.e), process.platform, t.lex && /[$`]/.test(t.raw) ? subsIn(t.lex, t.s, t.e) : null);
+  });
+  const subPrint = (t) => subPrintIn(raw, t, 0);
+  // A command word's expansions, as the shell makes them into fields (the twelfth review, 4: `cmd=(git push); "${cmd[@]}"`,
+  // `set -- git push; "$@"`, `x=$(echo git push); $x`, `${x:-git push}`, zsh's `${=x}`, `IFS=,` and `$x$y` each ran a
+  // push read as one word, or as none). Read: a bound literal, an array `${a[@]}` / `${a[*]}` (`$a` as every element, as
+  // zsh), the positional words of the newest `set --`, a `:-` / `-` default, an assignment that is one print substitution
+  // and a print substitution in place. An unquoted part is split on IFS (its bound literal, else blanks), a double-quoted
+  // one is one field, `"${a[@]}"` and `"$@"` one per element. Returns { fields, plain, bound } - `plain` when the word
+  // is only quoted variables, which the command's own name already reads - or { unknown, git } when a part is another
+  // program's output or a value the command does not spell out, `git` when its binding or the word names git; null when
+  // the word expands nothing.
+  const within = frameWithin;
+  // Each `set` that sets the positional words: after `--` or `-`, or from its first word that is no option (`set -e --
+  // git push`, `set - git push` - the thirteenth review), its words read lazily, each expanded as a command word is
+  let setsAt = null;
+  const setsOf = () => {
+    if (setsAt) return setsAt;
+    setsAt = [];
+    for (const k of P.cmds) {
+      for (const c of k.cands) {
+        if (c.name !== 'set') continue;
+        let w = c.at + 1;
+        let list = false;
+        for (; w < k.words.length; w++) {
+          const a = dequote(k.words[w].raw);
+          if (a === '--' || a === '-') { w++; list = true; break; }
+          if (/^[-+][A-Za-z]*o$/.test(a)) { w++; continue; } // `-o name`, and a cluster ending in o (`-euo pipefail`)
+          if (/^[-+]/.test(a)) continue;
+          list = true;
+          break;
+        }
+        if (list) setsAt.push({ at: k.words[c.at].s, end: k.words[k.words.length - 1].e, frame: k.frame, words: k.words.slice(w), args: null });
+      }
+    }
+    setsAt.sort((x, y) => x.at - y.at);
+    setsAt.forEach((st, i) => { st.i = i; });
+    return setsAt;
+  };
+  // A set's words, read oldest set first: a `"$@"` in one reads the set before it, already read, so a chain of
+  // `set -- "$@" a` costs one level of recursion, never one per set (review 14, 2: 2,000 sets overflowed the stack and
+  // every guard failed open)
+  let setsRead = 0;
+  const argsOf = (st) => {
+    if (st.args) return st.args;
+    const list = setsOf();
+    for (; setsRead < st.i; setsRead++) if (!list[setsRead].args) argsOne(list[setsRead]);
+    return argsOne(st);
+  };
+  const argsOne = (st) => {
+    if (st.args) return st.args;
+    st.args = { unknown: true, git: false }; // while its own words are read
+    const list = [];
+    let unknown = null;
+    for (const t of st.words) {
+      if (!/[$`]/.test(t.raw)) { list.push(dequote(t.raw)); continue; }
+      const y = expandWord(t, t.s, st.frame);
+      if (y && y.fields) list.push(...y.fields);
+      else if (y && y.unknown) { unknown = { unknown: true, git: y.git || gitWord(t.raw) }; break; }
+      else list.push(dequote(t.raw));
+    }
+    st.args = unknown || { list };
+    return st.args;
+  };
+  // the positional words at `at` in `frame`: the newest set before it that ended before it, in that frame or one around it
+  const positionalAt = (at, frame) => {
+    const list = setsOf();
+    let lo = 0;
+    let hi = list.length - 1;
+    let i = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (list[mid].at < at) { i = mid; lo = mid + 1; } else hi = mid - 1; }
+    for (let n = 0; i >= 0 && n < 64; i--, n++) if (list[i].end <= at && within(frame, list[i].frame)) return argsOf(list[i]);
+    return i >= 0 ? { unknown: true, git: true } : null; // past 64 sets in other frames: not read, so judged as naming git (review 14, 8)
+  };
+  const arrays = new Map();
+  const elementsOf = (ev) => {
+    if (arrays.has(ev)) return arrays.get(ev);
+    const inner = String(ev.raw).slice(1, -1);
+    const r = /[$`]/.test(inner) || !run.budget.take(inner.length) ? { unknown: true, git: gitWord(inner) }
+      : { els: parseShell(inner).cmds.flatMap((k) => k.words.map((w) => dequote(w.raw))) };
+    arrays.set(ev, r);
+    return r;
+  };
+  // `name[i]=...` / `name[i]+=...` between an array's assignment and its use: the elements are no longer the list's
+  let elemAt = null;
+  const elementSetBetween = (name, from, to) => {
+    if (!elemAt) {
+      elemAt = new Map();
+      for (const m of P.command.matchAll(/(?:^|[\s;&|(])([A-Za-z_]\w*)\[[^\]\n]{0,64}\]\+?=/g)) {
+        if (!elemAt.has(m[1])) elemAt.set(m[1], []);
+        elemAt.get(m[1]).push(m.index);
+      }
+    }
+    const ps = elemAt.get(name);
+    if (!ps) return false;
+    let lo = 0;
+    let hi = ps.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (ps[mid] <= from) lo = mid + 1; else hi = mid; }
+    return lo < ps.length && ps[lo] < to;
+  };
+  // Whether anything binding `name` - a loop's word list, an assignment, an append, an element - names git as a word (the
+  // thirteenth review: `for c in "git push"; do $c; done` and `cmd=(git); cmd+=(push); "${cmd[@]}"` ran unread)
+  // Bounded (review 14, 6: `\([^)]*\)` rescanned to the end of the text at each `a=(`, 8.8 s on 200 KB): a loop list is read
+  // to 1 KB - a longer one is judged as naming git - and an array to its first `)`, found once for every array after it.
+  const LIST_MAX = 1024;
+  const binders = new Map();
+  const binderGit = (name) => {
+    if (binders.has(name)) return binders.get(name);
+    let v = false;
+    const src = P.command;
+    if (run.budget.take(src.length)) {
+      for (const m of src.matchAll(new RegExp(`\\b(?:for|select)\\s+${name}\\s+in\\b([^;\\n]{0,${LIST_MAX}})`, 'g'))) {
+        if (m[1].length >= LIST_MAX || gitWord(m[1])) { v = true; break; }
+      }
+      let close = -2;
+      for (const m of v ? [] : src.matchAll(new RegExp(`\\b${name}(?:\\[[^\\]\\n]{0,64}\\])?\\+?=`, 'g'))) {
+        const p = m.index + m[0].length;
+        let val = /^[^\s;&|]{0,1024}/.exec(src.slice(p, p + 1024))[0];
+        let cut = val.length >= 1024; // a value past 1 KB is judged as naming git, as a list past it is (review 15, 3)
+        if (src[p] === '(') {
+          if (close !== -1 && close < p) close = src.indexOf(')', p);
+          if (close >= 0) {
+            val = src.slice(p, close + 1);
+            cut = false;
+            if (!run.budget.take(val.length)) { deepPrint = true; v = true; break; }
+          }
+        }
+        if (cut || gitWord(val)) { v = true; break; }
+      }
+    } else deepPrint = true;
+    binders.set(name, v);
+    return v;
+  };
+  // The words a loop runs a name through (review 14, 5: `for t in git node; do $t --version; done` read as an unknown git
+  // command): a use INSIDE the body of a `for` / `select` binding the name over plain words reads the words of its
+  // innermost such loop - and of each same-name loop that opened inside that body before the use - as the command in
+  // turn. Review 15, 1: after the loop, or in a script a parent's assignment reaches, the name holds what the reader cannot
+  // see (`(for t in git; do :; done); $t`), so only a body counts, by the parser's `for` / `done` pairs; and only when the
+  // name appears nowhere but those heads and plain uses (`${t:=...}`), every IFS set is blanks, no builtin assigns a name
+  // the command computes (`read "$v"`), and no eval, source or `.` runs in the body before the use. Review 16: those are
+  // read as command words, never as text (`find . -name`, `cd .` and `export FOO=1` kept nothing from being read), a head
+  // counts where the parser opens its block (`do for t in ...`, `then for ...`), and a use reads its own loop's words, not
+  // every same-name loop's (1,000 repeated loops pushed a million calls). Anything else gives null - the conservative
+  // reading stands.
+  const ASSIGNING = new Set(['read', 'readarray', 'mapfile', 'getopts', 'declare', 'typeset', 'local', 'export', 'readonly', 'unset', 'let', 'vared', 'coproc', 'zparseopts', 'zstyle', 'zformat', 'strftime', 'sysread', 'getln', 'zregexparse', 'pcre_match']);
+  const SOURCING = new Set(['eval', 'source', '.']);
+  let loopScan = null; // once per command: an assignment to a computed name anywhere, and each eval / source / `.`
+  const loopScanOf = () => {
+    if (loopScan) return loopScan;
+    loopScan = { computed: false, sourcing: [] };
+    const named = (r) => !/[$`]/.test(r) || /^-/.test(r) || /^[A-Za-z_]\w*(?:\[[^\]\n]{0,64}\])?\+?=/.test(r);
+    for (const c of P.cmds) {
+      for (const k of c.cands || []) {
+        if (SOURCING.has(k.name)) { loopScan.sourcing.push(c); continue; }
+        const flag = k.name === 'printf' || k.name === 'print' ? 'v' : k.name === 'wait' ? 'p' : null;
+        for (let w = k.at + 1; w < c.words.length; w++) {
+          const r = c.words[w].raw;
+          // printf / print bind only after -v, wait only after -p; the others bind their name words
+          if (flag) {
+            if (r === `-${flag}` && w + 1 < c.words.length && !named(c.words[w + 1].raw)) loopScan.computed = true;
+            else if (r.startsWith(`-${flag}`) && r.length > 2 && /[$`]/.test(r)) loopScan.computed = true;
+          } else if (ASSIGNING.has(k.name) && !named(r)) loopScan.computed = true;
+        }
+      }
+    }
+    return loopScan;
+  };
+  let ifsState;
+  const ifsBlank = () => { // every IFS the command sets is blanks (`IFS=$'\n'`), and nothing else names IFS but a read
+    if (ifsState !== undefined) return ifsState;
+    const src = P.command;
+    const sets = new Map();
+    for (const e of P.assignEvents || []) if (e.name === 'IFS') sets.set(e.at, e);
+    ifsState = true;
+    for (const m of src.matchAll(/\bIFS\b/g)) {
+      const i = m.index;
+      if (src[i - 1] === '$' || (src[i - 1] === '{' && src[i - 2] === '$' && src[i + 3] === '}')) continue;
+      const e = sets.get(i);
+      if (e && /^[ \t\n]*$/.test(String(e.value))) continue;
+      ifsState = false;
+      break;
+    }
+    return ifsState;
+  };
+  const loopOk = new Map();
+  const loopNameOk = (name, heads) => {
+    if (loopOk.has(name)) return loopOk.get(name);
+    const ok = (() => {
+      if (loopScanOf().computed || !ifsBlank()) return false;
+      for (const h of heads.values()) for (const w of h.list) if (w.raw.length > 1024 || /[$`*?[\]{}~\\'"()<>=]/.test(w.raw)) return false;
+      const src = P.command;
+      // binderGit already charged this name's scan (review 15, 6: a second charge halved the padding that drops every call)
+      if (!binders.has(name) && !run.budget.take(src.length)) { deepPrint = true; return false; }
+      const headAt = new Set([...heads.values()].map((h) => h.nameAt));
+      for (const m of src.matchAll(new RegExp(`\\b${name}\\b`, 'g'))) {
+        const i = m.index;
+        if (headAt.has(i) || src[i - 1] === '$' || (src[i - 1] === '{' && src[i - 2] === '$' && src[i + name.length] === '}')) continue;
+        return false;
+      }
+      return true;
+    })();
+    loopOk.set(name, ok);
+    return ok;
+  };
+  const loopItems = (name, cmd) => {
+    const at = loopAt(P, name, cmd);
+    if (!at || !loopNameOk(name, loopHeadsIn(P).get(name))) return null;
+    for (const c of loopScanOf().sourcing) if (c.index > at.best.index && c.index < cmd.index) return null;
+    return [...new Set(at.words.map((w) => w.raw))];
+  };
+  // A command word that is one loop name, bare or quoted: the commands it runs, one a list word (null: not such a word)
+  const loopWordItems = (tok, cmd) => {
+    const m = /^(")?\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))(")?$/.exec(tok.raw);
+    if (!m || !m[1] !== !m[4]) return null;
+    const items = loopItems(m[2] || m[3], cmd);
+    if (!items) return null;
+    return items.map((it) => (m[1] ? fieldWord(it) : it.split(/[ \t\n]+/).filter(Boolean).map(fieldWord).join(' ')));
+  };
+  const assignedPrint = (ev, name) => {
+    const r = String(ev.raw);
+    let a = ev.at + name.length + 1;
+    if (raw.slice(a, a + r.length) !== r) return null;
+    let e = a + r.length;
+    if (r.length > 1 && r[0] === '"' && r[r.length - 1] === '"') { a++; e--; }
+    const t = raw.slice(a, e);
+    if (!/\b(?:echo|printf|cat)\b/.test(t) || !(t[0] === '`' || t.startsWith('$('))) return null;
+    if (!(lexShell(t).subs || []).some((x) => x.open === 0 && x.close === t.length - 1)) return null;
+    return printOf(raw, a, e, 0);
+  };
+  const nameValue = (name, at) => {
+    if (!vars) vars = shellVars(P, {});
+    const ev = vars.eventOf(name, at);
+    if (!ev) return { unknown: true, git: false, unset: true };
+    if (ev.bound) return { unknown: true, git: binderGit(name) };
+    const r = String(ev.raw !== undefined ? ev.raw : ev.value);
+    if (r.length > 1 && r[0] === '(' && r[r.length - 1] === ')') {
+      if (elementSetBetween(name, ev.at, at)) return { unknown: true, git: binderGit(name) };
+      const x = elementsOf(ev);
+      return x.els ? { v: x.els.join(' '), els: x.els } : x;
+    }
+    const lit = vars.literalOf(name, at);
+    if (lit !== null) return { v: lit };
+    const p = assignedPrint(ev, name);
+    return p !== null ? { v: p } : { unknown: true, git: gitWord(r) };
+  };
+  const fieldWord = (w) => (/^[\w@%+=:,./*?[\]-]+$/.test(w) ? w : runnerQuote(w));
+  // `$'...'`: bash's and zsh's C-style string, its escapes read (\c ends it)
+  const ansiC = (src, i) => {
+    let j = i + 2;
+    while (j < src.length && src[j] !== "'") j += src[j] === '\\' ? 2 : 1;
+    let text = '';
+    for (let k = i + 2; k < Math.min(j, src.length);) {
+      if (src[k] !== '\\') { text += src[k]; k++; continue; }
+      const e = escapeAt(src, k, true);
+      if (e.stop) break;
+      text += e.text;
+      k += e.len;
+    }
+    return { text, end: j };
+  };
+  const expandWord = (tok, at, frame, nosplit = false) => {
+    const src = tok.raw;
+    const subs = tok.lex ? [...subsIn(tok.lex, tok.s, tok.e)].sort((x, y) => x[0] - y[0]) : [];
+    const parts = [];
+    let lit = null;
+    let dq = false;
+    let expanded = false;
+    let plain = true;
+    let printed = false;
+    let anyVar = false;
+    let unknown = null;
+    const flush = () => { if (lit !== null) { parts.push({ text: lit }); lit = null; } };
+    const miss = (git) => { if (!unknown) unknown = { unknown: true, git: false }; if (git) unknown.git = true; };
+    const put = (v, o = {}) => {
+      if (!run.budget.take(String(v).length)) { deepPrint = true; miss(false); return; } // the thirteenth review: 100 s
+      flush();
+      expanded = true;
+      if (!dq || o.many || o.reread) plain = false;
+      parts.push(o.many && dq ? { many: o.many } : { text: v, split: !dq });
+    };
+    const lookup = (name) => { const r = nameValue(name, at); if (r.unknown) { miss(r.git); return null; } anyVar = true; return r; };
+    let si = 0;
+    for (let i = 0; i < src.length; i++) {
+      while (si < subs.length && subs[si][0] < i) si++;
+      if (si < subs.length && subs[si][0] === i && (src[i] === '`' || src.startsWith('$(', i))) {
+        const [off, end] = subs[si++];
+        const p = /\b(?:echo|printf|cat)\b/.test(src.slice(off, end + 1)) ? printOf(raw, tok.s + off, tok.s + end + 1, 0) : null;
+        if (p === null) miss(false);
+        else { put(p); plain = false; printed = true; }
+        i = end;
+        continue;
+      }
+      const ch = src[i];
+      if (ch === '\\') { lit = (lit || '') + (dq && !'$`"\\\n'.includes(src[i + 1]) ? ch : '') + (src[i + 1] || ''); i++; continue; }
+      if (ch === "'" && !dq) { const j = src.indexOf("'", i + 1); lit = (lit || '') + src.slice(i + 1, j < 0 ? src.length : j); i = j < 0 ? src.length : j; continue; }
+      if (ch === '"') { dq = !dq; lit = lit || ''; continue; }
+      if (ch !== '$') { lit = (lit || '') + ch; continue; }
+      if (src[i + 1] === "'" && !dq) { const q = ansiC(src, i); lit = (lit || '') + q.text; i = q.end; continue; }
+      let body;
+      if (src[i + 1] === '{') { // to its own `}`, past any `${...}` inside (`${x:-${y}}`)
+        let j = i + 2;
+        for (let d = 1; j < src.length; j++) {
+          if (src[j] === '$' && src[j + 1] === '{') { d++; j++; } else if (src[j] === '}' && --d === 0) break;
+        }
+        if (j >= src.length) { miss(false); break; }
+        body = src.slice(i + 2, j);
+        i = j;
+      }
+      else { const m = /^(?:[A-Za-z_]\w*|[@*#?$!0-9-])/.exec(src.slice(i + 1, i + 256)); if (!m) { lit = (lit || '') + ch; continue; } body = m[0]; i += m[0].length; }
+      let m;
+      if ((m = /^([@*1-9])$/.exec(body))) {
+        const st = positionalAt(at, frame);
+        if (!st || st.unknown) { miss(st ? st.git : false); continue; }
+        anyVar = true;
+        if (m[1] === '@' || m[1] === '*') put(st.list.join(' '), { many: m[1] === '@' ? st.list : null, reread: true });
+        else put(st.list[Number(m[1]) - 1] || '', { reread: true });
+      } else if ((m = /^([A-Za-z_]\w*)\[([@*])\]$/.exec(body))) {
+        const r = lookup(m[1]);
+        if (r) put(r.v, { many: m[2] === '@' ? (r.els || [r.v]) : null, reread: true });
+      } else if ((m = /^([A-Za-z_]\w*)\[(\d{1,6})\]$/.exec(body))) {
+        // one element: bash counts from 0, zsh from 1
+        const r = lookup(m[1]);
+        const n = Number(m[2]);
+        if (r && r.els) {
+          const bash = r.els[n] === undefined ? '' : r.els[n];
+          const zsh = n > 0 && r.els[n - 1] !== undefined ? r.els[n - 1] : '';
+          if (bash !== zsh) readingsDiffer = true;
+          put(bashReading ? bash : zsh, { reread: true });
+        } else if (r) { if (n === 0) put(r.v, { reread: true }); else miss(false); }
+      } else if ((m = /^=([A-Za-z_]\w*)$/.exec(body))) {
+        const r = lookup(m[1]);
+        if (r) put(r.v, { reread: true });
+      } else if ((m = /^([A-Za-z_]\w*)(:?-)([\s\S]*)$/.exec(body))) {
+        const r = nameValue(m[1], at);
+        const named = /^\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))$/.exec(m[3]);
+        if (r.unknown && r.git) miss(true);
+        else if (r.v !== undefined && (m[2] === '-' || r.v !== '')) { anyVar = true; put(r.v, { reread: true }); }
+        else if (named) { const d = lookup(named[1] || named[2]); if (d) put(d.v, { reread: true }); }
+        else if (/[$`]/.test(m[3])) miss(gitWord(m[3]));
+        else put(dequote(m[3]), { reread: true });
+      } else if ((m = /^([A-Za-z_]\w*)$/.exec(body))) {
+        const r = lookup(m[1]);
+        if (r) put(r.v);
+      } else miss(false); // `$#`, `$?`, `${#x}`, `${x/a/b}`: not modelled
+    }
+    flush();
+    if (unknown) return { unknown: true, git: unknown.git || gitWord(outsideSubs(tok)) };
+    if (!expanded) return null;
+    const ifsR = nameValue('IFS', at);
+    const ifs = ifsR.v !== undefined ? ifsR.v : ' \t\n';
+    const sep = ifs ? new RegExp(`[${ifs.replace(/[\]\\^-]/g, '\\$&')}]`) : null;
+    const fields = [];
+    let cur = null;
+    for (const p of parts) {
+      if (p.many) { p.many.forEach((w, n) => { if (n === 0) cur = (cur === null ? '' : cur) + w; else { fields.push(cur); cur = w; } }); continue; }
+      if (!p.split || !sep || nosplit) { cur = (cur === null ? '' : cur) + p.text; continue; }
+      p.text.split(sep).forEach((w, n) => {
+        if (n > 0 && cur !== null) { fields.push(cur); cur = null; }
+        if (w) cur = (cur === null ? '' : cur) + w;
+      });
+    }
+    if (cur !== null) fields.push(cur);
+    return { fields, plain, bound: anyVar && !printed };
+  };
+  const DEEP_WHY = 'output printed through substitutions nested too deep to read, or inside a parameter expansion whose value decides where it lands';
+  const ODD_WHY = 'a printf conversion the reader does not model (a * width, a float or an unknown one), printing text a shell then runs';
+  // an odd printf is unread whatever its text names: what it prints is not known (the twelfth review, 8)
+  const flagged = (at) => { if (oddPrint) unread(at, ODD_WHY, null, true); else if (deepPrint || paramPrint) unread(at, DEEP_WHY); };
+  // A `<( )` word: the commands inside it
+  const procSub = (t) => {
+    if (!t || !t.raw.startsWith('<(')) return null;
+    const fr = mapsOf().byOpen.get(t.s);
+    return fr && fr.kind === '<(' ? levelOf(P, fr, fr.cmdFrom, fr.cmdTo) : null;
+  };
+  const STDIN_FILE = /^\/(?:dev\/stdin|dev\/fd\/0|proc\/self\/fd\/0)$/;
+  const unsureAt = lexShell(raw).unsure;
+  if (unsureAt >= 0) unread(unsureAt, 'a heredoc with no terminator line inside a substitution, which bash 3.2 ends at its ) and bash 5 and zsh do not');
+  if (lexShell(raw).doubt >= 0) unread(lexShell(raw).doubt, lexShell(raw).doubtWhy);
+  // An unquoted heredoc's body is expanded before its command reads it, so each `$( )` and backtick in it runs, in a
+  // subshell, where the command stands (the differential fuzzer against bash and zsh, 2026-11-05: `cat <<E` holding
+  // `$(git push)` went unread by every guard). A backtick's `\``, `\$` and `\\` are undone first, as bash does.
+  for (const h of heredocAt) {
+    if (h.quoted) continue;
+    const body = raw.slice(h.bodyStart, h.bodyEnd);
+    if (!/[$`]/.test(body)) continue;
+    for (const sub of lexShell(body, true).subs) {
+      // dash parses a substitution in the body as it reads it, on past the terminator line; bash ends the body there
+      if (sub.close >= body.length) unread(h.bodyStart + sub.open, 'a substitution its heredoc body leaves open: dash reads on past the terminator line, bash ends the body there');
+      const at = h.bodyStart + sub.open;
+      const end = h.bodyStart + sub.close;
+      if (sub.kind === '$(') push({ text: body.slice(sub.open + 2, sub.close), at: at + 2, end, mapped: true, cwd: anchor(h.index) });
+      else push({ text: body.slice(sub.open + 1, sub.close).replace(/\\([$`\\])/g, '$1'), at, end, mapped: false, cwd: anchor(h.index) });
+    }
+  }
+  // zsh runs the code a glob qualifier names - `*(e:'git push':)`, `*(+fn)` - for each file the glob matches, and the `(e)` flag of
+  // a parameter expansion expands its value again (the eleventh review: both went unread by every guard). A qualifier list
+  // is a `( )` opened right after a word character, never an empty `()`; bash reads the same text as an extglob, which runs
+  // nothing, so reading it as zsh errs toward judging. An `(e)` value the command bound to a literal is carried, any other
+  // unread.
+  // Each list is read at its own level, a nested `( )` a blank in it, so a nest is read once, not once per level (the
+  // twelfth review, 6: `a(` nested 100,000 deep read its text 100,000 times)
+  const kids = new Map();
+  for (const fr of P.frames) if (fr.parent) { if (!kids.has(fr.parent)) kids.set(fr.parent, []); kids.get(fr.parent).push(fr); }
+  for (const fr of P.frames) {
+    if (fr.kind !== '(' || fr.close === undefined || fr.close === fr.open + 1 || fr.open === 0 || !QUAL_AFTER.test(P.command[fr.open - 1])) continue;
+    let own = '';
+    let last = fr.open + 1;
+    for (const k of kids.get(fr) || []) { // a substitution in the list stays: zsh runs it (the thirteenth review)
+      if (k.kind !== '(') continue;
+      if (k.close === undefined || k.open < last) break;
+      own += `${P.command.slice(last, k.open)} `;
+      last = k.close + 1;
+    }
+    own += P.command.slice(last, fr.close);
+    if (!run.budget.take(own.length)) { unread(fr.open, run.budget.why); break; }
+    for (const code of qualifierCode(own)) push({ text: code, at: fr.open, end: fr.close + 1, mapped: false, cwd: anchor(fr.open) });
+  }
+  for (const m of P.command.matchAll(PARAM_E)) {
+    if (!/e/.test(m[1].replace(/[jslrZgI_](\W).*?\1/g, '')) || singleQuoted(P, m.index)) continue;
+    if (!vars) vars = shellVars(P, {});
+    const v = vars.literalOf(m[2], m.index);
+    if (v === null) unread(m.index, "zsh's (e) flag expands again a value the command does not spell out");
+    else push({ text: v, at: m.index, end: m.index + m[0].length, mapped: false, cwd: anchor(m.index), bound: true });
+  }
   for (let k = 0; k < P.cmds.length; k++) {
     const cmd = P.cmds[k];
     if (lateHere(run, k, cmd)) break;
@@ -2216,6 +3574,47 @@ function carriedOf(P, raw, heredocs, opts, run) {
       const at = tok.s;
       const el = cmd.elem || { from: at, to: P.command.length, cmds: [cmd] };
       const name = c.name;
+      // A command word that is an unquoted substitution or variable: the shell splits what it expands to into words, the
+      // first of them the command (beside the eleventh review: `$(echo git push)`, ``echo git` push`, `x="git push"; $x` and
+      // `x="rm -rf /"; $x` each ran unread). The words are literal - `literalWords` - and a word quoted outside its
+      // substitutions is one word, a command of that whole name. A variable is read from the literal the command bound it to,
+      // never its name as a path (`rm -rf /` named nothing); another program's output is not known before it runs, and stays
+      // as it was read. A word that names no print is not parsed again.
+      if (/[$`]/.test(tok.raw)) {
+        resetPrint();
+        const x = expandWord(tok, at, cmd.frame);
+        // each later word expanded too, so a re-read line never meets a name it cannot see (`${cmd[0]} ${cmd[1]}`)
+        const restOf = () => {
+          let rest = '';
+          let pos = tok.e;
+          for (let w = c.at + 1; w < cmd.words.length; w++) {
+            const t2 = cmd.words[w];
+            let txt = P.command.slice(t2.s, t2.e);
+            if (/[$`]/.test(t2.raw)) { const y = expandWord(t2, t2.s, cmd.frame); if (y && y.fields) txt = y.fields.map(fieldWord).join(' '); }
+            rest += P.command.slice(pos, t2.s) + txt;
+            pos = t2.e;
+          }
+          return rest;
+        };
+        const items = x && x.unknown && x.git ? loopWordItems(tok, cmd) : null;
+        if (items) {
+          const rest = restOf();
+          flagged(at);
+          for (const it of items) if (it.trim()) push({ text: it + rest, at, end: el.to, mapped: false, cwd: anchor(at) });
+          continue;
+        }
+        if (x && x.unknown && x.git) unread(at, 'a command word built from a value the reader cannot know, whose binding names git', null, true);
+        // a first field reading `NAME=...` is left to the parser, which already reads such a word both as a name and as an
+        // assignment: a line re-read from it would count the command after it twice
+        const words = x && x.fields && !x.plain && !/^[A-Za-z_]\w*=/.test(x.fields[0] || '') ? x.fields.map(fieldWord).join(' ') : '';
+        if (words.trim()) {
+          const rest = restOf();
+          flagged(at);
+          push({ text: words + rest, at, end: el.to, mapped: false, cwd: anchor(at), ...(x.bound ? { bound: true } : {}) });
+          continue;
+        }
+        flagged(at);
+      }
       if (SHELLS.has(name)) {
         const args = c.args;
         const argv = c.argv;
@@ -2235,6 +3634,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
             continue;
           }
           file = k;
+          if (STDIN_FILE.test(w)) stdin = true;
           break;
         }
         if (noexec) continue;
@@ -2242,48 +3642,82 @@ function carriedOf(P, raw, heredocs, opts, run) {
           if (cform >= args.length) continue;
           const t = args[cform];
           const named = boundTok(t);
+          // a word whose substitutions print through echo, printf or cat is the script with their output in place; their
+          // own commands run where this command stands, and are read there
+          resetPrint();
+          const printed = named === null ? subPrint(t) : null;
+          flagged(at);
           if (named !== null) push({ text: named, at, end: el.to, mapped: false, cwd: anchor(at), bound: true });
+          else if (printed !== null) push({ text: printed, at, end: el.to, mapped: false, cwd: anchor(at) });
           else if (verbatimWord(t, P)) push({ text: t.raw.slice(1, -1), at: t.s + 1, end: t.e - 1, mapped: true, cwd: anchor(at) });
           else push({ text: argv[cform], at, end: el.to, mapped: false, cwd: anchor(at) });
           continue;
         }
+        const inner = file >= 0 && !stdin ? procSub(args[file]) : null;
+        if (inner) { for (const t of printedBy(inner, at)) push({ ...t, cwd: t.cwd !== undefined ? t.cwd : anchor(at), at, end: el.to, mapped: false }); continue; }
         if (file >= 0 && !stdin) {
           const t = fromFile(argv[file], at, false, args[file]);
           if (t) push({ ...t, at, end: el.to, mapped: false });
           continue;
         }
-        const texts = [];
-        // a heredoc anywhere in this pipeline, a here-string or a file on the shell's own stdin
-        for (const h of heredocAt) { const o = owners.get(h.index); if (o && o.elem === el) texts.push({ text: bodyOf(raw, h) }); }
-        for (const r of cmd.redirs) {
-          if (r.op === '<<<' && r.target) texts.push({ text: dequote(r.target.raw) });
-          if (r.op === '<' && r.target) { const t = fromFile(dequote(r.target.raw), at, false, r.target); if (t) texts.push(t); }
-        }
-        // the stage before the shell's pipe, walked back past any tee or bare cat: an echo, a printf, a cat of files
-        const stages = el.cmds;
-        const me = stages.indexOf(cmd);
-        for (let j = me - 1; j >= 0 && me - j <= 16; j--) {
-          const prev = stages[j].cands[0];
-          if (!prev) break;
-          const pargs = prev.argv.filter((a) => !a.startsWith('-'));
-          if (prev.name === 'tee' || (prev.name === 'cat' && !pargs.length)) continue;
-          const pw = stages[j].words[prev.at].e;
-          if (prev.name === 'echo') texts.push({ text: echoOut(wordsFrom(raw, pw)) });
-          else if (prev.name === 'printf') texts.push({ text: printfOut(wordsFrom(raw, pw)) });
-          else if (prev.name === 'cat') for (const a of pargs) { const t = fromFile(a, at); if (t) texts.push(t); }
-          break;
-        }
+        const texts = stdinTexts(cmd, el, at);
         for (const t of texts) push({ ...t, cwd: t.cwd !== undefined ? t.cwd : anchor(at), at, end: el.to, mapped: false });
         continue;
       }
       if (name === 'eval') {
-        // eval parses its words again, so a `$NAME` word runs its value whatever the quoting
+        // eval parses its words again, so a `$NAME` word runs its value whatever the quoting; its words are the parser's
+        // own, ending where the command ends (a backtick round it too) with each substitution kept whole
         let bound = false;
-        const words = wordsFrom(raw, tok.e).map((w) => { const v = boundText(w, at); if (v === null) return w; bound = true; return v; });
+        resetPrint();
+        const words = c.argv.map((w, k) => {
+          const v = boundText(w, at);
+          if (v === null) { const p = subPrint(c.args[k]); return p === null ? w : p; } // as for `-c` above
+          bound = true;
+          return v;
+        });
+        flagged(at);
         push({ text: words.join(' '), at, end: el.to, mapped: false, sourced: true, cwd: anchor(at), ...(bound ? { bound } : {}) });
         continue;
       }
+      if (name === 'env') { // `env -S '<line>'` splits the line into a command it runs
+        for (let k = 0; k < c.argv.length; k++) {
+          const w = c.argv[k];
+          const v = w === '-S' || w === '--split-string' ? c.argv[k + 1] : /^-S./.test(w) ? w.slice(2) : w.startsWith('--split-string=') ? w.slice(15) : null;
+          if (v) {
+            push({ text: v, at, end: el.to, mapped: false, cwd: anchor(at) });
+            // BSD env (macOS) keeps a backslash-newline's line break, which a shell would join (the seventh fuzz pass);
+            // the parser's words have it joined already, so it is read from the word as written
+            const own = w === '-S' || w === '--split-string';
+            const t = own ? c.args[k + 1] : c.args[k];
+            const r = t ? dequote(raw.slice(t.s, t.e)) : '';
+            const rv = own ? r : r.slice(w.length - v.length);
+            if (/\\\n/.test(rv)) push({ text: rv.replace(/\\\n/g, '\n'), at, end: el.to, mapped: false, cwd: anchor(at) });
+            break;
+          }
+          if (!w.startsWith('-')) break;
+        }
+        continue;
+      }
+      if (name === 'trap') {
+        // trap's action is a script the shell runs when the signal comes - EXIT at the end of this very command (the
+        // eighth R015 review: `trap 'git push --force origin main' EXIT` went unread by every guard); `-l` / `-p` print,
+        // `-` resets and an empty action ignores
+        let k = 0;
+        while (k < c.argv.length && /^-[lp]+$/.test(c.argv[k])) k++;
+        if (c.argv[k] === '--') k++;
+        const action = c.argv[k];
+        if (action && action !== '-') {
+          const v = boundTok(c.args[k]);
+          push({ text: v !== null ? v : action, at, end: el.to, mapped: false, sourced: true, atExit: true, cwd: anchor(at), ...(v !== null ? { bound: true } : {}) });
+        }
+        continue;
+      }
       if (name === 'source' || name === '.') {
+        const inner = procSub(c.args[0]);
+        if (inner || STDIN_FILE.test(c.argv[0] || '')) {
+          for (const t of inner ? printedBy(inner, at) : stdinTexts(cmd, el, at)) push({ ...t, cwd: t.cwd !== undefined ? t.cwd : anchor(at), at, end: el.to, mapped: false, sourced: true });
+          continue;
+        }
         const t = fromFile(c.argv[0], at, false, c.args[0]);
         if (t) push({ ...t, at, end: el.to, mapped: false, sourced: true });
         continue;
@@ -2315,14 +3749,42 @@ function carriedOf(P, raw, heredocs, opts, run) {
 // resolves a script file (without one only an absolute path is read, and only when `files` is true); `opts.run` shares a
 // scan run. Scripts it could not read are in `opts.run.unread` (the returned array's `unread` too).
 function carriedScripts(raw, opts = {}) {
+  try { return carriedScriptsIn(raw, opts); }
+  catch (e) {
+    bashReading = false;
+    readingsDiffer = false;
+    const none = [];
+    none.unread = opts.run ? opts.run.unread : [];
+    none.unread.push({ at: 0, why: `the reader failed on this command (${(e && e.name) || 'error'})`, path: null, force: true });
+    return none;
+  }
+}
+function carriedScriptsIn(raw, opts = {}) {
   const text = String(raw || '');
   const run = opts.run || newRun(opts);
   if (run.budget.over()) { run.unread.push({ at: 0, why: run.budget.why, path: null }); const none = []; none.unread = run.unread; return none; }
   const heredocs = heredocsOf(text);
   const command = joinContinuations(blankComments(blankHeredocs(text, heredocs)));
   const P = parseShell(command);
-  const out = carriedOf(P, text, heredocs, opts, run);
+  const out = carriedBoth(P, text, heredocs, opts, run);
   out.unread = run.unread;
+  return out;
+}
+// carriedBoth: carriedOf, read again with `bashReading` on when the shells part on this command - bash's reading's
+// scripts join the first's. The one home for carriedScripts and scanShell (gate 13: scanShell read the first alone, so a
+// write only bash's echo carried - a Windows path's backslashes, the text after a `\c` - passed the cross-project guard).
+function carriedBoth(P, raw, heredocs, opts, run) {
+  const outer = readingsDiffer;
+  readingsDiffer = false;
+  const out = carriedOf(P, raw, heredocs, opts, run);
+  if (readingsDiffer && !bashReading) {
+    bashReading = true;
+    try {
+      const seen = new Set(out.map((sc) => `${sc.at}\0${sc.text}`));
+      for (const sc of carriedOf(P, raw, heredocs, opts, run)) if (!seen.has(`${sc.at}\0${sc.text}`)) out.push(sc);
+    } finally { bashReading = false; }
+  }
+  readingsDiffer = outer || readingsDiffer;
   return out;
 }
 
@@ -2471,6 +3933,8 @@ function shellVars(P, opts = {}) {
     expand: (word, at) => expandWith(word, at, 0, pwdAt),
     valueOf: (name, at) => valueWith(name, at, 0, pwdAt),
     literalOf,
+    // the newest statement assignment of `name` before `at`: { bound: true } for a loop, `read` or similar name, null when none
+    eventOf: (name, at) => (bound.has(name) ? { bound: true } : setBefore(name, at) || null),
     pwdAt,
   };
 }
@@ -2734,10 +4198,56 @@ function expandGitAliases(command, opts = {}) {
 // that still names git) or -1, which each caller judges its own conservative way. A script `curl` prints does not exist
 // when a guard runs, so the call is judged on what it names.
 const NAMES_GIT = /g[\\'"]*i[\\'"]*t/i;
+// A text that names git as a word - a command or a path ending in one - once its substitutions, quotes and backslashes
+// are taken out: a read-only `$(git rev-parse ...)` in it, a `github` or a `.git` folder is no git word (the thirteenth
+// review: `"$HOME/github/x.sh"` and `ROOT=$(git rev-parse --show-toplevel); "$ROOT/t.sh"` were asked on).
+const GIT_WORDS = new Map();
+let gitWordsHeld = 0;
+const GIT_VALUE = /^\s*(?:\S*[\\/])?git(?:\.exe)?\s+(?:-C\s+\S+\s+)?(?:rev-parse|symbolic-ref|merge-base|ls-files|branch\s+--show-current)\b/i;
+function gitWord(text) {
+  const key = String(text);
+  if (GIT_WORDS.has(key)) return GIT_WORDS.get(key);
+  // a parameter's operator (`${x:-`, `${y:=`) is no part of the word after it (review 14, 1: `${x:-${y:-git}} reset`)
+  // ... and the name before it stays (review 15, 2: `${GIT:-true}`), the subscript bounded (review 15, 4: an unclosed
+  // `${a[` rescanned the rest of the text)
+  let t = key.replace(/\$\{([A-Za-z_]\w*)(?:\[[^\]\n]{0,64}\])?:?[-=+?]/g, ' $1 ');
+  // a substitution that asks git for a path or a ref alone (`$(git rev-parse --show-toplevel)`) prints a value, never
+  // git's name; any other keeps its words, so `$(command -v git)`, `$(which git)`, `$(echo git)` (review 14, 1) and
+  // `$(git --version | cut -d' ' -f1)` (review 15) name git
+  // - judged one pipeline segment at a time, its redirections to /dev/null or a descriptor dropped, so a fallback or a
+  // filter beside it (`|| pwd`, `| tr -d '\r'`) keeps its own words and drops none of git's (review 16, 1)
+  const inner = (m, a, b) => {
+    const body = (a !== undefined ? a : b).replace(/\d*>&\d+|\d*>>?[ \t]*\/dev\/null/g, ' ');
+    return ` ${body.split(/\|\|?|&&?|;|\n/).map((sg) => (GIT_VALUE.test(sg) && !/--(?:sq-quote|parseopt|format|pretty)|\sgit\b/i.test(sg.replace(GIT_VALUE, '')) ? ' ' : sg)).join(' ')} `;
+  };
+  for (let n = 0; n < 8 && /\$\(|`/.test(t); n++) t = t.replace(/\$\(([^()]*)\)|`([^`]*)`/g, inner);
+  t = t.replace(/[\\'"]/g, '');
+  // a git program by its path (`$(git --exec-path)/git-push`) too
+  const v = /(?:^|[^\w.-])git(?:$|[^\w.-])/i.test(t) || /(?:^|[\/\s])git-[a-z]/i.test(t);
+  if (gitWordsHeld + key.length > 4194304) { GIT_WORDS.clear(); gitWordsHeld = 0; } // a cache of at most 4 MB of keys
+  GIT_WORDS.set(key, v);
+  gitWordsHeld += key.length;
+  return v;
+}
 const namesGit = (file) => {
   try { return fs.statSync(file).size > 64 * 1024 * 1024 || NAMES_GIT.test(fs.readFileSync(file, 'latin1')); } catch { return true; }
 };
+// A reader that throws fails CLOSED: the whole command is unread, which every gate judges as the act it guards (review 14,
+// 2: a stack overflow failed the force-push, rm, commit and cross-project guards open).
 function gitText(raw, cwd) {
+  try { return gitTextIn(raw, cwd); }
+  catch (e) { return failedRead(raw, cwd, e); }
+}
+// The read a failure leaves: every word unread, `failed` naming the error - the force-push guard, which leaves unread text
+// alone by design, blocks on it when the text names a push (review 15, 7)
+function failedRead(raw, cwd, e) {
+  bashReading = false;
+  readingsDiffer = false;
+  let command = '';
+  try { command = String(raw || ''); } catch { /* an unprintable value */ }
+  return { command, parsed: parseShell(''), calls: [], regions: [], unreadAt: 0, callDir: () => cwd || null, literalAt: () => null, vars: null, orderOf: () => 0, failed: String((e && e.message) || e) };
+}
+function gitTextIn(raw, cwd) {
   const run = newRun();
   const aliased = expandGitAliases(String(raw || ''), { cwd, run });
   let unreadAt = aliased.unreadAt;
@@ -2751,15 +4261,18 @@ function gitText(raw, cwd) {
     regions.push({ from: base, to: base + text.length, cwd: dir0, trail });
     const u0 = run.unread.length;
     const scripts = carriedScripts(text, { cwd: dir0, files: true, run });
-    for (const u of run.unread.slice(u0)) if (u.path ? namesGit(u.path) : NAMES_GIT.test(text.slice(u.at))) markUnread(base + u.at);
-    let out = text;
+    for (const u of run.unread.slice(u0)) if (u.force || (u.path ? namesGit(u.path) : NAMES_GIT.test(text.slice(u.at)))) markUnread(base + u.at);
+    // what the text leaves open is shut first - in a carried script always, since another may be joined after it
+    let out = scripts.length || depth > 0 ? text + lexShell(text).close : text;
     for (const sc of scripts) {
       if (run.budget.deep(depth) || run.budget.over()) { if (NAMES_GIT.test(sc.text)) markUnread(base + sc.at); continue; }
       const dir = sc.cwd || dir0;
       const inner = expandGitAliases(sc.text, { cwd: dir, run });
       const at = base + out.length + 1;
       if (inner.unreadAt >= 0) markUnread(at + inner.unreadAt);
-      out += `\n${withCarried(inner.text, dir, at, depth + 1, trail.concat(base + sc.at))}`;
+      // a trap's action runs as its shell exits, after every other call in it (review 21, F2: `git checkout main; trap 'git
+      // checkout "$ORIG"' EXIT; git push -f` replayed the trap's checkout before the push, and passed)
+      out += `\n${withCarried(inner.text, dir, at, depth + 1, trail.concat(sc.atExit ? base + text.length : base + sc.at))}`;
     }
     return out;
   }
@@ -2790,6 +4303,19 @@ function gitText(raw, cwd) {
     copy[1] = out;
     return copy;
   };
+  // `$(git rev-parse --show-toplevel)` is the work tree holding the directory the shell stands in (review 21, F3: `cd
+  // "$(git rev-parse --show-toplevel)" && git push -f` on main went to a folder of that name, and passed); any other
+  // substitution is read as before
+  const GIT_TOP = /^(?:\$\(\s*git\s+rev-parse\s+--show-toplevel(?:\s+2>\s*\/dev\/null)?\s*\)|`\s*git\s+rev-parse\s+--show-toplevel(?:\s+2>\s*\/dev\/null)?\s*`)$/;
+  const workTreeOf = (dir) => {
+    for (let d = dir, n = 0; d && n < 64; n++) {
+      if (fs.existsSync(path.join(d, '.git'))) return d;
+      const up = path.dirname(d);
+      if (up === d) break;
+      d = up;
+    }
+    return null;
+  };
   const regionAt = (at) => {
     let k = regions.length - 1;
     while (k > 0 && regions[k].from > at) k--;
@@ -2806,9 +4332,16 @@ function gitText(raw, cwd) {
   function callDir(call) {
     const k = regionAt(call.at);
     const r = regions[k];
-    if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to).map(resolveCd));
+    if (!regionCds.has(k)) {
+      const own = [];
+      for (const c of (parsed ? parsed.cds : []).filter((x) => x.index >= r.from && x.index < r.to)) {
+        const top = !c.popd && GIT_TOP.test(unquote(String(c[1] || '')).trim()) ? workTreeOf(anchorer(own, r.cwd, cdTarget)(c.index) || r.cwd) : null;
+        if (top) { const copy = Object.assign([], c); copy[1] = top; own.push(copy); } else own.push(resolveCd(c));
+      }
+      regionCds.set(k, own);
+    }
     let dir = anchorAt(regionCds.get(k), call.at, r.cwd, cdTarget) || r.cwd;
-    for (const d of call.dirs) if (!isVar(d)) dir = path.resolve(dir, nativePath(d));
+    for (const d of call.dirs) if (GIT_TOP.test(String(d).trim())) dir = workTreeOf(dir) || dir; else if (!isVar(d)) dir = path.resolve(dir, nativePath(d));
     try { dir = fs.realpathSync.native(dir); } catch { /* git reports the missing directory itself */ }
     return dir;
   }
@@ -2830,6 +4363,19 @@ function gitText(raw, cwd) {
 // in order inside the running word's own (below one), which keeps its cds before its writes and every later command
 // after them. Nested scripts are read 3 deep; a script at a fourth level is unread.
 function scanShell(rawCommand, opts = {}) {
+  if (opts.depth) return scanShellIn(rawCommand, opts);
+  try { return scanShellIn(rawCommand, opts); }
+  catch (e) {
+    bashReading = false;
+    readingsDiffer = false;
+    let command = '';
+    try { command = String(rawCommand || ''); } catch { /* an unprintable value */ }
+    const unread = opts.run ? opts.run.unread : [];
+    unread.push({ at: 0, why: `the reader failed on this command (${(e && e.name) || 'error'})`, path: opts.path || null });
+    return { command, quoted: [], inQuotes: () => false, expandVars: (t) => t, cds: [], targets: [], gitWrites: [], aliasUnreadAt: -1, unread };
+  }
+}
+function scanShellIn(rawCommand, opts = {}) {
   const run = opts.run || newRun(opts);
   let raw = String(rawCommand || '');
   let aliasUnreadAt = -1;
@@ -2892,7 +4438,7 @@ function scanShell(rawCommand, opts = {}) {
   }
   const files = opts.files !== undefined ? !!opts.files : !!opts.cwd;
   const depth = opts.depth || 0;
-  const carried = carriedOf(P, raw, heredocs, { cwd: opts.cwd || null, files }, run);
+  const carried = carriedBoth(P, raw, heredocs, { cwd: opts.cwd || null, files }, run);
   const cds = carried.length ? P.cds.slice() : P.cds;
   if (carried.length && run.budget.deep(depth)) {
     for (const sc of carried) run.unread.push({ at: sc.at, why: `a script nested ${depth + 1} deep`, path: null });
@@ -2926,6 +4472,6 @@ function enclosingEnd(P, at, closesOf) {
   return undefined;
 }
 
-module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
+module.exports = { failedRead, scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
   resolveOn, shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan, COPY_VERBS };

@@ -82,12 +82,12 @@ tar -xzf "<tmp>/stack.tar.gz" -C "<tmp>"
 git clone --depth 1 -b main https://github.com/envoydev/alfred-code "<tmp>/repo"
 ```
 
-Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` on every exit path - success, failure or abort.
+Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the collector's receipt (`collected.json`) live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` on every exit path - success, failure or abort.
 
 ### 3. RUN it
 The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when a leftover `ALFRED_CODE_DOCS_PATH` names the root - the exact calls are in the mechanics reference.
 
-**Test for the ledgers, never assert their absence.** The test is the reference's one command per session, and its OUTPUT is what the report quotes: `absent` in the report means that command printed `absent`. On a hit, the per-session calls gain `--hook-log <ledger>` (the instrumentation ledger - who fired what) and `--hook-blocks <file>` (the session's OWN guard-block ledger - WHICH guard denied a call). No ledger: skip the flag and say so in the report.
+**Quote the receipt, never assert a ledger's absence.** The collector writes `collected.json` beside the copy: its hook-blocks and tools-usage rows say whether each ledger was found, and the report's `absent` quotes that row's reason (the `## Evidence coverage` section prints every row). The analyzer reads both ledgers from the copy itself - the instrumentation ledger (who fired what) and the session's own guard-block ledger (WHICH guard denied a call) - so no flag is needed.
 
 ### 4. WRITE - one folder per session
 Read `references/diagnosis-discipline.md` now, before the first authored row of the first bundle - its checks are this step's gate, not homework: every authored section below is written against them, and the report's Environment rows carry the receipt `Discipline: read`. The discipline is READ this run, never remembered: a bundle with no `Discipline: read` receipt was authored without the checks, and hand-written analysis is the failure mode they exist to replace. When a check and your recollection of the transcript disagree, re-open the transcript; the check wins.
@@ -101,18 +101,17 @@ Everything for a session lands in `<data root>/statistics/usage-report/<session-
 - `report-usage.md` - the filled `--report-md` skeleton: the analyzer's tables stay UNTOUCHED (a number a tool prints cannot be misquoted), and you author only the FILL IN sections, shaped per the section spec below.
 - The `--json` dump(s).
 - A copy of the session `.jsonl` and its `subagents/` folder when present - the complete raw data, co-located so another agent can analyze it without hunting - only on the consent test below.
-- The session's guard-block ledger, COPIED from `<data root>/statistics/hook-blocks/<sid>.jsonl` and renamed `hook-blocks-<sid>.jsonl` when it exists - one row per BLOCK, naming the hook that fired. Copied, never moved: the project keeps its own record. Absent means no block fired this session - say that rather than leaving the reader to guess.
-- The session's instrumentation ledgers, MOVED (not copied) from `<data root>/statistics/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. A session not audited this run keeps its ledger in place.
+- The collector's output (`scripts/collect-session.js`, the shapes in `references/run-mechanics.md`): `collected.json`, the receipt - one row per store, an `absent` row with its reason; `context.json`; and the session's ledgers - the guard-block ledger COPIED (the project keeps its record), the instrumentation ledger MOVED out of the project (a session not audited this run keeps its own) - as `hook-blocks-<sid>.jsonl` / `tool-usage-<sid>.jsonl` beside the copy and under `data/`.
 
 Raw transcripts carry full conversation content - code, file contents, possibly secrets - so the copy is keyed on what git will do with it. Before the first copy run `git check-ignore -q "<data root>/statistics/usage-report/<session-id>/x.jsonl"`. Exit 0: git keeps the copies out - copy. Any other exit (1 is a folder git can commit, 128 no repo at all): ONE ask before any copy, the answer held for the run:
 
 ```ask
 Raw transcripts would land in <data root>/statistics/usage-report/, a folder git can commit. Keep them out of the bundle.
-- 'Report and --json dumps only (Recommended)' - the report and the dumps carry counts, tool names and paths, never code
+- 'Report and --json dumps only (Recommended)' - the report, the dumps, `collected.json`, `context.json` and the meta stores: counts, ids, paths, versions, never conversation text
 - 'Copy the raw transcripts too' - the whole conversation, code and file contents included, lands where git can commit it
 ```
 
-Without the copy the bundle holds the report and the `--json` dumps only, and its Environment rows say `raw transcripts: not copied - <the check's exit>`.
+Without the copy the bundle holds the report, the `--json` dumps, `collected.json`, `context.json` and the meta stores - counts, ids, paths, versions, never conversation text - and its Environment rows say `raw transcripts: not copied - <the check's exit>`.
 
 `report-usage.md` = the skeleton plus your judgment. The machine sections (whichever the run emits - listed in `references/run-mechanics.md`, with what `Inventory vs use` scores) stay as printed, and a non-use finding cites the `Inventory vs use` row, never the stack's full catalog; then fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict), insert ONE authored `## Per skill run` (one subsection per SKILLS entry found) between the machine tables and Waste analysis, and append the Environment rows only you know (the discipline file lists them). `references/diagnosis-discipline.md` defines each section and the checks every row passes before it is written - one section there per section here, in this order.
 

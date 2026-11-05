@@ -233,6 +233,24 @@ test('--run-hooks captures each injection at its load point; a turn is one promp
     assert.deepEqual(s.writes.stray, []);
 });
 
+test('--run-hooks runs an exec-form hook the way Claude Code does: its command spawned with the args, no shell', () =>
+{
+    // build-marketplace.js launches every core hook as command node, args [script] (2026-11-05). A path with a space
+    // and a quote stays one argument: no shell reads it.
+    const fx = install({
+        plugins: { 'alfred-code@envoydev': {
+            files: { "hooks/it's here/start.js": hookScript('Exec form ran.') },
+            entry: { hooks: { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'node', args: ["${CLAUDE_PLUGIN_ROOT}/hooks/it's here/start.js"], timeout: 10 }] }] } },
+        } },
+    });
+    const s = fx.run({ runHooks: true });
+    const start = rowsAt(s, 'session-start').find((r) => r.source === 'start.js');
+    assert.ok(start, 'the script is named from args');
+    assert.equal(start.chars, 'Exec form ran.'.length);
+    assert.match(start.note, /SessionStart:startup - exit 0/);
+    assert.deepEqual(s.writes.stray, []);
+});
+
 test('a hook past its timeout is flagged, never waited out', () =>
 {
     const fx = install({

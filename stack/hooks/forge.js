@@ -31,13 +31,57 @@ const LEX_KEYS = ['nouns', 'groups', 'verbs', 'shellVerbs', 'watchFlags', 'merge
 // ---- the vocabulary ------------------------------------------------------------------------------------------------
 let BASE = null;
 const baseLexicon = () => BASE || (BASE = JSON.parse(fs.readFileSync(path.join(__dirname, 'forge-lexicon.json'), 'utf8')));
-// Arrays are appended, objects of arrays merged class by class, only under the keys the base already has - an overlay
-// adds words, it never replaces the vocabulary or reaches an inherited key.
-function mergeInto(base, add) {
+// Arrays are appended, objects of arrays merged class by class under the keys the base already has - an overlay adds
+// words, it never replaces the vocabulary or reaches an inherited key. A NEW key is taken only where OPEN_KEYS accepts it
+// (R013: a self-hosted host's kind, a kind's CLI, that CLI's install line); every other one is pushed to `dropped` by its
+// path, so the session start can name it. `after` is never taken from an overlay - the installer runs it after
+// `brew install`, and a data-root overlay can arrive in a clone.
+const NEVER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const HOST_KEY = /^[A-Za-z0-9.-]{1,253}$/;
+const CLI_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+const FORMULA = /^[a-z0-9][a-z0-9+_.@-]{0,63}$/;
+const baseKinds = () => new Set(Object.values((baseLexicon().hints || {}).kinds || {}));
+// Each returns the value to take, or undefined once it has named why not.
+const OPEN_KEYS = {
+  'hints.kinds': (k, v, at, dropped) => {
+    if (!HOST_KEY.test(k)) return void dropped.push(`${at} (not a host name)`);
+    if (typeof v !== 'string' || !baseKinds().has(v)) return void dropped.push(`${at} (not a known kind)`);
+    return v;
+  },
+  'hints.clis': (k, v, at, dropped) => {
+    if (!baseKinds().has(k)) return void dropped.push(`${at} (not a known kind)`);
+    if (typeof v !== 'string' || !CLI_NAME.test(v)) return void dropped.push(`${at} (not a CLI name)`);
+    return v;
+  },
+  'hints.install': (k, v, at, dropped) => {
+    if (!CLI_NAME.test(k)) return void dropped.push(`${at} (not a CLI name)`);
+    if (!v || typeof v !== 'object' || Array.isArray(v) || typeof v.how !== 'string' || !/^https:\/\/\S+$/.test(v.how)) return void dropped.push(`${at} (how is no https URL)`);
+    const out = { how: v.how };
+    for (const key of Object.keys(v)) {
+      if (key === 'how') continue;
+      if (key === 'brew' && typeof v.brew === 'string' && FORMULA.test(v.brew)) out.brew = v.brew;
+      else dropped.push(`${at}.${key}${key === 'brew' ? ' (not a formula name)' : key === 'after' ? ' (after is not taken from an overlay)' : ''}`);
+    }
+    return out;
+  },
+};
+function mergeInto(base, add, at = '', dropped = []) {
   if (Array.isArray(base)) return Array.isArray(add) ? [...base, ...add.filter((w) => !base.includes(w))] : base;
   if (!base || typeof base !== 'object' || !add || typeof add !== 'object' || Array.isArray(add)) return base;
   const out = { ...base };
-  for (const k of Object.keys(add)) if (Object.prototype.hasOwnProperty.call(base, k)) out[k] = mergeInto(base[k], add[k]);
+  for (const k of Object.keys(add)) {
+    const p = at ? `${at}.${k}` : k;
+    if (NEVER_KEYS.has(k)) { dropped.push(p); continue; }
+    if (Object.prototype.hasOwnProperty.call(base, k)) {
+      if (k === 'after' && /^hints\.install\.[^.]+$/.test(at)) { dropped.push(`${p} (after is not taken from an overlay)`); continue; }
+      out[k] = mergeInto(base[k], add[k], p, dropped);
+      continue;
+    }
+    const open = OPEN_KEYS[at];
+    if (!open) { dropped.push(p); continue; }
+    const v = open(k, add[k], p, dropped);
+    if (v !== undefined) out[k] = v;
+  }
   return out;
 }
 const loaded = new Map();
@@ -52,7 +96,16 @@ function loadLexicon(projectRoot, env = process.env) {
   if (fs.existsSync(overlay)) {
     try {
       const add = JSON.parse(fs.readFileSync(overlay, 'utf8'));
-      for (const k of LEX_KEYS) if (add && Object.prototype.hasOwnProperty.call(add, k)) lex[k] = mergeInto(base[k], add[k]);
+      const dropped = [];
+      if (add && typeof add === 'object' && !Array.isArray(add)) {
+        for (const k of Object.keys(add)) {
+          if (k.startsWith('_')) continue; // a comment key, as the base file's own _note
+          if (!LEX_KEYS.includes(k)) { dropped.push(k); continue; }
+          if (k === 'hints' && (!add.hints || typeof add.hints !== 'object' || Array.isArray(add.hints))) { dropped.push('hints'); continue; }
+          lex[k] = mergeInto(base[k], add[k], k, dropped);
+        }
+      }
+      if (dropped.length) notice = `the forge-lexicon.json overlay at ${overlay} names keys the vocabulary does not read - ignored: ${dropped.slice(0, 8).join(', ')}${dropped.length > 8 ? ` and ${dropped.length - 8} more` : ''}`;
     } catch (err) {
       notice = `the forge-lexicon.json overlay at ${overlay} is not valid JSON (${err.message}) - ignored, the base vocabulary applies`;
     }
@@ -133,7 +186,7 @@ function conceptOf(verb, nouns, fileAsRef) {
   if (verb === 'read') return change || nouns.release || nouns.pipeline || ref || nouns.file ? READ : null;
   return null;
 }
-const result = (concept, strength, transport, why, extra = {}) => ({ concept, strength, transport, change: null, ref: null, head: null, why, ...extra });
+const result = (concept, strength, transport, why, extra = {}) => ({ concept, strength, transport, change: null, ref: null, head: null, branch: null, why, ...extra });
 // A forge noun the call names, with no verb any class knows: the strongest act that noun admits, `unknown` - the gates ask.
 function unknownOf(nouns, transport, why, extra) {
   const concept = nouns.change || nouns.review ? MERGE : nouns.release ? RELEASE : nouns.ref ? BRANCH : null;
@@ -199,6 +252,26 @@ const changeFromArgs = (argv) => {
   }
   return null;
 };
+// R015: the branch a merge naming no number merges - '@' (the current branch) with no positional word, the one word it
+// names, else null. A repo flag (`-R`, `--repo`) points at another repository, whose branches this checkout cannot read:
+// null, today's rule. The word after a flag that takes a value is that value, never a branch.
+const MERGE_VALUE_FLAGS = {
+  gh: new Set(['-b', '--body', '-F', '--body-file', '-t', '--subject', '-A', '--author-email', '--match-head-commit', '-R', '--repo']),
+  glab: new Set(['-m', '--message', '--squash-message', '--sha', '-R', '--repo']),
+};
+function branchSelector(cli, rest) {
+  const words = (rest || []).map(String);
+  if (words.some((w) => w === '-R' || w === '--repo' || w.startsWith('--repo=') || /^-R./.test(w))) return null;
+  const takes = MERGE_VALUE_FLAGS[String(cli || '').toLowerCase()] || new Set();
+  const positional = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (/^-/.test(w)) { if (!w.includes('=') && takes.has(w)) i++; continue; }
+    positional.push(w);
+  }
+  if (!positional.length) return '@';
+  return positional.length === 1 && !/^#?\d+$/.test(positional[0]) && !positional[0].includes('://') ? positional[0] : null;
+}
 // curl's -K / --config file (E-batch fn-10b): read up to CURL_CONFIG_MAX bytes from where the call runs, each line turned
 // into argv words as curl reads it - `name = value`, `name: value`, `name value`, `--name value`, a bare switch, a quoted
 // value - and parsed with the call's own. A file it cannot read (missing, stdin, past the cap, a config nested three deep)
@@ -382,6 +455,7 @@ function classifyCli(c, name, argv) {
   const rest = argv.slice(lead.length);
   const flagWords = rest.filter(isFlag).map((f) => f.replace(/=.*$/, ''));
   const extra = { change: changeFromArgs(argv.slice(i + 1)), ref: flagValue(argv, ['--base', '--target-branch', '--branch', '--target']), head: flagValue(argv, ['--sha', '--match-head-commit']) };
+  if (!extra.change) extra.branch = branchSelector(name, argv.slice(i + 1));
   const label = `${name} ${[...nouns, verbWord || ''].join(' ').trim()}`;
   if (!verb) {
     if (!verbWord || /^#?\d+$/.test(verbWord) || /[=/.:]/.test(verbWord) || /[A-Z]/.test(verbWord)) {
@@ -713,6 +787,8 @@ const tailOf = (line) => {
 // when `symref` is set).
 function lsRemote(cwd, remote, patterns = null, opts = {}) {
   if (!remote) return { ok: false, refs: new Map(), reason: 'no remote' };
+  // A remote from config that reads as an option (`--upload-pack=...`) is never handed to git.
+  if (String(remote || '').startsWith('-')) return { ok: false, refs: new Map(), head: null, reason: 'a remote that reads as an option' };
   const args = ['-c', 'credential.interactive=false', 'ls-remote', ...(opts.symref ? ['--symref'] : []), ...(patterns ? [] : ['--heads', '--tags']), remote, ...(patterns || [])];
   const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
   if (r.error || r.status !== 0) {
@@ -744,13 +820,112 @@ function changeHead(cwd, remote, change) {
   for (const ref of want) if (r.refs.has(ref)) return r.refs.get(ref);
   return null;
 }
+// R015: the head of the change a numberless merge lands, read from its branch. '@' is the current branch: its own remote
+// (`branch.<b>.remote`, else the checkout's), and by `branch.<b>.merge` - a `gh pr checkout` / `glab mr checkout` branch
+// (refs/pull/<n>/head, refs/merge-requests/<n>/head) is change <n>; one tracking its own name, or nothing, is that name's
+// tip; one tracking another branch (`origin/main`), or anything else, has no change head to read - null, today's rule. A
+// named branch reads its own config the same way, else the checkout's remote. R015's review: a push remote
+// (`branch.<b>.pushRemote`, else `remote.pushDefault`) is read before `branch.<b>.remote` for the tip - gh finds the
+// change through it, so a stale same-named branch on origin is no false block. A detached HEAD, a name git would not take
+// or no answer: null.
+const branchNameOk = (n) => /^[A-Za-z0-9._/-]{1,200}$/.test(n) && !n.includes('..') && !n.startsWith('-') && !n.startsWith('/');
+function tipOf(cwd, remote, name) {
+  if (!remote || !branchNameOk(name)) return null;
+  const ref = `refs/heads/${name}`;
+  const r = lsRemote(cwd, remote, [ref]);
+  return r.ok && r.refs.has(ref) ? r.refs.get(ref) : null;
+}
+function branchHead(cwd, branch) {
+  const b = branch === '@' ? gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']) : String(branch || '');
+  if (!b || !branchNameOk(b)) return null;
+  const own = gitOut(cwd, ['config', `branch.${b}.remote`]);
+  const merge = gitOut(cwd, ['config', `branch.${b}.merge`]);
+  const pr = /^refs\/(?:pull|merge-requests)\/(\d+)\/head$/.exec(merge || '');
+  if (pr) return own === '.' ? null : changeHead(cwd, own || remoteOf(cwd), pr[1]);
+  const push = gitOut(cwd, ['config', `branch.${b}.pushRemote`]) || gitOut(cwd, ['config', 'remote.pushDefault']);
+  if (push) return push === '.' ? null : tipOf(cwd, push, b);
+  if (own === '.') return null;
+  if (merge && merge !== `refs/heads/${b}`) return null;
+  return tipOf(cwd, own || remoteOf(cwd), b);
+}
+// How git reads a push's words (after `push`). `certain` when every option word is one git push knows by its full name
+// (`git push -h`, its `--no-` forms too; a value-taking one skips its value), no word is one the shell rewrites first
+// (SHELL_EXPANDS) and none names a program to run (`--exec`, `--receive-pack` - git runs it even on a dry run or with
+// nothing ahead); an unknown option or an abbreviation is uncertain. `dry` when, so read, the last of `-n` / `--dry-run` /
+// `--no-dry-run` makes it a dry run. The push gate lets out ungated only a CERTAIN dry run, and a push with nothing ahead
+// only when its words are certain (the fourth review, 2026-11-05: `-on` is the push option 'n', `-n --no-dry-run` pushes,
+// an abbreviated `--rep` / `--pu` eats the next word, `--end-of-options -nx` names a remote; the fifth: `-n $X` with
+// X=--no-dry-run pushes; the sixth: `-n --exec=<program>` runs the program).
+const SHELL_EXPANDS = /[$`{}*?[\]]/;
+const PUSH_FLAGS = new Set(['--verbose', '--quiet', '--all', '--branches', '--mirror', '--delete', '--tags', '--porcelain', '--force',
+  '--force-with-lease', '--force-if-includes', '--thin', '--set-upstream', '--progress', '--prune', '--verify', '--follow-tags',
+  '--signed', '--atomic', '--ipv4', '--ipv6']);
+const PUSH_VALUED = new Set(['--repo', '--push-option', '--recurse-submodules']);
+function pushRead(argv) {
+  const words = (argv || []).map(String);
+  const unsure = { certain: false, dry: false };
+  if (words.some((w) => SHELL_EXPANDS.test(w))) return unsure;
+  let dry = false;
+  for (let k = 0; k < words.length; k++) {
+    const w = words[k];
+    if (w === '--' || w === '--end-of-options') break;
+    if (w.startsWith('--')) {
+      const name = w.split('=')[0];
+      if (name === '--dry-run') { dry = true; continue; }
+      if (name === '--no-dry-run') { dry = false; continue; }
+      if (PUSH_VALUED.has(name)) { if (!w.includes('=')) k++; continue; }
+      if (PUSH_FLAGS.has(name) || (name.startsWith('--no-') && PUSH_FLAGS.has(`--${name.slice(5)}`))) continue;
+      return unsure;
+    }
+    if (!w.startsWith('-') || w.length < 2) continue;
+    for (let c = 1; c < w.length; c++) {
+      if (w[c] === 'n') { dry = true; continue; }
+      if (w[c] === 'o') { if (c === w.length - 1) k++; break; }
+      if (!'vqdfu46'.includes(w[c])) return unsure;
+    }
+  }
+  return { certain: true, dry };
+}
+const pushDryRun = (argv) => { const r = pushRead(argv); return r.certain && r.dry; };
+const pushPlain = (argv) => pushRead(argv).certain;
+// What git itself says a push would move - its own words run as `git push --dry-run --porcelain --no-verify` (no hook, no
+// prompt, the network capped as lsRemote's): true when a ref would be created, updated, forced or deleted, false when every
+// line is up to date or rejected, null when git gave no answer it can read (an error, a timeout) or the words could undo
+// the dry run or run something (`--no-dry-run`, `--verify`, `--recurse-submodules`, `--signed`, an uncertain word).
+function pushWouldMove(argv, cwd) {
+  const words = (argv || []).map(String);
+  if (!pushPlain(words) || words.some((w) => /^--(no-dry-run|verify|no-no-verify|recurse-submodules|signed)(=|$)/.test(w))) return null;
+  // a push option moves no ref, and a remote that takes none fails the whole dry run on it (`-o ci.skip` to a local bare
+  // repository): left out of the question
+  const asked = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w === '--' || w === '--end-of-options') { asked.push(...words.slice(i)); break; }
+    if (w === '--push-option') { i++; continue; }
+    if (w.startsWith('--push-option=')) continue;
+    if (/^-[^-]/.test(w) && w.includes('o')) {
+      const o = w.indexOf('o');
+      if (o === w.length - 1) i++;
+      if (o > 1) asked.push(w.slice(0, o));
+      continue;
+    }
+    asked.push(w);
+  }
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'push', '--dry-run', '--porcelain', '--no-verify', ...asked],
+    { cwd, timeout: LS_REMOTE_MS, encoding: 'utf8', env: networkEnv(cwd), stdio: ['ignore', 'pipe', 'pipe'] });
+  if (r.error) return null;
+  const lines = String(r.stdout || '').split('\n').filter((l) => /^[ +\-*!=]\t/.test(l));
+  if (!lines.length) return r.status === 0 ? false : null;
+  return lines.some((l) => /^[ +\-*]\t/.test(l));
+}
 // Why a merge's head is NOT covered by the review a receipt names, or null when it is (or cannot be judged - no head:
 // line in a waiver, no change ref, no network: the local-HEAD rule the receipt already passed stands). Covered: the head
 // is the reviewed sha or an ancestor of it.
-function unseenHead({ cwd, change, sha, receiptHead }) {
+function unseenHead({ cwd, change, sha, branch, receiptHead }) {
   const h = String(receiptHead || '').toLowerCase();
   if (!/^[0-9a-f]{7,64}$/.test(h)) return null;
-  const target = sha && /^[0-9a-f]{7,64}$/i.test(sha) ? String(sha).toLowerCase() : changeHead(cwd, remoteOf(cwd), change);
+  const target = sha && /^[0-9a-f]{7,64}$/i.test(sha) ? String(sha).toLowerCase()
+    : change ? changeHead(cwd, remoteOf(cwd), change) : branch ? branchHead(cwd, branch) : null;
   if (!target) return null;
   if (target.startsWith(h) || h.startsWith(target)) return null;
   const t7 = target.slice(0, 12), h7 = h.slice(0, 12);
@@ -792,4 +967,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushDryRun, pushPlain, pushWouldMove, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

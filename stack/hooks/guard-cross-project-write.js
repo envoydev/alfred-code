@@ -319,8 +319,9 @@ function sameRepoWorktree(t) {
   const top = gitTopOf(t);
   return !!top && commonGitDir(top) === rootCommon;
 }
-// R8 (release 3): a linked workspace member's memory folder is read-only from here (D3) - every member's, every match
-// past 200 characters - so it is judged before the account-dir allowance that holds it. A folder that is also one of this
+// R8 (release 3): a linked workspace member's memory folder is read-only from here (D3) - every member's, past 200
+// characters the one `-<hash>` folder Claude Code names for it (R068; on Windows every `<first 200>-*` match) - so it is
+// judged before the account-dir allowance that holds it. A folder that is also one of this
 // project's own (a shared account-level value) is its own memory, and so is one of its own nested inside a member's.
 let memoryDirs;
 function memoryOf() {
@@ -342,10 +343,43 @@ function memoryOf() {
   } catch { /* fail open: no member memory to guard */ }
   return memoryDirs;
 }
+// Member memory is compared case-folded on darwin too (R071): realish fixes the case only of a folder that exists, and
+// APFS opens either spelling, so `-ROOT/memory` reached a member's folder not made yet. Only this deny side folds there -
+// an allowance folded on a case-sensitive volume would open a sibling.
+const memFold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? String(p).toLowerCase() : String(p));
+const memInside = (target, dir) => {
+  const t = memFold(realish(target));
+  const d = memFold(dir);
+  return t === d || t.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
+};
+// A target holding a glob (R072) is a member's memory when it CAN expand into one: its segments match the folder's in
+// order (`*` and `?` within a segment, a `[...]` class) until the folder's run out, the rest anything - and a `**`
+// segment (bash globstar) matches any number of folders, none included (final review m5: it counted as one).
+const GLOB_CHAR = /[*?[]/;
+const segGlob = (seg) => new RegExp(`^${seg.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.').replace(/\[!/g, '[^')}$`, 's');
+function globReaches(target, dir) {
+  const t = memFold(realish(target)).split(path.sep);
+  const d = memFold(dir).split(path.sep);
+  const seen = new Map();
+  const segMatch = (pat, seg) => {
+    if (!GLOB_CHAR.test(pat)) return pat === seg;
+    try { return segGlob(pat).test(seg); } catch { return true; }
+  };
+  const reach = (i, j) => {
+    if (j === d.length) return true;
+    if (i === t.length) return false;
+    const key = i * (d.length + 1) + j;
+    if (seen.has(key)) return seen.get(key);
+    const ok = t[i] === '**' ? reach(i + 1, j) || reach(i, j + 1) : segMatch(t[i], d[j]) && reach(i + 1, j + 1);
+    seen.set(key, ok);
+    return ok;
+  };
+  return reach(0, 0);
+}
 function memberMemory(t) {
   const { members, own } = memoryOf();
-  const hit = members.find((m) => inside(t, m.dir));
-  return hit && !own.some((o) => inside(o, hit.dir) && inside(t, o)) ? hit : null;
+  const hit = members.find((m) => memInside(t, m.dir)) || (GLOB_CHAR.test(String(t)) && members.find((m) => globReaches(t, m.dir)));
+  return hit && !own.some((o) => memInside(o, hit.dir) && memInside(t, o)) ? hit : null;
 }
 // The memory folder the user's own settings name outside the account dir (the managed or account settings.json, or a
 // settings.local.json git does not track - never a file a clone can carry), whatever the switch says - unless it holds
@@ -665,7 +699,26 @@ function judgeRemoval(abs, what, shown) {
   const tree = pluginTreeRemoved(t);
   if (tree && !pluginOpened(t, tree)) pluginBlock(what, shown, tree);
 }
+// R171: the memory folder an old start-folder settings.local.json names (Claude Code 2.1.211+ keeps the file at the
+// repository root): the guard trusts only the root file, so the denial names the move instead of the cross-project ask -
+// never for a file the repository supplies (untrackedLocal says no), and a removal where the root file sets its own key.
+function staleLocalBlock(what, shown, abs) {
+  let stale = null;
+  try { stale = layout && typeof layout.staleLocalMemory === 'function' ? layout.staleLocalMemory(ROOT, { tracked: (f) => !untrackedLocal(f) }) : null; } catch { stale = null; }
+  if (!stale || !inside(realish(abs), realish(stale.dir))) return;
+  global.BLOCK_DETAIL = { branch: 'stale-local-memory' };
+  process.stderr.write(stale.rootSets
+    ? `Blocked: ${what} targets '${shown}', in the memory folder ${stale.dir} that ${stale.file} names.\n` +
+      `Claude Code 2.1.211 and later keep settings.local.json at ${stale.rootFile}, which sets its own autoMemoryDirectory, so Claude Code ignores this one.\n` +
+      `Remove the autoMemoryDirectory key from ${stale.file}; this folder is not this project's memory.`
+    : `Blocked: ${what} targets '${shown}', in the memory folder ${stale.dir} that ${stale.file} names.\n` +
+      `Claude Code 2.1.211 and later keep settings.local.json at ${stale.rootFile}; it still reads the older file, but this guard trusts only ${stale.rootFile}.\n` +
+      `Move the autoMemoryDirectory key into ${stale.rootFile}, remove it from ${stale.file}, then retry.`,
+  );
+  process.exit(2);
+}
 function block(what, shown, abs = shown) {
+  staleLocalBlock(what, shown, abs);
   const hit = memberMemory(realish(abs));
   if (hit) memoryBlock(what, shown, hit);
   const tree = pluginTree(realish(abs));
@@ -797,7 +850,8 @@ function judge(rawIn, index, what, verb) {
   if (!PLUGIN_ONLY && recordAt(abs, recordKind(what, verb))) recordBlock(what, explicit ? raw : abs);
   if (recordKind(what, verb) === 'remove') judgeRemoval(abs, what, explicit ? raw : abs);
   if (allowed(abs)) return;
-  if (/[*?\[]/.test(otherProjectName(abs))) return;
+  // ...unless the glob can reach a member's memory (R072), which block() names.
+  if (/[*?\[]/.test(otherProjectName(abs)) && !memberMemory(realish(abs))) return;
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands
   block(what, explicit ? raw : abs, abs);
 }

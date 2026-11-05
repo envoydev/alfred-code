@@ -15,6 +15,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k];
+// R173: the sweep check's timeout seam, wide here so a loaded runner never turns a broad-add allow case into a timeout
+// denial; the timeout cases at the end set it to 1.
+process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS = '60000';
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const DOCS = '.alfred/docs';
@@ -37,9 +40,9 @@ function project() {
     write('src/a.cs', 'seed\n');
     git('add', '-A'); git('commit', '-qm', 'seed');
     const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: DOCS };
-    const run = (hook, payload) => spawnSync(process.execPath, [path.join(HOOKS, hook)], { cwd: dir, input: JSON.stringify(payload), encoding: 'utf8', env });
+    const run = (hook, payload, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, hook)], { cwd: dir, input: JSON.stringify(payload), encoding: 'utf8', env: { ...env, ...extra } });
     const start = (s, source = 'startup') => run('docs-session.js', { hook_event_name: 'SessionStart', session_id: s, source, cwd: dir });
-    const bash = (s, command) => run('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: s, cwd: dir, tool_input: { command }, transcript_path: REVIEWED });
+    const bash = (s, command, extra) => run('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: s, cwd: dir, tool_input: { command }, transcript_path: REVIEWED }, extra);
     const head = () => git('rev-parse', 'HEAD').stdout.trim();
     const record = () => path.join(dir, SESSIONS, `untracked-at-start-${head()}`);
     const dropRecords = () => { for (const d of [SESSIONS, path.join(DOCS, 'flow')]) for (const f of fs.existsSync(path.join(dir, d)) ? fs.readdirSync(path.join(dir, d)) : []) if (f.startsWith('untracked-at-start-')) fs.rmSync(path.join(dir, d, f)); };
@@ -638,4 +641,82 @@ test('2.8.0: the commit guard reads the session start from state/history/, else 
             assert.strictEqual(p.bash('h', 'git add src/feat2.cs && git commit -m "part 2"').status, 2, `${where}: part 2 crosses the bar`);
         } finally { p.rm(); }
     }
+});
+
+// R173 (burn-down 2026-11-04): the sweep check's `git add --dry-run` ran under a 5 s timeout, and a timed-out check read
+// as 'the add will fail too', so a loaded runner let a broad add sweep untracked paths in unasked. A timed-out check of a
+// broad add now asks once (UNTRACKED-ALLOW `*`), and an add naming existing files passes. The seam sets the timeout to
+// 1 ms, which no git dry run meets on any OS; every other case in this file runs at 60000 (set at the top).
+// A 1 ms timer is not sure to fire: on the gate's Linux leg (2026-11-04) a dry run finished before spawnSync looked at
+// it, and the add was judged on its output. Off Windows a `git` on PATH sleeps 3 s on `--dry-run` (its sleep holding no
+// pipe, so the kill returns at once) and the timeout is 300 ms, so it always fires; on Windows no spawnSync can launch
+// a script shim without a shell, and a process start there outlasts 1 ms.
+function slowSweep() {
+    if (process.platform === 'win32') return { ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS: '1' };
+    const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-slowgit-'));
+    fs.writeFileSync(path.join(dir, 'git'), `#!/bin/sh\nfor a in "$@"; do [ "$a" = --dry-run ] && sleep 3 </dev/null >/dev/null 2>&1; done\nexec '${real}' "$@"\n`, { mode: 0o755 });
+    return { ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS: '300', PATH: `${dir}${path.delimiter}${process.env.PATH}` };
+}
+const TIMEOUT_1MS = slowSweep();
+
+test('a broad add whose sweep check times out is denied, naming the timeout and the UNTRACKED-ALLOW * line', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('t1');
+        p.write('src/new.cs', forty);
+        for (const cmd of ['git add -A', 'git add .', 'git add src/', 'git add "src/*.cs"']) {
+            const r = p.bash('t1', cmd, TIMEOUT_1MS);
+            assert.strictEqual(r.status, 2, `${cmd}: ${r.stderr}`);
+            assert.match(r.stderr, /timed out/, cmd);
+            assert.match(r.stderr, /UNTRACKED-ALLOW/, cmd);
+            assert.match(r.stderr, /^ {2}\*$/m, cmd);
+        }
+    } finally { p.rm(); }
+});
+
+test('an add naming exact paths passes when its sweep check times out', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('t2');
+        p.write('src/new.cs', forty);
+        for (const cmd of ['git add src/new.cs', 'git add -- src/new.cs src/a.cs']) {
+            const r = p.bash('t2', cmd, TIMEOUT_1MS);
+            assert.strictEqual(r.status, 0, `${cmd}: ${r.stderr}`);
+        }
+    } finally { p.rm(); }
+});
+
+// Final review m3: a dry run whose output passed spawnSync's 1 MB default came back ENOBUFS with a SIGTERM and was
+// denied as 'timed out after 5000ms' - the wrong reason and the wrong fix for a repo with 20k+ untracked paths. The
+// buffer is 64 MB (ALFRED_CODE_TEST_SWEEP_MAX_BUFFER is the seam); an overflow still asks once, naming the overflow.
+test('a broad add whose sweep check overflows its buffer is denied naming the output size, never a timeout', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('t4');
+        p.write('src/new.cs', forty);
+        const r = p.bash('t4', 'git add -A', { ALFRED_CODE_TEST_SWEEP_MAX_BUFFER: '8' });
+        assert.strictEqual(r.status, 2, r.stderr);
+        assert.match(r.stderr, /printed more than 8 bytes/);
+        assert.doesNotMatch(r.stderr, /timed out/);
+        assert.match(r.stderr, /^ {2}\*$/m);
+        const exact = p.bash('t4', 'git add src/new.cs', { ALFRED_CODE_TEST_SWEEP_MAX_BUFFER: '8' });
+        assert.strictEqual(exact.status, 0, `an add naming exact files passes: ${exact.stderr}`);
+    } finally { p.rm(); }
+});
+
+test('UNTRACKED-ALLOW * opens a timed-out broad add', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('t3');
+        p.write('src/new.cs', forty);
+        assert.strictEqual(p.bash('t3', 'git add -A', TIMEOUT_1MS).status, 2);
+        p.flow('UNTRACKED-ALLOW', 'session: t3\n*\n');
+        const r = p.bash('t3', 'git add -A', TIMEOUT_1MS);
+        assert.strictEqual(r.status, 0, r.stderr);
+    } finally { p.rm(); }
 });

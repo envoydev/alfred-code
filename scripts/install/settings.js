@@ -178,6 +178,8 @@ function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note =
     catch (err) { note(`${err.message} - its ${arrayPath} rows are kept as recorded`); return { rows: mine, changed: false, created: false, refused: true }; }
     const at = arrayAt(data, arrayPath, { make: true });
     if (!at.holder) { note(`${path.basename(file)}: ${arrayPath} is not under an object - left as it is`); return { rows: mine, changed: false, created: false, refused: true }; }
+    // A value at the key that is not a list is the user's, never replaced by the stack's list (R070).
+    if (!at.list && Object.hasOwn(at.holder, at.key)) { note(`${path.basename(file)}: ${arrayPath} is not a list - left as it is`); return { rows: mine, changed: false, created: false, refused: true }; }
     const list = at.list ? [...at.list] : [];
     const wantHash = new Map(want.map((v) => [valueHash(v), v]));
     const rows = {};
@@ -736,7 +738,9 @@ function rekeyOverrides(data, renamed, log, label)
         for (const from of m.olds)
         {
             if (never) log(`  !! ${label}: skillOverrides ${from}: ${quoted(o[from])} has no key after the merge - ${to} has no per-part switch; ${kept ? `it stays ${quoted(o[to])}` : takes || 'it stays unset'}`);
-            else if (kept || m.carry) log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
+            // R129 (burn-down 2026-11-04): a held new key keeps its value - the old one is dropped, never re-keyed
+            else if (kept) log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) dropped - ${to} already holds ${quoted(o[to])}`);
+            else if (m.carry) log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
             else log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) not carried - ${to} holds ${partsWord(to, renamed)} captures; ${takes || `set ${to} yourself to switch them all`}`);
             delete o[from];
         }
@@ -746,10 +750,11 @@ function rekeyOverrides(data, renamed, log, label)
     for (const [from, to] of Object.entries((renamed && renamed.skills) || {}))
     {
         if (Object.hasOwn(topics, from) || !Object.hasOwn(o, from)) continue;
-        if (!Object.hasOwn(o, to)) o[to] = o[from];
+        const held = Object.hasOwn(o, to);
+        if (held) log(`  ${label}: skillOverrides ${from} (${quoted(o[from])}) dropped - ${to} already holds ${quoted(o[to])}`);
+        else { o[to] = o[from]; log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`); }
         delete o[from];
         changed = true;
-        log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
     }
     return changed;
 }
@@ -891,11 +896,17 @@ function writeSettings(opts)
     const settingsEnvBefore = data.env === undefined ? null : JSON.stringify(data.env);
     const settingsHad = new Set(plain(data.env) ? Object.keys(data.env).filter(movable) : []);
     const fileValues = {};
+    const outranked = new Map();
     if (vars && (data.env === undefined || plain(data.env)))
     {
         for (const [key, value] of Object.entries(vars.read(variablesFile).values)) if (movable(key)) fileValues[key] = value;
         // The loader's order (D4): .variables over settings.json, settings.local.json over .variables - so a local-scope
         // run's own file keeps a value typed there, and the move carries the value every reader already saw.
+        // O11 (burn-down 2026-11-04): a value of this file's that .variables outranks was never read. It is put back as typed
+        // after the move - deleting it lost what the person typed - named with both lengths (never a value), and is no move.
+        if (label !== 'settings.local.json' && plain(data.env))
+            for (const [key, value] of Object.entries(fileValues))
+                if (Object.hasOwn(data.env, key) && String(data.env[key]) !== String(value)) outranked.set(key, { value: data.env[key], mine: String(data.env[key]).length, theirs: String(value).length });
         if (Object.keys(fileValues).length) data.env = label === 'settings.local.json' ? { ...fileValues, ...(data.env || {}) } : { ...(data.env || {}), ...fileValues };
     }
     const envBefore = plain(data.env) ? { ...data.env } : {};
@@ -930,12 +941,17 @@ function writeSettings(opts)
 
     let changed = wireHooks(data, specs, retiredHooks);
 
-    // permissions.deny: union-merge the secret-file Read blocks, preserving any the project set.
-    const deny = ((data.permissions ??= {}).deny ??= []);
-    for (const rule of denySpecs) if (!deny.includes(rule)) { deny.push(rule); changed = true; }
+    // permissions.deny: union-merge the secret-file Read blocks, preserving any the project set. A `permissions` that is
+    // not an object, or a `deny` that is not a list, is the user's (R070, final review I2 - it threw, or a null was
+    // replaced): named, left as it is, and no deny pass below touches this file; its ledger rows stand as recorded.
+    const permsNotObject = Object.hasOwn(data, 'permissions') && !plain(data.permissions);
+    const denyRefused = permsNotObject || (plain(data.permissions) && Object.hasOwn(data.permissions, 'deny') && !Array.isArray(data.permissions.deny));
+    if (denyRefused) note(`${label}: ${permsNotObject ? 'permissions is not an object' : 'permissions.deny is not a list'} - left as it is; no deny entry is written to it this run`);
+    const deny = denyRefused ? null : ((data.permissions ??= {}).deny ??= []);
+    if (deny) for (const rule of denySpecs) if (!deny.includes(rule)) { deny.push(rule); changed = true; }
     // Entries this stack once wrote and no longer does: drop exactly those strings, so an update
     // clears what an older install seeded. A project's own entry is never touched.
-    for (const rule of [...deny]) if (retiredDeny.includes(rule))
+    if (deny) for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  ${label}: dropped retired deny entry ${rule}`); }
     // I1 (fix round 1): the pass below also runs over settings.local.json's deny list - a seat the
     // user switched off for themselves is re-spelled THERE, never moved into the shared file.
@@ -956,7 +972,7 @@ function writeSettings(opts)
         }
         return touched;
     };
-    if (respellSeats(deny, label)) changed = true;
+    if (deny && respellSeats(deny, label)) changed = true;
     // R99: `localFile` is settings.local.json on a project or user run - its stack keys apply over this
     // file, so the env pass writes a key it holds back into it (`applyEnv` `overlay`). A malformed one
     // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
@@ -983,13 +999,13 @@ function writeSettings(opts)
     const dropSeat = (rule, keep) =>
     {
         const seat = stackSeat(rule);
-        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
+        if (deny) for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
         { deny.splice(deny.indexOf(entry), 1); changed = true; log(entry === rule ? `  ${label}: agent allowed again ${entry}` : `  ${label}: agent entry dropped ${entry} (the seat's old spelling)`); }
     };
     for (const rule of agentDeny)
     {
         dropSeat(rule, rule);
-        if (!deny.includes(rule) && !(localDeny && localDeny.includes(rule))) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
+        if (deny && !deny.includes(rule) && !(localDeny && localDeny.includes(rule))) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
     }
     for (const rule of agentAllow) dropSeat(rule, null);
     // C4 (R133 N1): a seat denied only in settings.local.json stays off whatever settings.json says, so
@@ -1215,7 +1231,21 @@ function writeSettings(opts)
     const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorHere, release: releaseEnv, seedsOf, written: writtenNow, kept, migrations, log });
     if (envShared.changed && !vars) changed = true;
     managedEnv[label] = envShared.managed;
-    const moved = vars ? moveVariables({ vars, file: variablesFile, env: data.env, fileValues, MOVED, catalog, managedEnv, label, log }) : [];
+    // R098: the keys this file held before the run, under the names the env pass renamed them to
+    const renameTo = new Map((migrations.renames || []).map(([from, to]) => [from, to]));
+    const heldKeys = new Set([...settingsHad].map((key) => { let k = key; for (let i = 0; i < 8 && renameTo.has(k); i++) k = renameTo.get(k); return k; }));
+    const moved = vars ? moveVariables({ vars, file: variablesFile, env: data.env, fileValues, MOVED, catalog, managedEnv, label, log, heldKeys }) : [];
+    // O11: the value .variables outranks goes back as typed, with no ledger row - it is the person's, never the stack's -
+    // and in its own place: re-added at the end, it reordered env and rewrote the file (final review I1).
+    if (plain(data.env) && outranked.size)
+    {
+        const next = {};
+        for (const key of Object.keys(envBefore))
+            if (outranked.has(key)) next[key] = outranked.get(key).value;
+            else if (Object.hasOwn(data.env, key)) next[key] = data.env[key];
+        for (const key of Object.keys(data.env)) if (!Object.hasOwn(next, key)) next[key] = data.env[key];
+        data.env = next;
+    }
     if (vars)
     {
         if (settingsEnvBefore === null && plain(data.env) && !Object.keys(data.env).length) delete data.env;
@@ -1243,8 +1273,9 @@ function writeSettings(opts)
     // recorded for the other file (a local-scope install's own, before a move) never claims the team's
     // copy (review finding 1). With no ledger a secret-file deny is never claimed - it may be the team's,
     // and a leftover after uninstall is harmless where a removed one is not (finding 6); a stack seat is.
-    const managedDeny = deny.filter((entry) => !denyBefore.includes(entry)
-        || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : Boolean(stackSeat(entry)))).map((entry) => ({ file: label, entry }));
+    const managedDeny = deny ? deny.filter((entry) => !denyBefore.includes(entry)
+        || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : Boolean(stackSeat(entry)))).map((entry) => ({ file: label, entry }))
+        : (priorDeny || []).filter((d) => d.file === label);
     if (localDeny)
         for (const entry of localDeny)
             if (!localDenyBefore.includes(entry) || (priorDeny ? priorDeny.some((d) => d.file === localName && d.entry === entry) : Boolean(stackSeat(entry))))
@@ -1382,7 +1413,10 @@ function writeSettings(opts)
     }
 
     // The keys this file held before the run and no longer holds - each now in .variables (a renamed one under its new name).
-    const variablesMoved = moved.length ? [...settingsHad].filter((k) => !(plain(data.env) && Object.hasOwn(data.env, k))) : [];
+    const varsRel = variablesFile ? path.join(path.basename(path.dirname(variablesFile)), path.basename(variablesFile)).split(path.sep).join('/') : '';
+    for (const [key, { mine, theirs }] of outranked)
+        log(`  !! ${label} env: ${key} kept as typed (${mine} chars), but ${varsRel} holds another value (${theirs} chars), which outranks ${label}, so every reader uses that one - set it in ${varsRel} (/alfred-code:configure) if the typed one was meant, else delete it from ${label}`);
+    const variablesMoved = moved.length ? [...settingsHad].filter((k) => !outranked.has(k) && !(plain(data.env) && Object.hasOwn(data.env, k))) : [];
     if (!changed) return { written: localChanged, refused: false, managed, variablesMoved };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
@@ -1394,7 +1428,7 @@ function writeSettings(opts)
 // under .variables. A value .variables cannot hold (it spans lines) or that reads back otherwise stays in the settings
 // file, out of .variables (where it would win, D4 step 3), and so does every key when the file cannot be written; one
 // `!!` line names them. Returns the keys that left `env`.
-function moveVariables({ vars, file, env, fileValues, MOVED, catalog, managedEnv, label, log })
+function moveVariables({ vars, file, env, fileValues, MOVED, catalog, managedEnv, label, log, heldKeys = new Set() })
 {
     const layout = require('../../stack/hooks/layout.js');
     const want = {};
@@ -1407,9 +1441,20 @@ function moveVariables({ vars, file, env, fileValues, MOVED, catalog, managedEnv
     const order = catalog.map((r) => r.key);
     const done = Object.keys(updates).length ? vars.write(file, updates, { order }) : { changed: false };
     const rel = path.join(path.basename(path.dirname(file)), path.basename(file)).split(path.sep).join('/');
+    // R098 (burn-down 2026-11-04): a lock another run holds passes; only the keys this file already held stay in it, and the
+    // rest wait for the next run - keeping every key had seeded all of them into the settings file. A file that cannot be
+    // written keeps every key here, its one home.
+    if (done.why === 'locked')
+    {
+        const waiting = Object.keys(want).filter((key) => !heldKeys.has(key));
+        for (const key of waiting) { delete env[key]; if (managedEnv[label]) delete managedEnv[label][key]; }
+        const kept = Object.keys(want).filter((key) => heldKeys.has(key));
+        log(`  !! variables: ${rel} is locked by another run - nothing moved; ${kept.length ? `${kept.join(', ')} stay in ${label}, ` : ''}${waiting.length} key(s) wait for the next update - run it again`);
+        return [];
+    }
     if (done.why)
     {
-        log(`  !! variables: ${rel} is ${done.why === 'locked' ? 'locked by another run' : 'not writable'} - the keys are kept in ${label}; run the update again`);
+        log(`  !! variables: ${rel} is not writable - the keys are kept in ${label}; run the update again`);
         return [];
     }
     const back = (layout.readDotenv(file) || {}).values || {};

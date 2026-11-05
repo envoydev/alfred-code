@@ -1665,6 +1665,53 @@ test('syncMembers adds the wanted members and ledgers each by its own hash', () 
     assert.deepStrictEqual([again.changed, again.created], [false, false], 'a second run changes nothing');
 });
 
+// R070 (burn-down 2026-11-04): a non-array value at the array's key was replaced by the stack's list.
+test('R070: a non-array permissions.deny is left byte-identical and named', () =>
+{
+    for (const value of ['Edit(//x/**)', { rule: 'Edit(//x/**)' }, 7])
+    {
+        const file = path.join(memberDir(), 'settings.local.json');
+        const text = `${JSON.stringify({ permissions: { deny: value, allow: ['Read'] } }, null, 2)}\n`;
+        fs.writeFileSync(file, text);
+        const prior = { [`permissions.deny[${vh('Edit(//old/**)')}]`]: vh('Edit(//old/**)') };
+        const got = sync(file, ['Edit(//ws/.alfred/docs/**)'], prior, 'permissions.deny');
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), text, `${JSON.stringify(value)}: byte-identical`);
+        assert.strictEqual(got.changed, false);
+        assert.strictEqual(got.refused, true);
+        assert.deepStrictEqual(got.rows, prior, 'the prior rows are kept as recorded');
+        assert.deepStrictEqual(got.notes, ['settings.local.json: permissions.deny is not a list - left as it is']);
+    }
+});
+
+// Final review I2: R070's refusal covered syncMembers only - the main writer threw on a string or object deny
+// ('deny.push is not a function', the install aborted) and replaced a null one with the stack's list.
+test('R070: the main writer leaves a permissions or permissions.deny that is not an object / a list as it is, names it, keeps its rows', () =>
+{
+    const cases = [{ deny: 'Read(./.env)' }, { deny: { rule: 'x' } }, { deny: null }, { deny: 7 }, 'all', null, ['Read']]
+        .map((perms) => ({ permissions: perms, model: 'm' }));
+    for (const initial of cases)
+    {
+        const file = settingsFile(initial);
+        const text = fs.readFileSync(file, 'utf8');
+        const prior = { deny: [{ file: 'settings.json', entry: 'Read(./.env)' }, { file: 'settings.json', entry: 'Agent(alfred-code:old-seat)' }] };
+        let got;
+        assert.doesNotThrow(() => { got = write(file, { denySpecs: ['Read(./.env)'], retiredDeny: ['Read(./old)'], agentDeny: ['Agent(alfred-code:security-auditor)'], agentAllow: ['Agent(alfred-code:old-seat)'], ledger: { prior, releaseHooks: [] } }); }, JSON.stringify(initial));
+        assert.deepStrictEqual(got.data.permissions, initial.permissions, `${JSON.stringify(initial.permissions)}: left as it is`);
+        assert.ok(got.notes.some((n) => /^settings\.json: permissions(\.deny)? is not (a list|an object) - left as it is/.test(n)), `${JSON.stringify(initial.permissions)}: named - ${got.notes.join(' | ')}`);
+        assert.ok(!got.logs.some((l) => /agent denied|agent allowed again|dropped retired deny/.test(l)), `${JSON.stringify(initial.permissions)}: no deny line claims a write - ${got.logs.join(' | ')}`);
+        assert.deepStrictEqual(got.result.managed.deny.filter((d) => d.file === 'settings.json'), prior.deny, 'the prior rows are kept as recorded');
+        const again = write(file, { denySpecs: ['Read(./.env)'], ledger: { prior, releaseHooks: [] } });
+        assert.strictEqual(again.result.written, false, `${JSON.stringify(initial.permissions)}: a second run writes nothing`);
+        assert.ok(text.length > 0);
+    }
+    // An absent permissions, or one with no deny key, still gets the stack's list (the allow case).
+    for (const initial of [{ model: 'm' }, { permissions: { allow: ['Read'] } }])
+    {
+        const got = write(settingsFile(initial), { denySpecs: ['Read(./.env)'] });
+        assert.deepStrictEqual(got.data.permissions.deny, ['Read(./.env)'], JSON.stringify(initial));
+    }
+});
+
 test('a member already there with no row is the user\'s: not claimed, not doubled, never removed', () =>
 {
     const file = path.join(memberDir(), 'settings.local.json');

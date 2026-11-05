@@ -14,6 +14,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+// Each typed prompt carries its own prompt_id (code.claude.com/docs/en/hooks, 'Common input fields'); a test of one prompt
+// expanded twice passes the same one.
+const { randomUUID } = require('node:crypto');
 for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k];
 delete process.env.CLAUDE_PLUGIN_ROOT;
 delete process.env.CLAUDE_CODE_ENTRYPOINT;
@@ -114,7 +117,7 @@ test('auto-mode stamp: a hand-written stamp a 2.7.0 skill copy put in the legacy
 // ---------------------------------------------------------------------------------------------
 const expand = (p, sid, prompt, t, extra = {}) => run('guard-fresh-session-start.js', {
     hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: t, expansion_type: 'slash_command',
-    command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt, ...extra,
+    command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt, prompt_id: randomUUID(), ...extra,
 }, { CLAUDE_PROJECT_DIR: p.root });
 const context = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext || ''; } catch { return ''; } };
 
@@ -260,7 +263,8 @@ test('mode start: --mode-auto-run-on writes the stamp and a run marker; a later 
         const second = fs.readFileSync(marker(p, 'm1'), 'utf8');
         assert.match(second, /^skill: capture-awareness\n/, 'a new marker');
         assert.notStrictEqual(second.split('\n')[1], first.split('\n')[1], 'for the new prompt');
-        ends.push([stamp, second].map((s) => s.replace(/\nat: [^\n]*/, '')));
+        // each typed prompt carries its own prompt_id, which the marker records (R096)
+        ends.push([stamp, second].map((s) => s.replace(/\nat: [^\n]*/, '').replace(/\nprompt-id: [^\n]*/, '')));
     }
     assert.deepStrictEqual(ends[0], ends[1], 'both event orders end in the same files');
 });
@@ -359,7 +363,7 @@ const BANNER_HEAD = 'Open your reply to this command with these two lines, exact
 const bannerOf = (r) => { const t = context(r); const at = t.indexOf(BANNER_HEAD); return at < 0 ? null : t.slice(at).split('\n').slice(1); };
 const typedRun = (p, sid, prompt, t, env = {}, extra = {}) => run('guard-fresh-session-start.js', {
     hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: t, expansion_type: 'slash_command',
-    command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt, ...extra,
+    command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt, prompt_id: randomUUID(), ...extra,
 }, { CLAUDE_PROJECT_DIR: p.root, ...env });
 
 test('mode banner: auto-mode ON says every ask takes its Recommended option and the session compacts, at the window it will', () =>
@@ -939,7 +943,7 @@ test('compact instead: no fresh-session offer at Stop, at a run\'s start or afte
     assert.match(offered.stderr, /fresh session/i);
     assert.strictEqual(close(true, 'c1').status, 0, 'compacting instead: the close ends the turn');
     const start = (on, sid) => run('guard-fresh-session-start.js', { hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: big,
-        expansion_type: 'slash_command', command_name: 'loop-code-quality', command_args: 'src/', prompt: '/loop-code-quality src/' }, env(on));
+        expansion_type: 'slash_command', command_name: 'loop-code-quality', command_args: 'src/', prompt: '/loop-code-quality src/', prompt_id: randomUUID() }, env(on));
     assert.match(context(start(false, 's0')), /Do NOT start the run yet/, 'the offer, with the offers on');
     const told = context(start(true, 's1'));
     assert.doesNotMatch(told, /Do NOT start the run yet/);
@@ -1207,12 +1211,12 @@ test('mode marker: a stacked /mode-output-scorer /task-solve --mode-auto-run-on 
     const t = transcript();
     const p = project();
     const prompt = '/mode-output-scorer /task-solve --mode-auto-run-on X';
-    assert.match(context(expand(p, 'sk', prompt, t)), /^auto-run is ON for this \/task-solve run/);
+    assert.match(context(expand(p, 'sk', prompt, t, { prompt_id: 'pid-ac15' })), /^auto-run is ON for this \/task-solve run/);
     assert.match(fs.readFileSync(marker(p, 'sk'), 'utf8'), /^skill: task-solve\n/);
     const past = new Date(Date.now() - 60000);
     fs.utimesSync(marker(p, 'sk'), past, past);
     const was = fs.statSync(marker(p, 'sk')).mtimeMs;
-    expand(p, 'sk', prompt, t, { command_name: 'task-solve', command_args: '--mode-auto-run-on X' });
+    expand(p, 'sk', prompt, t, { command_name: 'task-solve', command_args: '--mode-auto-run-on X', prompt_id: 'pid-ac15' });
     assert.strictEqual(fs.statSync(marker(p, 'sk')).mtimeMs, was, 'the same skill and prompt leave the file as it is');
 });
 
@@ -1389,4 +1393,102 @@ test('final review m9 (re-graded): a mode flag typed alone gets the pointer to i
     assert.ok(rows(p, 'bf').some((r) => r.kind === 'mode-flag-bare'), 'one mode-flag-bare row');
     assert.match(context(sub(project(), 'bf2', '--mode-output-scorer-on now', t)), /'--mode-output-scorer-on' typed alone switches nothing/, 'with no stamp too');
     assert.strictEqual(context(sub(project(), 'bf3', 'what does --mode-auto-run-off do?', t)), '', 'a flag inside prose says nothing');
+});
+
+// ---------------------------------------------------------------------------------------------
+// the mode minors R090-R096: one contract per prompt, honest banners, a takeover said to each taker, a marker per prompt id
+// ---------------------------------------------------------------------------------------------
+test('R090: an empty /mode-auto-run under this session\'s live stamp says auto-run is already ON, never that it did NOT start', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoStamp(p, 'r90');
+    const r = typedRun(p, 'r90', '/mode-auto-run', t);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.doesNotMatch(context(r), /did NOT start/);
+    assert.match(context(r), /auto-run is already ON for this session - no run started: type the request after \/mode-auto-run/);
+    assert.match(bannerOf(r)[0], /^\*\*Auto-run: ON\*\* for \/mode-auto-run/);
+    assert.ok(!fs.existsSync(marker(p, 'r90')), 'no run opened');
+    assert.match(bannerOf(typedRun(project(), 'r90b', '/mode-auto-run', t))[0], /auto-run did NOT start: type the request after \/mode-auto-run/, 'with no stamp the refusal stands');
+});
+
+test('R091: each takeover of a session\'s mode tells it once, a second taker included', () =>
+{
+    const p = project();
+    const t = transcript();
+    const said = (sid) => context(sub(p, sid, 'carry on', t));
+    autoStamp(p, 'r91-bbbbbbbb', 'taken-from: r91-aaaaaaaa\n');
+    assert.match(said('r91-aaaaaaaa'), /session r91-bbbb took it/);
+    assert.doesNotMatch(said('r91-aaaaaaaa'), /took it/, 'once');
+    autoStamp(p, 'r91-cccccccc', 'taken-from: r91-aaaaaaaa\n');
+    assert.match(said('r91-aaaaaaaa'), /session r91-cccc took it/, 'a second taker is said too');
+    assert.doesNotMatch(said('r91-aaaaaaaa'), /took it/, 'once');
+});
+
+test('R093: two expansions of one typed prompt get the contract and the banner once - keyed by prompt_id, else the prompt and session', () =>
+{
+    const t = transcript();
+    const p = project();
+    const line = '/mode-output-scorer /task-solve --mode-auto-run-on X';
+    const first = context(expand(p, 'r93', line, t, { prompt_id: 'pid-1' }));
+    assert.match(first, /^auto-run is ON for this \/task-solve run/);
+    assert.strictEqual(first.split(BANNER_HEAD).length, 2, 'the banner once');
+    const again = context(expand(p, 'r93', line, t, { prompt_id: 'pid-1', command_name: 'task-solve', command_args: '--mode-auto-run-on X' }));
+    assert.doesNotMatch(again, /auto-run is ON/, 'no second contract');
+    assert.ok(!again.includes(BANNER_HEAD), 'no second banner');
+    assert.match(context(expand(p, 'r93', line, t, { prompt_id: 'pid-2' })), /^auto-run is ON for this \/task-solve run/, 'the line typed again is a new prompt');
+    // no prompt_id (a Claude Code that sends none): the prompt and the session key it, for a few seconds
+    const q = project();
+    assert.match(context(expand(q, 'r93b', line, t, { prompt_id: undefined })), /^auto-run is ON/);
+    assert.strictEqual(context(expand(q, 'r93b', line, t, { prompt_id: undefined })), '', 'the same prompt expanded again at once');
+});
+
+test('R094: a Skill-route start with no open run marker names none and promises no Stop hold', () =>
+{
+    const typed = (text) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
+    const p = project();
+    const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: '--mode-auto-run-on the cache plan' },
+        session_id: 'r94', cwd: p.root, transcript_path: transcript([typed('/task-design --mode-auto-run-on the cache plan')]) }, { CLAUDE_PROJECT_DIR: p.root });
+    const said = context(r);
+    assert.match(said, /^auto-run is ON for this \/task-design run/);
+    assert.doesNotMatch(said, /AUTO-RUN-/, 'no marker named');
+    assert.doesNotMatch(said, /sends you back/, 'no Stop hold promised');
+    assert.ok(!fs.existsSync(marker(p, 'r94')));
+});
+
+// A folder's mode bits do not make it read-only on Windows, and root writes through them.
+test('R095: a run marker that cannot be written is said in one !! line, and the contract promises no Stop hold',
+    { skip: (process.platform === 'win32' && 'a mode bit does not make a Windows folder read-only') || (process.getuid?.() === 0 && 'root writes a mode-555 folder') }, () =>
+{
+    const p = project();
+    const t = transcript();
+    const dir = path.dirname(marker(p, 'r95'));
+    fs.mkdirSync(dir, { recursive: true });
+    fs.chmodSync(dir, 0o555);
+    try
+    {
+        const said = context(typedRun(p, 'r95', '/loop-code-quality --mode-auto-run-on src/', t));
+        assert.strictEqual(said.split('\n').filter((l) => l.startsWith('!!')).length, 1, said);
+        assert.match(said, /^!! the run marker could not be written/m);
+        assert.match(said, /auto-run is ON for this \/loop-code-quality run/);
+        assert.doesNotMatch(said, /sends you back/);
+        assert.ok(fs.existsSync(p.gate), 'the stamp stands');
+    }
+    finally { fs.chmodSync(dir, 0o755); }
+});
+
+test('R096: the run marker records prompt_id - the line typed again moves its mtime, one prompt expanded twice does not', () =>
+{
+    const t = transcript();
+    const p = project();
+    const line = '/loop-code-quality --mode-auto-run-on src/';
+    expand(p, 'r96', line, t, { prompt_id: 'pid-a' });
+    assert.match(fs.readFileSync(marker(p, 'r96'), 'utf8'), /^prompt-id: pid-a$/m);
+    const past = new Date(Date.now() - 60000);
+    fs.utimesSync(marker(p, 'r96'), past, past);
+    const was = fs.statSync(marker(p, 'r96')).mtimeMs;
+    expand(p, 'r96', line, t, { prompt_id: 'pid-a' });
+    assert.strictEqual(fs.statSync(marker(p, 'r96')).mtimeMs, was, 'one prompt expanded twice');
+    expand(p, 'r96', line, t, { prompt_id: 'pid-b' });
+    assert.notStrictEqual(fs.statSync(marker(p, 'r96')).mtimeMs, was, 'the line typed again');
 });

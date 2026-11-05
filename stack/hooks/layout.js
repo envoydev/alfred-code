@@ -276,7 +276,9 @@ function wsLine(raw)
     const line = raw.trim();
     if (line === '' || line.startsWith('#')) return { kind: 'comment' };
     const [word, ...rest] = line.split(/\s+/);
-    const value = rest.join(' ');
+    // The text after the keyword and its separators, inner whitespace kept - parseLine's reading (R062): a child named
+    // `a  b` read as `a b` never matched its back-reference, so the hooks saw no chain for it.
+    const value = line.slice(word.length).replace(/^\s+/, '');
     if (word === 'parent')
     {
         if (value === 'none') return { key: 'parent', kind: 'parent-none', raw: line };
@@ -702,9 +704,23 @@ function autoMemorySetting(root, { account, home, managed, trusted = false, untr
 }
 // The folder Claude Code keeps a project's auto memory in (A5, docs/workspace-layering-evidence.md): the setting, else
 // `<account>/projects/<name>/memory`, `<name>` the git top (a worktree's main checkout) with every character outside
-// [A-Za-z0-9] as `-`. Past 200 characters Claude Code cuts the name and appends `-<hash>`: every existing match is named.
+// [A-Za-z0-9] as `-`. Past 200 characters Claude Code keeps the first 200 and appends `-<hash>` (memoryNameHash).
 // [] when CLAUDE_CODE_PROJECT_DIR_NAME renames the folder and no setting names it.
 const MEMORY_NAME_MAX = 200;
+// The `<hash>` (R068, read from Claude Code 2.1.318's own code): base 36 of the absolute Java string hash of the git top
+// as Claude Code spells it - UTF-16 code units, 32-bit wrap. One folder per project, so a sibling sharing the first 200
+// characters is never taken for it.
+function memoryNameHash(p)
+{
+    let h = 0;
+    for (let i = 0; i < p.length; i++) h = ((h << 5) - h + p.charCodeAt(i)) | 0;
+    return Math.abs(h).toString(36);
+}
+// Claude Code's own rule for that name (code.claude.com/docs/en/sessions, 'Name the project directory yourself', read
+// 2026-11-04): only beside CLAUDE_CONFIG_DIR, and only 1-64 letters, digits, - or _ that spell no Windows device name;
+// any other value keeps the derived folder (R069).
+const WIN_DEVICE_RE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+const projectDirNamed = (env) => Boolean(env.CLAUDE_CONFIG_DIR) && /^[A-Za-z0-9_-]{1,64}$/.test(String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '')) && !WIN_DEVICE_RE.test(String(env.CLAUDE_CODE_PROJECT_DIR_NAME));
 // The `autoMemoryDirectory` Claude Code applies here, or null: the first read memoryDirsOf makes, with no trust filter.
 function memoryDirSetting(root, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
@@ -715,23 +731,156 @@ function memoryDirsOf(root, { env = process.env, home = require('os').homedir(),
     const set = memoryDirSetting(root, { env, home, managed, platform });
     return set ? [set] : defaultMemoryDirs(root, { env, home, platform });
 }
+// The link checks Claude Code 2.1.318 runs before it keys a worktree by its main checkout (G2, read from its own code):
+// `ra` refuses a path by its class, `p_` walks it from the root. Not mirrored: its darwin automount check, which reads
+// the machine's automount map. Its folding: '' and '.' skipped, '..' pops; its names compared with invisible format
+// characters dropped and in lower case.
+const LINK_INVISIBLE = /[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g;
+const LINK_LINKS_MAX = 40;
+const linkBare = (s) => s.replace(LINK_INVISIBLE, '').toLowerCase();
+function linkFolded(p, each = () => false)
+{
+    const n = [];
+    for (const e of p.split('/'))
+    {
+        if (e === '' || e === '.') continue;
+        if (e === '..') { n.pop(); continue; }
+        n.push(e);
+        if (each(n, e)) return null;
+    }
+    return n;
+}
+// `/net/<host>` or `/network/servers/<host>`: the host in lower case, else null.
+function linkNetHost(p)
+{
+    if (!p.startsWith('/')) return null;
+    let host = null;
+    linkFolded(p, (n, e) => ((n.length === 2 && linkBare(n[0]) === 'net') || (n.length === 3 && linkBare(n[0]) === 'network' && linkBare(n[1]) === 'servers')) && (host = e.toLowerCase()) !== null);
+    return host;
+}
+// A first component that is ever `test`'s while the path folds, so `/network/../x` counts as Claude Code counts it.
+const linkEverFirst = (p, test) => p.startsWith('/') && linkFolded(p, (n, e) => n.length === 1 && test(e)) === null;
+const linkUncServer = (p) => (/^[\\/]{2}[?.][\\/](?!unc[\\/])/i.test(p) ? null : p.match(/^[\\/]{2}(?:[?.][\\/]unc[\\/])?([^\\/]+)/i)?.[1]?.toLowerCase() ?? null);
+// A UNC path: refused as a device form, with a '.' or '..' part, or on a server other than the base's.
+function linkUncRefused(p, base)
+{
+    if (!/^[\\/]{2}/.test(p) && !/^[\\/]\?\?[\\/]/.test(p)) return false;
+    if (/^[\\/]{2}[?.][\\/]/.test(p) || /^[\\/]\?\?[\\/]/.test(p) || /(^|[\\/])\.{1,2}[. ]*([\\/]|$)/.test(p)) return true;
+    const server = linkUncServer(p);
+    return server === null || server !== linkUncServer(base);
+}
+// What the walk checks at each step: a refused first component, or a `/net` host other than the root's.
+function linkClassRefused(o, root)
+{
+    if (linkEverFirst(o, (e) => /^\.(?:vol|file|nofollow|resolve)$/i.test(e)) || linkEverFirst(o, (e) => e.toLowerCase() === 'network')) return true;
+    const host = linkNetHost(o);
+    return host !== null && host !== linkNetHost(root);
+}
+// Claude Code's `ra`: `p` and `p` resolved against `base`, each by its class.
+function unsafeLinkPath(p, base)
+{
+    const e = path.resolve(base, p);
+    if (linkUncRefused(p, base) || linkUncRefused(e, base)) return true;
+    for (const o of [p, e])
+    {
+        if (linkClassRefused(o, base) || /^[\\/](GLOBAL\?\?|GLOBALROOT|DosDevices|Device)[\\/]/i.test(o)) return true;
+        const folded = o.startsWith('/') ? linkFolded(o) : null;
+        if (folded && folded.length === 1 && folded[0].toLowerCase() === 'net') return true;
+    }
+    return false;
+}
+// Claude Code's `p_`: `p` resolved against `base`, walked from the root a part at a time, each partial path lstat'ed.
+// Refused: a partial `linkClassRefused` refuses (host against `root`), an entry neither file, folder nor link, an lstat
+// error other than ENOENT / ENOTDIR (absent goes on), a link whose text `unsafeLinkPath` refuses, past 40 links.
+function unsafeLinkWalk(p, base, root = base)
+{
+    let links = 0;
+    let target = path.resolve(base, p);
+    let at = path.parse(target).root;
+    let rest = target.slice(at.length).split(/[\\/]+/).filter(Boolean);
+    while (rest.length)
+    {
+        const partial = path.join(at, rest.shift());
+        if (linkClassRefused(partial, root)) return true;
+        let st;
+        try { st = fs.lstatSync(partial); }
+        catch (err) { if (err.code === 'ENOENT' || err.code === 'ENOTDIR') { at = partial; continue; } return true; }
+        if (st.isSymbolicLink())
+        {
+            if (++links > LINK_LINKS_MAX) return true;
+            let text;
+            try { text = fs.readlinkSync(partial); }
+            catch { return true; }
+            if (unsafeLinkPath(text, path.dirname(partial))) return true;
+            target = path.resolve(path.dirname(partial), text);
+            const top = path.parse(target).root;
+            rest = [...target.slice(top.length).split(/[\\/]+/).filter(Boolean), ...rest];
+            at = top;
+            continue;
+        }
+        if (!st.isFile() && !st.isDirectory()) return true;
+        at = partial;
+    }
+    return false;
+}
+// The folder Claude Code keys a git top's memory by (2.1.318's own rule, R068's review): a linked worktree's main
+// checkout only when the worktree's admin folder links back to this `.git` (a worktree moved without `git worktree
+// repair` keys by itself), and a bare repository's worktree by the bare folder. Any doubt keys by the top itself, and
+// so does a `.git` value, `commondir` text or back-link the link checks above refuse (G2).
+function memoryKeyOf(top)
+{
+    try
+    {
+        const dotGit = path.join(top, '.git');
+        if (!fs.lstatSync(dotGit, { throwIfNoEntry: false })?.isFile()) return top;
+        const text = fs.readFileSync(dotGit, 'utf8').trim();
+        if (!text.startsWith('gitdir:')) return top;
+        const regular = (f) => fs.lstatSync(f, { throwIfNoEntry: false })?.isFile();
+        const value = text.slice(7).trim();
+        if (unsafeLinkPath(value, top) || unsafeLinkWalk(value, top)) return top;
+        const admin = path.resolve(top, value);
+        if (!regular(path.join(admin, 'commondir'))) return top;
+        const shared = fs.readFileSync(path.join(admin, 'commondir'), 'utf8').trim();
+        if (unsafeLinkPath(shared, admin) || unsafeLinkWalk(shared, admin)) return top;
+        const common = path.resolve(admin, shared);
+        if (path.resolve(path.dirname(admin)) !== path.join(common, 'worktrees')) return top;
+        if (!regular(path.join(admin, 'gitdir'))) return top;
+        const back = fs.readFileSync(path.join(admin, 'gitdir'), 'utf8').trim();
+        if (unsafeLinkPath(back, top) || unsafeLinkWalk(back, admin, top)) return top;
+        if (path.sep === '/' && [top, admin, back, common].some((p) => p.includes('\\'))) return top;
+        if (fs.realpathSync(path.resolve(admin, back)) !== path.join(fs.realpathSync(top), '.git')) return top;
+        if (path.basename(common) !== '.git') return fs.existsSync(path.join(common, '.git')) ? top : common;
+        return path.dirname(common);
+    }
+    catch { return top; }
+}
 // The default place alone, whatever a setting names: what docs mode's switch back to default would use (memory P3).
 function defaultMemoryDirs(root, { env = process.env, home = require('os').homedir(), platform = process.platform } = {})
 {
     const account = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
-    if (String(env.CLAUDE_CODE_PROJECT_DIR_NAME || '').trim()) return [];
+    if (projectDirNamed(env)) return [];
     const top = gitTopOf(root, { home });
-    const name = realpathOrSelf((top && worktreeMain(top)) || top || root).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
+    const spelled = realpathOrSelf(top ? memoryKeyOf(top) : root).normalize('NFC');
+    const name = spelled.replace(/[^A-Za-z0-9]/g, '-');
     const projects = path.join(account, 'projects');
     if (name.length <= MEMORY_NAME_MAX) return [path.join(projects, name, 'memory')];
     const head = `${name.slice(0, MEMORY_NAME_MAX)}-`;
-    // Claude Code names the folder from the cwd as TYPED, and on Windows that case need not be the real one (probe A5):
-    // NTFS opens the computed spelling under any case, but a listing compares names, so there it ignores case.
-    const fold = (n) => (platform === 'win32' ? n.toLowerCase() : n);
+    const exact = path.join(projects, `${head}${memoryNameHash(spelled)}`, 'memory');
+    if (platform !== 'win32') return [exact];
+    // Claude Code names the folder from the cwd as TYPED, and on Windows that case need not be the real one (probe A5),
+    // so neither the name's case nor its hash is known there: every `<first 200>-*` folder is listed, case ignored - but
+    // an ancestor's own computed folder, which a workspace child shares the first 200 with, is never this project's.
+    const ancestors = new Set();
+    for (let up = path.dirname(spelled); up !== path.dirname(up); up = path.dirname(up))
+    {
+        if (up.replace(/[^A-Za-z0-9]/g, '-').length <= MEMORY_NAME_MAX) break;
+        ancestors.add(`${head}${memoryNameHash(up)}`.toLowerCase());
+    }
     let names = [];
-    try { names = fs.readdirSync(projects).filter((n) => fold(n).startsWith(fold(head)) && n.length > head.length); }
+    try { names = fs.readdirSync(projects).filter((n) => n.toLowerCase().startsWith(head.toLowerCase()) && n.length > head.length && !ancestors.has(n.toLowerCase())); }
     catch { /* no projects folder yet */ }
-    return names.sort().map((n) => path.join(projects, n, 'memory'));
+    const listed = names.sort().map((n) => path.join(projects, n, 'memory'));
+    return listed.some((d) => d.toLowerCase() === exact.toLowerCase()) ? listed : [exact, ...listed];
 }
 // The settings.local.json Claude Code reads in a git repository (settings docs, 'Where Claude Code keeps the local file
 // in a git repository', v2.1.211): the repository root's - a linked worktree's main checkout's - for every sub-folder;
@@ -743,6 +892,70 @@ function localSettingsFile(root, { home = require('os').homedir(), platform = pr
     if (!top) return null;
     if (platform === 'win32') return dirKey(top) === dirKey(root) ? path.join(root, '.claude', 'settings.local.json') : null;
     return path.join(worktreeMain(top) || top, '.claude', 'settings.local.json');
+}
+// R171: a start folder's settings.local.json that Claude Code 2.1.211+ no longer keeps there (it keeps the file at the
+// repository root, localSettingsFile) and that sets autoMemoryDirectory: { file, dir, rootFile }, else null. Claude Code
+// still reads the older file while the root one sets no key, but the write guard trusts only the root file, so the
+// install, the audit and the guard name the move. Windows keeps the start folder's file: never one there. `dir` is taken
+// as autoMemorySetting takes it - absolute or `~/`, a relative value is no setting.
+// R171's review: a file the repository supplies - under a symlinked .claude, or one `tracked(file)` (the caller's git check;
+// this file spawns nothing) says git tracks - is never offered as a move into the trusted root file, nor a folder that
+// holds the project or the home folder, which the write guard never opens. `rootSets`: the root file sets its own key,
+// so Claude Code ignores this one and the advice is to remove it.
+function staleLocalMemory(root, { platform = process.platform, home = require('os').homedir(), tracked = () => false } = {})
+{
+    try
+    {
+        if (platform === 'win32') return null;
+        const rootFile = localSettingsFile(root, { home, platform });
+        if (!rootFile || dirKey(path.dirname(path.dirname(rootFile))) === dirKey(root)) return null;
+        const file = path.join(root, '.claude', 'settings.local.json');
+        if (fs.lstatSync(path.join(root, '.claude'), { throwIfNoEntry: false })?.isSymbolicLink()) return null;
+        const valueOf = (f) =>
+        {
+            const data = JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, ''));
+            const value = data && typeof data === 'object' && !Array.isArray(data) ? data.autoMemoryDirectory : null;
+            if (typeof value !== 'string' || !value.trim()) return null;
+            const v = value.trim();
+            return /^~[\\/]/.test(v) ? path.join(home, v.slice(2)) : path.isAbsolute(v) ? path.resolve(v) : null;
+        };
+        const dir = valueOf(file);
+        if (!dir) return null;
+        const holds = (inner) => { const rel = path.relative(realpathOrSelf(dir), realpathOrSelf(inner)); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
+        if (holds(root) || holds(home) || tracked(file)) return null;
+        let rootSets = false;
+        try { rootSets = !!valueOf(rootFile); } catch { rootSets = false; }
+        return { file, dir, rootFile, rootSets };
+    }
+    catch { return null; }
+}
+// Every such file below `top`: a breadth-first walk that enters no .git, no node_modules and no dot-folder but .claude,
+// at most `maxDepth` folders down, counting every entry it reads - past `maxEntries` it stops with `cut`.
+function staleLocalMemoryFiles(top, { maxEntries = 20000, maxDepth = 6, platform = process.platform, home = require('os').homedir(), tracked = () => false } = {})
+{
+    const found = [];
+    if (platform === 'win32') return { found, cut: false };
+    let seen = 0;
+    const queue = [[top, 0]];
+    for (let q = 0; q < queue.length; q++)
+    {
+        const [dir, depth] = queue[q];
+        if (depth > 0 && fs.existsSync(path.join(dir, '.claude', 'settings.local.json')))
+        {
+            const hit = staleLocalMemory(dir, { platform, home, tracked });
+            if (hit) found.push(hit);
+        }
+        if (depth >= maxDepth) continue;
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+        for (const e of entries)
+        {
+            if (++seen > maxEntries) return { found, cut: true };
+            if (!e.isDirectory() || e.name === '.git' || e.name === 'node_modules' || (e.name.startsWith('.') && e.name !== '.claude')) continue;
+            queue.push([path.join(dir, e.name), depth + 1]);
+        }
+    }
+    return { found, cut: false };
 }
 // The autoMemoryDirectory set where no repo can ship it (the managed settings, the account's, a settings.local.json
 // `untracked` vouches for), or null: the folder the write guard may open for the project's own memory. A project's
@@ -917,9 +1130,9 @@ function topMember(projectRoot, { env = process.env } = {})
 }
 
 // R6: the workspace root's (the top member's) memory folder, read-only to a child. Null at a root or with the switch at 0,
-// past an `ignore memory root` here or in a nearer member (R0), unless exactly one folder matches, and when it is one of
-// the child's own (a shared account-level value): that is not the root's memory to show.
-function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env) } = {})
+// past an `ignore memory root` here or in a nearer member (R0), and unless exactly one of the root's folders is not one of
+// the child's own (a shared account-level value is the child's own memory, not the root's to show).
+function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os').homedir(), managed = managedSettingsFile(process.platform, env), platform = process.platform } = {})
 {
     if (!workspaceOn({ env, projectRoot })) return null;
     const chain = workspaceChain(chainProjectOf(projectRoot), { env });
@@ -927,17 +1140,17 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
     if (!members.length) return null;
     const ignored = (ignores) => (ignores || []).some((i) => i.category === 'memory' && i.name === 'root');
     if (ignored(chain.ignores) || members.slice(0, -1).some((m) => ignored(m.ignores))) return null;
-    const found = memoryDirsOf(members[members.length - 1].root, { env, home, managed });
-    if (found.length !== 1) return null;
-    const own = new Set(memoryDirsOf(projectRoot, { env, home, managed }).map(dirKey));
-    return own.has(dirKey(found[0])) ? null : found[0];
+    // The child's own folders come off first: on Windows past 200 the root's listing holds the child's folder too.
+    const own = new Set(memoryDirsOf(projectRoot, { env, home, managed, platform }).map(dirKey));
+    const found = memoryDirsOf(members[members.length - 1].root, { env, home, managed, platform }).filter((d) => !own.has(dirKey(d)));
+    return found.length === 1 ? found[0] : null;
 }
 
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, defaultMemoryDirs, memoryDirSetting, trustedMemoryDir, localSettingsFile, docsRootOf, topMember,
+    memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

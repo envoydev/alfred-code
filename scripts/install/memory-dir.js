@@ -15,6 +15,7 @@ const os = require('node:os');
 const path = require('node:path');
 const stampLayer = require('./stamp.js');
 const variables = require('./variables.js');
+const rt = require('./runtime.js'); // every external command through the one Windows-safe spawn (M6)
 const layout = require('../../stack/hooks/layout.js');
 
 const LOCAL = 'settings.local.json';
@@ -84,6 +85,13 @@ function removeRow(ctx, file, data)
 {
     delete data[KEY];
     if (Object.keys(data).length) { writeLocal(file, data); return; }
+    // R163 (burn-down 2026-11-04): a tracked file stays, as {} - its deletion would reach every teammate with the next commit.
+    if (variables.tracked(file))
+    {
+        writeLocal(file, data);
+        ctx.log(`  ${LOCAL} kept as {} - git tracks it, so deleting it would reach every teammate with the next commit`);
+        return;
+    }
     fs.rmSync(file, { force: true });
     ctx.log(`  ${LOCAL} removed - it held nothing but the stack's entries`);
 }
@@ -270,10 +278,18 @@ function copyStep(ctx, mode)
     const show = (dir) => shown(dir, root);
     if (mode === 'custom') { say('memory: copy skipped - custom memory has no place of Claude\'s own to copy into'); return; }
     if (ctx.memoryFrom.length !== 1) { say('memory: copy skipped - the old place is not one folder here'); return; }
-    const to = layout.memoryDirsOf(root, { env: memoryEnv(ctx) });
+    const platform = ctx.platform || process.platform;
+    const to = layout.memoryDirsOf(root, { env: memoryEnv(ctx), platform });
     if (to.length !== 1) { say('memory: copy skipped - the new place is not one folder here'); return; }
     const [from] = ctx.memoryFrom;
     if (!fs.existsSync(path.join(from, 'MEMORY.md'))) { say(`memory: copy skipped - nothing at ${show(from)}/`); return; }
+    // G3: on Windows past 200 characters Claude Code names the folder from the path as typed, so the computed name may never
+    // be the one it makes - nothing is copied until a folder is there.
+    if (platform === 'win32' && path.basename(path.dirname(to[0])).length > layout.MEMORY_NAME_MAX && !fs.existsSync(path.dirname(to[0])))
+    {
+        say(`memory: copy skipped - on Windows Claude Code names a folder past 200 characters from the path as typed, and it has not made one here yet; copy the .md files from ${show(from)}/ by hand once it has`);
+        return;
+    }
     if (fs.existsSync(path.join(to[0], 'MEMORY.md'))) { say(`memory: copy skipped - ${show(to[0])}/ already has a MEMORY.md`); return; }
     copyMemory({ from, to: to[0], log: say, show });
 }
@@ -289,7 +305,8 @@ function attributesStep({ dir, want, log = () => {}, why = 'ALFRED_CODE_MEMORY i
     let text = null;
     try { text = fs.readFileSync(file, 'utf8'); } catch { text = null; }
     const ours = text !== null && text.replace(/\r\n/g, '\n') === ATTRIBUTES_TEXT;
-    const yours = () => { if (want || named) log(`memory: ${rel}/.gitattributes kept - not the stack's text, so it is yours`); return 'yours'; };
+    // R161 (burn-down 2026-11-04): named only on a run that asked - a flag-less update said it every time.
+    const yours = () => { if (named) log(`memory: ${rel}/.gitattributes kept - not the stack's text, so it is yours`); return 'yours'; };
     if (want)
     {
         if (text === null)
@@ -312,8 +329,15 @@ function attributesStep({ dir, want, log = () => {}, why = 'ALFRED_CODE_MEMORY i
 function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
 {
     const done = rowStep(ctx, { warnUnignoredLocal });
-    if (done.skip) return;
     const say = (line) => ctx.log(`  ${line}`);
+    // R162 (burn-down 2026-11-04): a copy asked for on a skipped run was dropped without a word.
+    if (done.skip)
+    {
+        if (ctx.memoryFrom) say(ctx.docsRootPending
+            ? 'memory: copy not made - the docs root waits on /alfred-code:update\'s ask; an update with --memory-copy after it makes the copy'
+            : 'memory: copy not made - the data root is not valid; once it is fixed, an update with --memory-copy makes the copy');
+        return;
+    }
     try { copyStep(ctx, done.mode); }
     catch (err) { say(`!! memory: copy stopped - ${err.message}; the old files stay where they are`); }
     // A sharing child's folder is its member's, and a refused one is left as it is until the cause is fixed.
@@ -331,4 +355,37 @@ function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
     catch (err) { say(`!! memory: the docs memory's .gitattributes could not be checked (${err.message}) - re-run /alfred-code:update`); }
 }
 
-module.exports = { gate, step, memoryEnv, rowHash, outrankLines, shown, copyMemory, attributesStep, ATTRIBUTES_TEXT };
+// R171's review: whether git tracks an old settings.local.json - only a plain 'no match' (exit 1) counts as untracked, so
+// no git, a timeout or a nested repository never offers a repository's file as a move. No inherited GIT_* steers it.
+function staleTracked(file)
+{
+    const env = { GIT_OPTIONAL_LOCKS: '0' };
+    for (const [k, v] of Object.entries(process.env)) if (!/^GIT_/i.test(k)) env[k] = v;
+    try
+    {
+        return rt.spawnCommand('git', ['-c', 'core.fsmonitor=false', 'ls-files', '--error-unmatch', '--', path.basename(file)],
+            { cwd: path.dirname(file), stdio: 'ignore', timeout: 5000, env }).status !== 1;
+    }
+    catch { return true; }
+}
+// The line for one old file: a move into the root file, or its removal where the root file sets its own key.
+const staleLocalLine = (x, rel) => (x.rootSets
+    ? `${rel(x.file)} sets autoMemoryDirectory, which Claude Code 2.1.211+ ignores while ${rel(x.rootFile)} sets its own - remove the key from ${rel(x.file)}`
+    : `${rel(x.file)} sets autoMemoryDirectory; Claude Code 2.1.211+ reads it only while ${rel(x.rootFile)} sets none, and the write guard never trusts it - move the key into ${rel(x.rootFile)}`);
+
+// R171: every settings.local.json below the repository top that sets autoMemoryDirectory where Claude Code 2.1.211+ no
+// longer keeps the file - named on each run until the key is moved (the write guard never trusts it). Writes nothing.
+function staleLocalStep(ctx)
+{
+    try
+    {
+        const top = layout.gitTopOf(ctx.projectRoot) || ctx.projectRoot;
+        const { found, cut } = layout.staleLocalMemoryFiles(top, { tracked: staleTracked });
+        const rel = (p) => path.relative(ctx.projectRoot, p).split(path.sep).join('/');
+        for (const x of found) ctx.log(`  !! memory: ${staleLocalLine(x, rel)}`);
+        if (cut) ctx.log('  !! memory: the search for old settings.local.json files stopped at 20,000 entries');
+    }
+    catch (err) { ctx.note(`old settings.local.json files could not be checked for autoMemoryDirectory (${err.message})`); }
+}
+
+module.exports = { gate, step, staleLocalStep, staleTracked, memoryEnv, rowHash, outrankLines, shown, copyMemory, copyStep, attributesStep, ATTRIBUTES_TEXT };

@@ -242,8 +242,9 @@ function collectHooks(sources)
             for (const g of Array.isArray(groups) ? groups : [])
                 for (const h of (g && Array.isArray(g.hooks) ? g.hooks : []))
                 {
-                    const script = /([^/\\"'\s]+\.(?:js|mjs|cjs|sh|ps1|py))/.exec(String(h.command || ''));
-                    out.push({ event, matcher: g.matcher, owner, label, type: h.type || 'command', command: h.command || '',
+                    const args = Array.isArray(h.args) ? h.args.map(String) : null;
+                    const script = /([^/\\"'\s]+\.(?:js|mjs|cjs|sh|ps1|py))/.exec([h.command || '', ...(args || [])].join(' '));
+                    out.push({ event, matcher: g.matcher, owner, label, type: h.type || 'command', command: h.command || '', args,
                         timeout: h.timeout, script: script ? script[1] : (h.type || 'command'), pluginRoot, pluginData });
                 }
     return out;
@@ -254,10 +255,11 @@ function runHook(hook, payload, ctx)
     if (hook.type !== 'command') return { skipped: `type ${hook.type} - not run` };
     const env = { ...ctx.env };
     if (hook.pluginRoot) { env.CLAUDE_PLUGIN_ROOT = hook.pluginRoot; env.CLAUDE_PLUGIN_DATA = hook.pluginData; }
-    const command = String(hook.command)
+    const fill = (s) => String(s)
         .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, hook.pluginRoot || '')
         .replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, hook.pluginData || '')
         .replace(/\$\{?CLAUDE_PROJECT_DIR\}?/g, ctx.projectRoot);
+    const command = fill(hook.command);
     const seconds = Math.min(Number(hook.timeout) || 600, HOOK_TIMEOUT_CAP);
     const started = Date.now();
     // A plain `node "<script>" [args]` line - every hook the stack ships - starts node itself: on Windows a timeout kills
@@ -266,7 +268,12 @@ function runHook(hook, payload, ctx)
     const opts = { cwd: ctx.projectRoot, env, input: JSON.stringify(payload), encoding: 'utf8', timeout: seconds * 1000 };
     const plain = /^node\s+("[^"]+"|\S+)((?:\s+(?:"[^"]*"|\S+))*)\s*$/.exec(command.trim());
     const argv = plain && !/[|&;<>$`]/.test(command) ? [...command.trim().slice(4).matchAll(/"([^"]*)"|(\S+)/g)].map((m) => (m[1] === undefined ? m[2] : m[1])) : null;
-    const r = argv ? spawnSync(process.execPath, argv, opts) : spawnCommand(process.platform === 'win32' ? 'bash' : 'sh', ['-c', command], opts);
+    // Exec form (`args` set) spawns its command directly with the args as the vector, no shell (code.claude.com/docs/en/hooks,
+    // 'Exec form and shell form') - `node` is this node, any other command goes through the one spawn route (M6).
+    const exec = Array.isArray(hook.args) ? hook.args.map(fill) : null;
+    const r = exec && command === 'node' ? spawnSync(process.execPath, exec, opts)
+        : exec ? spawnCommand(command, exec, opts)
+            : argv ? spawnSync(process.execPath, argv, opts) : spawnCommand(process.platform === 'win32' ? 'bash' : 'sh', ['-c', command], opts);
     const ms = Date.now() - started;
     if (r.error && r.error.code === 'ETIMEDOUT') return { timedOut: true, ms, seconds };
     const stdout = String(r.stdout || '').trim();

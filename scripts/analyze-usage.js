@@ -29,6 +29,7 @@
 //   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --data-root <d>  # the state the Conformance claims read, when not data/ beside it
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --no-conformance  # leave the Conformance section out
+//   node scripts/analyze-usage.js <s.jsonl> --report-md --receipt <collected.json>  # the bundle's receipt, not the one beside the transcript
 //
 // INVENTORY vs USE answers the complement of every consumption table: which installed skill,
 // agent, rule, plugin and MCP server the session (or, in directory mode, the corpus) never
@@ -426,7 +427,42 @@ const REDIRECT_TARGET_G = /(?:^|[^<>&\d])(?:\d?>>?|&>>?)\s*([^\s<>&;|]+)/g;
 // command of its own. A loop over a glob runs the suite (unscoped).
 const LOOP_TEST_G = /(?:^|[\s;&|(])for\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)/g;
 const NODE_VAR_RE = new RegExp(String.raw`^${RUNNER_PATH}node\s+${NODE_FLAGS}("?)\$\{?([A-Za-z_]\w*)\}?\1(?![\w.-])`);
-const SSH_REMOTE_RE = /^ssh\s+(?:-[\w-]+(?:\s+(?!["'])\S+)?\s+)*?[^\s"'-]\S*\s+("|')([\s\S]*)\1\s*$/;
+// O4 (burn-down 2026-11-04): ssh joins unquoted words into the remote command too. Read as ssh's own getopt does (final
+// review m4 - two regexes misread an option's value as the host and backtracked exponentially on a long failing line):
+// a value option (`-p 2222`, `-p2222`, `-vp 2222`) takes the rest of its word or the next word, other letters are flags,
+// `--` ends the options, the first other word is the host, and what follows it is the remote command - a wholly quoted
+// one unwrapped. A word may hold quoted spaces (`-o 'ProxyJump a b'`). No remote command, or a quote the line leaves open,
+// reads as none.
+const SSH_VALUE_OPTS = new Set('bcDEeFIiJLlmOopQRSWw');
+function sshRemote(shell) {
+  const s = String(shell);
+  if (!/^ssh\s/.test(s)) return null;
+  let i = 3;
+  const word = () => {
+    while (i < s.length && /\s/.test(s[i])) i++;
+    const start = i;
+    while (i < s.length && !/\s/.test(s[i])) {
+      if (s[i] === '"' || s[i] === "'") { const end = s.indexOf(s[i], i + 1); if (end < 0) return null; i = end + 1; } else i++;
+    }
+    return i > start ? s.slice(start, i) : null;
+  };
+  for (;;) {
+    const w = word();
+    if (w === null) return null;
+    if (w === '--') { const host = word(); if (host === null || /^["']/.test(host)) return null; break; }
+    if (!w.startsWith('-') || w === '-') { if (/^["']/.test(w)) return null; break; }
+    for (let k = 1; k < w.length; k++) {
+      if (!SSH_VALUE_OPTS.has(w[k])) continue;
+      if (k === w.length - 1 && word() === null) return null;
+      break;
+    }
+  }
+  const rest = s.slice(i).trim();
+  if (!rest) return null;
+  const quoted = /^("|')([\s\S]*)\1$/.exec(rest);
+  if (quoted) return quoted[2];
+  return /^["']/.test(rest) ? null : rest;
+}
 function classifyChecks(cmdCode, cmdShell, bindings) {
   const found = new Map();
   const logs = [];
@@ -443,8 +479,8 @@ function classifyChecks(cmdCode, cmdShell, bindings) {
       }
       const nv = !hits.length && loopTests.size ? NODE_VAR_RE.exec(h.shell) : null;
       if (nv && loopTests.has(nv[2])) hits.push({ kind: 'test', scoped: false });
-      const ssh = !hits.length ? SSH_REMOTE_RE.exec(h.shell) : null;
-      if (ssh) hits.push(...classifyChecks(maskQuotedShell(ssh[2]), ssh[2], bindings).kinds);
+      const remote = !hits.length ? sshRemote(h.shell) : null;
+      if (remote) hits.push(...classifyChecks(maskQuotedShell(remote), remote, bindings).kinds);
     }
     if (hits.length) {
       for (const x of hits) {
@@ -978,11 +1014,17 @@ function loadRulesDir(dir) {
 // plus 147 more named `tool-usage-<sid>` / `hook-blocks-<sid>` inside the bundles.
 const NON_SESSION_DIRS = new Set(['subagents', 'tools-usage', 'tool-usage', 'hook-blocks']);
 const LEDGER_FILE_RE = /^(?:tools?-usage|hook-blocks)-/;
+// A folder the collector wrote (`collected.json` beside the transcript) carries the session's stores as JSONL of
+// other shapes - docs-log, hook temp files, a copied plan - under these names; none of them is a session.
+const BUNDLE_DIRS = new Set(['data', 'tmp', 'docs', 'context', 'tool-results']);
 function findSessionFiles(root, depth = 0, out = []) {
-  for (const e of dirEntries(root)) {
+  const entries = dirEntries(root);
+  const collected = entries.some((e) => e.isFile() && e.name === 'collected.json');
+  for (const e of entries) {
     const full = path.join(root, e.name);
     if (e.isDirectory()) {
       if (NON_SESSION_DIRS.has(e.name) || e.name.startsWith('.')) continue;
+      if (collected && BUNDLE_DIRS.has(e.name)) continue;
       if (depth < 6) findSessionFiles(full, depth + 1, out);
     } else if (e.isFile() && e.name.endsWith('.jsonl') && !LEDGER_FILE_RE.test(e.name)) {
       out.push(full);
@@ -1002,7 +1044,10 @@ const CATALOG_DIR = path.join(__dirname, '..', 'stack');
 // had been there. Two more bundles carried a rule and an MCP name the session's own listing did
 // not have.
 function readInstallStamp(claudeDir) {
-  const file = require('./install/brand.js').stampFile(claudeDir).read;
+  return readStampFile(require('./install/brand.js').stampFile(claudeDir).read);
+}
+// The same read of one stamp FILE: a bundle's `context/alfred-code.stamp`, which the collector copied at collect time.
+function readStampFile(file) {
   let txt;
   try { txt = fs.readFileSync(file, 'utf8'); } catch { return null; }
   const val = (k) => { const m = new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(txt); return m ? m[1].trim() : null; };
@@ -1083,7 +1128,17 @@ function installedDuring(installed, firstTs, lastTs) {
   const [i, a, b] = [Date.parse(installed), Date.parse(firstTs), Date.parse(lastTs)];
   return Number.isFinite(i) && Number.isFinite(a) && Number.isFinite(b) && a < i && i <= b;
 }
-function resolveInventory(explicitDir, cwd, sessionLastTs, sessionFirstTs) {
+// `bundleDir` holds the transcript: when no stamp is reachable on this machine (the project is gone, or the bundle was
+// analysed elsewhere), the copy the collector took into `<bundleDir>/context/` stands in, labelled as read at collect time.
+function resolveInventory(explicitDir, cwd, sessionLastTs, sessionFirstTs, bundleDir) {
+  const copy = bundleDir ? readStampFile(path.join(bundleDir, 'context', require('./install/brand.js').BRAND.stamp)) : null;
+  const stampOf = (d) => readInstallStamp(d) || (copy && { ...copy, fromBundle: true });
+  const inv = inventoryOnDisk(explicitDir, cwd, sessionLastTs, sessionFirstTs, stampOf);
+  if (!inv.stamp && copy) inv.stamp = { ...copy, fromBundle: true };
+  if (inv.stamp && inv.stamp.fromBundle) inv.why += "; stamp from the bundle's context/ copy, read at collect time";
+  return inv;
+}
+function inventoryOnDisk(explicitDir, cwd, sessionLastTs, sessionFirstTs, stampOf) {
   const tryDir = (d, kind, why) => {
     if (!d) return null;
     const plug = loadPluginLayers(d);
@@ -1101,7 +1156,7 @@ function resolveInventory(explicitDir, cwd, sessionLastTs, sessionFirstTs) {
   if (explicitDir) {
     // Named by the caller: they said which install this bundle belongs to, so it is not guessed at.
     const inv = tryDir(explicitDir, 'project', `project ${explicitDir}`);
-    if (inv) inv.stamp = readInstallStamp(explicitDir);
+    if (inv) inv.stamp = stampOf(explicitDir);
     return withNote(inv)
       || { dir: explicitDir, kind: 'project', why: `project ${explicitDir} (no skills/, agents/ or rules/ under it)`, skills: [], agents: [], rules: [] };
   }
@@ -1109,7 +1164,7 @@ function resolveInventory(explicitDir, cwd, sessionLastTs, sessionFirstTs) {
     const d = path.join(String(cwd).replace(/\\/g, '/'), '.claude');
     const inv = fs.existsSync(d) ? tryDir(d, 'project', `project ${d} (the transcript's own cwd)`) : null;
     if (inv) {
-      const stamp = readInstallStamp(d);
+      const stamp = stampOf(d);
       inv.stamp = stamp;
       // Only a stamp that PREDATES the session makes the directory the session's own set.
       if (stamp && stamp.installed && sessionLastTs && stamp.installed > sessionLastTs) {
@@ -1222,7 +1277,7 @@ function pluginDeclarations(root, name, marketDir) {
   for (const map of of('hooks', 'hooks/hooks.json')) {
     for (const groups of Object.values(map)) for (const g of Array.isArray(groups) ? groups : []) {
       for (const h of g && Array.isArray(g.hooks) ? g.hooks : []) {
-        if (h && h.command) out.hookKeys.add(hookCommandKey(h.command));
+        if (h && h.command) out.hookKeys.add(hookCommandKey([h.command, ...(Array.isArray(h.args) ? h.args : [])].join(' ')));
         if (h && h.statusMessage) out.hookKeys.add(hookCommandKey(h.statusMessage));
       }
     }
@@ -1399,12 +1454,14 @@ function buildVintage(inv, main) {
 // The DISK side is cached per cwd and per session vintage (the stamp comparison depends on the
 // session's own last timestamp); the session roster is layered on top per session, never cached -
 // two sessions sharing a cwd can have been offered different sets.
-function inventoryFor(acc, inventoryDir, main) {
+function inventoryFor(acc, inventoryDir, main, bundleDir) {
   const cwd = main.cwd;
-  const key = `${inventoryDir || ''}|${cwd || ''}|${main.firstTs || ''}|${main.lastTs || ''}`;
+  // A folder only joins the key when it carries a stamp copy, so a native projects folder still resolves once per cwd.
+  const stampDir = bundleDir && fs.existsSync(path.join(bundleDir, 'context', require('./install/brand.js').BRAND.stamp)) ? bundleDir : '';
+  const key = `${inventoryDir || ''}|${cwd || ''}|${main.firstTs || ''}|${main.lastTs || ''}|${stampDir}`;
   let hit = acc.invCache.get(key);
   if (!hit) {
-    const inv = resolveInventory(inventoryDir, cwd, main.lastTs, main.firstTs);
+    const inv = resolveInventory(inventoryDir, cwd, main.lastTs, main.firstTs, stampDir || null);
     hit = { inv, mcp: loadMcpInventory(inv) };
     acc.invCache.set(key, hit);
   }
@@ -1421,9 +1478,9 @@ function houseBare(name) {
   return Object.hasOwn(houseRenamed, bare) ? houseRenamed[bare] : bare;
 }
 
-function addSessionUse(acc, main, agents, inventoryDir) {
+function addSessionUse(acc, main, agents, inventoryDir, bundleDir) {
   acc.sessions += 1;
-  const { inv, mcp } = inventoryFor(acc, inventoryDir, main);
+  const { inv, mcp } = inventoryFor(acc, inventoryDir, main, bundleDir);
   acc.sources.add(inv.why);
   acc.mcpSources.add(mcp.source);
   if (!acc.vintage) acc.vintage = buildVintage(inv, main);
@@ -3394,6 +3451,68 @@ const SHELL_PROBES = {
   'sed-multi-match': 'an unaddressed sed -i whose pattern matched more than one line - the lines were named',
 };
 
+// THE COLLECTOR'S RECEIPT (scripts/collect-session.js): `collected.json` beside the transcript, one row per store the
+// collector looked for, its `count` the store's rows, else its files. A later row of the same id is a file that store
+// withheld (denied, capped), counted into the first row's why. Null when there is none - a bundle from before the
+// collector; `error` when it cannot be read. `receipt` (--receipt) names another file: the no-consent shape analyzes a
+// <tmp> copy whose own receipt says the text was copied, while the bundle's says it was withheld (R164) - a named
+// file that is not there is `missing`, never the copy beside the transcript.
+function readEvidence(transcript, receipt) {
+  let text;
+  try { text = fs.readFileSync(receipt ? path.resolve(receipt) : path.join(path.dirname(path.resolve(transcript)), 'collected.json'), 'utf8'); }
+  catch { return receipt ? { rows: [], collectedAt: null, error: 'missing', file: receipt } : null; }
+  let rc;
+  try { rc = JSON.parse(text); } catch { rc = null; }
+  if (!rc || !Array.isArray(rc.stores)) return { rows: [], collectedAt: null, error: 'unreadable' };
+  const rows = [];
+  const withheld = new Map();
+  for (const s of rc.stores) {
+    if (!s || typeof s.id !== 'string') continue;
+    if (!rows.some((r) => r.id === s.id)) {
+      rows.push({ id: s.id, status: String(s.status || '?'), count: s.rows !== undefined ? s.rows : s.files !== undefined ? s.files : '', why: s.why ? String(s.why) : '' });
+      continue;
+    }
+    const w = withheld.get(s.id) || new Map();
+    w.set(s.status, (w.get(s.status) || 0) + 1);
+    withheld.set(s.id, w);
+  }
+  for (const r of rows) {
+    const w = withheld.get(r.id);
+    if (w) r.why = [r.why, [...w].map(([status, n]) => `${n} ${status}`).join(', ')].filter(Boolean).join('; ');
+  }
+  return { rows, collectedAt: rc.collectedAt || null };
+}
+// The receipt's totals, the numbers an author quotes first: '<n> stores, <f> found, <a> absent'.
+function evidenceTotals(evidence) {
+  const absent = evidence.rows.filter((r) => r.status === 'absent').length;
+  return `${evidence.rows.length} stores, ${evidence.rows.length - absent} found, ${absent} absent`;
+}
+// The lines the full report prints; with no receipt beside the transcript (a native transcript, or a bundle older than
+// the collector) the one line saying the stores beyond the transcript are unknown.
+function evidenceLines(evidence) {
+  if (!evidence) return ['no collected.json beside the transcript - stores beyond the transcript are unknown'];
+  if (evidence.error === 'missing') return [`--receipt ${evidence.file} not found - stores beyond the transcript are unknown`];
+  if (evidence.error) return ['collected.json unreadable - stores beyond the transcript are unknown'];
+  return [`collected ${evidence.collectedAt || '?'} - ${evidenceTotals(evidence)}`, ...evidence.rows.map((r) => `${pad(r.id, 26)} ${pad(r.status, 10)} ${rpad(String(r.count), 6)} ${r.why}`)];
+}
+// A session's ledger where the bundle keeps it: the copy beside the transcript (`tool-usage-<sid>.jsonl`,
+// `hook-blocks-<sid>.jsonl`), then the collector's `data/statistics/` copy. Null when neither is there.
+const LEDGER_DATA_DIRS = { 'tool-usage': 'tools-usage', 'hook-blocks': 'hook-blocks' };
+function defaultLedger(transcript, kind) {
+  const file = path.resolve(transcript);
+  const sid = path.basename(file, '.jsonl');
+  const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
+  const beside = path.join(path.dirname(file), `${kind}-${sid}.jsonl`);
+  if (isFile(beside)) return { file: beside, from: 'beside the transcript' };
+  const data = path.join(path.dirname(file), 'data', 'statistics', LEDGER_DATA_DIRS[kind], `${sid}.jsonl`);
+  return isFile(data) ? { file: data, from: 'data/' } : null;
+}
+// `tool-usage: <file> (<from>); hook-blocks: ...` - a flag's value as typed, a default relative to the transcript.
+function ledgersText(ledgers, dir) {
+  return Object.entries(ledgers).map(([kind, l]) => `${kind}: ${!l ? 'none found'
+    : `${l.from === 'flag' ? l.file : path.relative(dir, l.file).split(path.sep).join('/')} (${l.from})`}`).join('; ');
+}
+
 function readBlockLedger(target, sessionId, transcript) {
   // `given` separates 'no ledger passed' from 'a ledger with no row for this session' - the second
   // is a measured zero, the first is no measurement at all.
@@ -4042,7 +4161,7 @@ function printInventoryBlock(invUse) {
   console.log('  a plugin counts as installed only in the sessions a registry record reaches (its scope, project, install date and enable) or that loaded or used it; a hook scores from the rows naming its command, so one that only adds context is not observable; and a catalog-sourced row proves the stack ships the artifact, never that this project installed it');
 }
 
-function printReport(main, agents, hookLog, window, blockLedger, invUse) {
+function printReport(main, agents, hookLog, window, blockLedger, invUse, sources = {}) {
   const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
   console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})${main.ccVersion ? `  Claude Code ${main.ccVersion}` : ''}`);
   if (main.idleTail) console.log(`  ${idleTailLine(main).replace(/`/g, '')}`);
@@ -4093,6 +4212,9 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     const cands = main.unheldStopCandidates;
     console.log(`  ${cands.length} unheld-stop candidate${cands.length === 1 ? '' : 's'} (free-text user turn right after a no-tool end_turn - check each against the active skill's stop contract): ${cands.slice(0, 10).map((c) => `${c.stopTs}→${c.userTs || '?'}`).join(', ')}${cands.length > 10 ? ` … +${cands.length - 10} more` : ''}`);
   }
+  if (sources.ledgers) console.log(`ledgers read: ${ledgersText(sources.ledgers, sources.dir)}`);
+  console.log('\nEVIDENCE COVERAGE');
+  for (const l of evidenceLines(sources.evidence)) console.log(`  ${l}`);
   const agg = computeAggregates(main, agents);
 
   console.log('\nTOKENS (deduped per API message; ctx/msg = avg context re-sent per call)');
@@ -4395,7 +4517,7 @@ function conformanceSection(c) {
   return out;
 }
 
-function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, conformance) {
+function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, conformance, sources = {}) {
   const extraFacts = [];
   if (main.peakCtx) extraFacts.push(`- **Peak context** ${fmt(main.peakCtx)} tokens per message${main.peakCtxAt ? ` (at ${main.peakCtxAt})` : ''} - every fresh-session threshold is measured against this, not the average.`);
   if (main.thinkingTokens) extraFacts.push(`- **Thinking** ${fmt(main.thinkingTokens)} tokens (\`cost-state.modelUsage\`) - billed, attributable to no single message.`);
@@ -4459,8 +4581,20 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, confo
   }
   out.push(`| Models (main) | ${Object.entries(main.byModel).map(([m, t]) => `\`${m}\` ×${t.msgs}`).join(', ') || '-'} |`);
   out.push(`| Subagent transcripts | ${agents.length} |`);
-  out.push(`| Hook ledger | ${hookLog ? `joined (${hookLog.rows} rows)` : 'absent - identity attribution unavailable, not inferred'} |`, '');
+  out.push(`| Hook ledger | ${hookLog ? `joined (${hookLog.rows} rows)` : 'absent - identity attribution unavailable, not inferred'} |`);
+  if (sources.ledgers) out.push(`| Ledgers read | ${ledgersText(sources.ledgers, sources.dir)} |`);
+  out.push('');
   if (extraFacts.length) out.push('', ...extraFacts, '');
+
+  out.push('## Evidence coverage', '');
+  if (sources.evidence && !sources.evidence.error) {
+    out.push(`_The collector's receipt (\`collected.json\`, written ${sources.evidence.collectedAt || '?'}): ${evidenceTotals(sources.evidence)}. One row per store it looked for. An \`absent\` row's why is the reason the store is missing - never a measured zero._`, '');
+    out.push('| store | status | count | why |', '|---|---|---|---|');
+    for (const r of sources.evidence.rows) out.push(`| ${r.id} | ${r.status} | ${r.count} | ${String(r.why).replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ')} |`);
+    out.push('');
+  } else {
+    out.push(...evidenceLines(sources.evidence), '');
+  }
 
   vintageMarkdown(invUse, main, out, hookLog);
 
@@ -4700,7 +4834,8 @@ const LOCATOR_RE = /\b(?:L\d+|turns?\s+\d+|lines?\s+\d+|rows?\s+\d+)\b/i;
 const LOCATOR_G = /\b(?:L(\d+)|turns?\s+(\d+)|lines?\s+(\d+)|rows?\s+(\d+))\b(?!:\d|-\d{1,2}-\d)/gi;
 // A number token, with the units the tables print: `8.0k`, `~12`, `1,204`, `53%`, `$0.42`. The
 // magnitude suffix binds to the digits with no space - `1 block(s)` is the number 1, not '1 b'.
-const NUMBER_TOKEN_RE = /\d[\d,]*(?:\.\d+)?(?:[kKmMbB](?![A-Za-z]))?%?/g;
+// A digit glued to a letter, a digit or a dot on its left is part of a name (`af39`, `x86`, `v2.11.0`), never a count.
+const NUMBER_TOKEN_RE = /(?<![A-Za-z0-9_.])\d[\d,]*(?:\.\d+)?(?:[kKmMbB](?![A-Za-z]))?%?/g;
 const numValue = (tok) => {
   const m = /^(\d[\d,]*(?:\.\d+)?)([kKmMbB]?)%?$/.exec(String(tok).trim());
   if (!m) return null;
@@ -4715,7 +4850,11 @@ const stripDates = (line) => String(line)
   .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z?/g, ' ')
   .replace(/\d{4}-\d{2}-\d{2}/g, ' ')
   .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, ' ');
+// A UUID (every session id) and a hex hash name a thing; the digits in them are no printed count (a CI flake of
+// 2026-11-04: `...-af39-...` lent the check a machine 39).
 const stripNonClaims = (line) => stripDates(line)
+  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ' ')
+  .replace(/\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,}\b/gi, ' ')
   .replace(/\bL\d+(?:-L?\d+)?\b/g, ' ')
   .replace(/\b(?:turns?|lines?|rows?)\s+\d+(?:\s*-\s*\d+)?\b/gi, ' ');
 const numbersIn = (line) => {
@@ -4877,7 +5016,7 @@ function sessionsDirOf(cwd, configDir) {
   return path.join(configDir, 'projects', String(cwd).replace(/[^a-zA-Z0-9]/g, '-'));
 }
 
-module.exports = { classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf, JUDGMENT_HEAD_RE };
+module.exports = { findSessionFiles, readEvidence, defaultLedger, classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf, JUDGMENT_HEAD_RE };
 
 // ---------- entry ----------
 
@@ -4908,7 +5047,7 @@ async function runAnalysis() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
   // Every occurrence of a value flag, so a repeated `--exclude-session <id>` is never read as the target.
-  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice', '--data-root']);
+  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice', '--data-root', '--receipt']);
   const flagValIdx = new Set(args.map((a, i) => (VALUE_FLAGS.has(a) ? i + 1 : -1)).filter((i) => i > 0));
   // No folder or transcript named: the transcripts of the project this runs in (sessionsDirOf).
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i))
@@ -4938,7 +5077,7 @@ async function runAnalysis() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--data-root <dir>] [--no-conformance] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--data-root <dir>] [--receipt <collected.json>] [--no-conformance] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
     process.exit(1);
   }
 
@@ -4998,7 +5137,7 @@ async function runAnalysis() {
       const s = await analyzeTranscript(f, window);
       const agents = await analyzeSubagents(f, window);
       reconcileUntranscribed(s, agents);
-      addSessionUse(acc, s, agents, inventoryDir);
+      addSessionUse(acc, s, agents, inventoryDir, path.dirname(f));
       const at = newTally();
       for (const a of agents) mergeTally(at, a.stats.total);
       mergeTally(grand, s.total); mergeTally(grand, at);
@@ -5038,15 +5177,24 @@ async function runAnalysis() {
   const mainStats = await analyzeTranscript(target, window);
   const agents = await analyzeSubagents(target, window);
   reconcileUntranscribed(mainStats, agents);
-  const hookLog = hookFile ? await analyzeHookLog(hookFile) : null;
+  // A flag names the ledger; without one, the bundle's own copy beside the transcript, then its data/ copy.
+  const ledgers = {
+    'tool-usage': hookFile ? { file: hookFile, from: 'flag' } : defaultLedger(target, 'tool-usage'),
+    'hook-blocks': blockDir ? { file: blockDir, from: 'flag' } : defaultLedger(target, 'hook-blocks'),
+  };
+  const hookPath = ledgers['tool-usage'] ? ledgers['tool-usage'].file : null;
+  const blockPath = ledgers['hook-blocks'] ? ledgers['hook-blocks'].file : null;
+  const evidence = readEvidence(target, flagVal('--receipt'));
+  const sources = { evidence, ledgers, dir: path.dirname(path.resolve(target)) };
+  const hookLog = hookPath ? await analyzeHookLog(hookPath) : null;
   // ONE ledger read, handed to every emitter. --report-md and --json used to drop it entirely,
   // so the bundle reports that quote the markdown - the ones the sweeps actually read - carried no
   // guard-block section at all (7 confirmations), while the terminal report had it.
-  const blockLedger = finishProbes(readBlockLedger(blockDir, path.basename(target, '.jsonl'), target), target);
+  const blockLedger = finishProbes(readBlockLedger(blockPath, path.basename(target, '.jsonl'), target), target);
   const invAcc = newInventoryUse(loadPlugins(pluginsFile));
-  addSessionUse(invAcc, mainStats, agents, inventoryDir);
+  addSessionUse(invAcc, mainStats, agents, inventoryDir, sources.dir);
   const invUse = finishInventoryUse(invAcc);
-  const conformance = (asJson || asMd) && !args.includes('--no-conformance') ? conformanceOf(target, { dataRoot: flagVal('--data-root'), hookBlocks: blockDir, window }) : null;
+  const conformance = (asJson || asMd) && !args.includes('--no-conformance') ? conformanceOf(target, { dataRoot: flagVal('--data-root'), hookBlocks: blockPath, window }) : null;
   if (asJson) {
     // The join's own numbers were computed only at RENDER time, so `--json` could not see them and
     // nothing could test them - which is how the NaN cross-check above shipped and stayed shipped.
@@ -5054,15 +5202,15 @@ async function runAnalysis() {
     const agg = computeAggregates(mainStats, agents);
     const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, agg.tools) : null;
     const hl = hookLog ? (({ rowsIdx, ...rest }) => rest)(hookLog) : hookLog;   // the row index is the join's input, not a report field
-    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: agg.dispatchOverhead, cost: agg.cost, inventory: invUse, ...(conformance ? { conformance } : {}) };
+    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: agg.dispatchOverhead, cost: agg.cost, inventory: invUse, evidence, ...(conformance ? { conformance } : {}) };
     console.log(JSON.stringify(window ? { window: { from: fromStr, to: toStr }, ...body } : body, null, 2));
     return;
   }
   if (asMd) {
-    printMarkdown(mainStats, agents, hookLog, window, blockLedger, invUse, conformance);
+    printMarkdown(mainStats, agents, hookLog, window, blockLedger, invUse, conformance, sources);
     return;
   }
-  printReport(mainStats, agents, hookLog, window, blockLedger, invUse);
+  printReport(mainStats, agents, hookLog, window, blockLedger, invUse, sources);
 }
 
 // Run only as a COMMAND. Required as a module (the tests, which need to reach hookJoinStats),

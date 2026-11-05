@@ -705,6 +705,14 @@ function main(argv)
         }
         return stacks;
     };
+    // R066: the walk's read-time check of the parent's read-back - `inherited: ok` (exit 0), or one `!! inherited:` line
+    // naming why the set cannot be inherited (exit 1), so the parent-read step falls back before any table is drawn.
+    if (has('--inherited-check'))
+    {
+        const got = require('./install/workspace.js').readPlan(arg('--inherited-check'));
+        console.log(got.plan ? 'inherited: ok' : `!! inherited: ${got.why} - no row is marked from root`);
+        process.exit(got.plan ? 0 : 1);
+    }
     const graphPath = arg('--graph') || path.join(__dirname, '..', 'meta', 'stack-graph.json');
     let graph;
     try { graph = JSON.parse(fs.readFileSync(graphPath, 'utf8')); }
@@ -829,6 +837,7 @@ function main(argv)
         if (dropped && !tableMode) for (const o of findOrphans(graph, raw, dropped)) console.log(`orphan: ${o.category} ${o.name} - ${o.why} (dropped); nothing kept still needs it`);
     }
 
+    let inheritedNoted = false;
     const tableOpts = () =>
     {
         const recs = readJson('--recs', arg('--recs'));
@@ -838,7 +847,12 @@ function main(argv)
         const stacks = parseStacks(recs);
         const foundFile = readJsonSoft('--found', arg('--found'));
         const evidence = foundFile ? (foundFile.found || foundFile) : null;
-        const inherited = normalizeInventory(readJson('--inherited', arg('--inherited')));
+        // R066: a parent read-back whose run reported failures, unreadable files or a blind listing is no set to
+        // inherit from (the installer's readPlan refuses it too) - one line on stderr, the table paste-clean.
+        const inheritedRaw = readJson('--inherited', arg('--inherited'));
+        const doubt = inheritedRaw && typeof inheritedRaw === 'object' && !Array.isArray(inheritedRaw) ? require('./install/workspace.js').planDoubt(inheritedRaw) : null;
+        if (doubt && !inheritedNoted) { inheritedNoted = true; console.error(`!! inherited: ${doubt} - no row is marked from root`); }
+        const inherited = doubt ? null : normalizeInventory(inheritedRaw);
         return { raw, recs, stacks, installed, orphans, evidence, inherited, always };
     };
 

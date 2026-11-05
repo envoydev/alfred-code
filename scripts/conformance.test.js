@@ -276,3 +276,46 @@ test('S1 and S2 open on the new name too (spec section 10)', () => {
         finally { fs.rmSync(dir, { recursive: true, force: true }); }
     }
 });
+test('loadBundle reads seats from subagents/ beside the transcript', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-'));
+    try {
+        fs.writeFileSync(path.join(dir, 's.jsonl'), jsonl([user('go')]));
+        fs.mkdirSync(path.join(dir, 'subagents'));
+        fs.writeFileSync(path.join(dir, 'subagents', 'agent-a1.jsonl'), jsonl([tool('Read', { file_path: 'a.md' })]));
+        fs.writeFileSync(path.join(dir, 'subagents', 'agent-a1.meta.json'), JSON.stringify({ agentType: 'general-purpose' }));
+        const { seats } = cf.loadBundle(path.join(dir, 's.jsonl')).session;
+        assert.strictEqual(seats.length, 1);
+        assert.strictEqual(seats[0].agentType, 'general-purpose');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+// R051 (burn-down 2026-11-04): the whole-log matcher's `(` alternative also opened on `$(`, so a file list fed to a run
+// (`node --test $(cat list.txt)`) read as a whole-log read. A substitution is a list; a subshell's cat is still a read.
+test('background-wait: $(cat list.txt) feeding a run is no whole-log read; a subshell cat of a log still is', () => {
+    const verdict = (cmds) => {
+        const run = sc.parseTranscript(jsonl([user('what does this file do?'), ...cmds.map((command) => tool('Bash', { command })), { type: 'assistant', message: { id: 'mx', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } }]));
+        const [{ result }] = cf.gradeSession(run, sc.loadExpectation('background-wait').data);
+        return result.steps.find((s) => s.id === 'no-whole-log').verdict;
+    };
+    assert.strictEqual(verdict(['node --test $(cat list.txt)', 'node --test $(cat list.txt) > run.log']), 'PASS');
+    assert.strictEqual(verdict(['(cat run.log)', 'ls && (cat run.log)']), 'FAIL');
+    assert.strictEqual(verdict(['cat run.log', 'echo x; cat run.out']), 'FAIL');
+    // R068's review: the exemption is a .txt list fed to a command; a log, an .out or an .output read through $( ) is
+    // still the whole log.
+    // (the step allows one whole read, so each command runs twice)
+    assert.strictEqual(verdict(['for f in $(cat files.txt); do echo "$f"; done', 'for f in $(cat files.txt); do echo "$f"; done']), 'PASS');
+    for (const cmd of ['echo $(cat run.log)', 'echo "$(cat run.out)"', 'x=$(cat build.output)']) assert.strictEqual(verdict([cmd, cmd]), 'FAIL', cmd);
+});
+// G1: a quoted file name, a stderr redirect after it or a `||` end hid a whole-log read from the matcher; a single `|`
+// after the name stays a bounded read, a `>` a copy.
+test('background-wait: a quoted, stderr-redirected or ||-ended cat of a log is a whole-log read; a piped one is not', () => {
+    const verdict = (cmds) => {
+        const run = sc.parseTranscript(jsonl([user('what does this file do?'), ...cmds.map((command) => tool('Bash', { command })), { type: 'assistant', message: { id: 'mx', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } }]));
+        const [{ result }] = cf.gradeSession(run, sc.loadExpectation('background-wait').data);
+        return result.steps.find((s) => s.id === 'no-whole-log').verdict;
+    };
+    // (the step allows one whole read, so each command runs twice)
+    for (const cmd of ['cat "run.log"', "cat 'run.out'", 'cat run.log 2>/dev/null', 'cat run.log 2> /dev/null', 'cat "notes.txt" 2> err.txt', 'cat run.log || true', 'cat run.log||true', 'cat "build.output" 2>&1', '(cat "notes.txt")'])
+        assert.strictEqual(verdict([cmd, cmd]), 'FAIL', cmd);
+    for (const cmd of ['cat run.log | tail -20', 'cat "run.log" | grep -c fail', 'cat run.log 2>/dev/null | tail -5', 'cat run.log 2> /dev/null | tail -5', 'cat run.log > copy.log', 'node --test $(cat "list.txt")'])
+        assert.strictEqual(verdict([cmd, cmd]), 'PASS', cmd);
+});

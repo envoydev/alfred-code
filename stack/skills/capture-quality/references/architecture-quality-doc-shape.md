@@ -137,7 +137,7 @@ No bucket has a size limit. **Worth knowing retirement rule** - what stops the l
 
   One entry in that shape:
 
-  > **W3 - Invoicing queries Orders' persistence entities across the module boundary.** `InvoiceBuilder.BuildAsync` reaches into Orders' data context directly (located: `Invoicing/InvoiceBuilder` -> `Orders.Order`), so an Orders schema change ripples into Invoicing untested - the boundary exists in folders, not in the dependency graph.
+  > **W3 - Invoicing reads Orders entities.** `InvoiceBuilder.BuildAsync` reaches into Orders' data context directly (located: `Invoicing/InvoiceBuilder` -> `Orders.Order`), so an Orders schema change ripples into Invoicing untested - the boundary exists in folders, not in the dependency graph.
   > **Remediation** - feed Invoicing from an Orders-owned read projection (or an integration event), and guard the seam with an architecture test asserting Invoicing never references Orders' data context.
   > **Strength check** - preserves S2 (module isolation): the projection keeps Orders' persistence private instead of widening the shared surface a direct-reference fix would.
   > **Tier** - substantial.
@@ -162,7 +162,7 @@ proposed-decisions, summary - and the entries under it are the engine's sections
 The W3 entry above opens:
 
 ```markdown
-### W3 - Invoicing queries Orders' persistence entities across the module boundary
+### W3 - Invoicing reads Orders entities
 <!-- id: invoicing-reads-orders-entities -->
 <!-- covers: src/Invoicing/InvoiceBuilder.cs, src/Orders/Order.cs -->
 ```

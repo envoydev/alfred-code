@@ -166,6 +166,9 @@ function count(reg, { now = Date.now(), probe = () => {} } = {})
             for (const e of [...alive.values()])
             {
                 const parent = started.get(cleanId(e.body.parent, { agent: true }));
+                // A parent that stopped and was not sent back has ended: its child counts alone (R084).
+                const pStop = parent ? Number(parent.body.stop) || 0 : 0;
+                if (pStop && !(mtimeOf(parent.body.transcript) > pStop + SENT_BACK_MS)) continue;
                 if (parent && !alive.has(parent.name)) { alive.set(parent.name, parent); grew = true; }
             }
         }
@@ -199,8 +202,11 @@ function dropPending(reg, toolUseId)
     if (id) remove(fileOf(reg, 'P', id));
 }
 
-// A start takes the oldest pending file of its type, else the oldest one, and carries its parent; a start with none
-// writes its running file all the same - whatever runs, counts. A resume starts the same id again and clears `stop`.
+// A start takes the oldest pending file of its type (compared without the `alfred-code:` prefix and case), else the
+// oldest one - carrying its parent only when it was the one pending file left, since among several of other types the
+// oldest may be another dispatch's (R085); a start with none writes its running file all the same - whatever runs,
+// counts. A resume starts the same id again and clears `stop`.
+const typeKey = (t) => String(t || '').replace(/^alfred-code:/i, '').toLowerCase();
 function startAgent(reg, { agentId, type = '', transcript = '', now = Date.now() } = {})
 {
     try
@@ -208,9 +214,11 @@ function startAgent(reg, { agentId, type = '', transcript = '', now = Date.now()
         const id = cleanId(agentId, { agent: true });
         if (!id) return;
         const pending = entries(reg).filter((e) => e.kind === 'P' && e.body).sort((a, b) => (Number(a.body.at) || 0) - (Number(b.body.at) || 0));
-        const taken = pending.find((e) => e.body.type === type) || pending[0];
+        const ofType = pending.find((e) => typeKey(e.body.type) === typeKey(type));
+        const taken = ofType || pending[0];
         const before = readEntry(fileOf(reg, 'R', id));
-        const parent = taken ? String(taken.body.parent || '') : String((before && before.parent) || '');
+        const sure = ofType || pending.length === 1;
+        const parent = taken && sure ? String(taken.body.parent || '') : String((before && before.parent) || '');
         if (taken) remove(taken.file);
         writeEntry(fileOf(reg, 'R', id), { type: String(type || (taken && taken.body.type) || 'agent'), at: now, parent, transcript: String(transcript || (before && before.transcript) || '') });
     }
@@ -250,7 +258,7 @@ function reconcile(reg, backgroundTasks, { now = Date.now(), probe = () => {} } 
         {
             if (e.kind === 'P' && (!e.body || !String(e.body.parent || ''))) { remove(e.file); removed++; }
         }
-        const inflight = backgroundTasks.filter((t) => t && typeof t === 'object' && t.type === 'subagent' && !SETTLED_STATUS.test(String(t.status || '')));
+        const inflight = backgroundTasks.filter((t) => t && typeof t === 'object' && String(t.type || '').toLowerCase() === 'subagent' && !SETTLED_STATUS.test(String(t.status || '')));
         const ids = new Set(inflight.map((t) => cleanId(t.id, { agent: true })).filter(Boolean));
         const started = count(reg, { now, probe }).live.filter((e) => e.kind === 'R');
         const byId = started.some((e) => ids.has(e.id));
@@ -290,11 +298,15 @@ function capGates(payload, env = process.env, { stop = false } = {})
 
 // The denial, three lines: the count and the types (at most 8, then how many more), what to do - a seat works inline -
 // and whose the setting is. It never says how to lift the cap: a model told so could write 0 into the shared settings.
-function denialText(c, n, { seat = false } = {})
+// `byName`: a SendMessage naming its agent - the cap cannot tell a resume of a stopped one from a message to a running
+// one or a teammate, so at the cap it is refused (R087, the user's ruling of 2026-11-05).
+function denialText(c, n, { seat = false, byName = false } = {})
 {
     const types = c.types.slice(0, TYPES_SHOWN).join(', ') + (c.types.length > TYPES_SHOWN ? ` and ${c.types.length - TYPES_SHOWN} more` : '');
+    const second = byName ? 'This message names its agent, so the cap cannot tell whether it resumes a stopped one: the cap is full - wait for an agent to finish, then send it.'
+        : seat ? 'Do this step yourself - the session is at its cap.' : 'Dispatch this one when one hands back - its notice wakes you - and send the rest of a fan-out the same way.';
     return `${c.running} of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is ${n}: ${types}\n` +
-        (seat ? 'Do this step yourself - the session is at its cap.' : 'Dispatch this one when one hands back - its notice wakes you - and send the rest of a fan-out the same way.') + '\n' +
+        second + '\n' +
         "The setting is the user's - never change it yourself.";
 }
 
@@ -351,7 +363,7 @@ function stopContinue(payload, env = process.env)
             if (c.running >= g.n) return '';
             remove(deniedOf(g.reg));
             const stopped = Math.max(1, (Number(denied.running) || 0) - c.running);
-            return `The agent cap denied a dispatch this turn, and ${stopped} of the agents it counted have stopped since - send that dispatch again now.`;
+            return `Since the user's last message the agent cap denied a dispatch, and ${stopped} of the agents it counted have stopped - send that dispatch again now.`;
         });
         return (done.ok && done.value) || '';
     }

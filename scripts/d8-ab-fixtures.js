@@ -1,5 +1,5 @@
 'use strict';
-// THE D8 A/B FIXTURES - the tracked builder the billed A/B (docs/superpowers/plans/2026-11-03-d8-ab.md) stands on.
+// THE D8 A/B FIXTURES - the tracked builder the billed D8 A/B of 2026-11-03 stands on.
 // `scripts/profile-fixture.js` writes only a stack's marker files; this lays a task's real code over a profile-fixture
 // project: a shared base (`common/angular`, `common/dotnet`), then the task's own `files/`. A task's `reference/` (one
 // correct answer) is laid only by `check` and shown to the grader - never by `build`.

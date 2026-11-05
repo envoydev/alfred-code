@@ -378,6 +378,21 @@ function codeDocsIn(dir)
     }).filter((d) => d && d.text !== null);
 }
 const deadScopes = (projectRoot, dir = prefsDir(projectRoot)) => deadScopesIn(projectRoot, codeDocsIn(dir));
+// For each Scope part of the code and architecture docs, one file it reaches, or null for a dead one - a caller that keeps
+// them checks they still exist instead of listing the tree again (docs-session.js's Stop, R081) - and the docs' key: their
+// paths and times, which a changed Scope moves.
+function scopeWitnesses(projectRoot, dir = prefsDir(projectRoot))
+{
+    const docs = codeDocsIn(dir);
+    const wanted = [];
+    for (const d of docs)
+        for (const s of parseSections(d.text))
+            for (const part of scopeOf(s.fields.Scope)) wanted.push({ doc: d, id: s.id || s.heading, part });
+    const files = wanted.length ? allFiles(projectRoot) : [];
+    return wanted.map((w) => ({ file: path.basename(w.doc.file), id: w.id, glob: w.part.glob, witness: files.find((f) => w.part.test(f)) || null }));
+}
+const scopeDocsKey = (projectRoot, dir = prefsDir(projectRoot)) => DOCS.filter((d) => d.area === 'code' || d.area === 'architecture')
+    .map((d) => { const abs = path.join(dir, d.file); try { return `${abs}@${fs.lstatSync(abs).mtimeMs}`; } catch { return `${abs}@-`; } }).join('|');
 
 // What each code or architecture entry's Scope: takes (null for a plain area or none: every edit), and the files its
 // Check: measures outside it. A Scope: aimed at the wrong existing folder hides its entry from the edits meant, and no
@@ -662,6 +677,6 @@ function main(argv)
     return 2;
 }
 
-module.exports = { parseDoc, parseSections, retiredIds, runCheck, parseCheck, globRe, scopeOf, deadScopes, scopeMismatches, docsRoot, dataRoot, prefsDirs, readDirs, setting, CAP, GIT_CAP, PERSONAL_CAP, HOUSE_KEYS };
+module.exports = { parseDoc, parseSections, retiredIds, runCheck, parseCheck, globRe, scopeOf, deadScopes, scopeWitnesses, scopeDocsKey, scopeMismatches, docsRoot, dataRoot, prefsDirs, readDirs, setting, CAP, GIT_CAP, PERSONAL_CAP, HOUSE_KEYS };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

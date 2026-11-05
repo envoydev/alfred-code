@@ -21,7 +21,12 @@ Bundles come from several capture generations; inventory each one.
 | `session.jsonl` / `<session-id>.jsonl` | the full main-session transcript | ground truth |
 | `subagents/agent-*.jsonl` (+ `.meta.json`) | one transcript per dispatched seat; meta names the type | ground truth |
 | `tool-usage-<sid>.jsonl` | the instrumentation tool ledger | deterministic - check its coverage window, it can start mid-session |
-| `hook-blocks-<sid>.jsonl` | one row per guard BLOCK | deterministic; absent means no block OR an older capture - never read absence as 'no blocks' |
+| `hook-blocks-<sid>.jsonl` | one row per guard BLOCK | deterministic; absent means no block OR an older capture - never read absence as 'no blocks'; `collected.json`'s row says which |
+| `collected.json` | the collector's receipt: one row per store - status, count, and why for an `absent` one | deterministic - read in Phase B0, before any finding about a store |
+| `context.json`, `context/` | roots, variables, plugins and the instrument switch; the install stamp, workspace record and session-inspector status | read at collect time, not the session's own state |
+| `data/` | the project's data root mirrored path for path - the session's state and ledgers | deterministic; the Conformance section reads it |
+| `docs/`, `tmp/` | docs the session wrote, under their path below the docs root; hook temp files naming the session | the file as it stood at collect time |
+| `tool-results/`, `custom-title.json` | the rest of the transcript's `<session-id>/` folder | ground truth |
 | `analyzer.json` / `analysis.json` / `analyzer-full.txt` | `analyze-usage.js` output - the JSON carries either name depending on the capture generation | deterministic derivation |
 | `report-usage.md` | a model-written report (authored route) or an unfilled skeleton | claims - verify before reuse |
 
@@ -67,7 +72,10 @@ real trigger was the file's content).
 Enumerate bundles and inventory their files. Read any root `SUMMARY_*.md` for the already-known
 list. Snapshot the stack's current version and recent release history as the already-fixed
 reference. Order bundles oldest-first where timestamps allow, so later ones validate shipped fixes.
-Edit nothing here.
+Read each bundle's `collected.json` (a report made since the collector prints it as `## Evidence coverage`) before
+any finding about a store: an `absent` row's reason - never written, swept, no data root - says the store is not
+evidence of what the session did. A bundle with none predates the collector, and its stores beyond the transcript are
+unknown. Edit nothing here.
 
 ## Phase B1 - per bundle, in order
 

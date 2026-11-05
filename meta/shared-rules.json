@@ -6525,28 +6525,28 @@
       "_note": "guard-secret-value.js judges a credential by these shapes; scripts/audit-install.js scans an install's own config files for the same ones. The hook is copied into projects and cannot require repo tooling, so scripts/credential-shapes.js holds a copy - a shape added to the hook and not the copy is a credential the install audit silently misses. The stop contract copies it to redact what it logs, memory.js to redact what the session start injects, and instrument-tool-usage.js to mask its detail hints.",
       "owner": {
         "file": "stack/hooks/guard-secret-value.js",
-        "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
+        "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
       },
       "sites": [
         {
           "file": "scripts/credential-shapes.js",
-          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
+          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
+          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         },
         {
           "file": "stack/hooks/history.js",
-          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
+          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         },
         {
           "file": "stack/hooks/guard-stop-contract.js",
-          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
+          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
+          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         }
       ]
     },
@@ -8081,43 +8081,43 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry with no `Check:` a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (a script copy from before this change), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `by hand:` and `note:` line; judge every id a `by hand:` line names, and every entry a `skipped:` line names, against the diff - and where no `by hand:` line follows a summary (an older script copy prints none), every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         }
       ]
     },
@@ -8782,6 +8782,23 @@
         {
           "file": "stack/skills/habits-done-gate/SKILL.md",
           "marker": "(a `format:check` script, the CI workflow's format step)"
+        }
+      ]
+    },
+    "handoff-fresh-run-purge": {
+      "_note": "R035 (2026-11-05): a fresh run purges, fold-first, the notes an earlier run left under its feature name; a resume keeps them.",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "an earlier run's notes under the same name"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
+          "marker": "an earlier run's notes under the same name"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
+          "marker": "an earlier run's notes under the same name"
         }
       ]
     }

@@ -1903,7 +1903,10 @@ function watchMerge(domain, input, { kinds = [], kind = [], doc = [], seed = nul
   const strings = (v) => Array.isArray(v) && v.length && v.every((x) => typeof x === 'string' && x);
   const byKind = (e) => typeof e.kind === 'string' && (kinds.some((p) => e.kind.startsWith(p)) || kind.includes(e.kind));
   const docOf = (ref) => String(ref).split('#')[0].replace(/\.md$/, '');
-  const byDoc = (e) => strings(e.sections) && e.sections.every((r) => doc.some((d) => docOf(r) === d || docOf(r) === `${domain}/${d}`));
+  // A --doc merge takes in an older capture's free-text entries for that doc ONCE: the doc goes into `docAdopted`, and a
+  // later merge leaves every entry outside its kinds alone, a hand-added one included (R082).
+  let adopting = doc;
+  const byDoc = (e) => adopting.length > 0 && strings(e.sections) && e.sections.every((r) => adopting.some((d) => docOf(r) === d || docOf(r) === `${domain}/${d}`));
   for (const [i, e] of entries.entries()) {
     if (!e || typeof e !== 'object' || Array.isArray(e) || !strings(e.globs) || !strings(e.sections)) return { error: `stdin entry ${i} needs a kind, a non-empty globs list and a non-empty sections list` };
     if (!byKind(e)) return { error: `stdin entry ${i} (${JSON.stringify(e.kind)}) is outside the scope this merge names - nothing written` };
@@ -1920,6 +1923,9 @@ function watchMerge(domain, input, { kinds = [], kind = [], doc = [], seed = nul
   for (const [k, v] of Object.entries(seeded || {})) if (!Object.prototype.hasOwnProperty.call(j, k)) out[k] = v;
   for (const [k, v] of Object.entries(j)) out[k] = v;
   for (const k of own) if (seeded && Object.prototype.hasOwnProperty.call(seeded, k)) out[k] = seeded[k];
+  const adopted = Array.isArray(j.docAdopted) ? j.docAdopted.filter((d) => typeof d === 'string') : [];
+  adopting = doc.filter((d) => !adopted.includes(d));
+  if (doc.length) out.docAdopted = [...new Set([...adopted, ...doc])];
   const list = Array.isArray(j.watch) ? j.watch : [];
   const merged = [];
   let replaced = 0;
@@ -2288,12 +2294,15 @@ const cmd = process.argv[2];
 const args = process.argv.slice(3);
 // Beside hook-blocks/ and tools-usage/ in the data root's statistics/ (2.8.0, layout.js copied beside this engine) - every
 // ledger in this stack lives there, never committed; an older copy route without layout.js keeps the docs root.
+// A row names the session that ran the command (CLAUDE_CODE_SESSION_ID, set in every Bash call of a session) - the usage
+// collector keeps a session's rows by it, and a doc set from Bash reached no bundle without it (O3, burn-down 2026-11-04).
 const docsLog = (row) => {
   try {
     let file = path.join(DOCS_ROOT, 'docs-log.jsonl');
     try { file = require('./layout.js').statsPath(ROOT, ['docs-log.jsonl']); } catch { /* an older copy route */ }
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`);
+    const session = process.env.CLAUDE_CODE_SESSION_ID;
+    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), ...(session ? { session } : {}), ...row })}\n`);
   } catch {}
 };
 const commands = {

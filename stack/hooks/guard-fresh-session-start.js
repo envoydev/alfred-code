@@ -672,6 +672,7 @@ function modePrompt() {
   if (markerFile) {
     pre.sweepStale(nodePath.dirname(markerFile), 'AUTO-RUN-');
     pre.sweepStale(nodePath.dirname(markerFile), 'AUTO-TAKEN-');
+    pre.sweepStale(nodePath.dirname(markerFile), 'AUTO-SAID-');
   }
   const flags = pre.modeFlags(prompt);
   const lines = [];
@@ -710,7 +711,10 @@ function modePrompt() {
         let from = '';
         try { from = (/^taken-from:[ \t]*(\S+)/m.exec(fs.readFileSync(stamp.file, 'utf8').slice(0, 2048)) || [])[1] || ''; } catch { from = ''; }
         const said = markerFile ? nodePath.join(nodePath.dirname(markerFile), nodePath.basename(markerFile).replace(/^AUTO-RUN-/, 'AUTO-TAKEN-')) : '';
-        if (from === sid && said && !fs.existsSync(said)) {
+        // the mark names the taker it was said for, so a later takeover by another session is said once too (R091)
+        let told = '';
+        try { told = said ? fs.readFileSync(said, 'utf8').trim() : ''; } catch { told = ''; }
+        if (from === sid && said && told !== stamp.session) {
           try {
             fs.mkdirSync(nodePath.dirname(said), { recursive: true });
             fs.writeFileSync(said, `${stamp.session}\n`);
@@ -1268,6 +1272,8 @@ function lastTypedPrompt() {
 // unattended and is not (a side review of the hooks track, 2026-10-20). hook-prelude.js autoRunRefusal is the one check
 // the ON line shares, so the two never disagree.
 let autoRefused = '';
+// An empty /mode-auto-run under this session's own live stamp: nothing starts, and the mode is ON (R090).
+let autoAlreadyOn = false;
 // The line's flags, for the banner's near-miss note.
 let autoFlags = null;
 function autoModeStart() {
@@ -1291,7 +1297,9 @@ function autoModeStart() {
       return null;
     }
   } else if (AUTO_SELF_RE.test(skill) && !flags.request && !flags.run.length) {
-    // an empty /mode-auto-run starts nothing, whatever the session's mode
+    // an empty /mode-auto-run starts nothing, whatever the session's mode; under this session's live stamp it is said ON,
+    // as guard-answer's ON line says it, never as a refusal (R090)
+    if (liveHere) { autoAlreadyOn = true; return null; }
     autoRefused = pre.autoRunRefusal({ ...payload, cwd: root }, undefined, flags);
     return null;
   }
@@ -1327,8 +1335,12 @@ function autoModeStart() {
   // The run: a typed family command opens (or replaces) the marker; the model's Skill call rides the one open.
   const markerFile = pre.runMarkerFile(root, sid);
   const runSkill = IS_SKILL_CALL ? skill.replace(/^alfred-code:/, '') : pre.runMarkerSkill(flags);
-  const opened = !IS_SKILL_CALL && runSkill ? pre.writeRunMarker(root, sid, runSkill, typedLine()) : false;
-  return { file: relToRoot(root, stampFile), marker: markerFile && (opened || IS_SKILL_CALL) ? relToRoot(root, markerFile) : '', run: runSkill || skill.replace(/^alfred-code:/, ''), kept };
+  const opened = !IS_SKILL_CALL && runSkill ? pre.writeRunMarker(root, sid, runSkill, typedLine(), undefined, payload.prompt_id) : false;
+  // the Skill route rides the run a typed command opened: with none open it names none, so no Stop hold is promised (R094)
+  const riding = IS_SKILL_CALL && Boolean(markerFile) && fs.existsSync(markerFile);
+  return { file: relToRoot(root, stampFile), marker: markerFile && (opened || riding) ? relToRoot(root, markerFile) : '', run: runSkill || skill.replace(/^alfred-code:/, ''), kept,
+    // a typed run whose marker could not be written is said, never taken for a flag-only line (R095)
+    markerFailed: !IS_SKILL_CALL && Boolean(runSkill) && !opened };
 }
 const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 'UserPromptExpansion' ? autoModeStart() : null;
 // --- the MODE BANNER (the user's ruling, 2026-10-15) ---
@@ -1405,8 +1417,32 @@ function modeBanner(autoOn) {
 // Nobody at the terminal is judged WITHOUT the session's own AUTO stamp (a payload with no session id reads none): that
 // stamp is the auto-run this banner reports ON, and the person who typed the command is there to read it. A print-mode
 // run, ALFRED_CODE_UNATTENDED=1 or a hand-written stamp still reads as nobody.
-const banner = EVENT === 'UserPromptExpansion' && !payload.agent_id && BANNER_RE.test(skill) && !unattended({ ...payload, session_id: '' })
-  ? modeBanner(Boolean(auto)) : '';
+// One typed prompt can expand more than once (a stacked `/mode-output-scorer /task-solve --mode-auto-run-on X`): the
+// contract and the banner go out on its first expansion only (R093). The mark is the prompt's `prompt_id`
+// (code.claude.com/docs/en/hooks, 'Common input fields'), else the typed line's hash for SAID_FALLBACK_MS - with no id the
+// line typed again cannot be told from one expansion repeated, so the window keeps a retype seconds later said. One file
+// per session in state/sessions, swept with the run marker's prefix; one that cannot be written says every time, as before.
+const SAID_FALLBACK_MS = 10000;
+function firstExpansion() {
+  if (EVENT !== 'UserPromptExpansion' || payload.agent_id || !BANNER_RE.test(skill)) return true;
+  const sid = String(payload.session_id || '');
+  let pre;
+  try { pre = require('./hook-prelude.js'); } catch { return true; }
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  const runFile = sid ? pre.runMarkerFile(root, sid) : null;
+  if (!runFile) return true;
+  const file = nodePath.join(nodePath.dirname(runFile), nodePath.basename(runFile).replace(/^AUTO-RUN-/, 'AUTO-SAID-'));
+  const id = String(payload.prompt_id || '').replace(/[^\w-]/g, '').slice(0, 64);
+  const key = id ? `id: ${id}` : `sha1: ${require('node:crypto').createHash('sha1').update(String(payload.prompt || typedLine())).digest('hex').slice(0, 12)}`;
+  try {
+    if (fs.readFileSync(file, 'utf8').trim() === key && (id || Date.now() - fs.statSync(file).mtimeMs < SAID_FALLBACK_MS)) return false;
+  } catch { /* none yet */ }
+  try { fs.mkdirSync(nodePath.dirname(file), { recursive: true }); fs.writeFileSync(file, `${key}\n`); } catch { /* said every time */ }
+  return true;
+}
+const SAY = firstExpansion();
+const banner = SAY && EVENT === 'UserPromptExpansion' && !payload.agent_id && BANNER_RE.test(skill) && !unattended({ ...payload, session_id: '' })
+  ? modeBanner(Boolean(auto) || autoAlreadyOn) : '';
 // Every UserPromptExpansion output goes through here, the banner after the text; `leave` is an exit with nothing else to say.
 function expansionOut(text) {
   const body = [text, banner].filter(Boolean).join('\n\n');
@@ -1430,10 +1466,10 @@ function solveFlowLine() {
   if (file) return `Solve flow: ${file} - on the code route Read it whole and follow it as this run's flow; its references/ and scripts/ paths are under ${nodePath.dirname(file)}.`;
   return state === 'off' ? 'Solve flow: switched off here - a code change goes under Left for you.' : 'Solve flow: not installed here - a code change goes under Left for you.';
 }
-if (auto && !auto.marker) {
+if (auto && !auto.marker && !IS_SKILL_CALL && !auto.markerFailed) {
   // a mode line switched auto-run on and opened no run (spec section 6): a flag-only one is said once and does nothing
   // more; one carrying a request (`/mode-output-scorer --mode-auto-run-on <request>`) runs it under the mode (final review I2)
-  if (EVENT === 'UserPromptExpansion') expansionOut(auto.kept ? '' : autoFlags && autoFlags.request
+  if (EVENT === 'UserPromptExpansion' && SAY) expansionOut(auto.kept ? '' : autoFlags && autoFlags.request
     ? `auto-run is ON for this session (${auto.file}) - this line's request runs under it: each ask takes its (Recommended) `
       + 'option; one with no marked option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), waits for the user.'
     : `auto-run is ON for this session (${auto.file}) - no run started: `
@@ -1441,22 +1477,30 @@ if (auto && !auto.marker) {
   process.exit(0);
 }
 if (auto) {
-  const contract = `auto-run is ON for this /${auto.run} run: auto-run is on for this session (${auto.file} holds the user's words), and ${auto.marker} marks this run. `
+  const m = auto.marker;
+  const contract = (auto.markerFailed ? '!! the run marker could not be written - each ask still takes its (Recommended) option, but no hook sends a turn back between steps; tell the user so in one line.\n' : '')
+    + `auto-run is ON for this /${auto.run} run: auto-run is on for this session (${auto.file} holds the user's words)${m ? `, and ${m} marks this run` : ''}. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
     + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop, spend on a billed run) - waits for the user, so put only those; '
     + "a guard's security ask (a credential shown, work discarded, a write outside the project, a desktop launch, a protective guard switched off) is never auto-run's to allow: take its safe option and list the act for the user in the close; "
     + "write every AskUserQuestion's questions and labels in English while auto-run is on - the hook reads English only and an ask it cannot read waits for the user - and the rest of the run in the user's language. "
-    + `(2) Do not end a turn between steps: the Stop hook sends you back while ${auto.marker} stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. `
+    + (m ? `(2) Do not end a turn between steps: the Stop hook sends you back while ${m} stands. ` : '(2) Do not end a turn between steps: no run marker stands, so carry each step on in the same turn. ')
+    + 'A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
     + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '
     + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
     + "(5) A leading run of mode flags ('--mode-auto-run-on' and the rest) is mode switches, not a target - leave it out of the run's arguments. "
     + `(6) The stamp is the session's approval: never write an APPROVED or AUTO line over it and never delete it - only the user's --mode-auto-run-off ends auto-run. An answered ask is the go - carry on in the same turn. `
-    + `(7) When the whole run is finished, print its close and delete ${auto.marker} if its \`skill:\` line names this run - that ends this run; auto-run stays on for the session until --mode-auto-run-off. `
-    + `(8) A message the user types mid-run is input to the run: take it in and carry on; if it asks to stop the run, print its close and delete ${auto.marker}.`
+    + (m ? `(7) When the whole run is finished, print its close and delete ${m} if its \`skill:\` line names this run - that ends this run; ` : '(7) When the whole run is finished, print its close - that ends this run; ')
+    + 'auto-run stays on for the session until --mode-auto-run-off. '
+    + `(8) A message the user types mid-run is input to the run: take it in and carry on; if it asks to stop the run, print its close${m ? ` and delete ${m}` : ''}.`
     + (AUTO_SELF_RE.test(auto.run) ? ` ${solveFlowLine()}` : '');
-  if (EVENT === 'UserPromptExpansion') expansionOut(contract);
+  if (EVENT === 'UserPromptExpansion') { if (SAY) expansionOut(contract); }
   else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: contract } }));
+  process.exit(0);
+}
+if (EVENT === 'UserPromptExpansion' && autoAlreadyOn) {
+  if (SAY) expansionOut('auto-run is already ON for this session - no run started: type the request after /mode-auto-run. Do nothing else for this line.');
   process.exit(0);
 }
 // M7: a refused /mode-auto-run start offers no fresh session - nothing runs, so there is nothing to resume; nor does a

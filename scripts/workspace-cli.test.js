@@ -212,6 +212,30 @@ test('AC6: status prints child of .., root of 2 children, standalone, standalone
     assert.strictEqual(first('ws/api', { ...ENV, ALFRED_CODE_WORKSPACE: '0' }), 'role: workspace off');
 });
 
+// R067 (burn-down 2026-11-04): the excludes are written for every stamped folder above, joined or not, so validate's load
+// check keys on this count, never on a linked parent alone.
+test('R067: status counts the installed folders above, an unlinked nested project included', () =>
+{
+    const at = tree({
+        ws: { stamp: true, file: 'role root\n' },
+        'ws/nested': { stamp: true, git: true, file: 'role standalone\nabove ..\n' },
+        'ws/api': { stamp: true, git: true },
+        solo: { stamp: true, git: true },
+    });
+    const line = (rel, e = ENV) => spawnSync(process.execPath, [CLI, 'status', '--root', at(rel)], { encoding: 'utf8', env: e }).stdout.split('\n').find((l) => l.startsWith('installed-above: '));
+    assert.strictEqual(line('ws/nested'), 'installed-above: 1', 'a nested project that never joined still carries the excludes');
+    assert.strictEqual(line('ws/api'), 'installed-above: 1');
+    assert.strictEqual(line('solo'), 'installed-above: 0');
+    assert.strictEqual(line('ws/nested', { ...ENV, ALFRED_CODE_WORKSPACE: '0' }), 'installed-above: 0', 'off freezes every lookup');
+});
+
+test('R067: validate runs its load check wherever an installed folder sits above, joined or not', () =>
+{
+    const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'commands', 'validate.md'), 'utf8');
+    assert.match(body, /node "\$TMP\/repo\/scripts\/workspace\.js" status --root \. \| grep -qE '\^installed-above: \[1-9\]' && node "\$TMP\/repo\/scripts\/workspace\.js" check-loads --root \./);
+    assert.doesNotMatch(body, /grep -q '\^workspace: parent \\\.\\\.' && node "\$TMP\/repo\/scripts\/workspace\.js" check-loads/);
+});
+
 test('status prints show\'s notes: the HOOKS_OFF line, the not-read line and the credential line, never a value (AC17)', () =>
 {
     const at = joined();
@@ -279,12 +303,12 @@ test('status names the parent, the own, ignored and inherited lines, and the las
     const plan = path.join(TMP, 'installed.json');
     fs.writeFileSync(plan, JSON.stringify({ skills: ['javascript', 'npm'], rules: ['alfred-security'], plugins: [{ name: 'alfred-code' }] }));
     const r = cli('status', '--root', at('ws/api'), '--installed', plan);
-    assert.strictEqual(r.out, 'role: child of ..\nworkspace: parent ..\nown: skill npm\nignored: skill sqlite\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ndocs: -\nmemory: -\ncheck: never\n');
+    assert.strictEqual(r.out, 'role: child of ..\nworkspace: parent ..\ninstalled-above: 1\nown: skill npm\nignored: skill sqlite\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ndocs: -\nmemory: -\ncheck: never\n');
     fs.mkdirSync(path.join(at('ws/api'), '.alfred', 'state'), { recursive: true });
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'state', 'workspace-check.json'), JSON.stringify({ at: '2026-10-26T10:00:00Z', state: 'clean', misses: [] }));
     assert.match(cli('status', '--root', at('ws/api')).out, /^from-root: unknown - pass --installed <plan json>\ndocs: -\nmemory: -\ncheck: clean 2026-10-26T10:00:00Z\n$/m);
     const alone = tree({ alone: { git: true } });
-    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (no role recorded)\nworkspace: parent none\nown: -\nignored: -\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
+    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (no role recorded)\nworkspace: parent none\ninstalled-above: 0\nown: -\nignored: -\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
 });
 
 test('status names the ancestor docs roots and the memory index it reads, or ignored', () =>

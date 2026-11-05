@@ -82,6 +82,7 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     under its old spelling as fallback until every install has it; the 1.x spellings are past that point
     and read nowhere (the user's ruling of 2026-10-07: every install had moved across).
   Commands reach `meta/` through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}`.
+- `scripts/collect-session.js` - one session's stores into a bundle beside its transcript copy, one `collected.json` row per `scripts/collect-stores.js` STORES row (never a secret file; text stores only where git ignores `--out` or on `--allow-tracked`), run by `capture-usage-report` and `/repo-audit-usage` before the analyzer.
 - `scripts/lint-skills.js` - the parity lint. `scripts/analyze-usage.js` - offline token/tool report over
   a session transcript (+ `subagents/`), with an EFFICIENCY scorecard (one measured number per practice);
   it reads `PowerShell` and `Monitor` as the shell route, writes with `--out <file>` (never a `>` redirect), and
