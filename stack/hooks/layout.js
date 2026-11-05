@@ -731,9 +731,102 @@ function memoryDirsOf(root, { env = process.env, home = require('os').homedir(),
     const set = memoryDirSetting(root, { env, home, managed, platform });
     return set ? [set] : defaultMemoryDirs(root, { env, home, platform });
 }
+// The link checks Claude Code 2.1.318 runs before it keys a worktree by its main checkout (G2, read from its own code):
+// `ra` refuses a path by its class, `p_` walks it from the root. Not mirrored: its darwin automount check, which reads
+// the machine's automount map. Its folding: '' and '.' skipped, '..' pops; its names compared with invisible format
+// characters dropped and in lower case.
+const LINK_INVISIBLE = /[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g;
+const LINK_LINKS_MAX = 40;
+const linkBare = (s) => s.replace(LINK_INVISIBLE, '').toLowerCase();
+function linkFolded(p, each = () => false)
+{
+    const n = [];
+    for (const e of p.split('/'))
+    {
+        if (e === '' || e === '.') continue;
+        if (e === '..') { n.pop(); continue; }
+        n.push(e);
+        if (each(n, e)) return null;
+    }
+    return n;
+}
+// `/net/<host>` or `/network/servers/<host>`: the host in lower case, else null.
+function linkNetHost(p)
+{
+    if (!p.startsWith('/')) return null;
+    let host = null;
+    linkFolded(p, (n, e) => ((n.length === 2 && linkBare(n[0]) === 'net') || (n.length === 3 && linkBare(n[0]) === 'network' && linkBare(n[1]) === 'servers')) && (host = e.toLowerCase()) !== null);
+    return host;
+}
+// A first component that is ever `test`'s while the path folds, so `/network/../x` counts as Claude Code counts it.
+const linkEverFirst = (p, test) => p.startsWith('/') && linkFolded(p, (n, e) => n.length === 1 && test(e)) === null;
+const linkUncServer = (p) => (/^[\\/]{2}[?.][\\/](?!unc[\\/])/i.test(p) ? null : p.match(/^[\\/]{2}(?:[?.][\\/]unc[\\/])?([^\\/]+)/i)?.[1]?.toLowerCase() ?? null);
+// A UNC path: refused as a device form, with a '.' or '..' part, or on a server other than the base's.
+function linkUncRefused(p, base)
+{
+    if (!/^[\\/]{2}/.test(p) && !/^[\\/]\?\?[\\/]/.test(p)) return false;
+    if (/^[\\/]{2}[?.][\\/]/.test(p) || /^[\\/]\?\?[\\/]/.test(p) || /(^|[\\/])\.{1,2}[. ]*([\\/]|$)/.test(p)) return true;
+    const server = linkUncServer(p);
+    return server === null || server !== linkUncServer(base);
+}
+// What the walk checks at each step: a refused first component, or a `/net` host other than the root's.
+function linkClassRefused(o, root)
+{
+    if (linkEverFirst(o, (e) => /^\.(?:vol|file|nofollow|resolve)$/i.test(e)) || linkEverFirst(o, (e) => e.toLowerCase() === 'network')) return true;
+    const host = linkNetHost(o);
+    return host !== null && host !== linkNetHost(root);
+}
+// Claude Code's `ra`: `p` and `p` resolved against `base`, each by its class.
+function unsafeLinkPath(p, base)
+{
+    const e = path.resolve(base, p);
+    if (linkUncRefused(p, base) || linkUncRefused(e, base)) return true;
+    for (const o of [p, e])
+    {
+        if (linkClassRefused(o, base) || /^[\\/](GLOBAL\?\?|GLOBALROOT|DosDevices|Device)[\\/]/i.test(o)) return true;
+        const folded = o.startsWith('/') ? linkFolded(o) : null;
+        if (folded && folded.length === 1 && folded[0].toLowerCase() === 'net') return true;
+    }
+    return false;
+}
+// Claude Code's `p_`: `p` resolved against `base`, walked from the root a part at a time, each partial path lstat'ed.
+// Refused: a partial `linkClassRefused` refuses (host against `root`), an entry neither file, folder nor link, an lstat
+// error other than ENOENT / ENOTDIR (absent goes on), a link whose text `unsafeLinkPath` refuses, past 40 links.
+function unsafeLinkWalk(p, base, root = base)
+{
+    let links = 0;
+    let target = path.resolve(base, p);
+    let at = path.parse(target).root;
+    let rest = target.slice(at.length).split(/[\\/]+/).filter(Boolean);
+    while (rest.length)
+    {
+        const partial = path.join(at, rest.shift());
+        if (linkClassRefused(partial, root)) return true;
+        let st;
+        try { st = fs.lstatSync(partial); }
+        catch (err) { if (err.code === 'ENOENT' || err.code === 'ENOTDIR') { at = partial; continue; } return true; }
+        if (st.isSymbolicLink())
+        {
+            if (++links > LINK_LINKS_MAX) return true;
+            let text;
+            try { text = fs.readlinkSync(partial); }
+            catch { return true; }
+            if (unsafeLinkPath(text, path.dirname(partial))) return true;
+            target = path.resolve(path.dirname(partial), text);
+            const top = path.parse(target).root;
+            rest = [...target.slice(top.length).split(/[\\/]+/).filter(Boolean), ...rest];
+            at = top;
+            continue;
+        }
+        if (!st.isFile() && !st.isDirectory()) return true;
+        at = partial;
+    }
+    return false;
+}
 // The folder Claude Code keys a git top's memory by (2.1.318's own rule, R068's review): a linked worktree's main
 // checkout only when the worktree's admin folder links back to this `.git` (a worktree moved without `git worktree
-// repair` keys by itself), and a bare repository's worktree by the bare folder. Any doubt keys by the top itself.
+// repair` keys by itself), and a bare repository's worktree by the bare folder. Any doubt keys by the top itself, and
+// so does a `.git` value, `commondir` text or back-link the link checks above refuse (G2).
 function memoryKeyOf(top)
 {
     try
@@ -743,12 +836,17 @@ function memoryKeyOf(top)
         const text = fs.readFileSync(dotGit, 'utf8').trim();
         if (!text.startsWith('gitdir:')) return top;
         const regular = (f) => fs.lstatSync(f, { throwIfNoEntry: false })?.isFile();
-        const admin = path.resolve(top, text.slice(7).trim());
+        const value = text.slice(7).trim();
+        if (unsafeLinkPath(value, top) || unsafeLinkWalk(value, top)) return top;
+        const admin = path.resolve(top, value);
         if (!regular(path.join(admin, 'commondir'))) return top;
-        const common = path.resolve(admin, fs.readFileSync(path.join(admin, 'commondir'), 'utf8').trim());
+        const shared = fs.readFileSync(path.join(admin, 'commondir'), 'utf8').trim();
+        if (unsafeLinkPath(shared, admin) || unsafeLinkWalk(shared, admin)) return top;
+        const common = path.resolve(admin, shared);
         if (path.resolve(path.dirname(admin)) !== path.join(common, 'worktrees')) return top;
         if (!regular(path.join(admin, 'gitdir'))) return top;
         const back = fs.readFileSync(path.join(admin, 'gitdir'), 'utf8').trim();
+        if (unsafeLinkPath(back, top) || unsafeLinkWalk(back, admin, top)) return top;
         if (path.sep === '/' && [top, admin, back, common].some((p) => p.includes('\\'))) return top;
         if (fs.realpathSync(path.resolve(admin, back)) !== path.join(fs.realpathSync(top), '.git')) return top;
         if (path.basename(common) !== '.git') return fs.existsSync(path.join(common, '.git')) ? top : common;
@@ -1038,7 +1136,7 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, defaultMemoryDirs, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, docsRootOf, topMember,
+    memoryDirsOf, defaultMemoryDirs, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

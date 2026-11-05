@@ -137,8 +137,11 @@ The stores and what each holds, where the docs root and the data root live, and 
   `!! memory:` line, an audit row, the guard's `stale-local-memory` denial: R171, `layout.staleLocalMemoryFiles`), its
   `settings.json`, the account's; a leading `~` is the home folder), else `<account>/projects/<name>/memory`, `<name>`
   its git top (a linked worktree's main checkout when the worktree's admin folder links back to it, a bare repository's
-  worktree the bare folder - `layout.memoryKeyOf`, Claude Code's own rule) with every character outside `[A-Za-z0-9]`
-  as `-`; past 200
+  worktree the bare folder - `layout.memoryKeyOf`, Claude Code's own rule; the top itself when the `.git` value, the
+  `commondir` text or the back-link is a path 2.1.318 refuses - a UNC or device form, `/net` or another host's
+  `/net/<host>`, a first part `network`, `.vol`, `.file`, `.nofollow` or `.resolve` - or walks through a link to one, past
+  40 links included: `layout.unsafeLinkPath` / `unsafeLinkWalk`, G2; its darwin automount check is not mirrored) with
+  every character outside `[A-Za-z0-9]` as `-`; past 200
   characters Claude Code appends `-<hash>`, which `layout.memoryNameHash` computes (R068, the A5 re-run in
   `docs/workspace-layering-evidence.md`; on Windows, where the hash is of the typed case, every `<first 200>-*` folder
   is listed beside it, an ancestor's computed folder left out), and `CLAUDE_CODE_PROJECT_DIR_NAME` set means none. The line a child's start

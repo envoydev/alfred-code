@@ -423,6 +423,55 @@ test('memoryDirsOf keys a bare repository\'s worktree by the bare folder, and a 
     assert.deepStrictEqual(memOf(m, 'wt2'), named(path.join(base, 'wt2')), 'moved without git worktree repair: the back-link fails, so itself');
 });
 
+// G2 (2026-11-05): Claude Code 2.1.318 keys a worktree by the top itself when the `.git` value, the `commondir` text or
+// the back-link is a path it refuses (`ra`) or walks into one (`p_`); read from its own code, written out as cases here.
+test('unsafeLinkPath: Claude Code 2.1.318 refused path classes', () =>
+{
+    const refused = [['//host/share/x', '/Users/u'], ['\\\\?\\C:\\x', '/Users/u'], ['\\\\.\\pipe\\x', '/Users/u'], ['/GLOBAL??/C:/x', '/Users/u'],
+        ['/net', '/Users/u'], ['/net/h/x', '/home/u'], ['/Network/Servers/h/x', '/Users/u'], ['/Network/Servers/h/x', '/Network/Servers/h/repo'],
+        ['/network/x', '/Users/u'], ['/.vol/1/2', '/Users/u'], ['/.NoFollow/Users/x', '/Users/u'], ['/a/../.vol/x', '/Users/u']];
+    for (const [p, base] of refused) assert.strictEqual(layout.unsafeLinkPath(p, base), true, `${p} (base ${base}) is refused`);
+    const kept = [['/net/h/x', '/net/h/repo'], ['//srv/s/x', '//srv/s/repo'], ['/Users/u/repo/.git/worktrees/w', '/Users/u'],
+        ['../..', '/Users/u/repo/.git/worktrees/w'], ['/a/net/x', '/Users/u']];
+    for (const [p, base] of kept) assert.strictEqual(layout.unsafeLinkPath(p, base), false, `${p} (base ${base}) is kept`);
+});
+
+test('unsafeLinkWalk: a link to a refused root is refused; a plain or missing path is not', { skip: process.platform === 'win32' && 'POSIX links' }, () =>
+{
+    const d = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'walk-')));
+    fs.mkdirSync(path.join(d, 'ok'));
+    fs.symlinkSync('/.vol', path.join(d, 'via'));
+    assert.strictEqual(layout.unsafeLinkWalk('via/x', d), true, 'a link whose text is a refused class');
+    assert.strictEqual(layout.unsafeLinkWalk('ok/x', d), false, 'a plain folder');
+    assert.strictEqual(layout.unsafeLinkWalk('gone/x', d), false, 'a missing path');
+    const chain = (n) =>
+    {
+        const c = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, `chain${n}-`)));
+        fs.mkdirSync(path.join(c, 'ok'));
+        for (let i = 1; i <= n; i++) fs.symlinkSync(i === n ? 'ok' : `l${i + 1}`, path.join(c, `l${i}`));
+        return layout.unsafeLinkWalk('l1/x', c);
+    };
+    assert.strictEqual(chain(39), false, '39 links are followed');
+    assert.strictEqual(chain(40), false, '40 links are followed');
+    assert.strictEqual(chain(41), true, 'past 40 links the walk refuses');
+});
+
+test('memoryKeyOf keys a worktree by itself when its .git names the admin folder through a // path', { skip: process.platform === 'win32' && 'POSIX reads // as /' }, () =>
+{
+    const m = memTree({});
+    const base = fs.realpathSync.native(m.at('.'));
+    const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, stdio: 'ignore' });
+    const src = path.join(base, 'src');
+    fs.mkdirSync(src); g(src, 'init', '-q'); fs.writeFileSync(path.join(src, 'f'), 'x'); g(src, 'add', 'f'); g(src, 'commit', '-qm', 'i');
+    g(src, 'worktree', 'add', '-q', path.join(base, 'wt1'), '-b', 'w1');
+    g(src, 'worktree', 'add', '-q', path.join(base, 'wt3'), '-b', 'w3');
+    const named = (dir) => [path.join(m.acct, 'projects', sanitized(dir), 'memory')];
+    const admin = fs.realpathSync.native(path.join(src, '.git', 'worktrees', 'wt1'));
+    fs.writeFileSync(path.join(base, 'wt1', '.git'), `gitdir: /${admin}\n`);
+    assert.deepStrictEqual(memOf(m, 'wt1'), named(path.join(base, 'wt1')), 'a // gitdir: the worktree itself');
+    assert.deepStrictEqual(memOf(m, 'wt3'), named(src), 'an untouched worktree: its main checkout');
+});
+
 // R068's review: on Windows every `<first 200>-*` folder is listed, and a child shares its root's first 200, so once the
 // root's folder existed the child read it as its own - the deny came and went with the folder. An ancestor's computed
 // folder is never this project's.
