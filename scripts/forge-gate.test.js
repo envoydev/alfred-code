@@ -393,6 +393,71 @@ test('R015: a branch tracking a fork reads the fork\'s tip, not origin\'s', () =
   assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 2, 'the fork holds an unreviewed tip');
 });
 
+// R015's review (2026-11-05): a push earlier in the same command lands the branch before the merge runs, so the remote's
+// tip read now is the one the push replaces - the merge lands what the push sends, which the receipt's local-HEAD rule
+// covers. An explicit --match-head-commit is still checked; a push of another branch changes nothing.
+test('R015 review: a merge chained behind a push of its branch is judged by what the push lands', () => {
+  const r = featureRepo();
+  fs.writeFileSync(path.join(r.dir, 'a.txt'), 'amended\n');
+  r.git('add', '-A'); r.git('commit', '-q', '--amend', '-m', 'amended');
+  const amended = headOf(r.dir);
+  receipt(r.dir, amended);
+  const alone = run(r.dir, bash('gh pr merge --squash'));
+  assert.strictEqual(alone.status, 2, 'alone, the remote still holds the commit the amend replaced');
+  for (const cmd of ['git push --force-with-lease && gh pr merge --squash', 'git push -f origin feature && gh pr merge --squash', 'git push -f origin HEAD && gh pr merge', 'git push --force-with-lease; gh pr merge feature']) {
+    receipt(r.dir, amended);
+    const got = run(r.dir, bash(cmd));
+    assert.strictEqual(got.status, 0, `${cmd}: ${got.stderr}`);
+  }
+  receipt(r.dir, amended);
+  assert.strictEqual(run(r.dir, bash('git push -f origin other && gh pr merge --squash')).status, 2, 'a push of another branch lands nothing the merge reads');
+  receipt(r.dir, amended);
+  assert.strictEqual(run(r.dir, bash(`git push --force-with-lease && gh pr merge --squash --match-head-commit ${r.reviewed}`)).status, 2, 'a named head is still checked');
+});
+
+// R015's review: a named branch is read on its own remote; a push remote (branch.<b>.pushRemote, else remote.pushDefault)
+// comes first, as gh finds the change through it - a stale same-named branch on origin is no false block.
+test('R015 review: a named branch reads its own remote, and a push remote comes first', () => {
+  const setUp = () => {
+    const r = featureRepo();
+    const fork = path.join(path.dirname(r.dir), `fork-${Math.random().toString(36).slice(2, 8)}.git`);
+    spawnSync('git', ['init', '-q', '--bare', fork], { encoding: 'utf8' });
+    r.git('remote', 'add', 'fork', fork);
+    const later = unreviewedCommit(r);
+    pushHead(r.git, later, 'refs/heads/feature');
+    r.git('push', '-q', 'fork', `${r.reviewed}:refs/heads/feature`);
+    return r;
+  };
+  {
+    const r = setUp();
+    r.git('config', 'branch.feature.remote', 'fork');
+    r.git('checkout', '-qb', 'other');
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash('gh pr merge feature --squash'));
+    assert.strictEqual(got.status, 0, `the named branch's own remote holds the reviewed tip: ${got.stderr}`);
+  }
+  {
+    const r = setUp();
+    r.git('config', 'branch.feature.pushRemote', 'fork');
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash('gh pr merge --squash'));
+    assert.strictEqual(got.status, 0, `branch.feature.pushRemote is read first: ${got.stderr}`);
+  }
+  {
+    const r = setUp();
+    r.git('config', 'remote.pushDefault', 'fork');
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash('gh pr merge --squash'));
+    assert.strictEqual(got.status, 0, `remote.pushDefault is read first: ${got.stderr}`);
+  }
+  {
+    const r = setUp();
+    r.git('config', 'branch.feature.pushRemote', 'origin');
+    receipt(r.dir, r.reviewed);
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 2, 'a push remote holding the unreviewed tip is refused');
+  }
+});
+
 test('R015: a branch tracking another branch, a PR ref, a garbage merge ref or a detached HEAD reads the right head', () => {
   {
     const r = featureRepo();

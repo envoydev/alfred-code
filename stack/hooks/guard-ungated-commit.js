@@ -1614,8 +1614,15 @@ if (publishMatch) {
     let text = command.slice(0, at);
     try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
     const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
+    // R015's review: a push earlier in this command lands the merge's branch first, so its remote tip read now is the one
+    // the push replaces - the merge lands what the push sends, which the receipt's local-HEAD rule covers. A named head
+    // (--match-head-commit) is still checked, and so is a merge named by number: it reads the change's own ref, which a
+    // push of a branch does not settle (Task 4b).
+    const pushedFirst = calls.filter((c) => c.sub === 'push' && c.at < at).map((c) => c.argv || []);
+    let landed = false;
+    try { landed = !m.head && !m.change && pushedFirst.length > 0 && !!forgeLib.pushLands && forgeLib.pushLands(pushedFirst, m.branch || '@', gitCwd); } catch { landed = false; }
     let unseen = null;
-    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
+    if (!landed) { try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; } }
     if (unseen) {
       process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
         'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');

@@ -787,6 +787,8 @@ const tailOf = (line) => {
 // when `symref` is set).
 function lsRemote(cwd, remote, patterns = null, opts = {}) {
   if (!remote) return { ok: false, refs: new Map(), reason: 'no remote' };
+  // A remote from config that reads as an option (`--upload-pack=...`) is never handed to git.
+  if (String(remote || '').startsWith('-')) return { ok: false, refs: new Map(), head: null, reason: 'a remote that reads as an option' };
   const args = ['-c', 'credential.interactive=false', 'ls-remote', ...(opts.symref ? ['--symref'] : []), ...(patterns ? [] : ['--heads', '--tags']), remote, ...(patterns || [])];
   const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
   if (r.error || r.status !== 0) {
@@ -822,7 +824,10 @@ function changeHead(cwd, remote, change) {
 // (`branch.<b>.remote`, else the checkout's), and by `branch.<b>.merge` - a `gh pr checkout` / `glab mr checkout` branch
 // (refs/pull/<n>/head, refs/merge-requests/<n>/head) is change <n>; one tracking its own name, or nothing, is that name's
 // tip; one tracking another branch (`origin/main`), or anything else, has no change head to read - null, today's rule. A
-// named branch is read on the checkout's remote. A detached HEAD, a name git would not take or no answer: null.
+// named branch reads its own config the same way, else the checkout's remote. R015's review: a push remote
+// (`branch.<b>.pushRemote`, else `remote.pushDefault`) is read before `branch.<b>.remote` for the tip - gh finds the
+// change through it, so a stale same-named branch on origin is no false block. A detached HEAD, a name git would not take
+// or no answer: null.
 const branchNameOk = (n) => /^[A-Za-z0-9._/-]{1,200}$/.test(n) && !n.includes('..') && !n.startsWith('-') && !n.startsWith('/');
 function tipOf(cwd, remote, name) {
   if (!remote || !branchNameOk(name)) return null;
@@ -831,17 +836,32 @@ function tipOf(cwd, remote, name) {
   return r.ok && r.refs.has(ref) ? r.refs.get(ref) : null;
 }
 function branchHead(cwd, branch) {
-  if (branch !== '@') return branchNameOk(String(branch || '')) ? tipOf(cwd, remoteOf(cwd), String(branch)) : null;
-  const b = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
+  const b = branch === '@' ? gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']) : String(branch || '');
   if (!b || !branchNameOk(b)) return null;
   const own = gitOut(cwd, ['config', `branch.${b}.remote`]);
-  if (own === '.') return null;
-  const remote = own || remoteOf(cwd);
   const merge = gitOut(cwd, ['config', `branch.${b}.merge`]);
   const pr = /^refs\/(?:pull|merge-requests)\/(\d+)\/head$/.exec(merge || '');
-  if (pr) return changeHead(cwd, remote, pr[1]);
+  if (pr) return own === '.' ? null : changeHead(cwd, own || remoteOf(cwd), pr[1]);
+  const push = gitOut(cwd, ['config', `branch.${b}.pushRemote`]) || gitOut(cwd, ['config', 'remote.pushDefault']);
+  if (push) return push === '.' ? null : tipOf(cwd, push, b);
+  if (own === '.') return null;
   if (merge && merge !== `refs/heads/${b}`) return null;
-  return tipOf(cwd, remote, b);
+  return tipOf(cwd, own || remoteOf(cwd), b);
+}
+// R015's review: whether a push earlier in the same command writes the branch a merge reads - the remote's tip read now is
+// then the one the push replaces, and the merge lands what the push sends. `argvs`: each such push's argv (`push` first);
+// `branch`: the merge's selector, '@' for the current branch (a numbered merge counts as it). A push of every ref lands it.
+function pushLands(argvs, branch, cwd) {
+  const names = new Set();
+  if (branch && branch !== '@') names.add(String(branch));
+  else {
+    const cur = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
+    if (cur) names.add(cur);
+    const up = cur && gitOut(cwd, ['config', `branch.${cur}.merge`]);
+    if (up && up.startsWith('refs/heads/')) names.add(up.slice('refs/heads/'.length));
+  }
+  if (!names.size) return false;
+  return (argvs || []).some((argv) => { const t = pushTargets(argv, cwd); return t === null || t.some((n) => names.has(n)); });
 }
 // Why a merge's head is NOT covered by the review a receipt names, or null when it is (or cannot be judged - no head:
 // line in a waiver, no change ref, no network: the local-HEAD rule the receipt already passed stands). Covered: the head
@@ -892,4 +912,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushLands, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
