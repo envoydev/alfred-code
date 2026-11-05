@@ -1888,7 +1888,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `GIT_TERMINAL_PROMPT=0`, ssh BatchMode, 6s cap - the hook's network egress, stated in its header and kept by ruling,
     audit 2026-10-30 HK-27); PostToolUse after a merge, branch write, release or unknown call
     re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read
-    (an allowlist of read tools), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
+    (an allowlist of read tools; `sed` with no `-i` / `-f`, no `e` command or flag and no `w` / `W`, and `awk` / `gawk`
+    with no `-f` / `-i` / `-l` / `-E` and no `system(`, pipe, `>` or `@` in the program are reads too - R011), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
     running. An act covers the ref it aims at; one naming no ref lands ONE move (at its head, else the single loud
     candidate - with several it covers none and says so); an armed auto-merge persists across turns until it lands.
     Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit a local branch holds, any

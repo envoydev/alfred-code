@@ -416,6 +416,33 @@ test('read-only turn skips the diff', () => {
   assert.match(out(stop(w.dir, [['Bash', { command: 'npm test' }]])).systemMessage, /^Ref watch: not checked \('.+gone\.git' does not appear to be a git repository\)\.\n/);
 });
 
+test('R011: sed and awk reads keep the turn a read; a form that can write or run still checks', () => {
+  // A check of a gone remote prints 'not checked' and pauses the catch-all, so each form that checks gets its own repo.
+  const gone = () => { const w = watchRepo(); assert.strictEqual(snap(w.dir).status, 0); w.git('remote', 'set-url', 'origin', path.join(w.base, 'gone.git')); return w; };
+  const r = gone();
+  for (const command of ['sed -n 1,5p a.txt', "sed -n '/wolf/p' a.txt", "sed 's/new/old/g' a.txt", 'sed -n -e 1p -e 3p a.txt',
+    "awk '{print $1}' a.txt", "awk -F: 'NR<3' a.txt"]) {
+    const s = stop(r.dir, [['Bash', { command }]]);
+    assert.strictEqual(s.status, 0, s.stderr);
+    assert.strictEqual(s.stdout, '', command);
+  }
+  for (const command of ["sed 'e ls' a.txt", "sed -n '1w out.txt' a.txt", "sed 's/a/b/e' a.txt", "sed 's/a/b/w o.txt' a.txt",
+    "sed -n -e 1p -e '2w x' a.txt", "sed --expression='1w x' a.txt", "sed -i 's/a/b/' a.txt", 'sed -ni 1p a.txt',
+    'sed -f x.sed a.txt', "awk 'BEGIN{system(\"ls\")}'", "awk '{print | \"sh\"}' a.txt", "awk '{print > \"o.txt\"}' a.txt",
+    'awk -f x.awk a.txt', "gawk --source='BEGIN{system(\"ls\")}' a.txt", "awk -e 1 -e 'BEGIN{system(\"ls\")}' a.txt",
+    "gawk 'BEGIN{f=\"system\"; @f(\"ls\")}'", 'gawk -l filefuncs 1 a.txt']) {
+    const s = stop(gone().dir, [['Bash', { command }]]);
+    assert.strictEqual(s.status, 0, s.stderr);
+    assert.match(out(s).systemMessage || '', /^Ref watch: not checked/, command);
+  }
+  // malformed: no crash, and the verdict the definitions give
+  for (const command of ["sed '' a.txt", 'sed -e', "awk '' a.txt", "sed -n '1p a.txt"]) {
+    const s = stop(r.dir, [['Bash', { command }]]);
+    assert.strictEqual(s.status, 0, s.stderr);
+    assert.strictEqual(s.stdout, '', command);
+  }
+});
+
 test('a seat dispatch and an unknown tool count as a non-read turn', () => {
   for (const calls of [[['Agent', { prompt: 'x' }]], [['mcp__browser__click', { ref: 'e1' }]]]) { // mcp-fixture
     const w = watchRepo();

@@ -452,7 +452,7 @@ function turnCalls(file) {
 // boundary - anything else, a script or a build included, makes the Stop diff.
 const READ_PROGRAMS = new Set(['ls', 'cat', 'head', 'tail', 'grep', 'rg', 'egrep', 'fgrep', 'wc', 'pwd', 'echo', 'printf', 'stat',
   'which', 'type', 'file', 'diff', 'sort', 'uniq', 'cut', 'tr', 'basename', 'dirname', 'realpath', 'readlink', 'tree', 'jq',
-  'cd', 'pushd', 'popd', 'true', 'false', 'test', '[', 'date', 'du', 'df', 'find',
+  'cd', 'pushd', 'popd', 'true', 'false', 'test', '[', 'date', 'du', 'df', 'find', 'sed', 'awk', 'gawk',
   'get-childitem', 'gci', 'dir', 'get-content', 'gc', 'select-string', 'sls', 'get-item', 'get-location', 'test-path',
   'write-output', 'write-host', 'measure-object', 'select-object', 'sort-object', 'format-table', 'format-list',
   'out-string', 'resolve-path', 'split-path', 'join-path']);
@@ -461,6 +461,71 @@ const GIT_LOCAL = new Set(['status', 'diff', 'log', 'show', 'rev-parse', 'ls-fil
   'symbolic-ref', 'branch', 'tag', 'add', 'commit', 'restore', 'checkout', 'switch', 'stash', 'reset', 'merge', 'rebase',
   'cherry-pick', 'revert', 'config', 'remote', 'init', 'clone', 'worktree', 'mv', 'rm', 'clean', 'apply', 'format-patch',
   'bisect', 'notes', 'gc', 'fsck', 'pull', 'version', 'help', 'check-ignore', 'count-objects', 'range-diff', 'whatchanged']);
+// R011: sed and awk are reads only in a form that can neither write a file nor run a command. A letter left in a sed
+// script once every s / y body and every regex address is taken out is a command letter (or label or text - over-counted,
+// never under): e runs a command, w / W write a file.
+function sedCommands(script) {
+  const s = String(script);
+  let out = '';
+  let i = 0;
+  const skip = (d, parts) => { for (let n = 0; n < parts && i < s.length; i += 1) { if (s[i] === '\\') { i += 1; continue; } if (s[i] === d) n += 1; } };
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '/') { i += 1; skip('/', 1); continue; }
+    if (c === '\\' && i + 1 < s.length) { const d = s[i + 1]; i += 2; skip(d, 1); continue; }
+    if ((c === 's' || c === 'y') && i + 1 < s.length && !/[\s;}\\]/.test(s[i + 1])) { const d = s[i + 1]; out += c; i += 2; skip(d, 2); continue; }
+    out += c; i += 1;
+  }
+  return out;
+}
+function sedIsRead(argv) {
+  const args = (argv || []).map(String);
+  const scripts = [];
+  let first = null;
+  let named = false;
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (/^--(?:in-place|file)(?:=|$)/.test(a)) return false;
+    if (a === '-e' || a === '--expression') { named = true; if (i + 1 < args.length) scripts.push(args[++i]); continue; }
+    if (a.startsWith('--expression=')) { named = true; scripts.push(a.slice('--expression='.length)); continue; }
+    if (a === '--') { if (first === null && i + 1 < args.length) first = args[i + 1]; break; }
+    if (a.startsWith('--')) continue;
+    if (/^-./.test(a)) {
+      const body = a.slice(1);
+      for (let k = 0; k < body.length; k += 1) {
+        const ch = body[k];
+        if (ch === 'i' || ch === 'I' || ch === 'f') return false;
+        if (ch === 'e') { named = true; const rest = body.slice(k + 1); if (rest) scripts.push(rest); else if (i + 1 < args.length) scripts.push(args[++i]); break; }
+        // GNU -l N takes a value, BSD -l none: the next word is judged as a script either way
+        if (ch === 'l') { if (!body.slice(k + 1) && i + 1 < args.length) scripts.push(args[++i]); break; }
+      }
+      continue;
+    }
+    if (first === null) first = a;
+  }
+  if (!named && first !== null) scripts.push(first);
+  return scripts.every((x) => !/[ewW]/.test(sedCommands(x)));
+}
+// awk: no program file, include, extension load or exec; no program text that runs a command (system(, a pipe), writes
+// a file (>), or calls a function by name (gawk's @f()).
+function awkIsRead(argv) {
+  const args = (argv || []).map(String);
+  const progs = [];
+  let first = null;
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (/^--(?:file|include|load|exec)(?:=|$)/.test(a) || /^-[filE]/.test(a)) return false;
+    if (a === '-e' || a === '--source') { if (i + 1 < args.length) progs.push(args[++i]); continue; }
+    if (a.startsWith('--source=')) { progs.push(a.slice('--source='.length)); continue; }
+    if (/^-e./.test(a)) { progs.push(a.slice(2)); continue; }
+    if (a === '-v' || a === '-F' || a === '--assign' || a === '--field-separator') { i += 1; continue; }
+    if (a === '--') { if (first === null && i + 1 < args.length) first = args[i + 1]; break; }
+    if (a.startsWith('-')) continue;
+    if (first === null) first = a;
+  }
+  const text = progs.length ? progs : first !== null ? [first] : [];
+  return !text.some((p) => /system\s*\(|\||>|@/.test(p));
+}
 function shellIsRead(command, cwd) {
   let sw;
   try { sw = require(path.join(__dirname, 'shell-writes.js')); } catch { return false; }
@@ -476,6 +541,8 @@ function shellIsRead(command, cwd) {
     if (name === 'git' || forgeReads.has(w.at)) continue;
     if (!READ_PROGRAMS.has(name)) return false;
     if (name === 'find' && (w.argv || []).some((a) => /^-(?:exec|execdir|ok|okdir|delete)$/.test(String(a)))) return false;
+    if (name === 'sed' && !sedIsRead(w.argv)) return false;
+    if ((name === 'awk' || name === 'gawk') && !awkIsRead(w.argv)) return false;
   }
   return true;
 }
