@@ -757,7 +757,7 @@ function forgeServersOf(root, env = process.env, marks = null) {
 const LS_REMOTE_MS = 6000;
 const { spawnSync } = require('node:child_process');
 const gitOut = (cwd, args, ms = 5000) => {
-  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout: ms, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, windowsHide: true, timeout: ms, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
   return r.status === 0 ? String(r.stdout || '').trim() : null;
 };
 function networkEnv(cwd) {
@@ -790,7 +790,7 @@ function lsRemote(cwd, remote, patterns = null, opts = {}) {
   // A remote from config that reads as an option (`--upload-pack=...`) is never handed to git.
   if (String(remote || '').startsWith('-')) return { ok: false, refs: new Map(), head: null, reason: 'a remote that reads as an option' };
   const args = ['-c', 'credential.interactive=false', 'ls-remote', ...(opts.symref ? ['--symref'] : []), ...(patterns ? [] : ['--heads', '--tags']), remote, ...(patterns || [])];
-  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, windowsHide: true, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
   if (r.error || r.status !== 0) {
     // git's first `fatal:` / `ssh:` line names the cause; the lines after it are advice ('and the repository exists').
     const lines = String(r.stderr || (r.error && r.error.message) || `git exited ${r.status}`).split('\n').map((l) => l.trim()).filter(Boolean);
@@ -912,7 +912,7 @@ function pushWouldMove(argv, cwd) {
     asked.push(w);
   }
   const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'push', '--dry-run', '--porcelain', '--no-verify', ...asked],
-    { cwd, timeout: LS_REMOTE_MS, encoding: 'utf8', env: networkEnv(cwd), stdio: ['ignore', 'pipe', 'pipe'] });
+    { cwd, windowsHide: true, timeout: LS_REMOTE_MS, encoding: 'utf8', env: networkEnv(cwd), stdio: ['ignore', 'pipe', 'pipe'] });
   if (r.error) return null;
   const lines = String(r.stdout || '').split('\n').filter((l) => /^[ +\-*!=]\t/.test(l));
   if (!lines.length) return r.status === 0 ? false : null;
@@ -931,7 +931,7 @@ function unseenHead({ cwd, change, sha, branch, receiptHead }) {
   const t7 = target.slice(0, 12), h7 = h.slice(0, 12);
   if (gitOut(cwd, ['cat-file', '-e', `${target}^{commit}`]) === null)
     return `the change's head ${t7} is not in this checkout, so the review at ${h7} never saw it - fetch the change, review its head and write head: again`;
-  if (spawnSync('git', ['-c', 'core.fsmonitor=false', 'merge-base', '--is-ancestor', target, h], { cwd, timeout: 5000, stdio: 'ignore' }).status === 0) return null;
+  if (spawnSync('git', ['-c', 'core.fsmonitor=false', 'merge-base', '--is-ancestor', target, h], { cwd, windowsHide: true, timeout: 5000, stdio: 'ignore' }).status === 0) return null;
   return `the change's head ${t7} carries commits the review at ${h7} never saw - review the change's head and write head: again`;
 }
 

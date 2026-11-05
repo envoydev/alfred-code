@@ -1685,7 +1685,9 @@ function scanBudget(limits = {})
 // downloaded tree): a `core.fsmonitor` that repository's own config names is a program git starts on any status-like
 // read, and an optional lock is a write. `gitSafe(argv, opts)` returns spawnSync / execFileSync's arguments with both
 // switched off: `spawnSync(...gitSafe(['status'], { cwd }))`. The engines copied without this file (docs.js,
-// history.js) spell the same two inline; a test sweeps every hook file for a git spawn that does neither.
+// history.js) spell the same two inline; a test sweeps every hook file for a git spawn that does neither. It also sets
+// `windowsHide`: Claude Code starts a hook with no console, and Windows opens a NEW console window for each console
+// program such a process starts without it (the user's diagnostic of 2026-11-05) - every other spawn in a hook spells it.
 // The temp roots a scratch write or a scratch commit lands under, realpathed: os.tmpdir(), and the harness's per-user
 // scratch root /tmp/claude-<uid> with its macOS /private spelling (POSIX only). One home for guard-ungated-commit.js's
 // scratch-commit rule and docs-session.js's scratch-write rule (usage audit 2026-11-03 U27-2).
@@ -1698,7 +1700,7 @@ function tempRoots()
 const GIT_SAFE_CONFIG = Object.freeze(['-c', 'core.fsmonitor=false']);
 function gitSafe(argv, opts = {})
 {
-    return ['git', [...GIT_SAFE_CONFIG, ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }];
+    return ['git', [...GIT_SAFE_CONFIG, ...argv], { ...opts, windowsHide: true, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }];
 }
 
 // AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past its

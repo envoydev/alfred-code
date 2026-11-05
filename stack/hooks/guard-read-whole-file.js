@@ -2270,7 +2270,7 @@ const DIFF_SUMMARY = /^--(?:stat|numstat|shortstat|dirstat[\w-]*|compact-summary
 function gitOut(argv, dir) {
   const opts = { cwd: dir, timeout: 3000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] };
   let spawn;
-  try { spawn = require('./hook-prelude.js').gitSafe(argv, opts); } catch { spawn = ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }]; }
+  try { spawn = require('./hook-prelude.js').gitSafe(argv, opts); } catch { spawn = ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, windowsHide: true, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }]; }
   try { return require('child_process').execFileSync(...spawn); } catch (e) { return e && e.code === 'ENOBUFS' && e.stdout ? e.stdout : null; }
 }
 function blobToken(spec, dir) {

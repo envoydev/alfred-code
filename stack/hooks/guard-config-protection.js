@@ -626,7 +626,7 @@ function judgePatches(command, anchorFor) {
 // checkout fails the same way.
 let gitSafe = null;
 try { ({ gitSafe } = require('./hook-prelude.js')); } catch { gitSafe = null; }
-if (!gitSafe) gitSafe = (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }];
+if (!gitSafe) gitSafe = (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, windowsHide: true, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }];
 const isConfigBase = (base) => WHOLE_FILE.some((re) => re.test(base)) || KEYED.some((k) => k.file.test(base)) || base === 'package.json';
 function configsAt(abs) {
   let st;

@@ -225,7 +225,7 @@ function localShas(cwd, shas) {
   const list = [...new Set(shas.filter(Boolean))];
   const local = new Set();
   if (!list.length) return local;
-  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'cat-file', '--batch-check'], { cwd, input: `${list.join('\n')}\n`, encoding: 'utf8', timeout: 3000, maxBuffer: 16 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'] });
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'cat-file', '--batch-check'], { cwd, windowsHide: true, input: `${list.join('\n')}\n`, encoding: 'utf8', timeout: 3000, maxBuffer: 16 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'] });
   const have = [];
   for (const line of String(r.stdout || '').split('\n')) {
     const m = /^([0-9a-f]{40,64}) (\S+)/.exec(line);
@@ -233,7 +233,7 @@ function localShas(cwd, shas) {
   }
   have.forEach((sha, n) => {
     if (n >= LOCAL_CHECK_MAX) { local.add(sha); return; }
-    const b = spawnSync('git', ['-c', 'core.fsmonitor=false', 'for-each-ref', '--count=1', '--format=%(refname)', '--contains', sha, 'refs/heads'], { cwd, encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
+    const b = spawnSync('git', ['-c', 'core.fsmonitor=false', 'for-each-ref', '--count=1', '--format=%(refname)', '--contains', sha, 'refs/heads'], { cwd, windowsHide: true, encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
     if (b.status !== 0 || String(b.stdout || '').trim()) local.add(sha);
   });
   return local;

@@ -397,7 +397,7 @@ function untrackedLocal(file) {
   const env = { GIT_OPTIONAL_LOCKS: '0' };
   for (const [k, v] of Object.entries(process.env)) if (!/^GIT_/i.test(k)) env[k] = v;
   return require('child_process').spawnSync('git', ['-c', 'core.fsmonitor=false', 'ls-files', '--error-unmatch', '--', ':(icase).claude/settings.local.json'],
-    { cwd: path.dirname(dir), stdio: 'ignore', timeout: 3000, env }).status === 1;
+    { cwd: path.dirname(dir), windowsHide: true, stdio: 'ignore', timeout: 3000, env }).status === 1;
 }
 let trustedMemory;
 function ownMemory(t) {
