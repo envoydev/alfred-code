@@ -144,47 +144,73 @@ function remoteDefault(cwd, remote)
 }
 
 // A branch held in a variable (review 16: `b=main; git push -f origin "$b"` and `for b in main develop; do git push -f
-// origin "$b"; done` passed): a literal binding is read as its value, one that asks git for the branch checked out as
-// HEAD, and a `for` / `select` list naming it as each of its words beside the word itself. A value any other
-// substitution computes stays out of model, as the header says.
-const CURRENT_BRANCH = /^"?\$\(\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)\s*\)"?$/;
+// origin "$b"; done` passed): a literal binding is read as its value; one that asks git for the branch checked out as the
+// branch checked out where it was assigned (review 17, 4: a `git checkout "$BR"` back to it reads no branch); a loop
+// variable as the plain words of the loop around the push, from the reader's parse (review 17, 2-3: a regex over the text
+// took `main` out of a `$(git branch --merged main | grep -v main)` list, and every same-name loop anywhere). Each
+// variable in the word is read (`$B:$B`). A value any other substitution computes stays out of model, as the header says.
+const CURRENT_CMD = String.raw`\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)(?:\s+2>(?:&1|\s*/dev/null))?\s*`;
+const CURRENT_BRANCH = new RegExp(`^"?(?:\\$\\(${CURRENT_CMD}\\)|\`${CURRENT_CMD}\`)"?$`);
 // ... and the same substitution written into the push itself (`git push -f origin "$(git branch --show-current)"` on main
-// passed - a side note to review 16)
-const CURRENT_SUB = /\$\(\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)\s*\)|`\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)\s*`/g;
-function heldRefs(read, call)
+// passed - a side note to review 16): HEAD as the push runs
+const CURRENT_SUB = new RegExp(`\\$\\(${CURRENT_CMD}\\)|\`${CURRENT_CMD}\``, 'g');
+function heldValues(read, call, dir, name)
 {
-    return (held) =>
+    const lit = read.vars.literalOf(name, call.at);
+    if (lit !== null)
     {
-        const word = String(held).replace(CURRENT_SUB, 'HEAD');
-        const vs = [...String(word).matchAll(/\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g)];
-        if (vs.length !== 1 || !read.vars)
+        return [lit];
+    }
+    const ev = read.vars.eventOf(name, call.at);
+    if (ev && !ev.bound && CURRENT_BRANCH.test(String(ev.raw)))
+    {
+        const head = headAt(read, { at: ev.at }, dir);
+        return head ? [head] : null;
+    }
+    const words = read.parsed && call.cmd && shellWrites.loopWordsAt ? shellWrites.loopWordsAt(read.parsed, name, call.cmd) : null;
+    return words ? [...new Set(words.filter(w => !/[$`*?[\]{}]/.test(w)).map(unquote))] : null;
+}
+function heldRefs(read, call, dir)
+{
+    const held = new Map();
+    const valuesOf = (name) =>
+    {
+        if (!held.has(name))
+        {
+            held.set(name, heldValues(read, call, dir, name));
+        }
+        return held.get(name);
+    };
+    return (raw) =>
+    {
+        const word = String(raw).replace(CURRENT_SUB, 'HEAD');
+        const vs = read.vars ? [...word.matchAll(/\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g)] : [];
+        if (!vs.length)
         {
             return [word];
         }
-        const name = vs[0][1] || vs[0][2];
-        const swap = (v) => word.slice(0, vs[0].index) + v + word.slice(vs[0].index + vs[0][0].length);
-        const lit = read.vars.literalOf(name, call.at);
-        if (lit !== null)
+        let outs = [''];
+        let last = 0;
+        for (const v of vs)
         {
-            return [swap(lit)];
-        }
-        const ev = read.vars.eventOf(name, call.at);
-        if (ev && !ev.bound && CURRENT_BRANCH.test(String(ev.raw)))
-        {
-            return [swap('HEAD')];
-        }
-        const items = [];
-        for (const m of String(read.command).matchAll(new RegExp(`\\b(?:for|select)\\s+${name}\\s+in\\b([^;\\n]{0,1024})`, 'g')))
-        {
-            for (const it of m[1].trim().split(/\s+/))
+            const vals = valuesOf(v[1] || v[2]);
+            const opts = vals && vals.length ? vals : [v[0]];
+            const next = [];
+            for (const o of outs)
             {
-                if (it && !/[$`]/.test(it))
+                for (const x of opts)
                 {
-                    items.push(swap(unquote(it)));
+                    if (next.length < 64)
+                    {
+                        next.push(o + word.slice(last, v.index) + x);
+                    }
                 }
             }
+            outs = next;
+            last = v.index + v[0].length;
         }
-        return [word, ...items];
+        outs = outs.map(o => o + word.slice(last));
+        return outs.includes(word) ? outs : [word, ...outs];
     };
 }
 
@@ -570,8 +596,11 @@ function isProtectedForcePush(command, cwd)
         {
             continue;
         }
-        const after = pushWords(call.argv).flatMap(heldRefs(read, call));
         const gitCwd = read.callDir(call);
+        // a variable is read past the remote only: a loop over remotes keeps a bare force bare (review 17, 1)
+        const words = pushWords(call.argv);
+        const ri = words.findIndex(t => !t.startsWith('-'));
+        const after = ri < 0 ? words : words.slice(0, ri + 1).concat(words.slice(ri + 1).flatMap(heldRefs(read, call, gitCwd)));
         // HEAD and @ name the branch checked out where git runs when the push runs - `git push -f origin HEAD` on main
         // is the bare force spelled out, and read literally it named no protected branch and passed.
         let head;

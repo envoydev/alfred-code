@@ -2763,6 +2763,81 @@ function qualifierCode(q) {
   return out.filter((t) => t.trim());
 }
 
+// Frames by open and close, each command by where it ends, and each `}`, `done`, `fi` or `esac` by the command that opened
+// it in the same frame - once per parse (carriedOf's pipe producers, its loop reading and the force-push guard's held
+// branches share it)
+const BLOCK_MAPS = new WeakMap();
+function blockMaps(P) {
+  let maps = BLOCK_MAPS.get(P);
+  if (maps) return maps;
+  maps = { byOpen: new Map(), byClose: new Map(), endAt: new Map(), opener: new Map() };
+  for (const fr of P.frames) { maps.byOpen.set(fr.open, fr); if (fr.close !== undefined) maps.byClose.set(fr.close, fr); }
+  const stacks = new Map();
+  for (const c of P.cmds) {
+    let e = c.words.length ? c.words[c.words.length - 1].e : -1;
+    for (const r of c.redirs) if (r.target && r.target.e > e) e = r.target.e;
+    if (e >= 0) maps.endAt.set(e, c);
+    if (!c.words.length) continue;
+    let st = stacks.get(c.frame);
+    if (!st) stacks.set(c.frame, (st = new Map()));
+    const shut = BLOCK_CLOSE.get(c.words[0].raw);
+    if (shut && st.has(shut) && st.get(shut).length) maps.opener.set(c, st.get(shut).pop());
+    const lead = c.cands && c.cands.length ? c.cands[c.cands.length - 1].at : c.words.length - 1;
+    for (let w = 0; w <= lead && w < c.words.length; w++) {
+      const o = BLOCK_OPEN.get(c.words[w].raw);
+      if (o) { if (!st.has(o)) st.set(o, []); st.get(o).push(c); }
+    }
+  }
+  BLOCK_MAPS.set(P, maps);
+  return maps;
+}
+// A frame is `outer` or inside it: a set in a subshell or a substitution ends with it
+function frameWithin(inner, outer) {
+  for (let fr = inner, n = 0; n < 64; fr = fr.parent, n++) { if (fr === outer) return true; if (!fr) return false; }
+  return false;
+}
+// The loops binding each name: name -> Map(head command -> { close: index of its `done`, list: its words, nameAt }), a
+// head counted where the parser opens its block (`do for t in ...`, `then for ...`) - once per parse
+const LOOP_HEADS = new WeakMap();
+const HEADS_MAX = 1024;
+function loopHeadsIn(P) {
+  let heads = LOOP_HEADS.get(P);
+  if (heads) return heads;
+  heads = new Map();
+  for (const [close, open] of blockMaps(P).opener) {
+    if (close.words[0].raw !== 'done') continue;
+    const w = open.words;
+    const lead = open.cands && open.cands.length ? open.cands[open.cands.length - 1].at : w.length - 1;
+    let k = 0;
+    while (k <= lead && k < w.length && w[k].raw !== 'for' && w[k].raw !== 'select') k++;
+    if (k + 2 >= w.length || k > lead || w[k + 2].raw !== 'in') continue;
+    const nm = w[k + 1].raw;
+    if (!heads.has(nm)) heads.set(nm, new Map());
+    const m = heads.get(nm);
+    const h = m.get(open);
+    if (!h) m.set(open, { close: close.index, list: w.slice(k + 3), nameAt: w[k + 1].s });
+    else if (close.index < h.close) h.close = close.index;
+  }
+  LOOP_HEADS.set(P, heads);
+  return heads;
+}
+// The loop words `name` holds at `cmd`: its innermost enclosing `for` / `select` binding the name, and each same-name
+// loop that opened inside that body before `cmd` - { best, words } (tokens), or null outside any such body
+function loopAt(P, name, cmd) {
+  const heads = loopHeadsIn(P).get(name);
+  if (!heads || heads.size > HEADS_MAX || !cmd) return null;
+  let best = null;
+  for (const [open, h] of heads) if (open.index < cmd.index && cmd.index < h.close && frameWithin(cmd.frame, open.frame) && (!best || open.index > best.index)) best = open;
+  if (!best) return null;
+  const words = heads.get(best).list.slice();
+  for (const [open, h] of heads) if (open.index > best.index && open.index < cmd.index) for (const w of h.list) words.push(w);
+  return { best, words };
+}
+// ... as raw words, for a guard reading a variable a loop binds (the force-push guard's held branch, review 17)
+function loopWordsAt(P, name, cmd) {
+  const at = P ? loopAt(P, name, cmd) : null;
+  return at ? at.words.map((w) => w.raw) : null;
+}
 function carriedOf(P, raw, heredocs, opts, run) {
   const cwd = opts.cwd || null;
   const files = opts.files !== undefined ? !!opts.files : !!cwd;
@@ -2886,29 +2961,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
   // review: `{ echo a; } | sh;` repeated ran near 10 s at 400,000 characters): frames by open and close, each command by
   // where it ends, and each `}`, `done`, `fi` or `esac` by the command that opened it in the same frame - an opener counted among a
   // command's words up to its last command word (`{ echo`, `if true`, `do for b`), never in its arguments
-  let maps = null;
-  const mapsOf = () => {
-    if (maps) return maps;
-    maps = { byOpen: new Map(), byClose: new Map(), endAt: new Map(), opener: new Map() };
-    for (const fr of P.frames) { maps.byOpen.set(fr.open, fr); if (fr.close !== undefined) maps.byClose.set(fr.close, fr); }
-    const stacks = new Map();
-    for (const c of P.cmds) {
-      let e = c.words.length ? c.words[c.words.length - 1].e : -1;
-      for (const r of c.redirs) if (r.target && r.target.e > e) e = r.target.e;
-      if (e >= 0) maps.endAt.set(e, c);
-      if (!c.words.length) continue;
-      let st = stacks.get(c.frame);
-      if (!st) stacks.set(c.frame, (st = new Map()));
-      const shut = BLOCK_CLOSE.get(c.words[0].raw);
-      if (shut && st.has(shut) && st.get(shut).length) maps.opener.set(c, st.get(shut).pop());
-      const lead = c.cands && c.cands.length ? c.cands[c.cands.length - 1].at : c.words.length - 1;
-      for (let w = 0; w <= lead && w < c.words.length; w++) {
-        const o = BLOCK_OPEN.get(c.words[w].raw);
-        if (o) { if (!st.has(o)) st.set(o, []); st.get(o).push(c); }
-      }
-    }
-    return maps;
-  };
+  const mapsOf = () => blockMaps(P);
   // The commands that write into the pipe at `p`, at its level: a subshell, a group, a loop, an if or a case closing right
   // before it - a redirect after it too (the eleventh review: `{ echo git push; } 2>/dev/null | sh` and `for ...; done | sh`
   // were read as feeding nothing) - else the one command ending there
@@ -3106,11 +3159,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
   // is only quoted variables, which the command's own name already reads - or { unknown, git } when a part is another
   // program's output or a value the command does not spell out, `git` when its binding or the word names git; null when
   // the word expands nothing.
-  // A frame is `outer` or inside it: a set in a subshell or a substitution ends with it
-  const within = (inner, outer) => {
-    for (let fr = inner, n = 0; n < 64; fr = fr.parent, n++) { if (fr === outer) return true; if (!fr) return false; }
-    return false;
-  };
+  const within = frameWithin;
   // Each `set` that sets the positional words: after `--` or `-`, or from its first word that is no option (`set -e --
   // git push`, `set - git push` - the thirteenth review), its words read lazily, each expanded as a command word is
   let setsAt = null;
@@ -3244,7 +3293,6 @@ function carriedOf(P, raw, heredocs, opts, run) {
   // reading stands.
   const ASSIGNING = new Set(['read', 'readarray', 'mapfile', 'getopts', 'declare', 'typeset', 'local', 'export', 'readonly', 'unset', 'let', 'vared', 'coproc', 'zparseopts', 'zstyle', 'zformat', 'strftime', 'sysread', 'getln', 'zregexparse', 'pcre_match']);
   const SOURCING = new Set(['eval', 'source', '.']);
-  const HEADS_MAX = 1024;
   let loopScan = null; // once per command: an assignment to a computed name anywhere, and each eval / source / `.`
   const loopScanOf = () => {
     if (loopScan) return loopScan;
@@ -3283,27 +3331,6 @@ function carriedOf(P, raw, heredocs, opts, run) {
     }
     return ifsState;
   };
-  let loopHeads = null; // name -> Map(head command -> { close: index of its `done`, list: its words, nameAt }), one pass
-  const loopHeadsOf = (name) => {
-    if (!loopHeads) {
-      loopHeads = new Map();
-      for (const [close, open] of mapsOf().opener) {
-        if (close.words[0].raw !== 'done') continue;
-        const w = open.words;
-        const lead = open.cands && open.cands.length ? open.cands[open.cands.length - 1].at : w.length - 1;
-        let k = 0;
-        while (k <= lead && k < w.length && w[k].raw !== 'for' && w[k].raw !== 'select') k++;
-        if (k + 2 >= w.length || k > lead || w[k + 2].raw !== 'in') continue;
-        const nm = w[k + 1].raw;
-        if (!loopHeads.has(nm)) loopHeads.set(nm, new Map());
-        const m = loopHeads.get(nm);
-        const h = m.get(open);
-        if (!h) m.set(open, { close: close.index, list: w.slice(k + 3), nameAt: w[k + 1].s });
-        else if (close.index < h.close) h.close = close.index;
-      }
-    }
-    return loopHeads.get(name) || null;
-  };
   const loopOk = new Map();
   const loopNameOk = (name, heads) => {
     if (loopOk.has(name)) return loopOk.get(name);
@@ -3325,15 +3352,10 @@ function carriedOf(P, raw, heredocs, opts, run) {
     return ok;
   };
   const loopItems = (name, cmd) => {
-    const heads = loopHeadsOf(name);
-    if (!heads || heads.size > HEADS_MAX) return null;
-    let best = null;
-    for (const [open, h] of heads) if (open.index < cmd.index && cmd.index < h.close && within(cmd.frame, open.frame) && (!best || open.index > best.index)) best = open;
-    if (!best || !loopNameOk(name, heads)) return null;
-    for (const c of loopScanOf().sourcing) if (c.index > best.index && c.index < cmd.index) return null;
-    const items = heads.get(best).list.map((w) => w.raw);
-    for (const [open, h] of heads) if (open.index > best.index && open.index < cmd.index) for (const w of h.list) items.push(w.raw);
-    return items;
+    const at = loopAt(P, name, cmd);
+    if (!at || !loopNameOk(name, loopHeadsIn(P).get(name))) return null;
+    for (const c of loopScanOf().sourcing) if (c.index > at.best.index && c.index < cmd.index) return null;
+    return [...new Set(at.words.map((w) => w.raw))];
   };
   // A command word that is one loop name, bare or quoted: the commands it runs, one a list word (null: not such a word)
   const loopWordItems = (tok, cmd) => {
@@ -4433,6 +4455,6 @@ function enclosingEnd(P, at, closesOf) {
   return undefined;
 }
 
-module.exports = { failedRead, scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
+module.exports = { failedRead, loopWordsAt, scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
   resolveOn, shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan, COPY_VERBS };
