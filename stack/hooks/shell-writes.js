@@ -2833,21 +2833,6 @@ function loopAt(P, name, cmd) {
   for (const [open, h] of heads) if (open.index > best.index && open.index < cmd.index) for (const w of h.list) words.push(w);
   return { best, words };
 }
-// ... as raw words, for a guard reading a variable a loop binds (the force-push guard's held branch, review 17); with
-// `anywhere`, the words of every loop binding the name, for a use no loop encloses (a function the loop calls, a use
-// after the loop - review 18)
-function loopWordsAt(P, name, cmd, anywhere = false) {
-  if (!P) return null;
-  if (anywhere) {
-    const heads = loopHeadsIn(P).get(name);
-    if (!heads || heads.size > HEADS_MAX) return null;
-    const words = [];
-    for (const h of heads.values()) for (const w of h.list) words.push(w.raw);
-    return words;
-  }
-  const at = loopAt(P, name, cmd);
-  return at ? at.words.map((w) => w.raw) : null;
-}
 function carriedOf(P, raw, heredocs, opts, run) {
   const cwd = opts.cwd || null;
   const files = opts.files !== undefined ? !!opts.files : !!cwd;
@@ -4465,6 +4450,6 @@ function enclosingEnd(P, at, closesOf) {
   return undefined;
 }
 
-module.exports = { failedRead, loopWordsAt, scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
+module.exports = { failedRead, scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
   resolveOn, shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan, COPY_VERBS };

@@ -634,10 +634,10 @@ test('guard-protected-force-push: the protected-branch matrix', () => {
   }
 });
 
-test('guard-protected-force-push: a branch held in a variable is read - a literal, a loop list, the current branch (review 16)', () => {
+test('guard-protected-force-push: a branch held in a variable is read - a plain literal, the current branch (review 16)', () => {
   const fp = (c) => bash('guard-protected-force-push.js', c);
-  for (const c of ['b=main; git push -f origin "$b"', 'b=main; git push -f origin $b', 'for b in main develop; do git push -f origin "$b"; done',
-    'BR=develop; git push --force origin "${BR}"', 'for b in feat-a master; do git push origin "+$b"; done']) {
+  for (const c of ['b=main; git push -f origin "$b"', 'b=main; git push -f origin $b', 'BR=develop; git push --force origin "${BR}"',
+    "b='master'; git push origin \"+$b\""]) {
     assert.equal(fp(c), 2, `must block: ${c}`);
   }
   for (const c of ['b=feature/x; git push -f origin "$b"', 'for b in feat-a feat-b; do git push -f origin "$b"; done', 'b=main; git push origin "$b"']) {
@@ -653,7 +653,7 @@ test('guard-protected-force-push: a branch held in a variable is read - a litera
   }
 });
 
-test('guard-protected-force-push: a held branch is read from its own loop, the remote left alone (review 17)', () => {
+test('guard-protected-force-push: a held branch: the remote left alone, the branch at its binding (review 17)', () => {
   const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
   const onMain = scratchRepoOn('main');
   const onFeature = scratchRepoOn('feature/x');
@@ -662,7 +662,7 @@ test('guard-protected-force-push: a held branch is read from its own loop, the r
     assert.equal(at(c, onMain), 2, `bare force on main: ${c}`);
   }
   assert.equal(at('for r in origin backup; do git send-pack --force "$r"; done', onFeature), 2, 'a forced send-pack naming no ref');
-  // 2, 3: only the loop around the push, only its plain words, never a comment
+  // 2, 3: a loop over branches stays unread, as in 3.8.0 (reviews 17-19 each found new false blocks in reading it)
   for (const c of ['for b in $(git branch --merged main | grep -v main); do git push origin --delete "$b"; done',
     "for b in $(git branch -r --merged | grep -v -e main -e develop | sed 's#origin/##'); do git push origin --delete $b; done",
     'for b in main develop; do git checkout $b && git pull origin $b; done; for b in feat-a feat-b; do git push -f origin $b; done',
@@ -677,7 +677,7 @@ test('guard-protected-force-push: a held branch is read from its own loop, the r
   }
   // the spellings a held branch also takes
   for (const c of ['BR=$(git branch --show-current 2>/dev/null); git push -f origin "$BR"', 'BR=`git branch --show-current`; git push -f origin "$BR"',
-    'B=main; git push -f origin "$B:$B"', 'for b in feat \\\n  develop; do git push -f origin "$b"; done']) {
+    'B=main; git push -f origin "$B:$B"']) {
     assert.equal(at(c, onMain), 2, `must block on main: ${c}`);
   }
   // 5: linear in the number of loops
@@ -686,29 +686,47 @@ test('guard-protected-force-push: a held branch is read from its own loop, the r
   assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
 });
 
-test('guard-protected-force-push: a held branch inside a carried script, a switch back through a variable (review 18)', () => {
+test('guard-protected-force-push: a held branch: a switch back through a variable, each git asked once (review 18)', () => {
   const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
   const onMain = scratchRepoOn('main');
   const onFeature = scratchRepoOn('feature/x');
-  // F1: the loop around the script that carries the push
-  for (const c of ['for b in main develop; do bash -c "git push -f origin $b"; done', 'for b in main develop; do sh -c "git push --force origin $b"; done',
-    'for b in main develop; do eval "git push --force origin $b"; done', 'for b in main develop; do bash <<< "git push -f origin $b"; done',
-    'for b in main develop; do\n  bash <<EOF\ngit push -f origin $b\nEOF\ndone', 'for b in main develop; do echo "git push -f origin $b"; done | sh']) {
+  // a held literal inside a carried script
+  for (const c of ['b=main; bash -c "git push -f origin $b"', 'b=main; eval "git push --force origin $b"']) {
     assert.equal(at(c, onFeature), 2, `must block: ${c}`);
   }
   // F2: a checkout back to the branch a current-branch binding held
   const back = 'BR=$(git branch --show-current); git checkout main && git pull && git checkout "$BR" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"';
   assert.equal(at(back, onFeature), 0, 'back on the feature branch');
   assert.equal(at(back.replace('git checkout main', 'git checkout feature/x'), onMain), 2, 'back on main');
-  // a loop variable read by a function the loop calls, after its loop, or past a long list
-  for (const c of ['p() { git push -f origin "$b"; }; for b in main develop; do p; done', 'for b in feat main; do git fetch origin $b; done; git push -f origin $b',
-    `for b in ${Array.from({ length: 70 }, (_, i) => `f${i}`).join(' ')} main; do git push -f origin "$b"; done`]) {
-    assert.equal(at(c, onFeature), 2, `must block: ${c.slice(0, 80)}`);
-  }
   // F3: each git asked once per name
   const t0 = Date.now();
   at(Array.from({ length: 40 }, (_, i) => `git checkout feat-${i} && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"`).join(' && '), onFeature);
   assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
+});
+
+test('guard-protected-force-push: a held branch in run order, a loop name unread, an unread switch off main, no recursion blow-up (review 19)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // F1: a loop name, bound again after the loop or not, is unread
+  for (const c of ['for branch in main develop; do git fetch origin $branch; done; branch=$(git branch --show-current); git rebase origin/develop && git push --force-with-lease origin "$branch"',
+    'for b in main develop; do git checkout $b && git pull --ff-only; done; git checkout feature/x; b=feature/x; git rebase develop && git push --force-with-lease origin "$b"',
+    'push_branch() { local b="$1"; git push --force-with-lease origin "$b"; }; for b in main develop; do git fetch origin $b; done; push_branch feature/x',
+    'for b in main develop; do git fetch origin $b; done; read b < .branch; git push -f origin "$b"']) {
+    assert.equal(at(c, onFeature), 0, `must allow: ${c.slice(0, 90)}`);
+  }
+  // F2: a switch or a new branch the guard cannot read still leaves main
+  for (const c of ["for b in $(git branch --format='%(refname:short)' | grep '^feat-'); do git switch \"$b\" && git rebase main && git push --force-with-lease; done",
+    'rp() { git switch "$1" && git rebase main && git push --force-with-lease; }; rp feat-a; rp feat-b',
+    'BRANCH="fix/login-$(date +%Y%m%d)"; git switch -c "$BRANCH" && git push --force-with-lease -u origin HEAD',
+    'git checkout -b "feature/${TICKET}" && git push -f -u origin HEAD', 'b=feature/new; git switch -c "$b" && git push -f -u origin HEAD']) {
+    assert.equal(at(c, onMain), 0, `must allow: ${c.slice(0, 90)}`);
+  }
+  // F3: linear, and a carried checkout before a later binding never recurses for ever
+  const t0 = Date.now();
+  at(`${'BR=$(git branch --show-current); git checkout main && git pull && git checkout "$BR" && git rebase main; '.repeat(18)}git push --force-with-lease origin HEAD`, onFeature);
+  assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
+  assert.equal(at('BR=$(git branch --show-current); bash -c "git checkout \\"$BR\\""; BR=$(git branch --show-current); git push -f origin "$BR"', onMain), 2, 'no stack overflow');
 });
 
 test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {
