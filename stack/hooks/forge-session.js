@@ -286,29 +286,33 @@ function actTarget(ref, remote) {
 // ref; a merge also covers the deletion of the branch its head sat on (deleted on merge). A push naming refs it does not
 // list (`all`: --all, --tags, --mirror) covers every move. An act naming no ref lands ONE move: the one at its head, else
 // the one loud move it could be - with several, it explains none of them and says so (`ambiguous`). An ASKED act, or one
-// whose call PostToolUse never confirmed, covers nothing. `used`: the armed acts that explained a move.
+// whose call PostToolUse never confirmed, covers nothing. `used`: the armed acts that explained a move. `strict` (another
+// session's acts, R020): an act naming no ref lands only the move at its head, a push that carries its head lands only that
+// tip on its ref (a different tip landing there is still loud), and nothing is used up.
 const ACT_WORD = { 'change.merge': 'merge', 'release.write': 'release', 'branch.write': 'branch write' };
-function explain(moves, acts, remote, ctx) {
-  const { MERGE, RELEASE } = forge.CONCEPTS;
+function explain(moves, acts, remote, ctx, { strict = false } = {}) {
+  const { MERGE, RELEASE, BRANCH } = forge.CONCEPTS;
   const open = new Set(moves);
   const used = new Set();
   const ambiguous = [];
   const atHead = (a, sha) => { const h = String(a.head || ''); return !!sha && h.length >= 7 && (sha.startsWith(h) || h.startsWith(sha)); };
   const fits = (a, m) => (a.concept === RELEASE ? isTag(m.ref) : a.concept === MERGE ? !isTag(m.ref) : true);
-  const take = (a, m) => { open.delete(m); if (a.armed && a.id) used.add(a.id); };
+  const take = (a, m) => { open.delete(m); if (!strict && a.armed && a.id) used.add(a.id); };
+  const lands = (a, m) => !strict || a.concept !== BRANCH || !a.head || atHead(a, m.to);
   const loose = [];
   for (const a of (acts || []).filter((x) => x && !x.asked && x.confirmed !== false)) {
-    if (a.all) { for (const m of [...open]) take(a, m); continue; }
+    if (a.all) { if (!strict) for (const m of [...open]) take(a, m); continue; }
     if (a.concept === MERGE) for (const m of [...open]) if (!m.to && !isTag(m.ref) && atHead(a, m.from)) take(a, m);
     const target = actTarget(a.ref, remote);
     if (target === null) { loose.push(a); continue; }
-    for (const m of [...open]) if (short(m.ref) === target && fits(a, m)) take(a, m);
+    for (const m of [...open]) if (short(m.ref) === target && fits(a, m) && lands(a, m)) take(a, m);
   }
   for (const a of loose) {
     const can = [...open].filter((m) => m.to && fits(a, m) && (a.concept !== RELEASE || !m.from));
     const hit = can.find((m) => atHead(a, m.to));
     const loud = can.filter((m) => tierOf(m, ctx) === 'loud');
     if (hit) take(a, hit);
+    else if (strict) continue;
     else if (loud.length === 1) take(a, loud[0]);
     else if (loud.length > 1) ambiguous.push({ act: a, moves: loud });
     else if (can.length === 1) take(a, can[0]);
@@ -321,6 +325,7 @@ function moveText(m) {
   if (!m.to) return `${name} was deleted (was ${s7(m.from)})`;
   return `${name} moved ${s7(m.from)}..${s7(m.to)}`;
 }
+const otherLine = (m) => `Ref watch: ${moveText(m)} - a gated act of another session in this repo explains it.`;
 const loudLine = (m, ctx, when = 'this turn') => `Ref watch: ${moveText(m)} ${when}; no gated act explains it - if a tool in this session did it, it bypassed the gate${m.to && ctx.local.has(m.to) ? ` (${s7(m.to)} is a commit in this checkout)` : ''}.`;
 const SUMMARY_NAMES = 8;
 function summaryLine(moves, lead) {
@@ -330,13 +335,16 @@ function summaryLine(moves, lead) {
   return `Ref watch: ${lead}: ${shown} - teammates or this session.`;
 }
 // The loud and summary moves among `moves` that no act covers, the line naming each act that could be one of several, and
-// the armed acts used up.
-function judge(cwd, remote, state, prefsRoot, moves, acts) {
+// the armed acts used up. `byOthers`: the loud moves this session's acts leave that another session's confirmed act
+// explains (R020) - each told in one line, never a block.
+function judge(cwd, remote, state, prefsRoot, moves, acts, others = []) {
   const ctx = tierContext(cwd, remote, state, prefsRoot, moves);
   const { open, used, ambiguous } = explain(moves, acts, remote, ctx);
-  const loud = open.filter((m) => tierOf(m, ctx) === 'loud');
+  const loudAll = open.filter((m) => tierOf(m, ctx) === 'loud');
+  const left = loudAll.length && others.length ? new Set(explain(loudAll, others, remote, ctx, { strict: true }).open) : null;
+  const byOthers = left ? loudAll.filter((m) => !left.has(m)) : [];
   const notes = ambiguous.map((x) => `Ref watch: one gated ${ACT_WORD[x.act.concept] || 'act'} this turn explains at most one of: ${x.moves.map((m) => short(m.ref)).join(', ')}.`);
-  return { ctx, loud, summary: open.filter((m) => !loud.includes(m)), used, notes };
+  return { ctx, loud: loudAll.filter((m) => !byOthers.includes(m)), summary: open.filter((m) => !loudAll.includes(m)), used, notes, byOthers };
 }
 // The acts that can explain a move now: this cycle's (since the baseline, a second of clock slack), and an armed merge from
 // any earlier turn of the session until it explains one landing - an auto-merge lands when its checks pass.
@@ -344,6 +352,22 @@ function windowActs(root, session, state, env) {
   const consumed = new Set((state && state.consumed) || []);
   const since = Number((state && state.at) || 0) - 1000;
   return forge.readActs(root, session, env).filter((a) => Number(a.at) >= since || (a.armed && a.id && !consumed.has(a.id)));
+}
+// The acts of this repo's OTHER sessions that can explain a move now (R020): confirmed and aimed (never asked, never
+// all-refs), inside this cycle's window; only the OTHER_LEDGERS newest ledgers by mtime, so a busy repo costs a bounded
+// read. A ledger that cannot be read explains nothing.
+const OTHER_LEDGERS = 20;
+function otherActs(root, session, state, env) {
+  try {
+    const since = Number((state && state.at) || 0) - 1000;
+    const mine = forge.actsPath(root, session, env);
+    const dir = path.dirname(mine);
+    const files = fs.readdirSync(dir).filter((n) => /^ACTS-[A-Za-z0-9_-]+\.jsonl$/.test(n) && n !== path.basename(mine))
+      .map((n) => { try { return { n, t: Math.round(fs.statSync(path.join(dir, n)).mtimeMs) }; } catch { return null; } })
+      .filter((x) => x && x.t >= since).sort((a, b) => b.t - a.t).slice(0, OTHER_LEDGERS);
+    return files.flatMap((x) => forge.readActs(root, x.n.slice('ACTS-'.length, -'.jsonl'.length), env)
+      .filter((a) => a && a.confirmed && !a.asked && !a.all && Number(a.at) >= since));
+  } catch { return []; }
 }
 const consumedAfter = (state, used) => [...new Set([...((state && state.consumed) || []), ...(used || [])])].slice(-200);
 async function baselineOf(root, session, env, waitMs) {
@@ -505,12 +529,15 @@ async function postCall(payload, env) {
   const reported = state.reported || {};
   const moves = diffRefs(state.refs, now.refs).filter((m) => reported[m.ref] !== (m.to || ''));
   // An armed act is used up at the Stop, which judges these moves again.
-  const { ctx, loud, notes } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env));
-  if (!loud.length) return told ? { systemMessage: told } : null;
-  for (const m of loud) reported[m.ref] = m.to || '';
+  const { ctx, loud, notes, byOthers } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env), otherActs(root, session, state, env));
+  const quiet = [...byOthers.map(otherLine), told].filter(Boolean);
+  if (!loud.length && !byOthers.length) return told ? { systemMessage: told } : null;
+  // Told once: the Stop does not repeat a move this window reported or explained by another session.
+  for (const m of [...loud, ...byOthers]) reported[m.ref] = m.to || '';
   writeJson(file, { ...state, reported });
+  if (!loud.length) return { systemMessage: quiet.join('\n') };
   const when = state.skipped ? sinceLast(state.at) : 'right after this call';
-  return { decision: 'block', reason: `${[...loud.map((m) => loudLine(m, ctx, when)), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.`, ...(told ? { systemMessage: told } : {}) };
+  return { decision: 'block', reason: `${[...loud.map((m) => loudLine(m, ctx, when)), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.`, ...(quiet.length ? { systemMessage: quiet.join('\n') } : {}) };
 }
 
 // Work still running when the turn ends can move a ref after this diff, so the next Stop diffs too - the Stop input's
@@ -538,6 +565,7 @@ async function stopTurn(payload, env) {
   if (ran && held && marked && !(marked.skipped && marked.dirty)) writeJson(sessionFile(root, session, env), { ...marked, skipped: true, dirty: true });
   const loudLines = [...((note && note.loud) || [])];
   const notes = [];
+  const quiet = [];
   if (note && note.summary && !loudOnly(env)) notes.push(note.summary);
   if (ran && !held) {
     const state = await baselineOf(root, session, env, 1500);
@@ -551,9 +579,10 @@ async function stopTurn(payload, env) {
     } else {
       const reported = state.reported || {};
       const moves = diffRefs(state.refs, now.refs).filter((m) => reported[m.ref] !== (m.to || ''));
-      const { ctx, loud, summary, used, notes: unsure } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env));
+      const { ctx, loud, summary, used, notes: unsure, byOthers } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env), otherActs(root, session, state, env));
       const when = state.skipped ? sinceLast(state.at) : 'this turn';
       loudLines.push(...loud.map((m) => loudLine(m, ctx, when)), ...unsure);
+      quiet.push(...byOthers.map(otherLine));
       const line = loudOnly(env) ? null : summaryLine(summary, `other branches moved ${when}`);
       if (line) notes.push(line);
       writeJson(sessionFile(root, session, env), { ...now, head: state.head || now.head, reported: {}, consumed: consumedAfter(state, used), dirty: live });
@@ -563,7 +592,7 @@ async function stopTurn(payload, env) {
   }
   const told = pauseLine(root, session, env);
   const ssh = ran && !held && watchSetting(env) !== 'publish-only' ? sshNotice(cwd, remote, root, env, !told) : null;
-  const forUser = [told, ssh].filter(Boolean);
+  const forUser = [...quiet, told, ssh].filter(Boolean);
   if (loudLines.length && !(prelude && prelude.stopHeldThisCycle('forge-session', payload, env))) {
     if (prelude) prelude.markStopHeld('forge-session', payload, env);
     return { decision: 'block', reason: [...loudLines, ...notes, 'Tell the user what moved before anything else; do not try to undo it unless they ask.'].join('\n'), ...(forUser.length ? { systemMessage: forUser.join('\n') } : {}) };

@@ -243,6 +243,113 @@ test('a gated push of one branch does not cover a move of another', () => {
   assert.strictEqual(out(stop(w.dir)).decision, 'block');
 });
 
+// R020: another session's confirmed act in this repo explains a move with one line, never a block.
+const R020_LINE = /^Ref watch: main moved [0-9a-f]{7}\.\.[0-9a-f]{7} - a gated act of another session in this repo explains it\.$/m;
+const forgeDir = (w) => path.dirname(forge.actsPath(w.dir, SID, watchEnv(w.dir)));
+// One act row as recordAct writes it, with its own `at`, and the ledger's mtime set (both ms since the epoch).
+function actRow(w, session, act, at = Date.now(), mtime = at) {
+  const file = forge.actsPath(w.dir, session, watchEnv(w.dir));
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, `${JSON.stringify({ concept: 'branch.write', change: null, ref: 'main', head: null, asked: false, ...act, at })}\n`);
+  fs.utimesSync(file, new Date(mtime), new Date(mtime));
+  return file;
+}
+const mateLands = (w) => { const y = w.mateCommit(`m${Math.random().toString(16).slice(2, 8)}`); w.mate('push', '-q', 'origin', 'main'); return y; };
+
+test('R020: another session\'s confirmed act explains a move - no block, one line', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  fs.writeFileSync(path.join(w.dir, 'b.txt'), 'b\n');
+  w.git('add', '-A'); w.git('commit', '-qm', 'b');
+  forge.recordAct(w.dir, 'watch-s2', { concept: 'branch.write', ref: 'main', head: w.git('rev-parse', 'HEAD').stdout.trim() }, watchEnv(w.dir));
+  w.git('push', '-q', 'origin', 'main');
+  const r = stop(w.dir);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const o = out(r);
+  assert.strictEqual(o.decision, undefined, r.stdout);
+  assert.match(o.systemMessage, R020_LINE);
+  // The window after a strong call says it once; the Stop does not repeat it.
+  const v = watchRepo();
+  assert.strictEqual(snap(v.dir).status, 0);
+  const y = mateLands(v);
+  forge.recordAct(v.dir, 'watch-s2', { concept: 'branch.write', ref: 'main', head: y }, watchEnv(v.dir));
+  const p = post(v.dir, 'mcp__gitlab__pull_request_frobnicate', { iid: 4 });
+  assert.strictEqual(p.status, 0, p.stderr);
+  assert.strictEqual(out(p).decision, undefined, p.stdout);
+  assert.match(out(p).systemMessage, R020_LINE);
+  assert.doesNotMatch(stop(v.dir).stdout, /another session/);
+});
+
+test('R020: another session\'s asked, unconfirmed or all-refs act, or one on another ref, explains nothing', () => {
+  for (const act of [{ asked: true }, { tool_use_id: 'tu-x' }, { all: true }, { ref: 'feature' }]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const y = mateLands(w);
+    forge.recordAct(w.dir, 'watch-s2', { concept: 'branch.write', ref: 'main', head: y, ...act }, watchEnv(w.dir));
+    const r = stop(w.dir);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(out(r).decision, 'block', JSON.stringify(act));
+  }
+});
+
+test('R020: another session\'s push explains only the tip it pushed', () => {
+  for (const [act, want] of [[{ concept: 'branch.write', head: 'd'.repeat(40) }, 'block'], [{ concept: 'branch.write' }, 'line'],
+    [{ concept: 'change.merge', head: 'e'.repeat(40) }, 'line']]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const y = mateLands(w);
+    forge.recordAct(w.dir, 'watch-s2', { ref: 'main', head: y, ...act }, watchEnv(w.dir));
+    const o = out(stop(w.dir));
+    if (want === 'block') assert.strictEqual(o.decision, 'block', JSON.stringify(act));
+    else { assert.strictEqual(o.decision, undefined, JSON.stringify(act)); assert.match(o.systemMessage, R020_LINE); }
+  }
+});
+
+test('R020: only the 20 newest other ledgers inside the window are read', () => {
+  // 25 other sessions' ledgers, newest first by mtime; the one act naming main sits at rank 19 (one under), 20 (at the
+  // bound) or 21 (one over), then rank 21 touched newest.
+  for (const [rank, want, touch] of [[19, undefined], [20, undefined], [21, 'block'], [21, undefined, true]]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const y = mateLands(w);
+    const top = Date.now() + 60000;
+    let held = null;
+    for (let i = 1; i <= 25; i += 1) {
+      const f = actRow(w, `watch-o${i}`, i === rank ? { head: y } : { ref: `other-${i}` }, Date.now(), top - i * 1000);
+      if (i === rank) held = f;
+    }
+    if (touch) fs.utimesSync(held, new Date(top + 1000), new Date(top + 1000));
+    const o = out(stop(w.dir));
+    assert.strictEqual(o.decision, want, `rank ${rank}${touch ? ' touched' : ''}: ${JSON.stringify(o)}`);
+  }
+});
+
+test('R020: the window edge is state.at - 1000', () => {
+  for (const [off, want] of [[-1001, 'block'], [-1000, undefined], [-999, undefined]]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const at = JSON.parse(fs.readFileSync(path.join(forgeDir(w), `REFS-${SID}.json`), 'utf8')).at;
+    const y = mateLands(w);
+    actRow(w, 'watch-s2', { head: y }, at + off, at + off);
+    assert.strictEqual(out(stop(w.dir)).decision, want, `state.at ${off}`);
+  }
+});
+
+test('R020: a garbage or truncated other ledger is skipped, never a crash', () => {
+  for (const withGood of [true, false]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    const y = mateLands(w);
+    const bad = forge.actsPath(w.dir, 'watch-s2', watchEnv(w.dir));
+    fs.mkdirSync(path.dirname(bad), { recursive: true });
+    fs.writeFileSync(bad, 'not json at all\n{"concept":"branch.write","ref":"main","he');
+    if (withGood) forge.recordAct(w.dir, 'watch-s3', { concept: 'branch.write', ref: 'main', head: y }, watchEnv(w.dir));
+    const r = stop(w.dir);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(out(r).decision, withGood ? undefined : 'block', `with the good ledger: ${withGood}`);
+  }
+});
+
 test('teammate feature branch is summary', () => {
   const w = watchRepo();
   assert.strictEqual(snap(w.dir).status, 0);

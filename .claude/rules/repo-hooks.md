@@ -1892,7 +1892,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     candidate - with several it covers none and says so); an armed auto-merge persists across turns until it lands.
     Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit a local branch holds, any
     tag - blocked once per cycle; the rest is one summary `systemMessage`. An ASKED act covers nothing (Task 6 ruling,
-    revising Task 2's). `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
+    revising Task 2's). A loud move no act of this session covers, but a confirmed, aimed act of ANOTHER session in the
+    repo does (R020, `otherActs`: the 20 newest other `ACTS-*.jsonl` by mtime inside the window `state.at - 1000`), is
+    one `systemMessage` line - 'a gated act of another session in this repo explains it' - never a block; strict, so a
+    push carrying its head lands only that tip, an act naming no ref lands only the move at its head, an asked,
+    unconfirmed or all-refs act lands nothing, and none is used up. `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
     asked call. Unreachable is `not checked (<why>)`, never clean. `forge-session:watch` in `ALFRED_CODE_HOOKS_OFF` off,
     `ALFRED_CODE_FORGE_WATCH=loud-only` drops the summary (the session line says so). A check that fails or takes over 3 s
     (a key waiting for a touch, an approval dialog) pauses the catch-all for 30 min (`PAUSE-<session>.json`, said once);
