@@ -473,8 +473,24 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     before a review: run each shape in bash 3.2, bash 5 and zsh with a fake `git` on PATH that only logs its first word,
     and compare what ran with what `gitText` reads (an opaque call counts as a push, as the gate takes it). bash 3.2 ending a
     heredoc inside `$( )` at the `)` is out of model: bash 5 and zsh read on to the terminator, and matching 3.2 would leave a
-    commit message holding `a)` unread. Lexer and parser stay linear in the text (a test holds 800,000 characters of
-    `case ` and 400,000 of `$((1)` under 8 s). `trap`'s action is a carried script like `eval`'s. TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
+    commit message holding `a)` unread. The tenth review: a backtick and a `$((` read as a substitution are STRINGS
+    first in every shell (`stringEnd`, bash's parse_matched_pair), so a heredoc opened in one ends with it; one opened in a
+    `$( )` that closes on its line has no body in zsh and bash 3.2 but takes the next lines in bash 5 - read as no body,
+    and unread. A delimiter holding `${E}`, `$(x)` or a backtick is lexed in place. Past the re-read budget, a string
+    frame closing where bash would not, or nesting past `MAX_NEST` (skipped to the lexer's close), the text is unread
+    (`doubt`), never guessed. So is a quote at an arithmetic scan's own level whose text holds a paren, a backtick, a
+    backslash, a line or an expansion, or never closes: zsh scans `$((` and `((` as a double-quoted string, where a
+    quote is a character, and the two shells end the scan apart - and a `$[` holding a separator or never closed, which
+    dash (`sh` on Debian and Ubuntu) reads as text. What `echo`, `printf` or a `cat` of a heredoc prints is
+    carried wherever it reaches a shell: a group or subshell piped in (a group after `then`, `do` or `time` too),
+    `/dev/stdin`, `<( )`, a word of `-c` or `eval` with each substitution replaced by what it prints (split into words
+    when unquoted, as the shell splits it), `env -S` (with a backslash-newline also kept as the line break BSD env keeps),
+    busybox. echo and printf print their parser words with each print substitution's output in place (else kept whole;
+    prints nested past 8 deep, or inside a parameter expansion, are unread), and a heredoc whose line a carried script ends has no body, so the script
+    joined after it is never read as one. An unquoted heredoc body that leaves a substitution open is unread: dash
+    parses it on past the terminator line. Lexer and parser stay linear in the text: `dequote` takes a word's substitutions from its parse's
+    lex (`allSubs`) and never lexes again (a test holds 800,000 characters of `case `, 400,000 of `$((1)` and a 48,000-
+    character nest under 8 s). `trap`'s action is a carried script like `eval`'s. TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
     budget of `hook-prelude.js` `SCAN_LIMITS` (8MB of text, 3 script levels, 48 judged git calls) that the shared reader spends.
     Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
     on any machine: each judging step charges the characters it reads, the two thresholds at the top of each guard
@@ -958,7 +974,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     read from where it meets HEAD. The git calls are read by shell-writes.js's walker (`gitCalls`), as are the
     git aliases and carried scripts (`expandGitAliases`, `carriedScripts`, above): each alias is expanded in place and each carried script, its own aliases expanded, joins
     the command after a newline; an alias still standing after 5 steps, a lookup git cannot answer, an xargs-fed
-    subcommand, or text past the scan budget that names git gates the call as a commit, unread - and so do a runtime
+    subcommand, or text past the scan budget that names git gates the call as a commit, unread, and as a push (any
+    unread text naming git: with nothing to commit the commit half passed a push zsh runs, the seventh fuzz pass) - and so do a runtime
     script spawning `git commit` (node exec / spawn, python `subprocess` / `os.system`, ruby / perl `system` and backticks,
     a PowerShell body), `update-ref` on `refs/heads/*` or `HEAD`, a `commit-tree` fed into a reset / merge / branch /
     checkout / switch, and `rebase --exec` / `-x` running `git commit` (audit 2026-10-30 HK-17; literal words only, a

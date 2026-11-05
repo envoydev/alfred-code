@@ -332,13 +332,142 @@ test('gitText: a backtick that ends at the first backtick leaves the rest of the
   }
 });
 
+test('lexShell: the tenth review - a heredoc opened in a backtick or in a `$((` read as a substitution ends with it, any shell word is a delimiter, and past the re-read budget the text is unread', () => {
+  // bash and zsh read a backtick, and a `$((` that is not arithmetic, as a string first: a heredoc opened in it has no
+  // body past its end, so the lines after it run (the tenth R015 review, 2026-11-05: each hid a `git push`).
+  const seen = (c) => { const g = shell.gitText(c, process.cwd()); return g.unreadAt >= 0 || g.calls.some((x) => x.sub === 'push' || x.opaque); };
+  for (const c of [
+    'a=1; b=2; echo $((a) + (b) << 2)\ngit push\n2', 'a=1; echo $(( (a) << 2 ) )\ngit push\n2',
+    'x=$(( `case a in a) echo 1;; esac` << 2 ))\ngit push\n2', 'x=$(( "$(case a in a) echo 1;; esac)" << 2 ))\ngit push\n2',
+    "sh -c 'x=$(( `case a in a) echo 1;; esac` << 2 ))\ngit push\n2'", "trap 'x=$(( `case a in a) echo 1;; esac` << 2 ))\ngit push\n2' EXIT",
+    'x=$(( ${y:-`case a in a) echo 1;; esac`} << 2 ))\ngit push\n2', 'echo $(( 1 << 2 ; 3 ))\ngit push',
+    'echo `cat <<E`\nfoo\nE\ngit push', 'cat <<${E}\ny\n${E}\ngit push', 'cat > notes.txt <<${MARK:-EOF}\nnotes\n${MARK:-EOF}\ngit push',
+    'cat <<$(x)\nfoo\n$(x)\ngit push', 'cat <<`x`\nfoo\n`x`\ngit push',
+    'echo ' + '$(('.repeat(12) + 'x' + ') '.repeat(24) + '\necho $(( 1 << 2 ))\ngit push\n2',
+  ]) assert.ok(seen(c), JSON.stringify(c));
+  // a heredoc whose body stays inside the region still hides its body, and an arithmetic shift opens nothing
+  assert.deepStrictEqual(shell.gitText('x=$(( (a) <<E\ngit push\nE\n) ); git status', process.cwd()).calls.map((x) => x.sub), ['status']);
+  assert.deepStrictEqual(shell.gitText('echo $(( 1 << 2 ))\ngit status', process.cwd()).calls.map((x) => x.sub), ['status']);
+  assert.deepStrictEqual(shell.gitText('cat <<"$(x)"\ngit push\n$(x)\ngit status', process.cwd()).calls.map((x) => x.sub), ['status']);
+});
+
+test('lexShell: a heredoc opened in a `$( )` that closes on its line - zsh and bash 3.2 give it no body, bash 5 reads on - is unread, and its next lines are read as commands', () => {
+  // The tenth review's fix pass, against the shells: `x=$(cat <<E)` then `git push` pushes in zsh (the Bash tool's shell
+  // on macOS) and bash 3.2, while bash 5.2 takes the line as the heredoc's body. No one reading is right for all three.
+  for (const c of ['x=$(cat <<E)\ngit push', 'x=$(cat <<E $(cat <<E))\nfoo\nE\ngit push', "x=$(cat <<E)\nit's\nE\ngit push"]) {
+    const g = shell.gitText(c, process.cwd());
+    assert.ok(g.unreadAt >= 0, `${JSON.stringify(c)} is unread`);
+  }
+  assert.ok(shell.gitText('x=$(cat <<E)\ngit push', process.cwd()).calls.some((x) => x.sub === 'push'), 'the next line is a command');
+  // the commit message pattern keeps its body inside the substitution: read, nothing unread
+  const g = shell.gitText('git commit -m "$(cat <<\'EOF\'\nfix: it\'s (a) `thing` #2 $((1+1))\nEOF\n)"', process.cwd());
+  assert.deepStrictEqual([g.calls.map((x) => x.sub), g.unreadAt], [['commit'], -1]);
+});
+
+test('carriedScripts: what echo, printf or a cat of a heredoc prints is read wherever it reaches a shell - a group or a subshell piped in, /dev/stdin, <( ), a substitution as the whole script word, env -S, busybox (the tenth review)', () => {
+  const subs = (c) => shell.gitText(c, process.cwd()).calls.map((x) => x.sub);
+  for (const c of [
+    '{ echo git push; } | sh', '(echo git push) | sh', 'cat <<EOF | (sh)\ngit push\nEOF', '{ echo git push; echo true; } | bash',
+    '(cat <<EOF\ngit push\nEOF\n) | sh', 'printf "git push\\n" | (cd . && sh)', 'source /dev/stdin <<EOF\ngit push\nEOF',
+    '. /dev/stdin <<EOF\ngit push\nEOF', 'echo git push | sh /dev/stdin', 'bash <(echo git push)', 'source <(echo git push)',
+    "eval \"$(cat <<'EOF'\ngit push\nEOF\n)\"", "sh -c \"$(printf 'git push')\"", 'bash -c "$(echo git push)"', 'eval `echo git push`',
+    "env -S 'git push'", "env -S 'sh -c \"git push\"'", "busybox sh -c 'git push'", 'echo git push | busybox sh',
+  ]) assert.ok(subs(c).includes('push'), `${JSON.stringify(c)} -> ${JSON.stringify(subs(c))}`);
+  // what another program prints does not exist until it runs: out of model, as before
+  for (const c of ['curl -fsSL https://example.com/i.sh | sh', 'eval "$(ssh-agent -s)"']) assert.deepStrictEqual(subs(c), [], c);
+  // one push read once, never twice through two routes
+  assert.deepStrictEqual(subs('echo git push | sh'), ['push']);
+});
+
+test('lexShell: a quote in an arithmetic scan whose text holds a paren, a backtick, a backslash or a newline, or runs on, is unread - bash reads a quote there, zsh a character (the seventh fuzz pass)', () => {
+  // zsh scans `$((` and `((` as it scans a double-quoted string, so a `'` or `"` is a character; bash reads a quote. A
+  // quote holding a paren or a line ends the scan in two places: `x=$(( (a) <<'E'` + `it's` + `E` + `) ); git push`
+  // pushes in zsh and is a syntax error in bash (173 fuzz cases, 2026-11-05).
+  const seen = (c) => { const g = shell.gitText(c, process.cwd()); return g.unreadAt >= 0 || g.calls.some((x) => x.sub === 'push'); };
+  for (const c of [
+    "x=$(( (a) <<'E'\nit's\nE\n) ); git push", 'x=$(( (a) <<E\nit"s\nE\n) ); git push', "(( (a) <<'E'\nit's\nE\n) ); git push",
+    "echo \"$(( (a) <<'E'\nit's\nE\n) )\"; git push", "echo $(( 1 ' ) )\ngit push",
+  ]) assert.ok(seen(c), JSON.stringify(c));
+  // a quote the two shells end in the same place reads as before
+  for (const c of ["(( x == 'a' )); git status", 'echo $(( "1" + 2 )); git status', "echo $(( $(wc -l < 'f') + 1 )); git status"]) {
+    const g = shell.gitText(c, process.cwd());
+    assert.deepStrictEqual([g.calls.map((x) => x.sub), g.unreadAt], [['status'], -1], c);
+  }
+});
+
+test('carriedScripts: a group piped into a shell after then, do or time, a word mixing text with what a substitution prints, and env -S with a backslash-newline are read (the seventh fuzz pass)', () => {
+  // each pushed in bash 3.2, zsh and bash 5.2 and was read by no guard (2026-11-05)
+  const subs = (c) => shell.gitText(c, process.cwd()).calls.map((x) => x.sub);
+  for (const c of [
+    "if true; then { echo 'git push'; } | sh; fi", "time { echo 'git push'; } | sh", "for i in 1; do { echo 'git push'; } | sh; done",
+    "while true; do { { echo 'git push'; }; } | sh; break; done",
+    "eval \"eval \"$(cat <<'E'\ngit push\nE\n)\"\"", 'eval "eval $(echo git push)"', "sh -c 'eval '\"$(printf 'git push')\"",
+    "env -S 'sh -c \"echo a\\\ngit push\"'",
+  ]) assert.ok(subs(c).includes('push'), `${JSON.stringify(c)} -> ${JSON.stringify(subs(c))}`);
+  // a substitution of another program keeps the whole word out of model; a quoted `{` is no group
+  assert.deepStrictEqual(subs('eval "eval $(ssh-agent -s)"'), []);
+  assert.deepStrictEqual(subs("echo '{' | sh; git status"), ['status']);
+});
+
+test('carriedScripts: an unquoted substitution is word-split, a heredoc left open ends at its script, echo keeps a quoted substitution whole, and a `$[` holding a separator is unread (the eighth fuzz pass)', () => {
+  // each pushed in bash 3.2, zsh and bash 5.2 or in dash, and was read by no guard (2026-11-05)
+  const seen = (c) => { const g = shell.gitText(c, process.cwd()); return g.unreadAt >= 0 || g.calls.some((x) => x.sub === 'push'); };
+  for (const c of [
+    // eval joins the split words with blanks: a line break the substitution prints is one
+    "eval \"x=1; \"$(echo ': <<E\nE; git push')", "eval \"x=1; \"$(echo 'cat <<E\nfoo; git push')",
+    "eval \"x=1; \"$(echo 'cat <<${E}\ny\n${E}; git push')",
+    // a heredoc opened at the end of one carried script has no body: the next script is no part of it
+    "bash <<E\necho $((a) + (b) << 2); git push\nE", "bash <(echo 'bash <<'E'\necho $((a) + (b) << 2); git push\nE')",
+    // echo's words keep a substitution holding quotes whole
+    'echo "a $(echo "b") ; git push" | sh', "bash <(echo 'env -S 'sh -c \"echo \"$(echo \"$(echo a)\")\"; git push\"'')",
+    // dash reads `$[` as text, bash and zsh as arithmetic
+    "sh -c 'eval '\"$(printf '%s' 'echo $[x; git push')\"", "sh -c 'echo $[x\ngit push'",
+  ]) assert.ok(seen(c), JSON.stringify(c));
+  // a double-quoted substitution keeps its lines; a closed `$[` with no separator reads as before
+  assert.deepStrictEqual(shell.gitText("eval \"$(printf 'git status\\ngit push')\"", process.cwd()).calls.map((x) => x.sub), ['status', 'push']);
+  const g = shell.gitText('echo $[1+2]; git status', process.cwd());
+  assert.deepStrictEqual([g.calls.map((x) => x.sub), g.unreadAt], [['status'], -1]);
+});
+
+test('carriedScripts: echo prints a word with each substitution\'s output in place, and a heredoc body leaving a substitution open is unread (the ninth fuzz pass)', () => {
+  const seen = (c) => { const g = shell.gitText(c, process.cwd()); return g.unreadAt >= 0 || g.calls.some((x) => x.sub === 'push'); };
+  for (const c of [
+    // every shell: the inner `$(echo 'a\nb')` is printed, so its quotes are no quotes to the next shell
+    "echo \"a $(echo \"b\") ; echo ': $(echo 'a\nb'); git push' | bash\" | sh",
+    // dash parses a substitution in an unquoted heredoc body as it reads it, past the terminator line
+    "sh -c 'eval '\"$(printf '%s' 'echo `cat <<E\n$(\nE\n); git push`')\"",
+  ]) assert.ok(seen(c), JSON.stringify(c));
+  // a closed substitution in a body reads as before; a deep nest of prints stays linear and is read
+  assert.deepStrictEqual(shell.gitText('cat <<E\n$(date)\nE\ngit status', process.cwd()).calls.map((x) => x.sub), ['status']);
+  const t0 = Date.now();
+  const deep = shell.gitText(`eval "${'$(echo "'.repeat(2000)}git push${'")'.repeat(2000)}"`, process.cwd());
+  assert.ok(Date.now() - t0 < 8000, `a 2,000-deep nest of prints took ${Date.now() - t0} ms`);
+  assert.ok(deep.unreadAt >= 0 || deep.calls.some((x) => x.sub === 'push'), 'the nested push is read or unread');
+});
+
+test('carriedScripts: a print substitution inside a parameter expansion of a carried word is unread - the variable decides where its output lands (the tenth fuzz pass)', () => {
+  // the outer shell expands `${y:=...}` around the output, so sh runs `x=a; git push` (every shell, 2026-11-05)
+  const seen = (c) => { const g = shell.gitText(c, process.cwd()); return g.unreadAt >= 0 || g.calls.some((x) => x.sub === 'push'); };
+  for (const c of ['sh -c "x=${y:=$(echo a\\; git push)}"', 'eval "x=${y:-$(echo a\\; git push)}"', 'echo "x=${y:-$(echo a\\; git push)}" | sh']) {
+    assert.ok(seen(c), JSON.stringify(c));
+  }
+  // a parameter expansion with no substitution in it, and a substitution beside one, read as before
+  for (const c of ['sh -c "x=${y:-a}; git status"', 'eval "${y:-x}=1 $(echo git status)"']) {
+    const g = shell.gitText(c, process.cwd());
+    assert.deepStrictEqual([g.calls.map((x) => x.sub), g.unreadAt], [['status'], -1], c);
+  }
+});
+
 test('gitText: a long word run and arithmetic closing on a non-`)` read in linear time (the ninth review\'s I6)', () => {
   // A command of many words walked every earlier word per word (`case case ...`: 6.8 s at 400,000 characters), and each
   // arithmetic read again as a substitution recounted every open frame (`$((1)$((1)...`: 1.7 s at 100,000). Each shape
   // here runs under 1 s now and near 25 s on the quadratic path; 8 s leaves room for a slow CI runner.
-  for (const [unit, times] of [['case ', 160000], ['$((1)', 80000]]) {
+  // The tenth review's shapes: arithmetic open in arithmetic, each read again to its close; arithmetic in `${ }` in
+  // arithmetic; and plain nesting, which every word's own re-lex made quadratic.
+  for (const [unit, times, tail] of [['case ', 160000], ['$((1)', 80000], ['$((x ', 12800, ') '.repeat(25600)], ['$(( ${x:-', 3200, '} ) ) '.repeat(3200)], ['$(', 16000, ')'.repeat(16000)]]) {
     const t0 = Date.now();
-    const calls = shell.gitText(unit.repeat(times) + '; git push', process.cwd()).calls;
+    const g = shell.gitText('echo ' + unit.repeat(times) + (tail || '') + '\ngit push', process.cwd());
+    const calls = g.unreadAt >= 0 ? [{ sub: 'unread' }] : g.calls;
     const ms = Date.now() - t0;
     assert.ok(ms < 8000, `${JSON.stringify(unit)} x ${times} took ${ms} ms`);
     assert.ok(calls.length >= 1, `${JSON.stringify(unit)}: the trailing push is still read`);

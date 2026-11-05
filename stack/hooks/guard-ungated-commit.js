@@ -122,8 +122,8 @@ const sw = require(path.join(__dirname, 'shell-writes.js'));
 // '...'` (an alias's included), a literal piped to `sh`, a heredoc into it, `eval '...'`, a script FILE a shell runs -
 // runs as shell too (review re-verify N2 / N4, re-verify 2 R2-M5 / R2-m2). shell-writes.js is the one home of that reader
 // (`gitText`, shared with the force-push and rm guards, seam M3): aliases expanded, every carried script joined after a
-// newline, one scan budget (hook-prelude.js) bounding the whole read. What it leaves unread gates as a commit, never
-// passes (re-verify 3 R3-m4): `unreadAt` names a call whose alias could not be read, and any text the budget or the
+// newline, one scan budget (hook-prelude.js) bounding the whole read. What it leaves unread gates as a commit and as a
+// push, never passes (re-verify 3 R3-m4; the push since the seventh fuzz pass): `unreadAt` names a call whose alias could not be read, and any text the budget or the
 // depth stopped in when what is left names git at all.
 const gitCwd = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const gitRead = sw.gitText(String((payload.tool_input || {}).command || ''), gitCwd);
@@ -455,7 +455,10 @@ if (forgeLib || PUSH_GATE_ON) {
     // push in the command it is the gate's act, never a dry run or one with nothing ahead (the sixth review, 2026-11-05).
     let hidden = push ? null : calls.find((c) => c.opaque || (c.xargs && (!c.sub || xargsReplaces(c))));
     if (!push && !hidden) {
-      const u = unopenedAt(true);
+      // a git substitution the reader never opened, else text naming git it left unread (the seventh fuzz pass: a quote in
+      // an arithmetic scan hid a push zsh runs; with nothing to commit the commit half passed it)
+      let u = unopenedAt(true);
+      if (u < 0) u = gitRead.unreadAt;
       if (u >= 0) hidden = { at: u, stop: Math.min(command.length, u + 80), sub: null, argv: [], dirs: [], config: [], configEnv: [], gitDir: null, workTree: null, opaque: true, xargs: false };
     }
     let acts = [];

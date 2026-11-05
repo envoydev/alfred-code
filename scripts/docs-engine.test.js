@@ -2624,7 +2624,7 @@ test('U36: a section that covered no code is outgrown once files are added', () 
     r.write('src/app.ts', 'export {};\n'); r.git('add', 'src/app.ts'); r.git('commit', '-qm', 'code');
     const out = r.cli(['stale']).stdout;
     assert.match(out, /^\S*overview - no covers line, 1 file\(s\) added since [0-9a-f]+: src\/app\.ts \(no-covers-new-files\)$/m);
-    assert.doesNotMatch(out, /c1\b/, 'a preferences section is never listed');
+    assert.doesNotMatch(out, /#c1\b/, 'a preferences section is never listed'); // `#c1`: a short sha may end in c1
   } finally { r.rm(); }
   // only the newest two stamps are diffed: the oldest of three, though files were added since it, lists nothing
   const t = repo({ files: { 'README.md': 'x\n' } });

@@ -528,6 +528,22 @@ test('push gate: a dry run or a push with nothing ahead goes ungated only as the
     'git status && git push', 'git log --oneline -3 2>/dev/null; git push -n origin feature', 'git push && git status', 'git push; git checkout -q main'])
     assert.strictEqual(bare(cmd).status, 0, `${cmd} alone sends nothing`);
 });
+// The seventh fuzz pass: text the shared reader leaves unread names git, so the commit half gates it as a commit - but
+// with nothing to commit that passed, and the publish half never looked. Inside shell-guards.js the cross-write guard
+// refuses unread text; this gate must not lean on it (a guard switched off per install).
+test('push gate: a command the shared reader leaves unread is gated as a push, with nothing to commit too', () => {
+  const r = featureRepo();
+  r.git('branch', 'wip', unreviewedCommit(r));
+  const gateFile = path.join(r.dir, '.alfred', 'state', 'approvals', 'PUSH-GATE');
+  const bare = (cmd) => { fs.rmSync(gateFile, { force: true }); return run(r.dir, bash(cmd)); };
+  // zsh pushes the first, bash 5 the second; each is unread
+  for (const cmd of ["x=$(( (a) <<'E'\nit's\nE\n) ); git push -f origin wip:feature", "x=$(cat <<E)\nit's\nE\ngit push -f origin wip:feature"]) {
+    const got = bare(cmd);
+    assert.strictEqual(got.status, 2, `${JSON.stringify(cmd)}: ${got.stderr}`);
+    assert.match(got.stderr, /PUSH-GATE/, cmd);
+  }
+  assert.strictEqual(bare("echo $(( 1 + 2 )); git status").status, 0, 'control: a read command');
+});
 // The push gate's dry run (forge.js pushDryRun): a dry run publishes nothing and is not gated, so only a CERTAIN one counts -
 // an option it does not know, an abbreviation, a later --no-dry-run or --end-of-options make the push a real one, gated.
 test('push gate: only a certain dry run goes ungated; -on, --no-dry-run, abbreviations and --end-of-options are gated', () => {
