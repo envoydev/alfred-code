@@ -1883,9 +1883,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     check (`forge.js unseenHead`, the receipt read up to that merge), and a push that moves nothing writes no push row.
     A merge naming no number checks its branch's tip (R015, `forge.js branchSelector` / `branchHead`: the current or the
     named branch on its push remote - `branch.<b>.pushRemote`, else `remote.pushDefault` - else its own remote, else the
-    checkout's; a branch checked out from a PR ref reads that change's head; a push right before the merge, joined by `&&`
-    alone, no dry run and to that same remote, makes the sha it sends the head checked, `pushLanding` - a `;` / `||` join,
-    a dry run or a push elsewhere lands nothing - while a numbered merge still reads its change head - reviews 2026-11-05);
+    checkout's; a branch checked out from a PR ref reads that change's head; a push in front of the merge in the same
+    command has not run when it is judged, so the remote's tip as it stands decides - after an amend or a rebase the
+    denial says to push first in its own call - and a merge naming another local branch also checks that branch's local
+    tip; four reviews 2026-11-05 found every guess at what such a push lands open to an unreviewed commit). The push
+    gate's dry run is `forge.js pushDryRun`: only a certain one goes ungated - an unknown or abbreviated option, a later
+    `--no-dry-run` or `--end-of-options` reads as a real push (`-on` is the push option 'n');
     `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -

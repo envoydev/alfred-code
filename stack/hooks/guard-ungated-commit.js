@@ -1617,24 +1617,24 @@ if (publishMatch) {
     let text = command.slice(0, at);
     try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
     const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
-    // R015's review: a push right before the merge, joined by `&&` alone (a redirect beside it allowed), lands the merge's
-    // branch first, so the remote tip read now is the one it replaces - the merge lands the sha the push sends, and THAT is
-    // checked against the receipt (forge.js pushLanding). A `;` / `||` / pipe join, a dry run or a push elsewhere lands
-    // nothing and leaves the remote's tip the head (the second review). A named head (--match-head-commit) and a merge
-    // named by number - it reads the change's own ref, which a push of a branch does not settle (Task 4b) - keep their rule.
-    const prior = calls.filter((c) => c.sub === 'push' && c.at < at && typeof c.stop === 'number' && c.stop <= at).pop();
-    // The join, read as bash reads it: a \\-newline is a space, a redirect (`2>&1`, `&>/dev/null`) is no command, an env
-    // prefix opens the merge's own command; a call carrying -c / -C / --git-dir pushes where its config says - not judged.
-    const between = prior ? command.slice(prior.stop, at).replace(/\\\r?\n/g, ' ').replace(/(?:\d+|&)?(?:>>?|<)&?\s*[^\s&|;<>]+/g, ' ') : '';
-    const plain = prior && !(prior.config || []).length && !(prior.configEnv || []).length && !prior.gitDir && !prior.workTree && !(prior.dirs || []).length;
-    const joined = plain && /^\s*&&\s*(?:[A-Za-z_][A-Za-z0-9_]*=[^\s;&|]*\s+)*$/.test(between);
-    let landing = null;
-    try { landing = !m.head && !m.change && joined && forgeLib.pushLanding ? forgeLib.pushLanding(prior.argv || [], m.branch || '@', gitCwd) : null; } catch { landing = null; }
+    // R015's reviews (2026-11-05): a push in front of the merge in this command has not run when it is judged, so the head
+    // read is the remote's tip as it stands - never a guess at what the push lands (three reviews found each reading of it,
+    // its join, remote, refspec, options or a pull before it, letting an unreviewed commit through). After an amend or a
+    // rebase that is a block the denial answers: push first, in its own call. A merge naming another local branch also
+    // checks that branch's local tip, which a push in front sends.
+    const pushFirst = calls.some((c) => c.sub === 'push' && c.at < at);
     let unseen = null;
-    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: landing || m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
+    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
+    if (!unseen && pushFirst && !m.head && !m.change && m.branch && m.branch !== '@') {
+      try {
+        const tip = forgeLib.gitOut(gitCwd, ['rev-parse', '--verify', '-q', `refs/heads/${m.branch}^{commit}`]);
+        if (tip) unseen = forgeLib.unseenHead({ cwd: root, sha: tip, receiptHead });
+      } catch { unseen = null; }
+    }
     if (unseen) {
       process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
-        'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');
+        'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.' +
+        (pushFirst ? '\nThis hook judges the merge before the push in front of it runs, so it reads the remote as it stands: run the push on its own first, then the merge.' : ''));
       process.exit(2);
     }
   }

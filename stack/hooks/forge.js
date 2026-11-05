@@ -848,90 +848,37 @@ function branchHead(cwd, branch) {
   if (merge && merge !== `refs/heads/${b}`) return null;
   return tipOf(cwd, own || remoteOf(cwd), b);
 }
-// Whether a push's words (after `push`) make it a dry run, as git reads them: `--dry-run` or a unique prefix of it
-// (`--dr`), or `n` in a short cluster before an `o`, whose rest (or the next word) is a push option's value - `-on`
-// pushes, with the option 'n' (the third review, 2026-11-05: a cluster test read it as a dry run, so the push went ungated).
+// Whether a push's words (after `push`) make it CERTAINLY a dry run - the push gate lets a dry run out ungated, so only a
+// certain one counts (the fourth review, 2026-11-05: `-on` is the push option 'n', `-n --no-dry-run` pushes, an
+// abbreviated `--rep` / `--pu` eats the next word, `--end-of-options -nx` names a remote). Every option word must be one
+// git push knows by its full name (`git push -h`, its `--no-` forms too), a value-taking one skipping its value; an
+// unknown option or an abbreviation reads as no dry run, and the last of `-n` / `--dry-run` / `--no-dry-run` wins.
+const PUSH_FLAGS = new Set(['--verbose', '--quiet', '--all', '--branches', '--mirror', '--delete', '--tags', '--porcelain', '--force',
+  '--force-with-lease', '--force-if-includes', '--thin', '--set-upstream', '--progress', '--prune', '--verify', '--follow-tags',
+  '--signed', '--atomic', '--ipv4', '--ipv6']);
+const PUSH_VALUED = new Set(['--repo', '--receive-pack', '--exec', '--push-option', '--recurse-submodules']);
 function pushDryRun(argv) {
   const words = (argv || []).map(String);
+  let dry = false;
   for (let k = 0; k < words.length; k++) {
     const w = words[k];
-    if (w === '--') break;
-    if (PUSH_VALUE.has(w)) { k++; continue; }
-    if (w.startsWith('--')) { const name = w.split('=')[0]; if (name.length >= 4 && '--dry-run'.startsWith(name)) return true; continue; }
-    if (!w.startsWith('-') || w.length < 2) continue;
-    for (let c = 1; c < w.length; c++) {
-      if (w[c] === 'n') return true;
-      if (w[c] === 'o') { if (c === w.length - 1) k++; break; }
-    }
-  }
-  return false;
-}
-// R015's reviews: the sha a push lands on the branch a merge reads, or null when that is not certain - the merge then
-// lands that sha, which the caller checks against the receipt (unseenHead's `sha`); null leaves the remote's tip the
-// head. `argv`: the push's words after `push`; `branch`: the merge's selector, '@' for the current branch. Certain only
-// when every option is on the known list (no `--repo`, `--tags`, `--delete`, `--receive-pack`, abbreviation or dry run),
-// the push goes to the remote the head is read from (branchHead's order; a bare push to the CURRENT branch's), and a
-// refspec writes the branch - `HEAD` / `@` under the current branch's own name, no refspec only from that branch with no
-// other upstream name. A branch made from a change ref (a fork's `gh pr checkout`) is merged at that ref, which no push
-// of a branch writes: none. The second and third reviews (2026-11-05) found each of those shapes landing a collaborator's
-// or a contributor's commit unchecked.
-const PUSH_SAFE_LONG = new Set(['--force', '--force-with-lease', '--force-if-includes', '--no-force-if-includes', '--set-upstream',
-  '--verify', '--no-verify', '--quiet', '--verbose', '--progress', '--no-progress', '--atomic', '--no-atomic', '--push-option',
-  '--signed', '--no-signed', '--ipv4', '--ipv6', '--thin', '--no-thin', '--porcelain', '--recurse-submodules',
-  '--no-recurse-submodules', '--follow-tags', '--no-follow-tags', '--all', '--branches', '--mirror']);
-const PUSH_SAFE_SHORT = 'fuqv46';
-function readRemote(cwd, b) {
-  return gitOut(cwd, ['config', `branch.${b}.pushRemote`]) || gitOut(cwd, ['config', 'remote.pushDefault'])
-    || gitOut(cwd, ['config', `branch.${b}.remote`]) || remoteOf(cwd);
-}
-function pushLanding(argv, branch, cwd) {
-  const words = (argv || []).map(String);
-  if (pushDryRun(words)) return null;
-  const current = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
-  const b = branch && branch !== '@' ? String(branch) : current;
-  if (!b || !branchNameOk(b)) return null;
-  if (/^refs\/(?:pull|merge-requests)\/\d+\/head$/.test(gitOut(cwd, ['config', `branch.${b}.merge`]) || '')) return null;
-  const positional = [];
-  let every = false;
-  for (let k = 0; k < words.length; k++) {
-    const w = words[k];
-    if (w === '--') { positional.push(...words.slice(k + 1)); break; }
+    if (w === '--' || w === '--end-of-options') break;
     if (w.startsWith('--')) {
       const name = w.split('=')[0];
-      if (!PUSH_SAFE_LONG.has(name)) return null;
-      if (name === '--push-option' && !w.includes('=')) k++;
-      if (name === '--all' || name === '--branches' || name === '--mirror') every = true;
-      continue;
+      if (name === '--dry-run') { dry = true; continue; }
+      if (name === '--no-dry-run') { dry = false; continue; }
+      if (PUSH_VALUED.has(name)) { if (!w.includes('=')) k++; continue; }
+      if (PUSH_FLAGS.has(name) || (name.startsWith('--no-') && PUSH_FLAGS.has(`--${name.slice(5)}`))) continue;
+      return false;
     }
-    if (w.startsWith('-') && w.length > 1) {
-      for (let c = 1; c < w.length; c++) {
-        if (w[c] === 'o') { if (c === w.length - 1) k++; break; }
-        if (!PUSH_SAFE_SHORT.includes(w[c])) return null;
-      }
-      continue;
+    if (!w.startsWith('-') || w.length < 2) continue;
+    for (let c = 1; c < w.length; c++) {
+      if (w[c] === 'n') { dry = true; continue; }
+      if (w[c] === 'o') { if (c === w.length - 1) k++; break; }
+      if (!'vqdfu46'.includes(w[c])) return false;
     }
-    positional.push(w);
   }
-  const target = positional.length ? positional[0] : current ? readRemote(cwd, current) : null;
-  if (!target || target !== readRemote(cwd, b)) return null;
-  const local = (ref) => gitOut(cwd, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) || null;
-  if (every) return local(`refs/heads/${b}`);
-  const specs = positional.slice(1);
-  if (!specs.length) {
-    const up = current ? gitOut(cwd, ['config', `branch.${current}.merge`]) : null;
-    return current === b && (!up || up === `refs/heads/${b}`) ? local('HEAD') : null;
-  }
-  for (const spec of specs) {
-    const s = spec.replace(/^\+/, '');
-    if (!s || s.startsWith(':')) continue;
-    if (s.includes('*')) return null;
-    const cut = s.indexOf(':');
-    const src = cut < 0 ? s : s.slice(0, cut);
-    let dst = cut < 0 ? s : s.slice(cut + 1);
-    if (dst === 'HEAD' || dst === '@') dst = current || '';
-    if (dst.replace(/^refs\/heads\//, '') === b) return local(src === '@' ? 'HEAD' : src);
-  }
-  return null;
+  return dry;
 }
 // Why a merge's head is NOT covered by the review a receipt names, or null when it is (or cannot be judged - no head:
 // line in a waiver, no change ref, no network: the local-HEAD rule the receipt already passed stands). Covered: the head
@@ -982,4 +929,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushLanding, pushDryRun, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushDryRun, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
