@@ -130,6 +130,9 @@ const gitRead = sw.gitText(String((payload.tool_input || {}).command || ''), git
 const { command, parsed, calls } = gitRead;
 // The text of the simple command a call stands in, one line - what a denial names.
 const actText = (c) => command.slice(c.at, c.stop).trim().replace(/\s+/g, ' ');
+// A push's dry run, as git reads its words (forge.js pushDryRun: `-on` is a push option, `--dr` a dry run); the old cluster
+// test stands in when forge.js is absent.
+const pushDry = (argv) => { try { return require('./forge.js').pushDryRun(argv); } catch { return (argv || []).some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a)); } };
 // `git commit`'s own argv: the options whose value is the next word (short letters, long names -
 // a long one may be cut to a unique prefix, as git's parser allows), the flags this scan reads, and
 // the paths it names, with or without `--`. `-u` and `-S` take an attached value only.
@@ -378,7 +381,7 @@ function ledgerPublish(match, dir, { pushRows = true } = {}) {
   }
 }
 if (!PUSH_GATE_ON) {
-  const dry = publishMatch && publishMatch.git && (publishMatch.call.argv || []).some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a));
+  const dry = publishMatch && publishMatch.git && pushDry(publishMatch.call.argv || []);
   if (publishMatch && (!dry || chainedPublish.length)) { try { ledgerPublish(publishMatch, gitRead.callDir(publishMatch.call || { at: publishMatch.index, dirs: [] }), { pushRows: !dry }); } catch { /* best effort */ } }
   publishMatch = null;
   askMatch = null;
@@ -1551,7 +1554,7 @@ if (publishMatch) {
   const act = publishMatch.act.replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
   const isGitPush = publishMatch.git;
   // a dry run publishes nothing (the push's own argv), and neither does a push with nothing ahead of its upstream
-  const dryRun = isGitPush && publishMatch.call.argv.some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a));
+  const dryRun = isGitPush && pushDry(publishMatch.call.argv);
   let ahead = true;
   if (isGitPush) {
     try { ahead = git('log @{u}..HEAD --oneline').length > 0; } catch { ahead = true; } // no upstream = a new branch, which publishes
@@ -1620,7 +1623,11 @@ if (publishMatch) {
     // nothing and leaves the remote's tip the head (the second review). A named head (--match-head-commit) and a merge
     // named by number - it reads the change's own ref, which a push of a branch does not settle (Task 4b) - keep their rule.
     const prior = calls.filter((c) => c.sub === 'push' && c.at < at && typeof c.stop === 'number' && c.stop <= at).pop();
-    const joined = prior && /^(?:\s*\d*(?:>>?|<)&?\s*[^\s&|;]+)*\s*&&\s*$/.test(command.slice(prior.stop, at));
+    // The join, read as bash reads it: a \\-newline is a space, a redirect (`2>&1`, `&>/dev/null`) is no command, an env
+    // prefix opens the merge's own command; a call carrying -c / -C / --git-dir pushes where its config says - not judged.
+    const between = prior ? command.slice(prior.stop, at).replace(/\\\r?\n/g, ' ').replace(/(?:\d+|&)?(?:>>?|<)&?\s*[^\s&|;<>]+/g, ' ') : '';
+    const plain = prior && !(prior.config || []).length && !(prior.configEnv || []).length && !prior.gitDir && !prior.workTree && !(prior.dirs || []).length;
+    const joined = plain && /^\s*&&\s*(?:[A-Za-z_][A-Za-z0-9_]*=[^\s;&|]*\s+)*$/.test(between);
     let landing = null;
     try { landing = !m.head && !m.change && joined && forgeLib.pushLanding ? forgeLib.pushLanding(prior.argv || [], m.branch || '@', gitCwd) : null; } catch { landing = null; }
     let unseen = null;

@@ -457,6 +457,72 @@ test('R015 review 2: a push of another local branch lands that branch\'s tip, ch
   assert.strictEqual(ok.status, 0, `local feature at the reviewed head: ${ok.stderr}`);
 });
 
+// R015's third review (2026-11-05): a push lands the merge's branch only in a shape git's meaning is certain of - a fork
+// change's branch never (its head is the change ref), no option outside the known list, no call-level -c / -C / --git-dir,
+// a HEAD refspec under the current branch's own name, a bare push on the current branch's remote; a \\-newline, an &>
+// redirect or an env prefix still joins by &&.
+const amendedRepo = () => {
+  const r = featureRepo();
+  fs.writeFileSync(path.join(r.dir, 'a.txt'), 'amended\n');
+  r.git('add', '-A'); r.git('commit', '-q', '--amend', '-m', 'amended');
+  r.amended = headOf(r.dir);
+  const backup = path.join(path.dirname(r.dir), `backup-${Math.random().toString(36).slice(2, 8)}.git`);
+  spawnSync('git', ['init', '-q', '--bare', backup], { encoding: 'utf8' });
+  r.git('remote', 'add', 'backup', backup);
+  return r;
+};
+const verdictOf = (r, cmd) => { receipt(r.dir, headOf(r.dir)); return run(r.dir, bash(cmd)); };
+test('R015 review 3: multi-line, &> and env-prefixed joins still land the push', () => {
+  const r = amendedRepo();
+  for (const cmd of ['git push -f origin feature \\\n  && gh pr merge --squash', 'git push -f origin feature && \\\n  gh pr merge --squash',
+    'git push -f origin feature &>/dev/null && gh pr merge --squash', 'git push -f origin feature && GH_PROMPT_DISABLED=1 gh pr merge --squash',
+    'git push -on origin feature && gh pr merge --squash', 'git push -u origin HEAD && gh pr merge --squash']) {
+    const got = verdictOf(r, cmd);
+    assert.strictEqual(got.status, 0, `${cmd}: ${got.stderr}`);
+  }
+});
+test('R015 review 3: a push whose landing git does not make certain lands nothing', () => {
+  const r = amendedRepo();
+  for (const cmd of ['git push --repo backup && gh pr merge --squash', 'git push --rep=backup && gh pr merge --squash',
+    'git -c remote.pushDefault=backup push && gh pr merge --squash', 'git push --dry -f origin feature && gh pr merge --squash',
+    'git push -4n origin feature && gh pr merge --squash', 'git push -n4 origin feature && gh pr merge --squash', 'git push --tag origin && gh pr merge --squash']) {
+    const got = verdictOf(r, cmd);
+    assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
+    assert.match(got.stderr, /never saw/, cmd);
+  }
+  // HEAD as a refspec writes the CURRENT branch's own name, never its upstream's.
+  r.git('checkout', '-qb', 'fix');
+  r.git('config', 'branch.fix.remote', 'origin'); r.git('config', 'branch.fix.merge', 'refs/heads/feature');
+  let got = verdictOf(r, 'git push -f origin HEAD && gh pr merge feature --squash');
+  assert.strictEqual(got.status, 2, `HEAD lands fix, not feature: ${got.stderr}`);
+  // A bare push goes to the CURRENT branch's remote.
+  r.git('checkout', '-qb', 'other');
+  r.git('config', 'branch.other.remote', 'backup');
+  got = verdictOf(r, 'git push --all && gh pr merge feature --squash');
+  assert.strictEqual(got.status, 2, `--all goes to backup: ${got.stderr}`);
+});
+test('R015 review 3: a fork change\'s branch is merged at its change ref, which no push of a branch writes', () => {
+  const r = featureRepo();
+  const later = unreviewedCommit(r);
+  r.git('config', 'branch.feature.merge', 'refs/pull/12/head');
+  pushHead(r.git, later, 'refs/pull/12/head');
+  for (const cmd of ['git push -f origin feature && gh pr merge --squash', 'git push origin HEAD:feature && gh pr merge --squash', 'git push --all origin && gh pr merge --squash']) {
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash(cmd));
+    assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
+  }
+});
+test('push gate: -on is a push option, never a dry run - the push still needs its receipt', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  const got = run(dir, bash('git push -on origin main'));
+  assert.strictEqual(got.status, 2, got.stderr);
+  assert.match(got.stderr, /PUSH-GATE/);
+  assert.strictEqual(run(dir, bash('git push -n origin main')).status, 0, 'a real dry run publishes nothing');
+  assert.strictEqual(run(dir, bash('git push --dry origin main')).status, 0, '--dry is git\'s own abbreviation of --dry-run');
+});
+
 // R015's review: a named branch is read on its own remote; a push remote (branch.<b>.pushRemote, else remote.pushDefault)
 // comes first, as gh finds the change through it - a stale same-named branch on origin is no false block.
 test('R015 review: a named branch reads its own remote, and a push remote comes first', () => {
