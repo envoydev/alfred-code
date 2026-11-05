@@ -1277,7 +1277,7 @@ function pluginDeclarations(root, name, marketDir) {
   for (const map of of('hooks', 'hooks/hooks.json')) {
     for (const groups of Object.values(map)) for (const g of Array.isArray(groups) ? groups : []) {
       for (const h of g && Array.isArray(g.hooks) ? g.hooks : []) {
-        if (h && h.command) out.hookKeys.add(hookCommandKey(h.command));
+        if (h && h.command) out.hookKeys.add(hookCommandKey([h.command, ...(Array.isArray(h.args) ? h.args : [])].join(' ')));
         if (h && h.statusMessage) out.hookKeys.add(hookCommandKey(h.statusMessage));
       }
     }

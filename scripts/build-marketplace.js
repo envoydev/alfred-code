@@ -53,13 +53,13 @@ function marketplaceVersion(options = {})
     return (mkt.metadata && mkt.metadata.version) || '0.0.0';
 }
 
-// Every plugin hook runs as `node "<plugin root>/<file>"`. Shell form, launched through node and
-// QUOTED, is the docs' own spelling for a plugin script ('Exec form and shell form',
-// code.claude.com/docs/en/hooks) and the one 0.2.x shipped. A bare script path needs the exec bit,
-// which git carries into the plugin cache verbatim - five hooks were committed 100644 and died
-// 'permission denied' before a line ran - and a shebang, which Windows never honours. Args stay in
-// the string: an `args` array switches to exec form, whose `command` must be a real executable.
-const launch = (file, args) => `node "\${CLAUDE_PLUGIN_ROOT}/${file}"${args && args.length ? ` ${args.join(' ')}` : ''}`;
+// Every plugin hook runs in EXEC form: `node` itself, the script under the plugin root its first argument
+// (code.claude.com/docs/en/hooks, 'Exec form and shell form', Claude Code 2.1.139+). No shell reads it, so the path
+// needs no quoting and Windows starts one process per hook instead of three - Git Bash's launcher, bash, then node -
+// measured on Windows 11 with Claude Code 2.1.318: 343-413 ms a hook against 381-486 ms in shell form, six of each
+// run together. Through `node` because a bare script path needs the exec bit, which git carries into the plugin
+// cache verbatim (five hooks committed 100644 died 'permission denied'), and a shebang Windows never honours.
+const launch = (file, args) => ({ command: 'node', args: [`\${CLAUDE_PLUGIN_ROOT}/${file}`, ...(args || [])] });
 
 // The guided-walk COMMANDS and the router SKILL, the two things no other entry has. Read from
 // setup-plugin's own plugin.json so one list stays the source of the command set, and re-rooted at
@@ -105,19 +105,19 @@ function coreEntry(options = {})
         hooks: mergeHooks({
             PreToolUse: [{
                 matcher: 'AskUserQuestion',
-                hooks: [{ type: 'command', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
+                hooks: [{ type: 'command', ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
             }, {
                 // 2026-10-21: the walk's next step is judged too (a layer table with no answered ask after it). Every
                 // walk step is a `node` call, so `if` keeps the spawn off every other shell command (code.claude.com/
                 // docs/en/hooks, 'if': each subcommand is checked); the hook leaves at once on a non-walk node call.
                 matcher: 'Bash',
-                hooks: [{ type: 'command', if: 'Bash(node *)', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
+                hooks: [{ type: 'command', if: 'Bash(node *)', ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
             }],
             // F4 (2026-10-28): the ask's own message is on disk only once the PreToolUse hooks finish, so the paste and
             // banner checks run here and void an unpasted answer through updatedToolOutput.
             PostToolUse: [{
                 matcher: 'AskUserQuestion',
-                hooks: [{ type: 'command', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
+                hooks: [{ type: 'command', ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
             }],
             // Library copies move only on /alfred-code:update, so a session on a newer stack says
             // so at each fresh context - a startup, a /clear and a resume (loading audit 2026-10-21 G12: a cleared
@@ -125,7 +125,7 @@ function coreEntry(options = {})
             // as a SessionStart source; audit 2026-10-30 HK-24) - and not at a compaction, which would show the user the line again.
             SessionStart: [{
                 matcher: 'startup|clear|resume|fork',
-                hooks: [{ type: 'command', command: launch('setup-plugin/hooks/library-stamp.js'), timeout: 10 }],
+                hooks: [{ type: 'command', ...launch('setup-plugin/hooks/library-stamp.js'), timeout: 10 }],
             }],
         }, hooksBlock(options.wirings || parseHookWirings(options.sourceDir))),
     };
@@ -252,7 +252,7 @@ function hooksBlock(wirings)
         // the copy route's `[ ... ] ||` shell test fails under PowerShell, the shell form's runner where Git Bash is
         // absent (code.claude.com/docs/en/hooks, 'Exec form and shell form'), and every other plugin hook runs there.
         // The shell-guard dispatcher blocks the call when it fails to judge it (settings.js onFailureFor, audit HK07).
-        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event), ...(asyncFor(w.file, w.event) ? { async: true } : {}),
+        group.hooks.push({ type: 'command', ...launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event), ...(asyncFor(w.file, w.event) ? { async: true } : {}),
             ...(onFailureFor(w.file, w.event) ? { onFailure: onFailureFor(w.file, w.event) } : {}) });
     }
     return block;

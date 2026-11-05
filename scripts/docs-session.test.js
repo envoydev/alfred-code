@@ -730,7 +730,8 @@ test('deep review: the manifest wires docs-session on SubagentHandback as its ow
   const pre = (entry.hooks.PreToolUse || []).filter((g) => g.matcher === 'SubagentHandback');
   assert.strictEqual(pre.length, 1);
   // the group also carries the output-scorer's seal (guard-stop-contract, 2026-10-25); docs-session is its own command in it
-  assert.strictEqual(pre[0].hooks.filter((h) => /stack\/hooks\/docs-session\.js"$/.test(h.command)).length, 1, pre[0].hooks.map((h) => h.command).join(' | '));
+  const launch = (h) => [h.command, ...(h.args || [])].join(' ');
+  assert.strictEqual(pre[0].hooks.filter((h) => /stack\/hooks\/docs-session\.js$/.test(launch(h))).length, 1, pre[0].hooks.map(launch).join(' | '));
 });
 
 // Task 6b review, finding 7: a warning-only ask-answer row reads sections: [], outcome: 'unchanged' - the

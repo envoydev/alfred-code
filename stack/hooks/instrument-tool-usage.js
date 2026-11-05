@@ -25,7 +25,7 @@ if (require.main === module) {
 // a call - it observes and exits 0.
 //
 // This hook rides the core plugin (2.0.0 - no shell gate wrapper): the generated entry launches it
-// on matcher '.*' as a plain `node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"`, so
+// on matcher '.*' in exec form - `node` with `${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js`, no shell - so
 // when the switch is off the per-call cost is a node spawn that exits at the check below, not a
 // shell test. The switch is `ALFRED_CODE_INSTRUMENT` in the project's `<data root>/.variables`
 // (the prelude's loader sets it on the process env), seeded "0": flip it to "1" for a measured

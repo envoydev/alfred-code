@@ -162,6 +162,17 @@ test('settings_hook_wired reads the wiring, not a file; the matcher scopes it', 
     assert.match(run(['--snapshot', b.snap, '--root', b.install, '--fixture', b.fixtureFile]).out, /^migrations: none detected$/m);
 });
 
+test('settings_hook_wired reads an exec-form wiring too - the script in args - and args that are no list name nothing', () => {
+    const migrations = [{ id: 'unwire-one-matcher', detect: { settings_hook_wired: 'guard-stop-contract.js::AskUserQuestion' } }];
+    const exec = { hooks: { AskUserQuestion: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-stop-contract.js'] }] }] } };
+    const a = scaffold({ migrations, settings: exec });
+    assert.match(run(['--snapshot', a.snap, '--root', a.install, '--fixture', a.fixtureFile]).out, /^migration: unwire-one-matcher\tsettings_hook_wired$/m);
+
+    const odd = { hooks: { AskUserQuestion: [{ hooks: [{ type: 'command', command: 'node', args: 'guard-stop-contract.js' }] }] } };
+    const b = scaffold({ migrations, settings: odd });
+    assert.match(run(['--snapshot', b.snap, '--root', b.install, '--fixture', b.fixtureFile]).out, /^migrations: none detected$/m);
+});
+
 test('the compare exit codes pass through unchanged, and the preflight still reports the rest', () => {
     const { snap, install, fixtureFile } = scaffold({
         stamp: null,

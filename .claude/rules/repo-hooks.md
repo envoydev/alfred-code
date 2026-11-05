@@ -18,8 +18,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
   gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 100 and `file-guards.js`'s 70 (10 for each guard a dispatcher runs), from the
-  `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
-  never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
+  `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches in exec form - `"command": "node"`, `"args":
+  ["${CLAUDE_PLUGIN_ROOT}/<file>", ...]` (`build-marketplace.js` `launch`, Claude Code 2.1.139+) - so no shell starts it: on
+  Windows a shell-form hook ran Git Bash's launcher, bash and then node, three processes a hook, and the user reported bash
+  windows and PreToolUse timeouts there. Measured 2026-11-05 with Claude Code 2.1.318, a logged-out session's nine start hooks
+  on a Windows 11 VM: 14 bash processes and 653-784 ms a SessionStart hook in shell form, none and 304-474 ms in exec form
+  (macOS: 800 ms against 725 ms over the nine). Through `node`, since a bare path needs the exec bit
+  and never runs on Windows. Lint holds every core hook to the form, and a reader of a hook's line joins `command` and `args`.
+  The cost, which 2.1.6 M3 refused: Cursor's hook schema has only `command` (cursor.com/docs/reference/third-party-hooks), so a
+  Cursor bridge of the plugin's rows runs a bare `node` that exits 1 on the payload and fails open - GATE 6's four protective
+  guards run in Cursor only from the copy route's rows, which stay shell form in `settings.json`, the file Cursor reads.
+  `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
   `ALFRED_CODE_HOOKS_OFF`. The six gates live in `hook-prelude.js`, never inlined: the csv opt-out;
   the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret,

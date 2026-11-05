@@ -848,7 +848,7 @@ test('check 48: a drifted matcher, a missing file and a missing gate are all fin
         'a changed matcher must change the generated block, which is what check 48 compares');
 
     const ghost = build.hooksBlock([{ file: 'guard-not-here.js', event: 'Stop' }]);
-    assert.match(ghost.Stop[0].hooks[0].command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/guard-not-here\.js"$/,
+    assert.deepStrictEqual([ghost.Stop[0].hooks[0].command, ...ghost.Stop[0].hooks[0].args], ['node', '${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-not-here.js'],
         'a wiring naming a missing file still generates, so the lint is what catches it');
 });
 

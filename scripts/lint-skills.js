@@ -3387,12 +3387,13 @@ function lintHooksEntry(liveIn)
         for (const block of blocks)
             for (const entry of block.hooks)
             {
-                // The launcher shape is part of the contract: a bare script path needs the exec
-                // bit, which git carries into the plugin cache as committed, and never runs on Windows.
-                const m = String(entry.command).match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)"/);
+                // The launcher shape is part of the contract: exec form, `node` itself with the script its first
+                // argument - no shell, so Windows starts one process per hook and never a Git Bash console; a bare
+                // script path needs the exec bit, which git carries into the plugin cache as committed.
+                const m = entry.command === 'node' && Array.isArray(entry.args) ? String(entry.args[0] || '').match(/^\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)$/) : null;
                 if (!m)
                 {
-                    out.push(`the core's stack hooks run \`${entry.command}\` - every hook launches as node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>".`);
+                    out.push(`the core's stack hooks run \`${[entry.command, ...(entry.args || [])].join(' ')}\` - every hook launches in exec form: command node, args ["\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>"].`);
                     continue;
                 }
                 const file = m[1];

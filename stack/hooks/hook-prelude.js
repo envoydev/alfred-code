@@ -46,7 +46,9 @@
 // silently and writes no ledger row, as under GATE 4. Judged from the payload ALONE, never from the
 // environment: a `claude` session in Cursor's integrated terminal inherits Cursor's variables and keeps
 // every hook. A hook makes the check itself, right after it parsed its own payload (cursorStandDown), so no
-// stdin is read or patched here; anything unparseable is a Claude payload.
+// stdin is read or patched here; anything unparseable is a Claude payload. The plugin's own rows are exec form
+// (2026-11-05), which Cursor's schema lacks - a bridge of them runs a bare node that fails open - so in Cursor
+// this gate serves the copy route's shell-form rows.
 //
 // Every gate FAILS OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
 // guard that goes silent on a malformed file is a guard an attacker turns off by corrupting a file.
@@ -233,7 +235,9 @@ function coreRows()
             for (const block of Array.isArray(blocks) ? blocks : [])
                 for (const h of block && Array.isArray(block.hooks) ? block.hooks : [])
                 {
-                    const file = /([\w.-]+)\.js(?=["'\s]|$)/.exec(String((h && h.command) || ''));
+                    // Exec form names the script in `args` (build-marketplace.js launch); shell form in the command line.
+                    const line = [h && h.command, ...(h && Array.isArray(h.args) ? h.args : [])].filter((x) => typeof x === 'string').join(' ');
+                    const file = /([\w.-]+)\.js(?=["'\s]|$)/.exec(line);
                     if (!file) continue;
                     const name = file[1].toLowerCase();
                     if (!rows.has(name)) rows.set(name, []);

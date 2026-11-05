@@ -635,7 +635,7 @@ test('the generated hooks block wires the guard on SubagentStart, SubagentStop a
 {
     const entries = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')).entries;
     const hooks = entries[0].hooks;
-    const wired = (event) => (hooks[event] || []).filter((m) => m.hooks.some((h) => /guard-unapproved-dispatch\.js/.test(h.command)));
+    const wired = (event) => (hooks[event] || []).filter((m) => m.hooks.some((h) => /guard-unapproved-dispatch\.js/.test([h.command, ...(h.args || [])].join(' '))));
     assert.deepStrictEqual(wired('PreToolUse').map((m) => m.matcher), ['Task|Agent|SendMessage']);
     assert.strictEqual(wired('SubagentStart').length, 1);
     assert.strictEqual(wired('SubagentStop').length, 1);

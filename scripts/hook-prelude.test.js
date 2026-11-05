@@ -30,7 +30,7 @@ const wiring = (file, { quoted = true } = {}) =>
     const hooks = {};
     for (const [event, blocks] of Object.entries(coreEntry().hooks))
         for (const block of blocks)
-            if (block.hooks.some((h) => h.command.includes(`/${file}"`)))
+            if (block.hooks.some((h) => [h.command, ...(h.args || [])].join(' ').split(/\s+/).some((w) => w.replace(/"/g, '').endsWith(`/${file}`))))
                 (hooks[event] = hooks[event] || []).push({ ...(block.matcher ? { matcher: block.matcher } : {}), hooks: [{ type: 'command', command, timeout: 10 }] });
     return JSON.stringify({ hooks });
 };
@@ -229,7 +229,8 @@ function scopes({ project } = {})
 const dispatcher = require('../stack/hooks/shell-guards.js');
 function coreCommand(file)
 {
-    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).map((h) => h.command);
+    // Exec form: the line is node plus its args - the script, then the dispatcher's guard names.
+    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).map((h) => [h.command, ...(h.args || [])].join(' '));
     const own = all.find((c) => c.includes(`/stack/hooks/${file}`));
     if (own) return own;
     // A shell guard with no launch of its own runs inside the dispatcher: fire it there, alone.
@@ -240,8 +241,8 @@ function coreCommand(file)
 function fire(file, env)
 {
     const command = coreCommand(file);
-    const rel = command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/)[1];
-    const args = command.split('"').pop().trim().split(/\s+/).filter(Boolean);
+    const [, script, ...args] = command.split(/\s+/).filter(Boolean);
+    const rel = script.replace(/^\$\{CLAUDE_PLUGIN_ROOT\}\//, '');
     const clean = { PATH: process.env.PATH, HOME: env.CLAUDE_CONFIG_DIR || os.tmpdir(), ...env };
     return spawnSync(process.execPath, [path.join(__dirname, '..', rel), ...args], {
         input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push --force origin main' }, session_id: 's' }), env: clean, encoding: 'utf8',
@@ -516,7 +517,7 @@ test('every non-protective hook file carries the cursorStandDown call, so a new 
     const core = entries.entries.find((p) => p.name === 'alfred-code');
     const launched = new Set();
     for (const blocks of Object.values(core.hooks || {}))
-        for (const b of blocks) for (const h of b.hooks) for (const m of String(h.command).matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.js)/g)) launched.add(m[1]);
+        for (const b of blocks) for (const h of b.hooks) for (const m of [h.command, ...(h.args || [])].join(' ').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.js)/g)) launched.add(m[1]);
     const files = [...launched];
     assert.ok(files.includes('setup-plugin/hooks/guard-layer-table.js') && files.includes('setup-plugin/hooks/library-stamp.js'), files.join(', '));
     assert.ok(files.length >= 14, `found ${files.length} launched hooks`);

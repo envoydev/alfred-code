@@ -159,8 +159,8 @@ test('the core entry launches the dispatcher once on the shell tools, with the s
   const build = require('./build-marketplace.js');
   const block = build.hooksBlock(build.parseHookWirings());
   const shellGroups = block.PreToolUse.filter((g) => /(^|\|)(Bash|PowerShell)(\||$)/.test(g.matcher || ''));
-  const commands = shellGroups.flatMap((g) => g.hooks.map((h) => h.command));
-  assert.deepStrictEqual(commands, ['node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js"']);
+  const commands = shellGroups.flatMap((g) => g.hooks.map((h) => [h.command, ...(h.args || [])].join(' ')));
+  assert.deepStrictEqual(commands, ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js']);
   assert.strictEqual(shellGroups[0].hooks[0].timeout, 10 * shell.GUARDS.length, 'every guard keeps the 10s it had as its own hook');
   const settings = require('./install/settings.js');
   assert.strictEqual(settings.timeoutFor('shell-guards.js', 'PreToolUse'), 10 * shell.GUARDS.length);
@@ -529,10 +529,10 @@ test('file-guards: the core entry launches ONE process per file-tool call, with 
   const fg = require(FILES);
   const build = require('./build-marketplace.js');
   const block = build.hooksBlock(build.parseHookWirings());
-  const onFile = (tool) => block.PreToolUse.filter((g) => g.matcher === undefined || new RegExp(`^(?:${g.matcher})$`).test(tool)).flatMap((g) => g.hooks.map((h) => h.command));
+  const onFile = (tool) => block.PreToolUse.filter((g) => g.matcher === undefined || new RegExp(`^(?:${g.matcher})$`).test(tool)).flatMap((g) => g.hooks.map((h) => [h.command, ...(h.args || [])].join(' ')));
   for (const tool of ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep'])
-    assert.deepStrictEqual(onFile(tool), ['node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js"', 'node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"'], `${tool}: the dispatcher and instrumentation only`);
-  assert.deepStrictEqual(onFile('Glob'), ['node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"'], 'a Glob starts no dispatcher (deep hooks review 2026-10-16)');
+    assert.deepStrictEqual(onFile(tool), ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js', 'node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js'], `${tool}: the dispatcher and instrumentation only`);
+  assert.deepStrictEqual(onFile('Glob'), ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js'], 'a Glob starts no dispatcher (deep hooks review 2026-10-16)');
   const group = block.PreToolUse.find((g) => g.matcher === fg.MATCHER);
   assert.strictEqual(group.hooks[0].timeout, 10 * fg.GUARDS.length, 'every guard keeps the 10s it had as its own hook');
   assert.strictEqual(require('./install/settings.js').timeoutFor('file-guards.js', 'PreToolUse'), 10 * fg.GUARDS.length);

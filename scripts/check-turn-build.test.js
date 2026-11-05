@@ -123,8 +123,9 @@ test('turn-build: its Stop row folds into history-session\'s wherever that row i
     const hooks = [];
     const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') { if (typeof v.command === 'string') hooks.push(v); Object.values(v).forEach(walk); } };
     walk(entries);
-    assert.ok(!hooks.some((h) => /check-turn-build\.js/.test(h.command)), 'the check has no process of its own');
-    assert.deepStrictEqual(hooks.filter((h) => /history-session\.js/.test(h.command)).map((h) => h.timeout).sort(), [10, 60]);
+    const launch = (h) => [h.command, ...(h.args || [])].join(' ');
+    assert.ok(!hooks.some((h) => /check-turn-build\.js/.test(launch(h))), 'the check has no process of its own');
+    assert.deepStrictEqual(hooks.filter((h) => /history-session\.js/.test(launch(h))).map((h) => h.timeout).sort(), [10, 60]);
 });
 
 test('turn-build: off by default - no marker, and a Stop never spawns a check', { skip: !posix && 'stub binaries are shell scripts' }, () =>

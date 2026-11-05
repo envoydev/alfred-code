@@ -133,7 +133,7 @@ function detects(entry, root, settings)
             if (matcher && event !== matcher) continue;
             for (const g of Array.isArray(groups) ? groups : [])
                 for (const h of (g && g.hooks) || [])
-                    if (String((h && h.command) || '').includes(file)) return true;
+                    if ([(h && h.command) || '', ...(h && Array.isArray(h.args) ? h.args : [])].join(' ').includes(file)) return true;
         }
         return false;
     }

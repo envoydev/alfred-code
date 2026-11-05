@@ -264,6 +264,23 @@ test('plugins: a hook command two plugins declare goes to the one the session ha
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('plugins: an exec-form hook - command node, the script in args - is credited from the row Claude Code records', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-plugins-'));
+  const projA = path.join(dir, 'proj-a');
+  fs.mkdirSync(projA, { recursive: true });
+  const root = path.join(dir, 'cache', 'core');
+  writeJson(path.join(root, 'hooks', 'hooks.json'), { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard.js'] }] }] } });
+  const registry = path.join(dir, 'cfg', 'plugins', 'installed_plugins.json');
+  writeJson(registry, { version: 2, plugins: { 'core@m': [{ scope: 'project', projectPath: projA, installPath: root }] } });
+  const corpus = path.join(dir, 'corpus');
+  // Claude Code 2.1.318 records an exec-form hook as its command and args joined by a space (binary: YO)
+  const hookRow = attach('2026-07-15T07:00:01.000Z', { type: 'hook_success', hookName: 'SessionStart:startup', hookEvent: 'SessionStart', command: 'node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard.js', exitCode: 0 });
+  writeSession(corpus, SID.a1, [human(projA, '2026-07-15T07:00:00.000Z'), hookRow]);
+  const inv = runJson([corpus, '--plugins', registry]).inventory;
+  assert.deepStrictEqual(row(inv.plugins, 'core').how, ['hook x1'], 'the exec-form declaration matches the recorded row');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('plugins: a language server with no readable extension map claims only what no known map does', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-plugins-'));
   const m = writeMachine(dir);

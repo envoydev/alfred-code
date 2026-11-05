@@ -6558,7 +6558,7 @@ test('B-m1: an MCP PowerShell or execute_shell_command tool is gated', () => {
     assert.equal(call(tool, session([rc.typed('clean it')])).status, 0, `${tool} is not this guard's`);
   // the generated core wiring reaches both tool names
   const core = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8')).plugins.find((p) => p.name === 'alfred-code');
-  const group = core.hooks.PreToolUse.find((g) => g.hooks.some((h) => /guard-desktop-exec\.js/.test(h.command)));
+  const group = core.hooks.PreToolUse.find((g) => g.hooks.some((h) => /guard-desktop-exec\.js/.test([h.command, ...(h.args || [])].join(' '))));
   for (const [tool] of TOOLS) assert.match(tool, new RegExp(group.matcher), `the core matcher takes ${tool}`);
   assert.doesNotMatch('mcp__win__PowerShellX', new RegExp(group.matcher));
 });
