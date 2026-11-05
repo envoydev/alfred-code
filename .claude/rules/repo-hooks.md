@@ -1193,7 +1193,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     since that could start a model call - a local command and a `!` line cannot, a tool result can - and the context at
     or over `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS`, else 200,000). That VERDICT decides COMPACT-STATE's `trigger: auto
     (idle)` and the compact start's line (no fresh session, no hold); the HOLD - the 50-minute gap alone, since
-    PreCompact's count runs 1-5k under the boundary's `preTokens` - marks the point `held`, which counts toward no
+    PreCompact's count runs 1-5k under the boundary's `preTokens`, or an unknown gap: a last reply with no time, no
+    reply at all, or a boundary with no time (R133; never CALLED idle, so `trigger: auto` stays) - marks the point `held`, which counts toward no
     trigger until `fresh-session.js settleCompactPoints` reads its transcript: once per process, one binary-searched
     window per run of points under 15 min apart (never the whole file - real ones reach 214 MB; 32 MB a window, 64 MB a
     pass, the rest waiting for the next; a later window reads only the room the pass has left and, cut by it, decides

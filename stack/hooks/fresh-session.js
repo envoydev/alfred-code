@@ -563,7 +563,9 @@ function idleCompaction({ atBoundary = false, preTokens } = {}) {
     const gapMs = f.start - f.lastReplyAt;
     const idle = f.notice || prelude.idleByTiming({ gapMs, promptSince: f.promptSince, preTokens: atBoundary ? f.preTokens : Number(preTokens),
       floor: prelude.idleFloor(process.env) });
-    return { idle: !!idle, held: !!idle || (Number.isFinite(gapMs) && gapMs >= prelude.IDLE_GAP_MS) };
+    // A last reply with no time (or none) is an unknown gap - maybe idle: never CALLED idle, but held so the settle pass
+    // decides it from the transcript (R133).
+    return { idle: !!idle, held: !!idle || !Number.isFinite(gapMs) || gapMs >= prelude.IDLE_GAP_MS };
   } catch { return { idle: false, held: false }; }
 }
 function observedCompaction() {
