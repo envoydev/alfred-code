@@ -1878,6 +1878,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     push is gated as if it stood alone (E-batch 4b, a side review of fn-9): it needs the receipt when the push moves
     nothing (a dry run, nothing ahead - the denial names the chained act), each merge in the command gets the unseen-head
     check (`forge.js unseenHead`, the receipt read up to that merge), and a push that moves nothing writes no push row.
+    A merge naming no number checks its branch's tip (R015, `forge.js branchSelector` / `branchHead`: the current branch on its
+    own remote, or the named branch on the checkout's remote; a branch checked out from a PR ref reads that change's head);
+    `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
     a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,

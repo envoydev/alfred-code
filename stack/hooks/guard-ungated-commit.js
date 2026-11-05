@@ -1615,7 +1615,7 @@ if (publishMatch) {
     try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
     const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
     let unseen = null;
-    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, receiptHead }); } catch { unseen = null; }
+    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
     if (unseen) {
       process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
         'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');

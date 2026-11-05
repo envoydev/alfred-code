@@ -334,3 +334,96 @@ test('opening a change request from a branch no remote holds needs the publish r
   assert.strictEqual(ok.status, 0, ok.stderr);
   assert.deepStrictEqual(acts(dir).map((a) => a.concept), ['change.create'], 'and the act is ledgered for the ref watch');
 });
+
+// --- R015: a merge with no number reads the head of its branch -----------------------------------------------------------
+// `gh pr merge --squash` merges the current branch's change, `gh pr merge feature-x` names one: the branch's tip on the
+// remote (or a `gh pr checkout` branch's refs/pull/<n>/head) is the change's head, so the unseen-head check runs.
+const featureRepo = () => {
+  const r = pushRepo();
+  r.git('checkout', '-qb', 'feature');
+  r.git('config', 'branch.feature.remote', 'origin');
+  r.git('config', 'branch.feature.merge', 'refs/heads/feature');
+  r.reviewed = headOf(r.dir);
+  pushHead(r.git, r.reviewed, 'refs/heads/feature');
+  receipt(r.dir, r.reviewed);
+  return r;
+};
+// One commit the review never saw, left in the checkout's objects; the work tree goes back to the reviewed head.
+const unreviewedCommit = (r) => {
+  fs.writeFileSync(path.join(r.dir, 'b.txt'), 'later\n');
+  r.git('add', '-A'); r.git('commit', '-qm', 'later');
+  const sha = headOf(r.dir);
+  r.git('reset', '-q', '--hard', r.reviewed);
+  return sha;
+};
+
+test('R015: a merge with no number checks the tip of its branch on the remote', () => {
+  const r = featureRepo();
+  assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'the reviewed tip passes');
+  const later = unreviewedCommit(r);
+  pushHead(r.git, later, 'refs/heads/feature');
+  receipt(r.dir, r.reviewed);
+  const blocked = run(r.dir, bash('gh pr merge --squash'));
+  assert.strictEqual(blocked.status, 2, 'an unreviewed tip is refused');
+  assert.match(blocked.stderr, /never saw/);
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge feature --subject "fix it"')).status, 2, 'a named branch reads its tip');
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('glab mr merge --squash')).status, 2, 'glab reads it too');
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge --squash -R other/repo')).status, 0, '-R keeps today\'s rule');
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge nobranch')).status, 0, 'no such remote branch keeps today\'s rule');
+});
+
+test('R015: a branch tracking a fork reads the fork\'s tip, not origin\'s', () => {
+  const r = featureRepo();
+  const fork = path.join(path.dirname(r.dir), 'fork.git');
+  spawnSync('git', ['init', '-q', '--bare', fork], { encoding: 'utf8' });
+  r.git('remote', 'add', 'fork', fork);
+  r.git('config', 'branch.feature.remote', 'fork');
+  const later = unreviewedCommit(r);
+  pushHead(r.git, later, 'refs/heads/feature');
+  r.git('push', '-q', 'fork', `${r.reviewed}:refs/heads/feature`);
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'the fork holds the reviewed tip');
+  r.git('push', '-q', '-f', 'fork', `${later}:refs/heads/feature`);
+  r.git('push', '-q', '-f', 'origin', `${r.reviewed}:refs/heads/feature`);
+  receipt(r.dir, r.reviewed);
+  assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 2, 'the fork holds an unreviewed tip');
+});
+
+test('R015: a branch tracking another branch, a PR ref, a garbage merge ref or a detached HEAD reads the right head', () => {
+  {
+    const r = featureRepo();
+    r.git('config', 'branch.feature.merge', 'refs/heads/main');
+    const later = unreviewedCommit(r);
+    pushHead(r.git, later, 'refs/heads/main');
+    receipt(r.dir, r.reviewed);
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'a branch tracking main has no change head to read: today\'s rule');
+  }
+  {
+    const r = featureRepo();
+    r.git('config', 'branch.feature.merge', 'refs/pull/9/head');
+    pushHead(r.git, r.reviewed, 'refs/pull/9/head');
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'the PR ref at the reviewed head passes');
+    const later = unreviewedCommit(r);
+    pushHead(r.git, later, 'refs/pull/9/head');
+    receipt(r.dir, r.reviewed);
+    const blocked = run(r.dir, bash('gh pr merge --squash'));
+    assert.strictEqual(blocked.status, 2, 'the PR ref at an unreviewed head is refused');
+    assert.match(blocked.stderr, /never saw/);
+  }
+  {
+    const r = featureRepo();
+    r.git('config', 'branch.feature.merge', 'refs/garbage');
+    receipt(r.dir, r.reviewed);
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'a garbage merge ref keeps today\'s rule');
+  }
+  {
+    const r = featureRepo();
+    r.git('checkout', '-q', '--detach');
+    receipt(r.dir, r.reviewed);
+    assert.strictEqual(run(r.dir, bash('gh pr merge --squash')).status, 0, 'a detached HEAD keeps today\'s rule');
+  }
+});

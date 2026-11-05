@@ -133,7 +133,7 @@ function conceptOf(verb, nouns, fileAsRef) {
   if (verb === 'read') return change || nouns.release || nouns.pipeline || ref || nouns.file ? READ : null;
   return null;
 }
-const result = (concept, strength, transport, why, extra = {}) => ({ concept, strength, transport, change: null, ref: null, head: null, why, ...extra });
+const result = (concept, strength, transport, why, extra = {}) => ({ concept, strength, transport, change: null, ref: null, head: null, branch: null, why, ...extra });
 // A forge noun the call names, with no verb any class knows: the strongest act that noun admits, `unknown` - the gates ask.
 function unknownOf(nouns, transport, why, extra) {
   const concept = nouns.change || nouns.review ? MERGE : nouns.release ? RELEASE : nouns.ref ? BRANCH : null;
@@ -199,6 +199,26 @@ const changeFromArgs = (argv) => {
   }
   return null;
 };
+// R015: the branch a merge naming no number merges - '@' (the current branch) with no positional word, the one word it
+// names, else null. A repo flag (`-R`, `--repo`) points at another repository, whose branches this checkout cannot read:
+// null, today's rule. The word after a flag that takes a value is that value, never a branch.
+const MERGE_VALUE_FLAGS = {
+  gh: new Set(['-b', '--body', '-F', '--body-file', '-t', '--subject', '-A', '--author-email', '--match-head-commit', '-R', '--repo']),
+  glab: new Set(['-m', '--message', '--squash-message', '--sha', '-R', '--repo']),
+};
+function branchSelector(cli, rest) {
+  const words = (rest || []).map(String);
+  if (words.some((w) => w === '-R' || w === '--repo' || w.startsWith('--repo=') || /^-R./.test(w))) return null;
+  const takes = MERGE_VALUE_FLAGS[String(cli || '').toLowerCase()] || new Set();
+  const positional = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (/^-/.test(w)) { if (!w.includes('=') && takes.has(w)) i++; continue; }
+    positional.push(w);
+  }
+  if (!positional.length) return '@';
+  return positional.length === 1 && !/^#?\d+$/.test(positional[0]) && !positional[0].includes('://') ? positional[0] : null;
+}
 // curl's -K / --config file (E-batch fn-10b): read up to CURL_CONFIG_MAX bytes from where the call runs, each line turned
 // into argv words as curl reads it - `name = value`, `name: value`, `name value`, `--name value`, a bare switch, a quoted
 // value - and parsed with the call's own. A file it cannot read (missing, stdin, past the cap, a config nested three deep)
@@ -382,6 +402,7 @@ function classifyCli(c, name, argv) {
   const rest = argv.slice(lead.length);
   const flagWords = rest.filter(isFlag).map((f) => f.replace(/=.*$/, ''));
   const extra = { change: changeFromArgs(argv.slice(i + 1)), ref: flagValue(argv, ['--base', '--target-branch', '--branch', '--target']), head: flagValue(argv, ['--sha', '--match-head-commit']) };
+  if (!extra.change) extra.branch = branchSelector(name, argv.slice(i + 1));
   const label = `${name} ${[...nouns, verbWord || ''].join(' ').trim()}`;
   if (!verb) {
     if (!verbWord || /^#?\d+$/.test(verbWord) || /[=/.:]/.test(verbWord) || /[A-Z]/.test(verbWord)) {
@@ -744,13 +765,39 @@ function changeHead(cwd, remote, change) {
   for (const ref of want) if (r.refs.has(ref)) return r.refs.get(ref);
   return null;
 }
+// R015: the head of the change a numberless merge lands, read from its branch. '@' is the current branch: its own remote
+// (`branch.<b>.remote`, else the checkout's), and by `branch.<b>.merge` - a `gh pr checkout` / `glab mr checkout` branch
+// (refs/pull/<n>/head, refs/merge-requests/<n>/head) is change <n>; one tracking its own name, or nothing, is that name's
+// tip; one tracking another branch (`origin/main`), or anything else, has no change head to read - null, today's rule. A
+// named branch is read on the checkout's remote. A detached HEAD, a name git would not take or no answer: null.
+const branchNameOk = (n) => /^[A-Za-z0-9._/-]{1,200}$/.test(n) && !n.includes('..') && !n.startsWith('-') && !n.startsWith('/');
+function tipOf(cwd, remote, name) {
+  if (!remote || !branchNameOk(name)) return null;
+  const ref = `refs/heads/${name}`;
+  const r = lsRemote(cwd, remote, [ref]);
+  return r.ok && r.refs.has(ref) ? r.refs.get(ref) : null;
+}
+function branchHead(cwd, branch) {
+  if (branch !== '@') return branchNameOk(String(branch || '')) ? tipOf(cwd, remoteOf(cwd), String(branch)) : null;
+  const b = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
+  if (!b || !branchNameOk(b)) return null;
+  const own = gitOut(cwd, ['config', `branch.${b}.remote`]);
+  if (own === '.') return null;
+  const remote = own || remoteOf(cwd);
+  const merge = gitOut(cwd, ['config', `branch.${b}.merge`]);
+  const pr = /^refs\/(?:pull|merge-requests)\/(\d+)\/head$/.exec(merge || '');
+  if (pr) return changeHead(cwd, remote, pr[1]);
+  if (merge && merge !== `refs/heads/${b}`) return null;
+  return tipOf(cwd, remote, b);
+}
 // Why a merge's head is NOT covered by the review a receipt names, or null when it is (or cannot be judged - no head:
 // line in a waiver, no change ref, no network: the local-HEAD rule the receipt already passed stands). Covered: the head
 // is the reviewed sha or an ancestor of it.
-function unseenHead({ cwd, change, sha, receiptHead }) {
+function unseenHead({ cwd, change, sha, branch, receiptHead }) {
   const h = String(receiptHead || '').toLowerCase();
   if (!/^[0-9a-f]{7,64}$/.test(h)) return null;
-  const target = sha && /^[0-9a-f]{7,64}$/i.test(sha) ? String(sha).toLowerCase() : changeHead(cwd, remoteOf(cwd), change);
+  const target = sha && /^[0-9a-f]{7,64}$/i.test(sha) ? String(sha).toLowerCase()
+    : change ? changeHead(cwd, remoteOf(cwd), change) : branch ? branchHead(cwd, branch) : null;
   if (!target) return null;
   if (target.startsWith(h) || h.startsWith(target)) return null;
   const t7 = target.slice(0, 12), h7 = h.slice(0, 12);
@@ -792,4 +839,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

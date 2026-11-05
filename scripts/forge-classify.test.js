@@ -311,3 +311,16 @@ test('final review M2: a curl config read from stdin, a descriptor or a non-file
     assert.ok(forge.readCurlConfig('merge.cfg', dir).why, 'a missing file stays unread');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('R015: branchSelector reads the branch a numberless merge names', () => {
+  const { branchSelector } = forge;
+  assert.strictEqual(branchSelector('gh', ['--squash', '--delete-branch']), '@');
+  assert.strictEqual(branchSelector('gh', ['feature-x', '--subject', 'fix it']), 'feature-x');
+  assert.strictEqual(branchSelector('gh', ['--subject', 'fix it', '--squash']), '@');
+  assert.strictEqual(branchSelector('gh', ['-m']), '@'); // gh's -m is --merge, no value
+  assert.strictEqual(branchSelector('glab', ['-m', 'msg', 'feature-x']), 'feature-x');
+  assert.strictEqual(branchSelector('gh', ['--repo', 'o/r', 'feature-x']), null);
+  assert.strictEqual(branchSelector('gh', ['--repo=o/r']), null);
+  assert.strictEqual(branchSelector('gh', ['a', 'b']), null);
+  assert.strictEqual(branchSelector('gh', ['https://x.example/o/r/pull/abc']), null);
+});
