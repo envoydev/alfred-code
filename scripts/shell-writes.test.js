@@ -997,3 +997,53 @@ test('gitText: command -v and -V look a name up and run nothing, a loop name inc
   assert.strictEqual(shell.commandIndex(['command', '-v', 'rm']), 0, 'the rm and read guards\' walker: the lookup is the command');
   assert.strictEqual(shell.commandIndex(['command', '-p', 'rm', '-rf', 'x']), 2, 'command -p still runs its word');
 });
+
+// Review 14 (fresh Opus review of 010935fa..2c0a6743), each shape checked against bash 3.2, zsh 5.9, sh and dash with a
+// fake git that logs what ran. `ran(c, sub)`: gitText reads the sub, or marks the command unread (the gates' push).
+const ran = (c, sub) => { const g = shell.gitText(c, process.cwd()); return g.unreadAt >= 0 || g.calls.some((x) => x.sub === sub); };
+test('review 14, 1: a git resolved through command -v, which, echo or a nested default is a git command word', () => {
+  for (const [c, sub] of [['G=$(command -v git); "$G" push origin main', 'push'], ['GIT_BIN=$(command -v git); "$GIT_BIN" commit -am wip', 'commit'],
+    ['g=$(which git); $g checkout -- a.txt', 'checkout'], ['${x:-${y:-git}} reset --hard', 'reset'], ['${x:-$(echo git)} push', 'push']])
+    assert.ok(ran(c, sub), c);
+});
+test('review 14, 2: a chain of set -- "$@" sets is read without recursing per set, and a reader that throws fails closed', () => {
+  const chain = `set -- a; ${'set -- "$@" a; '.repeat(5000)}"$@"; `;
+  const t0 = Date.now();
+  assert.ok(ran(`${chain}git push --force origin main`, 'push'));
+  const s = shell.scanShell(`${chain}touch /elsewhere/f`, { cwd: process.cwd() });
+  assert.ok(s.targets.some((x) => x.raw === '/elsewhere/f') || s.unread.length > 0);
+  assert.ok(Date.now() - t0 < 8000, `${Date.now() - t0} ms`);
+  const bad = { toString() { throw new RangeError('the reader broke'); } };
+  assert.strictEqual(shell.gitText(bad, process.cwd()).unreadAt, 0, 'gitText fails closed');
+  assert.ok(shell.scanShell(bad, { cwd: process.cwd() }).unread.length > 0, 'scanShell fails closed');
+});
+test('review 14, 3: command read as a wrapper flag\'s value is no lookup (env -u command -v ...)', () => {
+  assert.ok(ran('env -u command -v git push --force origin main', 'push'));
+  assert.ok(ran("env -u command -v sh -c 'git push'", 'push'));
+  assert.ok(shell.scanShell('env -u command -v touch /elsewhere/f', { cwd: process.cwd() }).targets.some((x) => x.raw === '/elsewhere/f'));
+});
+test('review 14, 4: an unquoted here-string is read whole (zsh, bash 5) as well as split (bash 3.2)', () => {
+  assert.ok(ran('x="true\ngit push --force origin main"; bash <<< $x', 'push'));
+});
+test('review 14, 5: a loop over literal words runs each word - a version check is no unknown git command', () => {
+  for (const c of ['for t in git node; do $t --version; done', 'for t in git node; do "$t" --version; done'])
+    assert.deepStrictEqual([shell.gitText(c, process.cwd()).unreadAt, shell.gitText(c, process.cwd()).calls.some((x) => x.sub === 'push')], [-1, false], c);
+  assert.ok(ran('for t in node git; do $t push; done', 'push'));
+  assert.ok(ran('for c in "git push"; do $c; done', 'push'));
+});
+test('review 14, 6: a name bound by many unclosed arrays costs linear work', () => {
+  const c = `for a in x; do $a; done; echo '${'a=( '.repeat(50000)}'; npm test`;
+  let t0 = Date.now();
+  shell.gitText(c, process.cwd());
+  assert.ok(Date.now() - t0 < 2000, `gitText ${Date.now() - t0} ms`);
+  t0 = Date.now();
+  shell.scanShell(c, { cwd: process.cwd() });
+  assert.ok(Date.now() - t0 < 2000, `scanShell ${Date.now() - t0} ms`);
+});
+test('review 14, 7-8: set -euo takes its option value; a positional past the frame cap is unread', () => {
+  assert.ok(ran('set -- git push --force origin main; set -euo pipefail; "$@"', 'push'));
+  assert.ok(ran(`set -- git push; ${'(set -- x); '.repeat(64)}"$@"`, 'push'));
+});
+test('review 14, gap: $\'...\' reads hex, octal and unicode escapes', () => {
+  for (const c of ["$'\\x67\\x69\\x74' push", "$'\\147it' push", "eval $'gi\\x74 push'", "$'\\u0067it' push"]) assert.ok(ran(c, 'push'), c);
+});
