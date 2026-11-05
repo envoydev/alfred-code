@@ -507,6 +507,12 @@ function ghForce(read)
 function isProtectedForcePush(command, cwd)
 {
     const read = shellWrites.gitText(command, cwd);
+    // A reader that failed (an exception, not text it chose to leave) on a command naming a push: judged as the push
+    // (review 15, 7) - unread text in general stays out of this guard's model, as the header says
+    if (read.failed && /\b(?:push|send-pack)\b/.test(command))
+    {
+        return 'unread';
+    }
     const viaGh = read.parsed ? ghForce(read) : null;
     if (viaGh)
     {

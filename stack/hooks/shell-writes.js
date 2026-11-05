@@ -610,10 +610,15 @@ const unescape = (s) => {
     out += str.slice(i, j);
     if (str[j + 1] === 'c' && j + 2 < str.length) { out += String.fromCharCode(str.charCodeAt(j + 2) & 31); i = j + 3; continue; }
     const e = escapeAt(str, j, true);
+    if (e.len === 1 && j + 1 < str.length) { // an escape neither knows: bash keeps the backslash, zsh drops it (`$'g\it'`)
+      readingsDiffer = true;
+      if (!bashReading) { i = j + 1; continue; }
+    }
     out += e.text;
     i = j + e.len;
   }
-  return out;
+  const nul = out.indexOf('\0');
+  return nul < 0 ? out : out.slice(0, nul); // a NUL ends the word in every shell (review 15: `$'git\0x' push`)
 };
 const PLAIN_WORD = /^[^"'\\$]*$/;
 // A Windows path written bare on Windows (`C:\Users\x\f.txt`, `\\server\share\f`, `if=C:\x`) is the path the session
@@ -3210,42 +3215,80 @@ function carriedOf(P, raw, heredocs, opts, run) {
       for (const m of v ? [] : src.matchAll(new RegExp(`\\b${name}(?:\\[[^\\]\\n]{0,64}\\])?\\+?=`, 'g'))) {
         const p = m.index + m[0].length;
         let val = /^[^\s;&|]{0,1024}/.exec(src.slice(p, p + 1024))[0];
+        let cut = val.length >= 1024; // a value past 1 KB is judged as naming git, as a list past it is (review 15, 3)
         if (src[p] === '(') {
           if (close !== -1 && close < p) close = src.indexOf(')', p);
           if (close >= 0) {
             val = src.slice(p, close + 1);
+            cut = false;
             if (!run.budget.take(val.length)) { deepPrint = true; v = true; break; }
           }
         }
-        if (gitWord(val)) { v = true; break; }
+        if (cut || gitWord(val)) { v = true; break; }
       }
     } else deepPrint = true;
     binders.set(name, v);
     return v;
   };
-  // The words a loop runs a name through, when every binding of it is a `for` / `select` over plain words: each word is
-  // then the command in turn (review 14, 5: `for t in git node; do $t --version; done` read as an unknown git command).
-  // Any other binding, or a list holding an expansion, a quote or a glob, gives null - the conservative reading stands.
-  const loopLists = new Map();
-  const loopItems = (name) => {
-    if (loopLists.has(name)) return loopLists.get(name);
-    let items = null;
-    const src = P.command;
-    if (run.budget.take(src.length)) {
-      const lists = [...src.matchAll(new RegExp(`\\b(?:for|select)\\s+${name}\\s+in\\b([^;\\n]{0,${LIST_MAX}})`, 'g'))].map((m) => m[1]);
-      const other = new RegExp(`\\b${name}(?:\\[[^\\]\\n]{0,64}\\])?\\+?=|\\b(?:read|readarray|mapfile|getopts|declare|typeset|local|export|printf|let)\\b[^;&|\\n]{0,1024}\\b${name}\\b|\\b(?:for|select)\\s+${name}\\s*(?:[;\\n(]|do\\b|$)`).test(src);
-      if (lists.length && !other && lists.every((l) => l.length < LIST_MAX && !/[$`*?[\]{}~\\'"()<>]/.test(l))) {
-        items = lists.flatMap((l) => l.trim().split(/\s+/).filter(Boolean));
+  // The words a loop runs a name through (review 14, 5: `for t in git node; do $t --version; done` read as an unknown git
+  // command): a use INSIDE the body of a `for` / `select` binding the name over plain words reads each word as the
+  // command in turn. Review 15, 1: after the loop, or in a script a parent's assignment reaches, the name holds what the
+  // reader cannot see (`(for t in git; do :; done); $t`), so only the body counts, by the parser's `for` / `done` pairs;
+  // and only when the name appears nowhere but those heads and plain uses (`${t:=...}`), the command sets no IFS and
+  // sources, evals or assigns through no builtin. Anything else gives null - the conservative reading stands.
+  const ASSIGNERS = /\b(?:eval|source|IFS|read|readarray|mapfile|getopts|declare|typeset|local|export|readonly|unset|let|vared|coproc|zparseopts|zstyle|zformat|strftime|sysread|getln|zregexparse|pcre_match)\b|\bprintf?\b[^;&|\n]{0,64}\s-[A-Za-z]*v|\bwait\b[^;&|\n]{0,64}\s-[A-Za-z]*p|\$\{[^{}\n]{0,64}=|(?:^|[\s;&|(){}])\.[ \t]/;
+  let assigners;
+  let loopHeads = null; // name -> Map(head command -> index of the `done` closing it), built in one pass
+  const loopHeadsOf = (name) => {
+    if (!loopHeads) {
+      loopHeads = new Map();
+      for (const [close, open] of mapsOf().opener) {
+        const w = open.words;
+        if (close.words[0].raw !== 'done' || w.length < 3 || (w[0].raw !== 'for' && w[0].raw !== 'select') || w[2].raw !== 'in') continue;
+        if (!loopHeads.has(w[1].raw)) loopHeads.set(w[1].raw, new Map());
+        const m = loopHeads.get(w[1].raw);
+        if (!m.has(open) || close.index < m.get(open)) m.set(open, close.index);
       }
-    } else deepPrint = true;
-    loopLists.set(name, items);
+    }
+    return loopHeads.get(name) || null;
+  };
+  const loopLists = new Map();
+  const loopListOf = (name, heads) => {
+    const src = P.command;
+    if (assigners === undefined) assigners = ASSIGNERS.test(src);
+    if (assigners) return null;
+    // binderGit already charged this name's scan (review 15, 6: a second charge halved the padding that drops every call)
+    if (!binders.has(name) && !run.budget.take(src.length)) { deepPrint = true; return null; }
+    const headAt = new Set([...heads.keys()].map((h) => h.words[1].s));
+    for (const m of src.matchAll(new RegExp(`\\b${name}\\b`, 'g'))) {
+      const i = m.index;
+      if (headAt.has(i) || src[i - 1] === '$' || (src[i - 1] === '{' && src[i - 2] === '$' && src[i + name.length] === '}')) continue;
+      return null;
+    }
+    const items = [];
+    for (const open of heads.keys()) {
+      if (open.words.length > 259) return null;
+      for (const w of open.words.slice(3)) {
+        if (w.raw.length > 1024 || /[$`*?[\]{}~\\'"()<>=]/.test(w.raw)) return null;
+        items.push(w.raw);
+      }
+    }
     return items;
   };
+  const loopItems = (name, cmd) => {
+    const heads = loopHeadsOf(name);
+    if (!heads) return null;
+    let inside = false;
+    for (const [open, close] of heads) if (open.index < cmd.index && cmd.index < close && within(cmd.frame, open.frame)) { inside = true; break; }
+    if (!inside) return null;
+    if (!loopLists.has(name)) loopLists.set(name, loopListOf(name, heads));
+    return loopLists.get(name);
+  };
   // A command word that is one loop name, bare or quoted: the commands it runs, one a list word (null: not such a word)
-  const loopWordItems = (tok) => {
+  const loopWordItems = (tok, cmd) => {
     const m = /^(")?\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))(")?$/.exec(tok.raw);
     if (!m || !m[1] !== !m[4]) return null;
-    const items = loopItems(m[2] || m[3]);
+    const items = loopItems(m[2] || m[3], cmd);
     if (!items) return null;
     return items.map((it) => (m[1] ? fieldWord(it) : it.split(/[ \t\n]+/).filter(Boolean).map(fieldWord).join(' ')));
   };
@@ -3485,7 +3528,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
           }
           return rest;
         };
-        const items = x && x.unknown && x.git ? loopWordItems(tok) : null;
+        const items = x && x.unknown && x.git ? loopWordItems(tok, cmd) : null;
         if (items) {
           const rest = restOf();
           flagged(at);
@@ -3644,7 +3687,7 @@ function carriedScripts(raw, opts = {}) {
     readingsDiffer = false;
     const none = [];
     none.unread = opts.run ? opts.run.unread : [];
-    none.unread.push({ at: 0, why: `the reader failed on this command (${(e && e.name) || 'error'})`, path: null });
+    none.unread.push({ at: 0, why: `the reader failed on this command (${(e && e.name) || 'error'})`, path: null, force: true });
     return none;
   }
 }
@@ -4092,14 +4135,18 @@ const NAMES_GIT = /g[\\'"]*i[\\'"]*t/i;
 // review: `"$HOME/github/x.sh"` and `ROOT=$(git rev-parse --show-toplevel); "$ROOT/t.sh"` were asked on).
 const GIT_WORDS = new Map();
 let gitWordsHeld = 0;
+const GIT_VALUE = /^\s*(?:\S*[\\/])?git(?:\.exe)?\s+(?:rev-parse|symbolic-ref|merge-base|branch\s+--show-current)\b/i;
 function gitWord(text) {
   const key = String(text);
   if (GIT_WORDS.has(key)) return GIT_WORDS.get(key);
   // a parameter's operator (`${x:-`, `${y:=`) is no part of the word after it (review 14, 1: `${x:-${y:-git}} reset`)
-  let t = key.replace(/\$\{[A-Za-z_]\w*(?:\[[^\]]*\])?:?[-=+?]/g, ' ');
-  // a substitution running git itself (`$(git rev-parse --show-toplevel)`) prints a value, never git's name; any other
-  // keeps its words, so `$(command -v git)`, `$(which git)` and `$(echo git)` name git (review 14, 1)
-  const inner = (m, a, b) => { const body = a !== undefined ? a : b; return /^\s*(?:\S*[\\/])?git(?:\.exe)?(?:\s|$)/i.test(body) ? ' ' : ` ${body} `; };
+  // ... and the name before it stays (review 15, 2: `${GIT:-true}`), the subscript bounded (review 15, 4: an unclosed
+  // `${a[` rescanned the rest of the text)
+  let t = key.replace(/\$\{([A-Za-z_]\w*)(?:\[[^\]\n]{0,64}\])?:?[-=+?]/g, ' $1 ');
+  // a substitution that asks git for a path or a ref alone (`$(git rev-parse --show-toplevel)`) prints a value, never
+  // git's name; any other keeps its words, so `$(command -v git)`, `$(which git)`, `$(echo git)` (review 14, 1) and
+  // `$(git --version | cut -d' ' -f1)` (review 15) name git
+  const inner = (m, a, b) => { const body = a !== undefined ? a : b; return GIT_VALUE.test(body) && !/[|;&\n]|--(?:sq-quote|parseopt|format|pretty)|\sgit\b/i.test(body.replace(GIT_VALUE, '')) ? ' ' : ` ${body} `; };
   for (let n = 0; n < 8 && /\$\(|`/.test(t); n++) t = t.replace(/\$\(([^()]*)\)|`([^`]*)`/g, inner);
   t = t.replace(/[\\'"]/g, '');
   // a git program by its path (`$(git --exec-path)/git-push`) too
@@ -4116,13 +4163,16 @@ const namesGit = (file) => {
 // 2: a stack overflow failed the force-push, rm, commit and cross-project guards open).
 function gitText(raw, cwd) {
   try { return gitTextIn(raw, cwd); }
-  catch (e) {
-    bashReading = false;
-    readingsDiffer = false;
-    let command = '';
-    try { command = String(raw || ''); } catch { /* an unprintable value */ }
-    return { command, parsed: parseShell(''), calls: [], regions: [], unreadAt: 0, callDir: () => cwd || null, literalAt: () => null, vars: null, orderOf: () => 0, failed: String((e && e.message) || e) };
-  }
+  catch (e) { return failedRead(raw, cwd, e); }
+}
+// The read a failure leaves: every word unread, `failed` naming the error - the force-push guard, which leaves unread text
+// alone by design, blocks on it when the text names a push (review 15, 7)
+function failedRead(raw, cwd, e) {
+  bashReading = false;
+  readingsDiffer = false;
+  let command = '';
+  try { command = String(raw || ''); } catch { /* an unprintable value */ }
+  return { command, parsed: parseShell(''), calls: [], regions: [], unreadAt: 0, callDir: () => cwd || null, literalAt: () => null, vars: null, orderOf: () => 0, failed: String((e && e.message) || e) };
 }
 function gitTextIn(raw, cwd) {
   const run = newRun();
@@ -4327,6 +4377,6 @@ function enclosingEnd(P, at, closesOf) {
   return undefined;
 }
 
-module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
+module.exports = { failedRead, scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
   resolveOn, shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan, COPY_VERBS };

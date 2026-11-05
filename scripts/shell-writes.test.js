@@ -1047,3 +1047,56 @@ test('review 14, 7-8: set -euo takes its option value; a positional past the fra
 test('review 14, gap: $\'...\' reads hex, octal and unicode escapes', () => {
   for (const c of ["$'\\x67\\x69\\x74' push", "$'\\147it' push", "eval $'gi\\x74 push'", "$'\\u0067it' push"]) assert.ok(ran(c, 'push'), c);
 });
+test('review 15, 1: a loop word is read only inside its body, with no binding the reader cannot see', () => {
+  for (const c of [
+    'IFS=,; for t in git,push,--force; do $t; done',
+    ': "${t:=git push --force}"; $t; for t in git; do :; done',
+    'for t in git; do . ./vars.sh; $t; done',
+    'for t in git; do :; done; eval "$(cat vars.sh)"; $t',
+    't="git push --force origin main" bash -c \'$t; for t in git; do :; done\'',
+    't="git push --force origin main" bash -c \'(for t in git; do :; done); $t\'',
+    't="git push --force origin main" bash -c \'for t in git; do :; done | cat; $t\'',
+  ]) assert.ok(ran(c, 'push'), c);
+  assert.strictEqual(shell.gitText('for t in git node; do $t --version; done', process.cwd()).unreadAt, -1);
+  assert.ok(ran('for t in node git; do for u in x; do :; done; $t push; done', 'push'));
+});
+test('review 15, 2: a default\'s operator keeps the name before it', () => {
+  assert.ok(ran('GIT=git; t=${GIT:-true}; $t push --force origin main', 'push'));
+  assert.ok(ran('export GIT=git; t="${GIT:=true}"; $t push --force origin main', 'push'));
+});
+test('review 15, 3: an assignment value cut at its cap is judged as naming git', () => {
+  assert.ok(ran(`while read t; do :; done < /dev/null; t=${'$(:)'.repeat(260)}git; $t push --force origin main`, 'push'));
+});
+test('review 15, 4-5: an unclosed subscript run and many binder words beside loop names cost linear work', () => {
+  const sub = `x=$(:)'${'${a['.repeat(100000)}'; $x push --force origin main`;
+  let t0 = Date.now();
+  shell.gitText(sub, process.cwd());
+  assert.ok(Date.now() - t0 < 2000, `subscripts ${Date.now() - t0} ms`);
+  const loops = Array.from({ length: 12 }, (_, i) => `for t${i} in git; do $t${i} --version; done; `).join('');
+  t0 = Date.now();
+  shell.gitText(`${loops}echo "${'let '.repeat(100000)}"`, process.cwd());
+  assert.ok(Date.now() - t0 < 2000, `binder words ${Date.now() - t0} ms`);
+});
+test('review 15, 6: loop names cost the scan budget once', () => {
+  const loops = Array.from({ length: 10 }, (_, i) => `for t${i} in git; do $t${i} --version; done; `).join('');
+  const c = `${loops}echo "${'x'.repeat(400000 - loops.length)}"; git push --force origin main`;
+  assert.ok(shell.gitText(c, process.cwd()).calls.some((x) => x.sub === 'push'));
+});
+test('review 15, 7: a reader failure reaches every consumer as unread', () => {
+  const bad = { get cwd() { throw new RangeError('the reader broke'); } };
+  const out = shell.carriedScripts('bash -c "git push"', bad);
+  assert.ok(out.unread.length && out.unread.every((u) => u.force), 'the carried entry is forced');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r15-'));
+  const stub = path.join(dir, 'stub.js');
+  fs.writeFileSync(stub, `const sw = require(${JSON.stringify(path.join(HOOKS, 'shell-writes.js'))}); sw.gitText = (raw, cwd) => sw.failedRead(raw, cwd, new RangeError('x'));\n`);
+  // run in a project of its own, so a block row lands in the temp dir, never the checkout's ledger
+  const guard = (command) => spawnSync(process.execPath, ['-r', stub, path.join(HOOKS, 'guard-protected-force-push.js')], { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: dir }), encoding: 'utf8' }).status;
+  try {
+    assert.strictEqual(guard('git push --force origin main'), 2, 'a failed read of a push blocks');
+    assert.strictEqual(guard('npm test'), 0, 'a failed read naming no push passes');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test('review 15, gaps: a NUL ends an ANSI-C word, zsh drops an unknown escape, a git substitution can print git', () => {
+  for (const c of ["$'git\\0x' push --force origin main", "$'g\\it' push --force origin main", "x=$(git --version | cut -d' ' -f1); $x push --force origin main"]) assert.ok(ran(c, 'push'), c);
+  assert.strictEqual(shell.gitText('cd "$(git rev-parse --show-toplevel)" && npm test', process.cwd()).unreadAt, -1);
+});
