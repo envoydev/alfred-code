@@ -686,6 +686,31 @@ test('guard-protected-force-push: a held branch is read from its own loop, the r
   assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
 });
 
+test('guard-protected-force-push: a held branch inside a carried script, a switch back through a variable (review 18)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // F1: the loop around the script that carries the push
+  for (const c of ['for b in main develop; do bash -c "git push -f origin $b"; done', 'for b in main develop; do sh -c "git push --force origin $b"; done',
+    'for b in main develop; do eval "git push --force origin $b"; done', 'for b in main develop; do bash <<< "git push -f origin $b"; done',
+    'for b in main develop; do\n  bash <<EOF\ngit push -f origin $b\nEOF\ndone', 'for b in main develop; do echo "git push -f origin $b"; done | sh']) {
+    assert.equal(at(c, onFeature), 2, `must block: ${c}`);
+  }
+  // F2: a checkout back to the branch a current-branch binding held
+  const back = 'BR=$(git branch --show-current); git checkout main && git pull && git checkout "$BR" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"';
+  assert.equal(at(back, onFeature), 0, 'back on the feature branch');
+  assert.equal(at(back.replace('git checkout main', 'git checkout feature/x'), onMain), 2, 'back on main');
+  // a loop variable read by a function the loop calls, after its loop, or past a long list
+  for (const c of ['p() { git push -f origin "$b"; }; for b in main develop; do p; done', 'for b in feat main; do git fetch origin $b; done; git push -f origin $b',
+    `for b in ${Array.from({ length: 70 }, (_, i) => `f${i}`).join(' ')} main; do git push -f origin "$b"; done`]) {
+    assert.equal(at(c, onFeature), 2, `must block: ${c.slice(0, 80)}`);
+  }
+  // F3: each git asked once per name
+  const t0 = Date.now();
+  at(Array.from({ length: 40 }, (_, i) => `git checkout feat-${i} && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"`).join(' && '), onFeature);
+  assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
+});
+
 test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {
   const dir = scratchRepoOn('main');
   const fp = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });

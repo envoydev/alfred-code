@@ -167,8 +167,65 @@ function heldValues(read, call, dir, name)
         const head = headAt(read, { at: ev.at }, dir);
         return head ? [head] : null;
     }
-    const words = read.parsed && call.cmd && shellWrites.loopWordsAt ? shellWrites.loopWordsAt(read.parsed, name, call.cmd) : null;
-    return words ? [...new Set(words.filter(w => !/[$`*?[\]{}]/.test(w)).map(unquote))] : null;
+    if (!read.parsed || !shellWrites.loopWordsAt)
+    {
+        return null;
+    }
+    // the loop around the push, else around each script that carries it, innermost first (review 18, F1: `for b in main
+    // develop; do bash -c "git push -f origin $b"; done` read the push alone, after the whole command); else, for a use
+    // no loop encloses - a function the loop calls, a use after the loop - every loop binding the name
+    let words = null;
+    for (const c of carriersOf(read, call))
+    {
+        words = shellWrites.loopWordsAt(read.parsed, name, c);
+        if (words)
+        {
+            break;
+        }
+    }
+    words = words || shellWrites.loopWordsAt(read.parsed, name, null, true);
+    if (!words)
+    {
+        return null;
+    }
+    // protected names first, so the 64-reading cap never drops one
+    return [...new Set(words.filter(w => !/[$`*?[\]{}]/.test(w)).map(unquote))].sort((a, b) => PROTECTED.includes(b) - PROTECTED.includes(a));
+}
+// The command a call sits in, then each command carrying the script it sits in, innermost first: a carried script is read
+// after the whole command (shell-writes gitText's regions), so its own command is inside no loop of the text
+const CARRIER_CMD = new WeakMap();
+function carriersOf(read, call)
+{
+    const out = call.cmd ? [call.cmd] : [];
+    let region = null;
+    for (const g of read.regions || [])
+    {
+        if (call.at >= g.from && call.at < g.to && (!region || g.from >= region.from))
+        {
+            region = g;
+        }
+    }
+    if (!region || !region.trail || !region.trail.length)
+    {
+        return out;
+    }
+    let byPos = CARRIER_CMD.get(read);
+    if (!byPos)
+    {
+        CARRIER_CMD.set(read, (byPos = new Map()));
+    }
+    for (const pos of region.trail.slice().reverse())
+    {
+        if (!byPos.has(pos))
+        {
+            byPos.set(pos, read.parsed.cmds.find(k => k.words.length && k.words[0].s <= pos && pos < k.words[k.words.length - 1].e) || null);
+        }
+        if (byPos.get(pos))
+        {
+            out.push(byPos.get(pos));
+        }
+    }
+    return out;
 }
 function heldRefs(read, call, dir)
 {
@@ -367,7 +424,7 @@ function headAt(read, push, dir)
         {
             continue;
         }
-        const t = switchTarget(c);
+        let t = switchTarget(c);
         if (!t)
         {
             continue;
@@ -376,6 +433,18 @@ function headAt(read, push, dir)
         {
             [cur, prev] = [prev, cur];
             continue;
+        }
+        if (t.branch && t.branch.includes('$'))
+        {
+            // a target held in a variable is read as a pushed one is (review 18, F2: `git checkout "$BR"` back to the branch
+            // a current-branch binding held stayed on main); one it cannot read is skipped as before
+            const vals = heldRefs(read, c, cDir)(unquote(t.branch)).filter(v => !v.includes('$'));
+            if (!vals.length)
+            {
+                continue;
+            }
+            const guarded = vals.find(v => PROTECTED.includes(v));
+            t = { ...t, branch: guarded || vals[0], verify: !guarded };
         }
         if (t.verify && !PROTECTED.includes(t.branch) && !namesBranch(cDir, t.branch))
         {
@@ -771,5 +840,25 @@ function main()
         'give them the exact command to type themselves (a `!` prefix runs it in this session), never a way around this guard.\n');
     process.exit(2);
 }
+
+// Every git these helpers run is asked once per directory and name in a run (review 18, F3: each push replayed every
+// earlier checkout and spawned a git for each - 8.5 s for 40 chained branch pushes)
+const askedOnce = (fn) =>
+{
+    const seen = new Map();
+    return (...args) =>
+    {
+        const key = args.map(String).join('\0');
+        if (!seen.has(key))
+        {
+            seen.set(key, fn(...args));
+        }
+        return seen.get(key);
+    };
+};
+namesBranch = askedOnce(namesBranch);
+currentBranch = askedOnce(currentBranch);
+previousBranch = askedOnce(previousBranch);
+remoteDefault = askedOnce(remoteDefault);
 
 main();

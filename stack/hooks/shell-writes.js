@@ -2833,9 +2833,19 @@ function loopAt(P, name, cmd) {
   for (const [open, h] of heads) if (open.index > best.index && open.index < cmd.index) for (const w of h.list) words.push(w);
   return { best, words };
 }
-// ... as raw words, for a guard reading a variable a loop binds (the force-push guard's held branch, review 17)
-function loopWordsAt(P, name, cmd) {
-  const at = P ? loopAt(P, name, cmd) : null;
+// ... as raw words, for a guard reading a variable a loop binds (the force-push guard's held branch, review 17); with
+// `anywhere`, the words of every loop binding the name, for a use no loop encloses (a function the loop calls, a use
+// after the loop - review 18)
+function loopWordsAt(P, name, cmd, anywhere = false) {
+  if (!P) return null;
+  if (anywhere) {
+    const heads = loopHeadsIn(P).get(name);
+    if (!heads || heads.size > HEADS_MAX) return null;
+    const words = [];
+    for (const h of heads.values()) for (const w of h.list) words.push(w.raw);
+    return words;
+  }
+  const at = loopAt(P, name, cmd);
   return at ? at.words.map((w) => w.raw) : null;
 }
 function carriedOf(P, raw, heredocs, opts, run) {
