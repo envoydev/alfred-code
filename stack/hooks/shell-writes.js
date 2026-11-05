@@ -84,6 +84,28 @@ function heredocsOf(text) {
     return lo < list.length ? list[lo] : -1;
   };
   const lineEndAt = (pos) => { const e = text.indexOf('\n', pos); return e < 0 ? text.length : e; };
+  // The quote and comment state up to each candidate opener, read once from the start and past every body already
+  // found, as quotedSpans reads it (a `$(` pauses the quote around it; `$'...'` honours escapes): a `<<` inside quotes
+  // or after a comment's `#` opens nothing (the eighth R015 review: `echo "<<'EOF'"` hid the lines after it from every
+  // guard; bash runs them).
+  let qpos = 0; let q = null; let ansi = false; let escaped = -1; let bi = 0;
+  const qstack = [];
+  const advance = (to) => {
+    while (qpos < to) {
+      if (bi < out.length && qpos >= out[bi].bodyStart) { qpos = Math.max(qpos, out[bi].end); bi++; continue; }
+      const c = text[qpos];
+      if (q === "'") {
+        if (ansi && c === '\\') qpos++;
+        else if (c === "'") { q = null; ansi = false; }
+      } else if (c === '\\') { escaped = qpos + 1; qpos++; }
+      else if (c === '$' && text[qpos + 1] === '(') { qstack.push(q); q = null; qpos++; }
+      else if (!q && c === ')' && qstack.length) q = qstack.pop();
+      else if (!q && (c === '"' || c === "'")) { q = c; ansi = c === "'" && ansiQuoteAt(text, qpos, escaped); }
+      else if (q === '"' && c === '"') q = null;
+      else if (!q && c === '#' && (qpos === 0 || /[\s;&|()]/.test(text[qpos - 1]))) { qpos = lineEndAt(qpos); continue; }
+      qpos++;
+    }
+  };
   while (next >= 0) {
     const ls = text.lastIndexOf('\n', next) + 1;
     const le = lineEndAt(next);
@@ -96,6 +118,8 @@ function heredocsOf(text) {
       }
       if (text[i + 2] === '<') { i += 1; cursor = Math.max(cursor, i + 2); continue; } // a here-string
       if (arith) continue;
+      advance(i);
+      if (q || qpos > i) continue;
       OPENER.lastIndex = i;
       const m = OPENER.exec(text);
       if (!m || OPENER.lastIndex > le) continue;
@@ -221,27 +245,39 @@ function blankComments(command) {
 // there still counts), and the outer span resumes after the matching `)`.
 const QS_CLASS = new Uint8Array(128); // the characters quotedSpans reads outside single quotes
 for (const ch of '\\$)"\'') QS_CLASS[ch.charCodeAt(0)] = 1;
+// An ANSI-C quote (`$'...'`) opens at a `'` after an odd run of `$` none of which is escaped (`$$'x'` is the PID, then a
+// plain quote); inside it a backslash escapes the next character, the closing quote included (the eighth R015 review:
+// `echo $'a\\'b' ; git push` read as one quoted run hid the push from every guard).
+function ansiQuoteAt(text, i, escaped) {
+  let k = i - 1;
+  while (k >= 0 && text[k] === '$' && k !== escaped) k--;
+  return (i - 1 - k) % 2 === 1;
+}
+function ansiCloseFrom(text, i) {
+  for (let j = i; j < text.length; j++) { if (text[j] === '\\') j++; else if (text[j] === "'") return j; }
+  return -1;
+}
 function quotedSpans(command) {
   const quoted = [];
-  const stack = []; let q = null; let start = 0;
+  const stack = []; let q = null; let start = 0; let ansi = false; let escaped = -1;
   const n = command.length;
   for (let i = 0; i < n; i++) {
-    if (q === "'") { // nothing inside single quotes but the closing quote
-      const close = command.indexOf("'", i);
+    if (q === "'") { // nothing inside single quotes but the closing quote (and, in `$'...'`, an escaped character)
+      const close = ansi ? ansiCloseFrom(command, i) : command.indexOf("'", i);
       if (close < 0) break;
-      quoted.push([start, close + 1]); q = null; i = close;
+      quoted.push([start, close + 1]); q = null; ansi = false; i = close;
       continue;
     }
     const code = command.charCodeAt(i);
     if (code >= 128 || !QS_CLASS[code]) continue;
     const c = command[i];
-    if (c === '\\') { i++; continue; }
+    if (c === '\\') { escaped = i + 1; i++; continue; }
     if (c === '$' && command[i + 1] === '(') {
       if (q) quoted.push([start, i]);          // the outer span pauses here
       stack.push(q); q = null; i++; continue;
     }
     if (!q && c === ')' && stack.length) { q = stack.pop(); start = i + 1; continue; }
-    if (!q && (c === '"' || c === "'")) { q = c; start = i; }
+    if (!q && (c === '"' || c === "'")) { q = c; start = i; ansi = c === "'" && ansiQuoteAt(command, i, escaped); }
     else if (q && c === q) { quoted.push([start, i + 1]); q = null; }
   }
   if (q) quoted.push([start, n]);
@@ -414,6 +450,17 @@ function normCmd(word, assigns) {
   return FOLDS_CASE ? base.toLowerCase() : base;
 }
 
+// `$((` at `i` is arithmetic only when the group its second `(` opens closes right before the outer `)` - as bash and zsh
+// read it: `$((git push) )` and `$((a) ; (b))` are a substitution holding a subshell, run (the eighth R015 review). No
+// close at all keeps the arithmetic reading.
+function arithmeticAt(command, i) {
+  let lvl = 0;
+  for (let j = i + 1; j < command.length; j++) {
+    if (command[j] === '(') lvl++;
+    else if (command[j] === ')' && --lvl === 1) return command[j + 1] === ')';
+  }
+  return true;
+}
 function parseShell(command, opts = {}) {
   const n = command.length;
   const spans = sortedByStart(quotedSpans(command));
@@ -558,7 +605,7 @@ function parseShell(command, opts = {}) {
     }
     if (c === '$') {
       const d = command[i + 1];
-      if (d === '(' && command[i + 2] === '(') { // arithmetic: part of the word
+      if (d === '(' && command[i + 2] === '(' && arithmeticAt(command, i)) { // arithmetic: part of the word
         if (wStart < 0) wStart = i;
         let lvl = 0;
         let j = i + 1;

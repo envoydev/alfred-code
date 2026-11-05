@@ -457,7 +457,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Heredoc spans come from `heredocsOf` in this guard and the secret guard alike, so every opener spelling it accepts
     (`<<\EOT`, `<<-'EOT'`, `<< 'EOT'`) is judged the same (seam M1; a table test runs each spelling through both), a runtime
     or shell here-string is read as its inline flag, `deno` / `bun` / `pwsh` bodies are judged, and an unquoted heredoc's `$(...)`
-    is a command (m2, m5). TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
+    is a command (m2, m5). The shared reader reads three shapes as bash and zsh do (the eighth R015 review, 2026-11-05: each
+    hid a `git push` from every guard): a `<<` inside quotes or after a comment's `#` opens no heredoc, `$'...'` honours its
+    backslash escapes (`ansiQuoteAt`; `$$'x'` is the PID, then a plain quote), and `$((` is arithmetic only when its inner
+    group closes on `))` (`arithmeticAt`), else a substitution holding a subshell (`$((git push) )`). TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
     budget of `hook-prelude.js` `SCAN_LIMITS` (8MB of text, 3 script levels, 48 judged git calls) that the shared reader spends.
     Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
     on any machine: each judging step charges the characters it reads, the two thresholds at the top of each guard

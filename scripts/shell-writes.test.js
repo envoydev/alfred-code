@@ -267,6 +267,21 @@ test('commandIndex walks past a body keyword, a group opener, ! and setsid', () 
   assert.strictEqual(at('setsid bash -c x'), 'bash');
   assert.strictEqual(at('echo rm'), 'echo');
 });
+test('gitText: ANSI-C quoting, a `$((` bash runs as a substitution and a quoted or commented heredoc opener hide no command (the eighth R015 review, 2026-11-05)', () => {
+  const subs = (c) => shell.gitText(c, process.cwd()).calls.map((x) => x.sub);
+  assert.deepStrictEqual(subs("echo $'a\\'b' ; git push"), ['push'], "$'a\\'b' is one word");
+  assert.deepStrictEqual(subs("echo $$'\\' ; git push"), ['push'], "$$ then a plain '\\'");
+  assert.deepStrictEqual(subs("echo \\$'a\\' ; git push"), ['push'], 'an escaped $ opens no ANSI-C quote');
+  assert.deepStrictEqual(subs('echo $((git push) )'), ['push'], 'the inner group closes on ") " - a substitution');
+  assert.deepStrictEqual(subs('echo $((echo a) ; (git push))'), ['push']);
+  assert.deepStrictEqual(subs('echo $(( (1+2) )) && git status'), ['status'], 'arithmetic stays arithmetic');
+  assert.deepStrictEqual(subs('echo "<<\'EOF\'"\ngit push\nEOF'), ['push'], 'a double-quoted opener');
+  assert.deepStrictEqual(subs("echo '<<EOF'\ngit push\nEOF"), ['push'], 'a single-quoted opener');
+  assert.deepStrictEqual(subs('echo hi # <<EOF\ngit push\nEOF'), ['push'], 'an opener in a comment');
+  assert.deepStrictEqual(subs("cat <<'EOF'\nit's \"\ngit push\nEOF\ngit status"), ['status'], 'a real body holding quotes stays a body');
+  assert.deepStrictEqual(subs('x="a\nb" && cat <<EOF\ngit push\nEOF'), [], 'a quote spanning lines before a real opener');
+  assert.strictEqual(shell.heredocsOf('echo ${#x} <<EOF\nbody\nEOF').length, 1, '${#x} starts no comment');
+});
 test('commandWords: `time` takes a whole pipeline, a body keyword included (the seventh R015 review, 2026-11-05)', () => {
   const names = (c) => { const g = shell.gitText(c, process.cwd()); return shell.commandWords(g.command, g.parsed).map((w) => w.name); };
   assert.ok(names('time until gh pr merge --squash; do :; done').includes('gh'), 'time until');

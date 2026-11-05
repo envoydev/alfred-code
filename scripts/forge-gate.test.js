@@ -502,7 +502,11 @@ test('push gate: a dry run or a push with nothing ahead goes ungated only as the
     'git branch -f other wip && git push', '{ git push -n origin feature; }',
     ': ${X:-$(git push -q -f origin wip:feature)}', 'cat <<EOF\n$(git push -q -f origin wip:feature)\nEOF',
     'git push -n origin feature <<EOF\n$(git push -f origin wip:feature)\nEOF', 'echo push | xargs -I{} git {} -f origin wip:feature',
-    'echo push | xargs -I SUB git SUB -f origin wip:feature']) {
+    'echo push | xargs -I SUB git SUB -f origin wip:feature',
+    // the eighth review's leads, each a push the shared reader never saw: ANSI-C quoting, a `$((` that bash runs as a
+    // substitution, a heredoc opener inside quotes or a comment
+    "echo $'a\\'b' ; git push -f origin wip:feature", 'echo $((git push -f origin wip:feature) )',
+    'echo "<<\'EOF\'"\ngit push -f origin wip:feature\nEOF', 'echo hi # <<EOF\ngit push -f origin wip:feature\nEOF']) {
     const got = bare(cmd);
     assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
     assert.match(got.stderr, /PUSH-GATE/, cmd);
