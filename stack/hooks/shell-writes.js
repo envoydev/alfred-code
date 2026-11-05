@@ -2161,23 +2161,26 @@ function escapesOut(s) {
   }
   return { text: out, stop: false };
 }
-// An echo with neither -e nor -E has two readings: bash prints its backslashes as written, zsh (and an xpg echo) reads them
-// as escapes. A pass reads the escapes; `echoSplit` says it met an echo whose two readings differ, and carriedScripts then
-// reads the command again with `echoLiteral` on (the twelfth gate: a Windows path's `\a` read as a bell hid the path).
-let echoLiteral = false;
-let echoSplit = false;
+// Every command is read two ways where the shells part (the twelfth gate, the thirteenth review). The first reading is
+// zsh's and sh's: echo reads its escapes whatever -e / -E says (sh and dash print `-E` and still read them), a printf
+// format ends at `\c`, and a print whose stdout goes to a file or stderr joins no stream. The second is bash's: echo
+// reads escapes only after -e (the last of -e / -E decides), a printf format prints `\c` and goes on, and every print
+// joins the stream - zsh's multios sends a pipe stage's redirected output down the pipe too, and an enclosing `2>&1`,
+// `|&` or `exec` sends stderr there. A pass sets `readingsDiffer` when one of these met a text where the two part, and
+// carriedScripts then reads the command again with `bashReading` on.
+let bashReading = false;
+let readingsDiffer = false;
 function echoPrint(words) {
   const w = words.slice();
   let line = true;
-  let mode = null; // the last of -e / -E decides
+  let mode = null;
   while (w.length && /^-[neE]+$/.test(w[0])) { for (const ch of w[0].slice(1)) { if (ch === 'n') line = false; else mode = ch; } w.shift(); }
   const said = w.join(' ');
-  const plain = { text: said + (line ? '\n' : ''), odd: false };
-  if (mode === 'E' || (mode === null && echoLiteral)) return plain;
   const r = escapesOut(said);
-  const read = { text: r.text + (line && !r.stop ? '\n' : ''), odd: false };
-  if (mode === null && read.text !== plain.text) echoSplit = true;
-  return read;
+  const read = r.text + (line && !r.stop ? '\n' : '');
+  const bash = mode === 'e' ? read : said + (line ? '\n' : '');
+  if (bash !== read) readingsDiffer = true;
+  return { text: bashReading ? bash : read, odd: false };
 }
 // A printf number: a leading quote is the next character's code, else C's decimal, octal and hex forms; null for any other
 function printfNumber(a) {
@@ -2208,7 +2211,14 @@ function printfPrint(words) {
     let used = false;
     for (let k = 0; k < format.length;) {
       const ch = format[k];
-      if (ch === '\\') { const e = escapeAt(format, k, true); if (e.stop) return { text: out, odd: false }; out += e.text; k += e.len; continue; }
+      if (ch === '\\') {
+        const e = escapeAt(format, k, true);
+        if (e.stop && bashReading) { out += '\\c'; k += e.len; continue; } // bash, sh and dash print it and go on
+        if (e.stop) { readingsDiffer = true; return { text: out, odd: false }; }
+        out += e.text;
+        k += e.len;
+        continue;
+      }
       if (ch !== '%') { const j = format.slice(k).search(/[\\%]/); const end = j < 0 ? format.length : k + j; out += format.slice(k, end); k = end; continue; }
       PRINTF_SPEC.lastIndex = k;
       const m = PRINTF_SPEC.exec(format);
@@ -2691,7 +2701,9 @@ function singleQuoted(P, i) {
 // string, dequoted as zsh reads it, and each `+` command name. `u`, `g`, `f` and `P` take a delimited argument, skipped.
 const QUAL_PAIRS = { '(': ')', '[': ']', '{': '}', '<': '>' };
 const QUAL_AFTER = /[^\s$<>=|&;()`{]/; // the character a qualifier list opens after: the end of a glob word
-const PARAM_E = /\$\{\(([^()$]{0,32})\)([A-Za-z_]\w*)/g; // zsh's `${(flags)name}`, its flags bounded: an open run backtracked (the twelfth review: 30 s)
+// zsh's `${(flags)name}`: the flags run matched once, never backtracked (the twelfth review: 30 s on an open run; the
+// thirteenth: a bound of 32 missed a longer run)
+const PARAM_E = /\$\{\((?=([^()$]*))\1\)([A-Za-z_]\w*)/g;
 function qualifierCode(q) {
   const out = [];
   const closeOf = (from, d) => {
@@ -2798,6 +2810,11 @@ function carriedOf(P, raw, heredocs, opts, run) {
   // What a list of commands prints into one stream, as far as the text shows it: echo, printf and a cat of a heredoc or
   // here-string, joined as the shell writes them - echo ends its line, printf adds nothing (the eleventh review:
   // `{ printf 'git '; echo push; } | sh` read as two scripts, `git` and `push`) - plus each file a cat prints, a script of its own
+  const reaches = (k, text) => {
+    if (stdoutOf(k, text) === 'out') return true;
+    readingsDiffer = true;
+    return bashReading;
+  };
   const printedBy = (cmds, at) => {
     let stream = '';
     let parts = 0;
@@ -2806,7 +2823,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
     resetPrint();
     for (const k of cmds) {
       const c = k.cands && k.cands[k.cands.length - 1];
-      if (!c || stdoutOf(k, P.command) !== 'out') continue;
+      if (!c || !reaches(k, P.command)) continue;
       if (c.name === 'echo' || c.name === 'printf') { stream += printText(c.name, printedWords(raw, k, c, 0)); parts++; }
       else if (c.name === 'cat') { // its heredoc, here-string and files, in the stream's own order (the twelfth review, 1)
         for (const h of docsOf.get(k) || []) { stream += lineEnd(bodyText(raw, h, 0)); parts++; }
@@ -2939,7 +2956,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
     for (const k of levelOf(Q, null, 0, Q.cmds.length)) {
       const c = k.cands && k.cands[k.cands.length - 1];
       if (!c) continue;
-      if (stdoutOf(k, Q.command) !== 'out') continue;
+      if (!reaches(k, Q.command)) continue;
       if (c.name === 'echo' || c.name === 'printf') { out += printText(c.name, printedWords(inner, k, c, depth + 1)); any = true; }
       else if (c.name === 'cat') {
         for (const h of docsBy.get(k) || []) { out += lineEnd(bodyText(inner, h, depth + 1)); any = true; }
@@ -2956,12 +2973,25 @@ function carriedOf(P, raw, heredocs, opts, run) {
   // output stays as written
   // `$NAME` / `${NAME}` in text the shell expands, as the literal the command bound it to - an escaped one, or one
   // bound to anything else, stays as written (the twelfth review, 3: `x="git push"; sh <<<"$x"` ran a push read as `$x`)
-  const boundIn = (text, at) => text.replace(/(\\*)\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g, (m, bs, br, bare) => {
-    if (bs.length % 2) return m;
-    if (!vars) vars = shellVars(P, {});
-    const v = vars.literalOf(br || bare, at);
-    return v === null ? m : bs + v;
-  });
+  const boundIn = (text, at) => {
+    if (!text.includes('$')) return text;
+    const re = /\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g;
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(text))) {
+      let k = m.index;
+      while (k > 0 && text[k - 1] === '\\') k--;
+      if ((m.index - k) % 2) continue; // an escaped `$` (the thirteenth review: a backslash run backtracked 23 s)
+      if (!vars) vars = shellVars(P, {});
+      const v = vars.literalOf(m[1] || m[2], at);
+      if (v === null) continue;
+      if (!run.budget.take(v.length)) { deepPrint = true; return text; } // the thirteenth review: 3 GB unread
+      out += text.slice(last, m.index) + v;
+      last = re.lastIndex;
+    }
+    return out + text.slice(last);
+  };
   const bodyText = (src, h, depth) => {
     const body = bodyOf(src, h);
     if (h.quoted || !/[$`]/.test(body)) return body;
@@ -2983,8 +3013,8 @@ function carriedOf(P, raw, heredocs, opts, run) {
   const hereString = (src, t, depth) => {
     const p = /[$`]/.test(t.raw) ? subPrintIn(src, t, depth, true) : null;
     if (p !== null) return p;
-    const d = dequote(t.raw);
-    return src === raw && t.raw.includes('$') && !/['\\]/.test(t.raw) ? boundIn(d, t.s) : d;
+    if (src === raw && /[$`]/.test(t.raw)) { const y = expandWord(t, t.s, null); if (y && y.fields) return y.fields.join(' '); }
+    return dequote(t.raw);
   };
   // A word holding substitutions (`"$(cat <<'EOF' ... EOF)"`, `"eval "$(echo x)""`, a backtick): its text with each one
   // replaced by what it prints - null when any one is another program's, whose output does not exist until it runs
@@ -3038,33 +3068,99 @@ function carriedOf(P, raw, heredocs, opts, run) {
   // is only quoted variables, which the command's own name already reads - or { unknown, git } when a part is another
   // program's output or a value the command does not spell out, `git` when its binding or the word names git; null when
   // the word expands nothing.
+  // A frame is `outer` or inside it: a set in a subshell or a substitution ends with it
+  const within = (inner, outer) => {
+    for (let fr = inner, n = 0; n < 64; fr = fr.parent, n++) { if (fr === outer) return true; if (!fr) return false; }
+    return false;
+  };
+  // Each `set` that sets the positional words: after `--` or `-`, or from its first word that is no option (`set -e --
+  // git push`, `set - git push` - the thirteenth review), its words read lazily, each expanded as a command word is
   let setsAt = null;
-  const positionalAt = (at) => {
-    if (!setsAt) {
-      setsAt = [];
-      for (const k of P.cmds) {
-        for (const c of k.cands) {
-          if (c.name !== 'set' || !c.argv.length || (c.argv[0] !== '--' && /^[-+]/.test(c.argv[0]))) continue;
-          const from = k.words[c.at].s;
-          setsAt.push({ at: from, args: c.argv[0] === '--' ? c.argv.slice(1) : c.argv.slice(), known: !/[$`]/.test(P.command.slice(from, k.words[k.words.length - 1].e)) });
+  const setsOf = () => {
+    if (setsAt) return setsAt;
+    setsAt = [];
+    for (const k of P.cmds) {
+      for (const c of k.cands) {
+        if (c.name !== 'set') continue;
+        let w = c.at + 1;
+        let list = false;
+        for (; w < k.words.length; w++) {
+          const a = dequote(k.words[w].raw);
+          if (a === '--' || a === '-') { w++; list = true; break; }
+          if (/^[-+]o$/.test(a)) { w++; continue; }
+          if (/^[-+]/.test(a)) continue;
+          list = true;
+          break;
         }
+        if (list) setsAt.push({ at: k.words[c.at].s, end: k.words[k.words.length - 1].e, frame: k.frame, words: k.words.slice(w), args: null });
       }
-      setsAt.sort((x, y) => x.at - y.at);
     }
+    setsAt.sort((x, y) => x.at - y.at);
+    return setsAt;
+  };
+  const argsOf = (st) => {
+    if (st.args) return st.args;
+    st.args = { unknown: true, git: false }; // while its own words are read
+    const list = [];
+    let unknown = null;
+    for (const t of st.words) {
+      if (!/[$`]/.test(t.raw)) { list.push(dequote(t.raw)); continue; }
+      const y = expandWord(t, t.s, st.frame);
+      if (y && y.fields) list.push(...y.fields);
+      else if (y && y.unknown) { unknown = { unknown: true, git: y.git || gitWord(t.raw) }; break; }
+      else list.push(dequote(t.raw));
+    }
+    st.args = unknown || { list };
+    return st.args;
+  };
+  // the positional words at `at` in `frame`: the newest set before it that ended before it, in that frame or one around it
+  const positionalAt = (at, frame) => {
+    const list = setsOf();
     let lo = 0;
-    let hi = setsAt.length - 1;
-    let best = null;
-    while (lo <= hi) { const mid = (lo + hi) >> 1; if (setsAt[mid].at < at) { best = setsAt[mid]; lo = mid + 1; } else hi = mid - 1; }
-    return best;
+    let hi = list.length - 1;
+    let i = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (list[mid].at < at) { i = mid; lo = mid + 1; } else hi = mid - 1; }
+    for (let n = 0; i >= 0 && n < 64; i--, n++) if (list[i].end <= at && within(frame, list[i].frame)) return argsOf(list[i]);
+    return i >= 0 ? { unknown: true, git: false } : null;
   };
   const arrays = new Map();
   const elementsOf = (ev) => {
     if (arrays.has(ev)) return arrays.get(ev);
     const inner = String(ev.raw).slice(1, -1);
-    const r = /[$`]/.test(inner) || !run.budget.take(inner.length) ? { unknown: true, git: NAMES_GIT.test(inner) }
+    const r = /[$`]/.test(inner) || !run.budget.take(inner.length) ? { unknown: true, git: gitWord(inner) }
       : { els: parseShell(inner).cmds.flatMap((k) => k.words.map((w) => dequote(w.raw))) };
     arrays.set(ev, r);
     return r;
+  };
+  // `name[i]=...` / `name[i]+=...` between an array's assignment and its use: the elements are no longer the list's
+  let elemAt = null;
+  const elementSetBetween = (name, from, to) => {
+    if (!elemAt) {
+      elemAt = new Map();
+      for (const m of P.command.matchAll(/(?:^|[\s;&|(])([A-Za-z_]\w*)\[[^\]\n]{0,64}\]\+?=/g)) {
+        if (!elemAt.has(m[1])) elemAt.set(m[1], []);
+        elemAt.get(m[1]).push(m.index);
+      }
+    }
+    const ps = elemAt.get(name);
+    if (!ps) return false;
+    let lo = 0;
+    let hi = ps.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (ps[mid] <= from) lo = mid + 1; else hi = mid; }
+    return lo < ps.length && ps[lo] < to;
+  };
+  // Whether anything binding `name` - a loop's word list, an assignment, an append, an element - names git as a word (the
+  // thirteenth review: `for c in "git push"; do $c; done` and `cmd=(git); cmd+=(push); "${cmd[@]}"` ran unread)
+  const binders = new Map();
+  const binderGit = (name) => {
+    if (binders.has(name)) return binders.get(name);
+    let v = false;
+    if (run.budget.take(P.command.length)) {
+      const re = new RegExp(`\\b(?:for|select)\\s+${name}\\s+in\\b([^;\\n]*)|\\b${name}(?:\\[[^\\]\\n]{0,64}\\])?\\+?=(\\([^)]*\\)|[^\\s;&|]*)`, 'g');
+      for (const m of P.command.matchAll(re)) if (gitWord(m[1] || m[2] || '')) { v = true; break; }
+    } else deepPrint = true;
+    binders.set(name, v);
+    return v;
   };
   const assignedPrint = (ev, name) => {
     const r = String(ev.raw);
@@ -3081,16 +3177,34 @@ function carriedOf(P, raw, heredocs, opts, run) {
     if (!vars) vars = shellVars(P, {});
     const ev = vars.eventOf(name, at);
     if (!ev) return { unknown: true, git: false, unset: true };
-    if (ev.bound) return { unknown: true, git: false };
+    if (ev.bound) return { unknown: true, git: binderGit(name) };
     const r = String(ev.raw !== undefined ? ev.raw : ev.value);
-    if (r.length > 1 && r[0] === '(' && r[r.length - 1] === ')') { const x = elementsOf(ev); return x.els ? { v: x.els.join(' '), els: x.els } : x; }
+    if (r.length > 1 && r[0] === '(' && r[r.length - 1] === ')') {
+      if (elementSetBetween(name, ev.at, at)) return { unknown: true, git: binderGit(name) };
+      const x = elementsOf(ev);
+      return x.els ? { v: x.els.join(' '), els: x.els } : x;
+    }
     const lit = vars.literalOf(name, at);
     if (lit !== null) return { v: lit };
     const p = assignedPrint(ev, name);
-    return p !== null ? { v: p } : { unknown: true, git: NAMES_GIT.test(r) };
+    return p !== null ? { v: p } : { unknown: true, git: gitWord(r) };
   };
   const fieldWord = (w) => (/^[\w@%+=:,./*?[\]-]+$/.test(w) ? w : runnerQuote(w));
-  const expandWord = (tok, at) => {
+  // `$'...'`: bash's and zsh's C-style string, its escapes read (\c ends it)
+  const ansiC = (src, i) => {
+    let j = i + 2;
+    while (j < src.length && src[j] !== "'") j += src[j] === '\\' ? 2 : 1;
+    let text = '';
+    for (let k = i + 2; k < Math.min(j, src.length);) {
+      if (src[k] !== '\\') { text += src[k]; k++; continue; }
+      const e = escapeAt(src, k, true);
+      if (e.stop) break;
+      text += e.text;
+      k += e.len;
+    }
+    return { text, end: j };
+  };
+  const expandWord = (tok, at, frame) => {
     const src = tok.raw;
     const subs = tok.lex ? [...subsIn(tok.lex, tok.s, tok.e)].sort((x, y) => x[0] - y[0]) : [];
     const parts = [];
@@ -3102,13 +3216,14 @@ function carriedOf(P, raw, heredocs, opts, run) {
     let anyVar = false;
     let unknown = null;
     const flush = () => { if (lit !== null) { parts.push({ text: lit }); lit = null; } };
+    const miss = (git) => { if (!unknown) unknown = { unknown: true, git: false }; if (git) unknown.git = true; };
     const put = (v, o = {}) => {
+      if (!run.budget.take(String(v).length)) { deepPrint = true; miss(false); return; } // the thirteenth review: 100 s
       flush();
       expanded = true;
       if (!dq || o.many || o.reread) plain = false;
       parts.push(o.many && dq ? { many: o.many } : { text: v, split: !dq });
     };
-    const miss = (git) => { if (!unknown) unknown = { unknown: true, git: false }; if (git) unknown.git = true; };
     const lookup = (name) => { const r = nameValue(name, at); if (r.unknown) { miss(r.git); return null; } anyVar = true; return r; };
     let si = 0;
     for (let i = 0; i < src.length; i++) {
@@ -3126,27 +3241,48 @@ function carriedOf(P, raw, heredocs, opts, run) {
       if (ch === "'" && !dq) { const j = src.indexOf("'", i + 1); lit = (lit || '') + src.slice(i + 1, j < 0 ? src.length : j); i = j < 0 ? src.length : j; continue; }
       if (ch === '"') { dq = !dq; lit = lit || ''; continue; }
       if (ch !== '$') { lit = (lit || '') + ch; continue; }
+      if (src[i + 1] === "'" && !dq) { const q = ansiC(src, i); lit = (lit || '') + q.text; i = q.end; continue; }
       let body;
-      if (src[i + 1] === '{') { const j = src.indexOf('}', i + 2); if (j < 0) { miss(false); break; } body = src.slice(i + 2, j); i = j; }
+      if (src[i + 1] === '{') { // to its own `}`, past any `${...}` inside (`${x:-${y}}`)
+        let j = i + 2;
+        for (let d = 1; j < src.length; j++) {
+          if (src[j] === '$' && src[j + 1] === '{') { d++; j++; } else if (src[j] === '}' && --d === 0) break;
+        }
+        if (j >= src.length) { miss(false); break; }
+        body = src.slice(i + 2, j);
+        i = j;
+      }
       else { const m = /^(?:[A-Za-z_]\w*|[@*#?$!0-9-])/.exec(src.slice(i + 1, i + 256)); if (!m) { lit = (lit || '') + ch; continue; } body = m[0]; i += m[0].length; }
       let m;
       if ((m = /^([@*1-9])$/.exec(body))) {
-        const st = positionalAt(at);
-        if (!st || !st.known) { miss(false); continue; }
+        const st = positionalAt(at, frame);
+        if (!st || st.unknown) { miss(st ? st.git : false); continue; }
         anyVar = true;
-        if (m[1] === '@' || m[1] === '*') put(st.args.join(' '), { many: m[1] === '@' ? st.args : null, reread: true });
-        else put(st.args[Number(m[1]) - 1] || '', { reread: true });
+        if (m[1] === '@' || m[1] === '*') put(st.list.join(' '), { many: m[1] === '@' ? st.list : null, reread: true });
+        else put(st.list[Number(m[1]) - 1] || '', { reread: true });
       } else if ((m = /^([A-Za-z_]\w*)\[([@*])\]$/.exec(body))) {
         const r = lookup(m[1]);
         if (r) put(r.v, { many: m[2] === '@' ? (r.els || [r.v]) : null, reread: true });
+      } else if ((m = /^([A-Za-z_]\w*)\[(\d{1,6})\]$/.exec(body))) {
+        // one element: bash counts from 0, zsh from 1
+        const r = lookup(m[1]);
+        const n = Number(m[2]);
+        if (r && r.els) {
+          const bash = r.els[n] === undefined ? '' : r.els[n];
+          const zsh = n > 0 && r.els[n - 1] !== undefined ? r.els[n - 1] : '';
+          if (bash !== zsh) readingsDiffer = true;
+          put(bashReading ? bash : zsh, { reread: true });
+        } else if (r) { if (n === 0) put(r.v, { reread: true }); else miss(false); }
       } else if ((m = /^=([A-Za-z_]\w*)$/.exec(body))) {
         const r = lookup(m[1]);
         if (r) put(r.v, { reread: true });
       } else if ((m = /^([A-Za-z_]\w*)(:?-)([\s\S]*)$/.exec(body))) {
         const r = nameValue(m[1], at);
+        const named = /^\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))$/.exec(m[3]);
         if (r.unknown && r.git) miss(true);
         else if (r.v !== undefined && (m[2] === '-' || r.v !== '')) { anyVar = true; put(r.v, { reread: true }); }
-        else if (/[$`]/.test(m[3])) miss(NAMES_GIT.test(m[3]));
+        else if (named) { const d = lookup(named[1] || named[2]); if (d) put(d.v, { reread: true }); }
+        else if (/[$`]/.test(m[3])) miss(gitWord(m[3]));
         else put(dequote(m[3]), { reread: true });
       } else if ((m = /^([A-Za-z_]\w*)$/.exec(body))) {
         const r = lookup(m[1]);
@@ -3154,7 +3290,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
       } else miss(false); // `$#`, `$?`, `${#x}`, `${x/a/b}`: not modelled
     }
     flush();
-    if (unknown) return { unknown: true, git: unknown.git || NAMES_GIT.test(outsideSubs(tok)) };
+    if (unknown) return { unknown: true, git: unknown.git || gitWord(outsideSubs(tok)) };
     if (!expanded) return null;
     const ifsR = nameValue('IFS', at);
     const ifs = ifsR.v !== undefined ? ifsR.v : ' \t\n';
@@ -3215,7 +3351,12 @@ function carriedOf(P, raw, heredocs, opts, run) {
     if (fr.kind !== '(' || fr.close === undefined || fr.close === fr.open + 1 || fr.open === 0 || !QUAL_AFTER.test(P.command[fr.open - 1])) continue;
     let own = '';
     let last = fr.open + 1;
-    for (const k of kids.get(fr) || []) { if (k.close === undefined || k.open < last) break; own += `${P.command.slice(last, k.open)} `; last = k.close + 1; }
+    for (const k of kids.get(fr) || []) { // a substitution in the list stays: zsh runs it (the thirteenth review)
+      if (k.kind !== '(') continue;
+      if (k.close === undefined || k.open < last) break;
+      own += `${P.command.slice(last, k.open)} `;
+      last = k.close + 1;
+    }
     own += P.command.slice(last, fr.close);
     if (!run.budget.take(own.length)) { unread(fr.open, run.budget.why); break; }
     for (const code of qualifierCode(own)) push({ text: code, at: fr.open, end: fr.close + 1, mapped: false, cwd: anchor(fr.open) });
@@ -3243,17 +3384,27 @@ function carriedOf(P, raw, heredocs, opts, run) {
       // as it was read. A word that names no print is not parsed again.
       if (/[$`]/.test(tok.raw)) {
         resetPrint();
-        const x = expandWord(tok, at);
-        flagged(at);
+        const x = expandWord(tok, at, cmd.frame);
         if (x && x.unknown && x.git) unread(at, 'a command word built from a value the reader cannot know, whose binding names git', null, true);
         // a first field reading `NAME=...` is left to the parser, which already reads such a word both as a name and as an
         // assignment: a line re-read from it would count the command after it twice
         const words = x && x.fields && !x.plain && !/^[A-Za-z_]\w*=/.test(x.fields[0] || '') ? x.fields.map(fieldWord).join(' ') : '';
         if (words.trim()) {
-          const last = cmd.words[cmd.words.length - 1];
-          push({ text: words + P.command.slice(tok.e, last.e), at, end: el.to, mapped: false, cwd: anchor(at), ...(x.bound ? { bound: true } : {}) });
+          // each later word expanded too, so a re-read line never meets a name it cannot see (`${cmd[0]} ${cmd[1]}`)
+          let rest = '';
+          let pos = tok.e;
+          for (let w = c.at + 1; w < cmd.words.length; w++) {
+            const t2 = cmd.words[w];
+            let txt = P.command.slice(t2.s, t2.e);
+            if (/[$`]/.test(t2.raw)) { const y = expandWord(t2, t2.s, cmd.frame); if (y && y.fields) txt = y.fields.map(fieldWord).join(' '); }
+            rest += P.command.slice(pos, t2.s) + txt;
+            pos = t2.e;
+          }
+          flagged(at);
+          push({ text: words + rest, at, end: el.to, mapped: false, cwd: anchor(at), ...(x.bound ? { bound: true } : {}) });
           continue;
         }
+        flagged(at);
       }
       if (SHELLS.has(name)) {
         const args = c.args;
@@ -3395,18 +3546,25 @@ function carriedScripts(raw, opts = {}) {
   const heredocs = heredocsOf(text);
   const command = joinContinuations(blankComments(blankHeredocs(text, heredocs)));
   const P = parseShell(command);
-  const split = echoSplit;
-  echoSplit = false;
-  const out = carriedOf(P, text, heredocs, opts, run);
-  if (echoSplit && !echoLiteral) { // an echo read two ways: the second reading's scripts join the first's
-    echoLiteral = true;
+  const out = carriedBoth(P, text, heredocs, opts, run);
+  out.unread = run.unread;
+  return out;
+}
+// carriedBoth: carriedOf, read again with `bashReading` on when the shells part on this command - bash's reading's
+// scripts join the first's. The one home for carriedScripts and scanShell (gate 13: scanShell read the first alone, so a
+// write only bash's echo carried - a Windows path's backslashes, the text after a `\c` - passed the cross-project guard).
+function carriedBoth(P, raw, heredocs, opts, run) {
+  const outer = readingsDiffer;
+  readingsDiffer = false;
+  const out = carriedOf(P, raw, heredocs, opts, run);
+  if (readingsDiffer && !bashReading) {
+    bashReading = true;
     try {
       const seen = new Set(out.map((sc) => `${sc.at}\0${sc.text}`));
-      for (const sc of carriedOf(P, text, heredocs, opts, run)) if (!seen.has(`${sc.at}\0${sc.text}`)) out.push(sc);
-    } finally { echoLiteral = false; }
+      for (const sc of carriedOf(P, raw, heredocs, opts, run)) if (!seen.has(`${sc.at}\0${sc.text}`)) out.push(sc);
+    } finally { bashReading = false; }
   }
-  echoSplit = split || echoSplit;
-  out.unread = run.unread;
+  readingsDiffer = outer || readingsDiffer;
   return out;
 }
 
@@ -3820,6 +3978,22 @@ function expandGitAliases(command, opts = {}) {
 // that still names git) or -1, which each caller judges its own conservative way. A script `curl` prints does not exist
 // when a guard runs, so the call is judged on what it names.
 const NAMES_GIT = /g[\\'"]*i[\\'"]*t/i;
+// A text that names git as a word - a command or a path ending in one - once its substitutions, quotes and backslashes
+// are taken out: a read-only `$(git rev-parse ...)` in it, a `github` or a `.git` folder is no git word (the thirteenth
+// review: `"$HOME/github/x.sh"` and `ROOT=$(git rev-parse --show-toplevel); "$ROOT/t.sh"` were asked on).
+const GIT_WORDS = new Map();
+let gitWordsHeld = 0;
+function gitWord(text) {
+  const key = String(text);
+  if (GIT_WORDS.has(key)) return GIT_WORDS.get(key);
+  let t = key;
+  for (let n = 0; n < 8 && /\$\(|`/.test(t); n++) t = t.replace(/\$\([^()]*\)|`[^`]*`/g, ' ');
+  const v = /(?:^|[^\w.-])git(?:$|[^\w.-])/i.test(t.replace(/[\\'"]/g, ''));
+  if (gitWordsHeld + key.length > 4194304) { GIT_WORDS.clear(); gitWordsHeld = 0; } // a cache of at most 4 MB of keys
+  GIT_WORDS.set(key, v);
+  gitWordsHeld += key.length;
+  return v;
+}
 const namesGit = (file) => {
   try { return fs.statSync(file).size > 64 * 1024 * 1024 || NAMES_GIT.test(fs.readFileSync(file, 'latin1')); } catch { return true; }
 };
@@ -3979,7 +4153,7 @@ function scanShell(rawCommand, opts = {}) {
   }
   const files = opts.files !== undefined ? !!opts.files : !!opts.cwd;
   const depth = opts.depth || 0;
-  const carried = carriedOf(P, raw, heredocs, { cwd: opts.cwd || null, files }, run);
+  const carried = carriedBoth(P, raw, heredocs, { cwd: opts.cwd || null, files }, run);
   const cds = carried.length ? P.cds.slice() : P.cds;
   if (carried.length && run.budget.deep(depth)) {
     for (const sc of carried) run.unread.push({ at: sc.at, why: `a script nested ${depth + 1} deep`, path: null });

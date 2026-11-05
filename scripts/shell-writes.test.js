@@ -849,7 +849,7 @@ const r12Dir = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'r12-'));
 test('carriedScripts: a print whose stdout goes elsewhere joins no stream, and a cat file joins it in order (review 12, 1)', () => {
   for (const c of ["{ printf 'git '; printf status >/dev/null; echo push; } | sh", "eval \"$(printf 'git '; printf status >/dev/null; echo push)\"",
     "{ printf 'git '; echo x >&2; echo push; } 2>/dev/null | sh", "{ printf 'git '; echo x 1>out.txt; echo push; } | sh", "{ printf 'git '; echo push 2>/dev/null; } | sh"])
-    assert.deepStrictEqual(r11Subs(c), ['push'], c);
+    assert.ok(r11Subs(c).includes('push'), c); // the second reading takes the redirected print in too (zsh's multios, review 13)
   assert.ok(r11Carried("{ printf 'rm -rf '; echo x >/dev/null; echo / ; } | sh").some((t) => /^rm -rf \/$/m.test(t)));
   const d = r12Dir();
   try {
@@ -915,12 +915,72 @@ test('carriedScripts: an echo with no -e or -E is read both ways - bash prints i
     assert.ok(texts.some((t) => t.includes('C:\\alfred\\temp\\projB/f')), `${c}: ${JSON.stringify(texts)}`);
     assert.ok(texts.some((t) => t.includes('C:\x07lfred\temp')), `${c}: the escaped reading stays`);
   }
-  // -e reads the escapes only, -E prints them only; the last of the two decides
+  // -e reads the escapes in every shell; -E prints them in bash and zsh only; the last of the two decides bash's reading
   const only = (c) => shell.carriedScripts(c).map((s) => s.text.trim());
   assert.deepStrictEqual(only("echo -e 'gi\\x74 push' | sh"), ['git push']);
-  assert.deepStrictEqual(only("echo -E 'gi\\x74 push' | sh"), ['gi\\x74 push']);
+  assert.deepStrictEqual(only("echo -E 'gi\\x74 push' | sh").sort(), ['gi\\x74 push', 'git push']); // sh and dash print -E and read the escapes (review 13)
   assert.deepStrictEqual(only("echo -E -e 'gi\\x74 push' | sh"), ['git push']);
   assert.deepStrictEqual(only("echo 'gi\\x74 push' | sh").sort(), ['gi\\x74 push', 'git push']);
   // no backslash, one reading: nothing doubles
   assert.deepStrictEqual(only("echo 'git push' | sh"), ['git push']);
+});
+
+// The thirteenth review (2026-11-05): a daily command asked on, shapes that run a push read as nothing, and expansions that
+// grew past the scan budget.
+test('gitText: a path built from $HOME, a github folder or a read-only $(git rev-parse) is no unknown git command (review 13, 1)', () => {
+  for (const c of ['ROOT=$(git rev-parse --show-toplevel); "$ROOT/scripts/test.sh"', '"$HOME/github/proj/run.sh"', '"$GITHUB_WORKSPACE/build.sh"',
+    'TOP=$(git rev-parse --show-toplevel); "$TOP"/scripts/lint.sh', 'for f in a b; do echo $f; done && git status'])
+    assert.strictEqual(shell.gitText(c, process.cwd()).unreadAt, -1, c);
+});
+
+test('carriedScripts: printf \\c, stderr routed into the pipe, zsh multios, echo -E in sh and a nested qualifier substitution are read (review 13, 2-6)', () => {
+  for (const c of ["printf 'true\\c;git push\\n' | sh", '{ echo git push >&2; } 2>&1 | sh', 'eval "$( { echo git push >&2; } 2>&1 )"',
+    "{ printf 'git '; echo push >&2; } 2>&1 | sh", 'fd=1; echo git push >&$fd | sh', 'echo git push >&2 |& sh', 'echo git push >/dev/null | sh',
+    "printf 'git push\\n' 2>/dev/null >/dev/null | sh", "sh -c \"echo -E ';gi\\0164 push' | sh\"", 'echo *(e:"$(echo git push)":)',
+    `x='$(git push)'; echo \${(e${'L'.repeat(40)})x}`])
+    assert.ok(r11Read(c), c);
+});
+
+test('carriedScripts: a backslash run, a bound literal or an expansion repeated past the scan budget stays linear and bounded (review 13, 7-9)', () => {
+  const total = (c) => { const t0 = Date.now(); const out = shell.carriedScripts(c); return { ms: Date.now() - t0, len: out.reduce((n, s) => n + s.text.length, 0), unread: out.unread.length }; };
+  const t0 = Date.now();
+  const g = shell.gitText(`sh <<E\n$\n${'\\'.repeat(100000)}\nE\ngit push`, process.cwd());
+  assert.ok(Date.now() - t0 < 2000, `a backslash run took ${Date.now() - t0} ms`);
+  assert.ok(g.calls.some((x) => x.sub === 'push'));
+  const big = 'y'.repeat(4000);
+  for (const [name, c] of [['heredoc', `x="${big}"; sh <<E\n${'$x\n'.repeat(3000)}E`],
+    ['positional', `set -- ${'xxxxxxxxx '.repeat(1000)}; ${'"$@"; '.repeat(1000)}`],
+    ['array', `a=(${'xxxxxxxxx '.repeat(1000)}); ${'"${a[@]}"; '.repeat(1000)}`]]) {
+    const r = total(c);
+    assert.ok(r.len < 9e6, `${name}: ${r.len} chars carried`);
+    assert.ok(r.unread > 0, `${name}: the rest is unread`);
+  }
+});
+
+test('carriedScripts: a default naming a variable, set with options or a computed list, a subshell set, array appends and elements, $\'...\', a quoted here-string and a loop name are read (review 13, gaps)', () => {
+  for (const c of ['y="git push"; ${x:-$y}', 'y="git push"; ${x:-${y}}', 'set -e -- git push; "$@"', 'set - git push; "$@"', 'set -- $(echo git push); "$@"',
+    'set -- git push; (set -- ok); "$@"', 'cmd=(git); cmd+=(push); "${cmd[@]}"', 'cmd=(git status); cmd[1]=push; "${cmd[@]}"',
+    'cmd=(git push); ${cmd[0]} ${cmd[1]}', "x=; $x$'git' push", 'x="git push"; bash <<<"$x # don\'t"', 'for c in "git push"; do $c; done',
+    'x=git; y=push; $x $y'])
+    assert.ok(r11Read(c), c);
+  for (const c of ['set -e; npm test', 'set -o pipefail; make', 'for f in a b; do $f; done'])
+    assert.strictEqual(shell.gitText(c, process.cwd()).unreadAt, -1, c);
+});
+
+// Gate 13 (win): `echo 'touch C:\alfred-gate\...\projB/f' | tee t.sh && bash t.sh` passed the cross-project guard on
+// Windows - scanShell read carried scripts through carriedOf alone, so bash's reading of the echo (its backslashes kept)
+// never reached the write scan; zsh's reading turned `\a` into a bell and the path into a drive-relative one. The same
+// gap on any OS: `\c` ends zsh's echo, so the write after it existed only in bash's reading.
+test('scanShell: a write that only bash\'s reading of an echo carries is a target (gate 13, win)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate13-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'd'));
+    for (const c of ["echo 'true\\c; touch /elsewhere/f' | bash", "echo 'true\\c; touch /elsewhere/f' | tee d/t.sh >/dev/null && bash d/t.sh",
+      "echo 'true\\c; touch /elsewhere/f' > d/t2.sh && bash d/t2.sh", "bash -c \"$(echo 'true\\c; touch /elsewhere/f')\""]) {
+      const t = shell.scanShell(c, { cwd: dir }).targets.map((x) => x.raw);
+      assert.ok(t.includes('/elsewhere/f'), `${c}: ${JSON.stringify(t)}`);
+    }
+    const once = shell.scanShell("echo 'touch /elsewhere/f' | bash", { cwd: dir }).targets.filter((x) => x.raw === '/elsewhere/f');
+    assert.strictEqual(once.length, 1, 'a script both readings agree on is scanned once');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
