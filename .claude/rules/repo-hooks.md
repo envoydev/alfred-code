@@ -463,9 +463,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     arithmetic) gives each its own quote state, open `(` count and open `case` count: a `<<` in quotes, a comment, `${ }`
     or arithmetic opens no heredoc, and a body starts after the first unquoted newline past its opener; a backtick inside
     double quotes runs; a `#` after a substitution's `)` is word text, after a subshell's `)` a comment; a `case` arm's
-    `)` closes no `$(` (the parser counts `case` per context too); `$'...'` honours its escapes (`ansiQuoteAt`); `$((` is
-    arithmetic only when its inner group closes on `))`, quotes skipped (`arithAt`), else a substitution holding a
-    subshell. `trap`'s action is a carried script like `eval`'s. TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
+    `)` closes no `$(` and `esac` closes it wherever it stands (the parser counts `case` per context too); `$'...'`
+    honours its escapes (`ansiQuoteAt`). The ninth review (2026-11-05) made the lexer the one authority for where an
+    expansion ends: a `$((` / `((` is decided lazily, as bash does - arithmetic when its inner group closes right before a
+    `)`, else read again as a substitution holding a subshell, each open once and past a re-read budget of 4x the text
+    every later one a substitution; `regions` hands the parser each `${ }`, arithmetic and `$[ ]` region, read as one
+    word part that still opens the `$( )` and backticks inside it; a backtick ends at its first unescaped backtick in any
+    quote state (bash); a heredoc delimiter is any shell word (`END-X`, `E"O"F`). Check a new reading against the shells
+    before a review: run each shape in bash 3.2, bash 5 and zsh with a fake `git` on PATH that only logs its first word,
+    and compare what ran with what `gitText` reads (an opaque call counts as a push, as the gate takes it). bash 3.2 ending a
+    heredoc inside `$( )` at the `)` is out of model: bash 5 and zsh read on to the terminator, and matching 3.2 would leave a
+    commit message holding `a)` unread. Lexer and parser stay linear in the text (a test holds 800,000 characters of
+    `case ` and 400,000 of `$((1)` under 8 s). `trap`'s action is a carried script like `eval`'s. TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
     budget of `hook-prelude.js` `SCAN_LIMITS` (8MB of text, 3 script levels, 48 judged git calls) that the shared reader spends.
     Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
     on any machine: each judging step charges the characters it reads, the two thresholds at the top of each guard
