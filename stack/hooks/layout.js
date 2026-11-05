@@ -898,7 +898,11 @@ function localSettingsFile(root, { home = require('os').homedir(), platform = pr
 // still reads the older file while the root one sets no key, but the write guard trusts only the root file, so the
 // install, the audit and the guard name the move. Windows keeps the start folder's file: never one there. `dir` is taken
 // as autoMemorySetting takes it - absolute or `~/`, a relative value is no setting.
-function staleLocalMemory(root, { platform = process.platform, home = require('os').homedir() } = {})
+// R171's review: a file the repository supplies - under a symlinked .claude, or one `tracked(file)` (the caller's git check;
+// this file spawns nothing) says git tracks - is never offered as a move into the trusted root file, nor a folder that
+// holds the project or the home folder, which the write guard never opens. `rootSets`: the root file sets its own key,
+// so Claude Code ignores this one and the advice is to remove it.
+function staleLocalMemory(root, { platform = process.platform, home = require('os').homedir(), tracked = () => false } = {})
 {
     try
     {
@@ -906,18 +910,28 @@ function staleLocalMemory(root, { platform = process.platform, home = require('o
         const rootFile = localSettingsFile(root, { home, platform });
         if (!rootFile || dirKey(path.dirname(path.dirname(rootFile))) === dirKey(root)) return null;
         const file = path.join(root, '.claude', 'settings.local.json');
-        const data = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
-        const value = data && typeof data === 'object' && !Array.isArray(data) ? data.autoMemoryDirectory : null;
-        if (typeof value !== 'string' || !value.trim()) return null;
-        const v = value.trim();
-        const dir = /^~[\\/]/.test(v) ? path.join(home, v.slice(2)) : path.isAbsolute(v) ? path.resolve(v) : null;
-        return dir ? { file, dir, rootFile } : null;
+        if (fs.lstatSync(path.join(root, '.claude'), { throwIfNoEntry: false })?.isSymbolicLink()) return null;
+        const valueOf = (f) =>
+        {
+            const data = JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, ''));
+            const value = data && typeof data === 'object' && !Array.isArray(data) ? data.autoMemoryDirectory : null;
+            if (typeof value !== 'string' || !value.trim()) return null;
+            const v = value.trim();
+            return /^~[\\/]/.test(v) ? path.join(home, v.slice(2)) : path.isAbsolute(v) ? path.resolve(v) : null;
+        };
+        const dir = valueOf(file);
+        if (!dir) return null;
+        const holds = (inner) => { const rel = path.relative(realpathOrSelf(dir), realpathOrSelf(inner)); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
+        if (holds(root) || holds(home) || tracked(file)) return null;
+        let rootSets = false;
+        try { rootSets = !!valueOf(rootFile); } catch { rootSets = false; }
+        return { file, dir, rootFile, rootSets };
     }
     catch { return null; }
 }
 // Every such file below `top`: a breadth-first walk that enters no .git, no node_modules and no dot-folder but .claude,
 // at most `maxDepth` folders down, counting every entry it reads - past `maxEntries` it stops with `cut`.
-function staleLocalMemoryFiles(top, { maxEntries = 20000, maxDepth = 6, platform = process.platform, home = require('os').homedir() } = {})
+function staleLocalMemoryFiles(top, { maxEntries = 20000, maxDepth = 6, platform = process.platform, home = require('os').homedir(), tracked = () => false } = {})
 {
     const found = [];
     if (platform === 'win32') return { found, cut: false };
@@ -928,7 +942,7 @@ function staleLocalMemoryFiles(top, { maxEntries = 20000, maxDepth = 6, platform
         const [dir, depth] = queue[q];
         if (depth > 0 && fs.existsSync(path.join(dir, '.claude', 'settings.local.json')))
         {
-            const hit = staleLocalMemory(dir, { platform, home });
+            const hit = staleLocalMemory(dir, { platform, home, tracked });
             if (hit) found.push(hit);
         }
         if (depth >= maxDepth) continue;

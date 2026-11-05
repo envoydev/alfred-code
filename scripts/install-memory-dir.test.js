@@ -215,6 +215,74 @@ test('R171: an update names an old start-folder settings.local.json and the root
     assert.doesNotMatch(rel.out, /!! memory: .*sets autoMemoryDirectory/, 'a relative value is no setting');
 });
 
+// R171's review (2026-11-05): a file the repository supplies (tracked, or under a symlinked .claude) is never offered as a
+// move into the trusted root file, nor a folder that holds the project or home - the write guard never opens either.
+// With the top's file setting its own key, Claude Code ignores the old one: rootSets, so the advice is to remove it.
+test('R171 review: staleLocalMemory offers no move for a tracked file, a linked .claude, or a folder holding the project or home; rootSets when the top sets its own', POSIX_ONLY, () =>
+{
+    const top = real(fs.mkdtempSync(path.join(os.tmpdir(), 'r171-trust-')));
+    try
+    {
+        const home = path.join(top, 'home');
+        fs.mkdirSync(home);
+        const repo = path.join(top, 'repo');
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        git(repo, 'init', '-q');
+        const api = path.join(repo, 'api');
+        fs.mkdirSync(path.join(api, '.claude'), { recursive: true });
+        const old = path.join(api, '.claude', 'settings.local.json');
+        const rootFile = path.join(repo, '.claude', 'settings.local.json');
+        const mem = path.join(top, 'mem');
+        const of = (extra = {}) => layout.staleLocalMemory(api, { platform: 'linux', home, ...extra });
+        fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: mem }));
+        assert.deepStrictEqual(of(), { file: old, dir: mem, rootFile, rootSets: false });
+        assert.strictEqual(of({ tracked: (f) => f === old }), null, 'a tracked file is the repository\'s');
+        assert.deepStrictEqual(layout.staleLocalMemoryFiles(repo, { platform: 'linux', home, tracked: () => true }).found, [], 'the walk asks the same');
+        for (const v of ['~/', home, repo, top])
+        {
+            fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: v }));
+            assert.strictEqual(of(), null, `${v} holds the project or home`);
+        }
+        fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: path.join(api, 'notes') }));
+        assert.ok(of(), 'a folder inside the project holds neither');
+        fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: mem }));
+        fs.writeFileSync(rootFile, JSON.stringify({ autoMemoryDirectory: path.join(top, 'mem2') }));
+        assert.strictEqual(of().rootSets, true, 'the top sets its own');
+        fs.writeFileSync(rootFile, JSON.stringify({ autoMemoryDirectory: 'relative' }));
+        assert.strictEqual(of().rootSets, false, 'a relative value is no setting');
+        fs.rmSync(rootFile);
+        const elsewhere = path.join(top, 'claude-real');
+        fs.mkdirSync(elsewhere);
+        fs.writeFileSync(path.join(elsewhere, 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: mem }));
+        fs.rmSync(path.join(api, '.claude'), { recursive: true });
+        fs.symlinkSync(elsewhere, path.join(api, '.claude'));
+        assert.strictEqual(of(), null, 'a symlinked .claude is the repository\'s');
+    }
+    finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
+test('R171 review: an update offers no move for a tracked old file, and names a removal when the top sets its own key', POSIX_ONLY, () =>
+{
+    const mem = path.join(os.tmpdir(), 'r171-mem');
+    const tracked = seedRun('install', SEL, { prepare: (repo) =>
+    {
+        fs.mkdirSync(path.dirname(path.join(repo, OLD_LOCAL)), { recursive: true });
+        fs.writeFileSync(path.join(repo, OLD_LOCAL), JSON.stringify({ autoMemoryDirectory: mem }));
+        git(repo, 'add', '-f', OLD_LOCAL);
+    } });
+    assert.doesNotMatch(tracked.out, /!! memory: .*sets autoMemoryDirectory/, 'a tracked old file is the repository\'s');
+    const both = seedRun('install', SEL, { prepare: (repo) =>
+    {
+        fs.mkdirSync(path.dirname(path.join(repo, OLD_LOCAL)), { recursive: true });
+        fs.writeFileSync(path.join(repo, OLD_LOCAL), JSON.stringify({ autoMemoryDirectory: mem }));
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: path.join(os.tmpdir(), 'r171-mem2') }));
+    }, inspect: (repo) => JSON.parse(readOr(path.join(repo, '.claude', 'settings.local.json'))).autoMemoryDirectory });
+    assert.match(both.out, /!! memory: packages\/api\/\.claude\/settings\.local\.json sets autoMemoryDirectory, which Claude Code 2\.1\.211\+ ignores while \.claude\/settings\.local\.json sets its own - remove the key from packages\/api\/\.claude\/settings\.local\.json/, both.out);
+    assert.doesNotMatch(both.out, /move the key into/);
+    assert.strictEqual(both.result, path.join(os.tmpdir(), 'r171-mem2'), 'the top\'s own value stays');
+});
+
 test('R171: staleLocalMemoryFiles - win32 finds none; maxEntries 9 / 10 / 11 on a 10-entry tree; maxDepth 6 finds 5 and 6, not 7', () =>
 {
     const top = real(fs.mkdtempSync(path.join(os.tmpdir(), 'r171-walk-')));

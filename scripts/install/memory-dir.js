@@ -15,6 +15,7 @@ const os = require('node:os');
 const path = require('node:path');
 const stampLayer = require('./stamp.js');
 const variables = require('./variables.js');
+const rt = require('./runtime.js'); // every external command through the one Windows-safe spawn (M6)
 const layout = require('../../stack/hooks/layout.js');
 
 const LOCAL = 'settings.local.json';
@@ -354,6 +355,24 @@ function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
     catch (err) { say(`!! memory: the docs memory's .gitattributes could not be checked (${err.message}) - re-run /alfred-code:update`); }
 }
 
+// R171's review: whether git tracks an old settings.local.json - only a plain 'no match' (exit 1) counts as untracked, so
+// no git, a timeout or a nested repository never offers a repository's file as a move. No inherited GIT_* steers it.
+function staleTracked(file)
+{
+    const env = { GIT_OPTIONAL_LOCKS: '0' };
+    for (const [k, v] of Object.entries(process.env)) if (!/^GIT_/i.test(k)) env[k] = v;
+    try
+    {
+        return rt.spawnCommand('git', ['-c', 'core.fsmonitor=false', 'ls-files', '--error-unmatch', '--', path.basename(file)],
+            { cwd: path.dirname(file), stdio: 'ignore', timeout: 5000, env }).status !== 1;
+    }
+    catch { return true; }
+}
+// The line for one old file: a move into the root file, or its removal where the root file sets its own key.
+const staleLocalLine = (x, rel) => (x.rootSets
+    ? `${rel(x.file)} sets autoMemoryDirectory, which Claude Code 2.1.211+ ignores while ${rel(x.rootFile)} sets its own - remove the key from ${rel(x.file)}`
+    : `${rel(x.file)} sets autoMemoryDirectory; Claude Code 2.1.211+ reads it only while ${rel(x.rootFile)} sets none, and the write guard never trusts it - move the key into ${rel(x.rootFile)}`);
+
 // R171: every settings.local.json below the repository top that sets autoMemoryDirectory where Claude Code 2.1.211+ no
 // longer keeps the file - named on each run until the key is moved (the write guard never trusts it). Writes nothing.
 function staleLocalStep(ctx)
@@ -361,12 +380,12 @@ function staleLocalStep(ctx)
     try
     {
         const top = layout.gitTopOf(ctx.projectRoot) || ctx.projectRoot;
-        const { found, cut } = layout.staleLocalMemoryFiles(top);
+        const { found, cut } = layout.staleLocalMemoryFiles(top, { tracked: staleTracked });
         const rel = (p) => path.relative(ctx.projectRoot, p).split(path.sep).join('/');
-        for (const x of found) ctx.log(`  !! memory: ${rel(x.file)} sets autoMemoryDirectory; Claude Code 2.1.211+ reads it only while ${rel(x.rootFile)} sets none, and the write guard never trusts it - move the key into ${rel(x.rootFile)}`);
+        for (const x of found) ctx.log(`  !! memory: ${staleLocalLine(x, rel)}`);
         if (cut) ctx.log('  !! memory: the search for old settings.local.json files stopped at 20,000 entries');
     }
     catch (err) { ctx.note(`old settings.local.json files could not be checked for autoMemoryDirectory (${err.message})`); }
 }
 
-module.exports = { gate, step, staleLocalStep, memoryEnv, rowHash, outrankLines, shown, copyMemory, copyStep, attributesStep, ATTRIBUTES_TEXT };
+module.exports = { gate, step, staleLocalStep, staleTracked, memoryEnv, rowHash, outrankLines, shown, copyMemory, copyStep, attributesStep, ATTRIBUTES_TEXT };

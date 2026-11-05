@@ -97,11 +97,14 @@ test('every retired server\'s add-back line launches a pinned package, so obeyin
     assert.deepStrictEqual(finds(project({ '.mcp.json': { mcpServers: servers } })), []);
 });
 
+const WIN = process.platform === 'win32';
 test('R171: the install audit names an old start-folder settings.local.json', () =>
 {
     const mem = path.join(os.tmpdir(), 'r171-audit-mem');
     const root = project({ 'packages/api/.claude/settings.local.json': { autoMemoryDirectory: mem } });
     execFileSync('git', ['init', '-q', root]);
+    // On Windows Claude Code keeps settings.local.json in the start folder, so that file is the live one: no row there.
+    if (WIN) return assert.ok(!audit(root).some((r) => /sets autoMemoryDirectory/.test(r.finding)), JSON.stringify(audit(root)));
     const row = audit(root).find((r) => r.where === 'packages/api/.claude/settings.local.json');
     assert.ok(row, JSON.stringify(audit(root)));
     assert.strictEqual(row.severity, 'medium');
@@ -110,6 +113,22 @@ test('R171: the install audit names an old start-folder settings.local.json', ()
     const clean = project({ 'a.txt': 'x' });
     execFileSync('git', ['init', '-q', clean]);
     assert.ok(!audit(clean).some((r) => /sets autoMemoryDirectory/.test(r.finding)), 'no sub-folder file, no row');
+});
+
+test('R171 review: the audit names a removal when the top sets its own key, and no row for a tracked old file', () =>
+{
+    const mem = path.join(os.tmpdir(), 'r171-audit-mem');
+    const both = project({ 'packages/api/.claude/settings.local.json': { autoMemoryDirectory: mem }, '.claude/settings.local.json': { autoMemoryDirectory: `${mem}2` } });
+    execFileSync('git', ['init', '-q', both]);
+    if (WIN) return assert.ok(!audit(both).some((r) => /sets autoMemoryDirectory/.test(r.finding)), JSON.stringify(audit(both)));
+    const row = audit(both).find((r) => r.where === 'packages/api/.claude/settings.local.json');
+    assert.ok(row, JSON.stringify(audit(both)));
+    assert.match(row.finding, /sets autoMemoryDirectory, which Claude Code 2\.1\.211\+ ignores while \.claude\/settings\.local\.json sets its own/);
+    assert.strictEqual(row.fix, 'remove the key from packages/api/.claude/settings.local.json');
+    const tracked = project({ 'packages/api/.claude/settings.local.json': { autoMemoryDirectory: mem } });
+    execFileSync('git', ['init', '-q', tracked]);
+    execFileSync('git', ['add', '-f', 'packages/api/.claude/settings.local.json'], { cwd: tracked });
+    assert.ok(!audit(tracked).some((r) => /sets autoMemoryDirectory/.test(r.finding)), 'a tracked old file is the repository\'s');
 });
 
 test('garbage JSON is one unreadable row, an absent file is none', () =>
