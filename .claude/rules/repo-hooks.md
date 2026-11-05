@@ -1885,10 +1885,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     named branch on its push remote - `branch.<b>.pushRemote`, else `remote.pushDefault` - else its own remote, else the
     checkout's; a branch checked out from a PR ref reads that change's head; a push in front of the merge in the same
     command has not run when it is judged, so the remote's tip as it stands decides - after an amend or a rebase the
-    denial says to push first in its own call - and a merge naming another local branch also checks that branch's local
-    tip; four reviews 2026-11-05 found every guess at what such a push lands open to an unreviewed commit). The push
-    gate's dry run is `forge.js pushDryRun`: only a certain one goes ungated - an unknown or abbreviated option, a later
-    `--no-dry-run` or `--end-of-options` reads as a real push (`-on` is the push option 'n');
+    denial says to push first in its own call - and every source such a push sends but HEAD, the push gate's own, must
+    be the reviewed head or an ancestor (`forge.js pushSources`; a shell expansion, `--all` / `--branches` /
+    `--mirror`, an unknown option, a source that does not resolve, a refspec-less push widened by push.default=matching
+    or a remote's push setting, words from input (`xargs`), a call-level `push.` / `remote.` setting or a `GIT_` variable
+    set in front refuses the pair); five reviews 2026-11-05 found every guess at what such a push lands
+    open to an unreviewed commit). The push gate's dry run is `forge.js pushDryRun`: only a certain one goes ungated -
+    an unknown or abbreviated option, a later `--no-dry-run`, `--end-of-options` or a word the shell expands (`$X`,
+    `$(...)`, a brace list, a glob) reads as a real push (`-on` is the push option 'n');
     `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -

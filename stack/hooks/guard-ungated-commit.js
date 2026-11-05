@@ -130,9 +130,9 @@ const gitRead = sw.gitText(String((payload.tool_input || {}).command || ''), git
 const { command, parsed, calls } = gitRead;
 // The text of the simple command a call stands in, one line - what a denial names.
 const actText = (c) => command.slice(c.at, c.stop).trim().replace(/\s+/g, ' ');
-// A push's dry run, as git reads its words (forge.js pushDryRun: `-on` is a push option, `--dr` a dry run); the old cluster
-// test stands in when forge.js is absent.
-const pushDry = (argv) => { try { return require('./forge.js').pushDryRun(argv); } catch { return (argv || []).some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a)); } };
+// A push's dry run, only when git certainly reads its words as one (forge.js pushDryRun: `-on` is a push option, an
+// abbreviation or a shell expansion reads as a real push); without forge.js every push is gated.
+const pushDry = (argv) => { try { return require('./forge.js').pushDryRun(argv); } catch { return false; } };
 // `git commit`'s own argv: the options whose value is the next word (short letters, long names -
 // a long one may be cut to a unique prefix, as git's parser allows), the flags this scan reads, and
 // the paths it names, with or without `--`. `-u` and `-S` take an attached value only.
@@ -1620,21 +1620,28 @@ if (publishMatch) {
     // R015's reviews (2026-11-05): a push in front of the merge in this command has not run when it is judged, so the head
     // read is the remote's tip as it stands - never a guess at what the push lands (three reviews found each reading of it,
     // its join, remote, refspec, options or a pull before it, letting an unreviewed commit through). After an amend or a
-    // rebase that is a block the denial answers: push first, in its own call. A merge naming another local branch also
-    // checks that branch's local tip, which a push in front sends.
-    const pushFirst = calls.some((c) => c.sub === 'push' && c.at < at);
-    let unseen = null;
+    // rebase that is a block the denial answers: push first, in its own call. The fifth review: each push in front also
+    // sends its refspec sources, which neither the remote tip nor HEAD shows - every source but HEAD (the push gate's own)
+    // must be the reviewed head or an ancestor of it, and a push the hook cannot read for certain refuses the pair.
+    const pushes = calls.filter((c) => c.sub === 'push' && c.at < at);
+    let unseen = null, unsure = false;
     try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
-    if (!unseen && pushFirst && !m.head && !m.change && m.branch && m.branch !== '@') {
-      try {
-        const tip = forgeLib.gitOut(gitCwd, ['rev-parse', '--verify', '-q', `refs/heads/${m.branch}^{commit}`]);
-        if (tip) unseen = forgeLib.unseenHead({ cwd: root, sha: tip, receiptHead });
-      } catch { unseen = null; }
+    for (const c of unseen || !receiptHead ? [] : pushes) {
+      if (pushDry(c.argv)) continue;
+      let read;
+      // Another checkout, words read from input (xargs), a call-level push. / remote. setting or a GIT_ variable set in
+      // front can each change what the push sends.
+      const odd = c.dirs.length || c.gitDir || c.workTree ? 'another checkout' : c.opaque || c.xargs ? 'words the shell supplies'
+        : [...c.config, ...c.configEnv].some((k) => /^(push|remote)\./i.test(k)) || /(^|[^\w])GIT_[A-Z_]*=/.test(command.slice(0, c.at)) ? 'a setting changed for the push' : null;
+      try { read = odd ? { unsure: odd } : forgeLib.pushSources(c.argv, gitCwd); } catch { read = { unsure: 'an unreadable push' }; }
+      if (read.unsure) { unseen = `the push in front (${actText(c)}) sends what this hook cannot read for certain: ${read.unsure}`; unsure = true; break; }
+      const s = read.sources.find((x) => forgeLib.unseenHead({ cwd: root, sha: x.sha, receiptHead }));
+      if (s) { unseen = `the push in front sends ${s.src} at ${s.sha.slice(0, 12)}, which carries commits the review at ${receiptHead.slice(0, 12)} never saw`; break; }
     }
     if (unseen) {
       process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
-        'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.' +
-        (pushFirst ? '\nThis hook judges the merge before the push in front of it runs, so it reads the remote as it stands: run the push on its own first, then the merge.' : ''));
+        (unsure ? '' : 'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.\n') +
+        (pushes.length ? 'This hook judges the merge before the push in front of it runs, so it reads the remote as it stands: run the push on its own first, then the merge.' : '').trimEnd());
       process.exit(2);
     }
   }

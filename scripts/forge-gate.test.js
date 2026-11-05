@@ -452,6 +452,73 @@ test('R015 reviews: a merge naming another local branch behind a push checks tha
   const ok = run(r.dir, bash('git push -f origin feature && gh pr merge feature --squash'));
   assert.strictEqual(ok.status, 0, `local feature at the reviewed head: ${ok.stderr}`);
 });
+// The fifth review: a push in front sends its refspec SOURCES, which neither the remote tip nor HEAD shows - each source but
+// HEAD (the push gate's own, which a batch receipt may extend) must be the reviewed head or an ancestor; one the hook
+// cannot read (an expansion, --all, an unresolvable name) refuses with the push-first line.
+test('R015 reviews: every source a push in front sends is checked against the receipt', () => {
+  const r = featureRepo();
+  const later = unreviewedCommit(r);
+  r.git('branch', 'wip', later);
+  for (const cmd of ['git push -f origin wip:feature && gh pr merge --squash', 'git push origin +wip:refs/heads/feature && gh pr merge --squash',
+    'git push -f origin wip:feature && gh pr merge feature --squash', `git push -f origin ${later}:feature && gh pr merge --squash`,
+    'git push origin --all && gh pr merge --squash', 'git push -f origin $B:feature && gh pr merge --squash', 'git push origin nosuch:feature && gh pr merge --squash']) {
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash(cmd));
+    assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
+    assert.match(got.stderr, /run the push on its own first, then the merge/, cmd);
+  }
+  receipt(r.dir, r.reviewed);
+  const ok = run(r.dir, bash('git push origin feature && gh pr merge --squash'));
+  assert.strictEqual(ok.status, 0, `HEAD is the push gate's: ${ok.stderr}`);
+});
+test('R015 reviews: a push whose words or settings the hook cannot read for certain refuses the pair', () => {
+  const r = featureRepo();
+  r.git('branch', 'wip', unreviewedCommit(r));
+  for (const cmd of ['echo origin wip:feature | xargs git push && gh pr merge --squash', 'git -c push.default=matching push && gh pr merge --squash',
+    'git --config-env=remote.origin.push=V push && gh pr merge --squash',
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=push.default GIT_CONFIG_VALUE_0=matching git push && gh pr merge --squash',
+    'export GIT_CONFIG_COUNT=1; git push && gh pr merge --squash', 'git -C ../elsewhere push origin wip:feature && gh pr merge --squash']) {
+    receipt(r.dir, r.reviewed);
+    const got = run(r.dir, bash(cmd));
+    assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
+    // -C another checkout: the push gate itself asks for that checkout's receipt first.
+    assert.match(got.stderr, cmd.includes(' -C ') ? /without the publish gate receipt/ : /cannot read for certain/, cmd);
+  }
+});
+test('pushSources: the commits a push sends besides HEAD, and the words it cannot read', () => {
+  const { pushSources } = require(path.join(__dirname, '..', 'stack', 'hooks', 'forge.js'));
+  const r = featureRepo();
+  const later = unreviewedCommit(r);
+  r.git('branch', 'wip', later);
+  r.git('tag', 'v1', later);
+  const srcs = (...argv) => { const x = pushSources(argv, r.dir); return x.unsure ? `unsure:${x.unsure}` : x.sources.map((y) => y.src).join(','); };
+  assert.strictEqual(srcs('origin', 'wip:feature'), 'wip');
+  assert.strictEqual(srcs('-f', 'origin', '+wip'), 'wip');
+  assert.strictEqual(srcs('origin', 'tag', 'v1'), 'refs/tags/v1');
+  assert.strictEqual(srcs('origin', 'feature', 'HEAD:x', '@', ':gone'), '', 'HEAD, @, the checked-out branch and a delete send nothing new');
+  assert.strictEqual(srcs('-d', 'origin', 'wip'), '', '-d deletes');
+  assert.strictEqual(srcs('-d', '--no-delete', 'origin', 'wip'), 'wip', '--no-delete undoes -d');
+  assert.strictEqual(srcs('origin', 'wip', '-o', 'x', '--', 'feature'), 'wip', 'options after a refspec and -o\'s value');
+  assert.strictEqual(srcs('origin'), '');
+  assert.strictEqual(srcs(), '');
+  for (const [argv, why] of [[['origin', 'nosuch:feature'], 'nosuch:feature'], [['origin', '--all'], '--all'], [['--mirror', 'origin'], '--mirror'],
+    [['origin', 'refs/heads/*:refs/heads/*'], 'refs/heads/*:refs/heads/*'], [['--rep', 'origin', 'wip'], '--rep'], [['-x', 'origin'], '-x'],
+    [['origin', '--', '-wip:feature'], '-wip:feature']]) assert.strictEqual(srcs(...argv), `unsure:${why}`, argv.join(' '));
+  r.git('config', 'push.default', 'matching');
+  assert.match(srcs('origin'), /^unsure:a push naming no refspec/);
+  r.git('config', '--unset', 'push.default');
+  r.git('config', 'remote.origin.push', 'refs/heads/wip:refs/heads/feature');
+  assert.match(srcs('origin'), /^unsure:a push naming no refspec/);
+});
+test('R015 reviews: a push in front that does not send the merged branch leaves its local tip alone', () => {
+  const r = featureRepo();
+  fs.writeFileSync(path.join(r.dir, 'c.txt'), 'unpushed\n');
+  r.git('add', '-A'); r.git('commit', '-qm', 'unpushed on feature');
+  r.git('checkout', '-qb', 'other', r.reviewed);
+  receipt(r.dir, r.reviewed);
+  const got = run(r.dir, bash('git push origin other && gh pr merge feature --squash'));
+  assert.strictEqual(got.status, 0, `the push sends other, the remote feature is the reviewed head: ${got.stderr}`);
+});
 test('R015 reviews: a fork change\'s branch is merged at its change ref, whatever is pushed in front', () => {
   const r = featureRepo();
   const later = unreviewedCommit(r);
@@ -470,7 +537,8 @@ test('push gate: only a certain dry run goes ungated; -on, --no-dry-run, abbrevi
   git('add', '-A'); git('commit', '-qm', 'b');
   for (const cmd of ['git push -on origin main', 'git push -n --no-dry-run origin main', 'git push --dry-run --no-dry-run origin main',
     'git push --rep -n origin main', 'git push --pu -n origin main', 'git push --end-of-options -nx main', 'git push --dry origin main',
-    'git push -- -n main']) {
+    'git push -- -n main', 'X=--no-dry-run; git push -n $X origin main', 'git push -n $(echo --no-dry-run) origin main',
+    'git push -n {--no-dry-run,origin} main', 'git push -n ${U:---no-dry-run} origin main']) {
     const got = run(dir, bash(cmd));
     assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
     assert.match(got.stderr, /PUSH-GATE/, cmd);
