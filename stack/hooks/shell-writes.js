@@ -1014,7 +1014,8 @@ function noteAssign(assigns, events, tok) {
   const m = raw.indexOf('=') > 0 ? ASSIGN_NAME.exec(raw) : null;
   if (!m) return false;
   const v = raw.slice(m[0].length);
-  const d = /[$`]/.test(v) ? '' : dequote(v);
+  // a `$'...'` part is quoting, no expansion (review 15: `x=$'git'; bash -c "$x push"` read no push)
+  const d = /[$`]/.test(v.replace(/\$'(?:[^'\\]|\\[\s\S])*'/g, '')) ? '' : dequote(v);
   if (d) assigns.set(m[1], d);
   // `raw` keeps the value as written (a single-quoted `'$HOME'` is text, never expanded - shellVars reads it)
   events.push({ at: tok.s, kind: 'set', name: m[1], value: dequote(v), raw: v });

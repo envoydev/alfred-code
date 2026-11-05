@@ -1100,3 +1100,7 @@ test('review 15, gaps: a NUL ends an ANSI-C word, zsh drops an unknown escape, a
   for (const c of ["$'git\\0x' push --force origin main", "$'g\\it' push --force origin main", "x=$(git --version | cut -d' ' -f1); $x push --force origin main"]) assert.ok(ran(c, 'push'), c);
   assert.strictEqual(shell.gitText('cd "$(git rev-parse --show-toplevel)" && npm test', process.cwd()).unreadAt, -1);
 });
+test('review 15, gaps: an ANSI-C quoted value is a literal a nested shell or eval reads', () => {
+  for (const c of ["x=$'git'; bash -c \"$x push --force origin main\"", "x=$'\\x67it'; eval \"$x push --force origin main\""]) assert.ok(ran(c, 'push'), c);
+  assert.ok(!shell.gitText("x=$'a'$HOME; bash -c \"$x push\"", process.cwd()).calls.some((k) => k.sub === 'push'), 'a value with an expansion beside it stays unresolved');
+});
