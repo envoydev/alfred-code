@@ -647,6 +647,10 @@ test('guard-protected-force-push: a branch held in a variable is read - a litera
   const cur = 'BR=$(git branch --show-current); git push --force origin "$BR"';
   assert.equal(at(cur, scratchRepoOn('main')), 2, 'the current branch, on main');
   assert.equal(at(cur, scratchRepoOn('feature/x')), 0, 'the current branch, on a feature branch');
+  for (const c of ['git push --force origin "$(git branch --show-current)"', 'git push -f origin $(git rev-parse --abbrev-ref HEAD)', 'git push origin "+`git symbolic-ref --short HEAD`"']) {
+    assert.equal(at(c, scratchRepoOn('main')), 2, `written into the push, on main: ${c}`);
+    assert.equal(at(c, scratchRepoOn('feature/x')), 0, `written into the push, on a feature branch: ${c}`);
+  }
 });
 
 test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {

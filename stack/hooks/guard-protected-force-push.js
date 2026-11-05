@@ -148,10 +148,14 @@ function remoteDefault(cwd, remote)
 // HEAD, and a `for` / `select` list naming it as each of its words beside the word itself. A value any other
 // substitution computes stays out of model, as the header says.
 const CURRENT_BRANCH = /^"?\$\(\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)\s*\)"?$/;
+// ... and the same substitution written into the push itself (`git push -f origin "$(git branch --show-current)"` on main
+// passed - a side note to review 16)
+const CURRENT_SUB = /\$\(\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)\s*\)|`\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)\s*`/g;
 function heldRefs(read, call)
 {
-    return (word) =>
+    return (held) =>
     {
+        const word = String(held).replace(CURRENT_SUB, 'HEAD');
         const vs = [...String(word).matchAll(/\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g)];
         if (vs.length !== 1 || !read.vars)
         {
