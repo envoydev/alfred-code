@@ -729,6 +729,29 @@ test('guard-protected-force-push: a held branch in run order, a loop name unread
   assert.equal(at('BR=$(git branch --show-current); bash -c "git checkout \\"$BR\\""; BR=$(git branch --show-current); git push -f origin "$BR"', onMain), 2, 'no stack overflow');
 });
 
+test('guard-protected-force-push: checkouts replayed in run order, the current branch read where the shell runs it (review 20)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // F1: a script file's checkouts run where the script runs, before the checkout after it
+  fs.mkdirSync(path.join(onFeature, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(onFeature, 'scripts', 'sync-main.sh'), 'BR=$(git branch --show-current); git checkout main; git pull --ff-only; git checkout "$BR"\n');
+  fs.writeFileSync(path.join(onFeature, 'scripts', 'update-main.sh'), 'git checkout main && git pull --ff-only\n');
+  for (const c of ['./scripts/sync-main.sh && git checkout main && git push -f', 'bash scripts/sync-main.sh; git checkout main; git push --force-with-lease']) {
+    assert.equal(at(c, onFeature), 2, `ends on main: ${c}`);
+  }
+  for (const c of ['./scripts/update-main.sh && git checkout feature/x && git rebase main && git push --force-with-lease', 'bash scripts/sync-main.sh && git rebase main && git push -f']) {
+    assert.equal(at(c, onFeature), 0, `ends on the feature branch: ${c}`);
+  }
+  // F2: the branch checked out where the shell stands, not where the push runs
+  for (const c of [`BR=$(git branch --show-current) && cd ${onMain} && git push -f origin "$BR"`, `git -C ${onMain} push --force-with-lease origin "$(git branch --show-current)"`]) {
+    assert.equal(at(c, onFeature), 0, `the feature branch, pushed from the main checkout: ${c}`);
+  }
+  for (const c of [`BR=$(git branch --show-current) && cd ${onFeature} && git push -f origin "$BR"`, `git -C ${onFeature} push --force-with-lease origin "$(git branch --show-current)"`]) {
+    assert.equal(at(c, onMain), 2, `main, pushed from the feature checkout: ${c}`);
+  }
+});
+
 test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {
   const dir = scratchRepoOn('main');
   const fp = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });

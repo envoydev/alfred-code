@@ -154,7 +154,14 @@ const CURRENT_BRANCH = new RegExp(`^"?(?:\\$\\(${CURRENT_CMD}\\)|\`${CURRENT_CMD
 // ... and the same substitution written into the push itself (`git push -f origin "$(git branch --show-current)"` on main
 // passed - a side note to review 16): HEAD as the push runs
 const CURRENT_SUB = new RegExp(`\\$\\(${CURRENT_CMD}\\)|\`${CURRENT_CMD}\``, 'g');
-function heldValues(read, call, dir, name)
+// The branch checked out where the SHELL stands at `at` - a substitution runs there, never in a push's `-C` checkout
+// (review 20, F2: `BR=$(git branch --show-current) && cd ../other && git push -f origin "$BR"` read the other checkout)
+function shellHeadAt(read, at)
+{
+    const here = { at, dirs: [] };
+    return headAt(read, here, read.callDir(here));
+}
+function heldValues(read, call, name)
 {
     const ev = read.vars.eventOf(name, call.at);
     if (!ev || ev.bound || read.orderOf(ev.at, call.at) >= 0)
@@ -170,7 +177,7 @@ function heldValues(read, call, dir, name)
     {
         return null;
     }
-    const head = headAt(read, { at: ev.at }, dir);
+    const head = shellHeadAt(read, ev.at);
     return head ? [head] : null;
 }
 function heldRefs(read, call, dir)
@@ -180,13 +187,13 @@ function heldRefs(read, call, dir)
     {
         if (!held.has(name))
         {
-            held.set(name, heldValues(read, call, dir, name));
+            held.set(name, heldValues(read, call, name));
         }
         return held.get(name);
     };
     return (raw) =>
     {
-        const word = String(raw).replace(CURRENT_SUB, 'HEAD');
+        const word = String(raw).replace(CURRENT_SUB, (m) => (checkoutOf(read.callDir({ at: call.at, dirs: [] })) === checkoutOf(dir) ? 'HEAD' : shellHeadAt(read, call.at) || m));
         const vs = read.vars ? [...word.matchAll(/\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g)] : [];
         if (!vs.length)
         {
@@ -372,12 +379,24 @@ function headAt(read, push, dir)
     }
     return memo.get(key);
 }
+// The calls in run order: a carried script's sit after the whole command in the text, but run where its carrier
+// stands (review 20, F1: `./scripts/sync-main.sh && git checkout main && git push -f` replayed the script's checkout back
+// to the feature branch last, and passed)
+const RUN_ORDER = new WeakMap();
+function callsInRunOrder(read)
+{
+    if (!RUN_ORDER.has(read))
+    {
+        RUN_ORDER.set(read, read.calls.slice().sort((x, y) => read.orderOf(x.at, y.at)));
+    }
+    return RUN_ORDER.get(read);
+}
 function replayHead(read, push, dir)
 {
     const key = checkoutOf(dir);
     let cur = { kind: 'current' };
     let prev = { kind: 'previous' };
-    for (const c of read.calls)
+    for (const c of callsInRunOrder(read))
     {
         if ((c.sub !== 'switch' && c.sub !== 'checkout') || read.orderOf(c.at, push.at) >= 0)
         {
