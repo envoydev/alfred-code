@@ -194,6 +194,54 @@ test('outrankLines: a managed autoMemoryDirectory is named as outranking the row
     finally { fs.rmSync(top, { recursive: true, force: true }); }
 });
 
+// R171: an old start-folder settings.local.json - Claude Code 2.1.211+ keeps the file at the repository root - is named
+// with the move, on every run until it is moved; the walk is bounded in entries and depth.
+const OLD_LOCAL = path.join('packages', 'api', '.claude', 'settings.local.json');
+const R171_LINE = /!! memory: packages\/api\/\.claude\/settings\.local\.json sets autoMemoryDirectory; .* move the key into \.claude\/settings\.local\.json/;
+test('R171: an update names an old start-folder settings.local.json and the root file to move it to', POSIX_ONLY, () =>
+{
+    const mem = path.join(os.tmpdir(), 'r171-mem');
+    const prepare = (repo) => { fs.mkdirSync(path.dirname(path.join(repo, OLD_LOCAL)), { recursive: true }); fs.writeFileSync(path.join(repo, OLD_LOCAL), JSON.stringify({ autoMemoryDirectory: mem })); };
+    const r = seedRun(['install', 'update'], SEL, { prepare,
+        each: (repo) => ({ old: readOr(path.join(repo, OLD_LOCAL)), local: readOr(path.join(repo, '.claude', 'settings.local.json')), stamp: noDates(stampOf(repo)) }) });
+    assert.match(r.outs[0], R171_LINE, r.outs[0]);
+    assert.match(r.outs[1], R171_LINE, 'it stands until moved');
+    assert.strictEqual(r.steps[1].old, r.steps[0].old, 'the old file is untouched');
+    assert.strictEqual(JSON.parse(r.steps[1].old).autoMemoryDirectory, mem);
+    assert.strictEqual(r.steps[1].local, r.steps[0].local, 'the root file is not written');
+    assert.strictEqual(r.steps[1].stamp, r.steps[0].stamp, 'the stamp is equal bar its dates');
+    assert.doesNotMatch(seedRun('install', SEL).out, /!! memory: .*sets autoMemoryDirectory/, 'no sub-folder file, no line');
+    const rel = seedRun('install', SEL, { prepare: (repo) => { fs.mkdirSync(path.dirname(path.join(repo, OLD_LOCAL)), { recursive: true }); fs.writeFileSync(path.join(repo, OLD_LOCAL), JSON.stringify({ autoMemoryDirectory: 'mem' })); } });
+    assert.doesNotMatch(rel.out, /!! memory: .*sets autoMemoryDirectory/, 'a relative value is no setting');
+});
+
+test('R171: staleLocalMemoryFiles - win32 finds none; maxEntries 9 / 10 / 11 on a 10-entry tree; maxDepth 6 finds 5 and 6, not 7', () =>
+{
+    const top = real(fs.mkdtempSync(path.join(os.tmpdir(), 'r171-walk-')));
+    try
+    {
+        assert.deepStrictEqual(layout.staleLocalMemoryFiles(top, { platform: 'win32' }), { found: [], cut: false });
+        // exactly 10 entries below the top: a/ b/ f1 f2, a/c/ a/f3 a/f4, b/f5, a/c/f6 a/c/f7
+        const flat = path.join(top, 'flat');
+        for (const d of ['a/c', 'b']) fs.mkdirSync(path.join(flat, d), { recursive: true });
+        for (const f of ['f1', 'f2', 'a/f3', 'a/f4', 'b/f5', 'a/c/f6', 'a/c/f7']) fs.writeFileSync(path.join(flat, f), 'x');
+        for (const [max, cut] of [[9, true], [10, false], [11, false]]) assert.strictEqual(layout.staleLocalMemoryFiles(flat, { maxEntries: max, platform: 'linux' }).cut, cut, `maxEntries ${max}`);
+        // depth: a git repo whose old file sits 5, 6 and 7 folders below its top
+        const repo = path.join(top, 'deep');
+        fs.mkdirSync(repo);
+        git(repo, 'init', '-q');
+        const mem = path.join(top, 'mem');
+        const at = (n) => path.join(repo, ...Array.from({ length: n }, (_, i) => `d${n}-${i}`));
+        for (const n of [5, 6, 7]) { fs.mkdirSync(path.join(at(n), '.claude'), { recursive: true }); fs.writeFileSync(path.join(at(n), '.claude', 'settings.local.json'), JSON.stringify({ autoMemoryDirectory: mem })); }
+        const found = layout.staleLocalMemoryFiles(repo, { platform: 'linux' }).found.map((x) => x.file);
+        assert.deepStrictEqual(found.sort(), [5, 6].map((n) => path.join(at(n), '.claude', 'settings.local.json')).sort());
+        const one = layout.staleLocalMemoryFiles(repo, { platform: 'linux' }).found[0];
+        assert.strictEqual(one.dir, mem);
+        assert.strictEqual(one.rootFile, path.join(repo, '.claude', 'settings.local.json'));
+    }
+    finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
 test('docs: the row committed after the write is removed by the next update (D11)', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update', 'update'], SEL, {

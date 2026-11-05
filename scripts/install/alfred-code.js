@@ -685,6 +685,7 @@ function runLayers(ctx)
     // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
     try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal }); }
     catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
+    memoryDir.staleLocalStep(ctx);
     // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is
     // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
     if (!ctx.docsRootPending)

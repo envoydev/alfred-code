@@ -795,6 +795,56 @@ function localSettingsFile(root, { home = require('os').homedir(), platform = pr
     if (platform === 'win32') return dirKey(top) === dirKey(root) ? path.join(root, '.claude', 'settings.local.json') : null;
     return path.join(worktreeMain(top) || top, '.claude', 'settings.local.json');
 }
+// R171: a start folder's settings.local.json that Claude Code 2.1.211+ no longer keeps there (it keeps the file at the
+// repository root, localSettingsFile) and that sets autoMemoryDirectory: { file, dir, rootFile }, else null. Claude Code
+// still reads the older file while the root one sets no key, but the write guard trusts only the root file, so the
+// install, the audit and the guard name the move. Windows keeps the start folder's file: never one there. `dir` is taken
+// as autoMemorySetting takes it - absolute or `~/`, a relative value is no setting.
+function staleLocalMemory(root, { platform = process.platform, home = require('os').homedir() } = {})
+{
+    try
+    {
+        if (platform === 'win32') return null;
+        const rootFile = localSettingsFile(root, { home, platform });
+        if (!rootFile || dirKey(path.dirname(path.dirname(rootFile))) === dirKey(root)) return null;
+        const file = path.join(root, '.claude', 'settings.local.json');
+        const data = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+        const value = data && typeof data === 'object' && !Array.isArray(data) ? data.autoMemoryDirectory : null;
+        if (typeof value !== 'string' || !value.trim()) return null;
+        const v = value.trim();
+        const dir = /^~[\\/]/.test(v) ? path.join(home, v.slice(2)) : path.isAbsolute(v) ? path.resolve(v) : null;
+        return dir ? { file, dir, rootFile } : null;
+    }
+    catch { return null; }
+}
+// Every such file below `top`: a breadth-first walk that enters no .git, no node_modules and no dot-folder but .claude,
+// at most `maxDepth` folders down, counting every entry it reads - past `maxEntries` it stops with `cut`.
+function staleLocalMemoryFiles(top, { maxEntries = 20000, maxDepth = 6, platform = process.platform, home = require('os').homedir() } = {})
+{
+    const found = [];
+    if (platform === 'win32') return { found, cut: false };
+    let seen = 0;
+    const queue = [[top, 0]];
+    for (let q = 0; q < queue.length; q++)
+    {
+        const [dir, depth] = queue[q];
+        if (depth > 0 && fs.existsSync(path.join(dir, '.claude', 'settings.local.json')))
+        {
+            const hit = staleLocalMemory(dir, { platform, home });
+            if (hit) found.push(hit);
+        }
+        if (depth >= maxDepth) continue;
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+        for (const e of entries)
+        {
+            if (++seen > maxEntries) return { found, cut: true };
+            if (!e.isDirectory() || e.name === '.git' || e.name === 'node_modules' || (e.name.startsWith('.') && e.name !== '.claude')) continue;
+            queue.push([path.join(dir, e.name), depth + 1]);
+        }
+    }
+    return { found, cut: false };
+}
 // The autoMemoryDirectory set where no repo can ship it (the managed settings, the account's, a settings.local.json
 // `untracked` vouches for), or null: the folder the write guard may open for the project's own memory. A project's
 // settings.json, or a settings.local.json git tracks, can arrive in a clone and name any folder (~/.ssh, a sibling
@@ -988,7 +1038,7 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
-    memoryDirsOf, defaultMemoryDirs, memoryDirSetting, trustedMemoryDir, localSettingsFile, docsRootOf, topMember,
+    memoryDirsOf, defaultMemoryDirs, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

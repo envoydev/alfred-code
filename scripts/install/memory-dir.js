@@ -346,4 +346,19 @@ function step(ctx, docsPath, { warnUnignoredLocal = () => {} } = {})
     catch (err) { say(`!! memory: the docs memory's .gitattributes could not be checked (${err.message}) - re-run /alfred-code:update`); }
 }
 
-module.exports = { gate, step, memoryEnv, rowHash, outrankLines, shown, copyMemory, attributesStep, ATTRIBUTES_TEXT };
+// R171: every settings.local.json below the repository top that sets autoMemoryDirectory where Claude Code 2.1.211+ no
+// longer keeps the file - named on each run until the key is moved (the write guard never trusts it). Writes nothing.
+function staleLocalStep(ctx)
+{
+    try
+    {
+        const top = layout.gitTopOf(ctx.projectRoot) || ctx.projectRoot;
+        const { found, cut } = layout.staleLocalMemoryFiles(top);
+        const rel = (p) => path.relative(ctx.projectRoot, p).split(path.sep).join('/');
+        for (const x of found) ctx.log(`  !! memory: ${rel(x.file)} sets autoMemoryDirectory; Claude Code 2.1.211+ reads it only while ${rel(x.rootFile)} sets none, and the write guard never trusts it - move the key into ${rel(x.rootFile)}`);
+        if (cut) ctx.log('  !! memory: the search for old settings.local.json files stopped at 20,000 entries');
+    }
+    catch (err) { ctx.note(`old settings.local.json files could not be checked for autoMemoryDirectory (${err.message})`); }
+}
+
+module.exports = { gate, step, staleLocalStep, memoryEnv, rowHash, outrankLines, shown, copyMemory, attributesStep, ATTRIBUTES_TEXT };

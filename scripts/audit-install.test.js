@@ -97,6 +97,21 @@ test('every retired server\'s add-back line launches a pinned package, so obeyin
     assert.deepStrictEqual(finds(project({ '.mcp.json': { mcpServers: servers } })), []);
 });
 
+test('R171: the install audit names an old start-folder settings.local.json', () =>
+{
+    const mem = path.join(os.tmpdir(), 'r171-audit-mem');
+    const root = project({ 'packages/api/.claude/settings.local.json': { autoMemoryDirectory: mem } });
+    execFileSync('git', ['init', '-q', root]);
+    const row = audit(root).find((r) => r.where === 'packages/api/.claude/settings.local.json');
+    assert.ok(row, JSON.stringify(audit(root)));
+    assert.strictEqual(row.severity, 'medium');
+    assert.match(row.finding, /sets autoMemoryDirectory, which Claude Code 2\.1\.211\+ reads only while \.claude\/settings\.local\.json sets none/);
+    assert.strictEqual(row.fix, 'move the key into .claude/settings.local.json');
+    const clean = project({ 'a.txt': 'x' });
+    execFileSync('git', ['init', '-q', clean]);
+    assert.ok(!audit(clean).some((r) => /sets autoMemoryDirectory/.test(r.finding)), 'no sub-folder file, no row');
+});
+
 test('garbage JSON is one unreadable row, an absent file is none', () =>
 {
     assert.deepStrictEqual(finds(project({ '.mcp.json': '{nope' })), ['.mcp.json is unreadable']);

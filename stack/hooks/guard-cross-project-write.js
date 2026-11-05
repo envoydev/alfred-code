@@ -699,7 +699,22 @@ function judgeRemoval(abs, what, shown) {
   const tree = pluginTreeRemoved(t);
   if (tree && !pluginOpened(t, tree)) pluginBlock(what, shown, tree);
 }
+// R171: the memory folder an old start-folder settings.local.json names (Claude Code 2.1.211+ keeps the file at the
+// repository root): the guard trusts only the root file, so the denial names the move instead of the cross-project ask.
+function staleLocalBlock(what, shown, abs) {
+  let stale = null;
+  try { stale = layout && typeof layout.staleLocalMemory === 'function' ? layout.staleLocalMemory(ROOT) : null; } catch { stale = null; }
+  if (!stale || !inside(realish(abs), realish(stale.dir))) return;
+  global.BLOCK_DETAIL = { branch: 'stale-local-memory' };
+  process.stderr.write(
+    `Blocked: ${what} targets '${shown}', in the memory folder ${stale.dir} that ${stale.file} names.\n` +
+    `Claude Code 2.1.211 and later keep settings.local.json at ${stale.rootFile}; it still reads the older file, but this guard trusts only ${stale.rootFile}.\n` +
+    `Move the autoMemoryDirectory key into ${stale.rootFile}, remove it from ${stale.file}, then retry.`,
+  );
+  process.exit(2);
+}
 function block(what, shown, abs = shown) {
+  staleLocalBlock(what, shown, abs);
   const hit = memberMemory(realish(abs));
   if (hit) memoryBlock(what, shown, hit);
   const tree = pluginTree(realish(abs));

@@ -5637,6 +5637,57 @@ test('guard-cross-project-write: a root whose autoMemoryDirectory holds the chil
   } finally { w.rm(); }
 });
 
+// R171: Claude Code 2.1.211+ keeps settings.local.json at the repository root; a start-folder copy (the older place) it still
+// reads is one this guard never trusts, so the denial names the move instead of the generic cross-project route.
+test('guard-cross-project-write: R171 a write into the memory folder an old start-folder settings.local.json names is refused with the move', { skip: process.platform === 'win32' && 'Claude Code keeps the file in the start folder on Windows' }, () => {
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'xp-r171-')));
+  try {
+    const home = path.join(top, 'home');
+    const acct = path.join(home, '.claude');
+    fs.mkdirSync(acct, { recursive: true });
+    const repo = path.join(top, 'repo');
+    const api = path.join(repo, 'packages', 'api');
+    fs.mkdirSync(path.join(api, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    spawnSync('git', ['init', '-q', repo]);
+    const mem = path.join(top, 'mem');
+    const sid = 'r171-guard';
+    const write = (root, file) => {
+      const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+      delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
+      delete env.ALFRED_CODE_WORKSPACE;
+      return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
+        input: JSON.stringify({ cwd: root, session_id: sid, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env });
+    };
+    const rows = () => {
+      const out = [];
+      const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (e.name === `${sid}.jsonl`) out.push(...fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))); } };
+      walk(repo);
+      return out;
+    };
+    const old = path.join(api, '.claude', 'settings.local.json');
+    const rootFile = path.join(repo, '.claude', 'settings.local.json');
+    fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: mem }));
+    const r = write(api, path.join(mem, 'x.md'));
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /in the memory folder .*mem that .*packages\/api\/\.claude\/settings\.local\.json names/);
+    assert.match(r.stderr, /Move the autoMemoryDirectory key into .*\/\.claude\/settings\.local\.json, remove it from/);
+    assert.ok(rows().some((x) => x.detail && x.detail.branch === 'stale-local-memory'), JSON.stringify(rows()));
+    // moved into the root file (untracked): the folder is the project's own memory
+    fs.rmSync(old);
+    fs.writeFileSync(rootFile, JSON.stringify({ autoMemoryDirectory: mem }));
+    assert.strictEqual(write(api, path.join(mem, 'x.md')).status, 0, 'the root file is trusted');
+    assert.strictEqual(write(repo, path.join(mem, 'x.md')).status, 0, 'a session started at the top, the root file alone');
+    // garbage JSON in the start-folder file: the generic cross-project denial, no crash
+    fs.rmSync(rootFile);
+    fs.writeFileSync(old, '{"autoMemoryDirectory": ');
+    const g = write(api, path.join(mem, 'x.md'));
+    assert.strictEqual(g.status, 2, g.stderr);
+    assert.match(g.stderr, /outside this session's project/);
+    assert.doesNotMatch(g.stderr, /names\. Claude Code 2\.1\.211/);
+  } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
 test('guard-cross-project-write: an autoMemoryDirectory the account settings name outside the account dir is writable - a root, a child, the switch at 0, a renamed project folder', () => {
   const w = memWs();
   try {

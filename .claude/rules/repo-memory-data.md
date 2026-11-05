@@ -132,7 +132,9 @@ The stores and what each holds, where the docs root and the data root live, and 
   root>/docs`, never the child's env. Its memory folder is `layout.memoryDirsOf`, Claude Code's own rule: the first
   string `autoMemoryDirectory` (the managed drop-ins last first, the managed file, the member's `settings.local.json` -
   the one Claude Code reads, `layout.localSettingsFile`: the repo root's, a worktree's main checkout's, the start folder's
-  on Windows - then a leftover in the start folder (E-batch 300-memdirs: a sub-folder start read only its own), its
+  on Windows - then a leftover in the start folder (E-batch 300-memdirs: a sub-folder start read only its own; the
+  write guard still trusts only the root file, and a leftover that sets the key is named with the move - the install's
+  `!! memory:` line, an audit row, the guard's `stale-local-memory` denial: R171, `layout.staleLocalMemoryFiles`), its
   `settings.json`, the account's; a leading `~` is the home folder), else `<account>/projects/<name>/memory`, `<name>`
   its git top (a linked worktree's main checkout when the worktree's admin folder links back to it, a bare repository's
   worktree the bare folder - `layout.memoryKeyOf`, Claude Code's own rule) with every character outside `[A-Za-z0-9]`
