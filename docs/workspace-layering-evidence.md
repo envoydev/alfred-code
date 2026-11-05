@@ -200,7 +200,12 @@ write guard cover it (tests 'a 201-character name is <first 200>-<hash of the gi
 200 characters...', 'guard-cross-project-write: R068 ...'). On Windows the hash is of the TYPED case, which no hook
 knows, so there it still lists every `<first 200>-*` folder (case ignored) beside the computed one, leaving out each
 ancestor's computed folder, so a child never takes its root's for its own - the old ceiling stands on Windows alone,
-for a root folder made under a typed case. Not run: the Windows re-run.
+for a root folder made under a typed case.
+
+The Windows re-run (G5, 2026-11-05, Claude Code 2.1.309 on the Windows 11 VM, logged out, as SYSTEM): 8/8 PASS, the
+hash compared exactly. `sanitized 201` made `<first 200>-74dzlg` and `sanitized 201, lowercase-typed` (real
+`LEN201B-X...`, typed lower case) made `<first 200>-t1dnys` - each the computed name of the cwd AS TYPED, so Windows keys
+the hash by the typed spelling too, and the win32 listing stays.
 
 The same code keys a worktree as Claude Code does (`layout.memoryKeyOf`): the main checkout only when
 `<admin>/gitdir` links back to the worktree's `.git` (one moved without `git worktree repair` keys by itself), and a

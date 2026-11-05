@@ -143,7 +143,7 @@ The stores and what each holds, where the docs root and the data root live, and 
   40 links included: `layout.unsafeLinkPath` / `unsafeLinkWalk`, G2; its darwin automount check is not mirrored) with
   every character outside `[A-Za-z0-9]` as `-`; past 200
   characters Claude Code appends `-<hash>`, which `layout.memoryNameHash` computes (R068, the A5 re-run in
-  `docs/workspace-layering-evidence.md`; on Windows, where the hash is of the typed case, every `<first 200>-*` folder
+  `docs/workspace-layering-evidence.md`; on Windows, where the hash is of the typed case - measured 2026-11-05 on 2.1.309, G5 - every `<first 200>-*` folder
   is listed beside it, an ancestor's computed folder left out), and `CLAUDE_CODE_PROJECT_DIR_NAME` set means none. The line a child's start
   shows is `layout.workspaceMemoryOf`: the top member's folder, none past an `ignore memory root`, unless exactly one
   folder matches, or when it is one of the child's own. The install opens the docs roots and denies their edit
