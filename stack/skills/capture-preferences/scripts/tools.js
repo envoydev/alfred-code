@@ -147,6 +147,19 @@ const ownServer = (inventory, type) => Object.values((inventory && inventory.ser
 // Problems fail lint; notes are true of this machine only (a teammate's own: type) or are a choice worth naming.
 // `shapeOnly` leaves out what is true of this machine or this release - a ranked tool its server or pin lacks: the start
 // line skips that rank and names it, and only a doc whose shape is broken loses the defaults.
+// Letters to add, drop or change to turn one name into the other - a job one or two from a table job is a typo of it.
+function editDistance(a, b)
+{
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++)
+    {
+        const row = [i];
+        for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        prev = row;
+    }
+    return prev[b.length];
+}
+
 function lintToolsDoc(text, { adapters = readAdapters(), inventory = null, shapeOnly = false } = {})
 {
     const problems = [];
@@ -160,11 +173,16 @@ function lintToolsDoc(text, { adapters = readAdapters(), inventory = null, shape
     const types = adapters.types || {};
     const denied = parsed.entries.filter((e) => e.job === 'deny').flatMap((e) => e.deny);
     const jobs = new Map();
+    const tableJobs = Object.keys(adapters.jobs || {});
     for (const e of parsed.entries)
     {
         if (!e.id) { problems.push(`\`## ${e.heading}\` has no T<n> id`); continue; }
         if (!e.id.startsWith('T')) { problems.push(`${e.id} is not a T<n> id - this doc's entries are T1, T2, ...`); continue; }
         if (!e.job) { problems.push(`${e.id}: no Job: line`); continue; }
+        if (!/^[a-z][a-z0-9 -]*$/.test(e.job)) { problems.push(`${e.id}: job '${e.job}' is not a name - use lower-case letters, digits, spaces and dashes`); continue; }
+        // A misspelt table job is told as the user's own while the table job quietly takes the defaults.
+        const near = e.job === 'deny' || tableJobs.includes(e.job) ? null : tableJobs.map((j) => [j, editDistance(e.job, j)]).find(([, d]) => d <= 2);
+        if (near) { problems.push(`${e.id}: ${e.job} is ${near[1]} letter${near[1] > 1 ? 's' : ''} from the table's ${near[0]} job - spell the table job exactly, or give your own job a name further from it`); continue; }
         if (e.job === 'deny')
         {
             if (e.hasOrder) problems.push(`${e.id}: the deny entry takes Deny:, not Order:`);
@@ -184,7 +202,7 @@ function lintToolsDoc(text, { adapters = readAdapters(), inventory = null, shape
             if (shapeOnly) { /* a tool's presence is this machine's or this pin's fact */ }
             else if (known)
             {
-                for (const tool of r.tools) if (!known.tools.includes(tool)) problems.push(`${e.id}: ${r.type} ${tool} is not a tool of ${r.type} at ${known.version}`);
+                for (const tool of r.tools) if (!known.tools.includes(tool)) problems.push(`${e.id}: ${r.type} ${tool} is not a tool of ${r.type}${known.version ? ` at ${known.version}` : ''}`);
             }
             else
             {
@@ -253,7 +271,16 @@ function registrationsAt(scope, { projectRoot, accountFile })
         const projects = (data && data.projects) || {};
         let real = projectRoot;
         try { real = fs.realpathSync(projectRoot); } catch { /* the path as given */ }
-        servers = (projects[projectRoot] || projects[real] || {}).mcpServers;
+        // The CLI keys a project by the path it was started from, so a symlinked or differently spelt key (`/var` for
+        // `/private/var`, `C:/` for `C:\`) is found by what it resolves to.
+        let hit = projects[projectRoot] || projects[real];
+        if (!hit) for (const [key, value] of Object.entries(projects))
+        {
+            let resolved;
+            try { resolved = fs.realpathSync(key); } catch { continue; }
+            if (resolved === real) { hit = value; break; }
+        }
+        servers = (hit || {}).mcpServers;
     }
     return { state: 'read', servers: servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {} };
 }

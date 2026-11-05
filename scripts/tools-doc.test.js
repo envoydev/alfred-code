@@ -90,6 +90,28 @@ test('lint: a job twice, a job with no Order, a deny entry with an Order', () =>
     assert.deepStrictEqual(lint(swap('- Job: database\n', '')).problems, ['T3: no Job: line']);
 });
 
+test('lint: a job name one or two letters from a table job is a problem, so the table job never takes the defaults unseen', () =>
+{
+    assert.deepStrictEqual(lint(swap('- Job: navigation', '- Job: navigaton')).problems,
+        ['T1: navigaton is 1 letter from the table\'s navigation job - spell the table job exactly, or give your own job a name further from it']);
+    assert.deepStrictEqual(lint(swap('- Job: documentation', '- Job: documentaion')).problems,
+        ['T2: documentaion is 1 letter from the table\'s documentation job - spell the table job exactly, or give your own job a name further from it']);
+    // A name three letters away is the user's own job, as before.
+    assert.deepStrictEqual(lint(swap('- Job: database', '- Job: browsing')).problems, []);
+});
+
+test('lint: a job name other than lower-case letters, digits, spaces and dashes is a problem', () =>
+{
+    assert.deepStrictEqual(lint(swap('- Job: database', '- Job: Data Base!!')).problems,
+        ["T3: job 'data base!!' is not a name - use lower-case letters, digits, spaces and dashes"]);
+    assert.deepStrictEqual(lint(swap('- Job: database', '- Job: data-base 2')).problems, []);
+});
+
+test('lint: a tool a known type lacks names no version when the table pins none', () =>
+{
+    assert.deepStrictEqual(lint(swap('context7 resolve-library-id, query-docs', 'context7 fetch_all')).problems, ['T2: context7 fetch_all is not a tool of context7']);
+});
+
 test('lint: an entry with no T id, or another doc\'s id', () =>
 {
     assert.deepStrictEqual(lint(swap('## T3 - Database', '## Database')).problems, ['`## Database` has no T<n> id']);
