@@ -437,7 +437,13 @@ test('R015 reviews: a merge with anything run before or beside it in its command
     'time until gh pr merge --squash; do git push; done', '( gh pr merge --squash ) & git push -q origin wip:feature',
     'setsid -f gh pr merge --squash; git push -q origin wip:feature', 'gh pr merge --squash --body ${X:-$(git push -q origin wip:feature; echo x)}',
     'gh pr merge --squash --body $(( $(git push -q origin wip:feature >/dev/null; echo 1) ))',
-    'gh pr merge --squash --body-file - <<EOF\n$(git push -q origin wip:feature)\nEOF']) {
+    'gh pr merge --squash --body-file - <<EOF\n$(git push -q origin wip:feature)\nEOF',
+    // the eighth review (retry): a text tool inside the merge's words or a filter after it that writes a file - the
+    // current branch gh reads from .git/HEAD among them - runs ahead of it; a trap's action and a backtick inside quotes
+    // are read as commands
+    'gh pr merge --squash --body "$(cat .git/x > .git/HEAD)"', 'gh pr merge --squash --body "$(echo x > .git/HEAD)"',
+    'gh pr merge --squash | cat .git/x > .git/HEAD', "trap 'git push -f origin wip:feature' EXIT; gh pr merge --squash",
+    'gh pr merge --squash --body "`git push -f origin wip:feature`"']) {
     const got = verdictOf(r, cmd);
     assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
     assert.match(got.stderr, RUNS_FIRST, cmd);
@@ -447,7 +453,8 @@ test('R015 reviews: a merge with anything run before or beside it in its command
     'git status && gh pr merge --squash', 'gh pr merge --squash --body "$(git log -1 --format=%B)"',
     'gh pr merge --squash --delete-branch 2>&1 | tail -5', 'gh pr merge --squash --body-file - <<\'EOF\'\n$(not run)\nEOF',
     // a comment runs nothing, backticks and `$(` included
-    '# run `git push` and $(git push) by hand first\ngh pr merge --squash']) {
+    '# run `git push` and $(git push) by hand first\ngh pr merge --squash',
+    'gh pr merge --squash --body "$(cat notes.md)"', 'gh pr merge --squash | grep -v x > /dev/null']) {
     const got = verdictOf(r, cmd);
     assert.strictEqual(got.status, 0, `${cmd}: ${got.stderr}`);
   }
@@ -506,7 +513,13 @@ test('push gate: a dry run or a push with nothing ahead goes ungated only as the
     // the eighth review's leads, each a push the shared reader never saw: ANSI-C quoting, a `$((` that bash runs as a
     // substitution, a heredoc opener inside quotes or a comment
     "echo $'a\\'b' ; git push -f origin wip:feature", 'echo $((git push -f origin wip:feature) )',
-    'echo "<<\'EOF\'"\ngit push -f origin wip:feature\nEOF', 'echo hi # <<EOF\ngit push -f origin wip:feature\nEOF']) {
+    'echo "<<\'EOF\'"\ngit push -f origin wip:feature\nEOF', 'echo hi # <<EOF\ngit push -f origin wip:feature\nEOF',
+    // the eighth review (retry): a backtick holding a quote inside double quotes, a trap's action, `#` after a
+    // substitution's `)`, a case arm inside `$(`, a `<<` in `${ }`, a `$((` across lines, quotes inside `$((`
+    'echo "`echo "\'"`" ; git push -f origin wip:feature', "trap 'git push -f origin wip:feature' EXIT",
+    'git push -n origin feature; trap \'git push -f origin wip:feature\' EXIT', 'echo $(echo a)#x ; git push -f origin wip:feature',
+    'echo "$(case a in a) echo "\'" ;; esac)" ; git push -f origin wip:feature', 'echo ${x/<<EOF/y}\ngit push -f origin wip:feature\nEOF',
+    'echo $((\n1 <<EOF\n))\ngit push -f origin wip:feature\nEOF', "echo $((git push -f origin wip:feature; echo '))') )"]) {
     const got = bare(cmd);
     assert.strictEqual(got.status, 2, `${cmd}: ${got.stderr}`);
     assert.match(got.stderr, /PUSH-GATE/, cmd);

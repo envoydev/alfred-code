@@ -282,6 +282,26 @@ test('gitText: ANSI-C quoting, a `$((` bash runs as a substitution and a quoted 
   assert.deepStrictEqual(subs('x="a\nb" && cat <<EOF\ngit push\nEOF'), [], 'a quote spanning lines before a real opener');
   assert.strictEqual(shell.heredocsOf('echo ${#x} <<EOF\nbody\nEOF').length, 1, '${#x} starts no comment');
 });
+test('lexShell: one pass reads quotes, comments and heredocs as bash does - the shapes the three scanners disagreed on (the eighth R015 review, retry)', () => {
+  const subs = (c) => shell.gitText(c, process.cwd()).calls.map((x) => x.sub);
+  assert.deepStrictEqual(subs('echo "`echo "\'"`" ; git push'), ['push'], 'a backtick holding a quote inside double quotes');
+  assert.deepStrictEqual(subs('echo "`git push`"'), ['push'], 'a backtick inside double quotes runs');
+  assert.deepStrictEqual(subs('echo $(echo a)#x ; git push'), ['push'], '# after a substitution\'s ) is word text');
+  assert.deepStrictEqual(subs('(echo b)#x ; git push'), [], '# after a subshell\'s ) starts a comment');
+  assert.deepStrictEqual(subs('echo "$(case a in a) echo "\'" ;; esac)" ; git push'), ['push'], 'a case arm\'s ) inside $( closes nothing');
+  assert.deepStrictEqual(subs('x=$(case a in (a) echo y ;; esac); git status'), ['status'], 'a pattern with its own ( too');
+  assert.deepStrictEqual(subs('echo ${x/<<EOF/y}\ngit push\nEOF'), ['push'], '<< inside ${ } opens no heredoc');
+  assert.deepStrictEqual(subs('echo $((\n1 <<EOF\n))\ngit push\nEOF'), ['push'], '<< inside a $(( )) across lines opens none');
+  assert.deepStrictEqual(subs("echo $((git push; echo '))') )"), ['push'], 'quotes inside a $(( are skipped');
+  assert.deepStrictEqual(subs('echo $(date)#x <<EOF\ngit push\nEOF'), [], 'a real heredoc after #-in-a-word stays a body');
+  assert.deepStrictEqual(subs("trap 'git push' EXIT"), ['push'], "trap's action runs");
+  assert.deepStrictEqual(subs("X='git push'; trap \"$X\" EXIT"), ['push'], 'a bound action too');
+  assert.deepStrictEqual(subs("trap - EXIT; trap '' INT; trap -p"), [], 'a reset, an ignore and a print run nothing');
+  assert.deepStrictEqual(subs('x=$(cat <<EOF\ngit push\nEOF\n); git status'), ['status'], 'a heredoc inside $( takes its body');
+  assert.deepStrictEqual(subs('cat <<A <<B\ngit push\nA\ngit push\nB\ngit status'), ['status'], 'two openers on a line, bodies in turn');
+  assert.deepStrictEqual(shell.quotedSpans('echo "a $(echo "b") c"'), [[5, 8], [15, 18], [19, 22]], 'a substitution pauses the span');
+  assert.strictEqual(shell.blankComments('echo a # x\necho "#" #y'), 'echo a    \necho "#"   ');
+});
 test('commandWords: `time` takes a whole pipeline, a body keyword included (the seventh R015 review, 2026-11-05)', () => {
   const names = (c) => { const g = shell.gitText(c, process.cwd()); return shell.commandWords(g.command, g.parsed).map((w) => w.name); };
   assert.ok(names('time until gh pr merge --squash; do :; done').includes('gh'), 'time until');

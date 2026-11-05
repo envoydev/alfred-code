@@ -234,6 +234,11 @@ const pushAlone = (c) => {
 // beside it: a pipeline peer or a command sent to the background; around it: a loop, which runs it again after what follows.
 const MERGE_TEXT_TOOLS = new Set(['cat', 'echo', 'printf']);
 const MERGE_PIPE_TOOLS = new Set(['tail', 'head', 'cat', 'grep', 'wc']);
+// A text tool or filter beside a merge writes nothing only when every redirect it carries reads, duplicates a stream or
+// goes to /dev/null: `cat x > .git/HEAD` in its words or after it in its pipe moves the branch gh reads (the eighth
+// review's retry).
+const writesNothing = (k) => (k.redirs || []).every((r) => (/^[<>]&$/.test(r.op) ? /^(\d+|-)$/.test(targetText(r.target))
+  : r.op === '<' || r.op === '<<' || r.op === '<<-' || r.op === '<<<' || targetText(r.target) === '/dev/null'));
 function runsFirst(at) {
   if (!parsed || parsed.tooDeep || gitRead.unreadAt >= 0 || unopenedAt() >= 0) return 'part of this command is one the hook could not read';
   const cmds = parsed.cmds.filter((k) => k.words.length);
@@ -251,10 +256,10 @@ function runsFirst(at) {
     if (k === own) continue;
     const s = k.words[0].s;
     const within = s > own.words[0].s && s < own.elem.to;
-    if (within && (MERGE_TEXT_TOOLS.has(wordAt(k)) || plainRead(k))) continue; // building its text: `cat`, `echo`, `printf`, a git read
+    if (within && ((MERGE_TEXT_TOOLS.has(wordAt(k)) && writesNothing(k)) || plainRead(k))) continue; // building its text: `cat`, `echo`, `printf`, a git read
     if (k.elem.from === own.elem.from && k.elem.to === own.elem.to) {
       // an output filter reading the merge's output after it in the pipeline (`| tail -5`) moves nothing
-      if (s > own.words[own.words.length - 1].e && MERGE_PIPE_TOOLS.has(wordAt(k))) continue;
+      if (s > own.words[own.words.length - 1].e && MERGE_PIPE_TOOLS.has(wordAt(k)) && writesNothing(k)) continue;
       return `${textOf(k)} runs beside it in a pipeline`;
     }
     if (within) return `${textOf(k)} runs inside its words`;
