@@ -1580,7 +1580,7 @@ function forgeCliStep(ctx)
     try
     {
         const fsn = require('../../stack/hooks/forge-session.js');
-        plan = fsn.cliPlan(fsn.profile(ctx.projectRoot, { ...ctx.env, CLAUDE_PROJECT_DIR: ctx.projectRoot }), { platform: ctx.rt.platform || process.platform, hasBrew: Boolean(ctx.rt.which('brew', { env: ctx.env })) });
+        plan = fsn.cliPlan(fsn.profile(ctx.projectRoot, { ...ctx.env, CLAUDE_PROJECT_DIR: ctx.projectRoot }), { platform: ctx.rt.platform || process.platform, hasBrew: Boolean(ctx.rt.which('brew', { env: ctx.env })), env: ctx.env });
     }
     catch (err) { ctx.note(`forge CLI: the forge could not be read (${err.message}) - nothing installed`); return; }
     if (plan.action === 'none') return ctx.log('  forge CLI: none known for this forge - nothing installed');

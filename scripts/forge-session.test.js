@@ -254,7 +254,8 @@ test('a gated push of one branch does not cover a move of another', () => {
 });
 
 // R020: another session's confirmed act in this repo explains a move with one line, never a block.
-const R020_LINE = /^Ref watch: main moved [0-9a-f]{7}\.\.[0-9a-f]{7} - a gated act of another session in this repo explains it\.$/m;
+// The spec's line (R020): '<ref> moved by another session's gated <act>' - the act named (review, 2026-11-05).
+const R020_LINE = /^Ref watch: main moved [0-9a-f]{7}\.\.[0-9a-f]{7} by another session's gated (?:branch write|merge)\.$/m;
 const forgeDir = (w) => path.dirname(forge.actsPath(w.dir, SID, watchEnv(w.dir)));
 // One act row as recordAct writes it, with its own `at`, and the ledger's mtime set (both ms since the epoch).
 function actRow(w, session, act, at = Date.now(), mtime = at) {
@@ -311,7 +312,11 @@ test('R020: another session\'s push explains only the tip it pushed', () => {
     forge.recordAct(w.dir, 'watch-s2', { ref: 'main', head: y, ...act }, watchEnv(w.dir));
     const o = out(stop(w.dir));
     if (want === 'block') assert.strictEqual(o.decision, 'block', JSON.stringify(act));
-    else { assert.strictEqual(o.decision, undefined, JSON.stringify(act)); assert.match(o.systemMessage, R020_LINE); }
+    else {
+      assert.strictEqual(o.decision, undefined, JSON.stringify(act));
+      assert.match(o.systemMessage, R020_LINE);
+      assert.match(o.systemMessage, act.concept === 'change.merge' ? /gated merge\.$/m : /gated branch write\.$/m, 'the act is named');
+    }
   }
 });
 
@@ -424,6 +429,22 @@ test('read-only turn skips the diff', () => {
   const reads = [['Read', { file_path: 'a.txt' }], ['Bash', { command: 'git status && git diff --stat && ls -la | head -5' }], ['Grep', { pattern: 'x' }], ['mcp__gitlab__get_merge_request', { merge_request_iid: 1 }]];
   assert.strictEqual(stop(w.dir, reads).stdout, '', 'no ls-remote ran, so nothing was not checked');
   assert.match(out(stop(w.dir, [['Bash', { command: 'npm test' }]])).systemMessage, /^Ref watch: not checked \('.+gone\.git' does not appear to be a git repository\)\.\n/);
+});
+
+// R011's review (2026-11-05): a long option is a read only when it is on the known-safe list - an abbreviation GNU getopt
+// takes (`--expr=`), a value-taking one judged without its value (`--line-length 70`), an awk short cluster holding f, i,
+// l or E (`-bf`), gawk's -W and the dump / profile / pretty-print letters all make the turn a non-read.
+test('R011 review: unknown or abbreviated long options, value-taking options and awk clusters keep the verdict honest', () => {
+  const { callIsRead } = require(HOOK);
+  const isRead = (command) => callIsRead({ name: 'Bash', input: { command } }, TMP);
+  for (const command of ["sed --expr='1e git push' a.txt", "sed --line-length 70 '1e git push' a.txt", "sed --in-pl 's/a/b/' a.txt",
+    'gawk -bf p.awk a.txt', 'gawk --fi p.awk a.txt', 'gawk -W exec=p.awk a.txt', "gawk -d'/tmp/d' 1 a.txt", "gawk --dump-variables 1 a.txt",
+    "gawk -o 1 a.txt", "gawk --profile=p 1 a.txt", 'awk --brand-new 1 a.txt'])
+    assert.strictEqual(isRead(command), false, command);
+  for (const command of ["sed --line-length 70 -n 1p a.txt", "sed --line-length=70 -n 1p a.txt", "sed --quiet --regexp-extended 's/a/b/' a.txt",
+    "sed --posix -n 1p a.txt", "awk -vfoo=1 '{print foo}' a.txt", "awk -F, '{print $1}' a.txt", "gawk --assign x=1 '{print x}' a.txt",
+    "gawk --field-separator=, '{print $1}' a.txt", "gawk -b '{print}' a.txt", "gawk --posix '{print}' a.txt"])
+    assert.strictEqual(isRead(command), true, command);
 });
 
 test('R011: sed and awk reads keep the turn a read; a form that can write or run still checks', () => {
@@ -854,6 +875,22 @@ test('no CLI is planned for an unknown forge, one already on PATH, or no remote'
   assert.deepStrictEqual(cliPlan(profile(hub, env), { platform: 'darwin', hasBrew: true }), { action: 'present', cli: 'gh' });
   const none = repo(null);
   assert.strictEqual(cliPlan(profile(none, envFor(none)), { platform: 'darwin', hasBrew: true }).action, 'none');
+});
+
+// Review 2026-11-05 (#8): the plan reads the PROFILED project's vocabulary, as profile() does (R013) - never the overlay of
+// the folder this process happens to run in.
+test('R013 review: the CLI plan reads the overlay of the profiled project, not of the process folder', () => {
+  // Only an overlay can name a CLI for a kind the base gives none (bitbucket) and that CLI's install line (OPEN_KEYS).
+  const dir = repo('https://bitbucket.acme.example/g/r.git');
+  fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.alfred', 'forge-lexicon.json'), JSON.stringify({ hints: { clis: { bitbucket: 'bbcli' }, install: { bbcli: { how: 'https://bitbucket.acme.example/tools/bbcli' } } } }));
+  const env = envFor(dir);
+  const p = profile(dir, env);
+  assert.strictEqual(p.kind, 'bitbucket');
+  assert.notStrictEqual(path.resolve(process.cwd()), path.resolve(dir), 'the test runs outside the profiled project');
+  assert.deepStrictEqual(cliPlan(p, { platform: 'linux', hasBrew: false, env }), { action: 'manual', cli: 'bbcli', need: 'bbcli', how: 'install bbcli by hand: https://bitbucket.acme.example/tools/bbcli' });
+  onPath(env, 'bbcli');
+  assert.deepStrictEqual(cliPlan(profile(dir, env), { platform: 'linux', hasBrew: false, env }), { action: 'present', cli: 'bbcli' });
 });
 
 // The CLI runs git, so its PATH keeps the machine's dirs - minus any that hold a forge CLI this machine happens to have.

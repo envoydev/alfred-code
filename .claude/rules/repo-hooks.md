@@ -1881,8 +1881,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     push is gated as if it stood alone (E-batch 4b, a side review of fn-9): it needs the receipt when the push moves
     nothing (a dry run, nothing ahead - the denial names the chained act), each merge in the command gets the unseen-head
     check (`forge.js unseenHead`, the receipt read up to that merge), and a push that moves nothing writes no push row.
-    A merge naming no number checks its branch's tip (R015, `forge.js branchSelector` / `branchHead`: the current branch on its
-    own remote, or the named branch on the checkout's remote; a branch checked out from a PR ref reads that change's head);
+    A merge naming no number checks its branch's tip (R015, `forge.js branchSelector` / `branchHead`: the current or the
+    named branch on its push remote - `branch.<b>.pushRemote`, else `remote.pushDefault` - else its own remote, else the
+    checkout's; a branch checked out from a PR ref reads that change's head; a push earlier in the command that lands the
+    branch leaves the local rule, `pushLands`, while a numbered merge still reads its change head - review 2026-11-05);
     `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
@@ -1891,14 +1893,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     audit 2026-10-30 HK-27); PostToolUse after a merge, branch write, release or unknown call
     re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read
     (an allowlist of read tools; `sed` with no `-i` / `-f`, no `e` command or flag and no `w` / `W`, and `awk` / `gawk`
-    with no `-f` / `-i` / `-l` / `-E` and no `system(`, pipe, `>` or `@` in the program are reads too - R011), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
+    with no `-f` / `-i` / `-l` / `-E` and no `system(`, pipe, `>` or `@` in the program are reads too - R011; an unknown or
+    abbreviated long option, or an awk cluster ending in a program file, is none - review 2026-11-05), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
     running. An act covers the ref it aims at; one naming no ref lands ONE move (at its head, else the single loud
     candidate - with several it covers none and says so); an armed auto-merge persists across turns until it lands.
     Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit a local branch holds, any
     tag - blocked once per cycle; the rest is one summary `systemMessage`. An ASKED act covers nothing (Task 6 ruling,
     revising Task 2's). A loud move no act of this session covers, but a confirmed, aimed act of ANOTHER session in the
     repo does (R020, `otherActs`: the 20 newest other `ACTS-*.jsonl` by mtime inside the window `state.at - 1000`), is
-    one `systemMessage` line - 'a gated act of another session in this repo explains it' - never a block; strict, so a
+    one `systemMessage` line naming that act - '<ref> moved <a>..<b> by another session's gated <merge | release | branch
+    write>' (review 2026-11-05) - never a block; strict, so a
     push carrying its head lands only that tip, an act naming no ref lands only the move at its head, an asked,
     unconfirmed or all-refs act lands nothing, and none is used up. `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
     asked call. Unreachable is `not checked (<why>)`, never clean. `forge-session:watch` in `ALFRED_CODE_HOOKS_OFF` off,
