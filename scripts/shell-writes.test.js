@@ -984,3 +984,16 @@ test('scanShell: a write that only bash\'s reading of an echo carries is a targe
     assert.strictEqual(once.length, 1, 'a script both readings agree on is scanned once');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// The full suite after review 13: the source-protocol snippet's `for T in git tr cut mktemp node; do command -v "$T"`
+// read as an unknown git call once a loop name took its list - and gated the snippet every session runs as a push.
+// `command -v` / `-V` looks a name up and runs nothing; the words after it are names.
+test('gitText: command -v and -V look a name up and run nothing, a loop name included (review 13, the suite)', () => {
+  for (const c of ['for T in tr cut git; do command -v "$T" >/dev/null 2>&1 || echo missing; done', 'command -v git push', 'command -V git',
+    'command -pv git', 'T=git; command -v $T'])
+    assert.deepStrictEqual([shell.gitText(c, process.cwd()).unreadAt, shell.gitText(c, process.cwd()).calls.map((x) => x.sub)], [-1, []], c);
+  for (const c of ['command git push', 'command -p git push', 'for c in "git push"; do command $c; done'])
+    assert.ok(r11Read(c), c);
+  assert.strictEqual(shell.commandIndex(['command', '-v', 'rm']), 0, 'the rm and read guards\' walker: the lookup is the command');
+  assert.strictEqual(shell.commandIndex(['command', '-p', 'rm', '-rf', 'x']), 2, 'command -p still runs its word');
+});

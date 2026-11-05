@@ -1018,12 +1018,14 @@ class Cand {
   get argv() { return this._argv || (this._argv = this.args.map(dqTok)); }
 }
 const FINDS = new Set(['find', 'gfind']);
+const LOOKUP_FLAG = /^-[pvV]*[vV][pvV]*$/; // `command -v`, `-V`, `-pv`: a lookup, no run
 function commandWordsOf(cmd, assigns, events) {
   const w = cmd.words;
   const out = [];
   const dq = (k) => dqTok(w[k]);
   let wrapper = null;
   let afterFlag = false;
+  let lookup = false;
   let k = 0;
   const chain = [];
   const cand = (at, via) => { const word = dq(at); const c = new Cand(cmd, at, word, normCmd(word, assigns), via, chain.length ? chain.slice() : NO_CHAIN); out.push(c); return c; };
@@ -1042,6 +1044,9 @@ function commandWordsOf(cmd, assigns, events) {
     // `time` is the shell's reserved word, not a program: it takes a whole pipeline, a keyword included (`time until
     // gh pr merge; do ...; done`, the seventh R015 review)
     if (wrapper === 'time' && KEYWORDS.has(raw)) continue;
+    // `command -v` / `-V` looks the words after it up and runs none of them (the source-protocol snippet's PATH check,
+    // `for T in git tr ...; do command -v "$T"`, read as an unknown git call once a loop name took its list)
+    if (wrapper === 'command' && LOOKUP_FLAG.test(word)) { lookup = true; break; }
     if (word.startsWith('-')) { afterFlag = true; continue; }
     if (/^\d[\w.]*$/.test(word) || ASSIGN.test(raw)) { afterFlag = false; continue; }
     const c = cand(k, wrapper);
@@ -1055,7 +1060,7 @@ function commandWordsOf(cmd, assigns, events) {
   // stack never heard of does not hide it (2.1.6 re-verify 4 R4-M2 - the base gated any word sequence that reached
   // git). A package runner counts only right after its run / exec verb: `npm run lint -- --fix git x` names a script
   // argument.
-  if (out.length && k < w.length) {
+  if (out.length && k < w.length && !lookup) {
     const head = out[out.length - 1].name;
     if (head !== 'git' && !DATA_HEADS.has(head) && !DECLARERS.has(head) && !FINDS.has(head)) {
       const pkg = PACKAGE_RUNNERS.has(head);
@@ -1120,9 +1125,11 @@ function commandIndex(words, tokenize = shellWords) {
     const run = RUN_TOOLS.has(name) && wordOf(words[k + 1]) === 'run';
     if (!run && (!WRAPPERS.has(name) || NOT_A_PREFIX.has(name))) break;
     const row = WRAPPER_FLAGS[name] || { value: '' };
+    const at = k;
     if (run) k++;
     for (k++; k < words.length; k++) {
       const a = wordOf(words[k]);
+      if (name === 'command' && LOOKUP_FLAG.test(a)) return at; // a lookup: `command` is the command
       if (a === '--') { k++; break; }
       if (row.assigns && ASSIGN.test(a)) continue;
       if (!/^-./.test(a)) break;
