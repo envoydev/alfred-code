@@ -269,9 +269,11 @@ function runHook(hook, payload, ctx)
     const plain = /^node\s+("[^"]+"|\S+)((?:\s+(?:"[^"]*"|\S+))*)\s*$/.exec(command.trim());
     const argv = plain && !/[|&;<>$`]/.test(command) ? [...command.trim().slice(4).matchAll(/"([^"]*)"|(\S+)/g)].map((m) => (m[1] === undefined ? m[2] : m[1])) : null;
     // Exec form (`args` set) spawns its command directly with the args as the vector, no shell (code.claude.com/docs/en/hooks,
-    // 'Exec form and shell form') - `node` is this node.
-    const exec = Array.isArray(hook.args) ? [command === 'node' ? process.execPath : command, hook.args.map(fill)] : null;
-    const r = exec ? spawnSync(exec[0], exec[1], opts) : argv ? spawnSync(process.execPath, argv, opts) : spawnCommand(process.platform === 'win32' ? 'bash' : 'sh', ['-c', command], opts);
+    // 'Exec form and shell form') - `node` is this node, any other command goes through the one spawn route (M6).
+    const exec = Array.isArray(hook.args) ? hook.args.map(fill) : null;
+    const r = exec && command === 'node' ? spawnSync(process.execPath, exec, opts)
+        : exec ? spawnCommand(command, exec, opts)
+            : argv ? spawnSync(process.execPath, argv, opts) : spawnCommand(process.platform === 'win32' ? 'bash' : 'sh', ['-c', command], opts);
     const ms = Date.now() - started;
     if (r.error && r.error.code === 'ETIMEDOUT') return { timedOut: true, ms, seconds };
     const stdout = String(r.stdout || '').trim();
