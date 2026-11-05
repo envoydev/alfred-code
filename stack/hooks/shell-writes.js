@@ -3232,58 +3232,108 @@ function carriedOf(P, raw, heredocs, opts, run) {
     return v;
   };
   // The words a loop runs a name through (review 14, 5: `for t in git node; do $t --version; done` read as an unknown git
-  // command): a use INSIDE the body of a `for` / `select` binding the name over plain words reads each word as the
-  // command in turn. Review 15, 1: after the loop, or in a script a parent's assignment reaches, the name holds what the
-  // reader cannot see (`(for t in git; do :; done); $t`), so only the body counts, by the parser's `for` / `done` pairs;
-  // and only when the name appears nowhere but those heads and plain uses (`${t:=...}`), the command sets no IFS and
-  // sources, evals or assigns through no builtin. Anything else gives null - the conservative reading stands.
-  const ASSIGNERS = /\b(?:eval|source|IFS|read|readarray|mapfile|getopts|declare|typeset|local|export|readonly|unset|let|vared|coproc|zparseopts|zstyle|zformat|strftime|sysread|getln|zregexparse|pcre_match)\b|\bprintf?\b[^;&|\n]{0,64}\s-[A-Za-z]*v|\bwait\b[^;&|\n]{0,64}\s-[A-Za-z]*p|\$\{[^{}\n]{0,64}=|(?:^|[\s;&|(){}])\.[ \t]/;
-  let assigners;
-  let loopHeads = null; // name -> Map(head command -> index of the `done` closing it), built in one pass
+  // command): a use INSIDE the body of a `for` / `select` binding the name over plain words reads the words of its
+  // innermost such loop - and of each same-name loop that opened inside that body before the use - as the command in
+  // turn. Review 15, 1: after the loop, or in a script a parent's assignment reaches, the name holds what the reader cannot
+  // see (`(for t in git; do :; done); $t`), so only a body counts, by the parser's `for` / `done` pairs; and only when the
+  // name appears nowhere but those heads and plain uses (`${t:=...}`), every IFS set is blanks, no builtin assigns a name
+  // the command computes (`read "$v"`), and no eval, source or `.` runs in the body before the use. Review 16: those are
+  // read as command words, never as text (`find . -name`, `cd .` and `export FOO=1` kept nothing from being read), a head
+  // counts where the parser opens its block (`do for t in ...`, `then for ...`), and a use reads its own loop's words, not
+  // every same-name loop's (1,000 repeated loops pushed a million calls). Anything else gives null - the conservative
+  // reading stands.
+  const ASSIGNING = new Set(['read', 'readarray', 'mapfile', 'getopts', 'declare', 'typeset', 'local', 'export', 'readonly', 'unset', 'let', 'vared', 'coproc', 'zparseopts', 'zstyle', 'zformat', 'strftime', 'sysread', 'getln', 'zregexparse', 'pcre_match']);
+  const SOURCING = new Set(['eval', 'source', '.']);
+  const HEADS_MAX = 1024;
+  let loopScan = null; // once per command: an assignment to a computed name anywhere, and each eval / source / `.`
+  const loopScanOf = () => {
+    if (loopScan) return loopScan;
+    loopScan = { computed: false, sourcing: [] };
+    const named = (r) => !/[$`]/.test(r) || /^-/.test(r) || /^[A-Za-z_]\w*(?:\[[^\]\n]{0,64}\])?\+?=/.test(r);
+    for (const c of P.cmds) {
+      for (const k of c.cands || []) {
+        if (SOURCING.has(k.name)) { loopScan.sourcing.push(c); continue; }
+        const flag = k.name === 'printf' || k.name === 'print' ? 'v' : k.name === 'wait' ? 'p' : null;
+        for (let w = k.at + 1; w < c.words.length; w++) {
+          const r = c.words[w].raw;
+          // printf / print bind only after -v, wait only after -p; the others bind their name words
+          if (flag) {
+            if (r === `-${flag}` && w + 1 < c.words.length && !named(c.words[w + 1].raw)) loopScan.computed = true;
+            else if (r.startsWith(`-${flag}`) && r.length > 2 && /[$`]/.test(r)) loopScan.computed = true;
+          } else if (ASSIGNING.has(k.name) && !named(r)) loopScan.computed = true;
+        }
+      }
+    }
+    return loopScan;
+  };
+  let ifsState;
+  const ifsBlank = () => { // every IFS the command sets is blanks (`IFS=$'\n'`), and nothing else names IFS but a read
+    if (ifsState !== undefined) return ifsState;
+    const src = P.command;
+    const sets = new Map();
+    for (const e of P.assignEvents || []) if (e.name === 'IFS') sets.set(e.at, e);
+    ifsState = true;
+    for (const m of src.matchAll(/\bIFS\b/g)) {
+      const i = m.index;
+      if (src[i - 1] === '$' || (src[i - 1] === '{' && src[i - 2] === '$' && src[i + 3] === '}')) continue;
+      const e = sets.get(i);
+      if (e && /^[ \t\n]*$/.test(String(e.value))) continue;
+      ifsState = false;
+      break;
+    }
+    return ifsState;
+  };
+  let loopHeads = null; // name -> Map(head command -> { close: index of its `done`, list: its words, nameAt }), one pass
   const loopHeadsOf = (name) => {
     if (!loopHeads) {
       loopHeads = new Map();
       for (const [close, open] of mapsOf().opener) {
+        if (close.words[0].raw !== 'done') continue;
         const w = open.words;
-        if (close.words[0].raw !== 'done' || w.length < 3 || (w[0].raw !== 'for' && w[0].raw !== 'select') || w[2].raw !== 'in') continue;
-        if (!loopHeads.has(w[1].raw)) loopHeads.set(w[1].raw, new Map());
-        const m = loopHeads.get(w[1].raw);
-        if (!m.has(open) || close.index < m.get(open)) m.set(open, close.index);
+        const lead = open.cands && open.cands.length ? open.cands[open.cands.length - 1].at : w.length - 1;
+        let k = 0;
+        while (k <= lead && k < w.length && w[k].raw !== 'for' && w[k].raw !== 'select') k++;
+        if (k + 2 >= w.length || k > lead || w[k + 2].raw !== 'in') continue;
+        const nm = w[k + 1].raw;
+        if (!loopHeads.has(nm)) loopHeads.set(nm, new Map());
+        const m = loopHeads.get(nm);
+        const h = m.get(open);
+        if (!h) m.set(open, { close: close.index, list: w.slice(k + 3), nameAt: w[k + 1].s });
+        else if (close.index < h.close) h.close = close.index;
       }
     }
     return loopHeads.get(name) || null;
   };
-  const loopLists = new Map();
-  const loopListOf = (name, heads) => {
-    const src = P.command;
-    if (assigners === undefined) assigners = ASSIGNERS.test(src);
-    if (assigners) return null;
-    // binderGit already charged this name's scan (review 15, 6: a second charge halved the padding that drops every call)
-    if (!binders.has(name) && !run.budget.take(src.length)) { deepPrint = true; return null; }
-    const headAt = new Set([...heads.keys()].map((h) => h.words[1].s));
-    for (const m of src.matchAll(new RegExp(`\\b${name}\\b`, 'g'))) {
-      const i = m.index;
-      if (headAt.has(i) || src[i - 1] === '$' || (src[i - 1] === '{' && src[i - 2] === '$' && src[i + name.length] === '}')) continue;
-      return null;
-    }
-    const items = [];
-    for (const open of heads.keys()) {
-      if (open.words.length > 259) return null;
-      for (const w of open.words.slice(3)) {
-        if (w.raw.length > 1024 || /[$`*?[\]{}~\\'"()<>=]/.test(w.raw)) return null;
-        items.push(w.raw);
+  const loopOk = new Map();
+  const loopNameOk = (name, heads) => {
+    if (loopOk.has(name)) return loopOk.get(name);
+    const ok = (() => {
+      if (loopScanOf().computed || !ifsBlank()) return false;
+      for (const h of heads.values()) for (const w of h.list) if (w.raw.length > 1024 || /[$`*?[\]{}~\\'"()<>=]/.test(w.raw)) return false;
+      const src = P.command;
+      // binderGit already charged this name's scan (review 15, 6: a second charge halved the padding that drops every call)
+      if (!binders.has(name) && !run.budget.take(src.length)) { deepPrint = true; return false; }
+      const headAt = new Set([...heads.values()].map((h) => h.nameAt));
+      for (const m of src.matchAll(new RegExp(`\\b${name}\\b`, 'g'))) {
+        const i = m.index;
+        if (headAt.has(i) || src[i - 1] === '$' || (src[i - 1] === '{' && src[i - 2] === '$' && src[i + name.length] === '}')) continue;
+        return false;
       }
-    }
-    return items;
+      return true;
+    })();
+    loopOk.set(name, ok);
+    return ok;
   };
   const loopItems = (name, cmd) => {
     const heads = loopHeadsOf(name);
-    if (!heads) return null;
-    let inside = false;
-    for (const [open, close] of heads) if (open.index < cmd.index && cmd.index < close && within(cmd.frame, open.frame)) { inside = true; break; }
-    if (!inside) return null;
-    if (!loopLists.has(name)) loopLists.set(name, loopListOf(name, heads));
-    return loopLists.get(name);
+    if (!heads || heads.size > HEADS_MAX) return null;
+    let best = null;
+    for (const [open, h] of heads) if (open.index < cmd.index && cmd.index < h.close && within(cmd.frame, open.frame) && (!best || open.index > best.index)) best = open;
+    if (!best || !loopNameOk(name, heads)) return null;
+    for (const c of loopScanOf().sourcing) if (c.index > best.index && c.index < cmd.index) return null;
+    const items = heads.get(best).list.map((w) => w.raw);
+    for (const [open, h] of heads) if (open.index > best.index && open.index < cmd.index) for (const w of h.list) items.push(w.raw);
+    return items;
   };
   // A command word that is one loop name, bare or quoted: the commands it runs, one a list word (null: not such a word)
   const loopWordItems = (tok, cmd) => {
@@ -4136,7 +4186,7 @@ const NAMES_GIT = /g[\\'"]*i[\\'"]*t/i;
 // review: `"$HOME/github/x.sh"` and `ROOT=$(git rev-parse --show-toplevel); "$ROOT/t.sh"` were asked on).
 const GIT_WORDS = new Map();
 let gitWordsHeld = 0;
-const GIT_VALUE = /^\s*(?:\S*[\\/])?git(?:\.exe)?\s+(?:rev-parse|symbolic-ref|merge-base|branch\s+--show-current)\b/i;
+const GIT_VALUE = /^\s*(?:\S*[\\/])?git(?:\.exe)?\s+(?:-C\s+\S+\s+)?(?:rev-parse|symbolic-ref|merge-base|ls-files|branch\s+--show-current)\b/i;
 function gitWord(text) {
   const key = String(text);
   if (GIT_WORDS.has(key)) return GIT_WORDS.get(key);
@@ -4147,7 +4197,12 @@ function gitWord(text) {
   // a substitution that asks git for a path or a ref alone (`$(git rev-parse --show-toplevel)`) prints a value, never
   // git's name; any other keeps its words, so `$(command -v git)`, `$(which git)`, `$(echo git)` (review 14, 1) and
   // `$(git --version | cut -d' ' -f1)` (review 15) name git
-  const inner = (m, a, b) => { const body = a !== undefined ? a : b; return GIT_VALUE.test(body) && !/[|;&\n]|--(?:sq-quote|parseopt|format|pretty)|\sgit\b/i.test(body.replace(GIT_VALUE, '')) ? ' ' : ` ${body} `; };
+  // - judged one pipeline segment at a time, its redirections to /dev/null or a descriptor dropped, so a fallback or a
+  // filter beside it (`|| pwd`, `| tr -d '\r'`) keeps its own words and drops none of git's (review 16, 1)
+  const inner = (m, a, b) => {
+    const body = (a !== undefined ? a : b).replace(/\d*>&\d+|\d*>>?[ \t]*\/dev\/null/g, ' ');
+    return ` ${body.split(/\|\|?|&&?|;|\n/).map((sg) => (GIT_VALUE.test(sg) && !/--(?:sq-quote|parseopt|format|pretty)|\sgit\b/i.test(sg.replace(GIT_VALUE, '')) ? ' ' : sg)).join(' ')} `;
+  };
   for (let n = 0; n < 8 && /\$\(|`/.test(t); n++) t = t.replace(/\$\(([^()]*)\)|`([^`]*)`/g, inner);
   t = t.replace(/[\\'"]/g, '');
   // a git program by its path (`$(git --exec-path)/git-push`) too

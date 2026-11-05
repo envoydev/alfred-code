@@ -143,6 +143,47 @@ function remoteDefault(cwd, remote)
     }
 }
 
+// A branch held in a variable (review 16: `b=main; git push -f origin "$b"` and `for b in main develop; do git push -f
+// origin "$b"; done` passed): a literal binding is read as its value, one that asks git for the branch checked out as
+// HEAD, and a `for` / `select` list naming it as each of its words beside the word itself. A value any other
+// substitution computes stays out of model, as the header says.
+const CURRENT_BRANCH = /^"?\$\(\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:--short\s+)?HEAD)\s*\)"?$/;
+function heldRefs(read, call)
+{
+    return (word) =>
+    {
+        const vs = [...String(word).matchAll(/\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g)];
+        if (vs.length !== 1 || !read.vars)
+        {
+            return [word];
+        }
+        const name = vs[0][1] || vs[0][2];
+        const swap = (v) => word.slice(0, vs[0].index) + v + word.slice(vs[0].index + vs[0][0].length);
+        const lit = read.vars.literalOf(name, call.at);
+        if (lit !== null)
+        {
+            return [swap(lit)];
+        }
+        const ev = read.vars.eventOf(name, call.at);
+        if (ev && !ev.bound && CURRENT_BRANCH.test(String(ev.raw)))
+        {
+            return [swap('HEAD')];
+        }
+        const items = [];
+        for (const m of String(read.command).matchAll(new RegExp(`\\b(?:for|select)\\s+${name}\\s+in\\b([^;\\n]{0,1024})`, 'g')))
+        {
+            for (const it of m[1].trim().split(/\s+/))
+            {
+                if (it && !/[$`]/.test(it))
+                {
+                    items.push(swap(unquote(it)));
+                }
+            }
+        }
+        return [word, ...items];
+    };
+}
+
 // The push's words with each option's VALUE dropped: `-o ci.skip` read `ci.skip` as a refspec, so `git push -f -o
 // ci.skip origin` on main was no bare push and passed (audit 2026-10-08). A value attached with `=` is one word already.
 const VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
@@ -525,7 +566,7 @@ function isProtectedForcePush(command, cwd)
         {
             continue;
         }
-        const after = pushWords(call.argv);
+        const after = pushWords(call.argv).flatMap(heldRefs(read, call));
         const gitCwd = read.callDir(call);
         // HEAD and @ name the branch checked out where git runs when the push runs - `git push -f origin HEAD` on main
         // is the bare force spelled out, and read literally it named no protected branch and passed.

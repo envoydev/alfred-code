@@ -634,6 +634,21 @@ test('guard-protected-force-push: the protected-branch matrix', () => {
   }
 });
 
+test('guard-protected-force-push: a branch held in a variable is read - a literal, a loop list, the current branch (review 16)', () => {
+  const fp = (c) => bash('guard-protected-force-push.js', c);
+  for (const c of ['b=main; git push -f origin "$b"', 'b=main; git push -f origin $b', 'for b in main develop; do git push -f origin "$b"; done',
+    'BR=develop; git push --force origin "${BR}"', 'for b in feat-a master; do git push origin "+$b"; done']) {
+    assert.equal(fp(c), 2, `must block: ${c}`);
+  }
+  for (const c of ['b=feature/x; git push -f origin "$b"', 'for b in feat-a feat-b; do git push -f origin "$b"; done', 'b=main; git push origin "$b"']) {
+    assert.equal(fp(c), 0, `must allow: ${c}`);
+  }
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const cur = 'BR=$(git branch --show-current); git push --force origin "$BR"';
+  assert.equal(at(cur, scratchRepoOn('main')), 2, 'the current branch, on main');
+  assert.equal(at(cur, scratchRepoOn('feature/x')), 0, 'the current branch, on a feature branch');
+});
+
 test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {
   const dir = scratchRepoOn('main');
   const fp = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });

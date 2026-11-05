@@ -1104,3 +1104,30 @@ test('review 15, gaps: an ANSI-C quoted value is a literal a nested shell or eva
   for (const c of ["x=$'git'; bash -c \"$x push --force origin main\"", "x=$'\\x67it'; eval \"$x push --force origin main\""]) assert.ok(ran(c, 'push'), c);
   assert.ok(!shell.gitText("x=$'a'$HOME; bash -c \"$x push\"", process.cwd()).calls.some((k) => k.sub === 'push'), 'a value with an expansion beside it stays unresolved');
 });
+test('review 16, 1: a git substitution asking for a path stays no git through a fallback, a filter, -C or ls-files', () => {
+  for (const c of [
+    'ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd); "$ROOT/scripts/test.sh"',
+    "ROOT=$(git rev-parse --show-toplevel | tr -d '\\r'); \"$ROOT/scripts/test.sh\"",
+    'ROOT=$(git -C "$PWD" rev-parse --show-toplevel); "$ROOT/scripts/test.sh"',
+    'for s in $(git ls-files "scripts/*.sh"); do "./$s"; done',
+  ]) assert.strictEqual(shell.gitText(c, process.cwd()).unreadAt, -1, c);
+  assert.ok(ran('x=$(git rev-parse HEAD || echo git); $x push --force origin main', 'push'));
+});
+test('review 16, 2: a loop is read beside export, cd ., find . or source, and nested after do or then', () => {
+  for (const c of [
+    'export FOO=1; for t in git node; do $t --version; done',
+    'cd . && for t in git node; do $t --version; done',
+    'for d in a b; do for t in git node; do $t --version; done; done',
+    'if true; then for t in git node; do $t --version; done; fi',
+    'for t in git node npm; do $t --version; done; find . -name package.json | head -3',
+    'source ./env.sh; for t in git node; do $t --version; done',
+    "IFS=$'\\n'; for t in git node; do $t --version; done",
+  ]) assert.strictEqual(shell.gitText(c, process.cwd()).unreadAt, -1, c);
+  for (const c of ['for t in git; do read -r "$v"; $t push; done', 'for t in git; do eval "$x"; $t push; done']) assert.ok(ran(c, 'push'), c);
+});
+test('review 16, 3: repeated same-name loops cost linear work', () => {
+  const t0 = Date.now();
+  const g = shell.gitText('for t in git; do $t status; done; '.repeat(1000), process.cwd());
+  assert.ok(Date.now() - t0 < 2000, `${Date.now() - t0} ms`);
+  assert.ok(g.calls.length <= 1000, `${g.calls.length} calls`);
+});
