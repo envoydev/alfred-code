@@ -1879,20 +1879,23 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     own concept (`forge.js classifyCommand`; E-batch fn-9: `git push && gh pr merge 4` ledgered the push alone), each
     with its `tool_use_id`; the watch trusts a row once its PostToolUse confirmed it. A forge publish act chained behind a
     push is gated as if it stood alone (E-batch 4b, a side review of fn-9): it needs the receipt when the push moves
-    nothing (a dry run, nothing ahead - the denial names the chained act), each merge in the command gets the unseen-head
-    check (`forge.js unseenHead`, the receipt read up to that merge), and a push that moves nothing writes no push row.
+    nothing (a dry run, nothing ahead - the denial names the chained act), and a push that moves nothing writes no push
+    row; a merge behind it is refused under a reviewed head (R015 below) and passes under a waiver.
     A merge naming no number checks its branch's tip (R015, `forge.js branchSelector` / `branchHead`: the current or the
     named branch on its push remote - `branch.<b>.pushRemote`, else `remote.pushDefault` - else its own remote, else the
-    checkout's; a branch checked out from a PR ref reads that change's head; a push in front of the merge in the same
-    command has not run when it is judged, so the remote's tip as it stands decides - after an amend or a rebase the
-    denial says to push first in its own call - and every source such a push sends but HEAD, the push gate's own, must
-    be the reviewed head or an ancestor (`forge.js pushSources`; a shell expansion, `--all` / `--branches` /
-    `--mirror`, an unknown option, a source that does not resolve, a refspec-less push widened by push.default=matching
-    or a remote's push setting, words from input (`xargs`), a call-level `push.` / `remote.` setting or a `GIT_` variable
-    set in front refuses the pair); five reviews 2026-11-05 found every guess at what such a push lands
-    open to an unreviewed commit). The push gate's dry run is `forge.js pushDryRun`: only a certain one goes ungated -
-    an unknown or abbreviated option, a later `--no-dry-run`, `--end-of-options` or a word the shell expands (`$X`,
-    `$(...)`, a brace list, a glob) reads as a real push (`-on` is the push option 'n');
+    checkout's; a branch checked out from a PR ref reads that change's head). The merge is judged on the repository and
+    its remote as they stand BEFORE the command runs, so under a reviewed head only a merge nothing runs ahead of is
+    judged (`runsFirst`): any command before it but a plain git read (`GIT_READS`, literal, no setting, `--output` or
+    file redirect; a carried script runs where its carrier stands), one inside its words other than `cat` / `echo` /
+    `printf` or such a read, a pipeline peer, a part sent to the background or a loop refuses it, naming what runs first - six reviews 2026-11-05 broke every reading of what runs first (a push's join, remote, refspec and
+    sources, a pull, reset, checkout or config write, an exported HOME, a function, an expansion); the cost is one call
+    more for `git push && gh pr merge`. The push gate reads a push's words with `forge.js pushRead`: a dry run goes
+    ungated only when certain (an unknown or abbreviated option, a later `--no-dry-run`, `--end-of-options`, a word the
+    shell expands - `$X`, `$(...)`, a brace list, a glob - or `--exec` / `--receive-pack` read as a real push; `-on` is
+    the push option 'n'), and a dry run or a push with nothing ahead goes ungated only as the command's ONE push
+    (`pushAlone`: no other push or built git subcommand, only plain git reads before it, nothing beside or inside it, no
+    loop, background part, carried script, prefix, call-level setting or checkout - audit 2026-10-08's `git status &&
+    git push` stays ungated); a git call whose subcommand the shell builds (`git $S`, `xargs git`) is gated as a push;
     `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -

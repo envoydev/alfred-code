@@ -133,6 +133,65 @@ const actText = (c) => command.slice(c.at, c.stop).trim().replace(/\s+/g, ' ');
 // A push's dry run, only when git certainly reads its words as one (forge.js pushDryRun: `-on` is a push option, an
 // abbreviation or a shell expansion reads as a real push); without forge.js every push is gated.
 const pushDry = (argv) => { try { return require('./forge.js').pushDryRun(argv); } catch { return false; } };
+const pushPlain = (argv) => { try { return require('./forge.js').pushPlain(argv); } catch { return false; } };
+// The shape both one-act rules read: a loop runs its body again after what follows, and a part sent to the background
+// runs beside what follows it.
+const LOOP_WORDS = new Set(['for', 'while', 'until', 'select', 'coproc']);
+const wordAt = (k, i = 0) => (k.words[i] ? command.slice(k.words[i].s, k.words[i].e) : '');
+const loops = (cmds) => cmds.find((k) => LOOP_WORDS.has(wordAt(k)));
+const backgrounds = () => !!parsed && parsed.elems.some((e) => /^\s*&(?![&>])/.test(command.slice(e.to)));
+// The git subcommands that only read - no ref, config or index write - so a command made only of them may run before a push
+// the gate lets out ungated (audit 2026-10-08: `git status && git push` on a level branch moves nothing): a literal call
+// with no prefix, no call-level setting or other checkout, no `--output` and no redirect but a dup or /dev/null.
+const GIT_READS = new Set(['status', 'log', 'diff', 'show', 'rev-parse', 'ls-files', 'describe', 'shortlog', 'rev-list', 'cat-file', 'show-ref', 'for-each-ref', 'blame']);
+const plainCall = (x) => !x.opaque && !x.xargs && !x.dirs.length && !x.config.length && !x.configEnv.length && !x.gitDir && !x.workTree;
+const targetText = (t) => (t && t.src ? t.src.slice(t.s, t.e) : '');
+const plainRead = (k) => {
+  const x = calls.find((y) => y.at === k.words[0].s);
+  return !!x && GIT_READS.has(x.sub) && plainCall(x) && !x.argv.some((w) => /^--output(=|$)/.test(w))
+    && (k.redirs || []).every((r) => (/^[<>]&$/.test(r.op) ? /^(\d+|-)$/.test(targetText(r.target)) : targetText(r.target) === '/dev/null'));
+};
+// A push the gate may let out ungated (a certain dry run, nothing ahead) is the command's ONE push: a literal `git push`
+// with certain words (forge.js pushPlain - no program named, no abbreviation), nothing in front of `git` (a variable,
+// `env`), no call-level setting or other checkout; no other push or git call whose subcommand the shell builds anywhere;
+// before it only plain git reads; nothing inside its words or beside it, no loop, no background part, no carried script
+// and nothing the reader could not read. The sixth review (2026-11-05): `git push -n origin x; git push -f origin wip:x`,
+// a level push before another, `GIT_SSH_COMMAND=... git push -n` and `git config remote.origin.push ... && git push` each
+// went out with no receipt.
+const pushAlone = (c) => {
+  if (!c || c.sub !== 'push' || !plainCall(c) || !pushPlain(c.argv) || !parsed || parsed.tooDeep || gitRead.unreadAt >= 0 || gitRead.regions.length !== 1) return false;
+  if (calls.some((x) => x !== c && (x.sub === 'push' || x.opaque || (x.xargs && !x.sub)))) return false;
+  const cmds = parsed.cmds.filter((k) => k.words.length);
+  const own = cmds.find((k) => k.words[0].s === c.at);
+  if (!own || loops(cmds) || backgrounds()) return false;
+  return cmds.every((k) => k === own || (k.elem.to <= own.elem.from && plainRead(k)) || k.elem.from >= own.elem.to);
+};
+// What runs before the merge at `at` or beside it in this command - its text and how - or null when nothing does (R015's
+// sixth review). Before it: any command the shell runs first but a plain git read (a carried script runs where its carrier
+// stands, gitText orderOf), or one inside its own words (a substitution) other than `cat`, `echo`, `printf` or a plain
+// git read building its text;
+// beside it: a pipeline peer or a command sent to the background; around it: a loop, which runs it again after what follows.
+const MERGE_TEXT_TOOLS = new Set(['cat', 'echo', 'printf']);
+function runsFirst(at) {
+  if (!parsed || parsed.tooDeep || gitRead.unreadAt >= 0) return 'part of this command is one the hook could not read';
+  const cmds = parsed.cmds.filter((k) => k.words.length);
+  const textOf = (k) => `\`${command.slice(k.words[0].s, k.words[k.words.length - 1].e).replace(/\s+/g, ' ').slice(0, 80)}\``;
+  const own = cmds.filter((k) => k.words[0].s <= at && at < k.elem.to).pop();
+  if (!own) return 'the hook could not place the merge in this command';
+  const loop = loops(cmds);
+  if (loop) return `${textOf(loop)} loops, so what follows the merge can run before it again`;
+  if (backgrounds()) return 'the command sends a part of it to the background';
+  for (const k of cmds) {
+    if (k === own) continue;
+    const s = k.words[0].s;
+    const within = s > own.words[0].s && s < own.elem.to;
+    if (within && (MERGE_TEXT_TOOLS.has(wordAt(k)) || plainRead(k))) continue; // building its text: `cat`, `echo`, `printf`, a git read
+    if (k.elem.from === own.elem.from && k.elem.to === own.elem.to) return `${textOf(k)} runs beside it in a pipeline`;
+    if (within) return `${textOf(k)} runs inside its words`;
+    if (gitRead.orderOf(s, at) < 0 && !plainRead(k)) return `${textOf(k)} runs before it in this command`;
+  }
+  return null;
+}
 // `git commit`'s own argv: the options whose value is the next word (short letters, long names -
 // a long one may be cut to a unique prefix, as git's parser allows), the flags this scan reads, and
 // the paths it names, with or without `--`. `-u` and `-S` take an attached value only.
@@ -317,6 +376,9 @@ if (forgeLib || PUSH_GATE_ON) {
     else if (r && r.strength === 'unknown') askMatch = { ...r, act };
   } else {
     const push = calls.find((c) => c.sub === 'push');
+    // A git call whose subcommand the shell builds (`git $S`, `xargs git` fed its words) may be a push: with no literal
+    // push in the command it is the gate's act, never a dry run or one with nothing ahead (the sixth review, 2026-11-05).
+    const hidden = push ? null : calls.find((c) => c.opaque || (c.xargs && !c.sub));
     let acts = [];
     if (!push && parsed && forgeLib) { try { acts = forgeLib.classifyCommand(command, gitCwd, { parsed }); } catch { acts = []; } }
     const pub = acts.find(known);
@@ -329,6 +391,7 @@ if (forgeLib || PUSH_GATE_ON) {
     const pushesHead = (text) => /(?:^|\s)--push(?:\s|$)/.test(text) || !/(?:^|\s)(?:--head|-H|--source-branch)(?:[=\s]|$)/.test(text);
     const opens = !push && !pub && forgeLib ? acts.find((r) => r.strength === 'known' && r.concept === forgeLib.CONCEPTS.CREATE && r.transport === 'shell' && pushesHead(spanText(r))) : null;
     if (push) publishMatch = { index: push.at, call: push, git: true, act: actText(push) };
+    else if (hidden) publishMatch = { index: hidden.at, call: hidden, git: true, act: actText(hidden), hidden: true };
     else if (pub) publishMatch = { index: pub.at, call: null, git: false, act: spanText(pub), forge: pub };
     else if (opens) publishMatch = { index: opens.at, call: null, git: false, act: spanText(opens), forge: opens, opens: true };
     else {
@@ -381,7 +444,7 @@ function ledgerPublish(match, dir, { pushRows = true } = {}) {
   }
 }
 if (!PUSH_GATE_ON) {
-  const dry = publishMatch && publishMatch.git && pushDry(publishMatch.call.argv || []);
+  const dry = publishMatch && publishMatch.git && !publishMatch.hidden && pushDry(publishMatch.call.argv || []);
   if (publishMatch && (!dry || chainedPublish.length)) { try { ledgerPublish(publishMatch, gitRead.callDir(publishMatch.call || { at: publishMatch.index, dirs: [] }), { pushRows: !dry }); } catch { /* best effort */ } }
   publishMatch = null;
   askMatch = null;
@@ -1553,8 +1616,10 @@ if (publishMatch) {
   // guard runs first on the shell route, but not when it is switched off (audit 2026-10-08).
   const act = publishMatch.act.replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
   const isGitPush = publishMatch.git;
-  // a dry run publishes nothing (the push's own argv), and neither does a push with nothing ahead of its upstream
-  const dryRun = isGitPush && pushDry(publishMatch.call.argv);
+  // a dry run publishes nothing (the push's own argv), and neither does a push with nothing ahead of its upstream - each
+  // only as the command's one act (pushAlone)
+  const alone = isGitPush && pushAlone(publishMatch.call);
+  const dryRun = isGitPush && !publishMatch.hidden && pushDry(publishMatch.call.argv);
   let ahead = true;
   if (isGitPush) {
     try { ahead = git('log @{u}..HEAD --oneline').length > 0; } catch { ahead = true; } // no upstream = a new branch, which publishes
@@ -1563,6 +1628,7 @@ if (publishMatch) {
     // replayed exit 0 with no receipt). A mover, or a git call the reader could not judge, before the push counts as ahead.
     if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
     if (!ahead && pushNamesOtherRefs(publishMatch.call.argv || [])) ahead = true;
+    if (publishMatch.hidden) ahead = true;
   } else if (publishMatch.opens) {
     // a change request pushes only what no remote holds: ahead of its upstream, or - with none set - no remote branch of
     // its name holding HEAD (`git push origin feat` sets no upstream); a detached HEAD or a git it cannot read counts
@@ -1579,7 +1645,10 @@ if (publishMatch) {
     if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
   }
   // the lead act publishes, or a forge publish act chained behind a push that moves nothing does (Task 4b)
-  const leadPublishes = !dryRun && ahead;
+  // the act ledger's push rows read what the lead push moves; the gate lets a dry run or a push with nothing ahead out only
+  // as the command's one act (pushAlone)
+  const leadMoves = !dryRun && ahead;
+  const leadPublishes = leadMoves || (isGitPush && !alone);
   const gated = leadPublishes || chainedPublish.length > 0;
   const actOf = (a) => command.slice(a.at, a.end).trim().replace(/\s+/g, ' ').replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
   const shown = leadPublishes || !chainedPublish.length ? act : actOf(chainedPublish[0]);
@@ -1617,36 +1686,26 @@ if (publishMatch) {
     let text = command.slice(0, at);
     try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
     const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
-    // R015's reviews (2026-11-05): a push in front of the merge in this command has not run when it is judged, so the head
-    // read is the remote's tip as it stands - never a guess at what the push lands (three reviews found each reading of it,
-    // its join, remote, refspec, options or a pull before it, letting an unreviewed commit through). After an amend or a
-    // rebase that is a block the denial answers: push first, in its own call. The fifth review: each push in front also
-    // sends its refspec sources, which neither the remote tip nor HEAD shows - every source but HEAD (the push gate's own)
-    // must be the reviewed head or an ancestor of it, and a push the hook cannot read for certain refuses the pair.
-    const pushes = calls.filter((c) => c.sub === 'push' && c.at < at);
-    let unseen = null, unsure = false;
-    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
-    for (const c of unseen || !receiptHead ? [] : pushes) {
-      if (pushDry(c.argv)) continue;
-      let read;
-      // Another checkout, words read from input (xargs), a call-level push. / remote. setting or a GIT_ variable set in
-      // front can each change what the push sends.
-      const odd = c.dirs.length || c.gitDir || c.workTree ? 'another checkout' : c.opaque || c.xargs ? 'words the shell supplies'
-        : [...c.config, ...c.configEnv].some((k) => /^(push|remote)\./i.test(k)) || /(^|[^\w])GIT_[A-Z_]*=/.test(command.slice(0, c.at)) ? 'a setting changed for the push' : null;
-      try { read = odd ? { unsure: odd } : forgeLib.pushSources(c.argv, gitCwd); } catch { read = { unsure: 'an unreadable push' }; }
-      if (read.unsure) { unseen = `the push in front (${actText(c)}) sends what this hook cannot read for certain: ${read.unsure}`; unsure = true; break; }
-      const s = read.sources.find((x) => forgeLib.unseenHead({ cwd: root, sha: x.sha, receiptHead }));
-      if (s) { unseen = `the push in front sends ${s.src} at ${s.sha.slice(0, 12)}, which carries commits the review at ${receiptHead.slice(0, 12)} never saw`; break; }
+    if (!receiptHead) continue; // a waiver reviewed nothing to compare
+    // R015's reviews (2026-11-05): the merge is judged on the repository and its remote as they stand BEFORE the command
+    // runs, so only a merge nothing runs ahead of is judged - six reviews broke every reading of what runs first (a push's
+    // join, remote, refspec and sources, a pull, reset, checkout or config write, an exported HOME, a function, a carried
+    // script, an expansion), so anything before or beside it refuses the pair, and the denial names it.
+    const first = isMcpCall ? null : runsFirst(at);
+    if (first) {
+      process.stderr.write(`Blocked: ${mergeAct} - ${first}.\nThis hook judges a merge on the repository and its remote as they stand before the command runs, so it judges only a merge that runs first: run what comes before it on its own, then the merge in its own call.`);
+      process.exit(2);
     }
+    let unseen = null;
+    try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
     if (unseen) {
       process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
-        (unsure ? '' : 'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.\n') +
-        (pushes.length ? 'This hook judges the merge before the push in front of it runs, so it reads the remote as it stands: run the push on its own first, then the merge.' : '').trimEnd());
+        'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');
       process.exit(2);
     }
   }
   // Allowed: the act ledger the ref watch reads.
-  if (gated && forgeLib) ledgerPublish(publishMatch, root, { pushRows: leadPublishes });
+  if (gated && forgeLib) ledgerPublish(publishMatch, root, { pushRows: leadMoves });
 }
 
 // --- the COMMIT gate ----------------------------------------------------------------------

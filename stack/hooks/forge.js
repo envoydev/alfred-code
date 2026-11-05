@@ -848,22 +848,23 @@ function branchHead(cwd, branch) {
   if (merge && merge !== `refs/heads/${b}`) return null;
   return tipOf(cwd, own || remoteOf(cwd), b);
 }
-// Whether a push's words (after `push`) make it CERTAINLY a dry run - the push gate lets a dry run out ungated, so only a
-// certain one counts (the fourth review, 2026-11-05: `-on` is the push option 'n', `-n --no-dry-run` pushes, an
-// abbreviated `--rep` / `--pu` eats the next word, `--end-of-options -nx` names a remote). Every option word must be one
-// git push knows by its full name (`git push -h`, its `--no-` forms too), a value-taking one skipping its value; an
-// unknown option or an abbreviation reads as no dry run, and the last of `-n` / `--dry-run` / `--no-dry-run` wins. A word the
-// shell rewrites first (SHELL_EXPANDS) reads as no dry run too.
-// A word the shell rewrites before git reads it - a parameter, command or arithmetic expansion, a brace list, a glob - so
-// the hook cannot know the words git sees (the fifth review, 2026-11-05: `-n $X` with X=--no-dry-run pushes).
+// How git reads a push's words (after `push`). `certain` when every option word is one git push knows by its full name
+// (`git push -h`, its `--no-` forms too; a value-taking one skips its value), no word is one the shell rewrites first
+// (SHELL_EXPANDS) and none names a program to run (`--exec`, `--receive-pack` - git runs it even on a dry run or with
+// nothing ahead); an unknown option or an abbreviation is uncertain. `dry` when, so read, the last of `-n` / `--dry-run` /
+// `--no-dry-run` makes it a dry run. The push gate lets out ungated only a CERTAIN dry run, and a push with nothing ahead
+// only when its words are certain (the fourth review, 2026-11-05: `-on` is the push option 'n', `-n --no-dry-run` pushes,
+// an abbreviated `--rep` / `--pu` eats the next word, `--end-of-options -nx` names a remote; the fifth: `-n $X` with
+// X=--no-dry-run pushes; the sixth: `-n --exec=<program>` runs the program).
 const SHELL_EXPANDS = /[$`{}*?[\]]/;
 const PUSH_FLAGS = new Set(['--verbose', '--quiet', '--all', '--branches', '--mirror', '--delete', '--tags', '--porcelain', '--force',
   '--force-with-lease', '--force-if-includes', '--thin', '--set-upstream', '--progress', '--prune', '--verify', '--follow-tags',
   '--signed', '--atomic', '--ipv4', '--ipv6']);
-const PUSH_VALUED = new Set(['--repo', '--receive-pack', '--exec', '--push-option', '--recurse-submodules']);
-function pushDryRun(argv) {
+const PUSH_VALUED = new Set(['--repo', '--push-option', '--recurse-submodules']);
+function pushRead(argv) {
   const words = (argv || []).map(String);
-  if (words.some((w) => SHELL_EXPANDS.test(w))) return false;
+  const unsure = { certain: false, dry: false };
+  if (words.some((w) => SHELL_EXPANDS.test(w))) return unsure;
   let dry = false;
   for (let k = 0; k < words.length; k++) {
     const w = words[k];
@@ -874,17 +875,19 @@ function pushDryRun(argv) {
       if (name === '--no-dry-run') { dry = false; continue; }
       if (PUSH_VALUED.has(name)) { if (!w.includes('=')) k++; continue; }
       if (PUSH_FLAGS.has(name) || (name.startsWith('--no-') && PUSH_FLAGS.has(`--${name.slice(5)}`))) continue;
-      return false;
+      return unsure;
     }
     if (!w.startsWith('-') || w.length < 2) continue;
     for (let c = 1; c < w.length; c++) {
       if (w[c] === 'n') { dry = true; continue; }
       if (w[c] === 'o') { if (c === w.length - 1) k++; break; }
-      if (!'vqdfu46'.includes(w[c])) return false;
+      if (!'vqdfu46'.includes(w[c])) return unsure;
     }
   }
-  return dry;
+  return { certain: true, dry };
 }
+const pushDryRun = (argv) => { const r = pushRead(argv); return r.certain && r.dry; };
+const pushPlain = (argv) => pushRead(argv).certain;
 // Why a merge's head is NOT covered by the review a receipt names, or null when it is (or cannot be judged - no head:
 // line in a waiver, no change ref, no network: the local-HEAD rule the receipt already passed stands). Covered: the head
 // is the reviewed sha or an ancestor of it.
@@ -934,60 +937,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-// The commits a `git push` sends besides the checkout's own HEAD, for a merge chained behind it (the fifth review,
-// 2026-11-05: `git push -f origin wip:feature && gh pr merge` lands wip, which neither the remote tip nor HEAD shows). Each
-// refspec's source (`[+]src[:dst]`, `tag <name>`) is resolved in cwd; a delete sends none; HEAD, `@` and a push naming
-// no refspec send the checkout's branch, which the push gate judged. `unsure` names the first word it cannot read for
-// certain: a shell expansion, an option git push does not know by its full name, --all / --branches / --mirror, a source
-// that does not resolve, or a refspec-less push that push.default=matching or a remote's push / mirror setting widens.
-function pushSources(argv, cwd) {
-  const words = (argv || []).map(String);
-  const unsure = (why) => ({ sources: [], unsure: why });
-  const odd = words.find((w) => SHELL_EXPANDS.test(w));
-  if (odd) return unsure(odd);
-  const pos = [];
-  let del = false, opts = true;
-  for (let k = 0; k < words.length; k++) {
-    const w = words[k];
-    if (opts && (w === '--' || w === '--end-of-options')) { opts = false; continue; }
-    if (opts && w.startsWith('--')) {
-      const name = w.split('=')[0];
-      if (name === '--all' || name === '--branches' || name === '--mirror') return unsure(w);
-      if (name === '--delete' || name === '--no-delete') { del = name === '--delete'; continue; }
-      if (PUSH_VALUED.has(name)) { if (!w.includes('=')) k++; continue; }
-      if (name === '--dry-run' || name === '--no-dry-run' || PUSH_FLAGS.has(name) || (name.startsWith('--no-') && PUSH_FLAGS.has(`--${name.slice(5)}`))) continue;
-      return unsure(w);
-    }
-    if (opts && w.startsWith('-') && w.length > 1) {
-      for (let c = 1; c < w.length; c++) {
-        if (w[c] === 'd') { del = true; continue; }
-        if (w[c] === 'o') { if (c === w.length - 1) k++; break; }
-        if (!'vqfun46'.includes(w[c])) return unsure(w);
-      }
-      continue;
-    }
-    pos.push(w);
-  }
-  const specs = pos.slice(1);
-  if (!specs.length) {
-    const wide = (gitOut(cwd, ['config', '--get-regexp', '^remote\\..*\\.(push|mirror)$']) || '').split('\n')
-      .some((l) => /\.push\s/.test(l) || /\.mirror\s+(true|yes|on|1)$/i.test(l));
-    if (!del && (wide || /^matching$/i.test(gitOut(cwd, ['config', 'push.default']) || ''))) return unsure('a push naming no refspec, widened by push.default or a remote\'s push setting');
-    return { sources: [], unsure: null };
-  }
-  const head = gitOut(cwd, ['rev-parse', '--verify', '-q', 'HEAD^{commit}']);
-  const sources = [];
-  for (let i = 0; i < specs.length; i++) {
-    const word = specs[i].replace(/^\+/, '');
-    const s = word === 'tag' && i + 1 < specs.length ? `refs/tags/${specs[++i]}` : word;
-    if (del || s.startsWith(':')) continue;
-    const src = s.includes(':') ? s.slice(0, s.indexOf(':')) : s;
-    if (src === 'HEAD' || src === '@') continue;
-    const sha = src.startsWith('-') ? null : gitOut(cwd, ['rev-parse', '--verify', '-q', `${src}^{commit}`]);
-    if (!sha) return unsure(specs[i]);
-    if (sha !== head) sources.push({ src, sha });
-  }
-  return { sources, unsure: null };
-}
-
-module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushDryRun, pushSources, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushDryRun, pushPlain, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
