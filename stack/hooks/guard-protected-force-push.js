@@ -155,11 +155,14 @@ const CURRENT_BRANCH = new RegExp(`^"?(?:\\$\\(${CURRENT_CMD}\\)|\`${CURRENT_CMD
 // passed - a side note to review 16): HEAD as the push runs
 const CURRENT_SUB = new RegExp(`\\$\\(${CURRENT_CMD}\\)|\`${CURRENT_CMD}\``, 'g');
 // The branch checked out where the SHELL stands at `at` - a substitution runs there, never in a push's `-C` checkout
-// (review 20, F2: `BR=$(git branch --show-current) && cd ../other && git push -f origin "$BR"` read the other checkout)
+// (review 20, F2: `BR=$(git branch --show-current) && cd ../other && git push -f origin "$BR"` read the other checkout).
+// Past a checkout the replay cannot read it is unknown, as in 3.8.0 (review 21, F1: `for b in feat-a feat-b; do git
+// checkout "$b" && git push --force-with-lease origin "$(git branch --show-current)"; done` on main read main).
 function shellHeadAt(read, at)
 {
     const here = { at, dirs: [] };
-    return headAt(read, here, read.callDir(here));
+    const st = headStateAt(read, here, read.callDir(here));
+    return st && !st.unsure && st.name && !st.name.includes('$') ? st.name : null;
 }
 function heldValues(read, call, name)
 {
@@ -193,7 +196,11 @@ function heldRefs(read, call, dir)
     };
     return (raw) =>
     {
-        const word = String(raw).replace(CURRENT_SUB, (m) => (checkoutOf(read.callDir({ at: call.at, dirs: [] })) === checkoutOf(dir) ? 'HEAD' : shellHeadAt(read, call.at) || m));
+        const word = String(raw).replace(CURRENT_SUB, (m) =>
+        {
+            const name = shellHeadAt(read, call.at);
+            return name === null ? m : checkoutOf(read.callDir({ at: call.at, dirs: [] })) === checkoutOf(dir) ? 'HEAD' : name;
+        });
         const vs = read.vars ? [...word.matchAll(/\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g)] : [];
         if (!vs.length)
         {
@@ -366,6 +373,11 @@ function checkoutOf(dir)
 const HEAD_AT = new WeakMap();
 function headAt(read, push, dir)
 {
+    const st = headStateAt(read, push, dir);
+    return st ? st.name : null;
+}
+function headStateAt(read, push, dir)
+{
     let memo = HEAD_AT.get(read);
     if (!memo)
     {
@@ -383,11 +395,22 @@ function headAt(read, push, dir)
 // stands (review 20, F1: `./scripts/sync-main.sh && git checkout main && git push -f` replayed the script's checkout back
 // to the feature branch last, and passed)
 const RUN_ORDER = new WeakMap();
+// ... with each `gh pr checkout`, a switch no git call names (review 21, F1)
 function callsInRunOrder(read)
 {
     if (!RUN_ORDER.has(read))
     {
-        RUN_ORDER.set(read, read.calls.slice().sort((x, y) => read.orderOf(x.at, y.at)));
+        const gh = [];
+        for (const k of (read.parsed && read.parsed.cmds) || [])
+        {
+            const w = k.words.map(x => x.raw);
+            const pr = w.indexOf('pr');
+            if (pr > 0 && /(?:^|[\\/])gh(?:\.exe)?$/i.test(w[0]) && /^(?:checkout|co)$/.test(w[pr + 1] || ''))
+            {
+                gh.push({ at: k.words[0].s, dirs: [], gh: true });
+            }
+        }
+        RUN_ORDER.set(read, read.calls.concat(gh).sort((x, y) => read.orderOf(x.at, y.at)));
     }
     return RUN_ORDER.get(read);
 }
@@ -398,8 +421,13 @@ function replayHead(read, push, dir)
     let prev = { kind: 'previous' };
     for (const c of callsInRunOrder(read))
     {
-        if ((c.sub !== 'switch' && c.sub !== 'checkout') || read.orderOf(c.at, push.at) >= 0)
+        if ((!c.gh && c.sub !== 'switch' && c.sub !== 'checkout') || read.orderOf(c.at, push.at) >= 0)
         {
+            continue;
+        }
+        if (c.gh)
+        {
+            cur = checkoutOf(read.callDir(c)) === key ? { ...cur, unsure: true } : cur;
             continue;
         }
         const cDir = read.callDir(c);
@@ -429,6 +457,7 @@ function replayHead(read, push, dir)
             }
             else if (t.verify)
             {
+                cur = { ...cur, unsure: true };
                 continue;
             }
         }
@@ -439,16 +468,8 @@ function replayHead(read, push, dir)
         prev = cur;
         cur = t.detached ? { kind: 'detached' } : { kind: 'branch', name: t.branch };
     }
-    if (cur.kind === 'current')
-    {
-        return currentBranch(dir);
-    }
-    if (cur.kind === 'previous')
-    {
-        return previousBranch(dir);
-    }
-
-    return cur.kind === 'branch' ? cur.name : null;
+    const name = cur.kind === 'current' ? currentBranch(dir) : cur.kind === 'previous' ? previousBranch(dir) : cur.kind === 'branch' ? cur.name : null;
+    return { name, unsure: !!cur.unsure };
 }
 
 // ---- refspecs from config (audit 2026-10-30 HK-15) --------------------------------------------------------------

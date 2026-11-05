@@ -3708,7 +3708,7 @@ function carriedOf(P, raw, heredocs, opts, run) {
         const action = c.argv[k];
         if (action && action !== '-') {
           const v = boundTok(c.args[k]);
-          push({ text: v !== null ? v : action, at, end: el.to, mapped: false, sourced: true, cwd: anchor(at), ...(v !== null ? { bound: true } : {}) });
+          push({ text: v !== null ? v : action, at, end: el.to, mapped: false, sourced: true, atExit: true, cwd: anchor(at), ...(v !== null ? { bound: true } : {}) });
         }
         continue;
       }
@@ -4270,7 +4270,9 @@ function gitTextIn(raw, cwd) {
       const inner = expandGitAliases(sc.text, { cwd: dir, run });
       const at = base + out.length + 1;
       if (inner.unreadAt >= 0) markUnread(at + inner.unreadAt);
-      out += `\n${withCarried(inner.text, dir, at, depth + 1, trail.concat(base + sc.at))}`;
+      // a trap's action runs as its shell exits, after every other call in it (review 21, F2: `git checkout main; trap 'git
+      // checkout "$ORIG"' EXIT; git push -f` replayed the trap's checkout before the push, and passed)
+      out += `\n${withCarried(inner.text, dir, at, depth + 1, trail.concat(sc.atExit ? base + text.length : base + sc.at))}`;
     }
     return out;
   }
@@ -4301,6 +4303,19 @@ function gitTextIn(raw, cwd) {
     copy[1] = out;
     return copy;
   };
+  // `$(git rev-parse --show-toplevel)` is the work tree holding the directory the shell stands in (review 21, F3: `cd
+  // "$(git rev-parse --show-toplevel)" && git push -f` on main went to a folder of that name, and passed); any other
+  // substitution is read as before
+  const GIT_TOP = /^(?:\$\(\s*git\s+rev-parse\s+--show-toplevel(?:\s+2>\s*\/dev\/null)?\s*\)|`\s*git\s+rev-parse\s+--show-toplevel(?:\s+2>\s*\/dev\/null)?\s*`)$/;
+  const workTreeOf = (dir) => {
+    for (let d = dir, n = 0; d && n < 64; n++) {
+      if (fs.existsSync(path.join(d, '.git'))) return d;
+      const up = path.dirname(d);
+      if (up === d) break;
+      d = up;
+    }
+    return null;
+  };
   const regionAt = (at) => {
     let k = regions.length - 1;
     while (k > 0 && regions[k].from > at) k--;
@@ -4317,9 +4332,16 @@ function gitTextIn(raw, cwd) {
   function callDir(call) {
     const k = regionAt(call.at);
     const r = regions[k];
-    if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to).map(resolveCd));
+    if (!regionCds.has(k)) {
+      const own = [];
+      for (const c of (parsed ? parsed.cds : []).filter((x) => x.index >= r.from && x.index < r.to)) {
+        const top = !c.popd && GIT_TOP.test(unquote(String(c[1] || '')).trim()) ? workTreeOf(anchorer(own, r.cwd, cdTarget)(c.index) || r.cwd) : null;
+        if (top) { const copy = Object.assign([], c); copy[1] = top; own.push(copy); } else own.push(resolveCd(c));
+      }
+      regionCds.set(k, own);
+    }
     let dir = anchorAt(regionCds.get(k), call.at, r.cwd, cdTarget) || r.cwd;
-    for (const d of call.dirs) if (!isVar(d)) dir = path.resolve(dir, nativePath(d));
+    for (const d of call.dirs) if (GIT_TOP.test(String(d).trim())) dir = workTreeOf(dir) || dir; else if (!isVar(d)) dir = path.resolve(dir, nativePath(d));
     try { dir = fs.realpathSync.native(dir); } catch { /* git reports the missing directory itself */ }
     return dir;
   }

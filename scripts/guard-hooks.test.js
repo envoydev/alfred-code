@@ -726,7 +726,7 @@ test('guard-protected-force-push: a held branch in run order, a loop name unread
   const t0 = Date.now();
   at(`${'BR=$(git branch --show-current); git checkout main && git pull && git checkout "$BR" && git rebase main; '.repeat(18)}git push --force-with-lease origin HEAD`, onFeature);
   assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
-  assert.equal(at('BR=$(git branch --show-current); bash -c "git checkout \\"$BR\\""; BR=$(git branch --show-current); git push -f origin "$BR"', onMain), 2, 'no stack overflow');
+  assert.notEqual(at('BR=$(git branch --show-current); bash -c "git checkout \\"$BR\\""; BR=$(git branch --show-current); git push -f origin "$BR"', onMain), 1, 'no stack overflow - a crash exits 1 and lets the push through');
 });
 
 test('guard-protected-force-push: checkouts replayed in run order, the current branch read where the shell runs it (review 20)', () => {
@@ -750,6 +750,33 @@ test('guard-protected-force-push: checkouts replayed in run order, the current b
   for (const c of [`BR=$(git branch --show-current) && cd ${onFeature} && git push -f origin "$BR"`, `git -C ${onFeature} push --force-with-lease origin "$(git branch --show-current)"`]) {
     assert.equal(at(c, onMain), 2, `main, pushed from the feature checkout: ${c}`);
   }
+});
+
+test('guard-protected-force-push: the current branch unread past an unread checkout, a trap at exit, the work tree root (review 21)', () => {
+  const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  const onMain = scratchRepoOn('main');
+  const onFeature = scratchRepoOn('feature/x');
+  // F1: past a checkout the guard cannot read, the current branch is unknown, as in 3.8.0
+  for (const c of ['for b in feat-a feat-b; do git checkout "$b" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"; done',
+    'while read -r b; do git checkout "$b" && BR=$(git branch --show-current) && git push -f origin "$BR"; done < branches.txt',
+    'sync() { git checkout "$1" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"; }; sync feat-a',
+    'gh pr checkout 12 && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"']) {
+    assert.equal(at(c, onMain), 0, `must allow: ${c.slice(0, 90)}`);
+  }
+  assert.equal(at('git checkout "$b"; git checkout main; git push -f origin "$(git branch --show-current)"', onMain), 2, 'a readable checkout after it');
+  // F2: a trap's action runs at exit, after the push
+  for (const c of ['ORIG=$(git branch --show-current); git checkout main; trap \'git checkout "$ORIG"\' EXIT; git pull; git push -f',
+    "git checkout main && trap 'git checkout -' EXIT && git pull && git push -f"]) {
+    assert.equal(at(c, onFeature), 2, `ends on main before the trap: ${c}`);
+  }
+  assert.equal(at("git checkout feature/x; trap 'git checkout main' EXIT; git rebase main; git push --force-with-lease", onFeature), 0, 'the trap runs after the push');
+  // F3: `$(git rev-parse --show-toplevel)` is the work tree holding the shell
+  fs.mkdirSync(path.join(onMain, 'src'), { recursive: true });
+  for (const [c, cwd] of [['cd "$(git rev-parse --show-toplevel)" && git push --force-with-lease', onMain], ['cd `git rev-parse --show-toplevel` && git push -f origin HEAD', onMain],
+    ['git -C "$(git rev-parse --show-toplevel)" push -f', onMain], ['cd "$(git rev-parse --show-toplevel 2>/dev/null)" && git push -f', path.join(onMain, 'src')]]) {
+    assert.equal(at(c, cwd), 2, `the work tree on main: ${c}`);
+  }
+  assert.equal(at('cd "$(git rev-parse --show-toplevel)" && git push --force-with-lease', onFeature), 0, 'the work tree on a feature branch');
 });
 
 test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {
