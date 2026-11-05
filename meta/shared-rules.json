@@ -8784,6 +8784,23 @@
           "marker": "(a `format:check` script, the CI workflow's format step)"
         }
       ]
+    },
+    "handoff-fresh-run-purge": {
+      "_note": "R035 (2026-11-05): a fresh run purges, fold-first, the notes an earlier run left under its feature name; a resume keeps them.",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "an earlier run's notes under the same name"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
+          "marker": "an earlier run's notes under the same name"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
+          "marker": "an earlier run's notes under the same name"
+        }
+      ]
     }
   }
 }
