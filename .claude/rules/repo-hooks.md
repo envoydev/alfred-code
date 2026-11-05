@@ -1855,7 +1855,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `docs/install-footprint.md` lists both writes.
   - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
     stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
-    `<data root>/forge-lexicon.json`) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,
+    `<data root>/forge-lexicon.json`: words under the keys the base has, and R013's three open maps - a host's kind in
+    `hints.kinds`, a known kind's CLI in `hints.clis`, its `how` (https) and tap-less `brew` in `hints.install`, never an
+    `after`; every other new key is named in the start's `Forge:` line, never dropped silently) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,
     not a list of CLIs or servers). `forge.js` reads any call as a concept by its WORDS - a CLI's noun then verb, an API
     call's method and path, an MCP tool's name and its selector values - so `guard-ungated-commit.js` gates a merge or a
     branch write on every transport and `preferences-session.js` holds the first one; a forge noun with no known verb is

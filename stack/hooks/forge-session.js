@@ -46,7 +46,7 @@ const watchSetting = (env) => String(envOf(env, 'FORGE_WATCH') || '').trim().toL
 const partOff = (part, env) => !!prelude && prelude.partOff('forge-session', part, env);
 
 const LINE_MAX = 200;
-const hints = () => { try { return forge.loadLexicon(null).hints || {}; } catch { return {}; } };
+const hints = (root = null, env = process.env) => { try { return forge.loadLexicon(root, env).hints || {}; } catch { return {}; } };
 const readJson = (file) => { try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; } };
 
 // The host a remote URL names: scp form (git@host:path), a URL (ssh://, https://), or a local path ('local').
@@ -78,8 +78,9 @@ function clisOnPath(names, env) {
 
 // { host, kind, remote, clis, mcp, watch: 'on' | 'off' | 'loud-only' | 'publish-only', why } for the repo at `cwd`.
 function profile(cwd, env = process.env) {
-  const h = hints();
   const root = env.CLAUDE_PROJECT_DIR || forge.gitOut(cwd, ['rev-parse', '--show-toplevel']) || cwd;
+  // The vocabulary of the project profiled (its overlay may name a self-hosted forge - R013), not this process's folder.
+  const h = hints(root, env);
   const remote = forge.remoteOf(cwd);
   const url = remote ? forge.gitOut(cwd, ['remote', 'get-url', remote]) : null;
   const host = remote ? hostOf(url) : null;

@@ -168,6 +168,16 @@ test('a malformed lexicon overlay is named to the user at start, once - the line
   assert.strictEqual(JSON.parse(runHook(dir, { hook_event_name: 'SessionStart', source: 'startup' }, env).stdout).systemMessage, undefined);
 });
 
+test('R013: an overlay host kind teaches a self-hosted forge', () => {
+  const dir = repo('https://git.acme.example/g/r.git');
+  fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.alfred', 'forge-lexicon.json'), JSON.stringify({ hints: { kinds: { 'git.acme.example': 'gitlab', 'bad.example': 'nonsense' } } }));
+  assert.strictEqual(profile(dir, envFor(dir)).kind, 'gitlab');
+  const start = JSON.parse(runHook(dir, { hook_event_name: 'SessionStart', source: 'startup' }, { ...envFor(dir), PATH: process.env.PATH }).stdout);
+  assert.match(start.systemMessage, /^Forge: the forge-lexicon\.json overlay at .* names keys the vocabulary does not read - ignored: hints\.kinds\.bad\.example \(not a known kind\)/);
+  assert.match(start.hookSpecificOutput.additionalContext, /\(gitlab\)/);
+});
+
 // --- the ref watch: every branch and tag, diffed after a strong call and at the end of a turn -----------------------
 // A local bare repo is `origin`; a teammate's clone moves refs the session never made. The baseline is the start
 // snapshot the SessionStart child takes (`--snapshot`, run inline here so the case never races a detached process).

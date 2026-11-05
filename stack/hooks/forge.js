@@ -31,13 +31,57 @@ const LEX_KEYS = ['nouns', 'groups', 'verbs', 'shellVerbs', 'watchFlags', 'merge
 // ---- the vocabulary ------------------------------------------------------------------------------------------------
 let BASE = null;
 const baseLexicon = () => BASE || (BASE = JSON.parse(fs.readFileSync(path.join(__dirname, 'forge-lexicon.json'), 'utf8')));
-// Arrays are appended, objects of arrays merged class by class, only under the keys the base already has - an overlay
-// adds words, it never replaces the vocabulary or reaches an inherited key.
-function mergeInto(base, add) {
+// Arrays are appended, objects of arrays merged class by class under the keys the base already has - an overlay adds
+// words, it never replaces the vocabulary or reaches an inherited key. A NEW key is taken only where OPEN_KEYS accepts it
+// (R013: a self-hosted host's kind, a kind's CLI, that CLI's install line); every other one is pushed to `dropped` by its
+// path, so the session start can name it. `after` is never taken from an overlay - the installer runs it after
+// `brew install`, and a data-root overlay can arrive in a clone.
+const NEVER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const HOST_KEY = /^[A-Za-z0-9.-]{1,253}$/;
+const CLI_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+const FORMULA = /^[a-z0-9][a-z0-9+_.@-]{0,63}$/;
+const baseKinds = () => new Set(Object.values((baseLexicon().hints || {}).kinds || {}));
+// Each returns the value to take, or undefined once it has named why not.
+const OPEN_KEYS = {
+  'hints.kinds': (k, v, at, dropped) => {
+    if (!HOST_KEY.test(k)) return void dropped.push(`${at} (not a host name)`);
+    if (typeof v !== 'string' || !baseKinds().has(v)) return void dropped.push(`${at} (not a known kind)`);
+    return v;
+  },
+  'hints.clis': (k, v, at, dropped) => {
+    if (!baseKinds().has(k)) return void dropped.push(`${at} (not a known kind)`);
+    if (typeof v !== 'string' || !CLI_NAME.test(v)) return void dropped.push(`${at} (not a CLI name)`);
+    return v;
+  },
+  'hints.install': (k, v, at, dropped) => {
+    if (!CLI_NAME.test(k)) return void dropped.push(`${at} (not a CLI name)`);
+    if (!v || typeof v !== 'object' || Array.isArray(v) || typeof v.how !== 'string' || !/^https:\/\/\S+$/.test(v.how)) return void dropped.push(`${at} (how is no https URL)`);
+    const out = { how: v.how };
+    for (const key of Object.keys(v)) {
+      if (key === 'how') continue;
+      if (key === 'brew' && typeof v.brew === 'string' && FORMULA.test(v.brew)) out.brew = v.brew;
+      else dropped.push(`${at}.${key}${key === 'brew' ? ' (not a formula name)' : key === 'after' ? ' (after is not taken from an overlay)' : ''}`);
+    }
+    return out;
+  },
+};
+function mergeInto(base, add, at = '', dropped = []) {
   if (Array.isArray(base)) return Array.isArray(add) ? [...base, ...add.filter((w) => !base.includes(w))] : base;
   if (!base || typeof base !== 'object' || !add || typeof add !== 'object' || Array.isArray(add)) return base;
   const out = { ...base };
-  for (const k of Object.keys(add)) if (Object.prototype.hasOwnProperty.call(base, k)) out[k] = mergeInto(base[k], add[k]);
+  for (const k of Object.keys(add)) {
+    const p = at ? `${at}.${k}` : k;
+    if (NEVER_KEYS.has(k)) { dropped.push(p); continue; }
+    if (Object.prototype.hasOwnProperty.call(base, k)) {
+      if (k === 'after' && /^hints\.install\.[^.]+$/.test(at)) { dropped.push(`${p} (after is not taken from an overlay)`); continue; }
+      out[k] = mergeInto(base[k], add[k], p, dropped);
+      continue;
+    }
+    const open = OPEN_KEYS[at];
+    if (!open) { dropped.push(p); continue; }
+    const v = open(k, add[k], p, dropped);
+    if (v !== undefined) out[k] = v;
+  }
   return out;
 }
 const loaded = new Map();
@@ -52,7 +96,16 @@ function loadLexicon(projectRoot, env = process.env) {
   if (fs.existsSync(overlay)) {
     try {
       const add = JSON.parse(fs.readFileSync(overlay, 'utf8'));
-      for (const k of LEX_KEYS) if (add && Object.prototype.hasOwnProperty.call(add, k)) lex[k] = mergeInto(base[k], add[k]);
+      const dropped = [];
+      if (add && typeof add === 'object' && !Array.isArray(add)) {
+        for (const k of Object.keys(add)) {
+          if (k.startsWith('_')) continue; // a comment key, as the base file's own _note
+          if (!LEX_KEYS.includes(k)) { dropped.push(k); continue; }
+          if (k === 'hints' && (!add.hints || typeof add.hints !== 'object' || Array.isArray(add.hints))) { dropped.push('hints'); continue; }
+          lex[k] = mergeInto(base[k], add[k], k, dropped);
+        }
+      }
+      if (dropped.length) notice = `the forge-lexicon.json overlay at ${overlay} names keys the vocabulary does not read - ignored: ${dropped.slice(0, 8).join(', ')}${dropped.length > 8 ? ` and ${dropped.length - 8} more` : ''}`;
     } catch (err) {
       notice = `the forge-lexicon.json overlay at ${overlay} is not valid JSON (${err.message}) - ignored, the base vocabulary applies`;
     }

