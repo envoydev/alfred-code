@@ -36,22 +36,20 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
 // alfred-mods (the plugin session-inspector until 0.5.0) is the catalog's second entry from its own repo. It follows
 // that repo's release branch, `main`, with no sha (the user's ruling of 2026-11-04: one marketplace for every plugin,
 // and a mod release needs no change here): a merge there reaches an install on its next update once the mod's own
-// plugin.json bumps its version. No `version` here (a copy would drift). The old id session-inspector stays, pinned to
-// the v0.4.0 commit (the user's ruling of 2026-11-06), so an install still on it keeps loading - a dropped id goes
-// silent (docs/plugin-cli-evidence.md S25). Both are the marketplace's, never the stack's: the installer neither
-// installs, updates nor removes them.
-test('alfred-mods follows its own main, session-inspector stays pinned at v0.4.0, both foreign to the stack', () => {
+// plugin.json bumps its version. No `version` here (a copy would drift). The old id session-inspector left the catalog
+// in 3.9.2 (the user's ruling of 2026-11-06): an install still on it stops loading (docs/plugin-cli-evidence.md S25),
+// and the update notes say how to move. The entry is the marketplace's, never the stack's: the installer neither
+// installs, updates nor removes it.
+test('alfred-mods follows its own main, the old id session-inspector is gone, and it is foreign to the stack', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
     const entry = mp.plugins.find((x) => x.name === 'alfred-mods');
     assert.ok(entry, 'the alfred-mods entry');
     assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/alfred-mods', ref: 'main' });
     assert.ok(!Object.hasOwn(entry, 'version'), 'no version: the mod\'s own plugin.json holds it, and a copy here would drift');
-    const old = mp.plugins.find((x) => x.name === 'session-inspector');
-    assert.deepStrictEqual(old && old.source, { source: 'github', repo: 'envoydev/alfred-mods', ref: 'v0.4.0', sha: '03ecc2bf70bc03918685c4391ff0fe3bfb61cf1a' });
-    assert.ok(foreignEntry(entry) && foreignEntry(old));
-    assert.deepStrictEqual(mp.plugins.filter(foreignEntry).map((x) => x.name), ['preferred-tools', 'alfred-mods', 'session-inspector']);
-    const foreign = [...require('./install/plugins.js').foreignEntries(ROOT)];
-    assert.ok(foreign.includes('alfred-mods') && foreign.includes('session-inspector'));
+    assert.strictEqual(mp.plugins.find((x) => x.name === 'session-inspector'), undefined, 'the old id is not listed');
+    assert.ok(foreignEntry(entry));
+    assert.deepStrictEqual(mp.plugins.filter(foreignEntry).map((x) => x.name), ['preferred-tools', 'alfred-mods']);
+    assert.ok([...require('./install/plugins.js').foreignEntries(ROOT)].includes('alfred-mods'));
 });
 
 // SYS-07 of the 2026-11-03 system audit pinned preferred-tools to the commit reviewed, after it had floated on

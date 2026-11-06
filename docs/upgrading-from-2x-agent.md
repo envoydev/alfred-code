@@ -194,7 +194,7 @@ d. `claude plugin install preferred-tools@envoydev --scope user` (skip when inst
 e. `claude plugin install alfred-mods@envoydev --scope user` - skip when installed, or when Step 0a found Claude Code
    older than 2.1.312 (say so). When an alfred-mods@alfred-mods row exists, install nothing: list it for the user to
    keep one of the two. When a session-inspector row is left (the mod's old name), list its
-   `claude plugin uninstall session-inspector@<marketplace> --scope <scope>` for the user: with both, two bands draw.
+   `claude plugin uninstall session-inspector@<marketplace> --scope <scope>` for the user: it no longer loads.
 f. `claude plugin list` in the root and in each child: the alfred-code row is there, at the scope above.
 
 === STEP 2 - Hand over ===

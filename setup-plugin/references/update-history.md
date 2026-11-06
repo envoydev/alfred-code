@@ -739,9 +739,15 @@ never installs, updates or removes either. Nothing to do by hand.
 
 ## after 3.9.0 - session-inspector is now alfred-mods
 
-The mod from `envoydev/alfred-mods` is now the plugin `alfred-mods` (0.5.0), following that repo's `main` branch. The
-catalog keeps `session-inspector` pinned at 0.4.0, so an old install keeps loading but gets no more updates. To move,
-at the scope it was installed: `claude plugin uninstall session-inspector@envoydev`, then
-`claude plugin install alfred-mods@envoydev`. Keep one of the two, or two bands draw. Its project files stay under
+The mod from `envoydev/alfred-mods` is now the plugin `alfred-mods` (0.5.0), following that repo's `main` branch. Since
+3.9.2 the catalog no longer lists `session-inspector`, so an install still on it stops loading without a warning. To
+move, at the scope it was installed: `claude plugin uninstall session-inspector@envoydev`, then
+`claude plugin install alfred-mods@envoydev`. Its project files stay under
 `.claude/session-inspector/`, where the stack still writes the status file. The stack never installs, updates or
-removes either id.
+removes the mod.
+
+## after 3.9.1 - the catalog no longer lists session-inspector
+
+`session-inspector`, the mod's old name, left the catalog: Discover shows only `alfred-mods`. An install still on the
+old id stops loading without a warning (`claude plugin list --json` shows the error). Move it as the note above says:
+`claude plugin uninstall session-inspector@envoydev`, then `claude plugin install alfred-mods@envoydev`.
