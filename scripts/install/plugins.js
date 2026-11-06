@@ -387,7 +387,7 @@ function stackMarket({ listing = [], marketplaces = [], readMarketplaces, cli, e
 // only `plugin update` puts a newer one there - a refreshed catalog alone leaves the cache where it
 // was, so the run would install the release it is replacing. The CORE alone, at every scope it is
 // installed at: since 2.10.1 it is the stack's one entry (lint 45), every other one it shipped is retired
-// and pruned by this same run, and any other plugin the catalog lists - preferred-tools and session-inspector, each from its own
+// and pruned by this same run, and any other plugin the catalog lists - preferred-tools and alfred-mods, each from its own
 // repo - is the user's, updated on its own (the user's ruling of 2026-10-27). Each at its OWN scope, because
 // `plugin update --scope <other>` is a silent no-op. `listing` may be a function, read once.
 // Returns the marketplace key the run uses.
@@ -801,7 +801,7 @@ function parseMarketplaces(json)
 }
 
 // The names the stack's marketplace lists from OUTSIDE this repo - an object `source` (`github`, `url`, ...), the
-// hand-written preferred-tools and session-inspector entries. They are the marketplace's plugins, not the stack's: a row of one under the stack
+// hand-written preferred-tools, alfred-mods and session-inspector entries. They are the marketplace's plugins, not the stack's: a row of one under the stack
 // key is never uninstalled with the stack nor read back as a stack entry. Read from the snapshot's own marketplace.json;
 // one that cannot be read names none.
 const foreignEntry = (e) => Boolean(e && e.source && typeof e.source === 'object');

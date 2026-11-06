@@ -736,3 +736,12 @@ The catalog's `session-inspector` entry now follows `envoydev/alfred-mods` on it
 release, and its `preferred-tools` entry follows `envoydev/preferred-tools` on its `main` branch instead of a pinned
 commit. A release of either reaches you on your next plugin update with no stack release in between. The stack still
 never installs, updates or removes either. Nothing to do by hand.
+
+## after 3.9.0 - session-inspector is now alfred-mods
+
+The mod from `envoydev/alfred-mods` is now the plugin `alfred-mods` (0.5.0), following that repo's `main` branch. The
+catalog keeps `session-inspector` pinned at 0.4.0, so an old install keeps loading but gets no more updates. To move,
+at the scope it was installed: `claude plugin uninstall session-inspector@envoydev`, then
+`claude plugin install alfred-mods@envoydev`. Keep one of the two, or two bands draw. Its project files stay under
+`.claude/session-inspector/`, where the stack still writes the status file. The stack never installs, updates or
+removes either id.
