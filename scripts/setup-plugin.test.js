@@ -33,25 +33,30 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     assert.ok(JSON.stringify(core.hooks).includes('stack/hooks/shell-guards.js') && JSON.stringify(core.hooks).includes('stack/hooks/file-guards.js'), 'the core declares the stack hooks INLINE, so nothing sits at the shared root');
 });
 
-// session-inspector (alfred-mods) is the catalog's second entry from its own repo. It follows alfred-mods' release
-// branch, `main`, with no sha (the user's ruling of 2026-11-04: one marketplace for every plugin, and a mod release
-// needs no change here): a merge there reaches an install on its next update once the mod's own plugin.json bumps its
-// version. No `version` here (a copy would drift), and the id never renamed. It is the marketplace's, never the stack's:
-// the installer neither installs, updates nor removes it.
-test('session-inspector is listed from alfred-mods on its main branch, and foreign to the stack', () => {
+// alfred-mods (the plugin session-inspector until 0.5.0) is the catalog's second entry from its own repo. It follows
+// that repo's release branch, `main`, with no sha (the user's ruling of 2026-11-04: one marketplace for every plugin,
+// and a mod release needs no change here): a merge there reaches an install on its next update once the mod's own
+// plugin.json bumps its version. No `version` here (a copy would drift). The old id session-inspector stays, pinned to
+// the v0.4.0 commit (the user's ruling of 2026-11-06), so an install still on it keeps loading - a dropped id goes
+// silent (docs/plugin-cli-evidence.md S25). Both are the marketplace's, never the stack's: the installer neither
+// installs, updates nor removes them.
+test('alfred-mods follows its own main, session-inspector stays pinned at v0.4.0, both foreign to the stack', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    const entry = mp.plugins.find((x) => x.name === 'session-inspector');
-    assert.ok(entry, 'the session-inspector entry');
+    const entry = mp.plugins.find((x) => x.name === 'alfred-mods');
+    assert.ok(entry, 'the alfred-mods entry');
     assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/alfred-mods', ref: 'main' });
     assert.ok(!Object.hasOwn(entry, 'version'), 'no version: the mod\'s own plugin.json holds it, and a copy here would drift');
-    assert.ok(foreignEntry(entry));
-    assert.deepStrictEqual(mp.plugins.filter(foreignEntry).map((x) => x.name), ['preferred-tools', 'session-inspector']);
-    assert.ok([...require('./install/plugins.js').foreignEntries(ROOT)].includes('session-inspector'));
+    const old = mp.plugins.find((x) => x.name === 'session-inspector');
+    assert.deepStrictEqual(old && old.source, { source: 'github', repo: 'envoydev/alfred-mods', ref: 'v0.4.0', sha: '03ecc2bf70bc03918685c4391ff0fe3bfb61cf1a' });
+    assert.ok(foreignEntry(entry) && foreignEntry(old));
+    assert.deepStrictEqual(mp.plugins.filter(foreignEntry).map((x) => x.name), ['preferred-tools', 'alfred-mods', 'session-inspector']);
+    const foreign = [...require('./install/plugins.js').foreignEntries(ROOT)];
+    assert.ok(foreign.includes('alfred-mods') && foreign.includes('session-inspector'));
 });
 
 // SYS-07 of the 2026-11-03 system audit pinned preferred-tools to the commit reviewed, after it had floated on
 // `ref: main` with no sha. The user's ruling of 2026-11-04 lets their own repos float on their release branch:
-// preferred-tools follows `main` with no sha, as session-inspector does, so a release merged there reaches an install
+// preferred-tools follows `main` with no sha, as alfred-mods does, so a release merged there reaches an install
 // on its next update once its own plugin.json bumps the version, with no change here. Every other entry from outside
 // this repo still carries a full sha (lint check 49 fails one without).
 test('preferred-tools follows its own main branch, and every foreign entry carries a full sha or floats on its own main', () => {
