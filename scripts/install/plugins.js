@@ -801,7 +801,7 @@ function parseMarketplaces(json)
 }
 
 // The names the stack's marketplace lists from OUTSIDE this repo - an object `source` (`github`, `url`, ...), the
-// hand-written preferred-tools, alfred-mods and session-inspector entries. They are the marketplace's plugins, not the stack's: a row of one under the stack
+// hand-written preferred-tools and alfred-mods entries. They are the marketplace's plugins, not the stack's: a row of one under the stack
 // key is never uninstalled with the stack nor read back as a stack entry. Read from the snapshot's own marketplace.json;
 // one that cannot be read names none.
 const foreignEntry = (e) => Boolean(e && e.source && typeof e.source === 'object');

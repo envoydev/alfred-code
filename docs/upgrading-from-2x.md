@@ -206,8 +206,8 @@ claude plugin install alfred-mods@envoydev --scope user
 Then `/reload-plugins` or a new session: `/plugin` shows `1 mod active · alfred-mods`. Install it through the
 `envoydev` marketplace only - with the `alfred-mods` marketplace also added, keep one of the two installs. Updates:
 `claude plugin marketplace update envoydev`, then `claude plugin update alfred-mods@envoydev`. A
-`session-inspector` row still installed is the old name, pinned at 0.4.0: uninstall it
-(`claude plugin uninstall session-inspector@envoydev --scope <its scope>`), or two bands draw.
+`session-inspector` row still installed is the old name, no longer in the catalog and no longer loading: uninstall it
+(`claude plugin uninstall session-inspector@envoydev --scope <its scope>`).
 
 ### Modes
 

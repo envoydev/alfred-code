@@ -3460,7 +3460,7 @@ function lintAgentPreloads()
 // exactly as generated. A `renames` key or a hooks entry is a finding: 2.0.0 ships neither (S11/S16,
 // and the fold). An entry fetched from OUTSIDE this repo (an object `source`: `github`, `url`,
 // `git-subdir`, ...) ships none of its files, so it is the marketplace's, not the placement's - the
-// hand-written `preferred-tools`, `alfred-mods` and `session-inspector` entries (plugins.js foreignEntry, which uninstall reads too). `liveIn` is
+// hand-written `preferred-tools` and `alfred-mods` entries (plugins.js foreignEntry, which uninstall reads too). `liveIn` is
 // a parsed marketplace for a test; the lint reads the committed file.
 function lintMarketplaceEntries(liveIn)
 {
@@ -3494,7 +3494,7 @@ function lintMarketplaceEntries(liveIn)
     // preferred-tools floated on `ref: main`, so the catalog served whatever landed on that branch next). The one
     // exception is the user's own repo tracking its release branch: a `github` source under `envoydev/` on `ref: main`
     // with no `sha` floats, so a release merged there reaches the catalog with no change here (the user's ruling of
-    // 2026-11-04: one marketplace for every plugin, session-inspector first). A `sha` it does carry is a full one.
+    // 2026-11-04: one marketplace for every plugin, the mod first). A `sha` it does carry is a full one.
     const ownFloat = (src) => src.source === 'github' && /^envoydev\/[A-Za-z0-9._-]+$/.test(String(src.repo)) && src.ref === 'main' && !Object.hasOwn(src, 'sha');
     for (const p of live.plugins || [])
     {
