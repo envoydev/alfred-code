@@ -468,6 +468,21 @@ test('--orientation on an Nx workspace: each project.json\'s declared targets an
         assert.deepStrictEqual(lines.filter((l) => l.startsWith('!!')), []);
     });
 
+    // Final review (2026-11-10, Important 2): init writes the role at its install step, after this scan, so a first-time Root
+    // answer reaches the scan as --role root - the role file is not there yet.
+    test('a Root answer passed as --role root before the role is written: no nested-repo warning', () =>
+    {
+        const scanWith = (root, extra) =>
+        {
+            const r = run('node', [SCRIPT, '--root', root, '--catalog', CATALOG, ...extra], { encoding: 'utf8' });
+            return r.stderr.split('\n').filter((l) => l.startsWith('!!'));
+        };
+        const root = nestedRoot();
+        assert.deepStrictEqual(scanWith(root, ['--role', 'root']), []);
+        assert.match(scanWith(root, ['--role', 'standalone']).join('\n'), /signals from nested repos child/, 'a Standalone answer still warns');
+        assert.match(scanWith(root, []).join('\n'), /signals from nested repos child/, 'no answer: as before');
+    });
+
     test('a root below a repo top is named; the repo top itself is not, whatever path spells it', () =>
     {
         const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-repo-'));

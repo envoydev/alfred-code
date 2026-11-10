@@ -480,14 +480,16 @@ function isWorkspaceRoot(root)
     }
     catch { return false; }
 }
-function rootLines(root, nested)
+// `role` is init's answer to the role ask (`--role root`): init writes the role at its install step, after this scan, so a
+// first-time Root answer is not on disk yet (final review 2026-11-10, Important 2).
+function rootLines(root, nested, role = '')
 {
     const real = realOf(root);
     const lines = [`root: ${real}`];
     const r = rt.spawnCommand('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     const top = r && r.status === 0 ? String(r.stdout || '').trim() : '';
     if (top && !samePath(top, root)) lines.push(`!! scan-evidence: ${real} is below the repo ${top} - is --root the project?`);
-    if (nested.length && !isWorkspaceRoot(root))
+    if (nested.length && role !== 'root' && !isWorkspaceRoot(root))
         lines.push(`!! scan-evidence: signals from nested repos ${nested.join(', ')} - each is its own project; check --root`);
     return lines;
 }
@@ -498,7 +500,7 @@ function main(argv)
     if (argv.includes('--orientation')) return orientationMain(argv, arg);
     const root = arg('--root');
     const catalogPath = arg('--catalog');
-    if (!root || !catalogPath) { console.error('usage: scan-evidence.js --root <project> --catalog <evidence.json> [--out <file>] | --orientation --root <project> [--out <file>]'); process.exit(2); }
+    if (!root || !catalogPath) { console.error('usage: scan-evidence.js --root <project> --catalog <evidence.json> [--out <file>] [--role root] | --orientation --root <project> [--out <file>]'); process.exit(2); }
     let catalog;
     try { catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8')); }
     catch (e) { console.error(`scan-evidence: cannot read catalog ${catalogPath}: ${e.code || e.message}`); process.exit(1); }
@@ -506,7 +508,7 @@ function main(argv)
 
     const nested = [];
     const payload = { found: scan(root, catalog, nested) };
-    const said = rootLines(root, nested);
+    const said = rootLines(root, nested, arg('--role') || '');
     const judgmentPath = arg('--judgment');
     if (judgmentPath)
     {

@@ -113,6 +113,12 @@ test('init asks no forge CLI question - the user picks their own tools', () => {
     assert.doesNotMatch(body, /--forge-cli/);
 });
 
+// Final review (2026-11-10, Important 2): the role is written at the install step, after the evidence scan, so a Root
+// answer reaches the scan as a flag - else a first-time root's own children read as stray nested repos.
+test('init\'s evidence scan takes a Root answer as --role root', () => {
+    assert.match(flat(installBody()), /scan-evidence\.js" --root \. --catalog [^`]*`\. Add `--role root` when the role ask was answered Root/);
+});
+
 // 2026-11-10: the gate prints a decision table under the call that made it and says so in its note; a paste then
 // shows the user the same table twice, so each paste mandate names that one case.
 test('the paste mandates skip a table the gate printed', () => {
