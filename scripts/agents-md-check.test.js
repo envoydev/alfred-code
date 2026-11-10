@@ -264,6 +264,26 @@ test('I1f: an absence word denies its clause - is absent, are missing from', () 
     assert.deepStrictEqual(kinds(run(root, text)).map((k) => k.replace(/\/$/, '')), ['4 path e'], 'missing as an adjective claims the path');
 });
 
+test('I1h: an absence word denies only the path that is its subject - never one it governs as an object', () =>
+{
+    // the final review's M6 (2026-11-10): 'missing from/in' and 'absent' as clause-wide negation words hid real claims
+    const root = tree({ 'src/': '' });
+    const text = [
+        'Add the tests missing from `t1/unit/`.',
+        'Fill in the docs missing in `t2/api/`.',
+        'Absent a config, the CLI reads `t3/default.json`.',
+        '`t4/` is missing nothing the build needs.',
+        'Report anything missing in `t6/` to the owner.',
+        'The retry drops missing in-flight requests in `t7/retry/`.',
+        'Use `t10/` when the env var is absent.',
+        '`s1/` is absent in this checkout.',
+        '`s2/` and `s3/` are missing from this checkout.',
+        'Sources live in `src/`; the `s4/` folder is absent.',
+    ].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text)).map((k) => k.replace(/\/$/, '')),
+        ['1 path t1/unit', '2 path t2/api', '3 path t3/default.json', '4 path t4', '5 path t6', '6 path t7/retry', '7 path t10']);
+});
+
 test('the <docs-path> placeholder resolves to the install\'s docs root', () =>
 {
     const root = tree({ '.claude/settings.json': JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), 'docs/ai/architecture/ARCHITECTURE.md': '' });
