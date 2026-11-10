@@ -198,14 +198,14 @@ later layers must keep. In DELTA every installed rule but that baseline is freel
 addable, and a rule drop is
 where cascades START: what it alone pulled in surfaces as orphan offers in the layers ahead.
 
-FRESH ask, counts copied from the table's `counts:` line (20 rows on aspnet + web-angular: 16 marked, 4 unmarked):
+FRESH ask, counts copied from the table's `counts:` line (18 rows on aspnet + web-angular: 14 marked, 4 unmarked):
 
 ```ask
-Rules: install the 16 marked rows? 4 are unmarked (devops, sql, winforms, wpf conventions).
-- 'Keep the marked rows (Recommended)' - the 7 baseline rules, the authoring rules and the confirmed stacks' conventions
+Rules: install the 14 marked rows? 4 are unmarked (devops, sql, winforms, wpf conventions).
+- 'Keep the marked rows (Recommended)' - the 7 baseline rules and the confirmed stacks' conventions
 - 'Pick rules to add or drop' - next call offers the unmarked rules and the droppable marked ones, dealt by `--deal fresh`
-- 'Add every rule' - all 20 rows of the catalog
-- 'Only the always-on baseline' - the 7 baseline rules; stack and authoring rules left out
+- 'Add every rule' - all 18 rows of the catalog
+- 'Only the always-on baseline' - the 7 baseline rules; stack rules left out
 ```
 
 Step 2: no side of this layer passes 16 rows, so `--deal fresh rules` always deals it row by row - 'Add which?' and

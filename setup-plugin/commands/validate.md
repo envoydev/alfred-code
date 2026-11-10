@@ -83,7 +83,7 @@ the next ask after a gap in the numbers (6 of 12 were missing in one run - audit
 [step 3/11 - rules] reconcile the rule layer · next: agents
 ```
 
-1 find + inventory · 2 detect stacks · 3 rules · 4 agents · 5 skills · 6 hooks · 8 plugins · 9 environment · 10 judgment review · 11 apply · 12 post-check
+1 find + inventory · 2 detect stacks · 3 rules · 4 agents · 5 skills · 6 hooks · 7 plugins · 8 environment · 9 judgment review · 10 apply · 11 post-check
 
 ## 1. Find the install and inventory it
 

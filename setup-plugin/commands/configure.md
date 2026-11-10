@@ -71,7 +71,7 @@ banner line so the user always knows where they are, what is being decided, and 
 
 1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 plugins · 8 environment · 9 permission mode · 10 prerequisite check · 11 update · 12 AGENTS.md (optional)
 
-**The skeleton is INVARIANT - the stability contract.** Every run prints all 13 banners, in this
+**The skeleton is INVARIANT - the stability contract.** Every run prints all 12 banners, in this
 order, exactly once each. A step that does not apply THIS run still prints its banner followed by
 ONE line naming why it is a no-op (`[step 7/12 - plugins] skipped - area not selected`,
 `[step 12/12 - AGENTS.md] skipped - the user declined`), then moves on - a step never silently

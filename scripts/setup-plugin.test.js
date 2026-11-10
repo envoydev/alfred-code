@@ -770,6 +770,65 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     assert.match(walk, /a layer turn missing the fenced table is invalid/, 'the table-before-question rule rides the walk');
 });
 
+// Bug 1 of the complexity audit (2026-11-10): the walk prose drifted from its own ladders (65516e7e), and a model
+// following validate's off-by-one list tripped the banner-gap note.
+const NUMBER_WORDS = { six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13 };
+function ladderOf(body)
+{
+    const at = body.indexOf('## The ladder');
+    const total = NUMBER_WORDS[(/(\w+) user-facing steps/i.exec(body.slice(at)) || [])[1].toLowerCase()];
+    const list = /^1 [^\n]*·[^\n]*$/m.exec(body.slice(at))[0].split(' · ').map((s) => /^(\d+) (.+)$/.exec(s.trim()));
+    return { total, numbers: list.map((m) => Number(m[1])), items: list.map((m) => m[2]) };
+}
+const bannersOf = (body) => [...body.matchAll(/\[step (\d+)\/(\d+) - ([^\]]+?)\]/g)].map((m) => ({ k: Number(m[1]), of: Number(m[2]), name: m[3] }));
+const bannerFits = (ladder, b) => b.of === ladder.total && String(ladder.items[b.k - 1] || '').toLowerCase().startsWith(b.name.toLowerCase());
+
+test('each walk ladder counts the same steps in its word, its list, its banners and its skeleton line', () => {
+    const ladders = [];
+    for (const [name, body] of [['init install phase', installBody()], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]])
+    {
+        const ladder = ladderOf(body);
+        assert.ok(ladder.total, `${name} says how many user-facing steps it has`);
+        assert.deepStrictEqual(ladder.numbers, Array.from({ length: ladder.total }, (_, i) => i + 1), `${name}'s ladder line numbers 1..${ladder.total}`);
+        for (const b of bannersOf(body)) assert.ok(bannerFits(ladder, b), `${name}: [step ${b.k}/${b.of} - ${b.name}] names step ${b.k} of its ${ladder.total}-step ladder (${ladder.items[b.k - 1]})`);
+        const prints = /prints all (\d+) banners/.exec(flat(body));
+        if (prints) assert.strictEqual(Number(prints[1]), ladder.total, `${name}'s skeleton line counts its ${ladder.total} banners`);
+        ladders.push({ name, ...ladder });
+    }
+    for (const b of bannersOf(walkBody()))
+    {
+        const ladder = ladders.find((l) => l.total === b.of);
+        assert.ok(ladder && bannerFits(ladder, b), `walk.md: [step ${b.k}/${b.of} - ${b.name}] fits no ladder`);
+    }
+    const init = flat(cmdBody('init'));
+    const install = ladders.find((l) => l.name === 'init install phase');
+    assert.strictEqual(NUMBER_WORDS[(/INSTALL ->.*?(\w+) banner steps/.exec(init) || [])[1]], install.total, 'init.md counts the install phase\'s banner steps');
+    const bootstrap = NUMBER_WORDS[(/^(\w+) steps, one banner line/m.exec(refBody('init-bootstrap')) || [])[1].toLowerCase()];
+    assert.strictEqual(NUMBER_WORDS[(/BOOTSTRAP ->.*?(\w+) banner steps/.exec(init) || [])[1]], bootstrap, 'init.md counts the bootstrap phase\'s banner steps');
+});
+
+test("walk.md's rules example quotes the live rules table", () => {
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'walk-rules-'));
+    const rawFile = path.join(dir, 'raw.json');
+    fs.writeFileSync(rawFile, JSON.stringify({ skills: [], agents: [], rules: [], plugins: [] }));
+    try
+    {
+        const r = spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--graph', path.join(ROOT, 'meta', 'stack-graph.json'),
+            '--table', 'rules', '--recs', path.join(ROOT, 'meta', 'recommendations.json'), '--stacks', 'aspnet,web-angular'], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        const [, marked, locked, unmarked] = /counts: (\d+) marked \((\d+) locked\), (\d+) unmarked/.exec(r.stdout) || [];
+        const [, total] = /total: (\d+) rules/.exec(r.stdout) || [];
+        assert.ok(marked && total, `the table prints its counts and total lines:\n${r.stdout}`);
+        const walk = flat(walkBody());
+        for (const quote of [`(${total} rows on aspnet + web-angular: ${marked} marked, ${unmarked} unmarked)`, `install the ${marked} marked rows? ${unmarked} are unmarked`,
+            `all ${total} rows of the catalog`, `the ${locked} baseline rules`])
+            assert.ok(walk.includes(quote), `walk.md's FRESH rules example quotes the live table: ${quote}`);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // The install-time twin of validate's judgment gate: a typed add that conflicts with the
 // project's stated conventions gets a quote-gated, non-blocking warning at the prereq step.
 test('init\'s install phase and configure carry the brownfield convention-conflict warning gate', () => {

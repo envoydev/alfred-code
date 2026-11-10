@@ -91,7 +91,7 @@ surface where the rule forbidding it cannot yet exist).
 ## The phase - its own file, read whole
 
 - INSTALL -> read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/init-install.md` and `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/stack-detection.md` in ONE Bash `cat` and follow them,
-  start to finish: it is this run's instructions - eleven banner steps and the closing card.
+  start to finish: it is this run's instructions - ten banner steps and the closing card.
 - BOOTSTRAP -> the same for `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/init-bootstrap.md` - six banner steps
   and the closing card.
 
