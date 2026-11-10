@@ -3613,7 +3613,8 @@ function refuseRuntimeMention(command, code) {
   if (allowAll) return;
   const texts = code.filter((h) => h.runtime).map((h) => h.body);
   for (const seg of splitSegments(stripComments(command))) for (const stage of splitPipes(seg)) {
-    if (/guard-secret-value\.js/.test(stage)) continue;
+    // no skip for a stage naming this guard: its own runs (--presence, --redact-stdin) carry no inline code, and inline
+    // code that names the guard's file is still code (the session's row 5)
     const toks = shellTokens(stage);
     const k = commandAt(toks);
     const verb = baseOf(wordOf(toks[k] || ''));

@@ -400,7 +400,10 @@ test(`SG1 rule 4: runtime code naming the store is refused with the Edit hint [$
     `node -e "console.log(['.alfred/${FILE}'].length)"`,
     `awk '{print "see .alfred/${FILE}"}' docs/plan.md`,
     `cat >> t.test.js <<'EOF'\nconst f = '.alfred/${FILE}';\nEOF\nnode --test t.test.js`,
-    `python3 - <<'EOF'\n# names ${['secret', '-chain.js'].join('')}\nEOF`]) {
+    `python3 - <<'EOF'\n# names ${['secret', '-chain.js'].join('')}\nEOF`,
+    // inline code that also names the guard's own file is still runtime code (the session's row 5)
+    `node -e 'const s=require("fs").readFileSync("stack/hooks/guard-secret-value.js","utf8"); console.log(/x/.test(".alfred/${FILE}"))'`,
+    `python3 -c "src=open('stack/hooks/guard-secret-value.js').read(); print('.alfred/${FILE}' in src)"`]) {
     const r = run({ tool_name: 'Bash', tool_input: { command: c }, cwd: dir, session_id: 'suite' });
     assert.equal(r.status, 2, c);
     assert.match(r.stderr, HINT, c);
