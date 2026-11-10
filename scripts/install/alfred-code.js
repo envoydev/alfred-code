@@ -691,7 +691,7 @@ function runLayers(ctx)
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
     // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
-    try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal }); }
+    try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal: (c, file) => warnUnignoredLocal(c.projectRoot, file, c) }); }
     catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
     memoryDir.staleLocalStep(ctx);
     // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is

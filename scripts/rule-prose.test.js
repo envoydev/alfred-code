@@ -539,5 +539,5 @@ test('RU03: the credentials section keeps its constraints and leaves the ask, th
 // attached, three times. The rule: a question at an open ask is answered in prose and the turn ends.
 test('alfred-interaction: a question at an open ask is answered and the turn ends', () =>
 {
-    assert.ok(injected('alfred-interaction').includes(squash('When the user meets an open ask with a QUESTION - typed into Other, or given with a rejection, or typed after one - answer it in prose and end the turn: no AskUserQuestion that turn and no offer, the decision stays open, and its ask comes back when their next message picks, approves or says go on. A clarifying question back is fine; an offer to change something waits for that ask.')));
+    assert.ok(injected('alfred-interaction').includes(squash('When the user meets an open ask with a question - typed into Other, or given with a rejection, or typed after one - answer it in prose and end the turn: no AskUserQuestion that turn and no offer, the decision stays open, and its ask comes back when their next message picks, approves or says go on. A clarifying question back is fine; an offer to change something waits for that ask.')));
 });
