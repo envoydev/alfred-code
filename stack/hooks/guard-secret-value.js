@@ -4802,7 +4802,10 @@ function printProgram(words) {
   const verb = baseOf(wordOf(String(words[0] || '')));
   if (!verb) return null;
   const pv = shellWrites && shellWrites.PRINT_VERBS && shellWrites.PRINT_VERBS[verb.toLowerCase()];
-  if (!DUMP_VERB.test(verb) && !pv) return null;
+  // a lone word, `.exe` aside (the final review's M4: `sort-package-json` and `cat-file` matched DUMP_VERB's `\b`)
+  const bare = verb.replace(/\.exe$/i, '');
+  const m = DUMP_VERB.exec(bare);
+  if (!(m && m.index === 0 && m[0].length === bare.length) && !pv) return null;
   return isReducer(words.map(String).join(' ')) ? null : verb;
 }
 // The finds a stage hands to a reader, each with the reader's verb: the stage's own find with an -exec / -execdir / -ok /

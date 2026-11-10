@@ -3198,6 +3198,8 @@ test('AC-2R: a find that hands a credential file to a reader', () => {
       ['! -type d', 'find . -name .env ! -type d | xargs cat', '.env'],
       ['-not -type d', 'find . -name .env -not -type d | xargs cat', '.env'],
       ['! -type d -print0 into xargs -0 head', 'find . -name .env ! -type d -print0 | xargs -0 head', '.env'],
+      // the final review's M4: a print verb is a lone word - `cat.exe` is cat
+      ['xargs cat.exe', 'find . -name .env | xargs cat.exe', '.env'],
     ];
     for (const [what, command, file] of refused) refusedHere(what, call(command), file);
     for (const [what, command, file] of refused.slice(0, 10)) refusedHere(`dispatcher: ${what}`, viaDispatch(command), file);
@@ -3223,6 +3225,9 @@ test('AC-2R: a find that hands a credential file to a reader', () => {
       ['no name test (unchanged)', 'find . -type f | xargs cat'],
       ['wide with no pattern naming a credential file', "find . -name '*.md' -o -name none | xargs cat"],
       ['a filter then xargs ls', 'find . -name .env | sort | xargs ls -l'],
+      // the final review's M4: a hyphenated program that starts with a print verb's name is another program
+      ['xargs sort-package-json', "find . -name '.env*' | xargs sort-package-json"],
+      ['xargs head-check', 'find . -name .env | xargs head-check'],
     ];
     for (const [what, command] of pass) passed(what, call(command));
 
