@@ -4983,13 +4983,15 @@ function judgeFindReader(stages, sj) {
     const parsed = listing ? { starts: args, tests: [], wide: false, maxdepth: 1, mindepth: 0, types: null, dotfiles } : findTests(args);
     if (!listing && !credentialPattern(parsed)) continue;
     const hit = findCredentialFile(findStarts(parsed.starts), parsed);
-    if (!hit) continue;
+    // a listing aims at no credential name, so its walk past a ceiling passes (D7 review: `ls logs/*.log | xargs grep`
+    // blocked); dot-names sort first, so a listed `.env` is judged before any ceiling
+    if (!hit || (listing && hit.unjudged)) continue;
     const guard = `"${shDouble(__filename)}"`;
     const what = listing ? 'listing' : 'find';
     if (hit.unjudged) {
       const past = hit.unjudged === 'files' ? `${hit.limit} matched files` : hit.unjudged === 'bytes' ? `${hit.limit} bytes of matched files` : `${hit.limit} folder entries`;
-      global.BLOCK_DETAIL = { branch: `${what}-reader-unjudged`, matched: hit.unjudged };
-      block(`credential guard: this ${what} walks past ${past} before handing its files to ${verb}, so the guard cannot judge them - narrow its start folder, its pattern or its -maxdepth, or read one file with node ${guard} --redacted <file>\n`);
+      global.BLOCK_DETAIL = { branch: 'find-reader-unjudged', matched: hit.unjudged };
+      block(`credential guard: this find walks past ${past} before handing its files to ${verb}, so the guard cannot judge them - narrow its start folder, its pattern or its -maxdepth, or read one file with node ${guard} --redacted <file>\n`);
     }
     const file = `"${shDouble(hit.file)}"`;
     global.BLOCK_DETAIL = { branch: `${what}-reader`, matched: baseOf(hit.file).slice(0, 40) };

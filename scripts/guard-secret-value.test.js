@@ -3464,3 +3464,13 @@ test('SG1 D7 review: a folder name bound to a literal joins', () => {
     `node -e "const path=require('path'); const dir='.alfred'; console.log(require('fs').readFileSync(path.join(dir,'${D7E}'),'utf8'))"`])
     assert.equal(at(c), REWRITE, c);
 });
+test('SG1 D7 review: a listing past a walk ceiling passes, a dot-name before it is still judged', () => {
+  const logs = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`logs/app${n}.log`, 'ERROR nothing to see here\n']));
+  const at = d7Project({ ...logs, [D7E]: `API_TOKEN=${FAKE_TOKEN}\n` });
+  const pre = path.join(TMP, 'd7r-limits.js');
+  fs.writeFileSync(pre, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 60, entries: 10 };\n');
+  for (const c of ['ls logs/*.log | xargs grep -n ERROR', 'ls logs | xargs -I{} cat logs/{}', 'ls logs/*.log | xargs tail -n 2'])
+    assert.equal(at(c, pre), 0, c);
+  assert.equal(at('ls -A . logs | xargs cat', pre), 2, 'the dot-name sorts first and is judged');
+  assert.equal(at("find logs . -name '*.log' -o -name '.e*' | xargs cat", pre), 2, 'a find past a ceiling still fails closed');
+});
