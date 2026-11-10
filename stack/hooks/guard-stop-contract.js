@@ -3615,6 +3615,14 @@ function flowFieldNotes(questions, askText, turnText) {
   // (new scope re-enters at task-design) re-arms the notes (usage audit 2026-11-03 U08: 6 of 6 post-cycle asks in one
   // session carried the three-field note; the review of 2026-11-03: a step call is the new cycle too).
   if (flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed) && !(flow.stepAt > flow.typedAfterAt)) return notes;
+  // No step since the last answer or rejection (2026-11-10, the user's report on 2.9.0: a rejected stop, a typed question,
+  // and the same ask back with the three-field and Repro notes): an ask on a turn where the flow did not move - no step
+  // Skill call, no new marker, no source edit, no plan written or stamped, no seat dispatched (the cross flow's work) - is
+  // the same stop re-put or a side question, never a new stop. `askAt` keeps its meaning for the receipts.
+  // `guard-stop-contract:question` restores the old reading.
+  const lastSettled = Math.max(flow.askAt, flow.rejectAt);
+  const moved = Math.max(flow.stepAt, flow.flowAt, flow.editAt, flow.planWriteAt, flow.agentAt, flow.completed === null ? -1 : flow.completed);
+  if (lastSettled >= 0 && !(moved > lastSettled) && !partOff('guard-stop-contract', 'question')) return notes;
   if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
     notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
       + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '
@@ -3816,6 +3824,18 @@ function flowLine(line, at, state) {
   // Where the newest ANSWERED ask sits: the first stop is the ask with no answer since the newest marker, and the close
   // the one with none since the plan's Completed stamp (audit 2026-10-10, the T4 cross-track receipts).
   if (isUser && line.includes('"tool_result"') && ANY_ANSWER_RE.test(line)) state.askAt = at;
+  // ...and where the newest REJECTED ask sits (ANY_ANSWER_RE reads answers and declines only): the user's rejection of an
+  // AskUserQuestion, its result keyed by the ask's own id, since an Edit's rejection reads the same words.
+  if (isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"(?:Agent|Task)"/.test(line)) state.agentAt = at;
+  if (isAssistant && line.includes('"AskUserQuestion"') && line.includes('"tool_use"')) {
+    try { for (const b of JSON.parse(line).message.content || []) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') state.lastAskId = String(b.id || ''); } catch { /* a cut row */ }
+  }
+  if (isUser && state.lastAskId && line.includes('tool use was rejected') && line.includes(state.lastAskId)) {
+    try {
+      const c = JSON.parse(line).message.content;
+      if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.tool_use_id === state.lastAskId && /\btool use was rejected\b/.test(resultText(b)))) state.rejectAt = at;
+    } catch { /* a cut row */ }
+  }
   // Either separator: a Windows file_path reads `plans\\` in the raw row and `plans\` parsed (gate, Windows leg, 2026-10-11).
   if (isAssistant && line.includes('Completed:') && /plans[\\/]/.test(line) && line.includes('"tool_use"')) {
     try {
@@ -3865,6 +3885,8 @@ function flowLine(line, at, state) {
 function cycleFacts(line, at, state, isUser, isAssistant) {
   const SAID_RE = /\bSize\**\s*:\s*\**\s*(trivial|small|standard|cross)\b/gi;
   const REPRO_HEAD_RE = /(?:^|\n)[ \t]*(?:\d+[\t→:][ \t]*)?#{2,4}[ \t]*Repro(?:duction)?\b/i;
+  // a CLOSED plan owes no Repro (2026-11-10): its Completed line, prefix- and bold-tolerant as the Read readers are
+  const COMPLETED_LINE_RE = /(?:^|\n)[ \t]*(?:\d+[\t→:][ \t]*)?[-*]?\s*\**Completed:/;
   const PLAN_RE = /(?:^|[\\/])plans[\\/][^\\/]+$/;
   if (isAssistant && /Size\**\s*:\s*\**\s*(?:trivial|small|standard|cross)/i.test(line)) {
     try {
@@ -3887,7 +3909,7 @@ function cycleFacts(line, at, state, isUser, isAssistant) {
       const bug = /(?:^|\n)bug: (yes|no)\b/.exec(text);
       if (floor && bug) state.bugSaid = { yes: bug[1] === 'yes', at };
       if (/(?:^|\n)size check: raise to standard\b/.test(text)) state.sizeRaisedAt = at;
-      if (REPRO_HEAD_RE.test(text)) state.reproPlanAt = at;
+      if (REPRO_HEAD_RE.test(text) && !COMPLETED_LINE_RE.test(text)) state.reproPlanAt = at;
     } catch { /* a cut row */ }
   }
   if (isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"(?:Write|Edit|MultiEdit|NotebookEdit|Read|Skill)"/.test(line)) {
@@ -3903,7 +3925,8 @@ function cycleFacts(line, at, state, isUser, isAssistant) {
         if (PLAN_RE.test(file)) {
           state.planAt = at;
           const body = [input.content, input.new_string, ...(Array.isArray(input.edits) ? input.edits.map((e) => e && e.new_string) : [])].join('\n');
-          if (b.name !== 'Read' && REPRO_HEAD_RE.test(body)) state.reproPlanAt = at;
+          if (b.name !== 'Read') state.planWriteAt = at;
+          if (b.name !== 'Read' && REPRO_HEAD_RE.test(body) && !COMPLETED_LINE_RE.test(body)) state.reproPlanAt = at;
         } else if (b.name !== 'Read' && file && cycleSourceFile(file)) state.editAt = at;
       }
     } catch { /* a cut row */ }
@@ -3951,19 +3974,19 @@ function flowState() {
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
     firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1,
     sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1,
-    autoCmd: false, stepAt: -1 };
+    autoCmd: false, stepAt: -1, rejectAt: -1, lastAskId: '', planWriteAt: -1, agentAt: -1 };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 9, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 10, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
       // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37), v7
       // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1), v9
-      // where a flow step's Skill call sits (the review of 2026-11-03)
-      if (kept && kept.v === 9 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // where a flow step's Skill call sits (the review of 2026-11-03), v10 the newest rejected ask and a closed plan's Repro
+      if (kept && kept.v === 10 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {
