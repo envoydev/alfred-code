@@ -2350,6 +2350,8 @@ function builtPaths(texts) {
     // newline or an unmatched closer): read in O(1) below, where each lookup used to rescan the rest of the code
     const { pair, depth } = bracketPairs(code);
     if (depth > JUDGE_MAX_DEPTH) throw new JudgeBudget('depth');
+    const opener = new Int32Array(code.length).fill(-1);
+    pair.forEach((v, k) => { if (v >= 0) opener[v] = k; });
     const quoteEnd = new Int32Array(code.length).fill(-1);
     for (let i = 0, q = null, from = -1; i < code.length; i++) {
       const c = code[i];
@@ -2379,6 +2381,10 @@ function builtPaths(texts) {
         if (e > i && !(code[a] === '(' && pair[a] === b)) { judgeTick(e - i); exprs.push(...splitTop(code.slice(i + 1, e), ',')); }
         // the command a shell-running call is handed, built from a root (`execSync("cat " + os.homedir() + "/...")`)
         if (e > i && SHELL_CALL_NAME.test(code.slice(Math.max(0, i - 24), i))) commands.push(splitTop(code.slice(i + 1, e), ',')[0]);
+        // a path call with its callee chain (`Path('.alfred', '.env')`, `Path(a).joinpath(b)`), read before a method on it
+        let s = i;
+        while (e > i && s > 0 && i - s < 256) { const ch = code[s - 1]; if (/[\w$.]/.test(ch)) s--; else if (ch === ')' && opener[s - 1] >= 0) s = opener[s - 1]; else break; }
+        if (e > i && /(?:^|\.)(?:Path|join|joinpath|resolve)$/.test(code.slice(s, i))) { judgeTick(e - s); exprs.push(code.slice(s, e + 1)); }
       }
       // a name bound to a built directory: `const d = path.join(os.homedir(), '.claude')`
       if (c === '=' && code[i + 1] !== '=' && code[i + 1] !== '>' && !/[=!<>+\-*/]/.test(code[i - 1] || '')) {

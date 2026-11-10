@@ -3450,3 +3450,11 @@ test('SG1 D7 review: the Path(a, b) constructor is a join', () => {
   const c = `python3 -c "from pathlib import Path; print(open(Path('.alfred', '${D7E}')).read())"`;
   assert.equal(at(c), REWRITE, c);
 });
+test('SG1 D7 review: a path call read before a method on it', () => {
+  const at = d7Project({ [`.alfred/${D7E}`]: `API_TOKEN=${FAKE_TOKEN}\n`, 'notes.md': '# n\n' });
+  for (const c of [`python3 -c "from pathlib import Path; print(Path('.alfred').joinpath('${D7E}').read_text())"`,
+    `python3 -c "from pathlib import Path; print(Path('.alfred', '${D7E}').read_text())"`,
+    `python3 - <<'EOF'\nfrom pathlib import Path\nprint(Path('.alfred', '${D7E}').read_text())\nEOF`])
+    assert.equal(at(c), REWRITE, c);
+  assert.equal(at(`python3 -c "from pathlib import Path; print(Path('notes.md').read_text())"`), 0, 'a clean file');
+});
