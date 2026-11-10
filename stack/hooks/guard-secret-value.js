@@ -252,6 +252,8 @@ const KEY_STORE = 'key store';
 // its own too - the file nektos/act reads.
 const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);
 const [SECRETS_FILE, LEGACY_SECRETS_FILE] = SECRET_FILES;
+// a companion plugin's key file: every value is a credential (SG1 D2). Not a SECRET_FILES store: --with-sensitive never reads it.
+const KEY_FILE = '.mcps-secrets';
 const KEYSTORE_FILE = /\.(?:p12|pfx|jks|jceks|keystore|bks|kdbx)$|^\.mylogin\.cnf$|^(?:credentials|access_tokens)\.db$/i;
 const PEM_BEGIN_LINE = /^\s*-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----\s*$/;
 const GPG_PRIVATE = /^\s*(?:Key:\s*)?\((?:\d+:)?(?:protected-)?private-key\b/m;
@@ -266,7 +268,7 @@ const extOf = (file) => { const b = baseOf(file); const i = b.lastIndexOf('.'); 
 const CREDENTIAL_NAME_SAMPLES = ['.env', '.env.local', 'prod.env', 'credentials', '.git-credentials', '.npmrc', '.pypirc', '.netrc',
   '_netrc', '.pgpass', '.htpasswd', '.vault-token', '.yarnrc', '.s3cfg', '.boto', '.databrickscfg', '.terraformrc', 'prod.tfvars',
   'id_rsa', 'id_ed25519', 'server.key', 'server.pem', 'cert.p12', 'cert.pfx', 'app.jks', 'app.keystore', 'vault.kdbx', 'user.ppk',
-  '.secrets', '.sensitive-data'];
+  '.secrets', '.sensitive-data', KEY_FILE];
 // The final review's I2b (2026-11-10): credential files the guard judges by content whose names a broad pattern also
 // matches (`*.json` matches every package.json). Such a name counts only for a pattern aimed at it - one matching none of
 // the decoys - so `find . -name .credentials.json | xargs cat` is walked and `find . -name '*.json' | xargs grep` is not.
@@ -279,7 +281,7 @@ function kindByName(file) {
   if (/(?:^|\.)htpasswd$/.test(b)) return 'htpasswd';
   if (NETRC_FILE.test(String(file))) return 'netrc';
   if (b === '.vault-token') return 'token';
-  if (b === LEGACY_SECRETS_FILE || (b === SECRETS_FILE && isDataRootSecrets(file))) return 'sensitive';
+  if (b === LEGACY_SECRETS_FILE || b === KEY_FILE || (b === SECRETS_FILE && isDataRootSecrets(file))) return 'sensitive';
   if (b === '.yarnrc') return 'spaced';
   if (NPMRC_FILE.test(String(file))) return 'ini';
   if (/^(?:\.terraformrc|terraform\.rc)$/.test(b) || /^(?:tf|tfvars|hcl)$/.test(e)) return 'hcl';
@@ -3659,7 +3661,14 @@ function refuseSensitiveMention(text, steps = text) {
   let budget = 64;
   // `.sensitive-data` by its name, `.secrets` only under the data root (a project's own `.secrets` is no store)
   const legacy = (p) => baseOf(p).toLowerCase() === LEGACY_SECRETS_FILE;
-  const isStore = (p) => legacy(p) || legacy(realOf(p)) || isDataRootSecrets(p) || isDataRootSecrets(realOf(p));
+  const isKey = (p) => baseOf(p).toLowerCase() === KEY_FILE || baseOf(realOf(p)).toLowerCase() === KEY_FILE;
+  const isStore = (p) => legacy(p) || legacy(realOf(p)) || isDataRootSecrets(p) || isDataRootSecrets(realOf(p)) || isKey(p);
+  // the key file's own refusal: --with-sensitive reads only the data-root store, so only the presence read is offered
+  const refuseKey = (p) => {
+    global.BLOCK_DETAIL = { branch: 'key-file', matched: baseOf(p).slice(0, 40) };
+    block(`Blocked: this command reads or moves a companion plugin's key file (${baseOf(p)}). Every value in it is a credential.\n` +
+      `Its keys:\n  node "${__filename}" --presence "${shDouble(p)}"\nThe file itself is the user's to edit, by hand.\n`);
+  };
   // A find that hands what it finds to a reader - an -exec / -ok action, a pipe on (`| xargs cat`), a `$(...)` around it
   // (final review 2026-10-25 C1) - is refused when its walk reaches the store (a -maxdepth short of it does not) and a
   // -name / -path test of it matches the store's name, or, from the folder holding the store, no name test narrows it.
@@ -3760,7 +3769,7 @@ function refuseSensitiveMention(text, steps = text) {
       if (!value || value.startsWith('-') || value.length > 512) continue;
       budget--;
       for (const p of candidatePaths(value)) for (const hit of statAll(p)) {
-        if (!hit.dir && isStore(hit.at)) refuse(verb);
+        if (!hit.dir && isStore(hit.at)) { if (isKey(hit.at)) refuseKey(hit.at); refuse(verb); }
         if (hit.dir && bundles) for (const name of SECRET_FILES) {
           const f = pathMod.join(hit.at, name);
           if (excludes([name]) || (name === SECRETS_FILE && !isDataRootSecrets(f))) continue;

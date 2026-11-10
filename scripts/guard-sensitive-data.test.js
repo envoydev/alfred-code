@@ -552,3 +552,32 @@ test('workspace chain: the looks list passes a command naming either engine (R9)
     assert.strictEqual(bash(dir, 'ls .claude/hooks/secrets-run.js | xargs -I{} node {} -- server'), 2, 'a look piped on is a use');
     assert.strictEqual(bash(dir, 'node $(ls .claude/hooks/secret-chain.js) x'), 2);
 });
+
+// Runs as written, or with the masker piped after it; a whole-view replacement starts with `node` and does not count (SG1).
+const runs = (dir, command, tool = 'Bash') => { const r = run({ tool_name: tool, tool_input: { command }, cwd: dir, session_id: 'suite' }); const u = updated(r); return r.status === 0 && (u == null || u.startsWith(command)); };
+
+test('SG1 D2: the key file is guarded by name for what reads or moves it', () => {
+  const KEY = ['.mcps-sec', 'rets'].join('');
+  const dir = fs.mkdtempSync(path.join(TMP, 'd2-'));
+  const home = fs.mkdtempSync(path.join(TMP, 'd2home-'));
+  for (const d of [path.join(dir, '.alfred'), path.join(dir, '.companion'), path.join(home, '.companion')]) {
+    fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, KEY), 'DB_HOST=db.internal\nCONTEXT7_API_KEY=\n');
+  }
+  const env = { HOME: home, USERPROFILE: home };
+  const call = (tool_name, tool_input) => run({ tool_name, tool_input, cwd: dir, session_id: 'suite' }, env);
+  assert.equal(call('Read', { file_path: path.join(dir, '.alfred', KEY) }).status, 2, 'Read: DB_HOST alone is guarded in the key file');
+  assert.equal(call('Grep', { pattern: 'DB', path: path.join(dir, '.alfred', KEY), output_mode: 'content' }).status, 2);
+  const view = updated(call('Bash', { command: `cat .alfred/${KEY}` }));
+  assert.ok(view && !spawnSync('bash', ['-c', view], { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } }).stdout.includes('db.internal'), 'cat: the view masks every value');
+  for (const c of [`source .alfred/${KEY}`, `cp .alfred/${KEY} copy.txt`, `cp .companion/${KEY} k.txt`, `mv .alfred/${KEY} x`,
+    `find ~/.companion -name ${KEY} -exec cat {} +`, `find . -name ${KEY} | xargs cat`, `cat $(find . -name ${KEY})`])
+    assert.equal(verdict(call('Bash', { command: c })), 2, c);
+  const msg = call('Bash', { command: `cp .alfred/${KEY} copy.txt` }).stderr;
+  assert.match(msg, /key file/); assert.match(msg, /--presence/); assert.doesNotMatch(msg, /--with-sensitive/);
+  // D2's narrow pin: script text naming the key file is judged like text naming .env - never refused for the name
+  fs.mkdirSync(path.join(dir, 'scripts')); fs.writeFileSync(path.join(dir, 'scripts', 'keys.js'), `const f = '${KEY}';\n`);
+  for (const c of [`grep -rn '${KEY}' scripts`, 'sed -n 1,40p scripts/keys.js', `cat >> scripts/keys.test.js <<'EOF'\npath.join(dir, '${KEY}')\nEOF`,
+    `python3 - <<'EOF'\np='scripts/keys.js'; s=open(p).read(); open(p,'w').write(s.replace('${KEY}', '${KEY}'))\nEOF`,
+    `grep -rl '${KEY}' scripts | xargs sed -i 's/x/y/'`])
+    assert.ok(runs(dir, c), c);
+});
