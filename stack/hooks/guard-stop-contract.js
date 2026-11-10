@@ -1085,6 +1085,9 @@ function userQuestion() {
             const isLabel = (a) => labels.has(a.trim()) || a.split(/,\s*/).every((part) => labels.has(part.trim()));
             const free = askAnswerValues(r).find((a) => !isLabel(a));
             if (free === undefined) return null;   // an option picked: the decision is made
+            // Other text that is no question (an instruction) settles the ask too: a question typed after it has no ask open
+            // (final review Important 1, scenario D). After an Other QUESTION the ask is still open, and a typed one is the input.
+            if (typedAt && !isQuestionInput(free)) return null;
             input = typedAt ? { ...typedAt, kind: 'typed' } : { text: free, at: r.at, kind: 'other' };
           }
           if (!input || !isQuestionInput(input.text)) return null;
@@ -2825,8 +2828,10 @@ if (payload.hook_event_name === 'Stop') {
   // The user met an open ask with a question (userQuestion, 2026-11-10): an offer is held with its own words - no new ask
   // this turn - and a clarifying close after a read-only answer passes. It sits before askJustAnswered, whose 3-call
   // window would let every close through, the offer included.
+  // Both read-only: a turn that edited, ran a write or launched work keeps today's hold (the spec; final review Important 1).
   const openQuestion = userQuestion();
-  if (openQuestion && proseAsk(tail)) {
+  const answeredReadOnly = !!openQuestion && readOnlyTurn(openQuestion.fromRow);
+  if (answeredReadOnly && proseAsk(tail)) {
     blockDetail('question-turn-offer', proseAskMatch(tail) || tail.trim().slice(-80));
     process.stderr.write(
       'The user met the open decision with a question, and this turn answers it.\n' +
@@ -2835,7 +2840,7 @@ if (payload.hook_event_name === 'Stop') {
       'says go on. A clarifying question back is fine; an offer to change something waits for that decision.');
     process.exit(2);
   }
-  if (openQuestion && endsOnQuestion && readOnlyTurn(openQuestion.fromRow)) {
+  if (answeredReadOnly && endsOnQuestion) {
     ledgerRow({ tool: '', mode: 'probe', kind: 'discussion-close', reason: `probe: a ${openQuestion.kind} question at an open ask, answered read-only and closed on a question - logged, not held` });
     process.exit(0);
   }

@@ -1103,6 +1103,29 @@ test('fn-8: gh repo view and gh api user are remote reads', () => {
     assert.strictEqual(stopAs(sidOf(), [...opened(), ...work(4), ASK('q2'), deniedAsk('q2')], CLARIFY).status, 0);
   });
 
+  // Final review (2026-11-10, Important 1): the spec keeps today's hold for a turn that edited, ran a write or launched work -
+  // the question-turn text ('end on the answer, no new ask') is for a read-only answer alone.
+  test('question at an open ask: an offer after a write keeps today\'s hold, not the question-turn text', () => {
+    const r = stopAs(sidOf(), [...opened(), ...edit('e3'), ...work(4)], OFFER);
+    assert.strictEqual(r.status, 2);
+    assert.doesNotMatch(r.stderr, /you answered a question - end on the answer/, r.stderr);
+    assert.match(r.stderr, /AskUserQuestion/);
+  });
+
+  // Final review (Important 1, scenario D): an Other answer that is an INSTRUCTION settles the ask, so a question the user types
+  // after it is a question with no ask open - not userQuestion(). After an Other QUESTION, a typed one still is.
+  test('question at an open ask: a question typed after an Other instruction has no ask open', () => {
+    const sid = sidOf();
+    const rows = [...opened('Do the docs pass first instead'), ...edit('e4'), typed('Why did you change the loader?'), ...work(4)];
+    const offer = stopAs(sid, rows, OFFER);
+    assert.doesNotMatch(offer.stderr, /you answered a question - end on the answer/, offer.stderr);
+    stopAs(sid, rows, CLARIFY);
+    assert.strictEqual(probes(sid).length, 0, 'no discussion-close row: no ask is open');
+    const still = sidOf();
+    assert.strictEqual(stopAs(still, [...opened(), ...work(2), typed('And why is that one first?'), ...work(4)], CLARIFY).status, 0, 'after an Other question, a typed one is still the input');
+    assert.strictEqual(probes(still).length, 1);
+  });
+
   test('question at an open ask: guard-stop-contract:question switches it off', () => {
     const r = stopAs(sidOf(), [...opened(), ...work(4)], CLARIFY, { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:question' });
     assert.strictEqual(r.status, 2);
