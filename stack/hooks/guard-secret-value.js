@@ -3137,7 +3137,8 @@ function gitSubAt(words) {
 // SG1 rule 1: the words a grep, git grep or rg stage READS - its operands and each -f / --file value, never its pattern (a
 // pattern naming the store was read as the store, and the whole grep became its masked view). null for any other stage.
 function grepCandidates(stage) {
-  const words = shellTokens(String(stage).replace(PREFIX_WORDS, '').replace(/^\s*\(+/, ''));
+  const all = shellTokens(String(stage));
+  const words = all.slice(commandAt(all)); // past a wrapper or an xargs (`timeout 10 grep`, `| xargs grep`)
   const verb = baseOf(dequoteWord(words[0] || ''));
   const k = verb === 'git' ? gitSubAt(words) : 0;
   if (verb === 'rg') { const rec = { text: [], files: [] }; return [...rgOperands(words, rec), ...rec.files].filter(Boolean); }
@@ -3545,19 +3546,19 @@ function refuseEngineMention(text) {
   const ENGINE = /(?:^|[^\w.-])(secrets-run|secret-chain)\.js(?![\w.-])/i;
   const RUNNER = /^(?:node|nodejs|bun|deno|(?:ba|z|da|k)?sh)$/;
   const hit = (w) => w && [w, ...candidatePaths(w)].map((p) => String(p).match(ENGINE)).find(Boolean);
-  // a runner reading its script from stdin: node / bun / deno with none or `-`, a shell with no -c and no script, source /dev/stdin
-  const onStdin = (w) => { const v = baseOf(w[commandAt(w)] || ''); const r = w.slice(commandAt(w) + 1).filter((x) => !x.startsWith('-') || x === '-');
-    return (RUNNER.test(v) && (!r.length || r[0] === '-') && !w.includes('-c')) || (/^(?:source|\.)$/.test(v) && r[0] === '/dev/stdin'); };
+  const ASSIGN = /^[A-Za-z_]\w*=/;
   const saved = new Map();
+  const bind = (t) => { const eq = t.indexOf('='); const n = t.slice(0, eq); if (!saved.has(n)) saved.set(n, VARS.get(n)); VARS.set(n, [assignedValue(t.slice(eq + 1))]); };
   const judge = (cmd, depth) => {
     const segs = splitSegments(String(cmd));
     segs.forEach((seg, s) => splitPipes(seg).forEach((stage, k, stages) => {
       const toks = shellTokens(stage.trim());
       if (/guard-secret-value\.js/.test(stage) || !toks.length) return;
-      if (toks.every((t) => /^[A-Za-z_]\w*=/.test(t))) {
-        for (const t of toks) { const eq = t.indexOf('='); if (!saved.has(t.slice(0, eq))) saved.set(t.slice(0, eq), VARS.get(t.slice(0, eq))); VARS.set(t.slice(0, eq), [assignedValue(t.slice(eq + 1))]); }
-        return;
-      }
+      // a name bound for what follows: an assignment step, a declaration (`export E=...`), a prefix (`E=... bash -c '...'`)
+      const decl = /^(?:export|declare|typeset|local|readonly)$/.test(toks[0]);
+      const lead = toks.findIndex((t) => !ASSIGN.test(t));
+      (decl ? toks.slice(1) : toks.slice(0, lead < 0 ? toks.length : lead)).filter((t) => ASSIGN.test(t)).forEach(bind);
+      if (decl || lead < 0) return;
       const words = toks.map(wordOf);
       const at = commandAt(toks);
       const verb = baseOf(words[at] || '');
@@ -3565,22 +3566,28 @@ function refuseEngineMention(text) {
       const c = rest.indexOf('-c');
       if (/^(?:ba|z|da|k)?sh$/.test(verb) && c >= 0 && depth < 2) { judge(rest[c + 1] || '', depth + 1); return; }
       const later = stages.slice(k + 1).map((x) => shellTokens(x.trim()).map(wordOf));
-      // the loop body after a `while read` stage, up to its `done`: its runner runs what the stage prints
-      const body = later.some((w) => w[0] === 'while' && w.includes('read')) ? segs.slice(s + 1, segs.findIndex((x, n) => n > s && /^\s*done\b/.test(x)) + 1 || undefined) : [];
-      const script = RUNNER.test(verb) ? rest.find((w, j) => !w.startsWith('-') && !/^(?:-r|--require)$/.test(rest[j - 1] || '')) : null;
+      // a runner's script: its first plain word, past a preload's value and bun's or deno's `run`
+      const script = RUNNER.test(verb) ? rest.find((w, j) => !w.startsWith('-') && !/^(?:-r|--require)$/.test(rest[j - 1] || '')
+        && !(j === 0 && w === 'run' && /^(?:bun|deno)$/.test(verb))) : null;
       const sub = script && /^(?:\$\(|`)/.test(script) ? substitutions(stage.slice(stage.indexOf(script)))[0] : null;
       const m = hit(words[at]) || hit(script) || (sub && sub.match(ENGINE)) // the command word, a runner's script operand
         || rest.map((w, j) => (/^(?:-r|--require)$/.test(rest[j - 1] || '') ? hit(w) : null)).find(Boolean) // a preload
         || (/^(?:cp|mv|ln|install|rsync)$/.test(verb) && rest.map(hit).find(Boolean)) // moved or copied
         || (RUNNER.test(verb) && hit(wordOf((stage.match(/(?:^|[^<])<\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/) || [])[1] || ''))) // `node < <engine>`
-        || ((later.some(onStdin) || later.some((w) => /^(?:xargs|parallel)$/.test(baseOf(w[0] || '')) && w.slice(1).some((x) => RUNNER.test(baseOf(x))))
-          || body.some((b) => shellTokens(b.trim()).map(wordOf).some((x) => RUNNER.test(baseOf(x))))) && stage.match(ENGINE)); // fed to a runner
+        || (later.some((w) => !sinkStage(w)) && stage.match(ENGINE)); // fed to a stage that may run what it is handed
       if (!m) return;
       global.BLOCK_DETAIL = { branch: 'secrets-engine', matched: `${m[1]}.js` };
       block(engineRefusal(m[1]));
     }));
   };
   try { judge(text, 0); } finally { for (const [n, v] of saved) { if (v === undefined) VARS.delete(n); else VARS.set(n, v); } }
+}
+// SG1 rules 1 and 2 (final review): a stage that only shows or filters what reaches its stdin. Any other consumer - an
+// xargs behind a wrapper, a `while read` or `{ read f; ... }` group, an awk, a runtime, a shell - may run what it is handed.
+function sinkStage(words) {
+  const k = commandAt(words);
+  return k < words.length && /^(?:head|tail|wc|sort|uniq|cut|tr|less|more|cat|grep|egrep|fgrep|rg|nl|column|fold|tee)$/.test(baseOf(words[k]))
+    && !words.slice(0, k).some((w) => /^(?:xargs|parallel)$/.test(baseOf(w))) && !words.some((w) => /[<>]\(/.test(w));
 }
 function engineRefusal(name) {
   return `Blocked: this command names ${name}.js, the workspace secrets engine - the MCP launcher passes a server's stdout\n` +
@@ -3673,12 +3680,6 @@ function refuseSensitiveMention(text, steps = text) {
   const joinedOf = (seg) => joinQuoted(seg.replace(EXCLUDED, '$1'));
   const namesStore = (t, pipe) => MENTION.test(t) || (BARE.test(t) && pipe.some((s) => ROOT_WORD.test(joinedOf(s))));
   const KEY_NAMED = new RegExp(`(?:^|[^\\w.-])${KEY_FILE.replace('.', '\\.')}(?![\\w.-])`, 'i');
-  // a stage that runs what reaches its stdin: xargs, parallel, a `while read` loop, a shell with no -c and no script, source of stdin
-  const feeder = (s) => {
-    const w = shellTokens(s.trim()).map(joinQuoted).filter(plain); const f = baseOf(w[0] || '');
-    return /^(?:xargs|parallel)$/.test(f) || (f === 'while' && w[1] === 'read') || (/^(?:source|\.)$/.test(f) && w[1] === '/dev/stdin')
-      || (/^(?:ba|z|da|k)?sh$/.test(f) && w.slice(1).every((x) => x.startsWith('-') && x !== '-c'));
-  };
   // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
   // cwd's hid the cwd's store from a tree-taking verb.
   const statAll = (p) => {
@@ -3768,12 +3769,13 @@ function refuseSensitiveMention(text, steps = text) {
       if (d && d !== '-') cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(from, d);
       return;
     }
-    // the feeder rule: a stage naming the store anywhere but an exclusion is refused when a later stage of its pipe runs what
-    // it prints - looks included (`ls <store> | xargs cat`); a find's negated test excluding the store (AC-1) names nothing
-    // it prints. The key file is no subject (D2).
+    // the feeder rule: a stage naming the store anywhere but an exclusion is refused when a later stage of its pipe may run
+    // what it prints - any stage but a plain filter (sinkStage), looks included (`ls <store> | xargs cat`); a find's negated
+    // test excluding the store (AC-1) names nothing it prints. The key file is no subject (D2). A fed stage's text words are
+    // paths too (`F=<store>; echo "$F" | xargs cat`, a `cd` before it), read by the resolver below.
     const excluded = (j) => EXCLUDE_FLAG.test(all[j - 1] || '') || /^--exclude(?:-from|-dir)?=/.test(all[j]);
     const findTest = (j) => /^g?find$/.test(verb) && /^-i?(?:name|path|wholename|regex|lname)$/.test(all[j - 1] || '');
-    const fed = pipe.slice(k + 1).some(feeder);
+    const fed = pipe.slice(k + 1).some((s) => !sinkStage(shellTokens(s.trim()).map(wordOf)));
     const lifted = fed && verb === 'find' ? findExcludes(words.slice(1)) : new Set();
     if (fed && all.some((t, j) => !excluded(j) && !(findTest(j) && lifted.has(t) && /^(?:-not|!)$/.test(all[j - 2])) && namesStore(t, pipe))) refuse(verb);
     if (looks(words, stage, pipedOn)) return;
@@ -3830,7 +3832,7 @@ function refuseSensitiveMention(text, steps = text) {
     for (let i = 0; i < args.length; i++) {
       const raw = args[i];
       if (EXCLUDE_FLAG.test(raw)) { i++; continue; }
-      if (/^--exclude(?:-from|-dir)?=/.test(raw) || patternAt.has(i) || text.has(idx[i + 1])) continue;
+      if (/^--exclude(?:-from|-dir)?=/.test(raw) || patternAt.has(i) || (!fed && text.has(idx[i + 1]))) continue;
       if (budget <= 0) break;
       const word = raw.replace(/^\d*[<>]+&?/, '');
       const value = /^-[^=]*=/.test(word) ? word.slice(word.indexOf('=') + 1) : word;
@@ -3876,8 +3878,7 @@ function refuseSensitiveMention(text, steps = text) {
 // echo / printf word other than a redirect and its target. `all` is every token, NAME=value words included.
 function textPositions(all) {
   const text = new Set();
-  let v = 0;
-  while (v < all.length && (/^[A-Za-z_]\w*=/.test(all[v]) || all[v] === 'sudo' || all[v] === '!')) v++;
+  const v = commandAt(all); // past NAME=value, `!`, a wrapper or an xargs (`timeout 10 grep`, `| xargs grep`)
   const verb = baseOf(all[v] || '');
   const at = (list, from) => list.forEach((i) => text.add(i + from));
   const rec = { text: [], files: [] };

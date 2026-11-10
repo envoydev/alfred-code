@@ -418,8 +418,18 @@ test(`SG1 rule 1: a name as text passes; an operand, a substitution or a fed nam
   for (const c of [`grep -rn '.alfred/${FILE}' docs | head -20`, `grep -n '.alfred/${FILE}' docs/plan.md`,
     `git commit -m 'fix the .alfred/${FILE} reader'`, `git commit -am 'fix the .alfred/${FILE} reader'`, // Review Focus 3
     `git log --grep '.alfred/${FILE}'`, `bash -c "grep -n '.alfred/${FILE}' docs/plan.md"`,
-    `grep -n -A 3 '.alfred/${FILE}' docs/plan.md`, `grep -n --include '*.md' -r '.alfred/${FILE}' docs`]) // a value option before the pattern
+    `grep -n -A 3 '.alfred/${FILE}' docs/plan.md`, `grep -n --include '*.md' -r '.alfred/${FILE}' docs`, // a value option before the pattern
+    // the final review: a wrapped grep, a grep that xargs runs, and filters after it (I4)
+    `timeout 10 grep -n '.alfred/${FILE}' docs/plan.md`, `find docs -name '*.md' | xargs grep -n '.alfred/${FILE}'`,
+    `grep -rn '.alfred/${FILE}' docs | sort | uniq -c`])
     assert.ok(runs(dir, c), c);
+  // the final review (C1, I2): a name reaching any stage that is no plain filter - behind a wrapper, through a cd or a
+  // bound name, into a group or a runtime - is refused, as before SG1
+  for (const c of [`echo .alfred/${FILE} | timeout 5 xargs cat`, `echo .alfred/${FILE} | nice xargs cat`, `echo .alfred/${FILE} | env xargs cat`,
+    `cd .alfred && echo ${FILE} | xargs cat`, `F=.alfred/${FILE}; echo "$F" | xargs cat`, `D=.alfred; echo "$D/${FILE}" | xargs cat`,
+    `echo .alfred/${FILE} | { read f; cat "$f"; }`, `echo .alfred/${FILE} | awk '{system("cat " $0)}'`,
+    `echo .alfred/${FILE} | python3 -c "import sys; print(open(sys.stdin.read().strip()).read())"`])
+    assert.equal(bash(dir, c), 2, c);
   for (const c of [`printf x > .alfred/${FILE}`, `echo x >> .alfred/${FILE}`]) assert.equal(bash(dir, c), 2, `${c}: a redirect target is no text`);
   for (const c of [`ls -a .alfred | grep ${FILE} | xargs cat`, `ls -a .alfred | grep ${FILE} | parallel cat`,
     `ls -a .alfred | grep ${FILE} | while read f; do cat "$f"; done`, `ls -a .alfred | grep ${FILE} | sh`,
@@ -644,7 +654,12 @@ test('SG1 rule 2: an engine read passes; a run, a copy or a fed runner is refuse
       `node -r ./stack/hooks/${name} app.js`, `bash -c 'node stack/hooks/${name} -- x'`,
       `node < stack/hooks/${name}`, `cat stack/hooks/${name} | node -`, `cat stack/hooks/${name} | bash`,
       `cat stack/hooks/${name} | source /dev/stdin`, `E=stack/hooks/${name}; node "$E" -- x`,
-      `ls stack/hooks/${name} | while read f; do node "$f"; done`, `timeout 60 node stack/hooks/${name} -- x`])
+      `ls stack/hooks/${name} | while read f; do node "$f"; done`, `timeout 60 node stack/hooks/${name} -- x`,
+      // the final review (I3, C1): a run subcommand, a declared or prefixed name, a wrapper before xargs
+      `bun run stack/hooks/${name} -- x`, `deno run stack/hooks/${name}`, `export E=stack/hooks/${name}; node "$E" -- x`,
+      `declare E=stack/hooks/${name}; node "$E" -- x`, `E=stack/hooks/${name} bash -c 'node "$E" -- x'`,
+      `ls stack/hooks/${name} | timeout 5 xargs -I{} node {} -- x`])
       assert.equal(bash(dir, c), 2, c);
+    for (const c of [`sed -n 1,60p stack/hooks/${name} | head -5`, `grep -n chain stack/hooks/${name} | wc -l`]) assert.ok(runs(dir, c), `${c}: a read into a filter`);
   }
 });
