@@ -331,12 +331,19 @@ const wsReal = (p) =>
     try { return fs.realpathSync.native(p); }
     catch { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }
 };
-// workspace.js realKey: the real path, `/` separated, case-folded on darwin and win32.
-const wsKey = (p) =>
+// THE TREE KEY (workspace.js realKey is this): one spelling per folder for every compare of the folders the installer
+// and the hooks walk - the real path (macOS /tmp is /private/tmp, a Windows 8.3 name expanded), `/` separated, case-folded
+// where the disk folds case by default. A path that does not exist keys as its resolved spelling. The plugin listing's
+// projectPath is compared by another rule, the listing key (plugins.js projectKey): the CLI keeps that case.
+// path-key: the real path, '/' separated, case-folded on darwin, win32 and any drive-letter path - one rule for every folder compare (bug 5 of the complexity audit).
+function pathKey(p, platform = process.platform)
 {
-    const key = wsReal(p).split(path.sep).join('/');
-    return process.platform === 'win32' || process.platform === 'darwin' ? key.toLowerCase() : key;
-};
+    const s = String(p);
+    const drive = /^[A-Za-z]:[\\/]/.test(s);
+    const real = drive ? path.win32.resolve(platform === 'win32' ? wsReal(s) : s) : wsReal(s);
+    const key = drive || platform === 'win32' ? real.replace(/\\/g, '/') : real.split(path.sep).join('/');
+    return drive || platform === 'win32' || platform === 'darwin' ? key.toLowerCase() : key;
+}
 const wsRel = (from, to) => path.relative(from, to).split(path.sep).join('/');
 const wsIsDir = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
 
@@ -1148,7 +1155,7 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
 
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
-    PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
+    PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
     settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,

@@ -113,8 +113,18 @@ function committedRoutesAt({ env = {}, claudeDir, scope = 'project', log = () =>
 // the account and in this project is two installs, and a migration moves only its own scope's.
 // A Windows drive path is compared case-blind: the file system is, and the listing's projectPath can
 // spell the drive or a folder unlike git's root (`c:\WINDOWS` against `C:\Windows`) - a case-exact
-// compare dropped this project's rows, and uninstall then left them behind without a word.
-const projectKey = (p) => (/^[A-Za-z]:[\\/]/.test(p) ? path.win32.resolve(p).toLowerCase() : path.resolve(p));
+// compare dropped this project's rows, and uninstall then left them behind without a word. Any other path keeps its
+// case: Task 5's probe (Claude Code 2.1.322, darwin) saw the CLI miss a project row stored as <dir>/PROJ from <dir>/Proj,
+// so a fold here would read a row the CLI cannot act on as this project's. Never realpathSync.native, which returns the
+// disk's case on macOS. awareness-state.js carries a copy (it ships without the installer); path-key.test.js holds both.
+// listing-key: a drive-letter path case-folded, any other path its real path with its case kept - the plugin listing's own compare (bug 5 of the complexity audit, Task 5's probe).
+function projectKey(p, platform = process.platform)
+{
+    const s = String(p);
+    const real = (native) => { try { return native ? fs.realpathSync.native(s) : fs.realpathSync(s); } catch { return null; } };
+    if (/^[A-Za-z]:[\\/]/.test(s)) return path.win32.resolve(platform === 'win32' ? real(true) || real(false) || s : s).replace(/\\/g, '/').toLowerCase();
+    return (real(false) || path.resolve(s)).split(path.sep).join('/');
+}
 
 // The install scopes `claude plugin list --json` reports, narrowest first: a plugin at several loads its
 // narrowest row here (enabledPlugins precedence - local over project over user). `managed` is the admin's:
@@ -916,7 +926,7 @@ module.exports = {
     pluginFloors, floorLines,
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
     SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, atRelease, leftAt, effectiveOn, withEffective,
-    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor,
+    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, projectKey,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, dropStaleRetired, retirementDue, updatePlugins, extraMarketplaces,
     copyRouteStandDown, restoreStoodDown, standDownScope, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins, foreignEntry, foreignEntries,

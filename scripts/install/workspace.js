@@ -354,13 +354,10 @@ const realOf = (p) =>
     try { return fs.realpathSync.native(p); }
     catch { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }
 };
-// One spelling per folder: the real path (macOS /tmp is /private/tmp, a Windows 8.3 name is expanded), `/`
-// separated, case-folded where the filesystem folds case by default.
-const realKey = (p) =>
-{
-    const key = realOf(p).split(path.sep).join('/');
-    return process.platform === 'win32' || process.platform === 'darwin' ? key.toLowerCase() : key;
-};
+// One spelling per folder: the hooks' tree key (layout.js pathKey) - the real path, `/` separated, case-folded where the
+// filesystem folds case by default. One home, so the installer and the hooks never key a folder two ways. The path alone:
+// callers hand realKey to Array.map, whose index must never reach pathKey's platform.
+const realKey = (p) => require('../../stack/hooks/layout.js').pathKey(p);
 const relPosix = (from, to) => path.relative(from, to).split(path.sep).join('/');
 const isStamped = (dir) => fs.existsSync(path.join(dir, '.claude', brand.BRAND.stamp));
 const isDir = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
