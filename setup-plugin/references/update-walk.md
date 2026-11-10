@@ -33,7 +33,7 @@ install owes (only the releases between its stamp and the snapshot, from `setup-
 a snapshot without the script prints an error - read nothing more for it and go on):
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --source "$TMP/repo" > "$TMP/plan.txt" ; grep -qE '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-workspace.md"
+node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --source "$TMP/repo" > "$TMP/plan.txt" ; grep -qE '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/update-workspace.md"
 ```
 
 (The last two read the workspace: with children below, their rows and `update-workspace.md`, the cascade's walk;
@@ -257,7 +257,7 @@ fail-soft `!!` are not judged from that dump - they are PRINTED by the script th
 and the same call reads the rest of the run, `update-close.md` (steps 6-8):
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <step 2's changed: hooks=N> --running "${CLAUDE_PLUGIN_ROOT}" ; cat "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-close.md"
+node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <step 2's changed: hooks=N> --running <RESOLVED's running=, else ?> ; cat "$TMP/repo/setup-plugin/references/update-close.md"
 ```
 
 Paste `restart: yes|no`, every `warn: <line>`, and its `renamed:` / `pruned:` lines verbatim - step 7 reads them, not

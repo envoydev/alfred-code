@@ -336,6 +336,19 @@ test('--log mode: a hook delta owes a restart only where the session does not al
     assert.strictEqual(logCase([])(['--hooks', '0']), 'no');
 });
 
+// 2026-11-10: update's walk passed `--running "${CLAUDE_PLUGIN_ROOT}"`, which the Bash tool expands to '' - the release
+// check was silently dropped. The walk passes the RESOLVED line's `running=` version now; `?` or empty is no check.
+test('--log mode: --running takes the version the session loaded', () => {
+    const at = (running, extra = []) => logCase([], { running: null })(['--running', running, ...extra]);
+    const [maj, min, pat] = SNAP_VERSION.split('.').map(Number);
+    const older = `${maj}.${min}.${Math.max(0, pat - 1) === pat ? pat + 1 : pat - 1}`;
+    assert.strictEqual(at(older), 'yes', 'another release than the snapshot: a restart');
+    assert.strictEqual(at(`v${older}`), 'yes', 'a v-prefixed version reads the same');
+    assert.strictEqual(at(SNAP_VERSION, ['--hooks', '3']), 'no', 'the same release: the plugin route\'s hooks are live');
+    assert.strictEqual(at('?'), 'no', '? is no release check');
+    assert.strictEqual(at('?', ['--hooks', '3']), 'yes', '? leaves the release unknown, so a hook delta owes a restart');
+});
+
 test('a FIRED migration carries everything the caller acts on, so the catalog is never opened', () => {
     // Reading 'just that one entry by id' still pulled the whole catalog into context: measured
     // 2,182 of a 5,180-char read was the maintainer `_comment` - 42%, paid on every update of

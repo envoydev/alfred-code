@@ -121,6 +121,37 @@ test('the paste mandates skip a table the gate printed', () => {
         assert.match(flat(body), clause, name);
 });
 
+// 2026-11-10 (the user's report on 3.9.2): `${CLAUDE_PLUGIN_ROOT}` is expanded only in a command's own text, never in
+// a reference file a body cats, and the Bash tool has no such variable - every path had to be rewritten by hand. A
+// reference reads the snapshot (`$TMP/repo/...`); the only occurrences left are matched by their text, never a line.
+test('the references never read ${CLAUDE_PLUGIN_ROOT} from the shell: each occurrence is one of the five kept', () => {
+    const allowed = {
+        'init-bootstrap.md': [/\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/post-install\.md` \(the plugin root your command body shows/],
+        'init-install.md': [/\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/post-install\.md` \(the plugin root your command body shows/],
+        'source-protocol.md': [/^`\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/source-protocol\.md`; read it in ONE Bash `cat`/m, /Never read `\$\{CLAUDE_PLUGIN_ROOT\}` from the shell/],
+        'source-protocol-notes.md': [/reading `\$\{CLAUDE_PLUGIN_ROOT\}` from the shell silently skipped/],
+    };
+    const dir = path.join(PLUGIN_DIR, 'references');
+    const stray = [];
+    let kept = 0;
+    for (const name of fs.readdirSync(dir).filter((f) => f.endsWith('.md'))) {
+        const text = fs.readFileSync(path.join(dir, name), 'utf8');
+        for (let i = text.indexOf('${CLAUDE_PLUGIN_ROOT}'); i >= 0; i = text.indexOf('${CLAUDE_PLUGIN_ROOT}', i + 1)) {
+            const around = text.slice(Math.max(0, i - 60), i + 120);
+            const lineStart = text.lastIndexOf('\n', i) + 1;
+            const line = text.slice(lineStart, text.indexOf('\n', i) < 0 ? text.length : text.indexOf('\n', i));
+            if ((allowed[name] || []).some((re) => re.test(around) || re.test(line))) kept++;
+            else stray.push(`${name}: ...${around.replace(/\s+/g, ' ')}...`);
+        }
+    }
+    assert.deepStrictEqual(stray, [], 'a reference reads $TMP/repo/..., never the shell variable');
+    assert.strictEqual(kept, 5, 'the five kept occurrences');
+});
+
+test('init\'s git hygiene ask says the data root\'s .variables stays listed on purpose', () => {
+    assert.match(flat(installBody()), /\.variables stays listed in git status on purpose/);
+});
+
 test('init is one command with two phases: the router reads the state and loads ONE phase file - manual-only', () => {
     const init = cmdBody('init');
     assert.match(init, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, 'init stays manual-only');
@@ -404,7 +435,7 @@ test('the layer table is never redirected to a file - the tool result is what ge
     assert.match(body, /total: N <layer>/, 'the walk carries the footer self-check');
     for (const [name, cmd] of [['init install phase', installBody()], ['configure', cmdBody('configure')]])
     {
-        assert.match(cmd, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/walk\.md/, `${name} runs the shared walk`);
+        assert.match(cmd, /(?:\$\{CLAUDE_PLUGIN_ROOT\}|\$TMP\/repo)\/setup-plugin\/references\/walk\.md/, `${name} runs the shared walk`);
         assert.ok(!cmd.split('\n').some((l) => l.includes('--table <layer>')), `${name} restates no table command of its own`);
     }
 });
@@ -1467,7 +1498,7 @@ test(`C15: update is a ${UPDATE_ROUTER_CAP}-char router that opens on its model 
     assert.ok(flatRouter.indexOf('## The run') > flatRouter.indexOf('**When the gate stops the run'), 'the call order comes after the gate');
     assert.match(flatRouter, /ONE call: `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \. ; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-walk\.md"`/, 'the walk rides step 1\'s call');
     assert.match(flatRouter, /step 3's `--log` call with `; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-close\.md"` appended/, 'the close rides the --log call');
-    assert.match(refBody('update-walk'), /--running "\$\{CLAUDE_PLUGIN_ROOT\}" ; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-close\.md"/, 'the walk\'s --log call reads the close');
+    assert.match(refBody('update-walk'), /--running <RESOLVED's running=, else \?> ; cat "\$TMP\/repo\/setup-plugin\/references\/update-close\.md"/, 'the walk\'s --log call reads the close');
     const body = updateBody();
     const afterTitle = body.slice(body.indexOf('# Update Alfred Code'));
     assert.match(afterTitle, /^# Update Alfred Code[^\n]*\n\n## 0\. Where to run it\n\n\*\*The model gate comes first - before any tool call and before reading further\.\*\*/, 'the gate is the body\'s first section');
@@ -1545,8 +1576,8 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     assert.strictEqual(firstOption(child, 'Where should the stack\'s plugins be enabled in this child'), 'local (Recommended)');
     assert.strictEqual(firstOption(child, 'Ignore these machine-local paths in this clone'), '.git/info/exclude (Recommended)');
     // the child text is read only on the role ask's Child answer, so a standalone install carries none of it
-    assert.ok(!/cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md"/.test(refBody('init-install')), 'init-install reads init-child.md unasked');
-    assert.match(flat(refBody('init-role')), /\*\*Child of `<rel>`\*\* - read `\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md` now/);
+    assert.ok(!/cat "(?:\$\{CLAUDE_PLUGIN_ROOT\}|\$TMP\/repo)\/setup-plugin\/references\/init-child\.md"/.test(refBody('init-install')), 'init-install reads init-child.md unasked');
+    assert.match(flat(refBody('init-role')), /\*\*Child of `<rel>`\*\* - read `\$TMP\/repo\/setup-plugin\/references\/init-child\.md` now/);
 });
 
 test('init-child: the local-scope hygiene lines come from git-hygiene.js --local-child, read and applied (AC8)', () =>
@@ -1582,7 +1613,7 @@ test('R066: both parent reads check the read-back before the walk marks a row fr
 test('update-workspace.md is cat only behind a workspace line', () =>
 {
     const walk = flat(refBody('update-walk'));
-    const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-workspace\.md"/g) || [];
+    const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/update-workspace\.md"/g) || [];
     assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
     assert.match(cats[0], /^ grep -qE '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child or a rescan row');
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
@@ -1658,7 +1689,7 @@ test('update-close reads the cascade rows and runs check-loads only when cascade
 test('configure step 8 and init screen B ask the environment rows in calls of at most four', () => {
     assert.match(flat(cmdBody('configure')), /in calls of at most four questions, in catalog order/);
     const install = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'init-install.md'), 'utf8'));
-    assert.match(install, /in calls of at most four in catalog order - the rows past the first four in a second call, from `cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-env-more\.md"`/);
+    assert.match(install, /in calls of at most four in catalog order - the rows past the first four in a second call, from `cat "\$TMP\/repo\/setup-plugin\/references\/init-env-more\.md"`/);
     const more = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'init-env-more.md'), 'utf8');
     assert.match(more, /^How many of a session's agents may run at once\?$/m);
 });

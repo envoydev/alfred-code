@@ -423,7 +423,9 @@ function policyRevLine(root, snapshot)
 // A session holds what it loaded at its start, so a restart is owed only for what this run CHANGED under it (audit
 // 2026-10-10, session 229e2715). The summary's `mcps=<n>` is the selection's size, printed on every run, so it said
 // restart on every update; a line that changed a registration or a plugin is the signal - a retired server's
-// registration the update removed included. `--running "${CLAUDE_PLUGIN_ROOT}"` names the release the session loaded: another release than this
+// registration the update removed included. `--running <version>` names the release the session loaded (the RESOLVED line's
+// `running=`; `?` or empty is no check - a shell `${CLAUDE_PLUGIN_ROOT}` reads '' there, 2026-11-10); a plugin root still
+// reads its plugin.json. Another release than this
 // snapshot's means its hooks, commands and server plugins are all older, and the same release means the hooks a
 // plugin-route stamp names are already live, so step 2's `--hooks` delta owes nothing.
 const SESSION_CHANGED = [
@@ -469,7 +471,8 @@ function runLogMode(logFile)
     console.log(tallyLine('pruned', text, PRUNED_LINE, true));
     const changed = SESSION_CHANGED.some((re) => re.test(text));
     const { versionTag } = require('./install/source.js');
-    const running = arg('--running') ? versionTag(arg('--running')) : '';
+    const given = String(arg('--running') || '').trim();
+    const running = !given || given === '?' ? '' : /^v?\d+\.\d+\.\d+/.test(given) ? `v${given.replace(/^v/, '')}` : versionTag(given);
     const snapshot = versionTag(path.join(__dirname, '..'));
     const otherRelease = Boolean(running && snapshot && running !== snapshot);
     const root = arg('--root', '.');
@@ -590,7 +593,7 @@ function main()
     const offerOnly = process.argv.includes('--offers');
     if (!snapshot && !offerOnly && !process.argv.includes('--asks'))
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --asks [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>] [--snapshot <dir>]\n       update-preflight.js --inventory <installed.json>');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --asks [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s version, or its plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>] [--snapshot <dir>]\n       update-preflight.js --inventory <installed.json>');
         process.exit(1);
     }
     const root = arg('--root', '.');
