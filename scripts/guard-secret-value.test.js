@@ -3194,6 +3194,10 @@ test('AC-2R: a find that hands a credential file to a reader', () => {
       // a filter stage between the find and its xargs still hands the names on (a side agent's note, the owner's run)
       ['a sort between', 'find . -name .env | sort | xargs cat', '.env'],
       ['a head between', "find . -name '.env*' | head -5 | xargs head", '.env'],
+      // the final review's I2a: a negated -type is no 'only folders' (AC-2 had opened it, the walk read `d` as the only type)
+      ['! -type d', 'find . -name .env ! -type d | xargs cat', '.env'],
+      ['-not -type d', 'find . -name .env -not -type d | xargs cat', '.env'],
+      ['! -type d -print0 into xargs -0 head', 'find . -name .env ! -type d -print0 | xargs -0 head', '.env'],
     ];
     for (const [what, command, file] of refused) refusedHere(what, call(command), file);
     for (const [what, command, file] of refused.slice(0, 10)) refusedHere(`dispatcher: ${what}`, viaDispatch(command), file);
@@ -3231,6 +3235,17 @@ test('AC-2R: a find that hands a credential file to a reader', () => {
     fs.writeFileSync(path.join(big, 'src', 'a.ts'), 'export const a = 1;\n');
     passed('a search through a large tree', call("find . -name '*.js' | xargs grep -n foo", big));
     passed('the -prune -o form', call("find . -path ./node_modules -prune -o -name '*.ts' -print | xargs grep foo", big));
+    // the final review's I2b: the account's credential file, named by its own name, is walked and judged; a pattern every
+    // package.json also matches (`*.json`) aims at no credential file and is not walked
+    const acct = fs.mkdtempSync(path.join(TMP, 'ac2r-acct-'));
+    fs.mkdirSync(path.join(acct, '.claude'));
+    fs.writeFileSync(path.join(acct, '.claude', '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: FAKE_TOKEN } }));
+    fs.writeFileSync(path.join(acct, '.claude', 'settings.json'), '{"theme":"dark"}\n');
+    refusedHere('the account file by name', call('find . -maxdepth 1 -type f -name .credentials.json | xargs cat', path.join(acct, '.claude')), '.credentials.json');
+    refusedHere('cd into the account folder', call(`cd "${path.join(acct, '.claude')}" && find . -maxdepth 1 -type f -name .credentials.json | xargs cat`, acct), '.credentials.json');
+    refusedHere('a pattern aimed at it', call("find . -name '*credentials*' | xargs cat", acct), '.credentials.json');
+    passed('*.json across a tree past the entries ceiling: not walked', call("find . -name '*.json' | xargs grep -n version", big, {}, (() => {
+      const p = path.join(TMP, 'ac2r-tiny.js'); fs.writeFileSync(p, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 30, entries: 10 };\n'); return p; })()));
 
     // a project with no credential file, and a .env with an empty value
     const clean = fs.mkdtempSync(path.join(TMP, 'ac2r-clean-'));

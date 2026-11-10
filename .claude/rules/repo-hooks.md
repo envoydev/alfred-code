@@ -628,7 +628,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     entries (a stated ceiling). A FIND that hands its files to a reader (AC-2R, the owner's ruling of 2026-11-10) - an
     `-exec` / `-execdir` / `-ok` action, a later `| xargs <print verb>` stage (a filter between counts), or `$(find ...)` as
     a print verb's operand, no reducer (`grep -l`, `wc`) - is judged when a positive `-name` / `-path` pattern can match a
-    name on `CREDENTIAL_NAME_SAMPLES`: `findCredentialFile` walks it in the Grep walk's order (`.git` and `node_modules`
+    name on `CREDENTIAL_NAME_SAMPLES`, or one on `CREDENTIAL_NAMES_AIMED` (`.credentials.json`, `auth.json`, `hosts.yml`)
+    while matching none of `AIMED_DECOYS` (`*.json` matches every package.json, so it is not walked; a negated `-type` is
+    no type restriction - the final review's I2): `findCredentialFile` walks it in the Grep walk's order (`.git` and `node_modules`
     last, not skipped; a `-o` / `-regex` find keeps only its depth and type tests), and a match holding a credential blocks
     (`find-reader`), as does a walk past the same three ceilings - fail CLOSED there (`find-reader-unjudged`); a test
     preload lowers them through `global.FIND_WALK_LIMITS`. A listing, a reducer and a pattern naming no listed file pass
@@ -739,9 +741,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `-wholename`, `-regex`, `-lname` and their `-i` forms) is a pattern, never a path the command opens (E-batch U24:
     `-not -path './.alfred/*'` excluding the data root was refused as naming the store). A negated test (`-not` / `!`)
     matching the store where the find PRINTS it - the path from its start as written for a path test, the basename for a
-    name test - excludes it (AC-1, 2026-11-10): the find judge skips that store, and the mention pass blanks that operand
-    when it excludes the store from every start reaching it; never in a find holding `-o` / `-or`, and a start that does not
-    print the pattern's path (`find .alfred -not -path './.alfred/<store>'`) excludes nothing. The same day the dump half took `$(pwd)` / a backtick
+    name test - excludes it (AC-1, 2026-11-10): the find judge skips that store, and the mention pass blanks that operand,
+    only when it excludes the store from EVERY start reaching it, and only in a plain conjunction (`liftable`, the final
+    review's I1): no `-o` / `-or` / `,` or parentheses, one negation word before the test (`! -not -path` is no exclusion),
+    no action (`-print`, `-exec`) before it that has already handed the file on, and no `$` or backtick in its pattern.
+    A start that does not print the pattern's path (`find .alfred -not -path './.alfred/<store>'`) excludes nothing. The same day the dump half took `$(pwd)` / a backtick
     `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
     `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
     path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged. Audit 2026-10-30 HK-04: `$PWD`

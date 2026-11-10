@@ -257,6 +257,11 @@ const CREDENTIAL_NAME_SAMPLES = ['.env', '.env.local', 'prod.env', 'credentials'
   '_netrc', '.pgpass', '.htpasswd', '.vault-token', '.yarnrc', '.s3cfg', '.boto', '.databrickscfg', '.terraformrc', 'prod.tfvars',
   'id_rsa', 'id_ed25519', 'server.key', 'server.pem', 'cert.p12', 'cert.pfx', 'app.jks', 'app.keystore', 'vault.kdbx', 'user.ppk',
   '.secrets', '.sensitive-data'];
+// The final review's I2b (2026-11-10): credential files the guard judges by content whose names a broad pattern also
+// matches (`*.json` matches every package.json). Such a name counts only for a pattern aimed at it - one matching none of
+// the decoys - so `find . -name .credentials.json | xargs cat` is walked and `find . -name '*.json' | xargs grep` is not.
+const CREDENTIAL_NAMES_AIMED = ['.credentials.json', 'credentials.json', 'auth.json', 'hosts.yml'];
+const AIMED_DECOYS = ['package.json', 'tsconfig.json', 'settings.json', 'config.json', 'config.yml', 'docker-compose.yml'];
 function kindByName(file) {
   const b = baseOf(file).toLowerCase();
   const e = extOf(file);
@@ -3573,23 +3578,21 @@ function refuseSensitiveMention(text, steps = text) {
         if (!rel || rel.startsWith('..') || pathMod.isAbsolute(rel)) continue;
         const segs = rel.split(pathMod.sep);
         if (segs.length > parsed.maxdepth) continue;
-        pairs.push({ segs, shown: `${s.replace(/[\\/]+$/, '')}/${segs.join('/')}`, base: segs[segs.length - 1] });
+        pairs.push({ store, segs, shown: `${s.replace(/[\\/]+$/, '')}/${segs.join('/')}`, base: segs[segs.length - 1] });
       }
     }
     return { pairs, unresolved };
   };
   // A negated test matching the store where find prints it (a path test on `shown`, a name test on the basename) leaves the
-  // store out of the walk's output - never in a find holding -o / -or, whose other branch can print it anyway.
-  const alternatives = (args) => args.some((w) => w === '-o' || w === '-or');
-  const excludes = (t, pair) => t.not && globOf(t.pattern, t.i ? 'i' : '').test(t.path ? pair.shown : pair.base);
+  // store out of the walk's output - only where liftable() holds (no -o branch, comma, group or earlier action prints it).
+  const excludes = (args, t, pair) => liftable(args, t) && globOf(t.pattern, t.i ? 'i' : '').test(t.path ? pair.shown : pair.base);
   // The pattern words of a find's exclusions of the store: each negated test excluding it from every start the walk reaches
   // it from, every start resolved. The mention pass blanks only these operands.
   const findExcludes = (args) => {
     const parsed = findTests(args);
-    if (alternatives(args)) return new Set();
     const { pairs, unresolved } = findReach(parsed);
     if (unresolved) return new Set();
-    return new Set(parsed.tests.filter((t) => t.not && pairs.every((pair) => excludes(t, pair))).map((t) => t.pattern));
+    return new Set(parsed.tests.filter((t) => pairs.every((pair) => excludes(args, t, pair))).map((t) => t.pattern));
   };
   for (let i = 0; i < parts.length; i += 2) {
     const seg = parts[i];
@@ -3627,10 +3630,13 @@ function refuseSensitiveMention(text, steps = text) {
     // one parse of the find's tests (findTests); a test that does not exclude the store still narrows the walk (R8)
     const parsed = findTests(args);
     const tests = parsed.tests.map((t) => ({ re: globOf(t.pattern, t.i ? 'i' : ''), path: t.path }));
-    const open = !alternatives(args);
-    for (const pair of findReach(parsed).pairs) {
-      // AC-1: a store a negated test excludes where find prints it is no store this find prints
-      if (open && parsed.tests.some((t) => excludes(t, pair))) continue;
+    const { pairs } = findReach(parsed);
+    // AC-1: a store every start excludes where find prints it is no store this find prints; one start that reaches it
+    // unexcluded (`find . .alfred -not -path './.alfred/*'`) judges every pair as before (the final review's I1)
+    const out = (pair) => parsed.tests.some((t) => excludes(args, t, pair));
+    const skipped = new Set(sensitiveStores().filter((st) => pairs.some((p) => p.store === st) && pairs.filter((p) => p.store === st).every(out)));
+    for (const pair of pairs) {
+      if (skipped.has(pair.store)) continue;
       if (tests.length ? tests.some((t) => t.re.test(t.path ? pair.shown : pair.base)) : pair.segs.length === 1) refuse('find');
     }
   };
@@ -4764,11 +4770,12 @@ function findTests(args) {
   for (let j = first; j < args.length; j++) {
     const w = args[j];
     if (/^-i?(?:name|path|wholename)$/.test(w)) {
-      out.tests.push({ pattern: args[j + 1] || '', path: !/name$/.test(w) || /wholename$/.test(w), i: /^-i/.test(w), not: args[j - 1] === '-not' || args[j - 1] === '!' });
+      out.tests.push({ pattern: args[j + 1] || '', path: !/name$/.test(w) || /wholename$/.test(w), i: /^-i/.test(w), not: args[j - 1] === '-not' || args[j - 1] === '!', at: j });
       j++;
     } else if (/^-(?:o|or|i?regex)$/.test(w)) out.wide = true;
     else if (/^-(?:max|min)depth$/.test(w) && /^\d+$/.test(args[j + 1] || '')) out[w.slice(1)] = Number(args[++j]);
-    else if (w === '-type' && j + 1 < args.length) out.types = (out.types || '') + args[++j];
+    // a negated type (`! -type d`) restricts nothing the walk models - the final review's I2a: it read as 'only folders'
+    else if (w === '-type' && j + 1 < args.length) { const neg = args[j - 1] === '-not' || args[j - 1] === '!'; j++; if (!neg) out.types = (out.types || '') + args[j]; }
   }
   return out;
 }
@@ -4777,8 +4784,17 @@ function credentialPattern(parsed) {
   return parsed.tests.some((t) => {
     if (t.not) return false;
     const re = globOf(t.path ? t.pattern.split(/[\\/]/).pop() : t.pattern, t.i ? 'i' : '');
-    return CREDENTIAL_NAME_SAMPLES.some((n) => re.test(n));
+    return CREDENTIAL_NAME_SAMPLES.some((n) => re.test(n)) || (CREDENTIAL_NAMES_AIMED.some((n) => re.test(n)) && !AIMED_DECOYS.some((n) => re.test(n)));
   });
+}
+// AC-1's lift holds only where find cannot print the store past the exclusion (the final review's I1): a plain conjunction -
+// no -o / -or / ',' and no parentheses - with ONE negation word before the test, no action (-print, -exec, ...) before it
+// that has already handed the file on, and a pattern holding no `$` or backtick the shell may expand or, single-quoted,
+// leave as text. A function declaration with its patterns inline: the Bash branch runs above any module const here.
+function liftable(args, t) {
+  if (!t.not || args.some((w) => /^(?:-o|-or|,|\\?[()])$/.test(w)) || /[$`]/.test(t.pattern)) return false;
+  if (/^(?:-not|!)$/.test(args[t.at - 2] || '')) return false;
+  return !args.slice(0, t.at).some((w) => /^-(?:print0?|printf|fprint0?|fprintf|ls|fls|exec|execdir|ok|okdir)$/.test(w));
 }
 // The program a find hands its files to, when it prints them: a print verb (DUMP_VERB as a lone word, or shell-writes.js's
 // PRINT_VERBS) that reduces nothing (`grep -l`, `wc`). A listing (`ls -l`), a reducer or no program is null.

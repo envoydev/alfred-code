@@ -318,6 +318,13 @@ test(`U24: find pattern operands are patterns, not paths [${FILE}]`, () =>
         assert.strictEqual(bash(dir, command), 2, `AC-1 kept: ${command}`);
     // its -exec form was never a refusal: the dump half replaces it with the store's view, every value masked (as at HEAD)
     assert.notStrictEqual(bash(dir, `find .alfred -not -path './.alfred/${FILE}' -exec cat {} +`), 0, 'AC-1 kept: the -exec form never runs as written');
+    // the final review's I1: an exclusion lifts nothing where find still prints the store - an action placed before it, a
+    // second start it does not cover, a double negation, a comma list, or a pattern the shell may leave unexpanded
+    for (const command of [`find . -type f -print -not -path './.alfred/${FILE}' | xargs cat`, `find . -type f -print0 -not -name ${FILE} | xargs -0 cat`,
+        "find . .alfred -type f -not -path './.alfred/*' | xargs cat", "find . .alfred -not -path './.alfred/*' | xargs cat",
+        `find . -type f ! -not -path './.alfred/${FILE}' | xargs cat`, `find . -type f -not -not -path './.alfred/${FILE}' | xargs cat`,
+        `find . -type f -not -path './.alfred/${FILE}' , -print | xargs cat`, `find "$PWD" -type f -not -path '$PWD/.alfred/${FILE}' | xargs cat`])
+        assert.strictEqual(bash(dir, command), 2, `review I1 kept: ${command}`);
 });
 
 // Final review 2026-10-25 C2: on a case-insensitive disk (macOS, Windows) `.alfred/.SECRETS` and `.ALFRED/.secrets` open
