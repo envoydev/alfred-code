@@ -3431,3 +3431,17 @@ test('SG1 D7: a built path or a fed listing reaching a credential file is judged
   }
   assert.equal(at(d7c, `python3 -c "import os; p=os.path.join('d1', '${E}'); open('out.txt','w').write(open(p).read())"`), 2, 'a join with a write');
 });
+
+// D7's own review (fresh opus, 2026-11-10): each reproduced IMPORTANT finding, one test each
+const d7Project = (files) => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'd7r-'));
+  for (const [rel, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); }
+  return (command, pre = null) => verdict(spawnSync(process.execPath, [...(pre ? ['-r', pre] : []), HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }));
+};
+const D7E = ['.e', 'nv'].join('');
+test('SG1 D7 review: an ls redirect or option value is no listed folder', () => {
+  const at = d7Project({ [D7E]: `API_TOKEN=${FAKE_TOKEN}\n`, 'notes.md': '# n\n' });
+  for (const c of ['ls -A 2>/dev/null | xargs cat', 'ls -A 2> /dev/null | xargs cat', 'ls -A -I node_modules | xargs cat', 'ls -A --hide x | xargs cat', 'ls -A -w 200 | xargs cat'])
+    assert.equal(at(c), 2, c);
+  assert.equal(at(`ls -I ${D7E} | xargs cat`), 0, 'an ignore pattern is no operand');
+});

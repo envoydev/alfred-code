@@ -4870,7 +4870,9 @@ function fedFinds(stages, sj) {
       const nk = commandAt(nt);
       if (!nt.slice(0, nk).some((w) => baseOf(wordOf(w)) === 'xargs')) continue;
       const reader = printProgram(nt.slice(nk));
-      if (reader) out.push(head === 'find' ? { args, verb: reader } : { args: args.filter((w) => !w.startsWith('-')), verb: reader,
+      // a listing's operands: no option, no option's value (GNU's -I / -w / --hide ...), no redirect or its target
+      const ops = args.filter((w, j) => !/^-|^\d*[<>]/.test(w) && !/^-[IwT]$|^--(?:hide|ignore|width|tabsize)$|^\d*[<>]+&?$/.test(args[j - 1] || ''));
+      if (reader) out.push(head === 'find' ? { args, verb: reader } : { args: ops, verb: reader,
         listing: true, dotfiles: args.some((w) => /^-(?!-)\S*[aA]|^--(?:all|almost-all)$/.test(w)) });
       break;
     }
