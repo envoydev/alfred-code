@@ -3334,3 +3334,63 @@ test('SG1 D1: a mode word under a credential key is no credential; anything else
   assert.equal(bash(`cat "${dot}"`), 0, 'dotenv mode words');
   assert.equal(cli('--presence', json('presence.json', { auth: 'oauth' }), 'auth').stdout.trim(), 'auth=set (5 chars)', '--presence reports presence, never a value');
 });
+
+// SG1 Bearer (spec Change 1): a `Bearer <token>` value is a credential under any key, in every format, judged on the
+// token alone (RFC 6750 section 2.1's b64token) by the same sample tells as every embedded credential.
+const BEARER = ['Qw', '7r', 'Zk', '4p'].join('').repeat(5); // 40 chars, three classes
+const B = 'Bear' + 'er ';
+test('SG1 Bearer: a Bearer token is a credential under any key, in every format', () => {
+  const f = fixtures();
+  const files = {
+    'b.json': JSON.stringify({ auth: B + BEARER }),
+    'x.json': JSON.stringify({ note: B + BEARER }),
+    'h.json': JSON.stringify({ headers: { Authorization: B + BEARER } }),
+    'arr.json': JSON.stringify({ headers: [`Authorization: ${B}${BEARER}`] }), // Review Focus 4
+    'h.yaml': `headers:\n  Authorization: ${B}${BEARER}\n`,
+    'h.config': `<configuration><add key="Authorization" value="${B}${BEARER}"/></configuration>\n`,
+    'h.env': `AUTH_HEADER=${B}${BEARER}\n`,
+    'lower.json': JSON.stringify({ x: 'bear' + 'er ' + BEARER }),
+    'short16.json': JSON.stringify({ x: B + BEARER.slice(0, 16) }),
+    'ghp.json': JSON.stringify({ x: B + ['gh', 'p_'].join('') + 'A1b2'.repeat(9) }), // a known shape, any length
+  };
+  for (const [name, text] of Object.entries(files)) {
+    const p = path.join(f.dir, name); fs.writeFileSync(p, text);
+    assert.equal(read(p), 2, `Read ${name}`);
+    const cmd = rewritten(`cat "${p}"`);
+    assert.ok(cmd, `cat ${name} is rewritten`);
+    const out = spawnSync('bash', ['-c', cmd], { encoding: 'utf8' });
+    assert.ok(!(out.stdout + out.stderr).includes(BEARER.slice(0, 16)), `${name}: the view holds no token`);
+    assert.match(out.stdout, /<set \(\d+ chars\)>/, `${name}: the view shows the masked value`);
+  }
+  const s = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input: `+  headers: { Authorization: '${B}${BEARER}' },\n`, encoding: 'utf8' });
+  assert.ok(!s.stdout.includes(BEARER), 'the stream masker masks a Bearer token in a source line');
+});
+test('SG1 Bearer: an interpolation or a short token is no Bearer credential', () => {
+  const f = fixtures();
+  const cases = {
+    'tpl.json': JSON.stringify({ auth: B + '${GITHUB_TOKEN}' }), 'angle.json': JSON.stringify({ auth: B + '<your-token>' }),
+    'short15.json': JSON.stringify({ x: B + BEARER.slice(0, 15) }), 'head.json': JSON.stringify({ x: `${B}${BEARER.slice(0, 20)}\${x}` }),
+    'ident.json': JSON.stringify({ x: B + 'abc-def-ghi' }), // an identifier
+    'tplword.json': JSON.stringify({ headers: { Authorization: B + 'YOUR_ACCESS_TOKEN_HERE' } }), // template words, a NAME
+  };
+  for (const [name, text] of Object.entries(cases)) { const p = path.join(f.dir, name); fs.writeFileSync(p, text); assert.equal(read(p), 0, name); }
+  for (const line of ['+  const h = `' + B + '${process.env.API_TOKEN}`;', `+    h = f"${B}{self.access_token}"`, `+  h = "${B}#{token}"`, `+  h = '${B}' + token`]) {
+    const s = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input: line + '\n', encoding: 'utf8' });
+    assert.equal(s.stdout, line + '\n', `unchanged: ${line}`);
+  }
+});
+test('SG1 Bearer: a diff adding a Bearer token is piped through the masker; an interpolation diff runs as written', () => {
+  const g = fs.mkdtempSync(path.join(TMP, 'bearer-git-'));
+  const git = (...a) => spawnSync('git', ['-C', g, '-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  for (const [n, t] of [['h.yaml', 'headers: {}\n'], ['a.ts', '// a\n'], ['b.py', '# b\n']]) fs.writeFileSync(path.join(g, n), t);
+  git('add', '-A'); git('commit', '-qm', 'base');
+  fs.writeFileSync(path.join(g, 'h.yaml'), `headers:\n  Authorization: ${B}${BEARER}\n`);
+  fs.writeFileSync(path.join(g, 'a.ts'), '// a\nconst h = `' + B + '${process.env.API_TOKEN}`;\n');
+  fs.writeFileSync(path.join(g, 'b.py'), `# b\nh = f"${B}{self.access_token}"\n`);
+  const call = (command) => run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: g }, { CLAUDE_PROJECT_DIR: g });
+  const piped = updatedCommand(call('git diff -- h.yaml'));
+  assert.ok(piped && piped.startsWith('git diff -- h.yaml'), 'the diff runs with the masker piped after it');
+  assert.ok(!spawnSync('bash', ['-c', piped], { cwd: g, encoding: 'utf8' }).stdout.includes(BEARER), 'the piped diff holds no token');
+  for (const c of ['git diff -- a.ts', 'git diff -- b.py', 'grep -rn Bearer a.ts b.py']) assert.equal(verdict(call(c)), 0, `${c} runs as written, no pipe`);
+});

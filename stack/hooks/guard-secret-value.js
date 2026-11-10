@@ -160,11 +160,17 @@ const holdsCredential = (key, v) => isLive(v) && !isSampleValue(key, v);
 // a `${VAR}` placeholder or a template word is not live - and only the password part is masked.
 const EMBEDDED_PAIR = /((?:^|[;,])\s*(?:password|pwd)\s*=\s*)([^;,]*)/gi;
 const EMBEDDED_URL = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)([^@\s/]+)(?=@)/gi;
+// A `Bearer <token>` under any key (SG1 Change 1; RFC 6750 section 2.1's b64token): the space excused the whole value
+// as a sample, so the token alone is judged - a known shape, or a credential-like token with no sample tell.
+const EMBEDDED_BEARER = /(\bBearer +)([A-Za-z0-9\-._~+/]+=*)(?![A-Za-z0-9\-._~+/=$%{#])/gi;
+const bearerToken = (t) => isLive(t) && (SECRET_SHAPE.test(t) || (credentialLike(t) && holdsCredential('password', t)));
 const embeddedCredential = (v) => typeof v === 'string'
-  && [...v.matchAll(EMBEDDED_PAIR), ...v.matchAll(EMBEDDED_URL)].some((m) => holdsCredential('password', m[2]));
-const maskEmbedded = (v, mask) => v
+  && ([...v.matchAll(EMBEDDED_PAIR), ...v.matchAll(EMBEDDED_URL)].some((m) => holdsCredential('password', m[2]))
+    || [...v.matchAll(EMBEDDED_BEARER)].some((m) => bearerToken(m[2])));
+const maskBearer = (v, mask) => v.replace(EMBEDDED_BEARER, (all, head, tok) => (bearerToken(tok) ? head + mask(tok) : all));
+const maskEmbedded = (v, mask) => maskBearer(v
   .replace(EMBEDDED_PAIR, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all))
-  .replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all));
+  .replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all)), mask);
 // A file-SHAPE tell: a basename ending .example / .sample / .template / .dist ships the KEYS, never
 // the values - judging it blocks the one file a session legitimately reads to learn what to fill in.
 const TEMPLATE_FILE = /\.(?:example|sample|template|dist)$/i;
@@ -1497,7 +1503,7 @@ function lineRedactor(grep = false, literals = false) {
       if (i && maskable(i[2], unquote(i[4]))) out = `${i[1]}${i[2]}${i[3]}${mask(unquote(i[4]))}`;
       out = kind === 'hcl' ? maskQuotedEmbedded(out, mask) : maskEmbedded(out, mask);
     } else {
-      out = out.replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all));
+      out = maskBearer(out.replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all)), mask);
     }
     out = out.replace(SECRET_SHAPE_G, (x) => mask(x));
     if (PEM_PRIVATE.test(out) && !PEM_END.test(out)) pem = true;
