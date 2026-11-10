@@ -1403,6 +1403,8 @@ function modeBanner(autoOn) {
       + (autoRefused ? ` (auto-run did NOT start: ${autoRefused}.)`
         : autoFlags && autoFlags.late ? ' (mode flags count only right after the command: `--mode-auto-run-on` there starts auto-run.)' : '');
   const at = ctxThreshold();
+  // what lowered the trigger, said beside it (fresh-session.js triggerReason, 2026-11-10); none from an older engine
+  const why = (() => { try { const r = fresh.triggerReason(fresh.ctxThresholdWhy()); return r ? `${r}; ` : ''; } catch { return ''; } })();
   const ctxLine = autoOn
     ? `**Context:** no fresh-session hand-off - the session auto-compacts ${where} and the run goes on from the summary and its state files.`
     : COMPACT_INSTEAD
@@ -1410,7 +1412,7 @@ function modeBanner(autoOn) {
       : FRESH_OFF || at === null
         ? `**Context:** the fresh-session offers are off - the session compacts ${where}.`
         // U12-2: the number is the trigger the offer waits for, never the carry now
-        : `**Context:** session refresh - the run offers to resume in a fresh session once the carry passes ~${tokens(at)} tokens ${window ? `of ${room} (a trigger, not the current size)` : `(ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of ${room} is not known; a trigger, not the current size)`}, instead of compacting.`;
+        : `**Context:** session refresh - the run offers to resume in a fresh session once the carry passes ~${tokens(at)} tokens ${window ? `of ${room} (${why}a trigger, not the current size)` : `(ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of ${room} is not known; ${why}a trigger, not the current size)`}, instead of compacting.`;
   const acwNote = acwIgnoredNote();
   return `${acwNote ? `${acwNote}\n\n` : ''}${BANNER_HEAD}\n${mode}\n${ctxLine}`;
 }

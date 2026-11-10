@@ -286,3 +286,35 @@ test('guard-stop-contract (turn end): once offered, the offer re-arms only after
   grow(675000);
   assert.equal(offered(route, tp, {}, logDir), true, '675,000 is 1.5x - asked again');
 });
+
+// 2026-11-10 (the user's report on 3.9.2): the banner and the Stop hook quoted a 329k trigger on a 1M model and nothing
+// said why it was not the 400k tier. The engine says what lowered it, and both lines carry the same words.
+test('the trigger names what lowered it: an auto-compact window, a recorded compaction, or nothing', () => {
+  const ENGINE = path.join(HOOKS, 'fresh-session.js');
+  const textOf = (tp, extra = {}, sid = 'tw') => spawnSync(process.execPath, ['-e',
+    `const f = require(${JSON.stringify(ENGINE)}); f.use({ transcript_path: process.argv[1], session_id: ${JSON.stringify(sid)} }); process.stdout.write(f.triggerText(f.ctxThresholdWhy()));`, tp],
+  { env: unsetUndefined({ ...baseEnv(), ...extra }), encoding: 'utf8' }).stdout;
+  const WHY = "329k (the 400k tier, lowered by this project's auto-compact window of 366k)";
+  const tp = session('claude-opus-5-5', carry(100000));
+  assert.strictEqual(textOf(tp, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '366000' }), WHY);
+  assert.strictEqual(textOf(tp), '400k', 'nothing lowered it');
+  const root = fs.mkdtempSync(path.join(TMP, 'root-points-'));
+  fs.mkdirSync(path.join(root, '.alfred', 'state', 'sessions'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.alfred', 'state', 'sessions', 'compact-points.json'),
+    JSON.stringify([{ model: 'claude-opus-5-5', tokens: 366000, at: new Date().toISOString() }]));
+  assert.strictEqual(textOf(tp, { CLAUDE_PROJECT_DIR: root }), '329k (the 400k tier, lowered by the lowest compaction this project recorded, ~366k)');
+
+  // the Stop hook's fresh line and the banner's context line carry the same words
+  const acw = { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '366000' };
+  const stop = spawnSync(process.execPath, [path.join(HOOKS, 'guard-stop-contract.js')], { input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'tw-stop',
+    transcript_path: tp, last_assistant_message: 'The branch is ready.\n\nShould I push it now, or keep it local until the review?' }), encoding: 'utf8',
+  env: unsetUndefined({ ...baseEnv(), ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'state-')), ...acw }) });
+  assert.strictEqual(stop.status, 2, stop.stderr);
+  assert.ok(stop.stderr.replace(/\n/g, ' ').includes(`fresh-session trigger is ${WHY}`), stop.stderr);
+  const proj = fs.mkdtempSync(path.join(TMP, 'root-banner-'));
+  const banner = spawnSync(process.execPath, [path.join(HOOKS, 'guard-fresh-session-start.js')], { input: JSON.stringify({ hook_event_name: 'UserPromptExpansion',
+    session_id: 'tw-banner', cwd: proj, transcript_path: tp, expansion_type: 'slash_command', command_name: 'task-solve', command_args: 'fix it',
+    prompt: '/task-solve fix it', prompt_id: 'p-tw-1' }), encoding: 'utf8', env: unsetUndefined({ ...baseEnv(), CLAUDE_PROJECT_DIR: proj, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'state-')), ...acw }) });
+  const ctx = (() => { try { return JSON.parse(banner.stdout).hookSpecificOutput.additionalContext || ''; } catch { return ''; } })();
+  assert.match(ctx, /once the carry passes ~329k tokens of its 1M context window \(claude-opus-5-5\) \(the 400k tier, lowered by this project's auto-compact window of 366k; a trigger, not the current size\)/, ctx);
+});

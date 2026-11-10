@@ -2881,15 +2881,18 @@ if (payload.hook_event_name === 'Stop') {
     return u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
   })();
   const _trigger = ctxThreshold();
+  // the trigger and what lowered it, in the banner's own words (fresh-session.js triggerText, 2026-11-10); an engine
+  // older than the hook has no triggerText and the bare number stands
+  const _triggerSaid = (() => { try { return fresh.triggerText(fresh.ctxThresholdWhy()) || `${Math.round(_trigger / 1000)}k`; } catch { return `${Math.round(_trigger / 1000)}k`; } })();
   const freshLine = COMPACT_INSTEAD
     ? 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1), so no resume option belongs in the ask.\n'
     : _trigger === null
     ? 'The fresh-session offer is switched off on this install, so no resume option is expected.\n'
     : (_carry
       ? `This session carries ~${Math.round(_carry / 1000)}k tokens per message and this window's\n`
-        + `fresh-session trigger is ${Math.round(_trigger / 1000)}k - past it, the resume option belongs in the\n`
+        + `fresh-session trigger is ${_triggerSaid} - past it, the resume option belongs in the\n`
         + 'same ask.\n'
-      : `This window's fresh-session trigger is ${Math.round(_trigger / 1000)}k per message and this turn's own\n`
+      : `This window's fresh-session trigger is ${_triggerSaid} per message and this turn's own\n`
         + 'carry could not be read - past the trigger, the resume option belongs in the same ask.\n');
   const pendingOwed = ((closeTail.match(PENDING_RE) || [])[0] || '').trim();
   process.stderr.write(
