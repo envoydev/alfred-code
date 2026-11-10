@@ -43,8 +43,18 @@ if (!args.some(isTarget) && !hasTestFile(path.join(ROOT, 'scripts'))) {
 }
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'at-'));
 const env = { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp };
+// A run that writes into the checkout's own hook-blocks ledger fails whatever its tests did (bug 2 of the complexity
+// audit, 2026-11-10): a hook spawned with the checkout as its project left 213 rows there that read as sessions.
+const { checkoutLedgers, ledgerSnapshot, ledgerGrowth } = require('./hook-test-env.js');
+const ledgersBefore = ledgerSnapshot(checkoutLedgers(ROOT));
 let r;
 try { r = spawnSync(process.execPath, ['--test', ...args, ...(args.some(isTarget) ? [] : [PATTERN])], { cwd: ROOT, stdio: 'inherit', env }); }
 finally { try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 3 }); } catch (e) { process.stderr.write(`run-tests: the run's temp dir ${tmp} was not removed: ${e.message}\n`); } }
 if (r.error) { process.stderr.write(`run-tests: ${r.error.message}\n`); process.exit(1); }
+const grown = ledgerGrowth(ledgersBefore, ledgerSnapshot(checkoutLedgers(ROOT)));
+if (grown.length)
+{
+    process.stderr.write(`run-tests: the run wrote into this checkout's own hook-blocks ledger - a suite or a probe ran a hook with the checkout as its project: ${grown.join(', ')}\n`);
+    process.exit(1);
+}
 process.exit(r.status ?? 1);

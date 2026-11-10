@@ -22,9 +22,11 @@ const SESSION_KEYS = ['CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PL
 // Only the ledger folder is watched there, never the whole docs root, which a person edits while a suite runs. Since
 // 2.8.0 the hooks' state and ledgers sit beside the docs root, in the data root's state/ and statistics/
 // (stack/hooks/layout.js) - the checkout's own ledger with them.
+// The checkout's two hook-blocks ledger folders: the data root's (2.8.0+) and the docs root's (before it).
+const checkoutLedgers = (root) => [path.join(root, '.alfred', 'statistics', 'hook-blocks'), path.join(root, '.alfred', 'docs', 'hook-blocks')];
 const strayRoots = () => [...['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs')),
     ...['state', 'statistics'].map((d) => path.join(os.tmpdir(), '.alfred', d)),
-    path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks'), path.join(process.cwd(), '.alfred', 'statistics', 'hook-blocks'),
+    ...checkoutLedgers(process.cwd()),
     // the session status file (2026-10-29): a hook whose cwd is os.tmpdir() would publish under it
     path.join(os.tmpdir(), '.claude', 'session-inspector')];
 
@@ -46,6 +48,37 @@ function strayWrites(since, roots = strayRoots())
     for (const root of roots) walk(root);
     return out;
 }
+
+// The whole-run check (bug 2 of the complexity audit, 2026-11-10): a suite that skips isolateHookSuite, or a probe
+// spawned outside one, wrote 213 rows into the checkout's own nosession.jsonl, which a folder-wide tally reads as
+// sessions. run-tests.js snapshots the two ledger folders before the run and fails it on any file new or grown after,
+// except a live session's own file - named after its session id, a UUID, which no test spells.
+const LIVE_SESSION_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i;
+
+// Every file under `dirs` mapped to its size; a missing folder adds nothing.
+function ledgerSnapshot(dirs)
+{
+    const sizes = new Map();
+    const walk = (dir) =>
+    {
+        let entries = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries)
+        {
+            const p = path.join(dir, e.name);
+            if (e.isDirectory()) walk(p);
+            else { try { sizes.set(p, fs.statSync(p).size); } catch { /* gone */ } }
+        }
+    };
+    for (const dir of dirs) walk(dir);
+    return sizes;
+}
+
+// The files `after` holds that are new or larger than in `before`, sorted, a live session's own file left out.
+const ledgerGrowth = (before, after) => [...after]
+    .filter(([file, size]) => !LIVE_SESSION_FILE.test(path.basename(file)) && size > (before.get(file) ?? -1))
+    .map(([file]) => file)
+    .sort();
 
 // A copy of `env` with none of the keys a runner's session hands down.
 function scrubbed(env = process.env)
@@ -108,4 +141,5 @@ function foreignWords(count, seed = 1)
     return words.join(' ');
 }
 
-module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS };
+module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
+    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS };
