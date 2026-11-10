@@ -476,6 +476,27 @@ const seedMemory = (dir, files) =>
 const mtimeOf = (f) => fs.statSync(f).mtimeMs;
 const ATTR = (repo) => path.join(repo, '.alfred', 'docs', 'memory', '.gitattributes');
 
+// Final review (2026-11-10, Critical): a refactor changed warnUnignoredLocal to (root, file, { rt, log }) while memory-dir.js
+// called it as (ctx, file), so every --memory docs run that created settings.local.json threw inside the row check and
+// reported a failed step. The row step creates the file in a repo that does not ignore it: the row lands, the !! line names
+// the file, and no step fails.
+test('memory row: --memory docs creating settings.local.json in a repo that does not ignore it warns and fails no step', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [[], ['--installed-only', '--memory', 'docs']],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.claude', 'settings.local.json');
+            if (i === 0) { fs.rmSync(file, { force: true }); return null; }
+            return { local: readOr(file) };
+        },
+    });
+    const out = r.outs[1];
+    assert.doesNotMatch(out, /could not be checked|reported a failure/, out);
+    assert.match(String((JSON.parse(r.steps[1].local || '{}')).autoMemoryDirectory || ''), /docs\/memory/, out);
+    assert.match(out, /!! settings\.local\.json: created for this machine's own values - git does not ignore it here; add \.claude\/settings\.local\.json to \.gitignore/);
+});
+
 test('copy: default -> docs with --memory-copy copies every top-level .md, the old ones untouched', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update'], SEL, {
