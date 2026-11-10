@@ -9,14 +9,14 @@ const { spawnSync } = require('node:child_process');
 const made = [];
 test.after(() => { for (const dir of made) fs.rmSync(dir, { recursive: true, force: true }); });
 
-// A repo stand-in: the runner and the prelude it requires copied in, four passing test files under scripts/ (one
+// A repo stand-in: the runner, the ledger helpers it requires (hook-test-env.js) and the prelude copied in, four passing test files under scripts/ (one
 // nested), and a failing one outside it, as a plan's repo copy under docs/ holds one.
 function fixture({ tests = ['a', 'b', 'c', 'nested/d'] } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'run-tests-'));
   made.push(root);
   fs.mkdirSync(path.join(root, 'scripts'));
   fs.mkdirSync(path.join(root, 'stack', 'hooks'), { recursive: true });
-  fs.copyFileSync(path.join(__dirname, 'run-tests.js'), path.join(root, 'scripts', 'run-tests.js'));
+  for (const file of ['run-tests.js', 'hook-test-env.js']) fs.copyFileSync(path.join(__dirname, file), path.join(root, 'scripts', file));
   for (const file of ['hook-prelude.js', 'layout.js']) fs.copyFileSync(path.join(__dirname, '..', 'stack', 'hooks', file), path.join(root, 'stack', 'hooks', file));
   for (const name of tests) {
     const file = path.join(root, 'scripts', `${name}.test.js`);

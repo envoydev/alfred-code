@@ -16,8 +16,9 @@ const layout = require('../stack/hooks/layout.js');
 const workspace = require('./install/workspace.js');
 const plugins = require('./install/plugins.js');
 const awareness = require('../stack/skills/capture-awareness/scripts/awareness-state.js');
+const { realLong } = require('./test-paths.js');
 
-const TMP = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'path-key-')));
+const TMP = realLong(fs.mkdtempSync(path.join(os.tmpdir(), 'path-key-')));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const NO_LINKS = { skip: process.platform === 'win32' && 'links need privileges on Windows' };
 
@@ -81,14 +82,16 @@ test('a path that does not exist keys as its resolved spelling, never a throw', 
 {
     const gone = path.join(TMP, 'Gone', 'Repo');
     const posix = path.resolve(gone).split(path.sep).join('/');
-    assert.strictEqual(treeKey(gone, 'linux'), posix);
+    // On Windows the temp dir is a drive-letter path, which both keys fold on any platform.
+    const kept = /^[A-Za-z]:\//.test(posix) ? posix.toLowerCase() : posix;
+    assert.strictEqual(treeKey(gone, 'linux'), kept);
     assert.strictEqual(treeKey(gone, 'darwin'), posix.toLowerCase());
-    assert.strictEqual(listingKey(gone, 'darwin'), posix);
+    assert.strictEqual(listingKey(gone, 'darwin'), kept);
 });
 
 test('on darwin an existing folder spelled in upper case keeps that case in the listing key (never realpathSync.native)', { skip: process.platform !== 'darwin' && 'the on-disk case fold is a darwin read' }, () =>
 {
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'pk-case-')));
+    const dir = realLong(fs.mkdtempSync(path.join(TMP, 'pk-case-')));
     const spelled = path.join(path.dirname(dir), path.basename(dir).toUpperCase());
     assert.ok(fs.existsSync(spelled), 'the disk folds case');
     assert.strictEqual(listingKey(spelled, 'darwin'), spelled);
