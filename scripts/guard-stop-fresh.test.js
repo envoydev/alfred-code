@@ -1555,3 +1555,20 @@ test('guard-stop-contract (final review M3): a measured figure is replaced to it
   assert.match(suites.questions[0].question, /^I measured 3 suites before\. Resume or stay\?$/, 'a count of suites is no token figure');
   assert.match(suites.questions[0].options[0].description, /Measured now:/, 'the fresh figure goes on the option instead');
 });
+
+// 2026-11-10: past the trigger, a question the user put at an open ask is answered first - the fresh-session offer waits
+// for the next clean close with no open question (the user's report on 2.9.0: the offer rode every answer).
+test('guard-stop-contract: the fresh-session offer waits while the user\'s question at an open ask is answered', () => {
+  const ask = (id) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: [{ question: 'Which follow-up?', options: [{ label: 'The cache fix (Recommended)', description: 'x' }, { label: 'The docs pass', description: 'y' }] }] } }] } });
+  const ans = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: `Your questions have been answered: "Which follow-up?"="${text}". You can now continue with these answers in mind.` }] }, toolUseResult: { answers: { 'Which follow-up?': text } } });
+  const statement = 'There are two issues: the stale cache read in the loader and the missing regression test for it.';
+  const rows = (name, text) => [assistantRow(`${name}-floor`, 'the first turn of this session', { cache_creation_input_tokens: 20000 }), ask(`${name}-q`), ans(`${name}-q`, text),
+    assistantRow(name, statement, { cache_read_input_tokens: 500000 })];
+  const dir = fs.mkdtempSync(path.join(TMP, 'log-'));
+  const asked = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'uq-fresh-1', transcript_path: transcript('uq-fresh-1', rows('uq-fresh-1', 'Tell me what issues you have found here?')), background_tasks: [] },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: dir } });
+  assert.equal(asked.status, 0, asked.stderr);
+  assert.match(fs.readFileSync(path.join(dir, 'guard-stop-contract.log'), 'utf8'), /fresh-session offer deferred/);
+  const picked = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'uq-fresh-2', transcript_path: transcript('uq-fresh-2', rows('uq-fresh-2', 'The docs pass')), background_tasks: [] }, { env: logEnv() });
+  assert.equal(picked.status, 2, 'no open question: the offer is made');
+});

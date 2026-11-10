@@ -966,16 +966,19 @@ function readOnlyCommand(command, depth = 0) {
     return READ_HEAD_RE.test(head);
   });
 }
-function readOnlyTurn() {
+// `fromRow` (userQuestion's, rows back from the newest): only the calls after that row count, and an ask writes nothing.
+function readOnlyTurn(fromRow) {
+  const bounded = Number.isInteger(fromRow);
   try {
-    return walkBack(() => (o) => {
+    return walkBack(() => { let n = 0; return (o) => {
+      if (bounded && n++ >= fromRow) return true;
       if (!o || !o.message) return undefined;
       const c = o.message.content;
       if (o.type === 'assistant' && Array.isArray(c)) {
         for (const b of c) {
           if (!b || b.type !== 'tool_use') continue;
           const name = String(b.name || '');
-          if (READ_ONLY_TOOL_RE.test(name)) continue;
+          if (READ_ONLY_TOOL_RE.test(name) || (bounded && name === 'AskUserQuestion')) continue;
           if ((shellWrites ? shellWrites.isShellTool(name) : SHELL_TOOL_RE.test(name)) && name !== 'Monitor' && readOnlyCommand((b.input || {}).command)) continue;
           return false;
         }
@@ -983,7 +986,7 @@ function readOnlyTurn() {
       }
       if (o.type === 'user' && isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return true;
       return undefined;
-    }, false) === true;
+    }; }, false) === true;
   } catch { return false; }
 }
 function answersInfoRequest(closeTail) {
@@ -1012,6 +1015,85 @@ const REQUEST_QUESTION_RE = /^\s*(?:please\s+)?(?:can|could|would|will)\s+you\b/
 function askedQuestion(prompt) {
   const last = prompt.split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
   return /\?["')\]]*$/.test(last) && !REQUEST_QUESTION_RE.test(last);
+}
+
+// THE OPEN DECISION MET WITH A QUESTION (2026-11-10, the user's report on 2.9.0, task-solve): a stop's ask answered through
+// Other with 'Tell me what issues you have found here?', then rejected with 'Tell me about issues', then a typed 'why do
+// you keep asking' - and each answer came back with the same ask attached, the last close held as a prose decision. The
+// newest ask the USER settled (an answer or their rejection; a hook's denial decided nothing) is read: an option label
+// picked closes it; Other text, the text given with a rejection, or the one typed message after it is the input, and a
+// question there means the turn answers it and ends - the ask comes back when a later message picks, approves or says go
+// on. Returns { text, fromRow (rows back from the newest), kind: 'other' | 'rejected' | 'typed', askText } or null.
+// `guard-stop-contract:question` in ALFRED_CODE_HOOKS_OFF switches it off.
+const INFO_OPEN_RE = /^\s*(?:(?:please\s+)?(?:can|could)\s+you\s+)?(?:show|list|explain|describe|summari[sz]e|tell me|give me|walk me through|what|which|how|why|where|who)\b/i;
+const REJECTED_SAID_RE = /\btool use was rejected\b[\s\S]*?the user said:[ \t]*\n([\s\S]*)$/i;
+// the harness's own words in the said-slot carry no question of the user's: the 'clarify' button, a bare deny
+const HARNESS_SAID_RE = /^\s*(?:Denied by user\b|The user wants to clarify these questions\b)/i;
+function isQuestionInput(text) {
+  const t = String(text || '').replace(/\n\s*Note: The user's next message[\s\S]*$/i, '').trim();
+  const last = t.split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
+  if (!last) return false;
+  const info = INFO_OPEN_RE.test(last);
+  if (REQUEST_QUESTION_RE.test(last) && !info) return false;
+  return info || askedQuestion(t);
+}
+function askAnswerValues(r) {
+  const answers = r.row && r.row.toolUseResult && r.row.toolUseResult.answers;
+  if (answers && typeof answers === 'object') return Object.values(answers).map((a) => String(a));
+  return [...resultText(r.block).matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)].map((m) => m[2]);
+}
+function userQuestion() {
+  try {
+    if (partOff('guard-stop-contract', 'question')) return null;
+    return walkBack(() => {
+      let n = 0;
+      let newer = null;
+      let typedAt = null;
+      let typedCount = 0;
+      const results = new Map();
+      return (o) => {
+        const at = n++;
+        const next = newer;
+        newer = o;
+        if (!o || !o.message) return undefined;
+        const c = o.message.content;
+        if (o.type === 'user') {
+          if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, { block: b, row: o, at });
+          if (typedMessage(o, next) && !/^\s*Stop hook feedback:/.test(rowText(o))) {
+            // a second typed message since the ask: the conversation moved on, the ask is no longer the open one
+            if (++typedCount > 1) return null;
+            typedAt = { text: rowText(o), at };
+          }
+          return undefined;
+        }
+        if (o.type !== 'assistant' || !Array.isArray(c)) return undefined;
+        for (const b of [...c].reverse()) {
+          if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
+          const r = results.get(b.id);
+          if (!r) continue;
+          const text = resultText(r.block);
+          if (r.block.is_error === true && !ANSWER_RESULT_RE.test(text)) continue;   // a hook's denial decided nothing
+          const questions = (b.input && Array.isArray(b.input.questions)) ? b.input.questions : [];
+          const askText = String((questions[0] && questions[0].question) || '');
+          let input = null;
+          if (/\btool use was rejected\b|^\s*The user (?:declined|chose not) to answer/i.test(text)) {
+            const said = ((REJECTED_SAID_RE.exec(text) || [])[1] || '').trim();
+            input = typedAt ? { ...typedAt, kind: 'typed' }
+              : said && !HARNESS_SAID_RE.test(said) ? { text: said, at: r.at, kind: 'rejected' } : null;
+          } else {
+            const labels = new Set(questions.flatMap((q) => ((q && q.options) || []).map((x) => String((x && x.label) || '').trim())));
+            const isLabel = (a) => labels.has(a.trim()) || a.split(/,\s*/).every((part) => labels.has(part.trim()));
+            const free = askAnswerValues(r).find((a) => !isLabel(a));
+            if (free === undefined) return null;   // an option picked: the decision is made
+            input = typedAt ? { ...typedAt, kind: 'typed' } : { text: free, at: r.at, kind: 'other' };
+          }
+          if (!input || !isQuestionInput(input.text)) return null;
+          return { text: input.text.trim(), fromRow: input.at, kind: input.kind, askText };
+        }
+        return undefined;
+      };
+    }, null);
+  } catch { return null; }
 }
 
 // --- read the transcript tail (last ~512KB) and pull the last assistant message ---
@@ -2682,6 +2764,11 @@ if (payload.hook_event_name === 'Stop') {
     const _fresh_at = ctxThreshold();
     if (_fresh_at === null || ctx <= _fresh_at) process.exit(0);
     if (FRESH_RE.test(prose)) process.exit(0); // the OFFER is prose - a fenced example is not one
+    // The user's question at an open ask is answered first (2026-11-10): the offer waits for a clean close with none.
+    if (userQuestion()) {
+      breadcrumb('Stop: fresh-session offer deferred, the user\'s question at an open ask is answered first');
+      process.exit(0);
+    }
     if (freshAskAnsweredThisTurn()) {
       breadcrumb('Stop: fresh-session offer skipped, a fresh-session ask was answered this turn');
       process.exit(0);
@@ -2735,6 +2822,23 @@ if (payload.hook_event_name === 'Stop') {
   // ...unless the close hands the user a NEW action to run and report back on ('Run the pull, then tell me when it's
   // done'): the answer settled the ask before it, not this one (audit 2026-10-11 SD10, session d9035363 - the block
   // this exemption skipped was answered in one click).
+  // The user met an open ask with a question (userQuestion, 2026-11-10): an offer is held with its own words - no new ask
+  // this turn - and a clarifying close after a read-only answer passes. It sits before askJustAnswered, whose 3-call
+  // window would let every close through, the offer included.
+  const openQuestion = userQuestion();
+  if (openQuestion && proseAsk(tail)) {
+    blockDetail('question-turn-offer', proseAskMatch(tail) || tail.trim().slice(-80));
+    process.stderr.write(
+      'The user met the open decision with a question, and this turn answers it.\n' +
+      'you answered a question - end on the answer; the open decision waits for the user\'s next message. Drop the\n' +
+      'closing offer and put no new ask in this turn - the decision comes back when their next message picks, approves or\n' +
+      'says go on. A clarifying question back is fine; an offer to change something waits for that decision.');
+    process.exit(2);
+  }
+  if (openQuestion && endsOnQuestion && readOnlyTurn(openQuestion.fromRow)) {
+    ledgerRow({ tool: '', mode: 'probe', kind: 'discussion-close', reason: `probe: a ${openQuestion.kind} question at an open ask, answered read-only and closed on a question - logged, not held` });
+    process.exit(0);
+  }
   if (askJustAnswered() && !(doneClose && USER_RUN_WAIT_RE.test(closeTail))) {
     breadcrumb('Stop: an AskUserQuestion was just answered or declined - not re-asking');
     process.exit(0);
