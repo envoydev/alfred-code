@@ -369,7 +369,8 @@ test('C23: the docs-root rule names the ignore-honouring grep and the two search
 test('C29: update passes the running plugin root, runs the AGENTS.md check itself, and folds the capture into the restart', () =>
 {
     const update = squash(['setup-plugin/commands/update.md', 'setup-plugin/references/update-walk.md', 'setup-plugin/references/update-close.md'].map(read).join('\n'));
-    assert.match(update, /update-preflight\.js" --log "\$TMP\/install\.log" --hooks <step 2's changed: hooks=N> --running "\$\{CLAUDE_PLUGIN_ROOT\}"/);
+    // 2026-11-10: the Bash tool has no CLAUDE_PLUGIN_ROOT, so the running version is RESOLVED's `running=` line
+    assert.match(update, /update-preflight\.js" --log "\$TMP\/install\.log" --hooks <step 2's changed: hooks=N> --running <RESOLVED's running=, else \?>/);
     const six = update.slice(update.indexOf('## 6. Reconcile'), update.indexOf('## 7. Post-check'));
     const check = six.indexOf('agents-md-check.js" --root .');
     assert.ok(check >= 0 && check < six.indexOf('habits-adjust-agents-md/SKILL.md'), 'the check runs before the skill read');
@@ -532,4 +533,11 @@ test('RU03: the credentials section keeps its constraints and leaves the ask, th
     const stop = read('stack/hooks/guard-stop-contract.js');
     assert.ok(stop.includes('This ask comes once') && stop.includes('guard-stop-contract:rotate in ALFRED_CODE_HOOKS_OFF turns it off'), 'the rotate ask names its switch');
     assert.ok(!homes(registry()['secret-read-allow-receipt']).some((h) => h.file === 'stack/rules/alfred-security.md'), 'the registry drops the rule site');
+});
+
+// 2026-11-10 (the user's report on 2.9.0, task-solve): a stop's ask met with a question came back with the same ask
+// attached, three times. The rule: a question at an open ask is answered in prose and the turn ends.
+test('alfred-interaction: a question at an open ask is answered and the turn ends', () =>
+{
+    assert.ok(injected('alfred-interaction').includes(squash('When the user meets an open ask with a QUESTION - typed into Other, or given with a rejection, or typed after one - answer it in prose and end the turn: no AskUserQuestion that turn and no offer, the decision stays open, and its ask comes back when their next message picks, approves or says go on. A clarifying question back is fine; an offer to change something waits for that ask.')));
 });

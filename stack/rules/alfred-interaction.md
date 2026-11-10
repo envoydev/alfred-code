@@ -26,6 +26,7 @@ description: "House baseline - interaction: communication style, asking the user
 - Re-read state carried from an earlier turn or session (a process running, a file open, a branch's commits) before it becomes an ask, and check a Recommended option's stated effect with one read - an unchecked one is worded as unverified.
 - Never ask for a permission the user's words in this conversation already gave - act on it; an ask names only what is still open.
 - The markers hooks read stay in English whatever language the answer is in - `(Recommended)`, receipt fields, `Deferred by you:`, `Result:` / `Progress:` / `Leftovers:`, and the AskUserQuestion labels a hook reads - a commit or push consent, an ask under auto-run: the hooks read English only.
+- When the user meets an open ask with a QUESTION - typed into Other, or given with a rejection, or typed after one - answer it in prose and end the turn: no AskUserQuestion that turn and no offer, the decision stays open, and its ask comes back when their next message picks, approves or says go on. A clarifying question back is fine; an offer to change something waits for that ask.
 - A re-ask on the SAME deliverable's shape means the guess failed: ONE AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
 - A SECOND why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.
 
