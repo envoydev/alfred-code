@@ -124,17 +124,25 @@ function plan({ inv, root, platform = process.platform, env = process.env, probe
 // AC-4 (2026-11-10): a root in NO repository that is a workspace root - its record says so, or two or more of its
 // immediate child folders hold a `.git` (session be3a0031: six child repositories, no record) - has no code of its own
 // for the architecture and code-style seats to describe; each child captures its own. `git` that cannot start (not on
-// PATH) says nothing, so the root plans as before.
+// PATH) says nothing, so the root plans as before. A repository at HOME (a dotfiles checkout) is no repository of the
+// root's own, as runtime.js gitRoot reads it, and a child linked to a checkout counts (the final review's M5).
 function bareWorkspaceRoot(root, env, ws)
 {
     const r = rt.spawnCommand('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'ignore'] });
-    if (!r || r.error || typeof r.status !== 'number' || r.status === 0) return false;
+    if (!r || r.error || typeof r.status !== 'number') return false;
+    if (r.status === 0)
+    {
+        const home = env.HOME || env.USERPROFILE || os.homedir();
+        const real = (p) => { let x; try { x = fs.realpathSync.native(p); } catch { x = path.resolve(p); } return process.platform === 'win32' ? x.toLowerCase() : x; };
+        if (!home || real(String(r.stdout || '').trim()) !== real(home)) return false;
+    }
     let role = null;
     try { role = ws.roleOf(root, { env, log: () => {} }).kind; } catch { /* an unreadable record says nothing */ }
     if (role === 'root') return true;
     let entries = [];
     try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return false; }
-    return entries.filter((e) => e.isDirectory() && fs.existsSync(path.join(root, e.name, '.git'))).length >= 2;
+    const isDir = (e) => e.isDirectory() || (e.isSymbolicLink() && (() => { try { return fs.statSync(path.join(root, e.name)).isDirectory(); } catch { return false; } })());
+    return entries.filter((e) => isDir(e) && fs.existsSync(path.join(root, e.name, '.git'))).length >= 2;
 }
 
 function render({ machine, captures, instructionsBoth, autoUpdate })

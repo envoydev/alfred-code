@@ -288,6 +288,31 @@ test('captures: a workspace root with no repository of its own plans no architec
     }
 });
 
+// The final review's M5 (2026-11-10): a dotfiles repository at HOME is no repository of the root's own (runtime.js gitRoot
+// reads it the same way), and a child linked to a repository is a child checkout.
+test('captures: a workspace root under a dotfiles repository at HOME, or with linked child checkouts, plans no seat capture', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const BARE = 'skip: a workspace root with no repository of its own - each child captures its own';
+    const seats = (root, env) => render(plan({ inv: INV(), root, platform: process.platform, env, probe: NONE }))
+        .filter((l) => /^capture: capture-awareness (?:architecture|project-code-style) - /.test(l)).map((l) => l.split(' - ').slice(1).join(' - '));
+    const home = path.join(TMP, `dotfiles-${seq++}`);
+    fs.mkdirSync(home, { recursive: true });
+    execFileSync('git', ['init', '-q', home]);
+    const ws = path.join(home, 'work');
+    fs.mkdirSync(path.join(ws, '.claude'), { recursive: true });
+    for (const c of ['a', 'b']) execFileSync('git', ['init', '-q', path.join(ws, c)]);
+    assert.deepStrictEqual(seats(ws, E({ PATH: process.env.PATH, HOME: home, USERPROFILE: home })), [BARE, BARE], 'under a dotfiles repository at HOME');
+    // control: the same folder under a repository that is not HOME is a repository's folder
+    assert.ok(seats(ws, E({ PATH: process.env.PATH, HOME: path.join(TMP, 'elsewhere'), USERPROFILE: path.join(TMP, 'elsewhere') })).every((d) => d.startsWith('run: ')), 'under a repository not at HOME');
+    if (process.platform === 'win32') return;   // a symlink needs a privilege there
+    const repos = path.join(TMP, `repos-${seq++}`);
+    for (const c of ['x', 'y']) execFileSync('git', ['init', '-q', path.join(repos, c)]);
+    const linked = project();
+    for (const c of ['x', 'y']) fs.symlinkSync(path.join(repos, c), path.join(linked, c));
+    assert.deepStrictEqual(seats(linked, E({ PATH: process.env.PATH })), [BARE, BARE], 'two linked child checkouts');
+});
+
 // End to end through the CLI, on a stubbed PATH: the real probes, the real pins file.
 test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missing or malformed one', { skip: process.platform === 'win32' && 'shell stubs' }, () =>
 {
