@@ -357,8 +357,8 @@ test('unattended: the CLI prints the mode on --mode, and the decisions after the
     const inv = path.join(root, 'installed.json');
     fs.writeFileSync(inv, JSON.stringify(INV({ plugins: [] })));
     const env = (on) => ({ PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, CLAUDE_CONFIG_DIR: ACCT, ...(on ? { ALFRED_CODE_UNATTENDED: '1' } : {}) });
-    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(true), encoding: 'utf8' }).stdout, 'unattended: on\n');
-    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(false), encoding: 'utf8' }).stdout, 'unattended: off\n');
+    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(true), cwd: root, encoding: 'utf8' }).stdout, 'unattended: on\nleftovers: none\n');
+    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(false), cwd: root, encoding: 'utf8' }).stdout, 'unattended: off\nleftovers: none\n');
     const on = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: env(true), encoding: 'utf8' }).stdout.trim().split('\n');
     const off = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: env(false), encoding: 'utf8' }).stdout.trim().split('\n');
     assert.ok(!off.some((l) => l.startsWith('unattended:')), 'attended: the plan alone');
@@ -527,4 +527,24 @@ test('init-plan prints the auto-update line before instructions-both, and unatte
     const answered = plan({ inv: INV(), root: project(), env, probe: NONE, managedFile });
     assert.match(lineOf(render(answered), /^auto-update:/), /^auto-update: off for envoydev \(/, 'a no is never asked again');
     assert.ok(!unattended(answered).some((l) => l.includes('auto-update')));
+});
+
+// 2026-11-10 (the user's report on 3.9.2): the state read not-installed while an earlier install's .alfred/docs/ was
+// there, and nothing said so before the install. --mode names what an earlier install left, before screen A.
+test('--mode names an earlier install\'s leftovers: the data root with no stamp', { skip: process.platform === 'win32' && 'shell stubs' }, () =>
+{
+    const mode = (root, extra = {}) => spawnSync(process.execPath, [SCRIPT, '--mode'], { env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, CLAUDE_CONFIG_DIR: ACCT, ...extra }, cwd: root, encoding: 'utf8' }).stdout.split('\n')[1];
+    const root = project();
+    assert.strictEqual(mode(root), 'leftovers: none', 'no data root');
+    fs.mkdirSync(path.join(root, '.alfred'));
+    assert.strictEqual(mode(root), 'leftovers: none', 'an empty data root');
+    fs.mkdirSync(path.join(root, '.alfred', 'docs'));
+    fs.writeFileSync(path.join(root, '.alfred', 'docs', 'a.md'), '# a\n');
+    fs.mkdirSync(path.join(root, '.alfred', 'state'));
+    assert.strictEqual(mode(root), 'leftovers: .alfred/ (docs, state)');
+    const moved = project();
+    fs.mkdirSync(path.join(moved, 'data', 'docs'), { recursive: true });
+    assert.strictEqual(mode(moved, { ALFRED_CODE_DATA_PATH: 'data' }), 'leftovers: data/ (docs)', 'the data root the settings name');
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 3.9.2\n');
+    assert.strictEqual(mode(root), 'leftovers: none', 'a stamp: an install, not leftovers');
 });

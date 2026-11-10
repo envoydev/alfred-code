@@ -194,14 +194,36 @@ function shownPath(root, p, pth = path)
     return (r.startsWith('..') || pth.isAbsolute(r) ? p : r).split(pth.sep).join('/');
 }
 
-module.exports = { plan, render, probes, CAPTURES, unattended, isUnattended, DESTRUCTIVE_MACHINE, shownPath };
+// 2026-11-10 (the user's report on 3.9.2): the state read not-installed while an earlier install's data root was there,
+// and nothing said so before the install. `--mode` names it: the data root (the settings' ALFRED_CODE_DATA_PATH, else
+// .alfred) of the cwd's git top level, or the cwd, when it holds anything and no stamp says an install is here.
+function leftovers(cwd = process.cwd(), env = process.env)
+{
+    const r = rt.spawnCommand('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const top = r && r.status === 0 ? String(r.stdout || '').trim() : '';
+    const projectRoot = top || cwd;
+    if (require('./install/stamp.js').stampFiles({ projectRoot }).read) return 'none';
+    const root = require('../stack/mcp/data-root.js').dataRootOf({ env, projectDir: projectRoot }).root;
+    let names = [];
+    try { names = fs.readdirSync(path.join(projectRoot, ...root.split('/'))).sort(); } catch { /* no data root */ }
+    return names.length ? `${root}/ (${names.join(', ')})` : 'none';
+}
+
+module.exports = { plan, render, probes, CAPTURES, unattended, isUnattended, DESTRUCTIVE_MACHINE, shownPath, leftovers };
 
 if (require.main === module)
 {
     require('../stack/hooks/hook-prelude.js').blockingStdio();
     const argv = process.argv.slice(2);
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
-    if (argv.includes('--mode')) { console.log(`unattended: ${isUnattended() ? 'on' : 'off'}`); process.exit(0); }
+    if (argv.includes('--mode'))
+    {
+        console.log(`unattended: ${isUnattended() ? 'on' : 'off'}`);
+        let left = 'none';
+        try { left = leftovers(); } catch { /* an unreadable tree says nothing */ }
+        console.log(`leftovers: ${left}`);
+        process.exit(0);
+    }
     const file = flag('--installed');
     let inv;
     try { inv = JSON.parse(fs.readFileSync(file, 'utf8')); if (!inv || typeof inv !== 'object') throw new Error('not an object'); }

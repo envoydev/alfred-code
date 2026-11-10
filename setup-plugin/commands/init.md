@@ -15,7 +15,9 @@ records decide which phase this run is; nothing else does.
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state . ; node "${CLAUDE_PLUGIN_ROOT}/scripts/init-plan.js" --mode`:
 its first line reads the same install records the hooks read (`alfred-code.stamp`, a copied `hooks/docs.js`) in this
 repo, its git top level or a worktree's main checkout; its second, `unattended: on|off`, says whether anyone answers
-this run's asks (`on` - the bootstrap file's Unattended section governs every ask).
+this run's asks (`on` - the bootstrap file's Unattended section governs every ask); its third, `leftovers:`, when not
+`none`, is named in one line before screen A: an earlier install left `<the folder it names>` - the install keeps it
+and moves an old layout.
 
 - `not-installed` -> the INSTALL phase. Unattended (`on`), it is not run: print 'the install phase needs a person -
   run /alfred-code:init in an interactive session' and stop.
