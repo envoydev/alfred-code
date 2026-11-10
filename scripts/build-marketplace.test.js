@@ -171,6 +171,10 @@ test('the layer gate prints tables at PostToolUse Bash: one if-filtered handler 
     assert.ok(m, 'the hook declares TABLE_SCRIPT on its own line');
     assert.deepStrictEqual(rules.map((r) => /\*([\w-]+)\.js\*/.exec(r)[1]).sort(), m[1].split('|').sort(), 'one handler per script the hook prints for');
     for (const h of ours) assert.strictEqual(h.timeout, 10);
+    // Final review (2026-11-10): handlers equal in command and args could be merged as one whatever their `if` - the hooks page
+    // promises nothing for that - so each carries its script's name as a second arg (no leading '--': no CLI invocation).
+    assert.strictEqual(new Set(ours.map((h) => line(h))).size, ours.length, `five distinct launch lines: ${ours.map((h) => line(h)).join(' | ')}`);
+    for (const h of ours) assert.ok(!String(h.args[1] || '').startsWith('--'), line(h));
 });
 
 // HK-22 retired (2026-11-04): the Haiku stop judge missed its gate (median 125 of 161 against the regex's 122, flips 24;

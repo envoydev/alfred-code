@@ -377,7 +377,8 @@
                 "if": "Bash(node *stack-select.js*)",
                 "command": "node",
                 "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js",
+                  "stack-select"
                 ],
                 "timeout": 10
               },
@@ -386,7 +387,8 @@
                 "if": "Bash(node *workspace.js*)",
                 "command": "node",
                 "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js",
+                  "workspace"
                 ],
                 "timeout": 10
               },
@@ -395,7 +397,8 @@
                 "if": "Bash(node *plugin-settings.js*)",
                 "command": "node",
                 "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js",
+                  "plugin-settings"
                 ],
                 "timeout": 10
               },
@@ -404,7 +407,8 @@
                 "if": "Bash(node *audit-install.js*)",
                 "command": "node",
                 "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js",
+                  "audit-install"
                 ],
                 "timeout": 10
               },
@@ -413,7 +417,8 @@
                 "if": "Bash(node *update-preflight.js*)",
                 "command": "node",
                 "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js",
+                  "update-preflight"
                 ],
                 "timeout": 10
               }
