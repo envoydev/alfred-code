@@ -422,6 +422,56 @@ test('post-call window blocks', () => {
   assert.strictEqual(out(stop(w.dir)).decision, undefined, 'the window\'s report is not repeated at Stop');
 });
 
+// Bug 3 of the complexity audit (2026-11-10): the ref watch's two blocks wrote no hook-blocks row, so the block rate
+// never counted it. A set-up repo (its install stamp) gets one row per block, in every blocking hook's shape.
+const stampRepo = (w) => { fs.mkdirSync(path.join(w.dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(w.dir, '.claude', 'alfred-code.stamp'), 'version: test\n'); };
+const blocksDir = (w) => path.join(w.dir, '.alfred', 'statistics', 'hook-blocks');
+const blockRows = (w) => fs.readFileSync(path.join(blocksDir(w), `${SID}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+
+test('a loud move writes one block row in a set-up repo', () => {
+  const w = watchRepo();
+  stampRepo(w);
+  assert.strictEqual(snap(w.dir).status, 0);
+  w.mateCommit('hotfix'); w.mate('push', '-q', 'origin', 'main');
+  const r = stop(w.dir);
+  assert.strictEqual(out(r).decision, 'block', r.stdout);
+  const rows = blockRows(w);
+  assert.strictEqual(rows.length, 1, JSON.stringify(rows));
+  const [row] = rows;
+  assert.strictEqual(row.hook, 'forge-session.js');
+  assert.strictEqual(row.event, 'Stop');
+  assert.match(row.reason, /^Ref watch: .*main moved/);
+  assert.deepStrictEqual(row.detail, { branch: 'ref-watch' });
+  assert.ok(!('mode' in row), 'a block row carries no mode');
+});
+
+test('a post-call block writes one block row in a set-up repo', () => {
+  const w = watchRepo();
+  stampRepo(w);
+  assert.strictEqual(snap(w.dir).status, 0);
+  w.mateCommit('landed'); w.mate('push', '-q', 'origin', 'main');
+  const r = post(w.dir, 'mcp__gitlab__pull_request_frobnicate', { iid: 4 });
+  assert.strictEqual(out(r).decision, 'block', r.stdout);
+  assert.strictEqual(out(stop(w.dir)).decision, undefined, 'the Stop repeats nothing');
+  const rows = blockRows(w);
+  assert.strictEqual(rows.length, 1, JSON.stringify(rows));
+  assert.strictEqual(rows[0].event, 'PostToolUse');
+  assert.strictEqual(rows[0].tool, 'mcp__gitlab__pull_request_frobnicate');
+  assert.match(rows[0].reason, /main moved/);
+  assert.ok(!('mode' in rows[0]));
+});
+
+test('a repo never set up writes no row - the hook stands down whole', () => {
+  const w = watchRepo();
+  const pluginRoot = fs.mkdtempSync(path.join(TMP, 'plugin-root-'));
+  assert.strictEqual(snap(w.dir).status, 0);
+  w.mateCommit('hotfix'); w.mate('push', '-q', 'origin', 'main');
+  const r = stop(w.dir, BUILD, { CLAUDE_PLUGIN_ROOT: pluginRoot });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.stdout, '', 'no block');
+  assert.ok(!fs.existsSync(blocksDir(w)), 'no hook-blocks folder');
+});
+
 test('read-only turn skips the diff', () => {
   const w = watchRepo();
   assert.strictEqual(snap(w.dir).status, 0);

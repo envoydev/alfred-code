@@ -338,8 +338,8 @@ test('C07: --hook-blocks on a bundle folder reads hook-blocks-<sid>.jsonl, and a
     assert.match(k.missing, /^no ledger file for 11111111-2222-4333-8444-555555555555 in /);
     const out = text([file, '--hook-blocks', empty]);
     assert.match(out, /whole-file denial\(s\) \(transcript bracket - no ledger file for /);
-    assert.match(out, /HOOK BLOCKS: no ledger file for .* - no measurement, never a zero/);
-    assert.match(text([file, '--hook-blocks', empty, '--report-md']), /_no ledger file for .* - no measurement, never a zero\. Pass the ledger file itself\._/);
+    assert.match(out, /HOOK BLOCKS: no ledger file for .* - no measurement, never a zero; a repo never set up writes no row, so count its blocks from the transcript/);
+    assert.match(text([file, '--hook-blocks', empty, '--report-md']), /_no ledger file for .* - no measurement, never a zero; a repo never set up writes no row, so count its blocks from the transcript\. Pass the ledger file itself\._/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

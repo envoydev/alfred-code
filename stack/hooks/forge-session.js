@@ -593,6 +593,24 @@ function callIsRead(call, cwd) {
 // PostToolUse: confirm the call's ledgered act (forge.js confirmAct), mark the cycle dirty when the call could move a ref -
 // a seat's calls included, which the Stop's main transcript never shows - and the strong window after a call that may have
 // moved one.
+// One row per block in <data root>/statistics/hook-blocks/<session>.jsonl, the shape every blocking hook writes (no `mode`,
+// so the block rate counts it; bug 3 of the complexity audit, 2026-11-10: the ref watch's blocks wrote none). A repo never
+// set up gets none: main() stands the whole hook down there first. Telemetry never changes a verdict.
+function blockRow(payload, reason) {
+  try {
+    const root = process.env.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd();
+    let dir;
+    try { dir = require(path.join(__dirname, 'layout.js')).statsPath(root, ['hook-blocks']); }
+    catch { dir = path.resolve(root, envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`, 'hook-blocks'); }
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({
+      ts: new Date().toISOString(), hook: 'forge-session.js', event: payload.hook_event_name || '', tool: String(payload.tool_name || ''),
+      agent: payload.agent_id || null, tool_use_id: payload.tool_use_id || null,
+      reason: String(reason).split('\n')[0].slice(0, 200), detail: { branch: 'ref-watch' },
+    })}\n`);
+  } catch { /* no row: the block stands */ }
+}
+
 async function postCall(payload, env) {
   const { MERGE, BRANCH, RELEASE } = forge.CONCEPTS;
   const cwd = payload.cwd || process.cwd();
@@ -629,7 +647,9 @@ async function postCall(payload, env) {
   writeJson(file, { ...state, reported });
   if (!loud.length) return { systemMessage: quiet.join('\n') };
   const when = state.skipped ? sinceLast(state.at) : 'right after this call';
-  return { decision: 'block', reason: `${[...loud.map((m) => loudLine(m, ctx, when)), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.`, ...(quiet.length ? { systemMessage: quiet.join('\n') } : {}) };
+  const reason = `${[...loud.map((m) => loudLine(m, ctx, when)), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.`;
+  blockRow(payload, reason);
+  return { decision: 'block', reason, ...(quiet.length ? { systemMessage: quiet.join('\n') } : {}) };
 }
 
 // Work still running when the turn ends can move a ref after this diff, so the next Stop diffs too - the Stop input's
@@ -687,7 +707,9 @@ async function stopTurn(payload, env) {
   const forUser = [...quiet, told, ssh].filter(Boolean);
   if (loudLines.length && !(prelude && prelude.stopHeldThisCycle('forge-session', payload, env))) {
     if (prelude) prelude.markStopHeld('forge-session', payload, env);
-    return { decision: 'block', reason: [...loudLines, ...notes, 'Tell the user what moved before anything else; do not try to undo it unless they ask.'].join('\n'), ...(forUser.length ? { systemMessage: forUser.join('\n') } : {}) };
+    const reason = [...loudLines, ...notes, 'Tell the user what moved before anything else; do not try to undo it unless they ask.'].join('\n');
+    blockRow(payload, reason);
+    return { decision: 'block', reason, ...(forUser.length ? { systemMessage: forUser.join('\n') } : {}) };
   }
   const shown = [...loudLines, ...notes, ...forUser];
   return shown.length ? { systemMessage: shown.join('\n') } : null;

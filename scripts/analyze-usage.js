@@ -4358,7 +4358,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse, sources
     }
     console.log(`  ${blockLedger.rows} block(s) total${blockSplit(blockLedger)} - review each distinct reason on its own; two reasons naming two files are two causes.`);
   }
-  if (blockLedger && blockLedger.missing) console.log(`\nHOOK BLOCKS: ${blockLedger.missing} (looked for <sid>.jsonl and hook-blocks-<sid>.jsonl) - no measurement, never a zero`);
+  if (blockLedger && blockLedger.missing) console.log(`\nHOOK BLOCKS: ${blockLedger.missing} (looked for <sid>.jsonl and hook-blocks-<sid>.jsonl) - no measurement, never a zero; a repo never set up writes no row, so count its blocks from the transcript`);
   if (blockLedger && blockLedger.doneGate) console.log('\n' + doneGateLine(blockLedger.doneGate));
   if (blockLedger && blockLedger.rootCause) console.log((blockLedger.doneGate ? '' : '\n') + rootCauseLine(blockLedger.rootCause));
   if (blockLedger && blockLedger.correction) console.log((blockLedger.doneGate || blockLedger.rootCause ? '' : '\n') + correctionLine(blockLedger.correction));
@@ -4776,7 +4776,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, confo
     }
     out.push('', `${blockLedger.rows} block(s) total${blockSplit(blockLedger)}.`, '');
   } else if (blockLedger && blockLedger.missing) {
-    out.push(`_${blockLedger.missing} (looked for \`<sid>.jsonl\` and \`hook-blocks-<sid>.jsonl\`) - no measurement, never a zero. Pass the ledger file itself._`, '');
+    out.push(`_${blockLedger.missing} (looked for \`<sid>.jsonl\` and \`hook-blocks-<sid>.jsonl\`) - no measurement, never a zero; a repo never set up writes no row, so count its blocks from the transcript. Pass the ledger file itself._`, '');
   } else {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
     out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
