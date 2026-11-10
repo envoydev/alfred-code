@@ -2400,7 +2400,7 @@ function builtPaths(texts) {
         if (/^\s*[A-Za-z_$][\w$]*\s*=(?![=>])/.test(code.slice(i + 1, Math.min(end, i + 257)))) continue;
         judgeTick(1 + end - i);
         const v = evalPath(code.slice(i + 1, end), vals, homeMoved);
-        if (v && v.rooted) vals.set(name, v);
+        if (v) vals.set(name, v); // a relative literal too (`root = '.alfred'`), for the joins after it (SG1 D7 review)
         exprs.push(code.slice(i + 1, end));
       }
     }

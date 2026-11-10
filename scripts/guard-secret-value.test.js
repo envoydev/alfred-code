@@ -3458,3 +3458,9 @@ test('SG1 D7 review: a path call read before a method on it', () => {
     assert.equal(at(c), REWRITE, c);
   assert.equal(at(`python3 -c "from pathlib import Path; print(Path('notes.md').read_text())"`), 0, 'a clean file');
 });
+test('SG1 D7 review: a folder name bound to a literal joins', () => {
+  const at = d7Project({ [`.alfred/${D7E}`]: `API_TOKEN=${FAKE_TOKEN}\n` });
+  for (const c of [`python3 -c "import os; root = '.alfred'; print(open(os.path.join(root, '${D7E}')).read())"`,
+    `node -e "const path=require('path'); const dir='.alfred'; console.log(require('fs').readFileSync(path.join(dir,'${D7E}'),'utf8'))"`])
+    assert.equal(at(c), REWRITE, c);
+});
