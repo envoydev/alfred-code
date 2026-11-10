@@ -1704,7 +1704,9 @@ const presenceHint = (file) =>
 // ordinary 'which keys am I missing' move - and `rev` prints every line backwards; a hyphen ends none of them, so
 // `git rev-parse` is no `rev`. A git dump (`git diff <file>`) is not judged here: it is piped through the stream
 // redactor where it stands (redactGitStages), and only a git stage left unpiped (`--stat`) falls to this list.
-const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|[gmn]?awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv|readall(?:text|lines|bytes))\b|(?<![\w-])(?:diff|sdiff|cmp|comm|rev)(?![\w-])/i;
+// No verb of the first group follows a hyphen or a word character either (AC-2, 2026-11-10): find's `-type` read as
+// `type`, so every -name / -path word of a find listing was judged as a file the stage printed.
+const DUMP_VERB =/(?<![\w-])(?:cat|head|tail|sed|less|more|[gmn]?awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv|readall(?:text|lines|bytes))\b|(?<![\w-])(?:diff|sdiff|cmp|comm|rev)(?![\w-])/i;
 const RUNTIME = /\b(?:node|python3?|perl|ruby|deno|bun|pwsh|powershell|php)\b/;
 // ---- the routes that print a file under another verb's name (review item 5 of 2.1.6) ----------------------------------
 // dd's `if=`, iconv, the text filters (expand, unexpand, fmt), the gzip readers that pass a plain file through (`zcat -f`),

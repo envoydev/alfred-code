@@ -681,6 +681,26 @@ test('guard-secret-value: a bare file name a dump verb reads is judged where the
       ['a flag value beside a clean file', 'cd ~/.aws && grep -A 2 -m credentials aws notes'],
     ];
     for (const [what, command] of pass) assert.equal(b(command), 0, `pass: ${what}`);
+    // AC-2 (2026-11-10): find's `-type` is no `type` dump verb - its -name / -path words were read as files to print
+    fs.mkdirSync(path.join(home, '.claude'));
+    fs.writeFileSync(path.join(home, '.claude', '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: FAKE_TOKEN } }));
+    const proj = fs.mkdtempSync(path.join(TMP, 'ac2-proj-'));
+    fs.writeFileSync(path.join(proj, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+    const listings = [
+      ['a -type f listing beside the account file', 'cd ~/.claude && ls -a && find . -maxdepth 1 -type f -not -name .credentials.json'],
+      ['a -type f listing excluding a path', 'find ~/.aws -type f -not -path ~/.aws/credentials'],
+      ['a -type f listing of .env', 'find . -type f -name .env', proj],
+      ['a -type f listing piped to sort', "find . -maxdepth 2 -type f -name '.env*' | sort", proj],
+    ];
+    for (const [what, command, cwd] of listings) {
+      const r = run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', ...(cwd ? { cwd } : {}) }, { HOME: home, USERPROFILE: '', ...(cwd ? { CLAUDE_PROJECT_DIR: cwd } : {}) });
+      assert.ok(!(r.stdout + r.stderr).includes(FAKE_TOKEN), `AC-2 ${what}: no value`);
+      assert.strictEqual(verdict(r), 0, `AC-2 ${what}: ${r.stderr}`);
+    }
+    // the controls: a real read of either file still comes back as its redacted view
+    assert.equal(b('cat .env', proj), REWRITE, 'AC-2 control: cat .env');
+    assert.equal(b('cat ~/.claude/.credentials.json'), REWRITE, 'AC-2 control: cat the account credentials');
+    fs.rmSync(proj, { recursive: true, force: true });
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
