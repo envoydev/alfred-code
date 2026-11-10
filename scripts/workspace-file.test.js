@@ -325,5 +325,6 @@ test('workspace-fixture: putWorkspace then readWorkspaceRecord round-trips a rec
     const none = fs.mkdtempSync(path.join(TMP, 'fx-'));
     fx.putWorkspace(none, { parentNone: true }, { legacy: true });
     assert.strictEqual(fs.readFileSync(path.join(none, '.alfred', 'workspace'), 'utf8'), 'parent none\n', 'the 2.11 spelling stays writable for the tests that read it');
-    assert.strictEqual(fx.LEGACY_DEFAULT, true);
+    assert.strictEqual(fx.LEGACY_DEFAULT, false);
+    assert.ok(fx.putWorkspace(fs.mkdtempSync(path.join(TMP, 'fx-')), { children: ['api'] }).endsWith(`${path.sep}workspace.json`), 'the suites run on workspace.json by default');
 });

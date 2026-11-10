@@ -26,7 +26,7 @@ const tree = (spec) =>
         fs.mkdirSync(dir, { recursive: true });
         if (o.git) execFileSync('git', ['init', '-q'], { cwd: dir });
         if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n'); }
-        if (o.record !== undefined) putWorkspace(dir, o.record);
+        if (o.record !== undefined) putWorkspace(dir, o.record, o.legacy ? { legacy: true } : {});
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 };
@@ -626,7 +626,7 @@ test('plan prints the table for a root with a child, and none for a standalone p
 test('register under a parent stamped with an older release converts its record and prints the older-project line once; under a current parent it prints none', () =>
 {
     const release = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version;
-    const at = tree({ old: { stamp: true, record: { children: ['web'] } }, 'old/api': { git: true }, cur: { stamp: true, record: { children: ['web'] } }, 'cur/api': { git: true } });
+    const at = tree({ old: { stamp: true, record: { children: ['web'] }, legacy: true }, 'old/api': { git: true }, cur: { stamp: true, record: { children: ['web'] }, legacy: true }, 'cur/api': { git: true } });
     fs.writeFileSync(path.join(at('old'), '.claude', 'alfred-code.stamp'), 'version: 3.8.0\nhooks-route: plugin\n');
     fs.writeFileSync(path.join(at('cur'), '.claude', 'alfred-code.stamp'), `version: ${release}\nhooks-route: plugin\n`);
     const line = '!! workspace: .. runs an older release - it reads the old workspace file, which is now workspace.json; update .. next';

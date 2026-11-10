@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const wf = require('../stack/hooks/workspace-file.js');
 
-const LEGACY_DEFAULT = true;
+const LEGACY_DEFAULT = false;
 
 // The old line format by the line-to-key table.
 function legacyText(record)

@@ -217,7 +217,8 @@ test('ancestorEnv keeps only the account', () =>
 
 const { execFileSync } = require('node:child_process');
 const STAMP = 'sha: x\n';
-// A tree under TMP: `spec` maps a relative folder to { stamp, git, record } - `record` is its workspace record.
+// A tree under TMP: `spec` maps a relative folder to { stamp, git, record, legacy } - `record` is its workspace record,
+// written in the old line format when `legacy` (a test whose subject is that format or its conversion).
 const tree = (spec) =>
 {
     const top = fs.mkdtempSync(path.join(TMP, 't-'));
@@ -227,7 +228,7 @@ const tree = (spec) =>
         fs.mkdirSync(dir, { recursive: true });
         if (o.git) execFileSync('git', ['init', '-q'], { cwd: dir });
         if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), STAMP); }
-        if (o.record !== undefined) putWorkspace(dir, o.record);
+        if (o.record !== undefined) putWorkspace(dir, o.record, o.legacy ? { legacy: true } : {});
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 };
@@ -284,7 +285,7 @@ test('chain follows parent lines nearest first and needs the back-reference', ()
     putWorkspace(at('ws'), {});
     const cut = ws.chain(at('ws/api/tool'), { env: env0 });
     assert.deepStrictEqual(cut.members.map((m) => m.rel), ['..']);
-    assert.deepStrictEqual(cut.notes, ['!! workspace: parent .. in ../.alfred/workspace ignored - ../.. does not list this folder as a child']);
+    assert.deepStrictEqual(cut.notes, [`!! workspace: parent .. in ../.alfred/${path.basename(fileOf(at('ws/api')))} ignored - ../.. does not list this folder as a child`]);
 });
 
 test('R062: a child named with a double space or a tab is a member of its root\'s chain', () =>
@@ -306,7 +307,7 @@ test('chain refuses a parent line that is not a strict ancestor, has no stamp, o
     const unstamped = tree({ 'ws': { record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
     const one = ws.chain(unstamped('ws/api'), { env: env0 });
     assert.deepStrictEqual(one.members, []);
-    assert.deepStrictEqual(one.notes, ['!! workspace: parent .. in .alfred/workspace ignored - .. holds no Alfred install']);
+    assert.deepStrictEqual(one.notes, [`!! workspace: parent .. in .alfred/${path.basename(fileOf(unstamped('ws/api')))} ignored - .. holds no Alfred install`]);
     // A link makes `..` of the child resolve to a folder that is not its real ancestor.
     if (process.platform !== 'win32')
     {
@@ -368,7 +369,9 @@ test('rescan depth 4, 5 and 6', () =>
         'ws/e/f/g/h/d5': { stamp: true },
         'ws/i/j/k/l/m/d6': { stamp: true },
         'ws/joined': { stamp: true, record: { parent: '..' } },
-        'ws/declined': { stamp: true, record: { parentNone: true } },
+        // the 2.11 `parent none` line, still skipped while the old file holds it; workspace.json has no spelling of it -
+        // its conversion is `role standalone`, which rescan offers, as v3.9.2's own rewrite at its next write already did
+        'ws/declined': { stamp: true, record: { parentNone: true }, legacy: true },
         'ws/node_modules/x': { stamp: true },
         'ws/.claude/y': { stamp: true },
         'ws/.alfred/z': { stamp: true },
@@ -816,7 +819,7 @@ const { execFileSync: run } = require('node:child_process');
 const layoutLib = require('../stack/hooks/layout.js');
 const stampLib = require('./install/stamp.js');
 const ON = { CLAUDE_CONFIG_DIR: path.join(TMP, 'acct'), ALFRED_CODE_WORKSPACE: '1' };
-// { rel: { stamp, git, file, vars } } under a fresh folder; returns rel -> real path.
+// { rel: { stamp, git, record, legacy, vars } } under a fresh folder (`legacy` as in `tree`); returns rel -> real path.
 const roleTree = (spec) =>
 {
     const top = fs.mkdtempSync(path.join(TMP, 'r-'));
@@ -827,7 +830,7 @@ const roleTree = (spec) =>
         if (o.git) run('git', ['init', '-q'], { cwd: dir });
         if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), typeof o.stamp === 'string' ? o.stamp : 'sha: x\n'); }
         if (o.vars !== undefined) fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        if (o.record !== undefined) putWorkspace(dir, o.record);
+        if (o.record !== undefined) putWorkspace(dir, o.record, o.legacy ? { legacy: true } : {});
         if (o.vars !== undefined) fs.writeFileSync(path.join(dir, '.alfred', '.variables'), o.vars);
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
@@ -1124,10 +1127,10 @@ test('older-project lines: named for an older child of a converted record, for t
 {
     const stamped = (version, route) => `version: ${version}\nhooks-route: ${route}\n`;
     const spec = () => ({
-        ws: { stamp: stamped('3.9.2', 'plugin'), record: { children: ['api', 'web', 'kid'] } },
-        'ws/api': { stamp: stamped('3.9.2', 'copy'), record: { parent: '..' } },
-        'ws/web': { stamp: stamped('3.10.0', 'plugin'), record: { parent: '..' } },
-        'ws/kid': { stamp: stamped('3.9.2', 'plugin'), record: { parent: '..' } },
+        ws: { stamp: stamped('3.9.2', 'plugin'), record: { children: ['api', 'web', 'kid'] }, legacy: true },
+        'ws/api': { stamp: stamped('3.9.2', 'copy'), record: { parent: '..' }, legacy: true },
+        'ws/web': { stamp: stamped('3.10.0', 'plugin'), record: { parent: '..' }, legacy: true },
+        'ws/kid': { stamp: stamped('3.9.2', 'plugin'), record: { parent: '..' }, legacy: true },
     });
     const lines = (at, runRel, rels) =>
     {
