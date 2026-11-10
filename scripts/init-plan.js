@@ -100,9 +100,12 @@ function plan({ inv, root, platform = process.platform, env = process.env, probe
     const off = new Set(inv.left_out || []);
     const docs = resolveDocsRoot(root).replace(/[\\/]+$/, '');
     const rel = (p) => shownPath(root, p);
+    const ws = require('./install/workspace.js');
+    const bare = bareWorkspaceRoot(root, env, ws);
     const captures = CAPTURES.map(({ skill, topic, seat, output }) =>
     {
         if (!skills.has(skill) || off.has(`skill ${skill}`)) return { skill, topic, state: 'skip', detail: 'the skill is not installed' };
+        if (seat && bare) return { skill, topic, state: 'skip', detail: 'a workspace root with no repository of its own - each child captures its own' };
         if (seat && off.has(`agent ${seat}`)) return { skill, topic, state: 'skip', detail: `its seat ${seat} is switched off` };
         if (seat && !agents.has(seat)) return { skill, topic, state: 'skip', detail: `its seat ${seat} is not installed` };
         const out = output && output(docs);
@@ -113,10 +116,25 @@ function plan({ inv, root, platform = process.platform, env = process.env, probe
         return file ? { skill, topic, state: 'run', detail: `read ${rel(file)}` } : { skill, topic, state: 'skip', detail: 'its SKILL.md is in neither the project nor the plugin' };
     });
     // D5 (workspace layering): a joined child with a CLAUDE.md on its path, asked once per account.
-    const ws = require('./install/workspace.js');
     const instructionsBoth = ws.instructionsBothState({ projectRoot: root, env, ...ws.accountPaths(env) });
     const autoUpdate = autoUpdateLib.autoUpdateState({ projectRoot: root, env, managedFile });
     return { machine, captures, instructionsBoth, autoUpdate };
+}
+
+// AC-4 (2026-11-10): a root in NO repository that is a workspace root - its record says so, or two or more of its
+// immediate child folders hold a `.git` (session be3a0031: six child repositories, no record) - has no code of its own
+// for the architecture and code-style seats to describe; each child captures its own. `git` that cannot start (not on
+// PATH) says nothing, so the root plans as before.
+function bareWorkspaceRoot(root, env, ws)
+{
+    const r = rt.spawnCommand('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'ignore'] });
+    if (!r || r.error || typeof r.status !== 'number' || r.status === 0) return false;
+    let role = null;
+    try { role = ws.roleOf(root, { env, log: () => {} }).kind; } catch { /* an unreadable record says nothing */ }
+    if (role === 'root') return true;
+    let entries = [];
+    try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return false; }
+    return entries.filter((e) => e.isDirectory() && fs.existsSync(path.join(root, e.name, '.git'))).length >= 2;
 }
 
 function render({ machine, captures, instructionsBoth, autoUpdate })

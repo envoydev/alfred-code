@@ -250,6 +250,44 @@ test('captures: one row per awareness part', () =>
     assert.match(render(plan({ inv: INV({ agents: ['architecture-analyzer'] }), root, platform: 'linux', env: E(), probe: NONE })).find((l) => l.startsWith('init-plan:')), /4 captures to run$/);
 });
 
+// AC-4 (2026-11-10): session be3a0031 planned the architecture and code-style captures on a root holding six child
+// repositories and no repository of its own - each child is the project those captures describe.
+test('captures: a workspace root with no repository of its own plans no architecture or code-style capture', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const GIT = E({ PATH: process.env.PATH });
+    const BARE = 'skip: a workspace root with no repository of its own - each child captures its own';
+    const withChildren = (n, record) =>
+    {
+        const root = project();
+        for (let i = 0; i < n; i++) execFileSync('git', ['init', '-q', path.join(root, `child-${i}`)]);
+        if (record) putWorkspace(root, record);
+        return root;
+    };
+    const rows = (root, env = GIT) =>
+    {
+        const lines = render(plan({ inv: INV(), root, platform: process.platform, env, probe: NONE }));
+        return { seats: lines.filter((l) => /^capture: capture-awareness (?:architecture|project-code-style) - /.test(l)).map((l) => l.split(' - ').slice(1).join(' - ')),
+            count: lineOf(lines, /^init-plan:/).replace(/.* blocked, /, '') };
+    };
+    for (const [name, root] of [['six git children, no record', withChildren(6)], ['two git children, no record (at)', withChildren(2)],
+        ['a role root record, one git child', withChildren(1, { role: 'root' })]])
+    {
+        const r = rows(root);
+        assert.deepStrictEqual(r.seats, [BARE, BARE], name);
+        assert.strictEqual(r.count, '3 captures to run', name);
+    }
+    const inited = withChildren(6);
+    execFileSync('git', ['init', '-q', inited]);
+    for (const [name, root, env] of [['the same root after git init', inited, GIT], ['one git child, no record (one under)', withChildren(1), GIT],
+        ['no git on PATH', withChildren(6), E({ PATH: path.join(TMP, 'no-bin') })]])
+    {
+        const r = rows(root, env);
+        assert.ok(r.seats.every((d) => d.startsWith('run: ')), `${name}: ${r.seats}`);
+        assert.strictEqual(r.count, '5 captures to run', name);
+    }
+});
+
 // End to end through the CLI, on a stubbed PATH: the real probes, the real pins file.
 test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missing or malformed one', { skip: process.platform === 'win32' && 'shell stubs' }, () =>
 {

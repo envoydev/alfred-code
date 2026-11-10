@@ -25,7 +25,8 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
   layout (the account's, or this project's `settings.local.json` for a claude-hud installed for this project alone). The command is the exact one to run.
 - `capture: capture-awareness <topic> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - one row per
   awareness part in its fixed order, each only when the install lists the skill AND the part's seat (`project`,
-  `related-projects` and `agents` have none, and run whenever the skill is installed - each decides from disk).
+  `related-projects` and `agents` have none, and run whenever the skill is installed - each decides from disk); a
+  workspace root with no repository of its own skips the two seat parts.
 - `auto-update: ask <key>` - Claude Code's auto-update for the stack's marketplace, which nothing on this account has
   answered yet; step 4 asks it. `auto-update: on|off for <key> (<where>)` and `auto-update: not asked - <why>` are said
   in one line and ask nothing.
