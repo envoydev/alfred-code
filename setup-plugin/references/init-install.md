@@ -94,7 +94,7 @@ Project mode - detect stacks by artifact and record which apply (this detection 
 The marker list is `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/stack-detection.md`, read with this file - apply every bullet, its suppressions included.
 
 Alongside the stack scan, run the EVIDENCE scan quietly - one call, one narration line:
-`node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - a deterministic read of the project's package manifests (csproj / Directory.Packages.props / package.json) against the signal catalog. Its `found` map feeds the walk's tables via `--found` and pre-selects what the project provably uses; the conclusions are computed from THIS project's files, never assumed.
+`node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - a deterministic read of the project's package manifests (csproj / Directory.Packages.props / package.json) against the signal catalog. Its `found` map feeds the walk's tables via `--found` and pre-selects what the project provably uses; the conclusions are computed from THIS project's files, never assumed. A `!!` line from it goes to the user in the stacks step, with the `root:` it read.
 
 A project can match several. Report the detected stacks and put the confirmation through AskUserQuestion (the stacks template below - an add or a remove is picked from options, never typed) - the walk starts IMMEDIATELY after this answer, no other question in between:
 
