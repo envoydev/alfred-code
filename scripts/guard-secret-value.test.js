@@ -3125,3 +3125,150 @@ test('guard-secret-value: a GitLab personal token literal is blocked, the bare p
   assert.equal(bash(`curl -H "PRIVATE-TOKEN: ${token}" https://gitlab.example.test/api/v4/user`), 2, 'a token in a header');
   assert.equal(bash(`echo "GitLab tokens open with ${'glpat' + '-'} and twenty characters"`), 0, 'prose about the shape is not the shape');
 });
+
+// AC-2R (the owner's ruling, 2026-11-10: 'Close it in this fix'): a find whose -name / -path pattern can name a credential
+// file the guard knows, handing its files to a reader - an -exec action, `| xargs <print verb>`, `cat $(find ...)` - is
+// judged by what its walk matches: a match holding a credential blocks, a walk past a ceiling blocks unjudged. A listing,
+// a reducer, a clean match and a pattern that names no credential file pass. Every fake value is built here, never printed.
+test('AC-2R: a find that hands a credential file to a reader', () => {
+  const FAKE_PASS = ['Qm', '7v', 'Lr', '2k'].join('').repeat(3);
+  const noValue = (text) => !text.includes(FAKE_TOKEN) && !text.includes(FAKE_PASS);
+  const dir = fs.mkdtempSync(path.join(TMP, 'ac2r-'));
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+  fs.mkdirSync(path.join(dir, 'sub'));
+  fs.writeFileSync(path.join(dir, 'sub', '.env.local'), `DB_PASSWORD=${FAKE_PASS}\n`);
+  fs.mkdirSync(path.join(dir, 'docs'));
+  fs.writeFileSync(path.join(dir, 'docs', 'a.md'), '# notes\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), '{"version":"1.0.0"}\n');
+  fs.writeFileSync(path.join(dir, '.env.example'), '');
+  const call = (command, cwd = dir, env = {}, pre = null) => spawnSync(process.execPath, [...(pre ? ['-r', pre] : []), HOOK],
+    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, ...env } });
+  const DISPATCH = path.join(__dirname, '..', 'stack', 'hooks', 'shell-guards.js');
+  const viaDispatch = (command, cwd = dir) => spawnSync(process.execPath, [DISPATCH],
+    { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: cwd } });
+  const refusedHere = (what, r, file) => {
+    assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
+    assert.strictEqual(r.status, 2, `${what}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /credential guard: this find hands /, what);
+    assert.match(r.stderr, /--presence/, what);
+    if (file) assert.ok(r.stderr.includes(file), `${what}: names ${file}\n${r.stderr}`);
+  };
+  const passed = (what, r) => {
+    assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
+    assert.strictEqual(r.status, 0, `${what}: ${r.stderr}`);
+    assert.strictEqual(updatedCommand(r), null, `${what}: the command untouched`);
+  };
+  try {
+    const refused = [
+      ['xargs cat', 'find . -name .env | xargs cat', '.env'],
+      ['-type f before the name test', 'find . -type f -name .env | xargs cat', '.env'],
+      ['-print0 into xargs -0', "find . -name '.env*' -print0 | xargs -0 cat", '.env'],
+      ['-exec cat {} +', 'find . -name .env -exec cat {} +', '.env'],
+      ['-exec cat {} \\;', 'find . -name .env -exec cat {} \\;', '.env'],
+      ['-iname into -execdir head', "find . -iname '.ENV' -execdir head {} +", '.env'],
+      ['cat $(find ...)', 'cat $(find . -name .env)', '.env'],
+      ['a start folder', "find sub -name '.env*' | xargs cat", '.env.local'],
+      ['xargs grep printing lines', "find . -name '.env*' | xargs grep API", '.env'],
+      ['wide: an -o reaches every file', "find . -name '.env*' -o -name '*.md' | xargs cat", '.env'],
+      ["-name '*' reaches .env", "find . -name '*' | xargs cat", '.env'],
+      // a filter stage between the find and its xargs still hands the names on (a side agent's note, the owner's run)
+      ['a sort between', 'find . -name .env | sort | xargs cat', '.env'],
+      ['a head between', "find . -name '.env*' | head -5 | xargs head", '.env'],
+    ];
+    for (const [what, command, file] of refused) refusedHere(what, call(command), file);
+    for (const [what, command, file] of refused.slice(0, 10)) refusedHere(`dispatcher: ${what}`, viaDispatch(command), file);
+    // the block row names the branch and the file, never the value
+    const ledger = path.join(TMP, `ledger-ac2r-${Date.now()}`);
+    refusedHere('ledgered', call('find . -name .env | xargs cat', dir, { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger }));
+    const rowsText = fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'suite.jsonl'), 'utf8');
+    assert.ok(noValue(rowsText), 'no value in the block row');
+    assert.deepStrictEqual(rowsText.trim().split('\n').map((l) => JSON.parse(l).detail.branch), ['find-reader']);
+
+    const pass = [
+      ['a listing', 'find . -name .env'],
+      ['a listing piped to sort', 'find . -name .env | sort'],
+      ['a listing piped to head', 'find . -name .env | head'],
+      ['xargs ls -l', 'find . -name .env | xargs ls -l'],
+      ['xargs wc -l', 'find . -name .env | xargs wc -l'],
+      ['xargs grep -l', "find . -name '.env*' | xargs grep -l API_TOKEN"],
+      ['xargs grep -c', "find . -name '.env*' | xargs grep -c API_TOKEN"],
+      ['-exec grep -q', "find . -name '*.json' -exec grep -q version {} \\; -print"],
+      ['a pattern naming no credential file', "find . -name '*.md' | xargs cat"],
+      ['-exec cat over docs', "find docs -name '*.md' -exec cat {} +"],
+      ['a negated test leaves only the empty example', "find . -maxdepth 1 -name '.env*' -not -name .env | xargs cat"],
+      ['no name test (unchanged)', 'find . -type f | xargs cat'],
+      ['wide with no pattern naming a credential file', "find . -name '*.md' -o -name none | xargs cat"],
+      ['a filter then xargs ls', 'find . -name .env | sort | xargs ls -l'],
+    ];
+    for (const [what, command] of pass) passed(what, call(command));
+
+    // a node_modules of 4,001 .js files beside a fake-token .env: no pattern names a credential file, so no walk
+    const big = fs.mkdtempSync(path.join(TMP, 'ac2r-big-'));
+    fs.writeFileSync(path.join(big, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+    fs.mkdirSync(path.join(big, 'node_modules'));
+    for (let i = 1; i <= 4001; i++) fs.writeFileSync(path.join(big, 'node_modules', `m${String(i).padStart(4, '0')}.js`), 'module.exports = 1;\n');
+    fs.mkdirSync(path.join(big, 'src'));
+    fs.writeFileSync(path.join(big, 'src', 'a.ts'), 'export const a = 1;\n');
+    passed('a search through a large tree', call("find . -name '*.js' | xargs grep -n foo", big));
+    passed('the -prune -o form', call("find . -path ./node_modules -prune -o -name '*.ts' -print | xargs grep foo", big));
+
+    // a project with no credential file, and a .env with an empty value
+    const clean = fs.mkdtempSync(path.join(TMP, 'ac2r-clean-'));
+    fs.writeFileSync(path.join(clean, 'notes.env'), 'NOTE=hello\n');
+    passed('no credential file', call("find . -name '*.env' | xargs cat", clean));
+    fs.writeFileSync(path.join(clean, '.env'), 'API_TOKEN=\n');
+    passed('an empty value', call('find . -name .env | xargs cat', clean));
+
+    // the three ceilings at their boundaries, through findCredentialFile with small limits (a test preload, as the
+    // judging budget's JUDGE_WORK_MAX), the fake token placed past the cut
+    const pre = path.join(TMP, 'ac2r-limits.js');
+    fs.writeFileSync(pre, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 30, entries: 10 };\n');
+    const small = (d) => call("find . -name '*.env' | xargs cat", d, {}, pre);
+    const unjudged = (what, r, ceiling) => {
+      assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
+      assert.strictEqual(r.status, 2, `${what}: ${r.stderr}`);
+      assert.match(r.stderr, new RegExp(`credential guard: this find walks past ${ceiling} before handing its files to cat`), what);
+      assert.match(r.stderr, /--redacted/, what);
+    };
+    const files = fs.mkdtempSync(path.join(TMP, 'ac2r-files-'));
+    for (const n of ['a', 'b']) fs.writeFileSync(path.join(files, `${n}.env`), 'A=1\n');
+    passed('files: 2 clean matches', small(files));
+    fs.writeFileSync(path.join(files, 'c.env'), 'A=1\n');
+    passed('files: 3 clean matches', small(files));
+    fs.writeFileSync(path.join(files, 'd.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+    unjudged('files: 4 matches', small(files), '3 matched files');
+    const bytes = fs.mkdtempSync(path.join(TMP, 'ac2r-bytes-'));
+    const sized = (n) => `NOTE=${'x'.repeat(n - 6)}\n`;
+    fs.writeFileSync(path.join(bytes, 'a.env'), sized(15));
+    fs.writeFileSync(path.join(bytes, 'b.env'), sized(14));
+    passed('bytes: 29 in all', small(bytes));
+    fs.writeFileSync(path.join(bytes, 'b.env'), sized(15));
+    passed('bytes: 30 in all', small(bytes));
+    fs.writeFileSync(path.join(bytes, 'b.env'), sized(16));
+    unjudged('bytes: 31 in all', small(bytes), '30 bytes of matched files');
+    const entries = fs.mkdtempSync(path.join(TMP, 'ac2r-entries-'));
+    fs.writeFileSync(path.join(entries, 'a.env'), 'A=1\n');
+    for (let i = 1; i <= 8; i++) fs.writeFileSync(path.join(entries, `n${i}.txt`), 'x\n');
+    passed('entries: 9 walked', small(entries));
+    fs.writeFileSync(path.join(entries, 'n9.txt'), 'x\n');
+    passed('entries: 10 walked', small(entries));
+    fs.writeFileSync(path.join(entries, 'z.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+    unjudged('entries: 11 walked', small(entries), '10 folder entries');
+
+    // the real files ceiling: 3,999 and 4,000 clean pass, the token in the 4,000th is found, 4,001 clean is unjudged
+    const many = fs.mkdtempSync(path.join(TMP, 'ac2r-many-'));
+    const nth = (i) => path.join(many, `f${String(i).padStart(4, '0')}.env`);
+    for (let i = 1; i <= 3999; i++) fs.writeFileSync(nth(i), 'A=1\n');
+    const real = () => call("find . -name '*.env' | xargs cat", many);
+    passed('3,999 clean matches', real());
+    fs.writeFileSync(nth(4000), 'A=1\n');
+    passed('4,000 clean matches', real());
+    fs.writeFileSync(nth(4000), `API_TOKEN=${FAKE_TOKEN}\n`);
+    refusedHere('the token in the 4,000th', real(), 'f4000.env');
+    fs.writeFileSync(nth(4000), 'A=1\n');
+    fs.writeFileSync(nth(4001), 'A=1\n');
+    unjudged('4,001 clean matches', real(), '4000 matched files');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

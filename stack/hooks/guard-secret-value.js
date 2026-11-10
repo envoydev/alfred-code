@@ -81,6 +81,12 @@ const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0
 // would cost every session for that one shape. The stated ceiling: a credential past the first
 // MAX_BYTES of a file printed whole (no window) is not seen.
 const MAX_BYTES = 512 * 1024;
+// The tree walks' ceilings - the Grep tool's (walkCredentialFile) and a fed find's (findCredentialFile); past one a walk is
+// unjudged. Defined here because the Bash branch, which the find walk serves, runs before the walks' own code.
+const WALK_FILES = 4000;
+const WALK_BYTES = 32 * 1024 * 1024;
+const WALK_ENTRIES = 100000;
+const WALK_LAST = /^(?:\.venv|venv|\.tox|\.nox|__pycache__|vendor|target|dist|build|out|bin|obj|\.next|\.nuxt|\.gradle|\.terraform|Pods|bower_components|\.cache|site-packages)$/;
 
 // A `${VAR}` placeholder or a blank is not a live value - .mcp.json carries `${SENTRY_ACCESS_TOKEN}`
 // by design, and an installer seeds `"SENTRY_ACCESS_TOKEN": ""` for the user to fill in.
@@ -244,6 +250,13 @@ const HCL_BLOCK = /^\s*([\w-]+)((?:\s+"[^"]*")*)\s*\{\s*$/;
 const YAML_KEY_LINE = /^\s*(?:"[^"]*"|'[^']*'|[^\s#'"{}[\]|>!&*%@,=][^#=]*?)\s*:(?:\s|$)/;
 const baseOf = (file) => pathMod.basename(String(file));
 const extOf = (file) => { const b = baseOf(file); const i = b.lastIndexOf('.'); return i > 0 ? b.slice(i + 1).toLowerCase() : ''; };
+// AC-2R: names the guard reads as credential files, a sample of each kind. A fed find whose -name / -path patterns match
+// none of them hands no credential file to a reader by its pattern, so it is not walked (`find . -name '*.js' | xargs
+// grep foo` beside a node_modules passes as before).
+const CREDENTIAL_NAME_SAMPLES = ['.env', '.env.local', 'prod.env', 'credentials', '.git-credentials', '.npmrc', '.pypirc', '.netrc',
+  '_netrc', '.pgpass', '.htpasswd', '.vault-token', '.yarnrc', '.s3cfg', '.boto', '.databrickscfg', '.terraformrc', 'prod.tfvars',
+  'id_rsa', 'id_ed25519', 'server.key', 'server.pem', 'cert.p12', 'cert.pfx', 'app.jks', 'app.keystore', 'vault.kdbx', 'user.ppk',
+  '.secrets', '.sensitive-data'];
 function kindByName(file) {
   const b = baseOf(file).toLowerCase();
   const e = extOf(file);
@@ -3552,21 +3565,15 @@ function refuseSensitiveMention(text, steps = text) {
   // (final review 2026-10-25 C1) - is refused when its walk reaches the store (a -maxdepth short of it does not) and a
   // -name / -path test of it matches the store's name, or, from the folder holding the store, no name test narrows it.
   const FIND_ACT = /^-(?:exec|execdir|ok|okdir)$/;
-  const globOf = (g, flags) => new RegExp(`^${String(g).split('').map((ch) => (ch === '*' ? '.*' : ch === '?' ? '.' : ch.replace(/[.+^${}()|[\]\\]/g, '\\$&'))).join('')}$`, flags);
   const judgeFind = (args, fed) => {
     if (!fed && !args.some((w) => FIND_ACT.test(w))) return;
     const stores = sensitiveStores();
     if (!stores.length) return;
-    let k = 0;
-    while (k < args.length && /^-[HLPEXdsx]$/.test(args[k])) k++;
-    const first = args.findIndex((w, j) => j >= k && /^[-(!]/.test(w));
-    const starts = args.slice(k, first < 0 ? args.length : first);
-    const tests = [];
-    let depth = Infinity;
-    for (let j = 0; j < args.length; j++) {
-      if (/^-i?(?:name|path|wholename)$/.test(args[j])) tests.push({ re: globOf(args[j + 1] || '', /^-i/.test(args[j]) ? 'i' : ''), path: !/name$/.test(args[j]) || /wholename$/.test(args[j]) });
-      else if (args[j] === '-maxdepth' && /^\d+$/.test(args[j + 1] || '')) depth = Number(args[j + 1]);
-    }
+    // one parse of the find's tests (findTests), every test counted, negated or not
+    const parsed = findTests(args);
+    const starts = parsed.starts;
+    const tests = parsed.tests.map((t) => ({ re: globOf(t.pattern, t.i ? 'i' : ''), path: t.path }));
+    const depth = parsed.maxdepth;
     for (const s of starts.length ? starts : ['.']) for (const p of candidatePaths(s)) for (const hit of statAll(p)) for (const store of stores) {
       const rel = hit.dir ? pathMod.relative(realOf(hit.at), store) : '';
       if (!rel || rel.startsWith('..') || pathMod.isAbsolute(rel)) continue;
@@ -3610,7 +3617,10 @@ function refuseSensitiveMention(text, steps = text) {
     const c = words.indexOf('-c');
     if (/^(?:ba|z|da|k)?sh$/.test(verb) && c > 0 && words[c + 1] && depth < 2) { judgeAll(words[c + 1], depth + 1); return; }
     const args = words.slice(1);
-    if (verb === 'find') judgeFind(args, pipedOn || depth > 0);
+    if (verb === 'find') {
+      const raw = toks.map(joinQuoted).filter((w) => !/^[A-Za-z_]\w*=/.test(w));
+      judgeFind(raw.slice(raw.findIndex((w) => baseOf(w) === 'find') + 1), pipedOn || depth > 0);
+    }
     const sub = args.find((w) => !w.startsWith('-'));
     const recursive = args.some((w) => /^-[A-Za-z]*[rRa][A-Za-z]*$|^--(?:recursive|archive)$|^-recurse$/i.test(w));
     const copies = /^(?:cp|copy-item|cpi|copy|xcopy|robocopy|ditto|rsync|scp)$/i.test(verb);
@@ -4495,6 +4505,9 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
           }
         }
       }
+      // AC-2R: a find handing its files to a reader is judged by what its walk matches, before any word of it is read as a
+      // file operand (the pattern word `.env` named the cwd's file whatever the find would match)
+      if (!forceRuntime && !IS_PWSH && !isRuntime) judgeFindReader(stages, sj);
       // A dump verb or a runtime read on a file that HOLDS a credential - judged by content, not path.
       homeAnchor = isRuntime && /homedir|expanduser|USERPROFILE|HOME/.test(stage);
       const candidates = [];
@@ -4631,10 +4644,8 @@ if (FS_READ_TOOL.test(String(payload.tool_name || ''))) {
 // through, WALK_BYTES bytes or WALK_ENTRIES entries seen is left unjudged - the count was taken before the filters, so 4,000
 // files of a `.venv` ended the walk before a credential file past it (audit 2026-10-08). Hidden and git-ignored files are
 // walked too (the search may reach them), and `.git` / `node_modules` are not.
-const WALK_FILES = 4000;
-const WALK_BYTES = 32 * 1024 * 1024;
-const WALK_ENTRIES = 100000;
-const WALK_LAST = /^(?:\.venv|venv|\.tox|\.nox|__pycache__|vendor|target|dist|build|out|bin|obj|\.next|\.nuxt|\.gradle|\.terraform|Pods|bower_components|\.cache|site-packages)$/;
+// WALK_FILES, WALK_BYTES, WALK_ENTRIES and WALK_LAST sit beside MAX_BYTES: the find walk (findCredentialFile) runs in
+// the Bash branch, which exits before this line.
 const GREP_TYPES = { js: 'js|mjs|cjs|jsx', ts: 'ts|tsx|mts|cts', py: 'py|pyi', yaml: 'ya?ml', md: 'md|markdown|mdx', cs: 'cs|csx', json: 'jsonc?|json5', sh: 'sh|bash|zsh', rust: 'rs', java: 'java', go: 'go' };
 // The Grep tool's pattern is ripgrep's syntax. What JavaScript reads differently is translated - a leading inline flag
 // group (`(?i)`, `(?s)`, `(?m)`) and the anchors `\A` / `\z` (a line's ends, the input's in multiline mode; JavaScript
@@ -4685,6 +4696,194 @@ function walkCredentialFile(root, tool) {
     }
   }
   return null;
+}
+// ---- AC-2R: a find that hands its files to a reader ----
+// The owner's ruling, 2026-11-10 ('Close it in this fix'): the dump half judges a stage's own operands, but a find hands
+// what it matches to a reader in its own action (`-exec cat {} +`) or the next stage (`| xargs cat`), or prints the names
+// a `cat $(find ...)` reads - no operand names the file. Such a find is judged by what its walk matches when one of its
+// -name / -path patterns can name a credential file (CREDENTIAL_NAME_SAMPLES): a match holding a credential blocks, and a
+// walk past a ceiling blocks unjudged - never passed, as a mask that cannot finish refuses (the audit's decision 3).
+// Stated limits: a reader fed by a loop or by `xargs -a`, a fed find with no name or path test, and a credential file a
+// pattern reaches without naming the list (`-name '*.json'`). A filter between the find and its xargs is read as passing
+// every name on (a side agent's note, 2026-11-10: `| sort | xargs cat` printed the file).
+function globOf(g, flags) {
+  return new RegExp(`^${String(g).split('').map((ch) => (ch === '*' ? '.*' : ch === '?' ? '.' : ch.replace(/[.+^${}()|[\]\\]/g, '\\$&'))).join('')}$`, flags);
+}
+// One parse of a find's words (after `find`), read by the store judge (judgeFind) and the walk below: the start points
+// before the first expression word; each -name / -iname / -path / -ipath / -wholename / -iwholename test, `not` when `-not`
+// or `!` stands before it; `wide` when an -o / -or / -regex / -iregex makes the tests no plain conjunction; the depth and
+// type tests.
+function findTests(args) {
+  let k = 0;
+  while (k < args.length && /^-[HLPEXdsx]$/.test(args[k])) k++;
+  const at = args.findIndex((w, j) => j >= k && /^[-(!]/.test(w));
+  const first = at < 0 ? args.length : at;
+  const out = { starts: args.slice(k, first), tests: [], wide: false, maxdepth: Infinity, mindepth: 0, types: null };
+  for (let j = first; j < args.length; j++) {
+    const w = args[j];
+    if (/^-i?(?:name|path|wholename)$/.test(w)) {
+      out.tests.push({ pattern: args[j + 1] || '', path: !/name$/.test(w) || /wholename$/.test(w), i: /^-i/.test(w), not: args[j - 1] === '-not' || args[j - 1] === '!' });
+      j++;
+    } else if (/^-(?:o|or|i?regex)$/.test(w)) out.wide = true;
+    else if (/^-(?:max|min)depth$/.test(w) && /^\d+$/.test(args[j + 1] || '')) out[w.slice(1)] = Number(args[++j]);
+    else if (w === '-type' && j + 1 < args.length) out.types = (out.types || '') + args[++j];
+  }
+  return out;
+}
+// Only a positive test whose pattern (a path test's last segment) can match a credential file's name is judged.
+function credentialPattern(parsed) {
+  return parsed.tests.some((t) => {
+    if (t.not) return false;
+    const re = globOf(t.path ? t.pattern.split(/[\\/]/).pop() : t.pattern, t.i ? 'i' : '');
+    return CREDENTIAL_NAME_SAMPLES.some((n) => re.test(n));
+  });
+}
+// The program a find hands its files to, when it prints them: a print verb (DUMP_VERB as a lone word, or shell-writes.js's
+// PRINT_VERBS) that reduces nothing (`grep -l`, `wc`). A listing (`ls -l`), a reducer or no program is null.
+function printProgram(words) {
+  const verb = baseOf(wordOf(String(words[0] || '')));
+  if (!verb) return null;
+  const pv = shellWrites && shellWrites.PRINT_VERBS && shellWrites.PRINT_VERBS[verb.toLowerCase()];
+  if (!DUMP_VERB.test(verb) && !pv) return null;
+  return isReducer(words.map(String).join(' ')) ? null : verb;
+}
+// The finds a stage hands to a reader, each with the reader's verb: the stage's own find with an -exec / -execdir / -ok /
+// -okdir action, or piped into `xargs <print verb>` at a later stage (xargs' options passed by commandAt); or a find in a
+// `$(...)` / backtick body that is an operand of a print verb. A pipe into no xargs (`| sort`, `| head`) is a listing.
+function fedFinds(stages, sj) {
+  const out = [];
+  const toks = shellTokens(stages[sj]);
+  const k = commandAt(toks);
+  if (k >= toks.length) return out;
+  if (baseOf(wordOf(toks[k])) === 'find') {
+    const args = toks.slice(k + 1).map(wordOf);
+    for (let j = 0; j < args.length; j++) {
+      if (!/^-(?:exec|execdir|ok|okdir)$/.test(args[j])) continue;
+      let e = j + 1;
+      while (e < args.length && !/^(?:\\?;|\+)$/.test(args[e])) e++;
+      const reader = printProgram(args.slice(j + 1, e));
+      if (reader) return [{ args, verb: reader }];
+      j = e;
+    }
+    // the first xargs stage after it decides - a filter between (`| sort | xargs cat`) still hands the names on
+    for (let n = sj + 1; n < stages.length; n++) {
+      const nt = shellTokens(stages[n]);
+      const nk = commandAt(nt);
+      if (!nt.slice(0, nk).some((w) => baseOf(wordOf(w)) === 'xargs')) continue;
+      const reader = printProgram(nt.slice(nk));
+      if (reader) out.push({ args, verb: reader });
+      break;
+    }
+    return out;
+  }
+  const reader = printProgram(toks.slice(k));
+  if (reader) {
+    for (const body of substitutions(stages[sj])) {
+      for (const st of splitPipes(body)) {
+        const bt = shellTokens(st);
+        const bk = commandAt(bt);
+        if (bk < bt.length && baseOf(wordOf(bt[bk])) === 'find') out.push({ args: bt.slice(bk + 1).map(wordOf), verb: reader });
+      }
+    }
+  }
+  return out;
+}
+// Each start point resolved where the shell stands, as the dump half resolves an operand (the first anchor it exists at);
+// `shown` is the path find prints it as, which a -path test is matched against.
+function findStarts(starts) {
+  const out = [];
+  for (const s of starts.length ? starts : ['.']) {
+    for (const p of candidatePaths(s)) {
+      const at = (pathMod.isAbsolute(p) ? [p] : [cdBase(), ...anchorDirs()].map((d) => pathMod.join(d, p)))
+        .find((c) => { try { fs.statSync(c); return true; } catch { return false; } });
+      if (at) out.push({ at, shown: GLOB_CHARS.test(s) ? p : s });
+    }
+  }
+  return out;
+}
+// The walk's ceilings; a test preload lowers them through `global.FIND_WALK_LIMITS`, as the judging budget's
+// `global.JUDGE_WORK_MAX`.
+function walkLimits() {
+  const o = global.FIND_WALK_LIMITS && typeof global.FIND_WALK_LIMITS === 'object' ? global.FIND_WALK_LIMITS : {};
+  return { files: Number(o.files) || WALK_FILES, bytes: Number(o.bytes) || WALK_BYTES, entries: Number(o.entries) || WALK_ENTRIES };
+}
+// The first file the find would print that holds a credential: `{ file, key }`, null when none does, or `{ unjudged, limit }`
+// past a ceiling - fail closed, where the Grep walk's ceilings pass. walkCredentialFile's order (breadth-first, name order,
+// WALK_LAST folders last), with `.git` and `node_modules` walked last instead of skipped (find walks them). A name test is
+// matched on the basename, a path test on the printed path `<start>/<rel>`, a negated one as a negation; a `wide` find
+// keeps only its depth and type tests, so every file the walk reaches counts - the fail-safe side.
+function findCredentialFile(starts, parsed, limits = walkLimits()) {
+  if (parsed.types && !/[fl]/.test(parsed.types)) return null; // only folders or devices: no file is handed over
+  const tests = parsed.wide ? [] : parsed.tests.map((t) => ({ re: globOf(t.pattern, t.i ? 'i' : ''), path: t.path, not: t.not }));
+  let files = 0;
+  let bytes = 0;
+  let seen = 0;
+  const judge = (full, name, shown, depth) => {
+    if (depth < parsed.mindepth || depth > parsed.maxdepth) return null;
+    if (!tests.every((t) => t.re.test(t.path ? shown : name) !== t.not)) return null;
+    if (++files > limits.files) return { unjudged: 'files', limit: limits.files };
+    let size;
+    try { size = fs.statSync(full).size; } catch { return null; }
+    // a file past MAX_BYTES is judged by its first MAX_BYTES, as secretIn judges it
+    bytes += Math.min(size, MAX_BYTES);
+    if (bytes > limits.bytes) return { unjudged: 'bytes', limit: limits.bytes };
+    const key = secretInUnlessAllowed(full);
+    return key ? { file: full, key } : null;
+  };
+  for (const s of starts) {
+    let st;
+    try { st = fs.statSync(s.at); } catch { continue; }
+    if (!st.isDirectory()) {
+      const hit = st.isFile() ? judge(s.at, baseOf(s.at), s.shown, 0) : null;
+      if (hit) return hit;
+      continue;
+    }
+    const top = s.shown.replace(/[\\/]+$/, '');
+    const queue = [{ dir: s.at, rel: '', depth: 0 }];
+    const later = [];
+    for (let q = 0; q < queue.length || later.length; q++) {
+      if (q >= queue.length) queue.push(...later.splice(0));
+      const { dir, rel, depth } = queue[q];
+      if (depth >= parsed.maxdepth) continue;
+      let entries;
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      entries.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
+      for (const e of entries) {
+        if (++seen > limits.entries) return { unjudged: 'entries', limit: limits.entries };
+        const full = pathMod.join(dir, e.name);
+        const r = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory()) {
+          (e.name === '.git' || e.name === 'node_modules' || WALK_LAST.test(e.name) ? later : queue).push({ dir: full, rel: r, depth: depth + 1 });
+          continue;
+        }
+        let file = e.isFile();
+        if (!file && e.isSymbolicLink()) { try { file = fs.statSync(full).isFile(); } catch { file = false; } }
+        if (!file) continue;
+        const hit = judge(full, e.name, `${top}/${r}`, depth + 1);
+        if (hit) return hit;
+      }
+    }
+  }
+  return null;
+}
+// A fed find whose walk reaches a credential file, or walks past a ceiling, BLOCKS - no one view stands in for the N files
+// xargs reads. One block row: `find-reader` (the file's name, never its value) or `find-reader-unjudged` (the ceiling).
+function judgeFindReader(stages, sj) {
+  for (const { args, verb } of fedFinds(stages, sj)) {
+    const parsed = findTests(args);
+    if (!credentialPattern(parsed)) continue;
+    const hit = findCredentialFile(findStarts(parsed.starts), parsed);
+    if (!hit) continue;
+    const guard = `"${shDouble(__filename)}"`;
+    if (hit.unjudged) {
+      const past = hit.unjudged === 'files' ? `${hit.limit} matched files` : hit.unjudged === 'bytes' ? `${hit.limit} bytes of matched files` : `${hit.limit} folder entries`;
+      global.BLOCK_DETAIL = { branch: 'find-reader-unjudged', matched: hit.unjudged };
+      block(`credential guard: this find walks past ${past} before handing its files to ${verb}, so the guard cannot judge them - narrow its start folder, its pattern or its -maxdepth, or read one file with node ${guard} --redacted <file>\n`);
+    }
+    const file = `"${shDouble(hit.file)}"`;
+    global.BLOCK_DETAIL = { branch: 'find-reader', matched: baseOf(hit.file).slice(0, 40) };
+    block(`credential guard: this find hands ${hit.file} (a credential under ${hit.key}) to ${verb} - read one key with node ${guard} --presence ${file} ${hit.key}, or the whole file masked with node ${guard} --redacted ${file}\n`);
+  }
 }
 // The Grep TOOL is the third read route onto the same file, and it was ungated: measured live, a
 // Bash read of a project settings.json was blocked and eight seconds later a Grep with

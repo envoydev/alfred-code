@@ -625,7 +625,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked - its pattern read as ripgrep writes it (a
     leading `(?i)`, `\A` / `\z`; one JavaScript cannot compile matches every line), its walk breadth-first with dependency
     folders (`.venv`, `vendor`, `target`, ...) last, and unjudged past 4,000 files its filters let through, 32MB or 100,000
-    entries (a stated ceiling). A path-qualified verb (`./tools/grep`,
+    entries (a stated ceiling). A FIND that hands its files to a reader (AC-2R, the owner's ruling of 2026-11-10) - an
+    `-exec` / `-execdir` / `-ok` action, a later `| xargs <print verb>` stage (a filter between counts), or `$(find ...)` as
+    a print verb's operand, no reducer (`grep -l`, `wc`) - is judged when a positive `-name` / `-path` pattern can match a
+    name on `CREDENTIAL_NAME_SAMPLES`: `findCredentialFile` walks it in the Grep walk's order (`.git` and `node_modules`
+    last, not skipped; a `-o` / `-regex` find keeps only its depth and type tests), and a match holding a credential blocks
+    (`find-reader`), as does a walk past the same three ceilings - fail CLOSED there (`find-reader-unjudged`); a test
+    preload lowers them through `global.FIND_WALK_LIMITS`. A listing, a reducer and a pattern naming no listed file pass
+    (`find . -name '*.js' | xargs grep foo`); a loop, `xargs -a` and a find with no name test are stated limits. A path-qualified verb (`./tools/grep`,
     `bin/rg`) is never spawned - the probe runs before the permission prompt, so it would run whatever script sits there
     (audit 2026-10-08, replayed) - and is piped unprobed, as is a walk naming a program-running option (`--pre`, `--hostname-bin`,
     ugrep's `--filter`, `--pager`, `--view`, `-Q`, a config file; audit 2026-10-20 H1). Audit 2026-10-10 (C12): a word's inner quotes count
