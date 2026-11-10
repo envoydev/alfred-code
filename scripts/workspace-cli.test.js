@@ -138,8 +138,10 @@ test('AC2: role --when init prints the role and one ask line per option, Recomme
     assert.strictEqual(r.code, 0, r.out);
     assert.match(r.out, /^role: child of \.\.$/m);
     const after = filesOf(at('ws'), ['api']);
-    assert.deepStrictEqual(Object.keys(after).sort(), Object.keys(before).sort(), 'no file appeared or went in the parent\'s tree');
+    // the record itself converts at this write (the old file becomes workspace.json); no other file appears or goes
     const isRecord = (rel) => /^\.alfred\/workspace(\.json)?$/.test(rel);
+    const others = (files) => Object.keys(files).filter((rel) => !isRecord(rel)).sort();
+    assert.deepStrictEqual(others(after), others(before), 'no file appeared or went in the parent\'s tree');
     for (const rel of Object.keys(before)) if (!isRecord(rel)) assert.strictEqual(after[rel], before[rel], rel);
     assert.deepStrictEqual(wsFile(at('ws')), { children: ['web', 'api'] }, 'the parent changed by exactly its one child');
     assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', above: '..' });
@@ -619,4 +621,22 @@ test('plan prints the table for a root with a child, and none for a standalone p
     const at = tree({ ws: { stamp: true, record: { children: ['api/tool'] } }, 'ws/api': { stamp: true, git: true }, 'ws/api/tool': { stamp: true, git: true, record: { parent: '../..' } } });
     const r = cli('plan', '--root', at('ws'), '--source', src);
     assert.match(r.out, /^project +\| scope +\| version +\| adds +\| drops +\| asks\n\. +\| project .*\napi\/tool +\| .*\ntotal: 2 projects$/m, r.out);
+});
+
+test('register under a parent stamped with an older release converts its record and prints the older-project line once; under a current parent it prints none', () =>
+{
+    const release = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+    const at = tree({ old: { stamp: true, record: { children: ['web'] } }, 'old/api': { git: true }, cur: { stamp: true, record: { children: ['web'] } }, 'cur/api': { git: true } });
+    fs.writeFileSync(path.join(at('old'), '.claude', 'alfred-code.stamp'), 'version: 3.8.0\nhooks-route: plugin\n');
+    fs.writeFileSync(path.join(at('cur'), '.claude', 'alfred-code.stamp'), `version: ${release}\nhooks-route: plugin\n`);
+    const line = '!! workspace: .. runs an older release - it reads the old workspace file, which is now workspace.json; update .. next';
+    const r = cli('register', '--root', at('old/api'));
+    assert.strictEqual(r.code, 0, r.out + r.err);
+    assert.strictEqual(r.out.split('\n').filter((l) => l === line).length, 1, r.out);
+    assert.strictEqual(readWorkspaceRecord(at('old')).source, 'json', 'the parent\'s record is converted');
+    assert.deepStrictEqual(wsFile(at('old')), { children: ['web', 'api'] });
+    const c = cli('register', '--root', at('cur/api'));
+    assert.strictEqual(c.code, 0, c.out + c.err);
+    assert.strictEqual(readWorkspaceRecord(at('cur')).source, 'json');
+    assert.doesNotMatch(c.out, /runs an older release/, c.out);
 });

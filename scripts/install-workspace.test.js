@@ -26,7 +26,7 @@ const SC = 'ALFRED_CODE_SCORER';
 // [key, the stack's old seed, the value it resets to] - the env pass's reseed list (meta/migrations.json): an update moves
 // the stack's own old seeds (U16's idle wait, B1's scorer pair), and every other value an older install holds stays.
 const RESEEDS = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json')).reseed;
-const { readWorkspaceRecord, readWorkspaceValues } = require('./workspace-fixture.js');
+const { putWorkspace, readWorkspaceRecord, readWorkspaceValues } = require('./workspace-fixture.js');
 const reseeded = (env) => { const out = { ...env }; for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to; return out; };
 
 const at = (work, rel = '.') => path.join(work, 'ws', ...(rel === '.' ? [] : rel.split('/')));
@@ -74,12 +74,20 @@ function join(work, rel, { dataRoot, parent = '.' } = {})
     assert.ok(wsLib.writeWorkspace(at(work, parent), (m) => wsLib.addChild(m, childRel), { env: acct(work) }).ok);
 }
 const edit = (work, rel, mutate, dataRoot) => assert.ok(wsLib.writeWorkspace(at(work, rel), mutate, { env: acct(work), dataRoot }).ok);
+// The record's own text is the subject: a key the reader does not know, added by hand to workspace.json.
+const addKey = (work, rel, key, value) =>
+{
+    const f = path.join(at(work, rel), '.alfred', 'workspace.json');
+    const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+    data[key] = value;
+    fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
+};
 
 // One sandbox, one step per entry: { at, act, sel, args: [] | (work) => [], env, before(work), after(work) }.
-function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = false } = {})
+function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = false, failOk = false } = {})
 {
     return seedRun(steps.map((s) => s.act || 'install'), '', {
-        plugins, account,
+        plugins, account, failOk,
         seed: steps.map((s) => s.seed || SEED),
         source: steps.map((s) => s.source || path.join(__dirname, '..')),
         cwds: steps.map((s) => path.join('ws', ...(s.at && s.at !== '.' ? s.at.split('/') : []))),
@@ -548,7 +556,8 @@ test('a child whose back-reference was deleted inherits nothing, writes nothing 
     assert.strictEqual(r.steps[3].x, false, r.outs[3]);
     assert.strictEqual(r.steps[3].root, r.steps[2], 'the parent\'s workspace file was written');
     assert.strictEqual(r.steps[3].own.parent, '..');
-    assert.match(r.outs[3], /!! workspace: parent \.\. in \.alfred\/workspace ignored - \.\. does not list this folder as a child/);
+    // the run converted the child's old file before the workspace pass read it, so the note names workspace.json
+    assert.match(r.outs[3], /!! workspace: parent \.\. in \.alfred\/workspace\.json ignored - \.\. does not list this folder as a child/);
 });
 
 test('a parent print-plan with a failure note, or with an unparseable settings.json, gives parentLines null', POSIX_ONLY, () =>
@@ -601,18 +610,18 @@ test('a child whose own listing is blind adds and drops nothing and keeps its ow
     assert.match(r.outs[4], /!! workspace: this project's plugin listing could not be read - nothing inherited is added or dropped this run/);
 });
 
-test('a parent with an unknown workspace line still yields parentLines', POSIX_ONLY, () =>
+test('a parent with an unknown workspace key still yields parentLines', POSIX_ONLY, () =>
 {
     const r = scenario([
-        // the file's text is the subject: an unknown line beside the known ones
-        { at: '.', after: (work) => { join(work, 'api'); fs.appendFileSync(path.join(at(work), '.alfred', 'workspace'), 'frobnicate the tree\n'); } },
+        // the file's text is the subject: an unknown key beside the known ones
+        { at: '.', after: (work) => { join(work, 'api'); addKey(work, '.', 'frobnicate', 'the tree'); } },
         { at: 'api' },
         update('.', { args: ['--add', `skill ${X}`] }),
         { ...planStep('plan.json'), after: (work) => json(path.join(work, 'plan.json')).failures },
         update('api', { after: (work) => hasSkill(work, 'api', X) }),
     ]);
     assert.strictEqual(r.steps[3], 0, r.outs[3]);
-    assert.match(r.outs[3], /!! workspace: \.alfred\/workspace line 'frobnicate the tree' is not understood/);
+    assert.match(r.outs[3], /!! workspace: \.alfred\/workspace\.json: unknown key 'frobnicate' kept/);
     assert.strictEqual(r.steps[4], true, r.outs[4]);
 });
 
@@ -878,12 +887,12 @@ test('cascade applies one project\'s answer and no other\'s', POSIX_ONLY, () =>
     assert.deepStrictEqual(r.steps[6], { webMoved: true, apiStray: true }, r.outs[6]);
 });
 
-test('a mid-level parent with an unknown workspace line still cascades', POSIX_ONLY, () =>
+test('a mid-level parent with an unknown workspace key still cascades', POSIX_ONLY, () =>
 {
     const r = scenario([
         { at: '.', after: (work) => join(work, 'api') },
-        // the file's text is the subject: an unknown line beside the known ones
-        { at: 'api', after: (work) => { join(work, 'api/tool', { parent: 'api' }); fs.appendFileSync(path.join(at(work, 'api'), '.alfred', 'workspace'), 'frobnicate x\n'); } },
+        // the file's text is the subject: an unknown key beside the known ones
+        { at: 'api', after: (work) => { join(work, 'api/tool', { parent: 'api' }); addKey(work, 'api', 'frobnicate', 'x'); } },
         { at: 'api/tool' },
         update('api'),
         update('api/tool'),
@@ -1440,3 +1449,78 @@ test('a memory folder equal to the child\'s own gets no deny row', POSIX_ONLY, (
         assert.ok(r.steps[1].rows.some((row) => row.startsWith('settings.local.json:claudeMdExcludes[')), r.outs[1]);
     });
 }
+
+// ------------------------------------------------------------------ workspace.json: the conversion and a garbage record
+
+const jsonAt = (work, rel) => path.join(at(work, rel), '.alfred', 'workspace.json');
+const oldAt = (work, rel) => path.join(at(work, rel), '.alfred', 'workspace');
+// The record made garbage by hand: the old file gone, workspace.json no valid JSON.
+const garble = (work, rel) => { fs.rmSync(oldAt(work, rel), { force: true }); fs.mkdirSync(path.dirname(jsonAt(work, rel)), { recursive: true }); fs.writeFileSync(jsonAt(work, rel), '{"children": ["api"],'); };
+const GARBAGE_LINE = (rel) => `!! workspace: ${rel} is not valid JSON - fix it by hand; the workspace pass neither reads nor writes it until then`;
+
+test('install converts an old file before the workspace pass, and --print-plan does not', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        // the old file's text is the subject: a comment the conversion names - the workspace pass, reading it after, names nothing
+        { at: '.', after: (work) => { putWorkspace(at(work), { children: ['api'] }, { legacy: true }); fs.mkdirSync(path.dirname(oldAt(work, 'api')), { recursive: true }); fs.writeFileSync(oldAt(work, 'api'), 'parent ..\n# hand note\n'); } },
+        { at: 'api', after: (work) => ({ json: fs.existsSync(jsonAt(work, 'api')), old: fs.existsSync(oldAt(work, 'api')), members: layoutLib.workspaceChain(fs.realpathSync.native(at(work, 'api')), { env: acct(work) }).members.length }) },
+        { ...planStep('plan.json'), after: (work) => ({ json: fs.existsSync(jsonAt(work, '.')), old: fs.existsSync(oldAt(work, '.')) }) },
+        update('.', { after: (work) => ({ json: fs.existsSync(jsonAt(work, '.')), old: fs.existsSync(oldAt(work, '.')), values: readWorkspaceValues(at(work)) }) }),
+    ]);
+    const line = 'workspace: .alfred/workspace converted to workspace.json - restart any session open in this project since before this run';
+    assert.deepStrictEqual(r.steps[1], { json: true, old: false, members: 1 }, r.outs[1]);
+    assert.ok(r.outs[1].includes("workspace: .alfred/workspace converted to workspace.json (comment '# hand note' not carried into workspace.json) - restart any session open in this project since before this run"), r.outs[1]);
+    assert.doesNotMatch(r.outs[1], /!! workspace: \.alfred\/workspace(\.json)?: comment/, 'the workspace pass read the converted record');
+    assert.deepStrictEqual(r.steps[2], { json: false, old: true }, r.outs[2]);
+    assert.ok(!r.outs[2].includes('converted to workspace.json'), r.outs[2]);
+    assert.deepStrictEqual(r.steps[3], { json: true, old: false, values: { children: ['api'] } }, r.outs[3]);
+    assert.ok(r.outs[3].includes(line), r.outs[3]);
+});
+
+test('the run\'s own garbage record freezes the workspace part of an update', POSIX_ONLY, () =>
+{
+    const snap = (work) => ({
+        env: envOf(work, 'api'), vars: readOr(path.join(at(work, 'api'), '.alfred', '.variables')),
+        own: lineOf(stampOf(work, 'api'), 'own-picks'), ownEnv: lineOf(stampOf(work, 'api'), 'own-env'), x: hasSkill(work, 'api', X),
+    });
+    const r = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n` },
+        update('.', { args: ['--add', `skill ${X}`], after: (work) => { const s = snap(work); garble(work, 'api'); return s; } }),
+        update('api', { after: (work) => ({ ...snap(work), json: readOr(jsonAt(work, 'api')) }) }),
+    ]);
+    const before = r.steps[2];
+    const after = r.steps[3];
+    assert.strictEqual(after.json, '{"children": ["api"],', 'the garbage record is left byte for byte');
+    assert.strictEqual(after.x, false, `nothing inherited is added:\n${r.outs[3]}`);
+    assert.deepStrictEqual(after.env, before.env, r.outs[3]);
+    assert.strictEqual(after.vars, before.vars, r.outs[3]);
+    assert.strictEqual(after.own, before.own, r.outs[3]);
+    assert.strictEqual(after.ownEnv, before.ownEnv, r.outs[3]);
+    assert.strictEqual(r.outs[3].split('\n').filter((l) => l.replace(/^==>\s*/, '').trim() === GARBAGE_LINE('.alfred/workspace.json')).length, 1, r.outs[3]);
+    assert.doesNotMatch(r.outs[3], /workspace: from \.\. - /);
+});
+
+test('uninstall refuses before any change over a garbage workspace record', POSIX_ONLY, () =>
+{
+    const refusal = (rel) => `error: ${rel} is not valid JSON - the workspace links it records cannot be released; nothing was removed - fix it by hand, then run uninstall again`;
+    const snapOf = (work) => `${tree(work, '.')}\n${tree(work, 'api')}`;
+    const fix = (work, rel) => { fs.rmSync(jsonAt(work, rel), { force: true }); putWorkspace(at(work, rel), rel === '.' ? { children: ['api'] } : { parent: '..' }, { legacy: false }); };
+    for (const [where, garbled, named] of [['.', '.', '.alfred/workspace.json'], ['api', '.', '../.alfred/workspace.json'], ['.', 'api', 'api/.alfred/workspace.json']])
+    {
+        const label = `uninstall in ${where} over ${garbled}'s garbage record`;
+        const r = scenario([
+            { at: '.', after: (work) => join(work, 'api') },
+            { at: 'api', after: (work) => { garble(work, garbled); return snapOf(work); } },
+            { at: where, act: 'uninstall', after: (work) => { const s = snapOf(work); fix(work, garbled); return s; } },
+            { at: where, act: 'uninstall', after: (work) => ({ root: readWorkspaceValues(at(work)), api: readWorkspaceValues(at(work, 'api')) }) },
+        ], { failOk: true });
+        assert.strictEqual(r.codes[2], 1, `${label}:\n${r.outs[2]}`);
+        assert.ok(r.errs[2].includes(refusal(named)), `${label}:\n${r.errs[2]}`);
+        assert.strictEqual(r.steps[2], r.steps[1], `${label}: a file changed`);
+        // fixed by hand, the next uninstall releases the child
+        assert.strictEqual(r.codes[3], 0, `${label}:\n${r.outs[3]}${r.errs[3]}`);
+        assert.ok(!(r.steps[3].api || {}).parent, `${label}: api still names its parent\n${r.outs[3]}`);
+        assert.ok(!(r.steps[3].root || {}).children, `${label}: the root still lists api\n${r.outs[3]}`);
+    }
+});

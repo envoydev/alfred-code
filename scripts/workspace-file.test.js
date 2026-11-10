@@ -206,6 +206,37 @@ test('parseLegacy: a comment and an unknown line are named as not carried', () =
     ]);
 });
 
+test('parseLegacy: a value that would leave the tree is not carried', () =>
+{
+    const lines = ['parent /abs', 'parent ../x', 'child ../a', 'child C:/a', 'child a\\b', 'ignore colour x', 'ignore skill'];
+    const { record, problems } = wf.parseLegacy(`${lines.join('\n')}\n`);
+    assert.deepStrictEqual(problems, lines.map((l) => `line '${l}' not carried into workspace.json`));
+    assert.deepStrictEqual(wf.viewOf(record), wf.viewOf(wf.emptyRecord()));
+});
+
+test('parseLegacy: the ignore forms', () =>
+{
+    const { record, problems } = wf.parseLegacy('ignore docs root\nignore memory root\nignore instructions .claude/AGENTS.md\nignore skill typescript\n');
+    assert.deepStrictEqual(wf.viewOf(record).ignores, [
+        { category: 'docs', name: 'root' },
+        { category: 'memory', name: 'root' },
+        { category: 'instructions', name: '.claude/AGENTS.md' },
+        { category: 'skill', name: 'typescript' },
+    ]);
+    assert.deepStrictEqual(problems, []);
+    const bad = wf.parseLegacy('ignore docs other\nignore doc a/../b\nignore skill a/b\n');
+    assert.strictEqual(bad.problems.length, 3, 'only docs root is a docs form, a doc name has no .. segment, and a skill name no slash');
+});
+
+test('parseLegacy: role and above - the two roles, and a run of .. or none', () =>
+{
+    const v = wf.viewOf(wf.parseLegacy('role root\nabove ..\nchild api\n').record);
+    assert.deepStrictEqual([v.role, v.above, v.children], ['root', '..', ['api']]);
+    const s = wf.viewOf(wf.parseLegacy('role standalone\nabove none\n').record);
+    assert.deepStrictEqual([s.role, s.above], ['standalone', 'none']);
+    assert.strictEqual(wf.parseLegacy('role child\nabove x\nrole\n').problems.length, 3);
+});
+
 test('renderRecord: key order, empty keys out, invalid back in its key, unknown keys last, parentNone never written', () =>
 {
     const record = { ...wf.emptyRecord(), parent: '..', above: 'none', children: ['api'], ignore: { skill: ['x'], hook: [] }, parentNone: true };

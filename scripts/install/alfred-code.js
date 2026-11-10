@@ -371,6 +371,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const renaming = { renamed: manifest.renamed, log, said: new Set() };
         args.add = selection.renameLines(selection.dropFormerPicks({ lines: args.add, log, said: formerSaid }), renaming);
         args.drop = selection.renameLines(args.drop, renaming);
+        // workspace.json (2026-11-10): the run's own old record converts before the workspace pass reads it, whatever the
+        // switch says - the conversion carries every value; --print-plan writes nothing.
+        if (!args.printPlan && args.action !== 'uninstall') workspace.convertOwn({ projectRoot, env, dataRoot: workspace.ownDataRootOf({ projectRoot, env, args }), log: (m) => log(`  ${m}`) });
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
         const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note });
         const userAdds = [...args.add];
@@ -687,6 +690,8 @@ function runLayers(ctx)
     variablesStep(ctx);
     installHooksAndRules(ctx);
     if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx.projectRoot, path.join(ctx.claudeDir, 'settings.local.json'), ctx);
+    // Each project an older release would now misread, the records this run converted being workspace.json.
+    for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(ctx.source.dir), compare: compareVersions, env: ctx.env })) ctx.log(`  ${line}`);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
@@ -2299,6 +2304,14 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
         return 1;
     }
     if (backup) { lostLine(); return 1; }
+    // workspace.json: a record the release below would write that reads garbage holds uninstall back before any change -
+    // run past it, a garbage child would be filed as stale and a garbage parent fail after the files were removed.
+    const garbled = workspace.garbageOnLeave({ projectRoot, env, dataRoot: stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root });
+    if (garbled.length)
+    {
+        for (const rel of garbled) err(`error: ${rel} is not valid JSON - the workspace links it records cannot be released; nothing was removed - fix it by hand, then run uninstall again\n`);
+        return 1;
+    }
     if (hasClaude)
     {
         const market = marketOf({ listing: plugins.parsePluginList(rawList, projectRoot, { byMarketplace: true }), marketplaces: readMarkets(), env }).key;
@@ -2346,6 +2359,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     // project's own file sits under the root the stamp records - the settings pass above already took
     // ALFRED_CODE_DATA_PATH out.
     workspace.leaveParent({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
+    for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(path.join(__dirname, '..', '..')), compare: compareVersions, env })) log(`  ${line}`);
     const accountHash = ((ledger.account || {})['settings.json'] || {})[workspace.INSTRUCTION_KEY];
     if (accountHash) dropAccountKey({ projectRoot, configDir, accountFile, hash: accountHash, log, note });
     const stillOff = ['settings.json', 'settings.local.json'].filter((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
@@ -2480,4 +2494,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, releaseVersion };

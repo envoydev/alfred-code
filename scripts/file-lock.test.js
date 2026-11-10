@@ -86,7 +86,7 @@ test('R065: the workspace file\'s writer handed a lock it cannot take reports it
     fs.mkdirSync(path.join(root, '.alfred'));
     oldDirLock(path.join(root, '.alfred', 'workspace.lock'));
     const c = clock(path.join(root, '.alfred', 'workspace.lock'));
-    const r = ws.writeWorkspace(root, (m) => { m.entries.push({ kind: 'child', value: 'api', raw: 'child api' }); }, { now: c.now, sleep: c.sleep });
+    const r = ws.writeWorkspace(root, (m) => ws.addChild(m, 'api'), { now: c.now, sleep: c.sleep });
     assert.strictEqual(r.ok, false);
     assert.strictEqual(r.why, 'locked');
     assert.strictEqual(readWorkspaceRecord(root).state, 'absent', 'nothing written');

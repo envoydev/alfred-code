@@ -490,6 +490,20 @@ test('the whole stores are read at collect time', (t) =>
     assert.strictEqual(row(rc, 'lsp-coverage').status, 'absent');
 });
 
+test('the workspace store bundles workspace.json under its own name, else the old file', (t) =>
+{
+    for (const legacy of [false, true])
+    {
+        const fx = makeSession({}); t.after(fx.cleanup);
+        putWorkspace(fx.project, { role: 'root' }, { dataRoot: path.relative(fx.project, fx.dataRoot).split(path.sep).join('/'), legacy });
+        const rc = run(fx);
+        const [to, not] = legacy ? ['context/workspace', 'context/workspace.json'] : ['context/workspace.json', 'context/workspace'];
+        assert.strictEqual(row(rc, 'workspace').status, 'copied', to);
+        assert.ok(fs.existsSync(path.join(fx.out, ...to.split('/'))), to);
+        assert.ok(!fs.existsSync(path.join(fx.out, ...not.split('/'))), not);
+    }
+});
+
 test('context.json carries the files\' catalog variables and the session\'s plugins, no other key', (t) =>
 {
     const fx = makeSession({}); t.after(fx.cleanup);

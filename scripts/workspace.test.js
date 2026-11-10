@@ -27,6 +27,26 @@ const project = (content) =>
 };
 // The file the project's record is read from (workspace.json's path when neither exists).
 const fileOf = (root, dataRoot = '.alfred') => readWorkspaceRecord(root, { dataRoot }).file;
+const wfLib = require('../stack/hooks/workspace-file.js');
+const jsonOf = (root, dataRoot = '.alfred') => path.join(root, ...dataRoot.split('/'), 'workspace.json');
+const legacyOf = (root, dataRoot = '.alfred') => path.join(root, ...dataRoot.split('/'), 'workspace');
+// The file's own text is the subject: workspace.json written byte for byte as given.
+const putJson = (root, text, dataRoot = '.alfred') =>
+{
+    fs.mkdirSync(path.dirname(jsonOf(root, dataRoot)), { recursive: true });
+    fs.writeFileSync(jsonOf(root, dataRoot), text);
+    return root;
+};
+const putOld = (root, text, dataRoot = '.alfred') =>
+{
+    fs.mkdirSync(path.dirname(legacyOf(root, dataRoot)), { recursive: true });
+    fs.writeFileSync(legacyOf(root, dataRoot), text);
+    return root;
+};
+// The file's mtime set a minute back, returned - a rewrite moves it.
+const aged = (file) => { const t = (Date.now() - 60000) / 1000; fs.utimesSync(file, t, t); return fs.statSync(file).mtimeMs; };
+const sink = () => { const lines = []; return { lines, log: (l) => lines.push(l) }; };
+const GARBAGE = (rel) => `!! workspace: ${rel} is not valid JSON - fix it by hand; the workspace pass neither reads nor writes it until then`;
 const lockOf = (root) => path.join(root, '.alfred', 'workspace.lock');
 // A fake clock whose sleep advances it, so a 2 s lock wait runs in no time; `onSleep` sees the clock after each step.
 const clock = (start = Date.now(), onSleep = () => {}) =>
@@ -38,55 +58,6 @@ const clock = (start = Date.now(), onSleep = () => {}) =>
         sleep: (ms) => { state.t += ms; state.sleeps += 1; onSleep(state.t - start); },
     };
 };
-
-test('parse and render keep comments and unknown lines byte for byte and drop duplicate entries', () =>
-{
-    const model = ws.parseWorkspace('parent ..\n# note\nchild api\nchild api\ncolour red\n');
-    assert.strictEqual(ws.renderWorkspace(model), 'parent ..\n# note\nchild api\ncolour red\n');
-    const view = ws.viewOf(model);
-    assert.strictEqual(view.parent, '..');
-    assert.deepStrictEqual(view.children, ['api']);
-    assert.deepStrictEqual(view.unknown, ['colour red']);
-});
-
-test('values that would leave the tree read as unknown', () =>
-{
-    const lines = ['parent /abs', 'parent ../x', 'child ../a', 'child C:/a', 'child a\\b', 'ignore colour x', 'ignore skill'];
-    const view = ws.viewOf(ws.parseWorkspace(lines.join('\n') + '\n'));
-    assert.deepStrictEqual(view.unknown, lines);
-    assert.strictEqual(view.parent, null);
-    assert.deepStrictEqual(view.children, []);
-    assert.deepStrictEqual(view.ignores, []);
-});
-
-test('ignore forms', () =>
-{
-    const view = ws.viewOf(ws.parseWorkspace('ignore docs root\nignore memory root\nignore instructions .claude/AGENTS.md\nignore skill typescript\n'));
-    assert.deepStrictEqual(view.ignores, [
-        { category: 'docs', name: 'root' },
-        { category: 'memory', name: 'root' },
-        { category: 'instructions', name: '.claude/AGENTS.md' },
-        { category: 'skill', name: 'typescript' },
-    ]);
-    assert.deepStrictEqual(view.unknown, []);
-    const bad = ws.viewOf(ws.parseWorkspace('ignore docs other\nignore doc a/../b\nignore skill a/b\n'));
-    assert.strictEqual(bad.unknown.length, 3, 'only docs root is a docs form, a doc name has no .. segment, and a skill name no slash');
-});
-
-test('parent none, and a second parent line is unknown', () =>
-{
-    const view = ws.viewOf(ws.parseWorkspace('parent none\nparent ..\n'));
-    assert.strictEqual(view.parentNone, true);
-    assert.strictEqual(view.parent, null);
-    assert.deepStrictEqual(view.unknown, ['parent ..']);
-});
-
-test('CRLF, a BOM and trailing spaces read the same as LF', () =>
-{
-    const lf = ws.viewOf(ws.parseWorkspace('parent ../..\nchild api\nignore skill x\n'));
-    const odd = ws.viewOf(ws.parseWorkspace('\uFEFFparent ../..  \r\nchild api\t\r\nignore skill x \r\n'));
-    assert.deepStrictEqual(odd, lf);
-});
 
 test('a lock released at 1.9 s is waited for; one held 2.1 s gives up with why locked', () =>
 {
@@ -134,18 +105,19 @@ test('a lock aged 29 s is waited on; one aged 31 s is taken over', () =>
 
 test('a write that changes nothing leaves the file untouched', () =>
 {
-    const root = project({ parent: '..', children: ['api'] });
-    const at = (Date.now() - 60000) / 1000;
-    fs.utimesSync(fileOf(root), at, at);
-    const before = fs.statSync(fileOf(root)).mtimeMs;
+    const root = project();
+    putWorkspace(root, { parent: '..', children: ['api'] }, { legacy: false });
+    const before = aged(fileOf(root));
     const got = ws.writeWorkspace(root, (m) => ws.addChild(m, 'api'));
-    assert.strictEqual(got.ok, true);
-    assert.strictEqual(got.wrote, false);
+    assert.deepStrictEqual([got.ok, got.wrote], [true, false]);
     assert.strictEqual(fs.statSync(fileOf(root)).mtimeMs, before);
-    // the file's text is the subject: a hand-saved CRLF file with a comment
-    const crlf = project('parent ..\r\n# mine\r\n');
-    ws.writeWorkspace(crlf, () => {});
-    assert.strictEqual(fs.readFileSync(fileOf(crlf), 'utf8'), 'parent ..\r\n# mine\r\n', 'a no-op never rewrites a hand-saved CRLF file');
+    // the file's text is the subject: a hand-saved 4-space CRLF workspace.json
+    const text = '{\r\n    "parent": "..",\r\n    "children": [\r\n        "api"\r\n    ]\r\n}\r\n';
+    const hand = putJson(project(), text);
+    const at = aged(jsonOf(hand));
+    assert.strictEqual(ws.writeWorkspace(hand, () => {}).wrote, false);
+    assert.strictEqual(fs.readFileSync(jsonOf(hand), 'utf8'), text, 'a no-op never rewrites a hand-saved file');
+    assert.strictEqual(fs.statSync(jsonOf(hand)).mtimeMs, at);
 });
 
 test('dataRoot passed to writeWorkspace writes under that folder', () =>
@@ -171,39 +143,69 @@ test('readWorkspace states: absent and ok', () =>
     assert.deepStrictEqual(got.view.children, ['api']);
 });
 
-test('the mutators set, add and remove, and setParent replaces both parent forms', () =>
+test('the mutators set, add and remove on a record; setParent and setRole exclude each other', () =>
 {
-    const model = ws.parseWorkspace('parent none\n# keep\n');
-    ws.setParent(model, '../..');
-    ws.addChild(model, 'api');
-    ws.addChild(model, 'web');
-    ws.removeChild(model, 'api');
-    ws.addIgnore(model, 'skill', 'x');
-    ws.addIgnore(model, 'skill', 'x');
-    ws.addIgnore(model, 'env', 'ALFRED_CODE_SCORER');
-    ws.removeIgnore(model, 'env', 'ALFRED_CODE_SCORER');
-    assert.strictEqual(ws.renderWorkspace(model), 'parent ../..\n# keep\nchild web\nignore skill x\n');
-    ws.setParent(model, null);
-    assert.strictEqual(ws.viewOf(model).parent, null);
-    assert.throws(() => ws.addChild(model, '../a'), /child/);
+    const record = { ...wfLib.emptyRecord(), role: 'standalone', parentNone: true };
+    ws.setParent(record, '../..');
+    assert.deepStrictEqual([record.parent, record.role, record.parentNone], ['../..', null, false]);
+    ws.addChild(record, 'api');
+    ws.addChild(record, 'web');
+    ws.addChild(record, 'web');
+    ws.removeChild(record, 'api');
+    ws.addIgnore(record, 'skill', 'x');
+    ws.addIgnore(record, 'skill', 'x');
+    ws.addIgnore(record, 'env', 'ALFRED_CODE_SCORER');
+    ws.removeIgnore(record, 'env', 'ALFRED_CODE_SCORER');
+    ws.addIgnore(record, 'docs', 'root');
+    assert.deepStrictEqual(wfLib.viewOf(record), {
+        parent: '../..', parentNone: false, role: null, above: null, children: ['web'],
+        ignores: [{ category: 'skill', name: 'x' }, { category: 'docs', name: 'root' }],
+    });
+    ws.setRole(record, 'root');
+    assert.deepStrictEqual([record.parent, record.role], [null, 'root']);
+    ws.setParent(record, '..');
+    assert.deepStrictEqual([record.parent, record.role], ['..', null]);
+    ws.setAbove(record, 'none');
+    assert.strictEqual(record.above, 'none');
+    ws.setParent(record, null);
+    assert.strictEqual(record.parent, null);
+    // the 2.11 spelling: `parent none` is role standalone
+    ws.setParent(record, 'none');
+    assert.deepStrictEqual([record.parent, record.role], [null, 'standalone']);
+    assert.throws(() => ws.addChild(record, '../a'), /child/);
+    assert.throws(() => ws.setParent(record, '/abs'), /parent/);
+    assert.throws(() => ws.setRole(record, 'boss'), /role/);
+    assert.throws(() => ws.addIgnore(record, 'colour', 'x'), /ignore/);
     assert.ok(ws.CATEGORIES.includes('instructions'));
 });
 
-test('moveWorkspace moves, reports absent, and never overwrites', () =>
+test('moveWorkspace moves workspace.json and a still-present old file as one record; the new root holding either name is a clash - neither file moves, the clash named', () =>
 {
-    const said = [];
-    const log = (l) => said.push(l);
-    const root = project({ children: ['api'] });
+    const said = sink();
+    const log = said.log;
+    const root = putJson(putOld(project(), 'child web\n'), '{"children": ["api"]}\n');
     assert.strictEqual(ws.moveWorkspace({ projectRoot: root, from: '.alfred', to: '.ws-data', log }), 'moved');
-    assert.deepStrictEqual(readWorkspaceValues(root, { dataRoot: '.ws-data' }), { children: ['api'] });
-    assert.strictEqual(readWorkspaceRecord(root).state, 'absent');
+    assert.deepStrictEqual([fs.existsSync(jsonOf(root)), fs.existsSync(legacyOf(root))], [false, false]);
+    assert.strictEqual(fs.readFileSync(jsonOf(root, '.ws-data'), 'utf8'), '{"children": ["api"]}\n');
+    assert.strictEqual(fs.readFileSync(legacyOf(root, '.ws-data'), 'utf8'), 'child web\n');
+    assert.deepStrictEqual(readWorkspaceValues(root, { dataRoot: '.ws-data' }), { children: ['api', 'web'] });
     assert.strictEqual(ws.moveWorkspace({ projectRoot: root, from: '.alfred', to: '.ws-data', log }), 'absent');
-    const both = project({ children: ['api'] });
-    putWorkspace(both, { children: ['web'] }, { dataRoot: '.ws-data' });
-    assert.strictEqual(ws.moveWorkspace({ projectRoot: both, from: '.alfred', to: '.ws-data', log }), 'clash');
-    assert.deepStrictEqual(readWorkspaceValues(both), { children: ['api'] });
-    assert.deepStrictEqual(readWorkspaceValues(both, { dataRoot: '.ws-data' }), { children: ['web'] });
-    assert.match(said.join('\n'), /!! workspace: \.alfred\/workspace left in place - \.ws-data\/workspace already exists/);
+    // the new root holds the OTHER name: a clash either way
+    const cases = [
+        [(p) => putOld(p, 'child api\n'), (p) => putJson(p, '{}\n', '.ws-data'), 'workspace', 'workspace.json'],
+        [(p) => putJson(p, '{"children": ["api"]}\n'), (p) => putOld(p, 'child web\n', '.ws-data'), 'workspace.json', 'workspace'],
+    ];
+    for (const [here, there, mine, theirs] of cases)
+    {
+        const p = project();
+        here(p);
+        there(p);
+        const files = () => [jsonOf(p), legacyOf(p), jsonOf(p, '.ws-data'), legacyOf(p, '.ws-data')].map((f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null));
+        const before = files();
+        assert.strictEqual(ws.moveWorkspace({ projectRoot: p, from: '.alfred', to: '.ws-data', log }), 'clash', mine);
+        assert.deepStrictEqual(files(), before, 'neither file moved');
+        assert.ok(said.lines.some((l) => l.includes(`!! workspace: .alfred/${mine} left in place - .ws-data already holds a workspace record (${theirs})`)), said.lines.join('\n'));
+    }
 });
 
 test('ancestorEnv keeps only the account', () =>
@@ -285,15 +287,8 @@ test('chain follows parent lines nearest first and needs the back-reference', ()
     assert.deepStrictEqual(cut.notes, ['!! workspace: parent .. in ../.alfred/workspace ignored - ../.. does not list this folder as a child']);
 });
 
-test('R062: a child name holding a double space or a tab round-trips', () =>
+test('R062: a child named with a double space or a tab is a member of its root\'s chain', () =>
 {
-    for (const name of ['a  b', 'a\tb', 'x/a  b'])
-    {
-        const text = `role root\nchild ${name}\n`;
-        assert.deepStrictEqual(ws.viewOf(ws.parseWorkspace(text)).children, [name], JSON.stringify(name));
-        assert.strictEqual(ws.renderWorkspace(ws.parseWorkspace(text)), text);
-    }
-    assert.deepStrictEqual(ws.viewOf(ws.parseWorkspace('child   api\n')).children, ['api'], 'the run of separators after the keyword is not part of the name');
     const at = tree({ 'ws': { stamp: true, record: { children: ['a  b'] } }, 'ws/a  b': { stamp: true, record: { parent: '..' } } });
     assert.deepStrictEqual(ws.chain(at('ws/a  b'), { env: env0 }).members.map((m) => m.rel), ['..'], 'the back-reference matches the real folder');
 });
@@ -839,19 +834,13 @@ const roleTree = (spec) =>
 };
 const asked = (root, when, env = ON) => { const a = ws.roleAsk(root, { env, when }); return a && { case: a.case, rel: a.rel, options: a.options }; };
 
-test('AC1: the file round-trips role root, role standalone, above .. and above none; parent none reads as role standalone and is rewritten', () =>
+test('AC1: a parent none record reads as role standalone, and its next write converts it to role standalone', () =>
 {
-    for (const text of ['role root\nabove ..\nchild api\n', 'role standalone\nabove none\nignore skill x\n', 'parent ..\nabove ../..\n'])
-        assert.strictEqual(ws.renderWorkspace(ws.parseWorkspace(text)), text);
-    const v = ws.viewOf(ws.parseWorkspace('role root\nabove ..\nchild api\n'));
-    assert.deepStrictEqual([v.role, v.above, v.children], ['root', '..', ['api']]);
-    const s = ws.viewOf(ws.parseWorkspace('role standalone\nabove none\n'));
-    assert.deepStrictEqual([s.role, s.above], ['standalone', 'none']);
-    assert.deepStrictEqual(ws.viewOf(ws.parseWorkspace('role child\nabove x\nrole\n')).unknown, ['role child', 'above x', 'role'], 'only the two roles and a run of .. or none');
     const root = project('parent none\nignore skill x\n');
     assert.strictEqual(ws.readWorkspace(root, { env: {} }).view.role, 'standalone');
     assert.ok(ws.writeWorkspace(root, (m) => ws.addIgnore(m, 'skill', 'y'), { env: {} }).wrote);
-    assert.strictEqual(fs.readFileSync(fileOf(root), 'utf8'), 'role standalone\nignore skill x\nignore skill y\n', 'rewritten at the next write');
+    assert.strictEqual(fs.existsSync(legacyOf(root)), false, 'the old file is gone');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(jsonOf(root), 'utf8')), { role: 'standalone', ignore: { skill: ['x', 'y'] } }, 'rewritten at the next write');
 });
 
 test('R062: the hooks\' chain reads a child named with a double space as a member of its root', () =>
@@ -997,4 +986,237 @@ test('releaseChildren writes each value a child read from the parent into the ch
     assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
     assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: ON }).values, before, 'every value reads the same once released');
     assert.match(logs.join('\n'), /^workspace: api: 2 values this project read from the workspace written into \.alfred\/\.variables/m);
+});
+
+// ------------------------------------------------------------------ workspace.json: the writer, the conversion, garbage
+
+const { compareVersions } = require('./install/source.js');
+
+test('writer: key order, empty keys left out, an unknown key after the known ones, an invalid value back in its key and never applied', () =>
+{
+    const root = putJson(project(), '{"zeta": 1, "ignore": {"skill": ["x"], "colour": ["red"]}, "children": ["api", "../x"], "above": "none", "parent": ".."}\n');
+    const got = ws.writeWorkspace(root, (r) => ws.addChild(r, 'web'));
+    assert.deepStrictEqual([got.ok, got.wrote], [true, true]);
+    const written = JSON.parse(fs.readFileSync(jsonOf(root), 'utf8'));
+    assert.deepStrictEqual(Object.keys(written), ['parent', 'above', 'children', 'ignore', 'zeta']);
+    assert.deepStrictEqual(written.children, ['api', 'web', '../x'], 'the invalid child back after the valid ones');
+    assert.deepStrictEqual(written.ignore, { skill: ['x'], colour: ['red'] });
+    assert.strictEqual(written.zeta, 1);
+    assert.deepStrictEqual(got.view.children, ['api', 'web'], 'the invalid child is never applied');
+    const fresh = project();
+    assert.ok(ws.writeWorkspace(fresh, (r) => ws.setRole(r, 'root')).wrote);
+    assert.strictEqual(fs.readFileSync(jsonOf(fresh), 'utf8'), '{\n  "role": "root"\n}\n', 'the empty keys left out');
+    assert.strictEqual(fs.existsSync(legacyOf(fresh)), false, 'no old file is made');
+});
+
+test('writer: a 4-space CRLF BOM\'d workspace.json keeps its shape when a value changes', () =>
+{
+    const root = putJson(project(), '\uFEFF{\r\n    "parent": ".."\r\n}\r\n');
+    assert.ok(ws.writeWorkspace(root, (r) => ws.addChild(r, 'api')).wrote);
+    assert.strictEqual(fs.readFileSync(jsonOf(root), 'utf8'), '\uFEFF{\r\n    "parent": "..",\r\n    "children": [\r\n        "api"\r\n    ]\r\n}\r\n');
+});
+
+test('writer: nothing written when nothing changed - a one-line or reordered hand-saved workspace.json left byte for byte by convertOwn and by a no-op mutate', () =>
+{
+    for (const text of ['{"parent":"..","children":["api"]}\n', '{ "children": [ "api" ], "parent": ".." }'])
+    {
+        const root = putJson(project(), text);
+        const mtime = aged(jsonOf(root));
+        const out = sink();
+        const c = ws.convertOwn({ projectRoot: root, env: {}, log: out.log });
+        assert.deepStrictEqual([c.ok, c.converted], [true, false], text);
+        const w = ws.writeWorkspace(root, (r) => ws.addChild(r, 'api'));
+        assert.deepStrictEqual([w.ok, w.wrote], [true, false], text);
+        assert.strictEqual(fs.readFileSync(jsonOf(root), 'utf8'), text);
+        assert.strictEqual(fs.statSync(jsonOf(root)).mtimeMs, mtime, text);
+        assert.deepStrictEqual(out.lines, []);
+    }
+});
+
+test('writer: the conversion - the old file gone after the rename, one log line ending with the restart clause, its problems on it', () =>
+{
+    ws.takeConversions();
+    const root = project('parent ..\r\n# mine\r\n');
+    const out = sink();
+    const got = ws.writeWorkspace(root, () => {}, { log: out.log });
+    assert.deepStrictEqual([got.ok, got.wrote, got.converted], [true, true, true]);
+    assert.strictEqual(fs.existsSync(legacyOf(root)), false, 'the old file is gone');
+    assert.strictEqual(fs.readFileSync(jsonOf(root), 'utf8'), '{\n  "parent": ".."\n}\n');
+    assert.deepStrictEqual(out.lines, ["workspace: .alfred/workspace converted to workspace.json (comment '# mine' not carried into workspace.json) - restart any session open in this project since before this run"]);
+    const plain = project('child api\n');
+    const said = sink();
+    ws.writeWorkspace(plain, (r) => ws.addChild(r, 'web'), { log: said.log });
+    assert.deepStrictEqual(said.lines, ['workspace: .alfred/workspace converted to workspace.json - restart any session open in this project since before this run']);
+    const list = ws.takeConversions();
+    assert.deepStrictEqual(list.map((c) => [c.own, c.record.parent, c.record.children]), [[true, '..', []], [true, null, ['api', 'web']]]);
+    assert.deepStrictEqual(ws.takeConversions(), [], 'taken and cleared');
+});
+
+test('writer: an invalid parent is replaced by a join\'s parent and named; an invalid child stays after the valid ones', () =>
+{
+    const root = putJson(project(), JSON.stringify({ parent: '/abs', children: ['api', '../x'] }));
+    const out = sink();
+    assert.ok(ws.writeWorkspace(root, (r) => ws.addChild(ws.setParent(r, '..'), 'web'), { log: out.log }).wrote);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(jsonOf(root), 'utf8')), { parent: '..', children: ['api', 'web', '../x'] });
+    assert.deepStrictEqual(out.lines, ["workspace: .alfred/workspace.json: invalid parent '/abs' replaced by '..'"]);
+    // a mutation that does not set the key: written back as read, nothing named
+    const kept = putJson(project(), JSON.stringify({ parent: '/abs' }));
+    const quiet = sink();
+    assert.ok(ws.writeWorkspace(kept, (r) => ws.addChild(r, 'api'), { log: quiet.log }).wrote);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(jsonOf(kept), 'utf8')), { parent: '/abs', children: ['api'] });
+    assert.deepStrictEqual(quiet.lines, []);
+});
+
+test('writer: both files fold into workspace.json and the old one goes', () =>
+{
+    const root = putJson(putOld(project(), 'child web\nignore skill x\n'), '{"children": ["api"]}\n');
+    const out = sink();
+    const got = ws.writeWorkspace(root, () => {}, { log: out.log });
+    assert.deepStrictEqual([got.ok, got.wrote, got.converted], [true, true, true]);
+    assert.strictEqual(fs.existsSync(legacyOf(root)), false);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(jsonOf(root), 'utf8')), { children: ['api', 'web'], ignore: { skill: ['x'] } });
+    assert.deepStrictEqual(out.lines, ['workspace: .alfred/workspace converted to workspace.json - restart any session open in this project since before this run']);
+    ws.takeConversions();
+});
+
+test('writer: a garbage workspace.json is left byte for byte, why garbage', () =>
+{
+    const root = putJson(putOld(project(), 'child api\n'), '{ "parent": ".." ');
+    const out = sink();
+    const got = ws.writeWorkspace(root, (r) => ws.addChild(r, 'web'), { log: out.log });
+    assert.deepStrictEqual([got.ok, got.why, got.wrote], [false, 'garbage', false]);
+    assert.strictEqual(fs.readFileSync(jsonOf(root), 'utf8'), '{ "parent": ".." ');
+    assert.strictEqual(fs.readFileSync(legacyOf(root), 'utf8'), 'child api\n', 'the old file beside it is left too');
+    assert.deepStrictEqual(out.lines, [GARBAGE('.alfred/workspace.json')]);
+    assert.strictEqual(fs.existsSync(lockOf(root)), false, 'the lock is released');
+});
+
+test('writer: the lock held elsewhere - why locked, neither file touched', () =>
+{
+    const root = putJson(putOld(project(), 'child web\n'), '{"children": ["api"]}\n');
+    fs.writeFileSync(lockOf(root), '');
+    const never = clock();
+    const got = ws.writeWorkspace(root, (r) => ws.addChild(r, 'x'), { now: never.now, sleep: never.sleep });
+    assert.deepStrictEqual([got.ok, got.why, got.wrote], [false, 'locked', false]);
+    assert.strictEqual(fs.readFileSync(jsonOf(root), 'utf8'), '{"children": ["api"]}\n');
+    assert.strictEqual(fs.readFileSync(legacyOf(root), 'utf8'), 'child web\n');
+});
+
+test('convertOwn writes with ALFRED_CODE_WORKSPACE=0 and writes nothing on a converted project', () =>
+{
+    const root = project('parent ..\nchild api\n');
+    const out = sink();
+    const off = { ALFRED_CODE_WORKSPACE: '0' };
+    const first = ws.convertOwn({ projectRoot: root, env: off, log: out.log });
+    assert.deepStrictEqual([first.ok, first.converted], [true, true]);
+    assert.strictEqual(fs.existsSync(legacyOf(root)), false);
+    assert.strictEqual(readWorkspaceRecord(root).source, 'json');
+    assert.deepStrictEqual(readWorkspaceValues(root), { parent: '..', children: ['api'] });
+    const text = fs.readFileSync(jsonOf(root), 'utf8');
+    const again = ws.convertOwn({ projectRoot: root, env: off, log: out.log });
+    assert.deepStrictEqual([again.ok, again.converted], [true, false]);
+    assert.strictEqual(fs.readFileSync(jsonOf(root), 'utf8'), text);
+    assert.strictEqual(out.lines.length, 1, out.lines.join('\n'));
+    ws.takeConversions();
+});
+
+test('older-project lines: named for an older child of a converted record, for the older parent a converted record names, and for an older parent or child whose own record this run converted, on either route; silent for a current one and for the run\'s own project', () =>
+{
+    const stamped = (version, route) => `version: ${version}\nhooks-route: ${route}\n`;
+    const spec = () => ({
+        ws: { stamp: stamped('3.9.2', 'plugin'), record: { children: ['api', 'web', 'kid'] } },
+        'ws/api': { stamp: stamped('3.9.2', 'copy'), record: { parent: '..' } },
+        'ws/web': { stamp: stamped('3.10.0', 'plugin'), record: { parent: '..' } },
+        'ws/kid': { stamp: stamped('3.9.2', 'plugin'), record: { parent: '..' } },
+    });
+    const lines = (at, runRel, rels) =>
+    {
+        ws.takeConversions();
+        for (const rel of rels) assert.ok(ws.writeWorkspace(at(rel), (r) => r, { runRoot: at(runRel) }).converted, rel);
+        return ws.olderProjectLines({ conversions: ws.takeConversions(), release: '3.10.0', compare: compareVersions, env: env0 });
+    };
+    const older = (p, child) => `!! workspace: ${p} runs an older release - it reads the old workspace file, which is now workspace.json; update ${p} next${child ? " (or take 'the children too')" : ''}`;
+    // the root converts its own record: its older children are named (api on the copy route, kid on the plugin route), the current one and the root itself not
+    const a = roleTree(spec());
+    assert.deepStrictEqual(lines(a, 'ws', ['ws']), [older('api', true), older('kid', true)]);
+    // a current child converts its own record: the older parent it names
+    const b = roleTree(spec());
+    assert.deepStrictEqual(lines(b, 'ws/web', ['ws/web']), [older('..', false)]);
+    // a current child converts its parent's record (register): the older parent, and the older children it lists
+    const c = roleTree(spec());
+    assert.deepStrictEqual(lines(c, 'ws/web', ['ws']), [older('..', false), older('../api', true), older('../kid', true)]);
+    // the root converts its children's records (releaseChildren): each older child, never the root
+    const d = roleTree(spec());
+    assert.deepStrictEqual(lines(d, 'ws', ['ws/api', 'ws/web']), [older('api', true)]);
+    // nothing converted: no line
+    assert.deepStrictEqual(lines(d, 'ws', []), []);
+});
+
+test('garbage reads ask nothing: roleOf, roleAsk, rescan, subtree and the status verb over a garbage workspace.json raise no role, join or rejoin ask and print the one line', () =>
+{
+    const at = roleTree({
+        ws: { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, git: true },
+        'ws/api/deep': { stamp: true, git: true, record: { parent: '..' } }, 'ws/free': { stamp: true, git: true },
+    });
+    putJson(at('ws/api'), '{"children": ["deep"]');
+    putJson(at('ws/free'), '[1, 2]');
+    const out = sink();
+    assert.strictEqual(ws.roleOf(at('ws/free'), { env: ON, log: out.log }).kind, 'unknown');
+    for (const when of ['init', 'configure', 'update']) assert.strictEqual(ws.roleAsk(at('ws/free'), { env: ON, when, log: out.log }), null, when);
+    assert.deepStrictEqual(ws.rescan(at('ws'), { env: ON, log: out.log }), [], 'a garbage record is no unjoined project to offer');
+    assert.deepStrictEqual(ws.subtree(at('ws'), { env: ON, log: out.log }).map((r) => r.rel), ['.', 'api'], 'nothing below a garbage record is read');
+    assert.deepStrictEqual(out.lines.sort(), [GARBAGE('.alfred/workspace.json'), GARBAGE('api/.alfred/workspace.json')].sort(), 'one line per file, once');
+    const cliRun = (...argv) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'workspace.js'), ...argv], { encoding: 'utf8', env: { ...process.env, ...ON } });
+    for (const argv of [['status'], ['role', '--when', 'update']])
+    {
+        const r = cliRun(...argv, '--root', at('ws/free'));
+        assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+        assert.strictEqual(r.stdout.split('\n').filter((l) => l === GARBAGE('.alfred/workspace.json')).length, 1, r.stdout);
+        assert.doesNotMatch(r.stdout, /^ask: /m, r.stdout);
+    }
+});
+
+test('a child whose parent\'s workspace.json is garbage gets no rejoin ask, and register\'s write into it fails with why garbage', () =>
+{
+    const at = roleTree({ ws: { stamp: true }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
+    putJson(at('ws'), '{"children": ["api"');
+    const out = sink();
+    assert.strictEqual(ws.roleAsk(at('ws/api'), { env: ON, when: 'update', log: out.log }), null, 'no rejoin and no parent-gone ask');
+    assert.deepStrictEqual(out.lines, [GARBAGE('../.alfred/workspace.json')]);
+    const r = ws.register(at('ws/api'), { env: ON });
+    assert.deepStrictEqual([r.ok, r.code], [false, 1]);
+    const last = r.lines[r.lines.length - 1];
+    assert.match(last, /garbage/);
+    assert.doesNotMatch(last, /could not be written/);
+    assert.strictEqual(fs.readFileSync(jsonOf(at('ws')), 'utf8'), '{"children": ["api"', 'the garbage record is left as it is');
+});
+
+test('chain refuses a hop to a garbage parent', () =>
+{
+    const at = tree({ ws: { stamp: true }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    putJson(at('ws'), '{"children": [');
+    const got = ws.chain(at('ws/api'), { env: env0 });
+    assert.deepStrictEqual(got.members, []);
+    assert.strictEqual(got.notes.length, 1, got.notes.join('\n'));
+    assert.match(got.notes[0], /\.\.\/\.alfred\/workspace\.json is not valid JSON/);
+    assert.doesNotMatch(got.notes[0], /does not list/);
+});
+
+test('garbageOnLeave names each garbage record uninstall would write', () =>
+{
+    const own = tree({ p: { stamp: true } });
+    putJson(own('p'), '{');
+    assert.deepStrictEqual(ws.garbageOnLeave({ projectRoot: own('p'), env: env0 }), ['.alfred/workspace.json']);
+    const up = tree({ ws: { stamp: true }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    putJson(up('ws'), '{"children": ["api"');
+    assert.deepStrictEqual(ws.garbageOnLeave({ projectRoot: up('ws/api'), env: env0 }), ['../.alfred/workspace.json']);
+    const down = tree({ ws: { stamp: true, record: { children: ['api', 'web'] } }, 'ws/api': { stamp: true }, 'ws/web': { stamp: true, record: { parent: '..' } } });
+    putJson(down('ws/api'), '{');
+    assert.deepStrictEqual(ws.garbageOnLeave({ projectRoot: down('ws'), env: env0 }), ['api/.alfred/workspace.json']);
+    const fine = tree({ ws: { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    assert.deepStrictEqual(ws.garbageOnLeave({ projectRoot: fine('ws'), env: env0 }), []);
+    assert.deepStrictEqual(ws.garbageOnLeave({ projectRoot: fine('ws/api'), env: env0 }), []);
+    const empty = tree({ p: { stamp: true } });
+    putJson(empty('p'), '');
+    assert.deepStrictEqual(ws.garbageOnLeave({ projectRoot: empty('p'), env: env0 }), []);
 });
