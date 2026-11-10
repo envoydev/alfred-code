@@ -104,6 +104,15 @@ const flat = (text) => text.replace(/\s+/g, ' ');
 const walkBody = () => fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8');
 const STATE_READ = /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js" state \./;
 
+// The user's report of 2026-11-10: 'Stop suggesting gh during install or configure, user will select what to use on
+// its own'. The installer still accepts --forge-cli for a hand-run install; the walk never asks it.
+test('init asks no forge CLI question - the user picks their own tools', () => {
+    const body = installBody();
+    assert.doesNotMatch(body, /Reach <host> for the CI/);
+    assert.doesNotMatch(body, /forge-session\.js" --profile/);
+    assert.doesNotMatch(body, /--forge-cli/);
+});
+
 test('init is one command with two phases: the router reads the state and loads ONE phase file - manual-only', () => {
     const init = cmdBody('init');
     assert.match(init, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, 'init stays manual-only');

@@ -1275,7 +1275,8 @@ const SETUP_ASK_TEMPLATES = {
     // into it (2026-10-17).
     // +7: screen A's scope, root, profile and forge CLI asks (the GitHub CLI ask until 2026-10-23), step 2's permission mode, step 10's blockers and the
     // git-hygiene ask (audit 2026-10-21 commands T2-12). -1: the profile ask, with --space (the user's ruling of 2026-10-23).
-    'setup-plugin/references/init-install.md': 9,
+    // -1: the forge CLI ask - the user picks their own tools (the user's report of 2026-11-10; --forge-cli stays for a hand run).
+    'setup-plugin/references/init-install.md': 8,
     // a child install's scope ask and its local-scope git-hygiene ask, read only on `child=yes` (workspace layering,
     // 2026-10-26 - init-install.md is already past the Bash output cap, so a standalone install carries neither).
     'setup-plugin/references/init-child.md': 2,
