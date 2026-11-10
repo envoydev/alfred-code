@@ -2330,11 +2330,18 @@ function evalPath(expr, vals, homeMoved, depth = 0) {
 // A rooted path starts at a run-time directory, and every such spelling (HOME_CALL, ENV_DIR's DIR_ENV names) carries
 // one of these words: code without one builds no rooted path, so it is not read at all.
 const ROOT_HINT = /homedir|\.\s*home\b|expanduser|HOME|USERPROFILE|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR|cwd|PWD/;
+// SG1 D7: a RELATIVE path a join or a concatenation of literals builds (`os.path.join('.alfred', '.env')`, `'a/' + '.env'`)
+// is returned too, so code holding a join or a `'...' + '...'` is read beside code naming a root
+const BUILT_HINT = /\b(?:join|resolve|joinpath)\s*\(|\)\s*\/\s*['"]|['"]\s*\+\s*['"]/;
 function builtPaths(texts) {
   const out = new Set();
   for (const text of texts) {
-    const code = String(text);
-    if (!ROOT_HINT.test(code)) continue;
+    let code = String(text);
+    if (!ROOT_HINT.test(code) && !BUILT_HINT.test(code)) continue;
+    // a bound path module (`const p = require('path')`) joins as `path` does; no other alias is read
+    for (const m of code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*['"](?:node:)?path['"]\s*\)/g)) {
+      code = code.replace(new RegExp(`(?<![\\w$.])${m[1].replace(/\$/g, '\\$')}(?=\\s*\\.\\s*(?:join|resolve)\\s*\\()`, 'g'), 'path');
+    }
     const homeMoved = HOME_MOVED.test(code);
     const vals = new Map();
     const exprs = [];
@@ -2394,6 +2401,8 @@ function builtPaths(texts) {
     for (const x of exprs) {
       const v = evalPath(x, vals, homeMoved);
       if (v && v.rooted && pathMod.isAbsolute(v.p)) out.add(nativePath(v.p));
+      // every part a literal (vals hold rooted names only); no runtime expands `~` on its own
+      else if (v && !v.rooted && v.p && !v.p.startsWith('~')) out.add(v.p);
     }
     for (const x of commands.splice(0)) {
       const v = evalPath(x, vals, homeMoved);
@@ -2405,6 +2414,21 @@ function builtPaths(texts) {
 // The scripts an inline runtime stage carries: its quoted arguments, a double-quoted one unescaped the way the shell will.
 const inlineScripts = (stage) => shellTokens(stage).filter((t) => /^(['"])[\s\S]*\1$/.test(t))
   .map((t) => (t[0] === '"' ? t.slice(1, -1).replace(/\\(["\\$`])/g, '$1') : t.slice(1, -1)));
+// A script's quoted literals in order: each quote opens one that ends at the next unescaped same quote; 2-300 characters,
+// no newline (SG1 D7). A declaration, so the shell branch above its line can call it.
+function scriptLiterals(code) {
+  const out = [];
+  for (let i = 0; i < code.length; i++) {
+    const q = code[i];
+    if (q !== '"' && q !== "'" && q !== '`') continue;
+    let j = i + 1;
+    while (j < code.length && code[j] !== q) j += code[j] === '\\' ? 2 : 1;
+    const s = code.slice(i + 1, j);
+    if (s.length >= 2 && s.length <= 300 && !s.includes('\n')) out.push(s);
+    i = j;
+  }
+  return out;
+}
 // The command strings a pipeline stage hands to a shell, judged as that shell like a runtime's `execSync("...")` (2.1.6
 // review round: `bash -c 'cat ~/.aws/credentials'`, `eval` and `echo "cat <file>" | sh` printed the file unjudged, on base
 // too). A shell's `-c` runs the first word after its options, read with STDIN_FLAGS' shell row (`bash -e -c 'x'`, `bash
@@ -4603,6 +4627,8 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       // or the runtime is PowerShell, whose provider paths do; a body whose language has no row keeps it.
       const tildeRead = !isRuntime || TILDE_EXPANDER.test(stage) || /\b(?:pwsh|powershell)\b/i.test(stage) || (forceRuntime && !bodyLang);
       if (isRuntime) for (const m of stage.matchAll(/(["'`])([^"'`\n]{2,300})\1/g)) if (tildeRead || !m[2].startsWith('~')) { candidates.push(m[2]); if (!codeGlobs) literal.add(m[2]); }
+      // SG1 D7: the same literals paired IN ORDER inside each script body - a one-character `'.'` shifted the regex's pairing
+      if (isRuntime) for (const body of forceRuntime ? [stage] : inlineScripts(stage)) for (const s of scriptLiterals(body)) if (tildeRead || !s.startsWith('~')) { candidates.push(s); if (!codeGlobs) literal.add(s); }
       // ... or builds it from a directory it reads at run time (builtPaths)
       if (isRuntime) for (const b of builtInBody || builtPaths(inlineScripts(stage))) { candidates.push(b); if (!codeGlobs) literal.add(b); }
       // `< file` feeds the file to whatever the stage runs, `while read` and `done < file` included -
@@ -4826,9 +4852,11 @@ function fedFinds(stages, sj) {
   const toks = shellTokens(stages[sj]);
   const k = commandAt(toks);
   if (k >= toks.length) return out;
-  if (baseOf(wordOf(toks[k])) === 'find') {
+  const head = baseOf(wordOf(toks[k]));
+  // SG1 D7: an `ls` listing piped into `xargs <print verb>` hands its names on the same way (`-a` / `-A` lists dot-names)
+  if (head === 'find' || head === 'ls') {
     const args = toks.slice(k + 1).map(wordOf);
-    for (let j = 0; j < args.length; j++) {
+    if (head === 'find') for (let j = 0; j < args.length; j++) {
       if (!/^-(?:exec|execdir|ok|okdir)$/.test(args[j])) continue;
       let e = j + 1;
       while (e < args.length && !/^(?:\\?;|\+)$/.test(args[e])) e++;
@@ -4842,7 +4870,8 @@ function fedFinds(stages, sj) {
       const nk = commandAt(nt);
       if (!nt.slice(0, nk).some((w) => baseOf(wordOf(w)) === 'xargs')) continue;
       const reader = printProgram(nt.slice(nk));
-      if (reader) out.push({ args, verb: reader });
+      if (reader) out.push(head === 'find' ? { args, verb: reader } : { args: args.filter((w) => !w.startsWith('-')), verb: reader,
+        listing: true, dotfiles: args.some((w) => /^-(?!-)\S*[aA]|^--(?:all|almost-all)$/.test(w)) });
       break;
     }
     return out;
@@ -4921,6 +4950,7 @@ function findCredentialFile(starts, parsed, limits = walkLimits()) {
       entries.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
       for (const e of entries) {
         if (++seen > limits.entries) return { unjudged: 'entries', limit: limits.entries };
+        if (parsed.dotfiles === false && e.name[0] === '.') continue; // a listing without -a / -A (its walk is one level)
         const full = pathMod.join(dir, e.name);
         const r = rel ? `${rel}/${e.name}` : e.name;
         if (e.isDirectory()) {
@@ -4940,20 +4970,22 @@ function findCredentialFile(starts, parsed, limits = walkLimits()) {
 // A fed find whose walk reaches a credential file, or walks past a ceiling, BLOCKS - no one view stands in for the N files
 // xargs reads. One block row: `find-reader` (the file's name, never its value) or `find-reader-unjudged` (the ceiling).
 function judgeFindReader(stages, sj) {
-  for (const { args, verb } of fedFinds(stages, sj)) {
-    const parsed = findTests(args);
-    if (!credentialPattern(parsed)) continue;
+  for (const { args, verb, listing, dotfiles } of fedFinds(stages, sj)) {
+    // a listing's starts are its operands (a FILE judged itself, a folder one level deep), every name it lists handed on
+    const parsed = listing ? { starts: args, tests: [], wide: false, maxdepth: 1, mindepth: 0, types: null, dotfiles } : findTests(args);
+    if (!listing && !credentialPattern(parsed)) continue;
     const hit = findCredentialFile(findStarts(parsed.starts), parsed);
     if (!hit) continue;
     const guard = `"${shDouble(__filename)}"`;
+    const what = listing ? 'listing' : 'find';
     if (hit.unjudged) {
       const past = hit.unjudged === 'files' ? `${hit.limit} matched files` : hit.unjudged === 'bytes' ? `${hit.limit} bytes of matched files` : `${hit.limit} folder entries`;
-      global.BLOCK_DETAIL = { branch: 'find-reader-unjudged', matched: hit.unjudged };
-      block(`credential guard: this find walks past ${past} before handing its files to ${verb}, so the guard cannot judge them - narrow its start folder, its pattern or its -maxdepth, or read one file with node ${guard} --redacted <file>\n`);
+      global.BLOCK_DETAIL = { branch: `${what}-reader-unjudged`, matched: hit.unjudged };
+      block(`credential guard: this ${what} walks past ${past} before handing its files to ${verb}, so the guard cannot judge them - narrow its start folder, its pattern or its -maxdepth, or read one file with node ${guard} --redacted <file>\n`);
     }
     const file = `"${shDouble(hit.file)}"`;
-    global.BLOCK_DETAIL = { branch: 'find-reader', matched: baseOf(hit.file).slice(0, 40) };
-    block(`credential guard: this find hands ${hit.file} (a credential under ${hit.key}) to ${verb} - read one key with node ${guard} --presence ${file} ${hit.key}, or the whole file masked with node ${guard} --redacted ${file}\n`);
+    global.BLOCK_DETAIL = { branch: `${what}-reader`, matched: baseOf(hit.file).slice(0, 40) };
+    block(`credential guard: this ${what} hands ${hit.file} (a credential under ${hit.key}) to ${verb} - read one key with node ${guard} --presence ${file} ${hit.key}, or the whole file masked with node ${guard} --redacted ${file}\n`);
   }
 }
 // The Grep TOOL is the third read route onto the same file, and it was ungated: measured live, a

@@ -3394,3 +3394,40 @@ test('SG1 Bearer: a diff adding a Bearer token is piped through the masker; an i
   assert.ok(!spawnSync('bash', ['-c', piped], { cwd: g, encoding: 'utf8' }).stdout.includes(BEARER), 'the piped diff holds no token');
   for (const c of ['git diff -- a.ts', 'git diff -- b.py', 'grep -rn Bearer a.ts b.py']) assert.equal(verdict(call(c)), 0, `${c} runs as written, no pipe`);
 });
+
+// SG1 D7: the two read gaps the dotenv and the key file share - a path a script builds from literals, and a listing
+// fed to a reader. Project `a` holds only `.alfred/.env`, `b` only a root `.env`, so each row's cause stays apart.
+test('SG1 D7: a built path or a fed listing reaching a credential file is judged', () => {
+  const E = ['.e', 'nv'].join('');
+  const a = fs.mkdtempSync(path.join(TMP, 'd7a-'));
+  fs.mkdirSync(path.join(a, '.alfred')); fs.mkdirSync(path.join(a, 'config'));
+  fs.writeFileSync(path.join(a, '.alfred', E), `API_TOKEN=${FAKE_TOKEN}\n`); fs.writeFileSync(path.join(a, 'config', 'a.md'), '# a\n');
+  const b = fs.mkdtempSync(path.join(TMP, 'd7b-'));
+  fs.writeFileSync(path.join(b, E), `API_TOKEN=${FAKE_TOKEN}\n`); fs.writeFileSync(path.join(b, 'notes.md'), '# n\n');
+  const at = (dir, command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }, { CLAUDE_PROJECT_DIR: dir }));
+  for (const [dir, c] of [
+    [a, `python3 -c "import os; print(open(os.path.join('.alfred', '${E}')).read())"`],
+    [a, `node -e "const p=require('path');console.log(require('fs').readFileSync(p.join('.alfred','${E}'),'utf8'))"`],
+    [a, `python3 - <<'EOF'\nfrom pathlib import Path\nprint((Path('.alfred') / '${E}').read_text())\nEOF`],
+    [a, `python3 -c "print(open('.alfred/' + '${E}').read())"`], // a concatenation of literals
+    [b, `python3 -c "import os; print(open(os.path.join('.', '${E}')).read())"`],
+    [b, `python3 -c "x='.'; print(open('${E}').read())"`], // no join: only the in-order string pass reads it
+  ]) assert.equal(at(dir, c), REWRITE, c);
+  for (const [dir, c] of [[b, 'ls -a | grep env | xargs cat'], [b, 'ls -A . | xargs cat'], [a, 'ls -a .alfred | xargs -I{} cat .alfred/{}'],
+    [a, 'ls -a .alfred/.e* | xargs cat']]) // the last is Review Focus 5
+    assert.equal(at(dir, c), 2, c);
+  for (const [dir, c] of [[a, 'ls | xargs wc -l'], [a, 'ls config | xargs cat'], [b, 'ls | xargs cat'],
+    [a, `python3 -c "import os; print(os.path.join('.alfred', 'x.md'))"`],
+    [a, `python3 -c "import os; print(open(os.path.join('.alfred', 'missing', '${E}')).read())"`]])
+    assert.equal(at(dir, c), 0, c);
+  // each route in dotenv, JSON and the key file (spec Build order 2b), and a join with a write (the dropped-steps block)
+  const d7c = fs.mkdtempSync(path.join(TMP, 'd7c-'));
+  const K = ['.mcps-sec', 'rets'].join('');
+  const forms = [['d1', E, `API_TOKEN=${FAKE_TOKEN}\n`], ['d2', 'creds.json', JSON.stringify({ apiKey: FAKE_TOKEN })], ['d3', K, `CONTEXT7_API_KEY=${FAKE_TOKEN}\n`]];
+  for (const [sub, name, text] of forms) { fs.mkdirSync(path.join(d7c, sub)); fs.writeFileSync(path.join(d7c, sub, name), text); }
+  for (const [sub, name] of forms) {
+    assert.equal(at(d7c, `python3 -c "import os; print(open(os.path.join('${sub}', '${name}')).read())"`), REWRITE, `join: ${sub}`);
+    assert.equal(at(d7c, `ls -a ${sub} | xargs -I{} cat ${sub}/{}`), 2, `listing: ${sub}`);
+  }
+  assert.equal(at(d7c, `python3 -c "import os; p=os.path.join('d1', '${E}'); open('out.txt','w').write(open(p).read())"`), 2, 'a join with a write');
+});
