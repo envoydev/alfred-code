@@ -17,7 +17,7 @@ const stampLayer = require('./stamp.js');
 const variables = require('./variables.js');
 const rt = require('./runtime.js'); // every external command through the one Windows-safe spawn (M6)
 const layout = require('../../stack/hooks/layout.js');
-const { formatOf, stringifyLike } = require('./json-file.js');
+const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 
 const LOCAL = 'settings.local.json';
 const KEY = 'autoMemoryDirectory';
@@ -68,10 +68,13 @@ function readLocal(file)
     let text;
     try { text = layout.readText(file); }
     catch { return { state: 'garbage', data: null }; }
+    // layout.readText drops a UTF-8 BOM; the text handed on keeps it, so writeLocal keeps the file's shape (bug 4).
+    try { if (fs.readFileSync(file).subarray(0, 3).equals(Buffer.from([0xEF, 0xBB, 0xBF]))) text = String.fromCharCode(0xFEFF) + text; }
+    catch { /* read once already; the shape falls back to the defaults */ }
     if (!text.trim()) return { state: 'ok', data: {}, text };
     try
     {
-        const data = JSON.parse(text);
+        const data = parseJson(text);
         return data && typeof data === 'object' && !Array.isArray(data) ? { state: 'ok', data, text } : { state: 'garbage', data: null };
     }
     catch { return { state: 'garbage', data: null }; }

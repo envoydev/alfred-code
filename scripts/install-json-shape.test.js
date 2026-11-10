@@ -55,6 +55,16 @@ test('the settings writer keeps a BOM, CRLF and 4-space settings.json', () =>
     assert.strictEqual(parseJson(text).env.MY_KEY, '1');
 });
 
+test('the init writers (plugin-settings, and hud-statusline through its reader) keep a BOM, CRLF and 4-space settings file', () =>
+{
+    const { applyTargets } = require('./plugin-settings.js');
+    const file = path.join(dirOf(), 'settings.local.json');
+    fs.writeFileSync(file, '\uFEFF{\r\n    "env": {\r\n        "MY_KEY": "1"\r\n    }\r\n}\r\n');
+    applyTargets([{ file: 'settings.local.json', absolute: file, rows: [{ status: 'missing', key: 'env.NEW_KEY', want: '2' }] }], false);
+    const text = fs.readFileSync(file, 'utf8');
+    assert.strictEqual(text, '\uFEFF{\r\n    "env": {\r\n        "MY_KEY": "1",\r\n        "NEW_KEY": "2"\r\n    }\r\n}\r\n');
+});
+
 test('the account writer writes through a link and keeps the target\'s CRLF and indent', { skip: process.platform === 'win32' && 'links need privileges on Windows' }, () =>
 {
     const dir = dirOf();
@@ -67,14 +77,18 @@ test('the account writer writes through a link and keeps the target\'s CRLF and 
     assert.strictEqual(fs.readFileSync(real, 'utf8'), '{\r\n    "a": 1,\r\n    "b": 2\r\n}\r\n');
 });
 
-test('every indented JSON write in the installer goes through stringifyLike', () =>
+// The installer, plus the two init scripts that write a person's settings file (the account settings.json among them).
+const PERSON_FILE_WRITERS = ['hud-statusline.js', 'plugin-settings.js'];
+test('every indented JSON write in the installer and the init settings writers goes through stringifyLike', () =>
 {
     const dir = path.join(__dirname, 'install');
+    const files = [...fs.readdirSync(dir).filter((n) => n.endsWith('.js')).map((n) => [n, path.join(dir, n)]),
+        ...PERSON_FILE_WRITERS.map((n) => [n, path.join(__dirname, n)])].sort(([a], [b]) => a.localeCompare(b));
     const counts = {};
     const lines = [];
-    for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.js')).sort())
+    for (const [name, file] of files)
     {
-        fs.readFileSync(path.join(dir, name), 'utf8').split('\n').forEach((line, i) =>
+        fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) =>
         {
             if (!/JSON\.stringify\([^\n]*, null, /.test(line)) return;
             counts[name] = (counts[name] || 0) + 1;

@@ -48,6 +48,17 @@ test('docs: install --memory docs writes the absolute main-checkout path and its
     assert.match(r.out, /settings\.local\.json: autoMemoryDirectory written - \.alfred\/docs\/memory\/ \(ALFRED_CODE_MEMORY is docs; Claude's own memory lives with the docs from the next session\)/);
 });
 
+test('docs: a BOM, CRLF and 4-space settings.local.json keeps its shape when the row is written (bug 4)', POSIX_ONLY, () =>
+{
+    const r = seedRun('install', SEL, { args: ['--memory', 'docs'],
+        prepare: (repo) => writeLocal(repo, '\uFEFF{\r\n    "mine": 1\r\n}\r\n'),
+        inspect: (repo) => readOr(path.join(repo, '.claude', 'settings.local.json')) });
+    const text = r.result;
+    assert.ok(text.startsWith('\uFEFF'), `BOM kept: ${JSON.stringify(text.slice(0, 40))}`);
+    assert.match(text, /\r\n {4}"autoMemoryDirectory"/);
+    assert.ok(!/(^|[^\r])\n/.test(text), 'no lone LF');
+});
+
 test('docs: a second update changes nothing', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update'], SEL, {

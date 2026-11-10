@@ -221,9 +221,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `analyze-usage.js`, `library-check.js`, `audit-install.js`, `hud-statusline.js`, `agents-md-check.js` - use it too, and all run from
   the whole tree, so it ships beside them): a leading BOM is stripped, and anything else wrong - a BOM plus
   garbage included - still throws, so it is still unreadable. Every installer WRITE of such a file goes back through the
-  same module's `formatOf` / `stringifyLike`, handed the text it read: its BOM, line ends and indent kept, a file with no
-  indented line written with two spaces (bug 4 of the complexity audit, 2026-11-10 - seventeen writers re-laid out a CRLF or
-  4-space settings.json); `install-json-shape.test.js` fails an indented `JSON.stringify` write anywhere else. A BOM'd `.mcp.json` read as empty before (a bare
+  same module's `formatOf` / `stringifyLike`, handed the text it read (BOM included - a reader that strips it hands it back,
+  as `memory-dir.js readLocal` does): its BOM, line ends and indent kept, a file with no indented line written with two
+  spaces (bug 4 of the complexity audit, 2026-11-10 - seventeen writers re-laid out a CRLF or 4-space settings.json), and so
+  do the two init scripts that write a person's settings file, `plugin-settings.js` and `hud-statusline.js`;
+  `install-json-shape.test.js` fails an indented `JSON.stringify` write in `scripts/install/` or those two. Claude Code's own
+  `claude plugin install` still re-lays out a settings file it writes `enabledPlugins` into (probed 2.1.322). A BOM'd `.mcp.json` read as empty before (a bare
   `JSON.parse`), and once `keepMcpOrder` kept the BOM every update dropped a pick and its `enabledMcpjsonServers` entry
   (matrix F-BOM, 2.1.6); a new reader of such a file uses the helper, never a bare parse. At project scope, after the retire step's `claude mcp remove` writes `.mcp.json`, the file gets its own bytes back when
   its content did not change, and otherwise keeps its BOM, line ending, indent and key order and every top-level key
