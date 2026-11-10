@@ -570,12 +570,12 @@ test('workspace chain: a parent\'s store reached through its 8.3 short name is s
 });
 
 // R9 (AC21): the runner passes a server's stdout unmasked and secret-chain.js returns the values raw, so a command line
-// naming either, whatever its path, is refused and pointed to --with-sensitive. Only the store refusal's looks pass.
-test('workspace chain: a Bash, PowerShell or Monitor command naming secrets-run.js is denied, pointing to --with-sensitive (R9)', () =>
+// that runs either, whatever its path, copies it or feeds it to a runner is refused and pointed to --with-sensitive (SG1 rule 2).
+test('workspace chain: a Bash, PowerShell or Monitor command that runs, copies or feeds secrets-run.js to a runner is denied, pointing to --with-sensitive (R9)', () =>
 {
     const { dir } = project('engine-run', { file: '.secrets' });
     for (const command of ['node .claude/hooks/secrets-run.js -- x', '.claude/hooks/secrets-run.js -- x', 'bash -c \'node .claude/hooks/secrets-run.js -- x\'',
-        'cp .claude/hooks/secrets-run.js r.js', 'git diff stack/hooks/secrets-run.js', 'NODE_OPTIONS= node "/abs/path/secrets-run.js" -- npx server'])
+        'cp .claude/hooks/secrets-run.js r.js', 'NODE_OPTIONS= node "/abs/path/secrets-run.js" -- npx server'])
         for (const tool of ['Bash', 'PowerShell', 'Monitor']) assert.strictEqual(shellVerdict(tool, dir, command), 2, `${tool}: ${command}`);
     const r = run({ tool_name: 'Bash', tool_input: { command: 'node .claude/hooks/secrets-run.js -- x' }, cwd: dir, session_id: 'suite' });
     assert.match(r.stderr, /--with-sensitive -- "<command line>"/);
@@ -628,4 +628,20 @@ test('SG1 D2: the key file is guarded by name for what reads or moves it', () =>
     `python3 - <<'EOF'\np='scripts/keys.js'; s=open(p).read(); open(p,'w').write(s.replace('${KEY}', '${KEY}'))\nEOF`,
     `grep -rl '${KEY}' scripts | xargs sed -i 's/x/y/'`])
     assert.ok(runs(dir, c), c);
+});
+
+test('SG1 rule 2: an engine read passes; a run, a copy or a fed runner is refused', () => {
+  const { dir } = project('rule2', { file: '.secrets' });
+  for (const name of [['secrets', '-run.js'].join(''), ['secret', '-chain.js'].join('')]) {
+    for (const c of [`sed -n 1,60p stack/hooks/${name}`, `cat stack/hooks/${name}`, `grep -n chain stack/hooks/${name}`,
+      `head -20 stack/hooks/${name}`, `git show HEAD:stack/hooks/${name}`, `git diff stack/hooks/${name}`, `diff stack/hooks/${name} x.js`])
+      for (const tool of ['Bash', 'PowerShell', 'Monitor']) assert.ok(runs(dir, c, tool), `${tool}: ${c}`);
+    for (const c of [`node stack/hooks/${name} -- x`, `./stack/hooks/${name}`, `cp stack/hooks/${name} r.js`, `mv stack/hooks/${name} r.js`,
+      `ln -s stack/hooks/${name} r.js`, `ls stack/hooks/${name} | xargs -I{} node {} -- x`, `node $(ls stack/hooks/${name}) x`,
+      `node -r ./stack/hooks/${name} app.js`, `bash -c 'node stack/hooks/${name} -- x'`,
+      `node < stack/hooks/${name}`, `cat stack/hooks/${name} | node -`, `cat stack/hooks/${name} | bash`,
+      `cat stack/hooks/${name} | source /dev/stdin`, `E=stack/hooks/${name}; node "$E" -- x`,
+      `ls stack/hooks/${name} | while read f; do node "$f"; done`, `timeout 60 node stack/hooks/${name} -- x`])
+      assert.equal(bash(dir, c), 2, c);
+  }
 });

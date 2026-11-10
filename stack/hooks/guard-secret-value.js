@@ -3535,24 +3535,52 @@ function sensitiveLooks(words, stage, pipedOn) {
   if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*(?:\.sensitive-data|\.secrets)\b/i.test(stage);
   return false;
 }
-// R9 (workspace layering, release 2, AC21): a command line NAMING secrets-run.js or secret-chain.js, whatever its path,
-// is refused and pointed to --with-sensitive - the runner passes a server's stdout unmasked and the chain reader returns
-// the values raw, so either hands the chain over. Read in the command and in the heredoc bodies a shell or runtime runs,
-// before any rewrite; only the looks above pass. A script FILE a runtime runs is not read - the store's residual too.
+// R9 (workspace layering, release 2, AC21) and SG1 rule 2: secrets-run.js or secret-chain.js, whatever its path, is
+// refused and pointed to --with-sensitive when a command RUNS, moves or feeds it to a runner - the runner passes a
+// server's stdout unmasked and the chain reader returns the values raw. A read of its source passes. Read in the command
+// and in the heredoc bodies a shell runs (a shell's -c string too, D6), before any rewrite; a name bound earlier in the
+// command (`E=<engine>; node "$E"`) counts, VARS restored after. A script FILE a runtime runs is not read.
 function refuseEngineMention(text) {
   if (allowAll) return;
   const ENGINE = /(?:^|[^\w.-])(secrets-run|secret-chain)\.js(?![\w.-])/i;
-  const parts = String(text).split(/(\|\||&&|[;&|\n])/);
-  for (let i = 0; i < parts.length; i += 2) {
-    const joined = parts[i].replace(/(["'])([^"'\n]*)\1/g, '$2');
-    const m = joined.match(ENGINE);
-    if (!m || /guard-secret-value\.js/.test(parts[i])) continue;
-    const words = joined.trim().split(/\s+/).filter((w) => !/^[A-Za-z_]\w*=/.test(w) && w !== 'sudo' && w !== '!');
-    // every look only as the LAST stage, `ls` and `test` too: `ls <runner> | xargs -I{} node {}` runs it
-    if (parts[i + 1] !== '|' && sensitiveLooks(words, joined, false)) continue;
-    global.BLOCK_DETAIL = { branch: 'secrets-engine', matched: `${m[1]}.js` };
-    block(engineRefusal(m[1]));
-  }
+  const RUNNER = /^(?:node|nodejs|bun|deno|(?:ba|z|da|k)?sh)$/;
+  const hit = (w) => w && [w, ...candidatePaths(w)].map((p) => String(p).match(ENGINE)).find(Boolean);
+  // a runner reading its script from stdin: node / bun / deno with none or `-`, a shell with no -c and no script, source /dev/stdin
+  const onStdin = (w) => { const v = baseOf(w[commandAt(w)] || ''); const r = w.slice(commandAt(w) + 1).filter((x) => !x.startsWith('-') || x === '-');
+    return (RUNNER.test(v) && (!r.length || r[0] === '-') && !w.includes('-c')) || (/^(?:source|\.)$/.test(v) && r[0] === '/dev/stdin'); };
+  const saved = new Map();
+  const judge = (cmd, depth) => {
+    const segs = splitSegments(String(cmd));
+    segs.forEach((seg, s) => splitPipes(seg).forEach((stage, k, stages) => {
+      const toks = shellTokens(stage.trim());
+      if (/guard-secret-value\.js/.test(stage) || !toks.length) return;
+      if (toks.every((t) => /^[A-Za-z_]\w*=/.test(t))) {
+        for (const t of toks) { const eq = t.indexOf('='); if (!saved.has(t.slice(0, eq))) saved.set(t.slice(0, eq), VARS.get(t.slice(0, eq))); VARS.set(t.slice(0, eq), [assignedValue(t.slice(eq + 1))]); }
+        return;
+      }
+      const words = toks.map(wordOf);
+      const at = commandAt(toks);
+      const verb = baseOf(words[at] || '');
+      const rest = words.slice(at + 1);
+      const c = rest.indexOf('-c');
+      if (/^(?:ba|z|da|k)?sh$/.test(verb) && c >= 0 && depth < 2) { judge(rest[c + 1] || '', depth + 1); return; }
+      const later = stages.slice(k + 1).map((x) => shellTokens(x.trim()).map(wordOf));
+      // the loop body after a `while read` stage, up to its `done`: its runner runs what the stage prints
+      const body = later.some((w) => w[0] === 'while' && w.includes('read')) ? segs.slice(s + 1, segs.findIndex((x, n) => n > s && /^\s*done\b/.test(x)) + 1 || undefined) : [];
+      const script = RUNNER.test(verb) ? rest.find((w, j) => !w.startsWith('-') && !/^(?:-r|--require)$/.test(rest[j - 1] || '')) : null;
+      const sub = script && /^(?:\$\(|`)/.test(script) ? substitutions(stage.slice(stage.indexOf(script)))[0] : null;
+      const m = hit(words[at]) || hit(script) || (sub && sub.match(ENGINE)) // the command word, a runner's script operand
+        || rest.map((w, j) => (/^(?:-r|--require)$/.test(rest[j - 1] || '') ? hit(w) : null)).find(Boolean) // a preload
+        || (/^(?:cp|mv|ln|install|rsync)$/.test(verb) && rest.map(hit).find(Boolean)) // moved or copied
+        || (RUNNER.test(verb) && hit(wordOf((stage.match(/(?:^|[^<])<\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/) || [])[1] || ''))) // `node < <engine>`
+        || ((later.some(onStdin) || later.some((w) => /^(?:xargs|parallel)$/.test(baseOf(w[0] || '')) && w.slice(1).some((x) => RUNNER.test(baseOf(x))))
+          || body.some((b) => shellTokens(b.trim()).map(wordOf).some((x) => RUNNER.test(baseOf(x))))) && stage.match(ENGINE)); // fed to a runner
+      if (!m) return;
+      global.BLOCK_DETAIL = { branch: 'secrets-engine', matched: `${m[1]}.js` };
+      block(engineRefusal(m[1]));
+    }));
+  };
+  try { judge(text, 0); } finally { for (const [n, v] of saved) { if (v === undefined) VARS.delete(n); else VARS.set(n, v); } }
 }
 function engineRefusal(name) {
   return `Blocked: this command names ${name}.js, the workspace secrets engine - the MCP launcher passes a server's stdout\n` +
