@@ -3027,7 +3027,7 @@ const shellWord = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "
 // `$API_TOKEN_PATH` it merely names must not read as a printed credential variable (printf's `\044` is the dollar).
 const stderrNote = (text) => `printf '${String(text).replace(/\\/g, '\\\\').replace(/%/g, '%%').replace(/\$/g, '\\044').replace(/'/g, "'\\''")}\\n' >&2`;
 function grepArgs(words) {
-  const g = { verb: words[0], kept: [words[0]], operands: [], recursive: false, depth: false, unknown: false, namesOnly: false, quiet: false };
+  const g = { verb: words[0], kept: [words[0]], operands: [], recursive: false, depth: false, unknown: false, namesOnly: false, quiet: false, text: [], files: [] };
   let patternGiven = false;
   let endOpts = false;
   for (let k = 1; k < words.length; k++) {
@@ -3052,7 +3052,7 @@ function grepArgs(words) {
       if (name === 'regexp' || name === 'file') patternGiven = true;
       if (/^(?:quiet|silent)$/.test(name)) { g.quiet = true; g.namesOnly = true; }
       if (/^(?:files-with-matches|files-without-match|count)$/.test(name)) g.namesOnly = true;
-      if (GREP_LONG_VALUE.has(name)) { g.kept.push(raw); const v = next(); if (v != null) g.kept.push(v); continue; }
+      if (GREP_LONG_VALUE.has(name)) { g.kept.push(raw); const v = next(); if (v != null) g.kept.push(v); if (name === 'file') g.files.push(eq < 0 ? v : w.slice(eq + 1)); else g.text.push(k); continue; }
       if (!GREP_LONG.has(name) || (eq >= 0 && !/^colou?r$/.test(name))) g.unknown = true;
       g.kept.push(raw);
       continue;
@@ -3070,7 +3070,7 @@ function grepArgs(words) {
           if (c === 'd' && dequoteWord(v) === 'recurse') { g.recursive = true; if (!attached) k++; break; }
           if (c === 'e' || c === 'f') patternGiven = true;
           flags += c + attached;
-          if (!attached && k + 1 < words.length) value = words[++k];
+          if (!attached && k + 1 < words.length) value = words[++k]; if (c === 'f') g.files.push(attached || value); else g.text.push(k);
           break;
         }
         if (!GREP_SHORT.includes(c)) g.unknown = true;
@@ -3082,7 +3082,7 @@ function grepArgs(words) {
       if (value != null) g.kept.push(value);
       continue;
     }
-    if (!patternGiven) { patternGiven = true; g.kept.push(raw); continue; }
+    if (!patternGiven) { patternGiven = true; g.kept.push(raw); g.text.push(k); continue; }
     g.operands.push(raw);
   }
   return g;
@@ -3110,22 +3110,40 @@ function operandKinds(word) {
 // list misreads as an operand only makes the read unnarrowable (the whole view), never a narrowed rg that walks.
 const RG_SHORT_VALUE = 'efgtTABCmrMjE';
 const RG_LONG_VALUE = /^--(?:regexp|file|glob|iglob|type|type-not|type-add|type-clear|after-context|before-context|context|max-count|replace|max-columns|threads|encoding|context-separator|field-match-separator|field-context-separator|path-separator|max-depth|max-filesize|sort|sortr|colors|color|engine|dfa-size-limit|regex-size-limit|pre|pre-glob|ignore-file|hyperlink-format)$/;
-function rgOperands(words) {
+// `rec` takes the indexes of the pattern and of each value but a -f / --file one (`text`), and the -f values (`files`).
+function rgOperands(words, rec = { text: [], files: [] }) {
   const out = [];
   let patternGiven = false;
   for (let k = 1; k < words.length; k++) {
     const w = dequoteWord(words[k]);
     if (/^(?:\d*|&)>/.test(words[k])) { if (/^(?:\d*|&)>>?$/.test(words[k])) k++; continue; }
-    if (w === '--') { out.push(...words.slice(patternGiven ? k + 1 : k + 2)); return out; }
-    if (/^--./.test(w)) { if (/^--(?:regexp|file)(?:=|$)/.test(w)) patternGiven = true; if (RG_LONG_VALUE.test(w)) k++; continue; }
+    if (w === '--') { if (!patternGiven) rec.text.push(k + 1); out.push(...words.slice(patternGiven ? k + 1 : k + 2)); return out; }
+    if (/^--./.test(w)) { if (/^--(?:regexp|file)(?:=|$)/.test(w)) patternGiven = true; const takes = RG_LONG_VALUE.test(w.split('=')[0]); if (RG_LONG_VALUE.test(w)) k++; if (/^--file(?:=|$)/.test(w)) rec.files.push(w.includes('=') ? w.slice(7) : words[k]); else if (takes) rec.text.push(k); continue; }
     if (/^-./.test(w)) {
-      for (let i = 1; i < w.length; i++) if (RG_SHORT_VALUE.includes(w[i])) { if ('ef'.includes(w[i])) patternGiven = true; if (i + 1 === w.length) k++; break; }
+      for (let i = 1; i < w.length; i++) if (RG_SHORT_VALUE.includes(w[i])) { if ('ef'.includes(w[i])) patternGiven = true; if (i + 1 === w.length) k++; if (w[i] === 'f') rec.files.push(i + 1 < w.length ? w.slice(i + 1) : words[k]); else rec.text.push(k); break; }
       continue;
     }
-    if (!patternGiven) { patternGiven = true; continue; }
+    if (!patternGiven) { patternGiven = true; rec.text.push(k); continue; }
     out.push(words[k]);
   }
   return out;
+}
+// the index of a git call's subcommand, past git's own options and their values (`-C <dir>`, `-c <name=value>`)
+function gitSubAt(words) {
+  let g = 1;
+  while (g < words.length && String(words[g]).startsWith('-')) g += /^-[Cc]$|^--(?:git-dir|work-tree|namespace|exec-path|config-env)$/.test(words[g]) ? 2 : 1;
+  return g;
+}
+// SG1 rule 1: the words a grep, git grep or rg stage READS - its operands and each -f / --file value, never its pattern (a
+// pattern naming the store was read as the store, and the whole grep became its masked view). null for any other stage.
+function grepCandidates(stage) {
+  const words = shellTokens(String(stage).replace(PREFIX_WORDS, '').replace(/^\s*\(+/, ''));
+  const verb = baseOf(dequoteWord(words[0] || ''));
+  const k = verb === 'git' ? gitSubAt(words) : 0;
+  if (verb === 'rg') { const rec = { text: [], files: [] }; return [...rgOperands(words, rec), ...rec.files].filter(Boolean); }
+  if (!/^(?:grep|egrep|fgrep)$/.test(verb) && dequoteWord(words[k]) !== 'grep') return null;
+  const g = grepArgs(words.slice(k));
+  return [...g.operands, ...g.files].filter(Boolean);
 }
 // A `cat <file> | <reader>` hands its reader the file - the view stands in for the cat, and the reader keeps reading
 // (the sessions' `cat <settings> | node -e '<print the plugin keys>'` came back as the whole view).
@@ -3512,11 +3530,7 @@ function sensitiveLooks(words, stage, pipedOn) {
   const v = baseOf(words[0] || '');
   if (SENSITIVE_LOOKS.has(v)) return true;
   if (pipedOn) return false;
-  if (v === 'git') {
-    let i = 1;
-    while (i < words.length && words[i].startsWith('-')) i += /^-[Cc]$|^--(?:git-dir|work-tree)$/.test(words[i]) ? 2 : 1;
-    return GIT_LOOKS.test(words[i] || '');
-  }
+  if (v === 'git') return GIT_LOOKS.test(words[gitSubAt(words)] || '');
   if (/^(?:grep|rg|egrep|fgrep|cut|awk|sed|jq)$/.test(v)) return isReducer(String(stage).trim());
   if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*(?:\.sensitive-data|\.secrets)\b/i.test(stage);
   return false;
@@ -3626,17 +3640,16 @@ function refuseSensitiveMention(text, steps = text) {
   // is no mention and no path.
   const EXCLUDE_FLAG = /^--exclude(?:-from|-dir)?$/;
   const EXCLUDED = /(^|\s)--exclude(?:-from|-dir)?(?:=|\s+)("[^"]*"|'[^']*'|\S+)/g;
-  // the literal name, quoted spans joined; a pipe is the stages `|` joins, and one naming the data root lets a bare
-  // `.secrets` in any of them count
-  const parts = String(text).split(/(\|\||&&|[;&|\n])/);
+  // SG1 rule 1: a word names the store as text - MENTION, or a bare `.secrets` in a pipe a stage of which names the data root
   const joinedOf = (seg) => joinQuoted(seg.replace(EXCLUDED, '$1'));
-  const pipeOf = [];
-  const pipeAtRoot = [];
-  for (let i = 0, p = -1; i < parts.length; i += 2) {
-    if (i === 0 || parts[i - 1] !== '|') pipeAtRoot[++p] = false;
-    pipeOf[i] = p;
-    if (ROOT_WORD.test(joinedOf(parts[i]))) pipeAtRoot[p] = true;
-  }
+  const namesStore = (t, pipe) => MENTION.test(t) || (BARE.test(t) && pipe.some((s) => ROOT_WORD.test(joinedOf(s))));
+  const KEY_NAMED = new RegExp(`(?:^|[^\\w.-])${KEY_FILE.replace('.', '\\.')}(?![\\w.-])`, 'i');
+  // a stage that runs what reaches its stdin: xargs, parallel, a `while read` loop, a shell with no -c and no script, source of stdin
+  const feeder = (s) => {
+    const w = shellTokens(s.trim()).map(joinQuoted).filter(plain); const f = baseOf(w[0] || '');
+    return /^(?:xargs|parallel)$/.test(f) || (f === 'while' && w[1] === 'read') || (/^(?:source|\.)$/.test(f) && w[1] === '/dev/stdin')
+      || (/^(?:ba|z|da|k)?sh$/.test(f) && w.slice(1).every((x) => x.startsWith('-') && x !== '-c'));
+  };
   // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
   // cwd's hid the cwd's store from a tree-taking verb.
   const statAll = (p) => {
@@ -3668,35 +3681,9 @@ function refuseSensitiveMention(text, steps = text) {
   // A negated test matching the store where find prints it (a path test on `shown`, a name test on the basename) leaves the
   // store out of the walk's output - only where liftable() holds (no -o branch, comma, group or earlier action prints it).
   const excludes = (args, t, pair) => liftable(args, t) && globOf(t.pattern, t.i ? 'i' : '').test(t.path ? pair.shown : pair.base);
-  // The pattern words of a find's exclusions of the store: each negated test excluding it from every start the walk reaches
-  // it from, every start resolved. The mention pass blanks only these operands.
-  const findExcludes = (args) => {
-    const parsed = findTests(args);
-    const { pairs, unresolved } = findReach(parsed);
-    if (unresolved) return new Set();
-    return new Set(parsed.tests.filter((t) => pairs.every((pair) => excludes(args, t, pair))).map((t) => t.pattern));
-  };
-  for (let i = 0; i < parts.length; i += 2) {
-    const seg = parts[i];
-    let joined = joinedOf(seg);
-    const mentions = (j) => MENTION.test(j) || (pipeAtRoot[pipeOf[i]] && BARE.test(j));
-    if (!mentions(joined) || /guard-secret-value\.js/.test(seg)) continue;
-    // AC-1: in a find, the operand of a negated test that excludes the store names nothing the command opens
-    // (`find . -type f -not -path './.alfred/<store>' | head`); any other mention refuses as before
-    const raw = shellTokens(seg.replace(EXCLUDED, '$1'));
-    const at = commandAt(raw);
-    const toks = raw.map(joinQuoted);
-    if (at < toks.length && baseOf(toks[at]) === 'find') {
-      const out = findExcludes(toks.slice(at + 1));
-      if (out.size) {
-        joined = toks.filter((w, j) => !(j > at + 1 && out.has(w) && /^-i?(?:name|path|wholename)$/.test(toks[j - 1]) && /^(?:-not|!)$/.test(toks[j - 2]))).join(' ');
-        if (!mentions(joined)) continue;
-      }
-    }
-    const words = joined.trim().split(/\s+/).filter(plain);
-    if (looks(words, joined, parts[i + 1] === '|')) continue;
-    refuse(words[0]);
-  }
+  // the pattern words of a find's exclusions of the store, each excluding it from every start the walk reaches it from
+  const findExcludes = (args) => { const parsed = findTests(args); const { pairs, unresolved } = findReach(parsed);
+    return new Set(unresolved ? [] : parsed.tests.filter((t) => pairs.every((pair) => excludes(args, t, pair))).map((t) => t.pattern)); };
   // the spelled name: each operand resolved the way the dump half resolves it
   let budget = 64;
   // `.sensitive-data` by its name, `.secrets` only under the data root (a project's own `.secrets` is no store)
@@ -3729,7 +3716,7 @@ function refuseSensitiveMention(text, steps = text) {
       if (tests.length ? tests.some((t) => t.re.test(t.path ? pair.shown : pair.base)) : pair.segs.length === 1) refuse('find');
     }
   };
-  const judgeStage = (stage, depth, pipedOn) => {
+  const judgeStage = (stage, depth, pipedOn, pipe = [stage], k = 0) => {
     // a `$(...)` or backtick body runs as steps of its own (item 3: `echo "$(source .alfred/.secrets; ...)"` named no
     // literal the mention pass reads)
     if (depth < 2) for (const body of substitutions(stage)) judgeAll(body, depth + 1);
@@ -3739,7 +3726,10 @@ function refuseSensitiveMention(text, steps = text) {
       for (const t of toks) { const eq = t.indexOf('='); VARS.set(t.slice(0, eq), [assignedValue(t.slice(eq + 1))]); }
       return;
     }
-    const words = toks.map(joinQuoted).filter(plain);
+    // every token, NAME=value words too (rule 1 reads them); `words` are the plain ones, `idx` their places in `all`
+    const all = toks.map(joinQuoted);
+    const idx = all.map((w, j) => j).filter((j) => plain(all[j]));
+    const words = idx.map((j) => all[j]);
     const verb = baseOf(words[0] || '');
     if (!verb || /guard-secret-value\.js/.test(stage)) return;
     if (verb === 'cd' || verb === 'pushd') {
@@ -3749,10 +3739,18 @@ function refuseSensitiveMention(text, steps = text) {
       if (d && d !== '-') cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(from, d);
       return;
     }
+    // the feeder rule: a stage naming the store anywhere but an exclusion is refused when a later stage of its pipe runs what
+    // it prints - looks included (`ls <store> | xargs cat`); a find's negated test excluding the store (AC-1) names nothing
+    // it prints. The key file is no subject (D2).
+    const excluded = (j) => EXCLUDE_FLAG.test(all[j - 1] || '') || /^--exclude(?:-from|-dir)?=/.test(all[j]);
+    const findTest = (j) => /^g?find$/.test(verb) && /^-i?(?:name|path|wholename|regex|lname)$/.test(all[j - 1] || '');
+    const fed = pipe.slice(k + 1).some(feeder);
+    const lifted = fed && verb === 'find' ? findExcludes(words.slice(1)) : new Set();
+    if (fed && all.some((t, j) => !excluded(j) && !(findTest(j) && lifted.has(t) && /^(?:-not|!)$/.test(all[j - 2])) && namesStore(t, pipe))) refuse(verb);
     if (looks(words, stage, pipedOn)) return;
-    // a shell's -c string is a command of its own
+    // a shell's -c string is a command of its own, as the shell reads it
     const c = words.indexOf('-c');
-    if (/^(?:ba|z|da|k)?sh$/.test(verb) && c > 0 && words[c + 1] && depth < 2) { judgeAll(words[c + 1], depth + 1); return; }
+    if (/^(?:ba|z|da|k)?sh$/.test(verb) && c > 0 && words[c + 1] && depth < 2) { judgeAll(wordOf(toks[idx[c + 1]]), depth + 1); return; }
     const args = words.slice(1);
     if (verb === 'find') {
       const raw = toks.map(joinQuoted).filter((w) => !/^[A-Za-z_]\w*=/.test(w));
@@ -3799,11 +3797,12 @@ function refuseSensitiveMention(text, steps = text) {
       : copies ? (recursive || /^(?:ditto|robocopy|xcopy)$/i.test(verb))
       : verb === 'git' && sub === 'add' && args.some((w) => /^--force$|^-[A-Za-z]*f[A-Za-z]*$/.test(w)));
     const storesAt = takesTree ? sensitiveStores() : [];
+    const text = textPositions(all);
     for (let i = 0; i < args.length; i++) {
       const raw = args[i];
       if (EXCLUDE_FLAG.test(raw)) { i++; continue; }
-      if (/^--exclude(?:-from|-dir)?=/.test(raw) || patternAt.has(i)) continue;
-      if (budget <= 0) return;
+      if (/^--exclude(?:-from|-dir)?=/.test(raw) || patternAt.has(i) || text.has(idx[i + 1])) continue;
+      if (budget <= 0) break;
       const word = raw.replace(/^\d*[<>]+&?/, '');
       const value = /^-[^=]*=/.test(word) ? word.slice(word.indexOf('=') + 1) : word;
       if (!value || value.startsWith('-') || value.length > 512) continue;
@@ -3824,12 +3823,48 @@ function refuseSensitiveMention(text, steps = text) {
         }
       }
     }
+    // SG1 rule 1: an operand naming the store, resolvable or not, or whose last segment is the key file; a substitution
+    // operand whose body names either. Text, exclusions and find tests are no operand.
+    for (let j = 0; j < all.length; j++) {
+      if (text.has(j) || excluded(j) || findTest(j) || patternAt.has(idx.indexOf(j) - 1)) continue;
+      if (namesStore(all[j], pipe)) refuse(verb);
+      if (all[j].split(/[\\/=@]/).pop().toLowerCase() === KEY_FILE) refuseKey(all[j]);
+      for (const body of substitutions(toks[j])) {
+        const t = storeNameTests(body);
+        if (t.MENTION.test(body) || (t.BARE.test(body) && t.ROOT_WORD.test(body))) refuse(verb);
+        if (KEY_NAMED.test(body)) refuseKey(body.split(/\s+/).find((w) => KEY_NAMED.test(w)));
+      }
+    }
   };
   const judgeAll = (cmd, depth) => {
-    for (const seg of splitSegments(String(cmd))) { const stages = splitPipes(seg); stages.forEach((stage, k) => judgeStage(stage, depth, k < stages.length - 1)); }
+    for (const seg of splitSegments(String(cmd))) { const stages = splitPipes(seg); stages.forEach((stage, k) => judgeStage(stage, depth, k < stages.length - 1, stages, k)); }
   };
   cwdAnchor = null;
   try { judgeAll(steps, 0); } catch (err) { if (err instanceof JudgeBudget) return; throw err; }
+}
+// SG1 rule 1 (spec step 5): the indexes of a stage's tokens that are TEXT, never an operand the mention pass reads - a grep,
+// git grep or rg pattern, a value option's value (a -f / --file value stays an operand), a git message or log search, an
+// echo / printf word other than a redirect and its target. `all` is every token, NAME=value words included.
+function textPositions(all) {
+  const text = new Set();
+  let v = 0;
+  while (v < all.length && (/^[A-Za-z_]\w*=/.test(all[v]) || all[v] === 'sudo' || all[v] === '!')) v++;
+  const verb = baseOf(all[v] || '');
+  const at = (list, from) => list.forEach((i) => text.add(i + from));
+  const rec = { text: [], files: [] };
+  const g = verb === 'git' ? v + gitSubAt(all.slice(v)) : v;
+  const sub = all[g] || '';
+  if (/^(?:echo|printf)$/.test(verb)) for (let k = v + 1; k < all.length; k++) { if (!/^(?:\d*|&)?[<>]/.test(all[k])) text.add(k); else if (/^(?:\d*|&)?[<>]+&?$/.test(all[k])) k++; }
+  else if (verb === 'rg') { rgOperands(all.slice(v), rec); at(rec.text, v); }
+  else if (/^(?:grep|egrep|fgrep)$/.test(verb) || (verb === 'git' && sub === 'grep')) at(grepArgs(all.slice(g)).text, g);
+  // a git message where the subcommand takes one, a log search where it searches: the value attached, or the next plain word
+  const kinds = verb !== 'git' ? '' : `${/^(?:commit|merge|tag|stash|notes)$/.test(sub) ? 'm' : ''}${/^(?:log|show|whatchanged|rev-list|shortlog|reflog|diff|format-patch)$/.test(sub) ? 'SG' : ''}`;
+  for (let k = g + 1; kinds && k < all.length; k++) {
+    const m = all[k].match(/^--(message|grep)(=?)/) || all[k].match(/^-(?!-)[A-Za-z]*?([mSG])(.*)$/);
+    if (!m || !kinds.includes(m[1] === 'message' ? 'm' : m[1] === 'grep' ? 'S' : m[1])) continue;
+    if (m[2]) text.add(k); else if (k + 1 < all.length && !all[k + 1].startsWith('-')) text.add(++k);
+  }
+  return text;
 }
 
 // A print of a credential-shaped variable becomes that variable's presence line - the idiom the
@@ -4657,7 +4692,8 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       // a substitution that only counts reads into a number, never the terminal (blankCountSubs)
       const candStage = isRuntime || IS_PWSH ? stage : blankCountSubs(stage);
       if (DUMP_VERB.test(candStage) || isRuntime) {
-        for (const tok of shellTokens(candStage)) {
+        // a grep stage's candidates are what it reads, never its pattern (grepCandidates, SG1 rule 1)
+        for (const tok of (!isRuntime && !IS_PWSH && grepCandidates(candStage)) || shellTokens(candStage)) {
           if (tok.startsWith('-') || !/[\/.~$]/.test(tok)) continue;
           const t = tok.replace(/^\(+/, '').replace(/(?<!\))\)+$/, '');
           candidates.push(t);
