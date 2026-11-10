@@ -636,6 +636,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile),
         });
 
+        // The projects below take this run's excludes now, not at their own next run (workspace.js refreshBelow, 2026-11-10).
+        // --print-plan returned before the stamp; a project with its switch off is left alone.
+        if ((args.action === 'install' || args.action === 'update') && ctx.workspace && ctx.workspace.on && fs.existsSync(path.join(claudeDir, BRAND.stamp)))
+        {
+            try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }) }); }
+            catch (e) { note(`workspace: the refresh of the projects below stopped - ${e.message}`); }
+        }
+
         summarise(ctx, failures);
         return failures ? 0 : 0;   // fail-soft by design: a step that failed is REPORTED, never fatal
     }
@@ -678,7 +686,7 @@ function runLayers(ctx)
     catch (err) { ctx.note(`docs memory could not be checked (${err.message}) - --memory docs is not applied this run`); if (ctx.args.memory === 'docs') ctx.args.memory = undefined; ctx.args.memoryCopy = false; }
     variablesStep(ctx);
     installHooksAndRules(ctx);
-    if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx, path.join(ctx.claudeDir, 'settings.local.json'));
+    if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx.projectRoot, path.join(ctx.claudeDir, 'settings.local.json'), ctx);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
@@ -2062,15 +2070,16 @@ function installHooksAndRules(ctx)
     // (code.claude.com/docs/en/settings) - one this run created, and git does not ignore, is named. F7: it
     // is the user's to act on (a machine path would be committed), so it carries the `!!` marker the 1.x
     // update body's grep and every `warn:` pass read.
-    if (!hadLocal && fs.existsSync(localSettings)) warnUnignoredLocal(ctx, localSettings);
+    if (!hadLocal && fs.existsSync(localSettings)) warnUnignoredLocal(ctx.projectRoot, localSettings, ctx);
 }
 
-// C8's line, for a settings.local.json this run created that git does not ignore - the settings pass and the workspace
-// excludes (which hold this machine's absolute paths) both call it, each only for a file it made.
-function warnUnignoredLocal(ctx, file)
+// C8's line, for a settings.local.json this run created that git does not ignore - the settings pass, the workspace
+// excludes (which hold this machine's absolute paths) and the refresh of a project below (`root` that project's) all
+// call it, each only for a file it made.
+function warnUnignoredLocal(root, file, { rt, log })
 {
-    if (ctx.rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(ctx.projectRoot, file)], { cwd: ctx.projectRoot, stdio: 'ignore' }).status === 1)
-        ctx.log(`  !! settings.local.json: created for this machine's own values - git does not ignore it here; add ${path.relative(ctx.projectRoot, file).split(path.sep).join('/')} to .gitignore`);
+    if (rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(root, file)], { cwd: root, stdio: 'ignore' }).status === 1)
+        log(`  !! settings.local.json: created for this machine's own values - git does not ignore it here; add ${path.relative(root, file).split(path.sep).join('/')} to .gitignore`);
 }
 
 // --- R10 THE LEDGER ------------------------------------------------------------------------------

@@ -964,6 +964,106 @@ function excludeGlobs(paths, platform = process.platform)
     return [...new Set(out)];
 }
 
+// ------------------------------------------------------------------ refresh below (2026-11-10)
+
+// The user's report: a child session loaded the root's rules twice. A project's own run writes `claudeMdExcludes` for
+// every stamped folder above it (workspaceStep), so the duplicates came from a child installed before its root, or a rule
+// the root added later - until that child's own next run. This brings that write forward from the root's install or
+// update: every stamped project below (depth `maxDepth`, RESCAN_SKIP, no link followed, a stamped folder walked into)
+// whose own switch is on gets the excludes its own run would write, synced against ITS OWN ledger, under its workspace
+// lock. Only that array moves, a member its ledger does not hold is the user's and stays, and every other ledger row is
+// re-rendered byte for byte. A failed stamp write puts the settings file back (or removes it, when this made it), so no
+// row is ever on disk without its ledger row. Returns { refreshed, current, skipped } as relative posix paths.
+function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500 } = {})
+{
+    const { syncMembers, MEMBER_PATH } = require('./settings.js');
+    const top = realOf(projectRoot);
+    const ownData = dataRootMod.dataRootOf({ env, projectDir: top }).root.split('/')[0];
+    const below = [];
+    const walk = (dir, depth) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const d of entries)
+        {
+            if (!d.isDirectory() || d.isSymbolicLink() || RESCAN_SKIP.has(d.name) || (dir === top && d.name === ownData)) continue;
+            const child = path.join(dir, d.name);
+            if (isStamped(child)) below.push(child);
+            if (depth + 1 < maxDepth) walk(child, depth + 1);
+        }
+    };
+    walk(top, 0);
+    const out = { refreshed: [], current: [], skipped: [] };
+    // Another project's data root and workspace file are read with the account alone (ancestorEnv): this run's own
+    // ALFRED_CODE_DATA_PATH is not the child's. A launch `0` still freezes the child's switch, as it would its own run.
+    const childEnv = { ...ancestorEnv(env), ...(env.ALFRED_CODE_WORKSPACE !== undefined ? { ALFRED_CODE_WORKSPACE: env.ALFRED_CODE_WORKSPACE } : {}) };
+    const isExclude = (row) => { const m = MEMBER_PATH.exec(row); return Boolean(m) && m[1] === 'claudeMdExcludes'; };
+    for (const child of below.sort())
+    {
+        const rel = relPosix(top, child);
+        const skip = (why) => { out.skipped.push(rel); if (why) log(`  !! workspace: ${rel} ${why}`); };
+        let on = false;
+        try { on = workspaceOn({ env: childEnv, projectRoot: child }); }
+        catch { on = false; }
+        if (!on) { skip(''); continue; }
+        const claudeDir = path.join(child, '.claude');
+        const file = path.join(claudeDir, 'settings.local.json');
+        const stampFile = path.join(claudeDir, brand.BRAND.stamp);
+        const ledger = stamp.readLedger(stampFile);
+        if (!ledger) { skip('- its stamp holds no ledger to record the rows in; its excludes refresh on its next run'); continue; }
+        const settingsMap = ledger.settings || {};
+        const prior = settingsMap['settings.local.json'] || {};
+        let want;
+        try
+        {
+            const ignores = readWorkspace(child, { env: ancestorEnv(env) }).view.ignores || [];
+            const ancestors = stampedAncestors(child, { env: ancestorEnv(env) });
+            want = uniqSorted(excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: ignores })), process.platform));
+        }
+        catch (e) { skip(`- its excludes could not be worked out (${e.message}); left as it is`); continue; }
+        if (!want.length && !Object.keys(prior).some(isExclude)) { out.current.push(rel); log(`workspace: ${rel} - excludes current`); continue; }
+        const at = locate(child, { env: ancestorEnv(env) });
+        if (!at.file) { skip(`- its data root is refused (${at.why}); left as it is`); continue; }
+        let held = false;
+        try
+        {
+            fs.mkdirSync(at.dir, { recursive: true });
+            held = takeLock(at.lock, { now: Date.now, sleep: sleepMs, retryMs, staleMs: 30000 });
+        }
+        catch { held = false; }
+        if (!held) { skip('is locked - its excludes refresh on its next run'); continue; }
+        try
+        {
+            let before = null;
+            try { before = fs.readFileSync(file); }
+            catch (e) { if (!e || e.code !== 'ENOENT') { skip(`- its settings.local.json cannot be read (${e && e.code}); left as it is`); continue; } }
+            const notes = [];
+            const r = syncMembers({ file, arrayPath: 'claudeMdExcludes', want, prior, log: () => {}, note: (m) => notes.push(m) });
+            if (r.refused) { skip(`- ${notes[0] || 'its settings.local.json cannot be read'}`); continue; }
+            const mine = Object.fromEntries(Object.entries(prior).filter(([row]) => isExclude(row)));
+            const same = Object.keys(mine).length === Object.keys(r.rows).length && Object.entries(r.rows).every(([row, h]) => mine[row] === h);
+            if (!r.changed && same) { out.current.push(rel); log(`workspace: ${rel} - excludes current`); continue; }
+            const local = { ...Object.fromEntries(Object.entries(prior).filter(([row]) => !isExclude(row))), ...r.rows };
+            const next = { ...settingsMap, 'settings.local.json': local };
+            if (!Object.keys(local).length) delete next['settings.local.json'];
+            try { stamp.markLine(stampFile, 'managed-settings', stamp.settingsLine(next)); }
+            catch (e)
+            {
+                try { if (before === null) fs.rmSync(file, { force: true }); else fs.writeFileSync(file, before); }
+                catch { /* named below either way */ }
+                skip(`- its stamp could not be written (${e && e.code}); its settings.local.json is as it was`);
+                continue;
+            }
+            if (r.created) warnUnignored(child, file);
+            out.refreshed.push(rel);
+            log(`workspace: ${rel} - excludes refreshed (${Object.keys(r.rows).length} rules)`);
+        }
+        finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
+    }
+    return out;
+}
+
 // ------------------------------------------------------------------ the installer's steps (spec 2.1-2.5)
 
 // Why a parent's plan cannot be inherited from - its run reported failures, could not read a file, or could not read its
@@ -1656,7 +1756,7 @@ module.exports = {
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
-    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs,
+    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,

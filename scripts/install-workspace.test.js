@@ -1307,3 +1307,132 @@ test('a memory folder equal to the child\'s own gets no deny row', POSIX_ONLY, (
     ]);
     assert.deepStrictEqual(r.steps[1].perms.deny, [denyFor(r.steps[1].docs)], r.outs[1]);
 });
+
+// ------------------------------------------------------------------ refreshBelow (2026-11-10, spec section 4)
+// The user's report: a child session loaded the root's rules twice. Each project's own run writes excludes for every
+// stamped folder above it, so the duplicates came only from a child installed before its root, or a rule the root added
+// later - until that child's own next run. The root's install or update now brings that write forward for every stamped
+// project below, against each project's OWN ledger.
+{
+    const settingsOf = (work, rel) => readOr(path.join(at(work, rel), '.claude', 'settings.local.json'));
+    const claudeHash = (work, rel) => treeHash(path.join(at(work, rel), '.claude'));
+    const ledgerRows = (work, rel) => (lineOf(stampOf(work, rel), 'managed-settings') || '').split(',').filter(Boolean);
+    const HAND = '/somewhere/else/CLAUDE.md';
+    const NEW_RULE = 'rule sql-conventions';
+    const created = (out) => (out.match(/!! settings\.local\.json: created/g) || []).length;
+
+    test('refreshBelow: children installed first get the root\'s excludes, a new root rule, a re-run and the child\'s own update (spec 4)', POSIX_ONLY, () =>
+    {
+        const keep = {};
+        const r = scenario([
+            { at: 'api/tool' },
+            { at: 'api' },
+            { at: 'web', before: (work) => fs.writeFileSync(path.join(at(work, 'web'), '.gitignore'), '.claude/settings.local.json\n') },
+            { at: '.', before: (work) =>
+            {
+                const f = path.join(at(work, 'api'), '.claude', 'settings.local.json');
+                const data = json(f) || {};
+                data.claudeMdExcludes = [...(data.claudeMdExcludes || []), HAND];
+                fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
+            }, after: (work) => ({
+                want: ruleGlobs(work, '.'), api: excludesOf(work, 'api'), tool: excludesOf(work, 'api/tool'), web: excludesOf(work, 'web'),
+                rows: ledgerRows(work, 'api'),
+            }) },
+            update('.', { args: ['--add', NEW_RULE], after: (work) => { keep.api = claudeHash(work, 'api'); keep.tool = claudeHash(work, 'api/tool'); return { want: ruleGlobs(work, '.'), api: excludesOf(work, 'api') }; } }),
+            update('.', { after: (work) => ({ api: claudeHash(work, 'api') === keep.api, tool: claudeHash(work, 'api/tool') === keep.tool }) }),
+            update('api', { after: (work) => ({ api: excludesOf(work, 'api'), rows: ledgerRows(work, 'api') }) }),
+            update('.', { before: (work) => { keep.plan = claudeHash(work, 'api'); }, args: (work) => ['--print-plan', '--plan-out', path.join(work, 'plan.json')],
+                after: (work) => ({ api: claudeHash(work, 'api') === keep.plan }) }),
+        ]);
+        const root = r.steps[3];
+        assert.ok(root.want.length > 0, 'the root holds rule copies');
+        for (const [rel, list] of [['api', root.api], ['api/tool', root.tool], ['web', root.web]])
+            for (const g of root.want) assert.ok(list.includes(g), `${rel}: no exclude for ${g}\n${r.outs[3]}`);
+        assert.ok(root.api.includes(HAND), 'the hand-added member is kept');
+        const glob = (g) => `settings.local.json:claudeMdExcludes[`;
+        assert.ok(root.rows.some((row) => row.startsWith(glob())), 'the child\'s stamp ledgers the rows');
+        assert.strictEqual(root.rows.filter((row) => row.startsWith(glob())).length, root.api.length - 1, 'every stack member ledgered, the hand one not');
+        assert.match(r.outs[3], /workspace: api - excludes refreshed \(\d+ rules\)/);
+        assert.match(r.outs[3], /workspace: api\/tool - excludes refreshed \(\d+ rules\)/);
+        assert.match(r.outs[1], /workspace: tool - excludes refreshed/, 'api is a root over tool too');
+        assert.strictEqual(created(r.outs[1]), 1, 'api\'s install made tool\'s file, in a repo that does not ignore it');
+        assert.strictEqual(created(r.outs[3]), 0, 'the root made only web\'s file, and web ignores it (api\'s was there already)');
+        assert.strictEqual(r.steps[3].web.length > 0, true, 'web got the file');
+        const added = r.steps[4];
+        assert.ok(added.want.length > root.want.length, `the update added a rule\n${r.outs[4]}`);
+        for (const g of added.want) assert.ok(added.api.includes(g), `the new rule's glob reached the child: ${g}\n${r.outs[4]}`);
+        assert.deepStrictEqual(r.steps[5], { api: true, tool: true }, 'a re-run changes no byte below');
+        assert.match(r.outs[5], /workspace: api - excludes current/);
+        const own = r.steps[6];
+        assert.strictEqual(new Set(own.api).size, own.api.length, 'no duplicate member after the child\'s own update');
+        assert.deepStrictEqual([...own.api].sort(), [...added.api].sort(), 'the child\'s own update keeps the same set');
+        assert.doesNotMatch(r.outs[6], /!!/, r.outs[6]);
+        assert.strictEqual(r.steps[7].api, true, '--print-plan writes nothing below');
+    });
+
+    test('refreshBelow: a switched-off child, a locked one and a garbage settings file are left as they are (spec 4)', POSIX_ONLY, () =>
+    {
+        const keep = {};
+        const lock = (work) => path.join(at(work, 'web'), '.alfred', 'workspace.lock');
+        const r = scenario([
+            { at: 'api/tool' },
+            { at: 'api' },
+            { at: 'web' },
+            { at: '.', before: (work) =>
+            {
+                setEnv(work, 'api', 'settings.local.json', { ALFRED_CODE_WORKSPACE: '0' });
+                fs.mkdirSync(path.dirname(lock(work)), { recursive: true });
+                fs.writeFileSync(lock(work), '');
+                fs.writeFileSync(path.join(at(work, 'api/tool'), '.claude', 'settings.local.json'), '{ not json');
+                for (const rel of ['api', 'web', 'api/tool']) keep[rel] = claudeHash(work, rel);
+            }, after: (work) =>
+            {
+                fs.rmSync(lock(work), { force: true });
+                return Object.fromEntries(['api', 'web', 'api/tool'].map((rel) => [rel, claudeHash(work, rel) === keep[rel]]));
+            } },
+        ]);
+        assert.deepStrictEqual(r.steps[3], { api: true, web: true, 'api/tool': true }, r.outs[3]);
+        assert.match(r.outs[3], /!! workspace: web is locked/);
+        assert.match(r.outs[3], /!! .*api\/tool/, 'the unreadable settings file is named');
+        assert.doesNotMatch(r.outs[3], /workspace: api - excludes/, 'the switched-off child is not touched');
+    });
+
+    test('refreshBelow: a stamp that cannot be written leaves the child\'s settings as they were (spec 4)', { ...POSIX_ONLY, skip: POSIX_ONLY.skip || (process.getuid?.() === 0 && 'root writes through the mode bits') }, () =>
+    {
+        const stampFile = (work) => path.join(at(work, 'api'), '.claude', 'alfred-code.stamp');
+        const r = scenario([
+            { at: 'api' },
+            { at: '.', before: (work) => fs.chmodSync(stampFile(work), 0o444), after: (work) =>
+            {
+                fs.chmodSync(stampFile(work), 0o644);
+                return { settings: settingsOf(work, 'api'), rows: ledgerRows(work, 'api').filter((row) => row.includes('claudeMdExcludes')).length };
+            } },
+        ]);
+        assert.strictEqual(r.steps[1].settings, null, 'the created file is removed again');
+        assert.strictEqual(r.steps[1].rows, 0);
+        assert.match(r.outs[1], /!! workspace: api/);
+    });
+
+    test('refreshBelow: every other ledger row comes back byte for byte (spec 4)', POSIX_ONLY, () =>
+    {
+        const { memberRow } = require('./install/settings.js');
+        const deny = 'Edit(//elsewhere/**)';
+        const dir = '/elsewhere';
+        const extra = [`settings.json:modelSettings.claude-opus-5-5.autoCompactWindow=${'a'.repeat(64)}`,
+            `settings.local.json:${memberRow('permissions.deny', deny).replace(/\[(.*)\]$/, '[$1]')}=${memberRow('permissions.deny', deny).slice(-65, -1)}`,
+            `settings.local.json:${memberRow('permissions.additionalDirectories', dir)}=${memberRow('permissions.additionalDirectories', dir).slice(-65, -1)}`];
+        const r = scenario([
+            { at: 'api' },
+            { at: '.', before: (work) =>
+            {
+                const f = path.join(at(work, 'api'), '.claude', 'settings.local.json');
+                fs.writeFileSync(f, `${JSON.stringify({ permissions: { deny: [deny], additionalDirectories: [dir] } }, null, 2)}\n`);
+                const s = path.join(at(work, 'api'), '.claude', 'alfred-code.stamp');
+                const line = lineOf(stampOf(work, 'api'), 'managed-settings') || '';
+                stampLib.markLine(s, 'managed-settings', [line, ...extra].filter(Boolean).join(','));
+            }, after: (work) => ({ rows: ledgerRows(work, 'api') }) },
+        ]);
+        for (const row of extra) assert.ok(r.steps[1].rows.includes(row), `kept: ${row}\n${r.steps[1].rows.join('\n')}`);
+        assert.ok(r.steps[1].rows.some((row) => row.startsWith('settings.local.json:claudeMdExcludes[')), r.outs[1]);
+    });
+}
