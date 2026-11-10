@@ -371,7 +371,7 @@ test('C40: --check-report flags a judgment line saying a table printed nothing w
   try {
     const report = (env, claim) => {
       const f = path.join(dir, 'report-usage.md');
-      fs.writeFileSync(f, ['# Stack usage report', '', '## Environment', '', '| | |', '|---|---|', '| Hook ledger | absent - identity attribution unavailable |', ...env, '',
+      fs.writeFileSync(f, ['# Stack usage report', '', '## Environment', '', '| | |', '|---|---|', '| Hook ledger | absent - identity attribution unavailable, not inferred; the tool-usage ledger records only with ALFRED_CODE_INSTRUMENT=1 (default 0) |', ...env, '',
         '## Guard blocks - FILL IN (which guard fired)', '', '| hook | blocks |', '|---|---|', '| docs-session | 2 |', '',
         '## Protocol check - FILL IN', '', claim, ''].join('\n'));
       try { return { status: 0, out: execFileSync('node', [SCRIPT, '--check-report', f], { encoding: 'utf8' }) }; } catch (e) { return { status: e.status, out: String(e.stdout) }; }

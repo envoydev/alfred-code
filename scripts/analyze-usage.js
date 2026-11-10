@@ -3507,9 +3507,11 @@ function defaultLedger(transcript, kind) {
   const data = path.join(path.dirname(file), 'data', 'statistics', LEDGER_DATA_DIRS[kind], `${sid}.jsonl`);
   return isFile(data) ? { file: data, from: 'data/' } : null;
 }
-// `tool-usage: <file> (<from>); hook-blocks: ...` - a flag's value as typed, a default relative to the transcript.
+// `tool-usage: <file> (<from>); hook-blocks: ...` - a flag's value as typed, a default relative to the transcript. An
+// absent tool-usage ledger names the switch it waits on (AC-9, 2026-11-10: 'none found' read as a broken collector).
+const INSTRUMENT_NOTE = 'records only with ALFRED_CODE_INSTRUMENT=1, default 0';
 function ledgersText(ledgers, dir) {
-  return Object.entries(ledgers).map(([kind, l]) => `${kind}: ${!l ? 'none found'
+  return Object.entries(ledgers).map(([kind, l]) => `${kind}: ${!l ? (kind === 'tool-usage' ? `none found (${INSTRUMENT_NOTE})` : 'none found')
     : `${l.from === 'flag' ? l.file : path.relative(dir, l.file).split(path.sep).join('/')} (${l.from})`}`).join('; ');
 }
 
@@ -4581,7 +4583,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, confo
   }
   out.push(`| Models (main) | ${Object.entries(main.byModel).map(([m, t]) => `\`${m}\` ×${t.msgs}`).join(', ') || '-'} |`);
   out.push(`| Subagent transcripts | ${agents.length} |`);
-  out.push(`| Hook ledger | ${hookLog ? `joined (${hookLog.rows} rows)` : 'absent - identity attribution unavailable, not inferred'} |`);
+  out.push(`| Hook ledger | ${hookLog ? `joined (${hookLog.rows} rows)` : 'absent - identity attribution unavailable, not inferred; the tool-usage ledger records only with ALFRED_CODE_INSTRUMENT=1 (default 0)'} |`);
   if (sources.ledgers) out.push(`| Ledgers read | ${ledgersText(sources.ledgers, sources.dir)} |`);
   out.push('');
   if (extraFacts.length) out.push('', ...extraFacts, '');
@@ -4964,7 +4966,7 @@ function emptyTableClaims(lines, authored) {
     if (!header) { header = cells; kv = cells.every((c) => !c); return; }
     if (cells.every((c) => /^:?-+:?$/.test(c))) return;
     // A key row is a subject only when its value opens on a count above 0 ('| Unheld-stop candidates | 6 (...) |'); a
-    // row that always prints ('| Hook ledger | absent ... |') states no rows to contradict.
+    // row that always prints ('| Hook ledger | absent - ... |', opening on a word) states no rows to contradict.
     if (kv) {
       const n = /^~?(\d[\d,]*)(?![\d.,]*[kKmM%])/.exec(cells[1] || '');
       const count = n ? Number(n[1].replace(/,/g, '')) : 0;
