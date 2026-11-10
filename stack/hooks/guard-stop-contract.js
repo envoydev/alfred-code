@@ -3140,6 +3140,34 @@ function settleAskFixed() {
   try { if (keep.length) fs.writeFileSync(file, keep.map((x) => JSON.stringify(x)).join('\n') + '\n'); else fs.rmSync(file, { force: true }); } catch { /* the next run settles it */ }
 }
 if (payload.tool_name === 'AskUserQuestion') { try { settleAskFixed(); } catch { /* never decides */ } }
+// THE RE-ASK (2026-11-10, the user's report on 2.9.0, task-solve): the user met a stop's ask with a question, and the same
+// ask came back attached to the answer, three times. While that question is open (userQuestion), the SAME ask - its first
+// question equal, case and spacing folded - is denied ONCE per (ask, question) pair: an exclusive marker under the temp
+// dir, and the identical second send goes out (the valve, so a model that has a reason to re-ask is never looped). Off
+// for a seat, nobody at the terminal (auto-run answers its own asks), and `guard-stop-contract:question`.
+let reaskDenied = false;
+function reAskDeny() {
+  if (payload.agent_id || partOff('guard-stop-contract', 'question') || unattended(payload) || autoLive(payload)) return;
+  const qs = (payload.tool_input && Array.isArray(payload.tool_input.questions)) ? payload.tool_input.questions : [];
+  const fold = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const first = fold(qs[0] && qs[0].question);
+  if (!first) return;
+  const open = userQuestion();
+  if (!open || fold(open.askText) !== first) return;
+  const os = require('os');
+  const tag = require('crypto').createHash('sha1').update(`${open.askText}\n${open.text}`).digest('hex').slice(0, 12);
+  const marker = require('path').join(os.tmpdir(), `alfred-reask-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_').slice(-80)}-${tag}`);
+  try { fs.closeSync(fs.openSync(marker, 'wx')); } catch { return; }   // spent (or unwritable): the ask goes out
+  const why = `Blocked: the user asked a question - answer it in prose and end the turn. They met this ask with '${open.text.slice(0, 160)}', `
+    + 'so it is not answered yet: answer that question, put no ask in this turn, and end it. The ask comes back when their next '
+    + 'message picks, approves or says go on - or re-send it unchanged if the answer itself needs their pick now.';
+  ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: why.split('\n')[0].slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
+  breadcrumb(`block reask: ${open.kind}`);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }));
+  reaskDenied = true;
+  process.exit(0);
+}
+if (payload.tool_name === 'AskUserQuestion') { try { reAskDeny(); } catch (e) { if (reaskDenied) throw e; } }
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   let askFixed = null;
