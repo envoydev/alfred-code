@@ -716,8 +716,9 @@ function subtree(projectRoot, { env = process.env, maxDepth = 8, log = printLine
 
 const RESCAN_SKIP = new Set(['.git', 'node_modules', '.claude']);
 
-// Stamped folders under the project with no `parent` or `parent none` line - projects installed before their root,
-// offered as children. A stamped folder ends the walk down that branch: what is below it is that project's.
+// Stamped folders under the project with no `parent` in their record, nor a 2.11 `parent none` line still in the old
+// file - projects installed before their root, offered as children. A stamped folder ends the walk down that branch:
+// what is below it is that project's.
 function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine } = {})
 {
     const top = realOf(projectRoot);

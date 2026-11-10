@@ -117,15 +117,21 @@ The stores and what each holds, where the docs root and the data root live, and 
   move stays as `data-pending: sensitive <from> -> <to>` for the next run; a `data-pending:` line an earlier release
   wrote for a server's launcher is dropped, the data left where it is. The stamp's `data-root:` line is the next run's
   baseline, so a root changed by hand is still found.
-- **The workspace file and the load check live in the data root** (workspace layering, release 1, 2026-10-26):
-  `<data root>/workspace` holds the project's `parent <rel>` or `role root|standalone` (`parent none` reads as
-  standalone), `above <rel>|none` (the tree its role was asked against), `child <rel>` and `ignore <category>
-  <name>` lines (`install/workspace.js readWorkspace` / `writeWorkspace`, through a lock beside it). It moves with the
+- **The workspace record and the load check live in the data root** (workspace layering, release 1, 2026-10-26;
+  JSON since the workspace.json design, 2026-11-10): `<data root>/workspace.json` holds the project's `parent` (a `..`
+  run) or `role` (`root` | `standalone`), `above` (a `..` run or `none` - the tree its role was asked against),
+  `children` and `ignore` (category -> names). ONE reader parses it for the installer and every hook on both routes:
+  `stack/hooks/workspace-file.js`, an engine copied beside `layout.js` (`readRecord` -> `state` ok | absent | garbage).
+  The 2.11-3.9 line file `<data root>/workspace` (`parent ..`, `child api`; `parent none` reads as standalone) is read
+  until the support floor - alone, or beside the JSON as a union - and the installer's next write of the record
+  converts it (`install/workspace.js writeWorkspace`, through `workspace.lock` beside it), naming each older-release
+  member that still reads the old file. A garbage `workspace.json` is never written over: the installer refuses, and
+  the session start says it once (`docs-session.js`). Both files move with the
   root on every run that changes it, on or off (`workspace.moveWorkspace` - `planDataMove` carries only the store), a parent's file is read under the parent's own root, and an ancestor's
   is read with an env that keeps only the account (`ancestorEnv`), so this project's `ALFRED_CODE_DATA_PATH` never
   points into a parent. `workspace.js check-loads` writes its last result, whatever the state, to `<data root>/state/
   workspace-check.json`, which `status` reads. Both stay out of git through the root's `/*`. Uninstall takes out the
-  `parent` and `child` lines on both sides (`leaveParent`, `releaseChildren`, which first writes each child's
+  `parent` and the `children` entry on both sides (`leaveParent`, `releaseChildren`, which first writes each child's
   inherited values into its own `.variables`) and leaves the rest of the file, as it leaves the data root.
 - **A child reads its ancestors' docs and memory, never writes them** (workspace layering, release 3, 2026-10-27). An
   ancestor's docs root is `layout.docsRootOf` - its own settings' leftover `ALFRED_CODE_DOCS_PATH`, else `<its data

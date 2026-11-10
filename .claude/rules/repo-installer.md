@@ -234,11 +234,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 - **Workspace layering (2026-10-26, on by default from 3.0.0).** A project installed inside an installed folder can join it as a CHILD: it takes the parent's set and
   the variables it reads through the chain, adds its own picks and can ignore any inherited item. Every project has a
-  ROLE - `role root|standalone` in its file, or a `parent` line (`roleOf`; no line reads `standalone (no role recorded)`) - and
-  `above <rel>|none` records the tree it was asked against, so the role ask (`roleAsk`) comes back only when that
+  ROLE - `role` (`root` | `standalone`) in its record, or a `parent` (`roleOf`; neither reads `standalone (no role
+  recorded)`) - and `above` (a `..` run or `none`) records the tree it was asked against, so the role ask (`roleAsk`) comes back only when that
   changes: init asks it before screen A, configure offers it in the Environment area, and update's preflight prints
-  `workspace: role-ask <case> <rel>` for the walk to ask. The record is `<data root>/workspace` (`repo-memory-data.md`)
-  - `parent <rel>` here and `child <rel>` in the parent; a parent counts only while its `child` line points back (hop
+  `workspace: role-ask <case> <rel>` for the walk to ask. The record is `<data root>/workspace.json`, read
+  through `stack/hooks/workspace-file.js` (`repo-memory-data.md`) - `parent` here and a `children` entry in the parent;
+  a parent counts only while its `children` entry points back (hop
   rule N1, `install/workspace.js chain`), and the walk stops at depth 8. The installer touches it at TWO points:
   `workspace.prepare` before the run reads its own set (the parent's lines from `--parent-plan`, or from the parent's own
   `update --installed-only --print-plan`; any doubt - a failed or blind read-back, a plan from another folder - leaves
