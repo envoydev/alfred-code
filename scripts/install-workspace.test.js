@@ -1383,31 +1383,38 @@ test('a memory folder equal to the child\'s own gets no deny row', POSIX_ONLY, (
         assert.strictEqual(r.steps[7].api, true, '--print-plan writes nothing below');
     });
 
-    test('refreshBelow: a switched-off child, a locked one and a garbage settings file are left as they are (spec 4)', POSIX_ONLY, () =>
+    test('refreshBelow: a switched-off child, a locked one, a garbage settings file and a garbage workspace record are left as they are (spec 4)', POSIX_ONLY, () =>
     {
         const keep = {};
         const lock = (work) => path.join(at(work, 'web'), '.alfred', 'workspace.lock');
+        const rels = ['api', 'web', 'api/tool', 'cli'];
         const r = scenario([
             { at: 'api/tool' },
             { at: 'api' },
             { at: 'web' },
+            { at: 'cli' },
             { at: '.', before: (work) =>
             {
                 setEnv(work, 'api', 'settings.local.json', { ALFRED_CODE_WORKSPACE: '0' });
                 fs.mkdirSync(path.dirname(lock(work)), { recursive: true });
                 fs.writeFileSync(lock(work), '');
                 fs.writeFileSync(path.join(at(work, 'api/tool'), '.claude', 'settings.local.json'), '{ not json');
-                for (const rel of ['api', 'web', 'api/tool']) keep[rel] = claudeHash(work, rel);
+                // review I5: a child whose own workspace.json is garbage - its ignores cannot be read, so nothing is written there
+                fs.mkdirSync(path.join(at(work, 'cli'), '.alfred'), { recursive: true });
+                fs.writeFileSync(path.join(at(work, 'cli'), '.alfred', 'workspace.json'), '{');
+                for (const rel of rels) keep[rel] = claudeHash(work, rel);
             }, after: (work) =>
             {
                 fs.rmSync(lock(work), { force: true });
-                return Object.fromEntries(['api', 'web', 'api/tool'].map((rel) => [rel, claudeHash(work, rel) === keep[rel]]));
+                return Object.fromEntries(rels.map((rel) => [rel, claudeHash(work, rel) === keep[rel]]));
             } },
-        ]);
-        assert.deepStrictEqual(r.steps[3], { api: true, web: true, 'api/tool': true }, r.outs[3]);
-        assert.match(r.outs[3], /!! workspace: web is locked/);
-        assert.match(r.outs[3], /!! .*api\/tool/, 'the unreadable settings file is named');
-        assert.doesNotMatch(r.outs[3], /workspace: api - excludes/, 'the switched-off child is not touched');
+        ], { prepare: (work) => { fs.mkdirSync(at(work, 'cli'), { recursive: true }); rt.execCommand('git', ['init', '-q', at(work, 'cli')]); } });
+        assert.deepStrictEqual(r.steps[4], { api: true, web: true, 'api/tool': true, cli: true }, r.outs[4]);
+        assert.match(r.outs[4], /!! workspace: web is locked/);
+        assert.match(r.outs[4], /!! .*api\/tool/, 'the unreadable settings file is named');
+        assert.doesNotMatch(r.outs[4], /workspace: api - excludes/, 'the switched-off child is not touched');
+        assert.ok(r.outs[4].includes(GARBAGE_LINE('cli/.alfred/workspace.json')), r.outs[4]);
+        assert.doesNotMatch(r.outs[4], /workspace: cli - excludes/, 'the garbage child is not touched');
     });
 
     test('refreshBelow: a stamp that cannot be written leaves the child\'s settings as they were (spec 4)', { ...POSIX_ONLY, skip: POSIX_ONLY.skip || (process.getuid?.() === 0 && 'root writes through the mode bits') }, () =>

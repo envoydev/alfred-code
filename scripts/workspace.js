@@ -134,7 +134,7 @@ function ignore(out)
     catch (e) { throw bad(e.message.replace(/^workspace: /, '')); }
     const r = ws.writeWorkspace(root, (m) => (add !== undefined ? ws.addIgnore(m, category, name) : ws.removeIgnore(m, category, name)), { env, dataRoot, log: out });
     if (!r.ok) throw new Exit(r.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${r.why})`);
-    out(`workspace: ignore ${category} ${name} ${add !== undefined ? (r.wrote ? 'added' : 'kept') : (r.wrote ? 'removed' : 'not there')}`);
+    out(`workspace: ignore ${category} ${name} ${add !== undefined ? (r.changed ? 'added' : 'kept') : (r.changed ? 'removed' : 'not there')}`);
 }
 
 function children(out)

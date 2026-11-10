@@ -169,13 +169,14 @@ const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v 
 // returns a new one). A write is due when the record renders differently after the change, or when the old line file is
 // there - the conversion: workspace.json is written in the shape of the text it had (formatOf), renamed into place, and
 // then the old file is deleted with one log line. A hand-saved workspace.json keeps its bytes until a value changes. A
+// result's `wrote` says the file was written, `changed` that its values changed - a conversion alone writes, changing none. A
 // garbage workspace.json is never written over (`why: 'garbage'`). `runRoot` is the run's own project (default
 // `projectRoot`): the log lines name paths from it, and a conversion of another project's record is named by
 // olderProjectLines.
 function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log = () => {}, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
 {
     const empty = viewOf(emptyRecord());
-    const fail = (why, view = empty) => ({ ok: false, why, view, wrote: false, converted: false });
+    const fail = (why, view = empty) => ({ ok: false, why, view, wrote: false, changed: false, converted: false });
     const at = locate(projectRoot, { env, dataRoot });
     if (!at.file) return fail('unwritable');
     try { fs.mkdirSync(at.dir, { recursive: true }); }
@@ -192,7 +193,8 @@ function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log 
         const record = mutate(current.record) || current.record;
         const object = renderRecord(record, current.unknown, current.invalid);
         const converting = current.source === 'legacy' || current.source === 'both';
-        if (!converting && JSON.stringify(object) === before) return { ok: true, view: viewOf(record), wrote: false, converted: false };
+        const changed = JSON.stringify(object) !== before;
+        if (!converting && !changed) return { ok: true, view: viewOf(record), wrote: false, changed: false, converted: false };
         const tmp = `${at.file}.${process.pid}.${Date.now()}.tmp`;
         try
         {
@@ -222,7 +224,7 @@ function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log 
             log(`workspace: ${relPosix(from, at.dir)}/${LEGACY_NAME} converted to ${JSON_NAME}${named} - restart any session open in ${where} since before this run`);
             conversions.push({ root: realOf(projectRoot), record, own: realKey(projectRoot) === realKey(from), runRoot: realOf(from) });
         }
-        return { ok: true, view: viewOf(record), wrote: true, converted: converting };
+        return { ok: true, view: viewOf(record), wrote: true, changed, converted: converting };
     }
     catch
     {
@@ -253,12 +255,17 @@ function convertOwn({ projectRoot, env = process.env, dataRoot, log = () => {} }
     return { ok: r.ok, why: r.why, converted: Boolean(r.converted) };
 }
 
+// The first release that reads workspace.json - the version bump that ships it sets this (review I3, 2026-11-10).
+const JSON_SINCE = '3.10.0';
+
 // After a conversion: each project whose older release would now misread - a child a converted record lists, the parent
 // a converted record names, and the owner of a converted record not this run's own - when its stamp names a release
-// before `release`, on either route (its copied engines are its own). One `!!` line each, the run's own project never.
+// before JSON_SINCE, on either route (its copied engines are its own). One `!!` line each, the run's own project never.
 function olderProjectLines({ conversions: list = [], release, compare, env = process.env })
 {
     if (!release || !compare) return [];
+    // A member at JSON_SINCE or later reads workspace.json; a tree not yet at it (the unreleased one) compares with its own.
+    const floor = compare(JSON_SINCE, release) > 0 ? release : JSON_SINCE;
     const out = [];
     const seen = new Set();
     const inside = (dir, top) => { const rel = path.relative(realKey(top), realKey(dir)); return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel); };
@@ -276,7 +283,7 @@ function olderProjectLines({ conversions: list = [], release, compare, env = pro
             if (seen.has(key) || !isDir(dir)) continue;
             const file = stamp.stampFiles({ projectRoot: dir }).read;
             const version = file ? stamp.readVersion(file) : '';
-            if (!version || compare(version, release) >= 0) continue;
+            if (!version || compare(version, floor) >= 0) continue;
             seen.add(key);
             const label = relPosix(runRoot, realOf(dir)) || '.';
             out.push(`!! workspace: ${label} runs an older release - it reads the old workspace file, which is now ${JSON_NAME}; update ${label} next${kind === 'child' ? " (or take 'the children too')" : ''}`);
@@ -376,6 +383,9 @@ function roleOf(projectRoot, { env = process.env, log = printLine } = {})
     // A garbage record is no role at all: nothing is derived from it, and it is named once.
     if (read.state === 'garbage') { sayGarbage(read.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
     const view = read.view;
+    // So is a parent whose own record is garbage: the chain cannot say whether it still lists this project.
+    const parentRead = view.parent ? readWorkspace(path.resolve(realOf(projectRoot), ...view.parent.split('/')), { env: ancestorEnv(env) }) : null;
+    if (parentRead && parentRead.state === 'garbage') { sayGarbage(parentRead.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
     const children = view.children.length;
     const asked = Boolean(view.role || view.parent || view.above);
     if (view.parent && chain(projectRoot, { env, maxDepth: 1 }).members.length) return { kind: 'child', rel: view.parent, children, asked: true };
@@ -411,6 +421,11 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
     const root = realOf(projectRoot);
     const own = readWorkspace(projectRoot, { env });
     if (own.state === 'garbage') { sayGarbage(own.file, root, log); return null; }
+    if (own.view.parent)
+    {
+        const parentRead = readWorkspace(path.resolve(root, ...own.view.parent.split('/')), { env: ancestorEnv(env) });
+        if (parentRead.state === 'garbage') { sayGarbage(parentRead.file, root, log); return null; }
+    }
     const v = joinVerdict(projectRoot, { env, exec });
     const near = v.parent;
     const opt = (label, answer) => ({ label, answer });
@@ -434,8 +449,6 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
     const view = own.view;
     if (view.parent && role.kind !== 'child')
     {
-        const parentRead = readWorkspace(path.resolve(root, ...view.parent.split('/')), { env: ancestorEnv(env) });
-        if (parentRead.state === 'garbage') { sayGarbage(parentRead.file, root, log); return null; }
         const lost = chain(projectRoot, { env, maxDepth: 1 }).notes.some((n) => n.endsWith('does not list this folder as a child'));
         if (lost) return out('rejoin', view.parent, [opt(`Rejoin ${view.parent} (Recommended)`, 'rejoin'), opt('Become standalone', 'leave:standalone')]);
         return out('parent-gone', view.parent, [opt('Become standalone (Recommended)', 'leave:standalone'), ...join]);
@@ -473,12 +486,13 @@ function register(projectRoot, { env = process.env, exec = runtime.execCommand, 
     const here = writeWorkspace(root, (m) => setAbove(setRole(setParent(m, v.parent.rel), null), above ? v.parent.rel : null), { env, dataRoot, log });
     if (!here.ok)
     {
-        // The parent's line alone is a child the chain never reaches: take it back, unless it was there before.
-        if (up.wrote) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { env: upEnv, runRoot: root });
+        // The parent's line alone is a child the chain never reaches: take it back, unless it was there before (a
+        // conversion alone writes the parent's file without adding the line).
+        if (up.changed) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { env: upEnv, runRoot: root });
         const state = here.why === 'locked' ? 'locked by another run' : here.why === 'garbage' ? 'garbage (not valid JSON)' : 'not writable';
         return { ok: false, code: here.why === 'locked' ? 3 : 1, lines: [...said, `!! workspace: this project's workspace file is ${state} - nothing was joined; the join is offered again at the next update`] };
     }
-    return { ok: true, code: 0, rel: v.parent.rel, lines: [...said, `workspace: parent ${v.parent.rel} ${here.wrote ? 'written' : 'kept'}`, `workspace: child ${childRel} ${up.wrote ? 'written' : 'kept'} in ${v.parent.rel}`] };
+    return { ok: true, code: 0, rel: v.parent.rel, lines: [...said, `workspace: parent ${v.parent.rel} ${here.changed ? 'written' : 'kept'}`, `workspace: child ${childRel} ${up.changed ? 'written' : 'kept'} in ${v.parent.rel}`] };
 }
 
 // The stamp's managed-env line with `change(rows)` applied to its `.variables` rows - the rest of the stamp kept.
@@ -600,6 +614,8 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
     };
     const view = readWorkspace(root, { env, dataRoot }).view;
     const role = roleOf(root, { env, log });
+    // A garbage record here or in the parent: roleOf named it; an answer would rewrite links it cannot read.
+    if (role.kind === 'unknown') return fail(1, '!! workspace: a workspace record this project reads is not valid JSON - nothing was changed; fix it by hand, then answer again');
     const leave = (to) =>
     {
         keepOnLeave(root, { env, log });
@@ -994,6 +1010,8 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         try { on = workspaceOn({ env: childEnv, projectRoot: child }); }
         catch { on = false; }
         if (!on) { skip(''); continue; }
+        const ownRead = readWorkspace(child, { env: ancestorEnv(env) });
+        if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
         const stampFile = path.join(claudeDir, brand.BRAND.stamp);
@@ -1004,7 +1022,7 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         let want;
         try
         {
-            const ignores = readWorkspace(child, { env: ancestorEnv(env) }).view.ignores || [];
+            const ignores = ownRead.view.ignores || [];
             const ancestors = stampedAncestors(child, { env: ancestorEnv(env) });
             want = uniqSorted(excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: ignores })), process.platform));
         }
@@ -1582,7 +1600,7 @@ function leaveParent({ projectRoot, env = process.env, dataRoot, log = () => {},
         const childRel = relPosix(realOf(parent), root);
         const up = writeWorkspace(parent, (m) => removeChild(m, childRel), { env: ancestorEnv(env), runRoot: root, log });
         if (!up.ok) return failed(up.why, `workspace: the workspace file in ${own.view.parent} could not be changed (${up.why}) - nothing was removed`);
-        if (up.wrote) log(`workspace: child ${childRel} removed from ${own.view.parent}`);
+        if (up.changed) log(`workspace: child ${childRel} removed from ${own.view.parent}`);
     }
     const here = writeWorkspace(root, (m) => setParent(m, null), { env, dataRoot, log });
     if (!here.ok) return failed(here.why, `workspace: this project's workspace file could not be changed (${here.why})`);
@@ -1761,7 +1779,7 @@ module.exports = {
     editDenyRule, ancestorAccess,
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
-    ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace, garbageLine, sayGarbage, convertOwn, ownDataRootOf, takeConversions, olderProjectLines,
+    ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace, garbageLine, sayGarbage, convertOwn, ownDataRootOf, takeConversions, olderProjectLines, JSON_SINCE,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,

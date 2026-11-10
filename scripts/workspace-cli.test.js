@@ -640,3 +640,12 @@ test('register under a parent stamped with an older release converts its record 
     assert.strictEqual(readWorkspaceRecord(at('cur')).source, 'json');
     assert.doesNotMatch(c.out, /runs an older release/, c.out);
 });
+
+test('review I1: ignore --remove of a line an old-format record never held converts it and says not there', () =>
+{
+    const at = tree({ p: { stamp: true, record: { children: ['web'] }, legacy: true } });
+    const r = cli('ignore', '--root', at('p'), '--remove', 'skill x');
+    assert.strictEqual(r.code, 0, r.out + r.err);
+    assert.match(r.out, /converted to workspace\.json/, r.out);
+    assert.match(r.out, /^workspace: ignore skill x not there$/m, r.out);
+});

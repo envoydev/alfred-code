@@ -1153,6 +1153,12 @@ test('older-project lines: named for an older child of a converted record, for t
     assert.deepStrictEqual(lines(d, 'ws', ['ws/api', 'ws/web']), [older('api', true)]);
     // nothing converted: no line
     assert.deepStrictEqual(lines(d, 'ws', []), []);
+    // a later release: a member at the first release that reads workspace.json (web, 3.10.0) is no older one
+    const e = roleTree(spec());
+    ws.takeConversions();
+    assert.ok(ws.writeWorkspace(e('ws'), (r) => r, { runRoot: e('ws') }).converted);
+    assert.deepStrictEqual(ws.olderProjectLines({ conversions: ws.takeConversions(), release: '3.11.0', compare: compareVersions, env: env0 }), [older('api', true), older('kid', true)]);
+    assert.ok(compareVersions(ws.JSON_SINCE, '3.9.2') > 0, 'v3.9.2 reads only the old file');
 });
 
 test('garbage reads ask nothing: roleOf, roleAsk, rescan, subtree and the status verb over a garbage workspace.json raise no role, join or rejoin ask and print the one line', () =>
@@ -1222,4 +1228,42 @@ test('garbageOnLeave names each garbage record uninstall would write', () =>
     const empty = tree({ p: { stamp: true } });
     putJson(empty('p'), '');
     assert.deepStrictEqual(ws.garbageOnLeave({ projectRoot: empty('p'), env: env0 }), []);
+});
+
+test('review I1: register over an old-format parent that already lists this project keeps that entry when its own write fails, and says kept', () =>
+{
+    const spec = () => ({ ws: { stamp: true, record: { role: 'root', children: ['api'] }, legacy: true }, 'ws/api': { stamp: true, git: true } });
+    const at = roleTree(spec());
+    putJson(at('ws/api'), '{"parent": "..",');
+    const r = ws.register(at('ws/api'), { env: ON });
+    assert.deepStrictEqual([r.ok, r.code], [false, 1], r.lines.join('\n'));
+    assert.deepStrictEqual(readWorkspaceValues(at('ws')), { role: 'root', children: ['api'] }, 'the entry the parent held before stays');
+    const ok = roleTree(spec());
+    const done = ws.register(ok('ws/api'), { env: ON });
+    assert.strictEqual(done.ok, true, done.lines.join('\n'));
+    assert.ok(done.lines.includes('workspace: child api kept in ..'), done.lines.join('\n'));
+    // leaving a parent whose old-format record never listed this project: converted, nothing removed from it
+    const lv = roleTree({ ws: { stamp: true, record: { role: 'root' }, legacy: true }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
+    const said = sink();
+    assert.strictEqual(ws.leaveParent({ projectRoot: lv('ws/api'), env: ON, log: said.log }).left, true);
+    assert.ok(said.lines.some((l) => /converted to workspace\.json/.test(l)), said.lines.join('\n'));
+    assert.ok(!said.lines.some((l) => /child api removed from/.test(l)), said.lines.join('\n'));
+});
+
+test('review I2: under a garbage parent record roleOf reads unknown, no role ask is raised, and a role answer changes nothing', () =>
+{
+    const at = roleTree({ ws: { stamp: true }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
+    putJson(at('ws'), '{"children": ["api"');
+    const before = fs.readFileSync(jsonOf(at('ws/api')), 'utf8');
+    const out = sink();
+    assert.strictEqual(ws.roleOf(at('ws/api'), { env: ON, log: out.log }).kind, 'unknown');
+    for (const when of ['init', 'configure', 'update']) assert.strictEqual(ws.roleAsk(at('ws/api'), { env: ON, when, log: out.log }), null, when);
+    assert.deepStrictEqual(out.lines, [GARBAGE('../.alfred/workspace.json')], 'named once');
+    for (const answer of ['root', 'standalone', 'stay'])
+    {
+        const r = ws.applyRole(at('ws/api'), answer, { env: ON });
+        assert.strictEqual(r.ok, false, `${answer}: ${r.lines.join('\n')}`);
+        assert.match(r.lines[r.lines.length - 1], /not valid JSON - nothing was changed/, answer);
+    }
+    assert.strictEqual(fs.readFileSync(jsonOf(at('ws/api')), 'utf8'), before, 'the child keeps its parent');
 });
