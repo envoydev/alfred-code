@@ -107,6 +107,9 @@ const isLive = (v) => typeof v === 'string' && v.trim() !== '' && !isPlaceholder
 // a credential-shaped key (`"apiKey": "test-key-1234"`) has no content tell and still blocks - read
 // it through `--presence`, or rename the key.
 const TEMPLATE_VALUE = /^(?:your[-_]|<[^>]+>$|changeme|x{3,}$|\.\.\.$|todo|replace|example|dummy|placeholder)/i;
+// A companion catalog's `auth` / `noKey` mode values say HOW a server authenticates, not a credential (SG1 D1).
+// Exact and case-sensitive: a new word is one entry, and anything not listed stays guarded (fails closed).
+const MODE_WORDS = new Set(['token', 'oauth', 'optional-token']);
 // A value that IS an identifier NAME names a credential, it is not one: SCREAMING_SNAKE with at
 // least one underscore, no lower case, nothing else in it. Measured: this stack's OWN catalogs are
 // lists of variable names under a field literally called `key`, so `meta/environment.json`
@@ -141,6 +144,7 @@ const credentialLike = (s) => SECRET_SHAPE.test(s)
 const isSampleValue = (key, v) => {
   const s = String(v).trim();
   if (PEM_PRIVATE.test(s)) return false;
+  if (MODE_WORDS.has(s)) return true;
   if (BARE_KEY.test(String(key)) && !credentialLike(s)) return true;
   return s.toLowerCase() === String(key).toLowerCase() || /\s/.test(s) || TEMPLATE_VALUE.test(s) || s.startsWith('MII')
     || /^(?:true|false|yes|no|on|off|null|none|nil)$/i.test(s) // a switch (`auth: true`), not a secret

@@ -3312,3 +3312,25 @@ test('AC-2R: a find that hands a credential file to a reader', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// SG1 D1: the companion catalog's auth / noKey mode values ('token', 'oauth', 'optional-token') name HOW a server
+// authenticates, not a credential - an exact, case-sensitive word list, so anything else stays guarded.
+test('SG1 D1: a mode word under a credential key is no credential; anything else stays guarded', () => {
+  const f = fixtures();
+  const json = (name, obj) => { const p = path.join(f.dir, name); fs.writeFileSync(p, JSON.stringify(obj, null, 2)); return p; };
+  for (const word of ['token', 'oauth', 'optional-token']) for (const key of ['auth', 'noKey', 'API_KEY']) {
+    const p = json(`mode-${key}-${word}.json`, { tools: [{ name: 'x', [key]: word }] });
+    assert.equal(read(p), 0, `Read: ${key}=${word}`);
+    assert.equal(bash(`cat "${p}"`), 0, `cat: ${key}=${word}`);
+  }
+  for (const v of ['oauthx', 'token1', 'OAuth', 'Token', 'optional-tokens', 'opensesame']) {
+    const p = json(`kept-${v}.json`, { auth: v });
+    assert.equal(read(p), 2, `Read keeps ${v} guarded`);
+    assert.equal(bash(`cat "${p}"`), REWRITE, `cat keeps ${v} guarded`);
+  }
+  assert.equal(read(json('quoted-number.json', { MAX_TOKEN: '4096' })), 2, 'a quoted digit string stays guarded (D1)');
+  assert.equal(read(json('json-number.json', { MAX_TOKEN: 4096 })), 0, 'a JSON number already passes');
+  const dot = path.join(f.dir, 'mode.env'); fs.writeFileSync(dot, 'AUTH=oauth\nAPI_KEY=optional-token\n');
+  assert.equal(bash(`cat "${dot}"`), 0, 'dotenv mode words');
+  assert.equal(cli('--presence', json('presence.json', { auth: 'oauth' }), 'auth').stdout.trim(), 'auth=set (5 chars)', '--presence reports presence, never a value');
+});
