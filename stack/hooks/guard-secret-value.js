@@ -3550,10 +3550,64 @@ function refuseSensitiveMention(text, steps = text) {
     pipeOf[i] = p;
     if (ROOT_WORD.test(joinedOf(parts[i]))) pipeAtRoot[p] = true;
   }
+  // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
+  // cwd's hid the cwd's store from a tree-taking verb.
+  const statAll = (p) => {
+    const out = [];
+    for (const c of pathMod.isAbsolute(p) ? [p] : anchorDirs().map((d) => pathMod.join(d, p))) {
+      try { const st = fs.statSync(c); out.push({ at: c, dir: st.isDirectory() }); } catch { /* next anchor */ }
+    }
+    return out;
+  };
+  // AC-1 (2026-11-10): the store paths a find's walk reaches - each with the path find PRINTS for it, `shown` from its start
+  // as written - the pairs judgeFind judges and findExcludes reads; `unresolved` when a start names no path the guard stats.
+  const findReach = (parsed) => {
+    const pairs = [];
+    let unresolved = false;
+    const stores = sensitiveStores();
+    for (const s of parsed.starts.length ? parsed.starts : ['.']) {
+      const hits = candidatePaths(s).flatMap((p) => statAll(p));
+      if (!hits.length) { unresolved = true; continue; }
+      for (const hit of hits) for (const store of stores) {
+        const rel = hit.dir ? pathMod.relative(realOf(hit.at), store) : '';
+        if (!rel || rel.startsWith('..') || pathMod.isAbsolute(rel)) continue;
+        const segs = rel.split(pathMod.sep);
+        if (segs.length > parsed.maxdepth) continue;
+        pairs.push({ segs, shown: `${s.replace(/[\\/]+$/, '')}/${segs.join('/')}`, base: segs[segs.length - 1] });
+      }
+    }
+    return { pairs, unresolved };
+  };
+  // A negated test matching the store where find prints it (a path test on `shown`, a name test on the basename) leaves the
+  // store out of the walk's output - never in a find holding -o / -or, whose other branch can print it anyway.
+  const alternatives = (args) => args.some((w) => w === '-o' || w === '-or');
+  const excludes = (t, pair) => t.not && globOf(t.pattern, t.i ? 'i' : '').test(t.path ? pair.shown : pair.base);
+  // The pattern words of a find's exclusions of the store: each negated test excluding it from every start the walk reaches
+  // it from, every start resolved. The mention pass blanks only these operands.
+  const findExcludes = (args) => {
+    const parsed = findTests(args);
+    if (alternatives(args)) return new Set();
+    const { pairs, unresolved } = findReach(parsed);
+    if (unresolved) return new Set();
+    return new Set(parsed.tests.filter((t) => t.not && pairs.every((pair) => excludes(t, pair))).map((t) => t.pattern));
+  };
   for (let i = 0; i < parts.length; i += 2) {
     const seg = parts[i];
-    const joined = joinedOf(seg);
-    if (!(MENTION.test(joined) || (pipeAtRoot[pipeOf[i]] && BARE.test(joined))) || /guard-secret-value\.js/.test(seg)) continue;
+    let joined = joinedOf(seg);
+    const mentions = (j) => MENTION.test(j) || (pipeAtRoot[pipeOf[i]] && BARE.test(j));
+    if (!mentions(joined) || /guard-secret-value\.js/.test(seg)) continue;
+    // AC-1: in a find, the operand of a negated test that excludes the store names nothing the command opens
+    // (`find . -type f -not -path './.alfred/<store>' | head`); any other mention refuses as before
+    const raw = shellTokens(seg.replace(EXCLUDED, '$1'));
+    const at = commandAt(raw);
+    const toks = raw.map(joinQuoted);
+    if (at < toks.length && baseOf(toks[at]) === 'find') {
+      const out = findExcludes(toks.slice(at + 1));
+      if (out.size) {
+        joined = toks.filter((w, j) => !(j > at + 1 && out.has(w) && /^-i?(?:name|path|wholename)$/.test(toks[j - 1]) && /^(?:-not|!)$/.test(toks[j - 2]))).join(' ');
+        if (!mentions(joined)) continue;
+      }
+    }
     const words = joined.trim().split(/\s+/).filter(plain);
     if (looks(words, joined, parts[i + 1] === '|')) continue;
     refuse(words[0]);
@@ -3569,30 +3623,16 @@ function refuseSensitiveMention(text, steps = text) {
   const FIND_ACT = /^-(?:exec|execdir|ok|okdir)$/;
   const judgeFind = (args, fed) => {
     if (!fed && !args.some((w) => FIND_ACT.test(w))) return;
-    const stores = sensitiveStores();
-    if (!stores.length) return;
-    // one parse of the find's tests (findTests), every test counted, negated or not
+    if (!sensitiveStores().length) return;
+    // one parse of the find's tests (findTests); a test that does not exclude the store still narrows the walk (R8)
     const parsed = findTests(args);
-    const starts = parsed.starts;
     const tests = parsed.tests.map((t) => ({ re: globOf(t.pattern, t.i ? 'i' : ''), path: t.path }));
-    const depth = parsed.maxdepth;
-    for (const s of starts.length ? starts : ['.']) for (const p of candidatePaths(s)) for (const hit of statAll(p)) for (const store of stores) {
-      const rel = hit.dir ? pathMod.relative(realOf(hit.at), store) : '';
-      if (!rel || rel.startsWith('..') || pathMod.isAbsolute(rel)) continue;
-      const segs = rel.split(pathMod.sep);
-      if (segs.length > depth) continue;
-      const shown = `${s.replace(/[\\/]+$/, '')}/${segs.join('/')}`;
-      if (tests.length ? tests.some((t) => t.re.test(t.path ? shown : segs[segs.length - 1])) : segs.length === 1) refuse('find');
+    const open = !alternatives(args);
+    for (const pair of findReach(parsed).pairs) {
+      // AC-1: a store a negated test excludes where find prints it is no store this find prints
+      if (open && parsed.tests.some((t) => excludes(t, pair))) continue;
+      if (tests.length ? tests.some((t) => t.re.test(t.path ? pair.shown : pair.base)) : pair.segs.length === 1) refuse('find');
     }
-  };
-  // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
-  // cwd's hid the cwd's store from a tree-taking verb.
-  const statAll = (p) => {
-    const out = [];
-    for (const c of pathMod.isAbsolute(p) ? [p] : anchorDirs().map((d) => pathMod.join(d, p))) {
-      try { const st = fs.statSync(c); out.push({ at: c, dir: st.isDirectory() }); } catch { /* next anchor */ }
-    }
-    return out;
   };
   const judgeStage = (stage, depth, pipedOn) => {
     // a `$(...)` or backtick body runs as steps of its own (item 3: `echo "$(source .alfred/.secrets; ...)"` named no

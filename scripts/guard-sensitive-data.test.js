@@ -306,6 +306,18 @@ test(`U24: find pattern operands are patterns, not paths [${FILE}]`, () =>
     for (const command of [`find .alfred -name ${FILE} -exec cat {} \\;`, "find . -path './.alfred/*' -exec cat {} +"])
         assert.strictEqual(bash(dir, command), 2, command);
     assert.notStrictEqual(bash(dir, `cat ./.alfred/${FILE}`), 0, 'the store itself is never read as written');
+    // AC-1 (2026-11-10): a find that only EXCLUDES the store - a negated test matching it where find prints it - names
+    // nothing the command opens, piped to a listing filter or not
+    for (const command of ["find . -type f -not -path './.alfred*' | head -50", "ls -a .alfred && find . -type f -not -path './.alfred*' | head -50",
+        `find . -type f -not -name ${FILE} | head`, "find . -type f ! -path './.alfred/*' | head", `find . -type f -not -path './.alfred/${FILE}' | head`])
+        assert.strictEqual(bash(dir, command), 0, `AC-1 pass: ${command}`);
+    // kept: a positive test of the store, a start inside the data root, the mis-anchored exclusion (the start `.alfred`
+    // prints `.alfred/<store>`, which `./.alfred/<store>` does not match), and an -o alternative that prints it anyway
+    for (const command of ["find . -path './.alfred/*' | head", `find . -name ${FILE} | xargs cat`, 'find .alfred -exec cat {} +',
+        `find .alfred -not -path './.alfred/${FILE}' | xargs cat`, `find . -not -path './x' -o -name ${FILE} | head`])
+        assert.strictEqual(bash(dir, command), 2, `AC-1 kept: ${command}`);
+    // its -exec form was never a refusal: the dump half replaces it with the store's view, every value masked (as at HEAD)
+    assert.notStrictEqual(bash(dir, `find .alfred -not -path './.alfred/${FILE}' -exec cat {} +`), 0, 'AC-1 kept: the -exec form never runs as written');
 });
 
 // Final review 2026-10-25 C2: on a case-insensitive disk (macOS, Windows) `.alfred/.SECRETS` and `.ALFRED/.secrets` open

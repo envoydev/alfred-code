@@ -737,7 +737,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     when its walk reaches the store and a `-name` / `-path` test matches the store's name, or, from the data root itself,
     no name test narrows it; a `-maxdepth` short of the store passes. The word after a find test (`-name`, `-path`,
     `-wholename`, `-regex`, `-lname` and their `-i` forms) is a pattern, never a path the command opens (E-batch U24:
-    `-not -path './.alfred/*'` excluding the data root was refused as naming the store). The same day the dump half took `$(pwd)` / a backtick
+    `-not -path './.alfred/*'` excluding the data root was refused as naming the store). A negated test (`-not` / `!`)
+    matching the store where the find PRINTS it - the path from its start as written for a path test, the basename for a
+    name test - excludes it (AC-1, 2026-11-10): the find judge skips that store, and the mention pass blanks that operand
+    when it excludes the store from every start reaching it; never in a find holding `-o` / `-or`, and a start that does not
+    print the pattern's path (`find .alfred -not -path './.alfred/<store>'`) excludes nothing. The same day the dump half took `$(pwd)` / a backtick
     `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
     `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
     path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged. Audit 2026-10-30 HK-04: `$PWD`
