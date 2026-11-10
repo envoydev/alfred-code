@@ -11,7 +11,7 @@ detected silently before the first question: **project mode** (the normal case -
 is decided from the project itself) and **no-repo mode** (no git repo: the current directory becomes the root,
 confirmed first).
 
-**Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw. This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook voids the answer to an ask whose table is missing and prints the table itself.
+**Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it, unless the gate's note under the table call says it printed the table for the user - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw. This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook voids the answer to an ask whose table is missing and prints the table itself.
 
 ## The ladder - announce every step
 

@@ -113,6 +113,14 @@ test('init asks no forge CLI question - the user picks their own tools', () => {
     assert.doesNotMatch(body, /--forge-cli/);
 });
 
+// 2026-11-10: the gate prints a decision table under the call that made it and says so in its note; a paste then
+// shows the user the same table twice, so each paste mandate names that one case.
+test('the paste mandates skip a table the gate printed', () => {
+    const clause = /unless the gate's note under the table call says it printed the table for the user/;
+    for (const [name, body] of [['walk.md', refBody('walk')], ['init install phase', installBody()], ['configure', cmdBody('configure')]])
+        assert.match(flat(body), clause, name);
+});
+
 test('init is one command with two phases: the router reads the state and loads ONE phase file - manual-only', () => {
     const init = cmdBody('init');
     assert.match(init, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, 'init stays manual-only');

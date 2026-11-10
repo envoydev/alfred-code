@@ -64,7 +64,7 @@ grep at 258k context to confirm this shape):
      matched signal is the project telling you it uses what the install lacks - an informed add
      candidate, never an auto-add.
 
-   Paste those exact lines into your message inside a fenced code block. (Measured: the old form
+   Paste those exact lines into your message inside a fenced code block, unless the gate's note under the table call says it printed the table for the user. (Measured: the old form
    redirected to `$TMP/table.txt` and told you to paste the file - the tool result was then empty,
    the read-back was a step nobody took, and one real run asked all six layer questions with no
    table shown at all. A disk copy, if you want one, is `| tee "$TMP/table.txt"` - the pipe keeps
@@ -75,7 +75,7 @@ grep at 258k context to confirm this shape):
    times per table, counted back to the last answered ask) when no `total: N
    <layer>` footer follows the table call in your text. Self-check before you send the question:
    your own message must carry the `total: N <layer>` footer line - it is not there unless you
-   pasted the table. **The table is the tool's `--table <layer>` output and nothing else** - never a
+   pasted the table - or the gate's note must say it printed the table. **The table is the tool's `--table <layer>` output and nothing else** - never a
    table of your own (a `node -e` script reading a meta file, a hand-written list): the gate reads the
    `--table` call, and a home-made table hides rows the tool would show. **And the layer ends on its
    ask, answered** - narrating 'all 18 are recommended, next I'll decide' and moving on is the measured
