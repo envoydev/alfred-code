@@ -10,6 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { repo, section, HOOKS } = require('./docs-fixture');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 let n = 0;
 const sid = () => `docs-test-${process.pid}-${++n}`;
@@ -2840,16 +2841,16 @@ test('a dead Scope with no preferences engine beside the hooks adds nothing (AC2
 });
 
 // R5 (release 3): a linked child's start names each ancestor's docs root and its areas, read-only.
-function wsDocs({ rootAreas = ['architecture', 'preferences'], childArch = true, childFile = 'parent ..\n' } = {}) {
+function wsDocs({ rootAreas = ['architecture', 'preferences'], childArch = true, childRecord = { parent: '..' } } = {}) {
   // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
   const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-ws-')));
   const put = (rel, text) => { const f = path.join(top, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
   put('ws/.claude/alfred-code.stamp', 'sha: x\n');
-  put('ws/.alfred/workspace', 'child api\n');
+  putWorkspace(path.join(top, 'ws'), { children: ['api'] });
   for (const a of rootAreas) put(`ws/.alfred/docs/${a}/${a === 'architecture' ? 'ARCHITECTURE.md' : 'watch.json'}`, a === 'architecture' ? '# A\n' : '{}\n');
   put('ws/.alfred/docs/references/watch.json', '{}\n');
   put('ws/api/.claude/alfred-code.stamp', 'sha: x\n');
-  put('ws/api/.alfred/workspace', childFile);
+  putWorkspace(path.join(top, 'ws', 'api'), childRecord);
   if (childArch) put('ws/api/.alfred/docs/architecture/ARCHITECTURE.md', '# Api\n');
   const api = path.join(top, 'ws', 'api');
   spawnSync('git', ['init', '-q'], { cwd: api });
@@ -2874,7 +2875,7 @@ test('a child\'s start names the root\'s docs root and areas, read-only; a child
 test('no workspace docs line: a root with no domain, a seat\'s start, the kill switch, ignore docs root', () => {
   const none = wsDocs({ rootAreas: [] });
   const w = wsDocs();
-  const ig = wsDocs({ childFile: 'parent ..\nignore docs root\n' });
+  const ig = wsDocs({ childRecord: { parent: '..', ignore: { docs: ['root'] } } });
   try {
     assert.doesNotMatch(ctx(none.hook({})) || '', /Workspace root docs/);
     assert.doesNotMatch(ctx(w.hook({ agent_id: 'seat-1' })) || '', /Workspace root docs/);
@@ -2890,14 +2891,14 @@ test('a three-level chain names parent then root', () => {
   const put = (rel, text) => { const f = path.join(top, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
   try {
     put('ws/.claude/alfred-code.stamp', 'sha: x\n');
-    put('ws/.alfred/workspace', 'child api\n');
+    putWorkspace(path.join(top, 'ws'), { children: ['api'] });
     put('ws/.alfred/docs/architecture/ARCHITECTURE.md', '# A\n');
     put('ws/.alfred/docs/preferences/watch.json', '{}\n');
     put('ws/api/.claude/alfred-code.stamp', 'sha: x\n');
-    put('ws/api/.alfred/workspace', 'parent ..\nchild tool\n');
+    putWorkspace(path.join(top, 'ws', 'api'), { parent: '..', children: ['tool'] });
     put('ws/api/.alfred/docs/architecture/ARCHITECTURE.md', '# Api\n');
     put('ws/api/tool/.claude/alfred-code.stamp', 'sha: x\n');
-    put('ws/api/tool/.alfred/workspace', 'parent ..\n');
+    putWorkspace(path.join(top, 'ws', 'api', 'tool'), { parent: '..' });
     const leaf = path.join(top, 'ws', 'api', 'tool');
     spawnSync('git', ['init', '-q'], { cwd: leaf });
     const env = { ...process.env, CLAUDE_PROJECT_DIR: leaf, CLAUDE_CONFIG_DIR: path.join(top, 'cfg') };

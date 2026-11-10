@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 const dataRoot = require('../stack/mcp/data-root.js');
 const secretChain = require('../stack/hooks/secret-chain.js');
 
@@ -383,7 +384,7 @@ const wsTree = (spec) =>
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
         fs.mkdirSync(data, { recursive: true });
-        if (o.file !== undefined) fs.writeFileSync(path.join(data, 'workspace'), o.file);
+        if (o.record !== undefined) putWorkspace(dir, o.record, { dataRoot: o.data || '.alfred' });
         if (o.store !== undefined) fs.writeFileSync(path.join(data, '.secrets'), o.store);
         if (o.local !== undefined) fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), o.local);
     }
@@ -393,9 +394,9 @@ const CUSTOM = { data: 'var/data', local: JSON.stringify({ env: { ALFRED_CODE_DA
 // The workspace is on by default since 3.0.0 (D9); the chain cases still pin it, so a launch 0 in the caller's env cannot freeze them.
 const WS_ON = { ALFRED_CODE_WORKSPACE: '1' };
 const wsThree = (extra = {}) => wsTree({
-    'ws': { file: 'child api\n', store: 'A=root-a-value\nB=root-b-value\n', ...extra.ws },
-    'ws/api': { file: 'parent ..\nchild tool\n', store: 'A=child-a-value\n', ...extra.api },
-    'ws/api/tool': { file: 'parent ..\n', ...extra.tool },
+    'ws': { record: { children: ['api'] }, store: 'A=root-a-value\nB=root-b-value\n', ...extra.ws },
+    'ws/api': { record: { parent: '..', children: ['tool'] }, store: 'A=child-a-value\n', ...extra.api },
+    'ws/api/tool': { record: { parent: '..' }, ...extra.tool },
 });
 const hex = (s) => Buffer.from(s).toString('hex');
 

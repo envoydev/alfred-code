@@ -10,6 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
 const layout = require('../stack/hooks/layout.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const ROOT = path.join(__dirname, '..');
 const HOOKS = path.join(ROOT, 'stack', 'hooks');
@@ -38,16 +39,16 @@ function tree(spec, base = TMP)
         if (o.local !== undefined) { fs.mkdirSync(claude, { recursive: true }); fs.writeFileSync(path.join(claude, 'settings.local.json'), json(o.local)); }
         const data = path.join(dir, ...(o.data || '.alfred').split('/'));
         if (o.ws !== undefined || o.vars !== undefined) fs.mkdirSync(data, { recursive: true });
-        if (o.ws !== undefined) fs.writeFileSync(path.join(data, 'workspace'), o.ws);
+        if (o.ws !== undefined) putWorkspace(dir, o.ws, { dataRoot: o.data || '.alfred' });
         if (o.vars !== undefined) fs.writeFileSync(path.join(data, '.variables'), o.vars);
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 }
 // The usual three: ws holds api, api holds tool. `extra` adds to each folder's spec.
 const three = (extra = {}) => tree({
-    'ws': { stamp: true, ws: 'child api\n', ...(extra.ws || {}) },
-    'ws/api': { stamp: true, ws: 'parent ..\nchild tool\n', ...(extra.api || {}) },
-    'ws/api/tool': { stamp: true, ws: 'parent ..\n', ...(extra.tool || {}) },
+    'ws': { stamp: true, ws: { children: ['api'] }, ...(extra.ws || {}) },
+    'ws/api': { stamp: true, ws: { parent: '..', children: ['tool'] }, ...(extra.api || {}) },
+    'ws/api/tool': { stamp: true, ws: { parent: '..' }, ...(extra.tool || {}) },
 });
 const varsOf = (root, env = ON) => layout.variablesOf(root, { env: { ...env } });
 const K = (s) => `ALFRED_CODE_${s}`;
@@ -88,7 +89,7 @@ test('ignore env K in ws/api stops K from ws for ws/api and ws/api/tool', () =>
 {
     const at = three({
         ws: { vars: `${K('SCORER_LEVEL')}=70\n${K('MEMORY')}=custom\n` },
-        api: { ws: `parent ..\nchild tool\nignore env ${K('SCORER_LEVEL')}\n` },
+        api: { ws: { parent: '..', children: ['tool'], ignore: { env: [K('SCORER_LEVEL')] } } },
     });
     for (const [rel, up] of [['ws/api', '..'], ['ws/api/tool', '../..']])
     {
@@ -118,7 +119,7 @@ test('HOOKS_OFF merges the root\'s guard-ungated-commit:push with the child\'s d
     assert.deepStrictEqual(parts('ws/api'), ['docs-session', 'guard-ungated-commit:push'], 'a root\'s whole-hook HOOKS_OFF entry does not reach ws/api');
     assert.deepStrictEqual(parts('ws/api/tool'), ['guard-ungated-commit:push'], 'the grandchild takes the root\'s part entry');
     assert.deepStrictEqual(parts('ws/api', { ...UNSET, [K('WORKSPACE')]: '0' }), ['docs-session'], 'the switch off reads the project alone');
-    fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'workspace'), `parent ..\nchild tool\nignore env ${K('HOOKS_OFF')}\n`);
+    putWorkspace(at('ws/api'), { parent: '..', children: ['tool'], ignore: { env: [K('HOOKS_OFF')] } });
     assert.deepStrictEqual(parts('ws/api'), ['docs-session']);
     assert.deepStrictEqual(parts('ws/api/tool'), [], 'a nearer ignore stops the root for the grandchild too');
     fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.local.json'), JSON.stringify({ env: { [K('HOOKS_OFF')]: 'forge-session' } }));
@@ -238,7 +239,7 @@ test('AC20: chain depth 7, 8 and 9 - the ninth member is not read', () =>
     let rel = 'd0';
     const rels = [rel];
     for (let i = 1; i <= 9; i++) { rel = `${rel}/d${i}`; rels.push(rel); }
-    rels.forEach((r, i) => { spec[r] = { stamp: true, ws: `${i ? 'parent ..\n' : ''}${i < 9 ? `child d${i + 1}\n` : ''}` }; });
+    rels.forEach((r, i) => { spec[r] = { stamp: true, ws: { parent: i ? '..' : null, children: i < 9 ? [`d${i + 1}`] : [] } }; });
     const at = tree(spec);
     const bottom = at(rels[9]);
     const at8 = (depth) => at(rels[9 - depth]);
@@ -297,14 +298,13 @@ test('Review Focus 6: a guard switch in .variables is not read - own and a membe
     const sibling = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'sibling-')));
     for (const where of ['own', 'member'])
     {
-        const at = tree({ 'ws': { stamp: true, ws: 'child api\n' } });
+        const at = tree({ 'ws': { stamp: true, ws: { children: ['api'] } } });
         const api = path.join(at('ws'), 'api');
         aheadClone(api);
-        const spec = { stamp: true, ws: 'parent ..\n' };
+        const spec = { stamp: true, ws: { parent: '..' } };
         fs.mkdirSync(path.join(api, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(api, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        fs.mkdirSync(path.join(api, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(api, '.alfred', 'workspace'), spec.ws);
+        putWorkspace(api, spec.ws);
         fs.mkdirSync(path.join(at('ws'), '.alfred'), { recursive: true });
         fs.writeFileSync(path.join(where === 'own' ? api : at('ws'), '.alfred', '.variables'), GUARD_LINES(sibling));
         fs.writeFileSync(path.join(api, '.eslintrc.json'), '{ "rules": {} }\n');
@@ -323,17 +323,16 @@ test('Review Focus 6: a guard switch in .variables is not read - own and a membe
 
 test('Review Focus 7: the root\'s push switch-off reaches the child\'s hook', () =>
 {
-    const at = tree({ 'ws': { stamp: true, ws: 'child api\n', settings: { env: { [K('HOOKS_OFF')]: 'guard-ungated-commit:push' } } } });
+    const at = tree({ 'ws': { stamp: true, ws: { children: ['api'] }, settings: { env: { [K('HOOKS_OFF')]: 'guard-ungated-commit:push' } } } });
     const api = path.join(at('ws'), 'api');
     aheadClone(api);
     fs.mkdirSync(path.join(api, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(api, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-    fs.mkdirSync(path.join(api, '.alfred'), { recursive: true });
-    fs.writeFileSync(path.join(api, '.alfred', 'workspace'), 'parent ..\n');
+    putWorkspace(api, { parent: '..' });
     const push = () => hook('guard-ungated-commit.js', { tool_name: 'Bash', cwd: api, tool_input: { command: 'git push' } }, api);
     assert.strictEqual(push().status, 0, 'the root\'s part entry stands the push gate down in the child');
     assert.strictEqual(hook('guard-ungated-commit.js', { tool_name: 'Bash', cwd: api, tool_input: { command: 'git push' } }, api, { ALFRED_CODE_WORKSPACE: '0' }).status, 2, 'frozen, the child stands alone');
-    fs.writeFileSync(path.join(api, '.alfred', 'workspace'), `parent ..\nignore env ${K('HOOKS_OFF')}\n`);
+    putWorkspace(api, { parent: '..', ignore: { env: [K('HOOKS_OFF')] } });
     assert.strictEqual(push().status, 2, 'under ignore env ALFRED_CODE_HOOKS_OFF the child is gated');
 });
 

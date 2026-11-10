@@ -135,7 +135,7 @@ test('M39 the purge count is the bus\'s own count of the feature\'s notes, the s
     try
     {
         fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
-        for (const file of ['handoff.js', 'layout.js']) fs.copyFileSync(path.join(ROOT, 'stack', 'hooks', file), path.join(dir, '.claude', 'hooks', file));
+        for (const file of ['handoff.js', 'layout.js', 'workspace-file.js']) fs.copyFileSync(path.join(ROOT, 'stack', 'hooks', file), path.join(dir, '.claude', 'hooks', file));
         const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
         delete env.ALFRED_CODE_DATA_PATH;
         const bus = (args, input) => spawnSync(process.execPath, [path.join(dir, '.claude', 'hooks', 'handoff.js'), ...args], { cwd: dir, env, input, encoding: 'utf8' });

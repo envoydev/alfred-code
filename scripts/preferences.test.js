@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const ROOT = path.join(__dirname, '..');
 const SCRIPT = path.join(ROOT, 'stack', 'skills', 'capture-preferences', 'scripts', 'preferences.js');
@@ -849,8 +850,8 @@ test('readDirs lists the own dirs first, then the root\'s; a copy with no layout
     try
     {
         const put = (rel, text) => { const f = path.join(work, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
-        put('ws/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/.alfred/workspace', 'child api\n');
-        put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/.alfred/workspace', 'parent ..\n');
+        put('ws/.claude/alfred-code.stamp', 'sha: x\n'); putWorkspace(path.join(work, 'ws'), { children: ['api'] });
+        put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); putWorkspace(path.join(work, 'ws', 'api'), { parent: '..' });
         const api = path.join(work, 'ws', 'api');
         const env = { CLAUDE_CONFIG_DIR: path.join(work, 'config') };
         const real = require('../stack/skills/capture-preferences/scripts/preferences.js');

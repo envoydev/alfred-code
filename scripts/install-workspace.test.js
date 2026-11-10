@@ -26,6 +26,7 @@ const SC = 'ALFRED_CODE_SCORER';
 // [key, the stack's old seed, the value it resets to] - the env pass's reseed list (meta/migrations.json): an update moves
 // the stack's own old seeds (U16's idle wait, B1's scorer pair), and every other value an older install holds stays.
 const RESEEDS = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json')).reseed;
+const { readWorkspaceRecord, readWorkspaceValues } = require('./workspace-fixture.js');
 const reseeded = (env) => { const out = { ...env }; for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to; return out; };
 
 const at = (work, rel = '.') => path.join(work, 'ws', ...(rel === '.' ? [] : rel.split('/')));
@@ -280,7 +281,7 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
 test('AC15: leaving keeps every effective value; with ws deleted the child is seeded as standalone and names the keys that went to defaults', POSIX_ONLY, () =>
 {
     const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
-    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, ws: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')) });
+    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, ws: readWorkspaceValues(at(work, 'api')) });
     const r = scenario([
         { at: '.', after: (work) => { setVar(work, '.', { [LEVEL]: '90' }); join(work, 'api'); } },
         { at: 'api', after: read },
@@ -292,7 +293,7 @@ test('AC15: leaving keeps every effective value; with ws deleted the child is se
     assert.deepStrictEqual(after.effective, before.effective, r.outs[2]);
     assert.strictEqual(after.vars[LEVEL], '90', 'the root\'s value now sits in the child\'s own file');
     assert.ok(!Object.values(after.from).includes('..'), JSON.stringify(after.from));
-    assert.strictEqual(after.ws, 'role standalone\nabove ..\n');
+    assert.deepStrictEqual(after.ws, { role: 'standalone', above: '..' });
 
     const gone = scenario([
         { at: '.', after: (work) => join(work, 'api') },
@@ -309,7 +310,7 @@ test('AC15: leaving keeps every effective value; with ws deleted the child is se
     assert.strictEqual(Number(named[1]), defaults.length);
     assert.ok(defaults.length > 0 && defaults.every((k) => !held.includes(k)), `${held} / ${defaults}`);
     assert.ok(!defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !defaults.includes('ALFRED_CODE_WORKSPACE'));
-    assert.strictEqual(gone.steps[3].ws, 'role standalone\nabove none\n');
+    assert.deepStrictEqual(gone.steps[3].ws, { role: 'standalone', above: 'none' });
     const seeded = gone.steps[4].vars;
     const fresh = Object.keys(seeded).filter((k) => !held.includes(k));
     assert.ok(fresh.length > 0 && fresh.every((k) => defaults.includes(k)), `the update seeded the named keys: ${fresh}`);
@@ -541,12 +542,12 @@ test('a child whose back-reference was deleted inherits nothing, writes nothing 
     const r = scenario([
         { at: '.', after: (work) => join(work, 'api') },
         { at: 'api', after: (work) => edit(work, '.', (m) => wsLib.removeChild(m, 'api')) },
-        update('.', { args: ['--add', `skill ${X}`], after: (work) => readOr(path.join(at(work), '.alfred', 'workspace')) }),
-        update('api', { after: (work) => ({ x: hasSkill(work, 'api', X), root: readOr(path.join(at(work), '.alfred', 'workspace')), own: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')) }) }),
+        update('.', { args: ['--add', `skill ${X}`], after: (work) => readWorkspaceRecord(at(work)).text }),
+        update('api', { after: (work) => ({ x: hasSkill(work, 'api', X), root: readWorkspaceRecord(at(work)).text, own: readWorkspaceValues(at(work, 'api')) }) }),
     ]);
     assert.strictEqual(r.steps[3].x, false, r.outs[3]);
     assert.strictEqual(r.steps[3].root, r.steps[2], 'the parent\'s workspace file was written');
-    assert.match(r.steps[3].own, /^parent \.\.$/m);
+    assert.strictEqual(r.steps[3].own.parent, '..');
     assert.match(r.outs[3], /!! workspace: parent \.\. in \.alfred\/workspace ignored - \.\. does not list this folder as a child/);
 });
 
@@ -603,6 +604,7 @@ test('a child whose own listing is blind adds and drops nothing and keeps its ow
 test('a parent with an unknown workspace line still yields parentLines', POSIX_ONLY, () =>
 {
     const r = scenario([
+        // the file's text is the subject: an unknown line beside the known ones
         { at: '.', after: (work) => { join(work, 'api'); fs.appendFileSync(path.join(at(work), '.alfred', 'workspace'), 'frobnicate the tree\n'); } },
         { at: 'api' },
         update('.', { args: ['--add', `skill ${X}`] }),
@@ -637,11 +639,11 @@ test('a data-root move at the root carries its workspace file, and the child\'s 
     const r = scenario([
         { at: '.', after: (work) => join(work, 'api') },
         { at: 'api' },
-        update('.', { args: ['--data-path', '.ws-data', '--data-move', 'move'], after: (work) => [readOr(path.join(at(work), '.ws-data', 'workspace')), fs.existsSync(path.join(at(work), '.alfred', 'workspace'))] }),
+        update('.', { args: ['--data-path', '.ws-data', '--data-move', 'move'], after: (work) => [readWorkspaceValues(at(work), { dataRoot: '.ws-data' }), readWorkspaceRecord(at(work)).state !== 'absent'] }),
         update('.', { args: ['--add', `skill ${X}`] }),
         update('api', { after: (work) => hasSkill(work, 'api', X) }),
     ]);
-    assert.match(r.steps[2][0] || '', /^child api$/m, r.outs[2]);
+    assert.deepStrictEqual((r.steps[2][0] || {}).children, ['api'], r.outs[2]);
     assert.strictEqual(r.steps[2][1], false);
     assert.strictEqual(r.steps[4], true, r.outs[4]);
 });
@@ -654,18 +656,19 @@ test('a joined child that moves its data root and adds an own pick in the same r
         { at: '.', after: (work) => join(work, 'api') },
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n` },
         update('api', { args: ['--data-path', '.kid-data', '--data-move', 'move', '--add', `skill ${X}`], after: (work) => ({
-            own: lineOf(stampOf(work, 'api'), 'own-picks'), file: readOr(path.join(at(work, 'api'), '.kid-data', 'workspace')),
+            own: lineOf(stampOf(work, 'api'), 'own-picks'), file: readWorkspaceValues(at(work, 'api'), { dataRoot: '.kid-data' }),
         }) }),
         update('api', { after: (work) => ({ x: hasSkill(work, 'api', X), js: hasSkill(work, 'api', 'javascript') }) }),
     ]);
-    assert.match(r.steps[2].file || '', /^parent \.\.$/m, r.outs[2]);
+    assert.strictEqual((r.steps[2].file || {}).parent, '..', r.outs[2]);
     assert.match(r.steps[2].own || '', new RegExp(`skill/${X}`), r.outs[2]);
     assert.deepStrictEqual(r.steps[3], { x: true, js: true }, r.outs[3]);
 });
 
 test('a child\'s --drop of an item its parent holds writes the ignore line, so the next update keeps it out; an --add lifts it (validate, a hand-run update)', POSIX_ONLY, () =>
 {
-    const wsFile = (work) => readOr(path.join(at(work, 'api'), '.alfred', 'workspace'));
+    const ignored = (values) => ((values || {}).ignore || {}).skill || [];
+    const wsFile = (work) => readWorkspaceValues(at(work, 'api'));
     const r = scenario([
         { at: '.', after: (work) => join(work, 'api') },
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n` },
@@ -674,11 +677,11 @@ test('a child\'s --drop of an item its parent holds writes the ignore line, so t
         update('api', { args: ['--print-plan', '--add', 'skill javascript'], after: (work) => wsFile(work) }),
         update('api', { args: ['--add', 'skill javascript'], after: (work) => ({ file: wsFile(work), js: hasSkill(work, 'api', 'javascript'), own: lineOf(stampOf(work, 'api'), 'own-picks') }) }),
     ]);
-    assert.match(r.steps[2].file || '', /^ignore skill javascript$/m, r.outs[2]);
+    assert.ok(ignored(r.steps[2].file).includes('javascript'), r.outs[2]);
     assert.strictEqual(r.steps[2].js, false);
     assert.strictEqual(r.steps[3], false, `the next update brought it back:\n${r.outs[3]}`);
-    assert.match(r.steps[4] || '', /^ignore skill javascript$/m, 'a print-plan writes nothing');
-    assert.doesNotMatch(r.steps[5].file || '', /ignore skill javascript/, r.outs[5]);
+    assert.ok(ignored(r.steps[4]).includes('javascript'), 'a print-plan writes nothing');
+    assert.ok(!ignored(r.steps[5].file).includes('javascript'), r.outs[5]);
     assert.strictEqual(r.steps[5].js, true);
     assert.doesNotMatch(r.steps[5].own || '', /skill\/javascript/, 'taken from the parent again, not an own pick');
 });
@@ -708,7 +711,7 @@ test('a child registered under a chosen data root installs with that root and in
         } },
         planStep('root.json'),
         { at: 'api', args: (work) => ['--data-path', '.kid-data', '--parent-plan', path.join(work, 'root.json')], after: (work) => ({
-            root: lineOf(stampOf(work, 'api'), 'data-root'), file: readOr(path.join(at(work, 'api'), '.kid-data', 'workspace')),
+            root: lineOf(stampOf(work, 'api'), 'data-root'), file: readWorkspaceValues(at(work, 'api'), { dataRoot: '.kid-data' }),
             alfred: fs.existsSync(path.join(at(work, 'api'), '.alfred')), x: hasSkill(work, 'api', X), js: hasSkill(work, 'api', 'javascript'),
             sc: effectiveOf(work, 'api')[SC],
         }) },
@@ -716,8 +719,8 @@ test('a child registered under a chosen data root installs with that root and in
     const got = r.steps[2];
     assert.strictEqual(got.root, '.kid-data', r.outs[2]);
     assert.doesNotMatch(r.outs[2], /not applied/);
-    assert.match(got.file, /^parent \.\.$/m);
-    assert.match(got.file, new RegExp(`^ignore skill ${X}$`, 'm'));
+    assert.strictEqual(got.file.parent, '..');
+    assert.ok(got.file.ignore.skill.includes(X), JSON.stringify(got.file));
     assert.strictEqual(got.alfred, false);
     assert.deepStrictEqual([got.x, got.js, got.sc], [false, true, '1']);
 });
@@ -834,11 +837,11 @@ test('cascade: a deleted child is gone and loses its line (AC6)', POSIX_ONLY, ()
         { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
         { at: 'api' },
         { at: 'web', after: (work) => fs.rmSync(at(work, 'web'), { recursive: true, force: true }) },
-        cli('cascade', { after: (work) => readOr(path.join(at(work), '.alfred', 'workspace')) }),
+        cli('cascade', { after: (work) => readWorkspaceValues(at(work)) }),
     ]);
     assert.match(r.outs[3], /^cascade: web\tgone$/m, r.outs[3]);
     assert.match(r.outs[3], /^cascade: api\t(updated|unchanged)$/m, r.outs[3]);
-    assert.strictEqual(r.steps[3], 'child api\n');
+    assert.deepStrictEqual(r.steps[3], { children: ['api'] });
 });
 
 test('cascade applies one project\'s answer and no other\'s', POSIX_ONLY, () =>
@@ -879,6 +882,7 @@ test('a mid-level parent with an unknown workspace line still cascades', POSIX_O
 {
     const r = scenario([
         { at: '.', after: (work) => join(work, 'api') },
+        // the file's text is the subject: an unknown line beside the known ones
         { at: 'api', after: (work) => { join(work, 'api/tool', { parent: 'api' }); fs.appendFileSync(path.join(at(work, 'api'), '.alfred', 'workspace'), 'frobnicate x\n'); } },
         { at: 'api/tool' },
         update('api'),
@@ -925,8 +929,8 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
         { at: 'web', after: (work) => ({ tool: tree(work, 'api/tool'), vars: readOr(path.join(at(work), '.alfred', '.variables')) }) },
         { at: '.', act: 'uninstall', after: (work) => ({
             apiVars: readOr(path.join(at(work, 'api'), '.alfred', '.variables')),
-            api: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')), web: readOr(path.join(at(work, 'web'), '.alfred', 'workspace')),
-            root: readOr(path.join(at(work), '.alfred', 'workspace')), own: lineOf(stampOf(work, 'api'), 'own-picks'),
+            api: readWorkspaceValues(at(work, 'api')), web: readWorkspaceValues(at(work, 'web')),
+            root: readWorkspaceValues(at(work)), own: lineOf(stampOf(work, 'api'), 'own-picks'),
             skills: [hasSkill(work, 'api', 'javascript'), hasSkill(work, 'api', OWN), hasSkill(work, 'web', 'javascript')],
             tool: tree(work, 'api/tool'), rootStamp: fs.existsSync(path.join(at(work), '.claude', 'alfred-code.stamp')),
         }) },
@@ -934,9 +938,9 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
     ]);
     const got = r.steps[4];
     assert.strictEqual(got.rootStamp, false, r.outs[4]);
-    assert.strictEqual(got.api, 'child tool\n', r.outs[4]);
-    assert.strictEqual(got.web, '');
-    assert.ok(!/^child /m.test(got.root || ''), `the root still lists a child:\n${got.root}`);
+    assert.deepStrictEqual(got.api, { children: ['tool'] }, r.outs[4]);
+    assert.deepStrictEqual(got.web, {});
+    assert.ok(!(got.root || {}).children, `the root still lists a child: ${JSON.stringify(got.root)}`);
     assert.strictEqual(got.own, null, 'a released child reads as standalone: every pick its own');
     assert.deepStrictEqual(got.skills, [true, true, true]);
     assert.strictEqual(got.tool, r.steps[3].tool, 'the grandchild kept every file');
@@ -960,18 +964,18 @@ test('uninstall in a child removes its child line from the parent and its exclud
         { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); fs.writeFileSync(path.join(at(work), 'CLAUDE.md'), '# team\n'); } },
         { at: 'api' },
         { at: 'web', after: (work) => { applyAccount(work, ['api', 'web']); return [accountKey(work), excludesOf(work, 'api').length]; } },
-        { at: 'api', act: 'uninstall', after: (work) => ({ root: readOr(path.join(at(work), '.alfred', 'workspace')), excludes: excludesOf(work, 'api'), key: accountKey(work), parent: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')) }) },
-        { at: 'web', act: 'uninstall', after: (work) => ({ root: readOr(path.join(at(work), '.alfred', 'workspace')), key: accountKey(work) }) },
+        { at: 'api', act: 'uninstall', after: (work) => ({ root: readWorkspaceValues(at(work)), excludes: excludesOf(work, 'api'), key: accountKey(work), parent: readWorkspaceValues(at(work, 'api')) }) },
+        { at: 'web', act: 'uninstall', after: (work) => ({ root: readWorkspaceValues(at(work)), key: accountKey(work) }) },
     ]);
     assert.deepStrictEqual(r.steps[2], ['claude-md-and-agents-md', r.steps[2][1]]);
     assert.ok(r.steps[2][1] > 0, 'the child held excludes before');
     const first = r.steps[3];
-    assert.strictEqual(first.root, 'child web\n', r.outs[3]);
+    assert.deepStrictEqual(first.root, { children: ['web'] }, r.outs[3]);
     assert.deepStrictEqual(first.excludes, [], r.outs[3]);
-    assert.ok(!/^parent /m.test(first.parent || ''), r.outs[3]);
+    assert.ok(!(first.parent || {}).parent, r.outs[3]);
     assert.strictEqual(first.key, 'claude-md-and-agents-md', 'another child still records the key');
     assert.match(r.outs[3], /instructionFiles key kept - 1 other project still records it: .*\/ws\/web/, r.outs[3]);
-    assert.strictEqual(r.steps[4].root, '', r.outs[4]);
+    assert.deepStrictEqual(r.steps[4].root, {}, r.outs[4]);
     assert.strictEqual(r.steps[4].key, undefined, r.outs[4]);
     assert.match(r.outs[4], /instructionFiles key removed - no other project records it/, r.outs[4]);
 });

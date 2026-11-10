@@ -9,20 +9,24 @@ const os = require('node:os');
 const path = require('node:path');
 const ws = require('./install/workspace.js');
 const { samePath } = require('./test-paths.js');
+const { putWorkspace, readWorkspaceRecord, readWorkspaceValues } = require('./workspace-fixture.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
-const project = (text) =>
+// `content`: a record, written through the fixture - or a string, the old file's own text, where that text is the subject.
+const project = (content) =>
 {
     const root = fs.mkdtempSync(path.join(TMP, 'p-'));
-    if (text !== undefined)
+    if (content !== null && typeof content === 'object') putWorkspace(root, content);
+    else if (content !== undefined)
     {
         fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(root, '.alfred', 'workspace'), text);
+        fs.writeFileSync(path.join(root, '.alfred', 'workspace'), content);
     }
     return root;
 };
-const fileOf = (root, dataRoot = '.alfred') => path.join(root, ...dataRoot.split('/'), 'workspace');
+// The file the project's record is read from (workspace.json's path when neither exists).
+const fileOf = (root, dataRoot = '.alfred') => readWorkspaceRecord(root, { dataRoot }).file;
 const lockOf = (root) => path.join(root, '.alfred', 'workspace.lock');
 // A fake clock whose sleep advances it, so a 2 s lock wait runs in no time; `onSleep` sees the clock after each step.
 const clock = (start = Date.now(), onSleep = () => {}) =>
@@ -86,23 +90,23 @@ test('CRLF, a BOM and trailing spaces read the same as LF', () =>
 
 test('a lock released at 1.9 s is waited for; one held 2.1 s gives up with why locked', () =>
 {
-    const root = project('parent ..\n');
+    const root = project({ parent: '..' });
     fs.writeFileSync(lockOf(root), '');
     const fake = clock(Date.now(), (elapsed) => { if (elapsed >= 1900) fs.rmSync(lockOf(root), { force: true }); });
     const got = ws.writeWorkspace(root, (m) => ws.addChild(m, 'api'), { now: fake.now, sleep: fake.sleep });
     assert.strictEqual(got.ok, true);
     assert.strictEqual(got.wrote, true);
     assert.ok(fake.state.sleeps >= 38, 'it waited about 1.9 s in 50 ms steps');
-    assert.strictEqual(fs.readFileSync(fileOf(root), 'utf8'), 'parent ..\nchild api\n');
+    assert.deepStrictEqual(readWorkspaceValues(root), { parent: '..', children: ['api'] });
     assert.strictEqual(fs.existsSync(lockOf(root)), false, 'the lock is released');
 
-    const held = project('parent ..\n');
+    const held = project({ parent: '..' });
     fs.writeFileSync(lockOf(held), '');
     const never = clock();
     const stuck = ws.writeWorkspace(held, (m) => ws.addChild(m, 'api'), { now: never.now, sleep: never.sleep });
     assert.strictEqual(stuck.ok, false);
     assert.strictEqual(stuck.why, 'locked');
-    assert.strictEqual(fs.readFileSync(fileOf(held), 'utf8'), 'parent ..\n', 'the file is unchanged');
+    assert.deepStrictEqual(readWorkspaceValues(held), { parent: '..' }, 'the file is unchanged');
     assert.strictEqual(fs.existsSync(lockOf(held)), true, 'another run\'s lock is never removed');
     assert.ok(never.state.t - Date.now() < 2200, 'it gave up at about 2 s');
 });
@@ -111,7 +115,7 @@ test('a lock aged 29 s is waited on; one aged 31 s is taken over', () =>
 {
     const aged = (seconds) =>
     {
-        const root = project('');
+        const root = project({});
         fs.writeFileSync(lockOf(root), '');
         const at = (Date.now() - seconds * 1000) / 1000;
         fs.utimesSync(lockOf(root), at, at);
@@ -130,7 +134,7 @@ test('a lock aged 29 s is waited on; one aged 31 s is taken over', () =>
 
 test('a write that changes nothing leaves the file untouched', () =>
 {
-    const root = project('parent ..\nchild api\n');
+    const root = project({ parent: '..', children: ['api'] });
     const at = (Date.now() - 60000) / 1000;
     fs.utimesSync(fileOf(root), at, at);
     const before = fs.statSync(fileOf(root)).mtimeMs;
@@ -138,6 +142,7 @@ test('a write that changes nothing leaves the file untouched', () =>
     assert.strictEqual(got.ok, true);
     assert.strictEqual(got.wrote, false);
     assert.strictEqual(fs.statSync(fileOf(root)).mtimeMs, before);
+    // the file's text is the subject: a hand-saved CRLF file with a comment
     const crlf = project('parent ..\r\n# mine\r\n');
     ws.writeWorkspace(crlf, () => {});
     assert.strictEqual(fs.readFileSync(fileOf(crlf), 'utf8'), 'parent ..\r\n# mine\r\n', 'a no-op never rewrites a hand-saved CRLF file');
@@ -148,7 +153,7 @@ test('dataRoot passed to writeWorkspace writes under that folder', () =>
     const root = project();
     const got = ws.writeWorkspace(root, (m) => ws.setParent(m, '..'), { dataRoot: '.kid-data' });
     assert.strictEqual(got.ok, true);
-    assert.strictEqual(fs.readFileSync(fileOf(root, '.kid-data'), 'utf8'), 'parent ..\n');
+    assert.deepStrictEqual(readWorkspaceValues(root, { dataRoot: '.kid-data' }), { parent: '..' });
     assert.strictEqual(fs.existsSync(path.join(root, '.alfred')), false);
     assert.strictEqual(ws.readWorkspace(root, { dataRoot: '.kid-data' }).view.parent, '..');
     for (const bad of ['../x', '.claude/x'])
@@ -161,7 +166,7 @@ test('dataRoot passed to writeWorkspace writes under that folder', () =>
 test('readWorkspace states: absent and ok', () =>
 {
     assert.strictEqual(ws.readWorkspace(project()).state, 'absent');
-    const got = ws.readWorkspace(project('child api\n'));
+    const got = ws.readWorkspace(project({ children: ['api'] }));
     assert.strictEqual(got.state, 'ok');
     assert.deepStrictEqual(got.view.children, ['api']);
 });
@@ -188,17 +193,16 @@ test('moveWorkspace moves, reports absent, and never overwrites', () =>
 {
     const said = [];
     const log = (l) => said.push(l);
-    const root = project('child api\n');
+    const root = project({ children: ['api'] });
     assert.strictEqual(ws.moveWorkspace({ projectRoot: root, from: '.alfred', to: '.ws-data', log }), 'moved');
-    assert.strictEqual(fs.readFileSync(fileOf(root, '.ws-data'), 'utf8'), 'child api\n');
-    assert.strictEqual(fs.existsSync(fileOf(root)), false);
+    assert.deepStrictEqual(readWorkspaceValues(root, { dataRoot: '.ws-data' }), { children: ['api'] });
+    assert.strictEqual(readWorkspaceRecord(root).state, 'absent');
     assert.strictEqual(ws.moveWorkspace({ projectRoot: root, from: '.alfred', to: '.ws-data', log }), 'absent');
-    const both = project('child api\n');
-    fs.mkdirSync(path.join(both, '.ws-data'));
-    fs.writeFileSync(fileOf(both, '.ws-data'), 'child web\n');
+    const both = project({ children: ['api'] });
+    putWorkspace(both, { children: ['web'] }, { dataRoot: '.ws-data' });
     assert.strictEqual(ws.moveWorkspace({ projectRoot: both, from: '.alfred', to: '.ws-data', log }), 'clash');
-    assert.strictEqual(fs.readFileSync(fileOf(both), 'utf8'), 'child api\n');
-    assert.strictEqual(fs.readFileSync(fileOf(both, '.ws-data'), 'utf8'), 'child web\n');
+    assert.deepStrictEqual(readWorkspaceValues(both), { children: ['api'] });
+    assert.deepStrictEqual(readWorkspaceValues(both, { dataRoot: '.ws-data' }), { children: ['web'] });
     assert.match(said.join('\n'), /!! workspace: \.alfred\/workspace left in place - \.ws-data\/workspace already exists/);
 });
 
@@ -211,7 +215,7 @@ test('ancestorEnv keeps only the account', () =>
 
 const { execFileSync } = require('node:child_process');
 const STAMP = 'sha: x\n';
-// A tree under TMP: `spec` maps a relative folder to { stamp, git, file } - `file` is its workspace file's text.
+// A tree under TMP: `spec` maps a relative folder to { stamp, git, record } - `record` is its workspace record.
 const tree = (spec) =>
 {
     const top = fs.mkdtempSync(path.join(TMP, 't-'));
@@ -221,7 +225,7 @@ const tree = (spec) =>
         fs.mkdirSync(dir, { recursive: true });
         if (o.git) execFileSync('git', ['init', '-q'], { cwd: dir });
         if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), STAMP); }
-        if (o.file !== undefined) { fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true }); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), o.file); }
+        if (o.record !== undefined) putWorkspace(dir, o.record);
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 };
@@ -268,14 +272,14 @@ test('joinVerdict names same-repo and not-a-checkout, and is ok for a nested che
 test('chain follows parent lines nearest first and needs the back-reference', () =>
 {
     const at = tree({
-        'ws': { stamp: true, file: 'child api\n' },
-        'ws/api': { stamp: true, file: 'parent ..\nchild tool\n' },
-        'ws/api/tool': { stamp: true, file: 'parent ..\n' },
+        'ws': { stamp: true, record: { children: ['api'] } },
+        'ws/api': { stamp: true, record: { parent: '..', children: ['tool'] } },
+        'ws/api/tool': { stamp: true, record: { parent: '..' } },
     });
     const got = ws.chain(at('ws/api/tool'), { env: env0 });
     assert.deepStrictEqual(got.members.map((m) => [m.root, m.rel, m.dataRoot]), [[at('ws/api'), '..', '.alfred'], [at('ws'), '../..', '.alfred']]);
     assert.deepStrictEqual(got.notes, []);
-    fs.writeFileSync(path.join(at('ws'), '.alfred', 'workspace'), '# no children\n');
+    putWorkspace(at('ws'), {});
     const cut = ws.chain(at('ws/api/tool'), { env: env0 });
     assert.deepStrictEqual(cut.members.map((m) => m.rel), ['..']);
     assert.deepStrictEqual(cut.notes, ['!! workspace: parent .. in ../.alfred/workspace ignored - ../.. does not list this folder as a child']);
@@ -290,39 +294,37 @@ test('R062: a child name holding a double space or a tab round-trips', () =>
         assert.strictEqual(ws.renderWorkspace(ws.parseWorkspace(text)), text);
     }
     assert.deepStrictEqual(ws.viewOf(ws.parseWorkspace('child   api\n')).children, ['api'], 'the run of separators after the keyword is not part of the name');
-    const at = tree({ 'ws': { stamp: true, file: 'child a  b\n' }, 'ws/a  b': { stamp: true, file: 'parent ..\n' } });
+    const at = tree({ 'ws': { stamp: true, record: { children: ['a  b'] } }, 'ws/a  b': { stamp: true, record: { parent: '..' } } });
     assert.deepStrictEqual(ws.chain(at('ws/a  b'), { env: env0 }).members.map((m) => m.rel), ['..'], 'the back-reference matches the real folder');
 });
 
 test('chain reads the project\'s own file from ownDataRoot', () =>
 {
-    const at = tree({ 'ws': { stamp: true, file: 'child api\n' }, 'ws/api': { stamp: true } });
-    fs.mkdirSync(path.join(at('ws/api'), '.kid-data'));
-    fs.writeFileSync(path.join(at('ws/api'), '.kid-data', 'workspace'), 'parent ..\n');
+    const at = tree({ 'ws': { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true } });
+    putWorkspace(at('ws/api'), { parent: '..' }, { dataRoot: '.kid-data' });
     assert.strictEqual(ws.chain(at('ws/api'), { env: env0 }).members.length, 0, 'the default root holds no parent line');
     assert.strictEqual(ws.chain(at('ws/api'), { env: env0, ownDataRoot: '.kid-data' }).members.length, 1);
 });
 
 test('chain refuses a parent line that is not a strict ancestor, has no stamp, or loops', () =>
 {
-    const unstamped = tree({ 'ws': { file: 'child api\n' }, 'ws/api': { stamp: true, file: 'parent ..\n' } });
+    const unstamped = tree({ 'ws': { record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
     const one = ws.chain(unstamped('ws/api'), { env: env0 });
     assert.deepStrictEqual(one.members, []);
     assert.deepStrictEqual(one.notes, ['!! workspace: parent .. in .alfred/workspace ignored - .. holds no Alfred install']);
     // A link makes `..` of the child resolve to a folder that is not its real ancestor.
     if (process.platform !== 'win32')
     {
-        const at = tree({ 'ws': { stamp: true, file: 'child api\n' }, 'other': { stamp: true, file: 'child api\n' }, 'other/api': { stamp: true, file: 'parent ..\n' } });
+        const at = tree({ 'ws': { stamp: true, record: { children: ['api'] } }, 'other': { stamp: true, record: { children: ['api'] } }, 'other/api': { stamp: true, record: { parent: '..' } } });
         fs.symlinkSync(at('other/api'), path.join(at('ws'), 'api'));
         const linked = ws.chain(path.join(at('ws'), 'api'), { env: env0 });
         assert.deepStrictEqual(linked.members.map((m) => m.root), [at('other')], 'the real path decides the parent');
     }
-    const loop = tree({ 'ws': { stamp: true, file: 'parent ..\nchild ws\n' } });
+    const loop = tree({ 'ws': { stamp: true, record: { parent: '..', children: ['ws'] } } });
     const top = path.dirname(loop('ws'));
     fs.mkdirSync(path.join(top, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(top, '.claude', 'alfred-code.stamp'), STAMP);
-    fs.mkdirSync(path.join(top, '.alfred'), { recursive: true });
-    fs.writeFileSync(path.join(top, '.alfred', 'workspace'), 'child ws\n');
+    putWorkspace(top, { children: ['ws'] });
     assert.strictEqual(ws.chain(loop('ws'), { env: env0 }).members.length, 1);
 });
 
@@ -335,10 +337,7 @@ test('chain depth 7, 8 and 9', () =>
         for (let i = 0; i <= depth; i++)
         {
             const rel = names.slice(0, i + 1).join('/');
-            const lines = [];
-            if (i > 0) lines.push('parent ..');
-            if (i < depth) lines.push(`child ${names[i + 1]}`);
-            spec[rel] = { stamp: true, file: lines.join('\n') + '\n' };
+            spec[rel] = { stamp: true, record: { parent: i > 0 ? '..' : null, children: i < depth ? [names[i + 1]] : [] } };
         }
         const at = tree(spec);
         const got = ws.chain(at(names.join('/')), { env: env0 });
@@ -349,10 +348,10 @@ test('chain depth 7, 8 and 9', () =>
 test('subtree is pre-order and marks a missing or unstamped child gone', () =>
 {
     const at = tree({
-        'ws': { stamp: true, file: 'child api\nchild web\nchild gone\nchild bare\n' },
-        'ws/api': { stamp: true, file: 'parent ..\nchild tool\n' },
-        'ws/api/tool': { stamp: true, file: 'parent ..\n' },
-        'ws/web': { stamp: true, file: 'parent ..\n' },
+        'ws': { stamp: true, record: { children: ['api', 'web', 'gone', 'bare'] } },
+        'ws/api': { stamp: true, record: { parent: '..', children: ['tool'] } },
+        'ws/api/tool': { stamp: true, record: { parent: '..' } },
+        'ws/web': { stamp: true, record: { parent: '..' } },
         'ws/bare': {},
     });
     const got = ws.subtree(at('ws'), { env: env0 });
@@ -373,8 +372,8 @@ test('rescan depth 4, 5 and 6', () =>
         'ws/a/b/c/d4': { stamp: true },
         'ws/e/f/g/h/d5': { stamp: true },
         'ws/i/j/k/l/m/d6': { stamp: true },
-        'ws/joined': { stamp: true, file: 'parent ..\n' },
-        'ws/declined': { stamp: true, file: 'parent none\n' },
+        'ws/joined': { stamp: true, record: { parent: '..' } },
+        'ws/declined': { stamp: true, record: { parentNone: true } },
         'ws/node_modules/x': { stamp: true },
         'ws/.claude/y': { stamp: true },
         'ws/.alfred/z': { stamp: true },
@@ -388,7 +387,7 @@ test('rescan depth 4, 5 and 6', () =>
 
 test('the /tmp spelling and the real spelling are one member', { skip: process.platform === 'win32' && 'links need privileges on Windows' }, () =>
 {
-    const at = tree({ 'ws': { stamp: true, file: 'child api\n' }, 'ws/api': { stamp: true, file: 'parent ..\nchild tool\n' }, 'ws/api/tool': { stamp: true, file: 'parent ..\n' } });
+    const at = tree({ 'ws': { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..', children: ['tool'] } }, 'ws/api/tool': { stamp: true, record: { parent: '..' } } });
     const link = path.join(TMP, `link-${process.pid}`);
     fs.symlinkSync(path.dirname(at('ws')), link);
     const viaLink = ws.chain(path.join(link, 'ws', 'api', 'tool'), { env: env0 });
@@ -433,7 +432,7 @@ test('ownPicksAfter, one case per rule', () =>
 // The chain a joined child reads at load (D4 step 5), seen from the installer's side: what envPlan compares a 2.12 copy with.
 const chainTree = () =>
 {
-    const at = tree({ 'ws': { stamp: true, file: 'child api\n' }, 'ws/api': { stamp: true, file: 'parent ..\n' } });
+    const at = tree({ 'ws': { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
     fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORER=1\nALFRED_CODE_HISTORY=0\nALFRED_CODE_DOCS_VERSIONING=local\nALFRED_CODE_INSTRUMENT=1\n');
     return at;
 };
@@ -442,7 +441,7 @@ test('chainValues reads the members\' .variables, never a MEMBER_NEVER key, and 
 {
     const at = chainTree();
     assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORER: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_INSTRUMENT: '1' });
-    fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'workspace'), 'parent ..\nignore env ALFRED_CODE_SCORER\n');
+    putWorkspace(at('ws/api'), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } });
     assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_SCORER'));
 });
 
@@ -518,7 +517,7 @@ test('workspaceOn reads the launch env first, then settings.local.json over sett
 // A joined child under a stamped root inside a folder that stands for HOME, with the account folder there.
 const d5 = ({ md = 'ws/CLAUDE.md', joined = true } = {}) =>
 {
-    const at = tree({ 'home': {}, 'home/ws': { stamp: true, file: joined ? 'child api\n' : '' }, 'home/ws/api': { stamp: true, file: joined ? 'parent ..\n' : '' } });
+    const at = tree({ 'home': {}, 'home/ws': { stamp: true, record: joined ? { children: ['api'] } : {} }, 'home/ws/api': { stamp: true, record: joined ? { parent: '..' } : {} } });
     if (md)
     {
         const file = path.join(at('home'), ...md.split('/'));
@@ -573,7 +572,7 @@ test('the kill switch asks nothing: off in the launch env or in the child\'s set
 test('releaseChildren leaves a listed child that names another parent as it was - its own lines kept, never named released', () =>
 {
     // ws lists g/x, but x's parent line names g: a stale line in ws, and x is g's child.
-    const at = tree({ 'home': {}, 'home/ws': { stamp: true, file: 'child g\nchild g/x\n' }, 'home/ws/g': { stamp: true, file: 'parent ..\nchild x\n' }, 'home/ws/g/x': { stamp: true, file: 'parent ..\n' } });
+    const at = tree({ 'home': {}, 'home/ws': { stamp: true, record: { children: ['g', 'g/x'] } }, 'home/ws/g': { stamp: true, record: { parent: '..', children: ['x'] } }, 'home/ws/g/x': { stamp: true, record: { parent: '..' } } });
     markStamp(at('home/ws/g/x'), 'own-picks: skill/npm');
     markStamp(at('home/ws/g/x'), 'own-env: ALFRED_CODE_SCORER');
     const logs = [];
@@ -582,7 +581,7 @@ test('releaseChildren leaves a listed child that names another parent as it was 
     const xStamp = fs.readFileSync(path.join(at('home/ws/g/x'), '.claude', 'alfred-code.stamp'), 'utf8');
     assert.match(xStamp, /^own-picks: skill\/npm$/m);
     assert.match(xStamp, /^own-env: ALFRED_CODE_SCORER$/m);
-    assert.match(fs.readFileSync(path.join(at('home/ws/g/x'), '.alfred', 'workspace'), 'utf8'), /^parent \.\.$/m);
+    assert.strictEqual(readWorkspaceValues(at('home/ws/g/x')).parent, '..');
     assert.ok(!logs.some((l) => /released g\/x/.test(l)), logs.join('\n'));
 });
 
@@ -832,15 +831,15 @@ const roleTree = (spec) =>
         fs.mkdirSync(dir, { recursive: true });
         if (o.git) run('git', ['init', '-q'], { cwd: dir });
         if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), typeof o.stamp === 'string' ? o.stamp : 'sha: x\n'); }
-        if (o.file !== undefined || o.vars !== undefined) fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        if (o.file !== undefined) fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), o.file);
+        if (o.vars !== undefined) fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        if (o.record !== undefined) putWorkspace(dir, o.record);
         if (o.vars !== undefined) fs.writeFileSync(path.join(dir, '.alfred', '.variables'), o.vars);
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 };
 const asked = (root, when, env = ON) => { const a = ws.roleAsk(root, { env, when }); return a && { case: a.case, rel: a.rel, options: a.options }; };
 
-test('AC1: the file round-trips role root, role standalone, above .. and above none; parent none reads as role standalone and is rewritten; wsLine and parseLine agree on every kind', () =>
+test('AC1: the file round-trips role root, role standalone, above .. and above none; parent none reads as role standalone and is rewritten', () =>
 {
     for (const text of ['role root\nabove ..\nchild api\n', 'role standalone\nabove none\nignore skill x\n', 'parent ..\nabove ../..\n'])
         assert.strictEqual(ws.renderWorkspace(ws.parseWorkspace(text)), text);
@@ -853,22 +852,11 @@ test('AC1: the file round-trips role root, role standalone, above .. and above n
     assert.strictEqual(ws.readWorkspace(root, { env: {} }).view.role, 'standalone');
     assert.ok(ws.writeWorkspace(root, (m) => ws.addIgnore(m, 'skill', 'y'), { env: {} }).wrote);
     assert.strictEqual(fs.readFileSync(fileOf(root), 'utf8'), 'role standalone\nignore skill x\nignore skill y\n', 'rewritten at the next write');
-    const lines = ['role root', 'role standalone', 'role child', 'role', 'above ..', 'above ../..', 'above none', 'above x', 'above /abs',
-        'parent ..', 'parent none', 'parent x', 'child api', 'child ../a', 'ignore skill x', 'ignore colour x', 'ignore docs root', '# c', '', 'colour red',
-        // R062: the hooks' twin reader kept inner whitespace too, or a spaced child never matched its back-reference.
-        'child a  b', 'child a\tb', 'child x/a  b', 'child   api'];
-    for (const line of lines)
-    {
-        const a = ws.parseLine(line);
-        const b = layoutLib.wsLine(line);
-        assert.strictEqual(b.kind, a.kind, line);
-        assert.strictEqual(b.value, a.value, line);
-    }
 });
 
 test('R062: the hooks\' chain reads a child named with a double space as a member of its root', () =>
 {
-    const at = tree({ 'ws': { stamp: true, file: 'child a  b\n' }, 'ws/a  b': { stamp: true, file: 'parent ..\n' } });
+    const at = tree({ 'ws': { stamp: true, record: { children: ['a  b'] } }, 'ws/a  b': { stamp: true, record: { parent: '..' } } });
     const members = layoutLib.workspaceChain(layoutLib.chainProjectOf(at('ws/a  b'))).members.map((m) => m.root);
     assert.strictEqual(members.length, 1, JSON.stringify(members));
     assert.ok(samePath(members[0], at('ws')), `${members[0]} is the root`);
@@ -877,8 +865,8 @@ test('R062: the hooks\' chain reads a child named with a double space as a membe
 test('roleOf: child of .., root of 2 children, a root with no child, standalone, and standalone not asked', () =>
 {
     const at = roleTree({
-        ws: { stamp: true, file: 'child api\nchild web\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' }, 'ws/web': { stamp: true, git: true, file: 'parent ..\n' },
-        solo: { stamp: true, git: true, file: 'role root\nabove none\n' }, alone: { stamp: true, git: true, file: 'role standalone\nabove none\n' }, fresh: { stamp: true, git: true },
+        ws: { stamp: true, record: { children: ['api', 'web'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } }, 'ws/web': { stamp: true, git: true, record: { parent: '..' } },
+        solo: { stamp: true, git: true, record: { role: 'root', above: 'none' } }, alone: { stamp: true, git: true, record: { role: 'standalone', above: 'none' } }, fresh: { stamp: true, git: true },
     });
     assert.deepStrictEqual(ws.roleOf(at('ws/api'), { env: ON }), { kind: 'child', rel: '..', children: 0, asked: true });
     assert.deepStrictEqual(ws.roleOf(at('ws'), { env: ON }), { kind: 'root', children: 2, asked: false });
@@ -906,10 +894,10 @@ test('AC2: init\'s options - Child first under a root, Root first in a plain fol
 test('AC4: a stamped folder above a standalone asks once, Keep quiets it; a deleted parent offers Become standalone first; a lost child line offers Rejoin first; a folder between offers Stay first; never answered offers Join first', () =>
 {
     const at = roleTree({
-        ws: { stamp: true, file: 'child mid/deep\n' }, 'ws/alone': { stamp: true, git: true, file: 'role standalone\nabove none\n' },
-        'ws/fresh': { stamp: true, git: true }, 'ws/lost': { stamp: true, git: true, file: 'parent ..\n' },
-        'ws/mid': { stamp: true }, 'ws/mid/deep': { stamp: true, git: true, file: 'parent ../..\nabove ../..\n' },
-        gone: {}, 'gone/kid': { stamp: true, git: true, file: 'parent ..\n' },
+        ws: { stamp: true, record: { children: ['mid/deep'] } }, 'ws/alone': { stamp: true, git: true, record: { role: 'standalone', above: 'none' } },
+        'ws/fresh': { stamp: true, git: true }, 'ws/lost': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/mid': { stamp: true }, 'ws/mid/deep': { stamp: true, git: true, record: { parent: '../..', above: '../..' } },
+        gone: {}, 'gone/kid': { stamp: true, git: true, record: { parent: '..' } },
     });
     assert.deepStrictEqual(asked(at('ws/alone'), 'update'), { case: 'above', rel: '..', options: ['Join .. (Recommended)', 'Keep standalone'] });
     assert.ok(ws.writeWorkspace(at('ws/alone'), (m) => ws.setAbove(m, '..'), { env: ON }).wrote);
@@ -926,8 +914,8 @@ test('AC4: a stamped folder above a standalone asks once, Keep quiets it; a dele
 test('AC5 asks: configure lists Keep first for a standalone, a root and a child', () =>
 {
     const at = roleTree({
-        ws: { stamp: true, file: 'child kid\n' }, 'ws/kid': { stamp: true, git: true, file: 'parent ..\n' },
-        'ws/alone': { stamp: true, git: true, file: 'role standalone\nabove ..\n' }, 'ws/boss': { stamp: true, git: true, file: 'role root\nabove ..\n' },
+        ws: { stamp: true, record: { children: ['kid'] } }, 'ws/kid': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/alone': { stamp: true, git: true, record: { role: 'standalone', above: '..' } }, 'ws/boss': { stamp: true, git: true, record: { role: 'root', above: '..' } },
     });
     assert.deepStrictEqual(asked(at('ws/alone'), 'configure').options, ['Keep (Recommended)', 'Join ..', 'Become a root']);
     assert.deepStrictEqual(asked(at('ws/boss'), 'configure').options, ['Keep (Recommended)', 'Join ..', 'Become standalone']);
@@ -975,8 +963,8 @@ test('keepOnLeave writes each value read through the chain into the child\'s fil
 {
     const H = stampLib.valueHash;
     const at = roleTree({
-        ws: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_HISTORY=${H('5')}\n`, file: 'child api\n', vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
-        'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, file: 'parent ..\n', vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
+        ws: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_HISTORY=${H('5')}\n`, record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
+        'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
     });
     const before = layoutLib.variablesOf(at('ws/api'), { env: { ...ON } }).values;
     const got = ws.keepOnLeave(at('ws/api'), { env: ON, log: () => {} });
@@ -988,7 +976,7 @@ test('keepOnLeave writes each value read through the chain into the child\'s fil
     const own = { ...ON, ALFRED_CODE_WORKSPACE: '0' };
     assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: own }).values.ALFRED_CODE_SCORER_LEVEL, before.ALFRED_CODE_SCORER_LEVEL, 'the value reads the same with the chain cut');
 
-    const gone = roleTree({ kid: { stamp: 'sha: x\n', git: true, file: 'parent ..\n', vars: 'ALFRED_CODE_DOCS_VERSIONING=git\n' } });
+    const gone = roleTree({ kid: { stamp: 'sha: x\n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_DOCS_VERSIONING=git\n' } });
     const lines = [];
     const g = ws.keepOnLeave(gone('kid'), { env: ON, log: (l) => lines.push(l) });
     assert.deepStrictEqual(g.written, []);
@@ -999,13 +987,13 @@ test('keepOnLeave writes each value read through the chain into the child\'s fil
 test('releaseChildren writes each value a child read from the parent into the child\'s file before its parent line goes (D5)', () =>
 {
     const at = roleTree({
-        ws: { stamp: 'sha: x\nmanaged-env: \n', file: 'child api\n', vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
-        'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, file: 'parent ..\n', vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
+        ws: { stamp: 'sha: x\nmanaged-env: \n', record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
+        'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
     });
     const before = layoutLib.variablesOf(at('ws/api'), { env: ON }).values;
     const logs = [];
     assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), env: ON, log: (l) => logs.push(l) }), ['api']);
-    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', 'workspace'), 'utf8'), '');
+    assert.deepStrictEqual(readWorkspaceValues(at('ws/api')), {});
     assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
     assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: ON }).values, before, 'every value reads the same once released');
     assert.match(logs.join('\n'), /^workspace: api: 2 values this project read from the workspace written into \.alfred\/\.variables/m);

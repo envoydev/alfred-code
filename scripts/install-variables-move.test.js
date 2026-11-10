@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const rt = require('./install/runtime.js');
+const { readWorkspaceRecord } = require('./workspace-fixture.js');
 const layout = require('../stack/hooks/layout.js');
 const variables = require('./install/variables.js');
 const stampLib = require('./install/stamp.js');
@@ -239,7 +240,7 @@ test('AC9: an update over a v2.10.0 export applies the renames, then moves, and 
     const { outs, steps } = seedRun(['install', 'update'], SEL, {
         plugins: PLUGINS, ...over('v2.10.0', 1),
         args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
-        each: (repo) => ({ env: envIn(repo, 'settings.json'), vars: varsOf(repo), effective: effective(repo), ws: fs.existsSync(path.join(repo, '.alfred', 'workspace')) }),
+        each: (repo) => ({ env: envIn(repo, 'settings.json'), vars: varsOf(repo), effective: effective(repo), ws: readWorkspaceRecord(repo).state !== 'absent' }),
     });
     const [, after] = steps;
     assert.deepStrictEqual(Object.keys(after.env).filter((k) => k.startsWith('ALFRED_CODE_') && !SETTINGS_KEYS.includes(k)), [], outs[1]);

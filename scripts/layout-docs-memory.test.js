@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 const layout = require('../stack/hooks/layout.js');
 
 const TMP = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'layout-docs-mem-')));
@@ -160,12 +161,11 @@ test('docsMemoryShare: a same-repo child inheriting docs shares its member\'s ro
     const r = repo('ws');
     const parent = r.root;
     const child = path.join(parent, 'api');
-    for (const [dir, file] of [[parent, 'child api\n'], [child, 'parent ..\n']])
+    for (const [dir, record] of [[parent, { children: ['api'] }], [child, { parent: '..' }]])
     {
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+        putWorkspace(dir, record);
     }
     fs.writeFileSync(path.join(parent, '.alfred', '.variables'), 'ALFRED_CODE_MEMORY=docs\n');
     const dir = layout.docsMemoryDir(parent, { env: r.env });

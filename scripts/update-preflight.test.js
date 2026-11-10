@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { putWorkspace, readWorkspaceRecord } = require('./workspace-fixture.js');
 
 const SCRIPT = path.join(__dirname, 'update-preflight.js');
 
@@ -986,11 +987,7 @@ test('update-preflight prints instructions-both: ask in a child', () =>
     const parent = path.dirname(install);
     fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
-    for (const [dir, line] of [[parent, 'child project\n'], [install, 'parent ..\n']])
-    {
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
-    }
+    for (const [dir, record] of [[parent, { children: ['project'] }], [install, { parent: '..' }]]) putWorkspace(dir, record);
     fs.writeFileSync(path.join(parent, 'CLAUDE.md'), '# team\n');
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
     delete env.ALFRED_CODE_UNATTENDED;
@@ -1003,19 +1000,14 @@ test('update-preflight prints instructions-both: ask in a child', () =>
 
 // The role ask (roles spec D2, AC3, AC4): a nested checkout never asked gets `role-ask never`, a 2.12 `parent none` and
 // any answer end it, and a child whose back-reference was deleted by hand gets `role-ask rejoin`.
-function nestedPreflight({ parentLine = null, childLine = null } = {})
+function nestedPreflight({ parentRecord = null, childRecord = null } = {})
 {
     const { snap, install, fixtureFile } = scaffold();
     const parent = path.dirname(install);
     fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
     execFileSync('git', ['init', '-q', install]);
-    for (const [dir, line] of [[parent, parentLine], [install, childLine]])
-    {
-        if (line === null) continue;
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
-    }
+    for (const [dir, record] of [[parent, parentRecord], [install, childRecord]]) if (record !== null) putWorkspace(dir, record);
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
     delete env.ALFRED_CODE_UNATTENDED;
     const full = (extra = {}) => run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], { ...env, ...extra }).out;
@@ -1032,11 +1024,11 @@ test('update-preflight prints workspace: role-ask never for a nested project nev
     const unattended = p.full({ ALFRED_CODE_UNATTENDED: '1' });
     assert.ok(unattended.indexOf('workspace: role-ask') < unattended.indexOf('unattended: on'), unattended);
     assert.doesNotMatch(p.full({ ALFRED_CODE_WORKSPACE: '0' }), /^workspace:/m, 'the kill switch asks nothing');
-    fs.mkdirSync(path.join(p.install, '.alfred'), { recursive: true });
-    fs.writeFileSync(path.join(p.install, '.alfred', 'workspace'), 'parent none\n');
+    // A 2.12 `parent none` exists only in the old line file: the file's format is the subject.
+    putWorkspace(p.install, { parentNone: true }, { legacy: true });
     assert.doesNotMatch(p.full(), /^workspace:/m, 'a 2.12 parent none was answered');
     assert.doesNotMatch(p.asks(), /^workspace:/m);
-    const joined = nestedPreflight({ parentLine: 'child project\n', childLine: 'parent ..\n' });
+    const joined = nestedPreflight({ parentRecord: { children: ['project'] }, childRecord: { parent: '..' } });
     assert.doesNotMatch(joined.full(), /^workspace:/m, 'a joined child is asked nothing');
 });
 
@@ -1046,7 +1038,8 @@ test('AC3: after either answer to role-ask never, two updates print no role-ask 
     {
         const p = nestedPreflight();
         execFileSync('node', [path.join(__dirname, 'workspace.js'), 'role', '--root', p.install, '--answer', answer], { encoding: 'utf8', env: p.env });
-        const files = () => ['.alfred/workspace', '.claude/alfred-code.stamp'].map((f) => [p.parent, p.install].map((d) => { try { return fs.readFileSync(path.join(d, f), 'utf8'); } catch { return null; } }));
+        const stampText = (d) => { try { return fs.readFileSync(path.join(d, '.claude', 'alfred-code.stamp'), 'utf8'); } catch { return null; } };
+        const files = () => [[p.parent, p.install].map((d) => readWorkspaceRecord(d).text), [p.parent, p.install].map(stampText)];
         const before = files();
         for (let i = 0; i < 2; i++) assert.doesNotMatch(p.full() + p.asks(), /^workspace: role-ask/m, `${answer}: update ${i + 1}`);
         assert.deepStrictEqual(files(), before, `${answer}: no file changed`);
@@ -1065,11 +1058,11 @@ test('update-preflight prints no workspace line in a project with nothing instal
 
 test('a child whose child line was deleted by hand gets workspace: role-ask rejoin .., and role --answer rejoin brings the line back', () =>
 {
-    const p = nestedPreflight({ parentLine: '', childLine: 'parent ..\n' });
+    const p = nestedPreflight({ parentRecord: {}, childRecord: { parent: '..' } });
     assert.match(p.full(), /^workspace: role-ask rejoin \.\.$/m);
     const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'role', '--root', p.install, '--answer', 'rejoin'], { encoding: 'utf8', env: p.env });
     assert.match(joined, /^role: child of \.\.$/m);
-    assert.strictEqual(fs.readFileSync(path.join(p.parent, '.alfred', 'workspace'), 'utf8'), 'child project\n');
+    assert.deepStrictEqual(readWorkspaceRecord(p.parent).record.children, ['project']);
     assert.doesNotMatch(p.full(), /^workspace:/m);
 });
 
@@ -1084,10 +1077,8 @@ test('R063: a declined release-added item the parent holds stays declined in a c
     fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
     execFileSync('git', ['init', '-q', install]);
-    fs.mkdirSync(path.join(parent, '.alfred'), { recursive: true });
-    fs.writeFileSync(path.join(parent, '.alfred', 'workspace'), 'role root\nchild project\n');
-    fs.mkdirSync(path.join(install, '.alfred'), { recursive: true });
-    fs.writeFileSync(path.join(install, '.alfred', 'workspace'), 'parent ..\n');
+    putWorkspace(parent, { role: 'root', children: ['project'] });
+    putWorkspace(install, { parent: '..' });
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct'), ALFRED_CODE_WORKSPACE: '1' };
     delete env.ALFRED_CODE_UNATTENDED;
     const listing = path.join(install, 'listing.json');
@@ -1100,9 +1091,9 @@ test('R063: a declined release-added item the parent holds stays declined in a c
     // It arrives from the parent either way, so it is marked take: an unattended run's 'Take the recommended' keeps it, and
     // only a person's no ignores it here.
     assert.match(got.find((r) => r.startsWith('new: skill npm')) || '', /^new: skill npm\toffer\t-\tleave$/, 'an offer the parent does not hold is a plain offer');
-    fs.writeFileSync(path.join(install, '.alfred', 'workspace'), 'parent ..\nignore skill dotnet-web-backend\n');
+    putWorkspace(install, { parent: '..', ignore: { skill: ['dotnet-web-backend'] } });
     assert.match(rows().find((r) => r.startsWith('new: skill dotnet-web-backend')) || '', /^new: skill dotnet-web-backend\toffer\t-\tleave$/, 'an item this child already ignores is no parent-held offer');
-    fs.writeFileSync(path.join(install, '.alfred', 'workspace'), 'parent ..\n');
-    fs.writeFileSync(path.join(parent, '.alfred', 'workspace'), 'role root\n');
+    putWorkspace(install, { parent: '..' });
+    putWorkspace(parent, { role: 'root' });
     assert.match(rows().find((r) => r.startsWith('new: skill dotnet-web-backend')) || '', /^new: skill dotnet-web-backend\toffer\t-\tleave$/, 'an unlinked project inherits nothing');
 });

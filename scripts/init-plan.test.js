@@ -11,6 +11,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { plan, render } = require('./init-plan.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const SCRIPT = path.join(__dirname, 'init-plan.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'init-plan-'));
@@ -486,12 +487,11 @@ test('init-plan prints instructions-both: ask before its last line, and unattend
     const top = fs.mkdtempSync(path.join(TMP, 'd5-'));
     const ws = path.join(top, 'ws');
     const api = path.join(ws, 'api');
-    for (const [dir, file] of [[ws, 'child api\n'], [api, 'parent ..\n']])
+    for (const [dir, record] of [[ws, { children: ['api'] }], [api, { parent: '..' }]])
     {
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+        putWorkspace(dir, record);
     }
     fs.writeFileSync(path.join(ws, 'CLAUDE.md'), '# team\n');
     const env = E({ CLAUDE_CONFIG_DIR: path.join(top, 'acct'), ALFRED_CODE_WORKSPACE: '1' });   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it

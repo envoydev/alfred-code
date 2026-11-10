@@ -11,6 +11,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const memoryDir = require('./install/memory-dir.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 const layout = require('../stack/hooks/layout.js');
 const stamp = require('./install/stamp.js');
 
@@ -404,12 +405,11 @@ function sameRepoChild()
     const child = path.join(parent, 'api');
     fs.mkdirSync(child, { recursive: true });
     git(parent, 'init', '-q');
-    for (const [dir, file] of [[parent, 'child api\n'], [child, 'parent ..\n']])
+    for (const [dir, record] of [[parent, { children: ['api'] }], [child, { parent: '..' }]])
     {
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+        putWorkspace(dir, record);
     }
     fs.writeFileSync(path.join(parent, '.alfred', '.variables'), 'ALFRED_CODE_MEMORY=docs\n');
     const configDir = path.join(top, 'acct');

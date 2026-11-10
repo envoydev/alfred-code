@@ -10,6 +10,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const TOOLS = path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js');
 const tools = require(TOOLS);
+const { putWorkspace } = require('./workspace-fixture.js');
 
 // The data root and docs root are read from the process env as the hooks read them; this machine's own must not leak in.
 delete process.env.ALFRED_CODE_DATA_PATH;
@@ -971,13 +972,13 @@ test('a pre-2.10.1 stamp\'s switch-off in the run\'s own file is named as the ol
 });
 
 // Release 3, T4 (R3): a child reads its workspace root's TOOLS-PREFERENCES.md where it has none; no capture verb does.
-function wsTools({ childFile = 'parent ..\n' } = {})
+function wsTools({ childRecord = { parent: '..' } } = {})
 {
     // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
     const work = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'tools-ws-')));
     const put = (rel, text) => { const f = path.join(work, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
-    put('ws/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/.alfred/workspace', 'child api\n');
-    put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/.alfred/workspace', childFile);
+    put('ws/.claude/alfred-code.stamp', 'sha: x\n'); putWorkspace(path.join(work, 'ws'), { children: ['api'] });
+    put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); putWorkspace(path.join(work, 'ws', 'api'), childRecord);
     put('ws/api/.claude/settings.json', JSON.stringify({ enabledPlugins: STACK }));
     put(`ws/${DOC_REL}`, ['# Tools preferences', '', 'Updated: 2026-10-24', '', '## T7 - Code navigation', '<!-- id: t7 -->', '- Job: navigation', '- Order: LSP > Grep', ''].join('\n'));
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(work, 'config') };
@@ -988,7 +989,7 @@ function wsTools({ childFile = 'parent ..\n' } = {})
 test('the tools order reads the root\'s TOOLS-PREFERENCES.md when the child has none; ignore doc gives it none', () =>
 {
     const s = wsTools();
-    const ig = wsTools({ childFile: 'parent ..\nignore doc TOOLS-PREFERENCES.md\n' });
+    const ig = wsTools({ childRecord: { parent: '..', ignore: { doc: ['TOOLS-PREFERENCES.md'] } } });
     try
     {
         assert.strictEqual(tools.orderFor({ projectRoot: s.api, env: s.env }).doc?.abs, s.rootDoc);
@@ -1171,8 +1172,8 @@ test('memory lines: a same-repo child sharing its member\'s docs memory - the sh
     {
         const child = path.join(s.root, 'api');
         s.write(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        s.write(path.join(child, '.alfred', 'workspace'), 'parent ..\n');
-        s.write(path.join(s.root, '.alfred', 'workspace'), 'child api\n');
+        putWorkspace(child, { parent: '..' });
+        putWorkspace(s.root, { children: ['api'] });
         const lines = () => tools.modeLines({ projectRoot: child, env: s.env });
         assert.deepStrictEqual(lines().slice(0, 2), [`memory: docs - shares ..'s docs memory, in ${shownAt(s.want)}/`, "memory-docs: shares ..'s docs memory - nothing to write here"], lines().join('\n'));
         assert.deepStrictEqual(tools.validateRows(child, s.env).filter((r) => r.startsWith('!! memory')), []);
@@ -1230,8 +1231,8 @@ test('start: a same-repo child sharing its member\'s docs memory - no line', { s
     {
         const child = path.join(s.root, 'api');
         s.write(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        s.write(path.join(child, '.alfred', 'workspace'), 'parent ..\n');
-        s.write(path.join(s.root, '.alfred', 'workspace'), 'child api\n');
+        putWorkspace(child, { parent: '..' });
+        putWorkspace(s.root, { children: ['api'] });
         assert.strictEqual(tools.memoryStartLine({ projectRoot: child, env: s.env, platform: 'linux' }), '');
         // The member's row gone: the child shares nothing, and is told its memory is not in place - by the cause an update in
         // the child would print (docs mode is written at the repository root), never a promise that it re-points it.

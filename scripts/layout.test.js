@@ -139,6 +139,7 @@ test('the module loads with nothing beside it', () =>
 {
     const dir = tmp();
     fs.copyFileSync(LAYOUT, path.join(dir, 'layout.js'));
+    fs.copyFileSync(path.join(path.dirname(LAYOUT), 'workspace-file.js'), path.join(dir, 'workspace-file.js'));
     const loaded = require(path.join(dir, 'layout.js'));
     assert.strictEqual(typeof loaded.findState, 'function');
     fs.rmSync(dir, { recursive: true, force: true });

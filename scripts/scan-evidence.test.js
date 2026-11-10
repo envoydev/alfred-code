@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const SCRIPT = path.join(__dirname, 'scan-evidence.js');
 const CATALOG = path.join(__dirname, '..', 'meta', 'evidence.json');
@@ -462,8 +463,7 @@ test('--orientation on an Nx workspace: each project.json\'s declared targets an
     test('a workspace root reads its child projects with no nested-repo warning', () =>
     {
         const root = nestedRoot();
-        fs.mkdirSync(path.join(root, '.alfred'));
-        fs.writeFileSync(path.join(root, '.alfred', 'workspace'), 'role root\n');
+        putWorkspace(root, { role: 'root' });
         const { lines } = scanOut(root);
         assert.deepStrictEqual(lines.filter((l) => l.startsWith('!!')), []);
     });

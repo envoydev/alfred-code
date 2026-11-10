@@ -17,7 +17,7 @@ function fixture({ tests = ['a', 'b', 'c', 'nested/d'] } = {}) {
   fs.mkdirSync(path.join(root, 'scripts'));
   fs.mkdirSync(path.join(root, 'stack', 'hooks'), { recursive: true });
   for (const file of ['run-tests.js', 'hook-test-env.js']) fs.copyFileSync(path.join(__dirname, file), path.join(root, 'scripts', file));
-  for (const file of ['hook-prelude.js', 'layout.js']) fs.copyFileSync(path.join(__dirname, '..', 'stack', 'hooks', file), path.join(root, 'stack', 'hooks', file));
+  for (const file of ['hook-prelude.js', 'layout.js', 'workspace-file.js']) fs.copyFileSync(path.join(__dirname, '..', 'stack', 'hooks', file), path.join(root, 'stack', 'hooks', file));
   for (const name of tests) {
     const file = path.join(root, 'scripts', `${name}.test.js`);
     fs.mkdirSync(path.dirname(file), { recursive: true });

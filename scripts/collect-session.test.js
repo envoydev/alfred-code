@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { makeSession, line } = require('./collect-fixture.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 const { parseArgs, collect, scanTranscript, UsageError } = require('./collect-session.js');
 const { STORES } = require('./collect-stores.js');
 const { samePath } = require('./test-paths.js');
@@ -477,10 +478,10 @@ test('the whole stores are read at collect time', (t) =>
 {
     const fx = makeSession({}); t.after(fx.cleanup);
     fx.write(path.join(fx.project, '.claude', 'alfred-code.stamp'), 'version: 3.8.0\n');
-    fx.write(path.join(fx.dataRoot, 'workspace'), 'members: []\n');
+    const wsFile = putWorkspace(fx.project, { role: 'root' }, { dataRoot: path.relative(fx.project, fx.dataRoot).split(path.sep).join('/') });
     fx.write(path.join(fx.dataRoot, 'state', 'tools-inventory.json'), '{"tools":[]}');
     const rc = run(fx);
-    for (const [id, to] of [['stamp', 'context/alfred-code.stamp'], ['workspace', 'context/workspace'], ['tools-inventory', 'data/state/tools-inventory.json']])
+    for (const [id, to] of [['stamp', 'context/alfred-code.stamp'], ['workspace', `context/${path.basename(wsFile)}`], ['tools-inventory', 'data/state/tools-inventory.json']])
     {
         assert.strictEqual(row(rc, id).status, 'copied', id);
         assert.strictEqual(row(rc, id).why, 'read at collect time', id);

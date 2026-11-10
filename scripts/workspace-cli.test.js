@@ -8,6 +8,7 @@ const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const ws = require('./install/workspace.js');
 const { valueHash } = require('./install/stamp.js');
+const { putWorkspace, readWorkspaceRecord, readWorkspaceValues } = require('./workspace-fixture.js');
 
 const CLI = path.join(__dirname, 'workspace.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-cli-'));
@@ -15,7 +16,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const ENV = { ...process.env, CLAUDE_CONFIG_DIR: path.join(TMP, 'acct') };
 ENV.ALFRED_CODE_WORKSPACE = '1';   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
 
-// { rel: { stamp, git, file } } under a fresh folder; returns rel -> real path.
+// { rel: { stamp, git, record, file } } under a fresh folder; returns rel -> real path.
 const tree = (spec) =>
 {
     const top = fs.mkdtempSync(path.join(TMP, 't-'));
@@ -25,14 +26,15 @@ const tree = (spec) =>
         fs.mkdirSync(dir, { recursive: true });
         if (o.git) execFileSync('git', ['init', '-q'], { cwd: dir });
         if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n'); }
-        if (o.file !== undefined) { fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true }); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), o.file); }
+        if (o.record !== undefined) putWorkspace(dir, o.record);
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 };
 const cli = (...argv) => { const r = spawnSync(process.execPath, [CLI, ...argv], { encoding: 'utf8', env: ENV }); return { out: r.stdout, err: r.stderr, code: r.status }; };
-const wsFile = (root, dataRoot = '.alfred') => { try { return fs.readFileSync(path.join(root, ...dataRoot.split('/'), 'workspace'), 'utf8'); } catch { return null; } };
+// The record's set values, through the fixture's one reader (null when the project holds none).
+const wsFile = (root, dataRoot = '.alfred') => readWorkspaceValues(root, { dataRoot });
 const stampText = (root) => fs.readFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'utf8');
-const joined = () => tree({ ws: { stamp: true, file: 'child api\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' } });
+const joined = () => tree({ ws: { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
 
 test('parent prints none, a joinable parent, or the reason a folder cannot be a child', () =>
 {
@@ -49,11 +51,11 @@ test('register writes the parent line here and the child line in the parent, the
     const r = cli('register', '--root', at('ws/apps/api'));
     assert.strictEqual(r.code, 0, r.out + r.err);
     assert.strictEqual(r.out, 'workspace: parent ../.. written\nworkspace: child apps/api written in ../..\n');
-    assert.strictEqual(wsFile(at('ws/apps/api')), 'parent ../..\n');
-    assert.strictEqual(wsFile(at('ws')), 'child apps/api\n');
+    assert.deepStrictEqual(wsFile(at('ws/apps/api')), { parent: '../..' });
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['apps/api'] });
     const again = cli('register', '--root', at('ws/apps/api'));
     assert.strictEqual(again.code, 0);
-    assert.strictEqual(wsFile(at('ws')), 'child apps/api\n', 'a second register writes no second line');
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['apps/api'] }, 'a second register writes no second line');
     const none = tree({ alone: { git: true } });
     const refused = cli('register', '--root', none('alone'));
     assert.strictEqual(refused.code, 2);
@@ -64,42 +66,42 @@ test('register --data-path writes this project\'s line under that folder; the pa
 {
     const at = tree({ ws: { stamp: true }, 'ws/api': { git: true } });
     assert.strictEqual(cli('register', '--root', at('ws/api'), '--data-path', '.kid-data').code, 0);
-    assert.strictEqual(wsFile(at('ws/api'), '.kid-data'), 'parent ..\n');
+    assert.deepStrictEqual(wsFile(at('ws/api'), '.kid-data'), { parent: '..' });
     assert.strictEqual(wsFile(at('ws/api')), null, 'the default root was written too');
-    assert.strictEqual(wsFile(at('ws')), 'child api\n');
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['api'] });
     assert.strictEqual(cli('register', '--root', at('ws/api'), '--data-path', '../out').code, 2, 'a refused data root is bad input');
 });
 
 test('a held parent lock exits 3 and leaves neither file written', () =>
 {
-    const at = tree({ ws: { stamp: true, file: '' }, 'ws/api': { git: true } });
+    const at = tree({ ws: { stamp: true, record: {} }, 'ws/api': { git: true } });
     fs.writeFileSync(path.join(at('ws'), '.alfred', 'workspace.lock'), String(process.pid));
     const r = cli('register', '--root', at('ws/api'));
     assert.strictEqual(r.code, 3, r.out);
     assert.match(r.out, /^!! workspace: .*locked.*the join is offered again at the next update/m);
-    assert.strictEqual(wsFile(at('ws')), '');
+    assert.deepStrictEqual(wsFile(at('ws')), {});
     assert.strictEqual(wsFile(at('ws/api')), null);
 });
 
 test('unregister removes the parent\'s child line and this project\'s parent line', () =>
 {
-    const at = tree({ ws: { stamp: true, file: 'child api\nchild web\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\nignore skill x\n' } });
+    const at = tree({ ws: { stamp: true, record: { children: ['api', 'web'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..', ignore: { skill: ['x'] } } } });
     const r = cli('unregister', '--root', at('ws/api'));
     assert.strictEqual(r.code, 0, r.out);
-    assert.strictEqual(wsFile(at('ws')), 'child web\n');
-    assert.strictEqual(wsFile(at('ws/api')), 'ignore skill x\n');
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['web'] });
+    assert.deepStrictEqual(wsFile(at('ws/api')), { ignore: { skill: ['x'] } });
 });
 
 test('join --answer none writes role standalone, join joins as the role ask\'s Child does, and any other answer is bad input', () =>
 {
     const at = tree({ ws: { stamp: true }, 'ws/api': { git: true }, 'ws/web': { git: true } });
     assert.strictEqual(cli('join', '--root', at('ws/web'), '--answer', 'none').out, 'role: standalone\njoin: none\n');
-    assert.strictEqual(wsFile(at('ws/web')), 'role standalone\nabove ..\n');
+    assert.deepStrictEqual(wsFile(at('ws/web')), { role: 'standalone', above: '..' });
     const r = cli('join', '--root', at('ws/api'), '--answer', 'join');
     assert.strictEqual(r.code, 0);
     assert.match(r.out, /role: child of \.\.\njoin: join\n$/);
-    assert.strictEqual(wsFile(at('ws/api')), 'parent ..\nabove ..\n');
-    assert.strictEqual(wsFile(at('ws')), 'child api\n');
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', above: '..' });
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['api'] });
     const bad = cli('join', '--root', at('ws/api'), '--answer', 'maybe');
     assert.strictEqual(bad.code, 2);
     assert.match(bad.out, /^!! workspace: --answer takes join or none/m);
@@ -127,7 +129,7 @@ const asksOf = (text) => text.split('\n').filter((l) => l.startsWith('ask: ')).m
 
 test('AC2: role --when init prints the role and one ask line per option, Recommended first; Child changes the parent by its one child line', () =>
 {
-    const at = tree({ ws: { stamp: true, file: 'child web\n' }, 'ws/web': { stamp: true, git: true, file: 'parent ..\n' }, 'ws/api': { git: true }, 'ws/web/sub': {} });
+    const at = tree({ ws: { stamp: true, record: { children: ['web'] } }, 'ws/web': { stamp: true, git: true, record: { parent: '..' } }, 'ws/api': { git: true }, 'ws/web/sub': {} });
     assert.strictEqual(cli('role', '--root', at('ws/api'), '--when', 'init').out, 'role: standalone (no role recorded)\nask: Child of .. (Recommended)\tchild\nask: Standalone\tstandalone\nask: Root\troot\n');
     assert.strictEqual(cli('role', '--root', at('ws/web/sub'), '--when', 'init').out,
         'role: standalone (no role recorded)\nwhy: .. is the same git repository - this folder is part of it, not a project of its own\nask: Standalone (Recommended)\tstandalone\nask: Root\troot\n');
@@ -137,9 +139,10 @@ test('AC2: role --when init prints the role and one ask line per option, Recomme
     assert.match(r.out, /^role: child of \.\.$/m);
     const after = filesOf(at('ws'), ['api']);
     assert.deepStrictEqual(Object.keys(after).sort(), Object.keys(before).sort(), 'no file appeared or went in the parent\'s tree');
-    for (const rel of Object.keys(before)) if (rel !== '.alfred/workspace') assert.strictEqual(after[rel], before[rel], rel);
-    assert.strictEqual(after['.alfred/workspace'], 'child web\nchild api\n', 'the parent changed by exactly its one child line');
-    assert.strictEqual(wsFile(at('ws/api')), 'parent ..\nabove ..\n');
+    const isRecord = (rel) => /^\.alfred\/workspace(\.json)?$/.test(rel);
+    for (const rel of Object.keys(before)) if (!isRecord(rel)) assert.strictEqual(after[rel], before[rel], rel);
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['web', 'api'] }, 'the parent changed by exactly its one child');
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', above: '..' });
     assert.strictEqual(cli('role', '--root', at('ws/api'), '--when', 'init', '--answer', 'nonsense').code, 2);
     assert.strictEqual(cli('role', '--root', at('ws/api'), '--when', 'later').code, 2, 'a --when outside init, update and configure is bad input');
 });
@@ -148,10 +151,10 @@ test('AC3 + AC4: each tree change asks once at update; the first option applied 
 {
     const cases = {
         never: [{ ws: { stamp: true }, 'ws/api': { stamp: true, git: true } }, 'ws/api', 'Join .. (Recommended)', 'child of ..'],
-        above: [{ ws: { stamp: true }, 'ws/api': { stamp: true, git: true, file: 'role standalone\nabove none\n' } }, 'ws/api', 'Join .. (Recommended)', 'child of ..'],
-        'parent-gone': [{ ws: {}, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' } }, 'ws/api', 'Become standalone (Recommended)', 'standalone'],
-        rejoin: [{ ws: { stamp: true, file: '' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' } }, 'ws/api', 'Rejoin .. (Recommended)', 'child of ..'],
-        between: [{ ws: { stamp: true, file: 'child apps/api\n' }, 'ws/apps': { stamp: true }, 'ws/apps/api': { stamp: true, git: true, file: 'parent ../..\n' } }, 'ws/apps/api', 'Stay child of ../.. (Recommended)', 'child of ../..'],
+        above: [{ ws: { stamp: true }, 'ws/api': { stamp: true, git: true, record: { role: 'standalone', above: 'none' } } }, 'ws/api', 'Join .. (Recommended)', 'child of ..'],
+        'parent-gone': [{ ws: {}, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } }, 'ws/api', 'Become standalone (Recommended)', 'standalone'],
+        rejoin: [{ ws: { stamp: true, record: {} }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } }, 'ws/api', 'Rejoin .. (Recommended)', 'child of ..'],
+        between: [{ ws: { stamp: true, record: { children: ['apps/api'] } }, 'ws/apps': { stamp: true }, 'ws/apps/api': { stamp: true, git: true, record: { parent: '../..' } } }, 'ws/apps/api', 'Stay child of ../.. (Recommended)', 'child of ../..'],
     };
     for (const [kind, [spec, rel, first, role]] of Object.entries(cases))
     {
@@ -175,33 +178,33 @@ test('AC5: configure\'s moves write D1\'s lines; root to standalone with a child
     const answer = (rel, a) => { const r = cli('role', '--root', at(rel), '--answer', a); assert.strictEqual(r.code, 0, `${rel} ${a}: ${r.out}`); return r.out; };
     assert.deepStrictEqual(asksOf(cli('role', '--root', at('ws/api')).out)[0], ['Keep (Recommended)', 'stay']);
     answer('ws/api', 'root');
-    assert.strictEqual(wsFile(at('ws/api')), 'role root\nabove ..\n', 'standalone to root');
+    assert.deepStrictEqual(wsFile(at('ws/api')), { role: 'root', above: '..' }, 'standalone to root');
     answer('ws/api', 'join:..');
-    assert.strictEqual(wsFile(at('ws/api')), 'parent ..\nabove ..\n', 'root to child: the role line goes');
-    assert.strictEqual(wsFile(at('ws')), 'child api\n');
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', above: '..' }, 'root to child: the role line goes');
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['api'] });
     assert.deepStrictEqual(asksOf(cli('role', '--root', at('ws/api')).out).map((a) => a[0]), ['Keep (Recommended)', 'Leave and become standalone', 'Leave and become a root']);
     answer('ws/api', 'leave:standalone');
-    assert.strictEqual(wsFile(at('ws/api')), 'role standalone\nabove ..\n', 'child to standalone');
-    assert.strictEqual(wsFile(at('ws')), '');
+    assert.deepStrictEqual(wsFile(at('ws/api')), { role: 'standalone', above: '..' }, 'child to standalone');
+    assert.deepStrictEqual(wsFile(at('ws')), {});
     answer('ws/web', 'child');
     answer('ws/web', 'leave:root');
-    assert.strictEqual(wsFile(at('ws/web')), 'role root\nabove ..\n', 'child to root');
+    assert.deepStrictEqual(wsFile(at('ws/web')), { role: 'root', above: '..' }, 'child to root');
     answer('ws/web', 'join:..');
     assert.deepStrictEqual(asksOf(cli('role', '--root', at('ws')).out)[0], ['Keep (Recommended)', 'stay']);
     const before = wsFile(at('ws'));
     const refused = cli('role', '--root', at('ws'), '--answer', 'standalone');
     assert.strictEqual(refused.code, 2, refused.out);
     assert.match(refused.out, /^!! workspace: this project is the root of web - each child leaves first/m);
-    assert.strictEqual(wsFile(at('ws')), before, 'the refusal wrote nothing');
+    assert.deepStrictEqual(wsFile(at('ws')), before, 'the refusal wrote nothing');
 });
 
 test('AC6: status prints child of .., root of 2 children, standalone, standalone (no role recorded) and workspace off', () =>
 {
     const at = tree({
-        ws: { stamp: true, file: 'child api\nchild web\n' },
-        'ws/api': { stamp: true, git: true, file: 'parent ..\n' },
-        'ws/web': { stamp: true, git: true, file: 'parent ..\n' },
-        solo: { stamp: true, git: true, file: 'role standalone\nabove none\n' },
+        ws: { stamp: true, record: { children: ['api', 'web'] } },
+        'ws/api': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/web': { stamp: true, git: true, record: { parent: '..' } },
+        solo: { stamp: true, git: true, record: { role: 'standalone', above: 'none' } },
         fresh: { stamp: true, git: true },
     });
     const first = (rel, e = ENV) => spawnSync(process.execPath, [CLI, 'status', '--root', at(rel)], { encoding: 'utf8', env: e }).stdout.split('\n')[0];
@@ -217,8 +220,8 @@ test('AC6: status prints child of .., root of 2 children, standalone, standalone
 test('R067: status counts the installed folders above, an unlinked nested project included', () =>
 {
     const at = tree({
-        ws: { stamp: true, file: 'role root\n' },
-        'ws/nested': { stamp: true, git: true, file: 'role standalone\nabove ..\n' },
+        ws: { stamp: true, record: { role: 'root' } },
+        'ws/nested': { stamp: true, git: true, record: { role: 'standalone', above: '..' } },
         'ws/api': { stamp: true, git: true },
         solo: { stamp: true, git: true },
     });
@@ -281,17 +284,17 @@ test('ignore --add and --remove edit this project\'s ignore lines', () =>
     const at = joined();
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'skill sqlite').code, 0);
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'env ALFRED_CODE_SCORER').code, 0);
-    assert.strictEqual(wsFile(at('ws/api')), 'parent ..\nignore skill sqlite\nignore env ALFRED_CODE_SCORER\n');
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { skill: ['sqlite'], env: ['ALFRED_CODE_SCORER'] } });
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--remove', 'skill sqlite').code, 0);
-    assert.strictEqual(wsFile(at('ws/api')), 'parent ..\nignore env ALFRED_CODE_SCORER\n');
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } });
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'colour blue').code, 2);
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--data-path', '.kid-data', '--add', 'skill x').code, 0);
-    assert.strictEqual(wsFile(at('ws/api'), '.kid-data'), 'ignore skill x\n');
+    assert.deepStrictEqual(wsFile(at('ws/api'), '.kid-data'), { ignore: { skill: ['x'] } });
 });
 
 test('children prints each direct child as ok or gone', () =>
 {
-    const at = tree({ ws: { stamp: true, file: 'child api\nchild gone\nchild deep/web\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\nchild tool\n' }, 'ws/api/tool': { stamp: true }, 'ws/deep/web': { stamp: true } });
+    const at = tree({ ws: { stamp: true, record: { children: ['api', 'gone', 'deep/web'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..', children: ['tool'] } }, 'ws/api/tool': { stamp: true }, 'ws/deep/web': { stamp: true } });
     assert.strictEqual(cli('children', '--root', at('ws')).out, 'child: api\tok\nchild: gone\tgone\nchild: deep/web\tok\n');
 });
 
@@ -299,7 +302,7 @@ test('status names the parent, the own, ignored and inherited lines, and the las
 {
     const at = joined();
     fs.appendFileSync(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'), 'own-picks: skill/npm\n');
-    fs.appendFileSync(path.join(at('ws/api'), '.alfred', 'workspace'), 'ignore skill sqlite\n');
+    putWorkspace(at('ws/api'), { ...readWorkspaceRecord(at('ws/api')).record, ignore: { skill: ['sqlite'] } });
     const plan = path.join(TMP, 'installed.json');
     fs.writeFileSync(plan, JSON.stringify({ skills: ['javascript', 'npm'], rules: ['alfred-security'], plugins: [{ name: 'alfred-code' }] }));
     const r = cli('status', '--root', at('ws/api'), '--installed', plan);
@@ -313,7 +316,7 @@ test('status names the parent, the own, ignored and inherited lines, and the las
 
 test('status names the ancestor docs roots and the memory index it reads, or ignored', () =>
 {
-    const at = tree({ ws: { stamp: true, file: 'child api\nchild web\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' }, 'ws/web': { stamp: true, git: true, file: 'parent ..\nignore docs root\nignore memory root\n' } });
+    const at = tree({ ws: { stamp: true, record: { children: ['api', 'web'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } }, 'ws/web': { stamp: true, git: true, record: { parent: '..', ignore: { docs: ['root'], memory: ['root'] } } } });
     const docs = path.join(at('ws'), '.alfred', 'docs');
     fs.mkdirSync(path.join(docs, 'architecture'), { recursive: true });
     const index = path.join(ENV.CLAUDE_CONFIG_DIR, 'projects', at('ws').normalize('NFC').replace(/[^A-Za-z0-9]/g, '-'), 'memory', 'MEMORY.md');
@@ -418,10 +421,10 @@ function fakeSource(say = '', { hangIn = '' } = {})
     return { src, runs };
 }
 const cascadeTree = () => tree({
-    ws: { stamp: true, file: 'child api\nchild web\n' },
-    'ws/api': { stamp: true, git: true, file: 'parent ..\nchild tool\n' },
-    'ws/api/tool': { stamp: true, git: true, file: 'parent ..\n' },
-    'ws/web': { stamp: true, git: true, file: 'parent ..\n' },
+    ws: { stamp: true, record: { children: ['api', 'web'] } },
+    'ws/api': { stamp: true, git: true, record: { parent: '..', children: ['tool'] } },
+    'ws/api/tool': { stamp: true, git: true, record: { parent: '..' } },
+    'ws/web': { stamp: true, git: true, record: { parent: '..' } },
 });
 
 test('cascade reads each parent back once, after its own run, and passes it to the children', () =>
@@ -462,12 +465,13 @@ test('cascade marks a run failed on its summary line even though it exits 0', ()
 test('cascade skips a listed child whose own parent line does not point back', () =>
 {
     const at = cascadeTree();
-    fs.writeFileSync(path.join(at('ws/web'), '.alfred', 'workspace'), 'parent none\n');
+    putWorkspace(at('ws/web'), { role: 'standalone' });
+    const webBefore = readWorkspaceRecord(at('ws/web')).text;
     const { src, runs } = fakeSource();
     const r = cli('cascade', '--root', at('ws'), '--source', src);
     assert.match(r.out, /^!! cascade: web does not name \. as its parent - skipped; join it again or run workspace\.js unregister there\ncascade: web\tskipped$/m, r.out);
     assert.ok(!runs().some((l) => l.startsWith(`${at('ws/web')} `)));
-    assert.strictEqual(fs.readFileSync(path.join(at('ws/web'), '.alfred', 'workspace'), 'utf8'), 'parent none\n');
+    assert.strictEqual(readWorkspaceRecord(at('ws/web')).text, webBefore, 'the skipped child\'s record is untouched');
     assert.ok(!fs.existsSync(path.join(at('ws/web'), '.claude', 'runs')));
     assert.match(r.out, /^cascade: done 2 updated, 0 failed, 1 skipped$/m);
 });
@@ -491,14 +495,13 @@ test('cascade refuses an answers entry outside the allow-list before that projec
 test('cascade --hold runs nothing, names every project below held and a gone one gone-kept, out of the count', () =>
 {
     const at = cascadeTree();
-    const wsFile = path.join(at('ws'), '.alfred', 'workspace');
-    fs.writeFileSync(wsFile, 'child api\nchild web\nchild old\n');
+    putWorkspace(at('ws'), { children: ['api', 'web', 'old'] });
     const { src, runs } = fakeSource('==> done\n');
     const r = cli('cascade', '--root', at('ws'), '--source', src, '--hold');
     assert.strictEqual(r.code, 0, r.err);
     assert.strictEqual(r.out, 'cascade: api\theld\ncascade: api/tool\theld\ncascade: web\theld\ncascade: old\tgone-kept\ncascade: done 0 updated, 0 failed, 0 skipped, 3 held\n');
     assert.deepStrictEqual(runs(), [], 'no read-back and no installer run');
-    assert.strictEqual(fs.readFileSync(wsFile, 'utf8'), 'child api\nchild web\nchild old\n', 'the gone child keeps its line');
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['api', 'web', 'old'] }, 'the gone child keeps its entry');
     for (const c of ['ws/api', 'ws/api/tool', 'ws/web']) assert.ok(!fs.existsSync(path.join(at(c), '.claude', 'runs')), c);
     assert.strictEqual(cli('cascade', '--root', at('ws'), '--hold').out, r.out, 'a hold needs no source');
     const off = spawnSync(process.execPath, [CLI, 'cascade', '--root', at('ws'), '--hold'], { encoding: 'utf8', env: { ...ENV, ALFRED_CODE_WORKSPACE: '0' } });
@@ -583,7 +586,7 @@ test('plan with ALFRED_CODE_WORKSPACE=0 lists only this project and reads nothin
 
 test('plan at a root carries a child\'s role-ask row from its preflight, never a join line', () =>
 {
-    const at = tree({ ws: { stamp: true, file: 'child api/tool\n' }, 'ws/api': { stamp: true, git: true }, 'ws/api/tool': { stamp: true, git: true, file: 'parent ../..\n' } });
+    const at = tree({ ws: { stamp: true, record: { children: ['api/tool'] } }, 'ws/api': { stamp: true, git: true }, 'ws/api/tool': { stamp: true, git: true, record: { parent: '../..' } } });
     const { src } = fakeSource();
     const r = cli('plan', '--root', at('ws'), '--source', src);
     assert.strictEqual(r.code, 0, r.out);
@@ -613,7 +616,7 @@ test('plan prints the table for a root with a child, and none for a standalone p
     const { src } = fakeSource();
     const alone = tree({ alone: { stamp: true, git: true } });
     assert.doesNotMatch(cli('plan', '--root', alone('alone'), '--source', src).out, /^total:/m);
-    const at = tree({ ws: { stamp: true, file: 'child api/tool\n' }, 'ws/api': { stamp: true, git: true }, 'ws/api/tool': { stamp: true, git: true, file: 'parent ../..\n' } });
+    const at = tree({ ws: { stamp: true, record: { children: ['api/tool'] } }, 'ws/api': { stamp: true, git: true }, 'ws/api/tool': { stamp: true, git: true, record: { parent: '../..' } } });
     const r = cli('plan', '--root', at('ws'), '--source', src);
     assert.match(r.out, /^project +\| scope +\| version +\| adds +\| drops +\| asks\n\. +\| project .*\napi\/tool +\| .*\ntotal: 2 projects$/m, r.out);
 });
