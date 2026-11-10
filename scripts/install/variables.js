@@ -12,7 +12,7 @@ const path = require('node:path');
 const rt = require('./runtime.js'); // every external command through the one Windows-safe spawn (M6)
 const layout = require('../../stack/hooks/layout.js');
 const { SECRET_SHAPE, PEM_PRIVATE } = require('../credential-shapes.js');
-const { parseJson } = require('./json-file.js');
+const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { STEP_MS, sleepMs, takeLock } = require('./file-lock.js');
 const stamp = require('./stamp.js');
 const { DATA_IGNORE_HEAD } = require('../../stack/mcp/data-root.js');
@@ -187,7 +187,12 @@ const ignoredLine = (dataRoot, verdict) =>
 function localSettings(projectRoot)
 {
     const file = path.join(projectRoot, '.claude', LOCAL);
-    try { const data = parseJson(fs.readFileSync(file, 'utf8')); return data && typeof data === 'object' && !Array.isArray(data) ? { file, data } : null; }
+    try
+    {
+        const text = fs.readFileSync(file, 'utf8');
+        const data = parseJson(text);
+        return data && typeof data === 'object' && !Array.isArray(data) ? { file, data, text } : null;
+    }
     catch { return null; }
 }
 // The project's settings.json for a D6 write: its object with an `env` object, {} when absent. An unparseable file is
@@ -204,7 +209,7 @@ function sharedSettings(projectRoot)
         if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('.claude/settings.json cannot be read - fix it, then run the set again');
     }
     if (!data.env || typeof data.env !== 'object' || Array.isArray(data.env)) data.env = {};
-    return { file, data };
+    return { file, data, text };
 }
 const heldLocally = (local, key) =>
 {
@@ -281,12 +286,12 @@ function set(projectRoot, pairs, { scope, env = process.env, log = console.log, 
         }
         updates[key] = value;
     }
-    if (localChanged) fs.writeFileSync(local.file, `${JSON.stringify(local.data, null, 2)}\n`);
+    if (localChanged) fs.writeFileSync(local.file, stringifyLike(local.data, formatOf(local.text)));
     if (shared && shared.data)
     {
         log(ignoredLine(layout.dataRootOf(root, { env }), verdict));
         fs.mkdirSync(path.dirname(shared.file), { recursive: true });
-        fs.writeFileSync(shared.file, `${JSON.stringify(shared.data, null, 2)}\n`);
+        fs.writeFileSync(shared.file, stringifyLike(shared.data, formatOf(shared.text)));
         log(`variables: ${result.toSettings.join(', ')} written to .claude/settings.json`);
     }
     const keys = Object.keys(updates);

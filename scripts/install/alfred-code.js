@@ -44,7 +44,7 @@ const workspace = require('./workspace.js');
 const variables = require('./variables.js');
 const memoryDir = require('./memory-dir.js');
 const runtime = require('./runtime.js');
-const { readJson } = require('./json-file.js');
+const { readJson, formatOf, stringifyLike } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
 const { BRAND, marketOf } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
@@ -1806,11 +1806,12 @@ function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, cl
     // Custom memory's switch-off (the writer's memory pass) is ledgered; the old server's never was.
     if (Object.hasOwn(((ledger && ledger.settings) || {})[path.basename(file)] || {}, 'autoMemoryEnabled')) return '';
     let data;
-    try { ({ data } = settings.readSettings(file)); }
+    let fileText;
+    try { ({ data, text: fileText } = settings.readSettings(file)); }
     catch (err) { note(`${err.message} - autoMemoryEnabled was not checked there; the next update checks it again`); return path.basename(file); }
     if (data.autoMemoryEnabled !== false) return '';
     delete data.autoMemoryEnabled;
-    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));
     // Custom memory chosen for this file: the writer pass after this puts the switch-off straight back, ledgered, with its own
     // 'written' line - a 'removed' line before it would contradict it (fix-pass review m4). The choice sits where the writer
     // reads it: settings.local.json over settings.json, a --memory answer over both.

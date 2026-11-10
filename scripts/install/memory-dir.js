@@ -17,6 +17,7 @@ const stampLayer = require('./stamp.js');
 const variables = require('./variables.js');
 const rt = require('./runtime.js'); // every external command through the one Windows-safe spawn (M6)
 const layout = require('../../stack/hooks/layout.js');
+const { formatOf, stringifyLike } = require('./json-file.js');
 
 const LOCAL = 'settings.local.json';
 const KEY = 'autoMemoryDirectory';
@@ -67,28 +68,28 @@ function readLocal(file)
     let text;
     try { text = layout.readText(file); }
     catch { return { state: 'garbage', data: null }; }
-    if (!text.trim()) return { state: 'ok', data: {} };
+    if (!text.trim()) return { state: 'ok', data: {}, text };
     try
     {
         const data = JSON.parse(text);
-        return data && typeof data === 'object' && !Array.isArray(data) ? { state: 'ok', data } : { state: 'garbage', data: null };
+        return data && typeof data === 'object' && !Array.isArray(data) ? { state: 'ok', data, text } : { state: 'garbage', data: null };
     }
     catch { return { state: 'garbage', data: null }; }
 }
-function writeLocal(file, data)
+function writeLocal(file, data, text = null)
 {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    fs.writeFileSync(file, stringifyLike(data, formatOf(text)));
 }
 // Takes the row out; a file left with nothing goes, as writeSettings says it.
-function removeRow(ctx, file, data)
+function removeRow(ctx, file, data, text = null)
 {
     delete data[KEY];
-    if (Object.keys(data).length) { writeLocal(file, data); return; }
+    if (Object.keys(data).length) { writeLocal(file, data, text); return; }
     // R163 (burn-down 2026-11-04): a tracked file stays, as {} - its deletion would reach every teammate with the next commit.
     if (variables.tracked(file))
     {
-        writeLocal(file, data);
+        writeLocal(file, data, text);
         ctx.log(`  ${LOCAL} kept as {} - git tracks it, so deleting it would reach every teammate with the next commit`);
         return;
     }
@@ -186,7 +187,7 @@ function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
     const share = mode === 'docs' ? layout.docsMemoryShare(root, { env }) : null;
     if (share)
     {
-        if (isOurs) removeRow(ctx, file, read.data);
+        if (isOurs) removeRow(ctx, file, read.data, read.text);
         ctx.memoryDirRow = null;
         if (ctx.memoryAsked || isOurs) say(`memory: docs - shares ${share.member}'s docs memory (${shown(share.dir, root)}/), so nothing is written here`);
         return { mode, share };
@@ -197,7 +198,7 @@ function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
         if (isOurs)
         {
             say(`${LOCAL}: autoMemoryDirectory removed - ALFRED_CODE_MEMORY is no longer docs, so Claude's own memory is back at its default place`);
-            removeRow(ctx, file, read.data);
+            removeRow(ctx, file, read.data, read.text);
         }
         else if (has && prior !== undefined) say(`${LOCAL}: autoMemoryDirectory kept - changed since the stack wrote it, so it is yours`);
         ctx.memoryDirRow = null;
@@ -211,7 +212,7 @@ function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
         if (isOurs)
         {
             say(`${LOCAL}: autoMemoryDirectory removed - ${refusal.text}`);
-            removeRow(ctx, file, read.data);
+            removeRow(ctx, file, read.data, read.text);
             ctx.memoryDirRow = null;
             return { mode, refusal };
         }
@@ -224,7 +225,7 @@ function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
     {
         const data = read.state === 'ok' ? read.data : {};
         data[KEY] = wanted;
-        writeLocal(file, data);
+        writeLocal(file, data, read.state === 'ok' ? read.text : null);
         ctx.memoryDirRow = rowHash(wanted, root);
         say(`${LOCAL}: autoMemoryDirectory written - ${want} (ALFRED_CODE_MEMORY is docs; Claude's own memory lives with the docs from the next session)`);
         for (const line of outrankLines(root, { wanted, env })) say(line);
@@ -237,7 +238,7 @@ function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
         if (dir && layout.dirKey(dir) === layout.dirKey(wanted)) return { mode };
         const old = showValue(read.data[KEY], root);
         read.data[KEY] = wanted;
-        writeLocal(file, read.data);
+        writeLocal(file, read.data, read.text);
         ctx.memoryDirRow = rowHash(wanted, root);
         say(`${LOCAL}: autoMemoryDirectory re-pointed - ${old} -> ${want} (the folder moved)`);
         for (const line of outrankLines(root, { wanted, env })) say(line);

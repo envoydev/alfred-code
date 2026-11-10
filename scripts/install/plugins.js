@@ -28,7 +28,7 @@
 // disabled or moved (`isManaged`).
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseJson } = require('./json-file.js');
+const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { BRAND, alwaysOn, marketOf, marketKey } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
@@ -698,7 +698,8 @@ function dropStaleRetired({ rows = [], blind = false, retiredRows = [], market =
         const file = path.join(claudeDir, name);
         if (!fs.existsSync(file)) continue;
         let data;
-        try { data = parseJson(fs.readFileSync(file, 'utf8')); }
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); data = parseJson(text); }
         catch { note(`${name} could not be read - a retired server plugin's enabledPlugins key there was left as it is`); continue; }
         const on = data && typeof data === 'object' && !Array.isArray(data) ? data.enabledPlugins : null;
         if (!on || typeof on !== 'object' || Array.isArray(on)) continue;
@@ -711,7 +712,7 @@ function dropStaleRetired({ rows = [], blind = false, retiredRows = [], market =
             log(`  ${name}: enabledPlugins entry ${spec} removed - the stack retired that plugin in ${since} and no install of it reaches this project`);
         }
         if (!Object.keys(on).length) delete data.enabledPlugins;
-        fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+        fs.writeFileSync(file, stringifyLike(data, formatOf(text)));
     }
     return dropped;
 }

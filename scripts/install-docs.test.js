@@ -316,11 +316,11 @@ test('the way back: a watch.json without the key, an unparseable one, no engine 
 const notOwnedOf = (root) => docs.ensureQualityNotOwned({ projectRoot: root, docsPath: '.claude/docs', log: () => {} });
 const watchText = (root) => fs.readFileSync(path.join(qualityOf(root), 'watch.json'), 'utf8');
 
-test('quality notOwned: COVERAGE-QUALITY.md is added once, every other key and the file\'s shape kept', () =>
+test('quality notOwned: COVERAGE-QUALITY.md is added once, every other key kept, and a one-line file written with two spaces', () =>
 {
     const compact = project({ files: { '.claude/docs/quality/watch.json': '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"],"x":1}\n' } });
     assert.strictEqual(notOwnedOf(compact), 'added');
-    assert.strictEqual(watchText(compact), '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**","COVERAGE-QUALITY.md"],"x":1}\n');
+    assert.strictEqual(watchText(compact), JSON.stringify({ recomputed: true, notOwned: ['CODE-ASSESSMENT.md', 'references/**', 'COVERAGE-QUALITY.md'], x: 1 }, null, 2) + '\n');
     const after = watchText(compact);
     assert.strictEqual(notOwnedOf(compact), 'present', 'a second call');
     assert.strictEqual(watchText(compact), after, 'bytes unchanged on the second call');

@@ -19,7 +19,7 @@ const os = require('node:os');
 const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
 const brand = require('./brand.js');
-const { readJson, parseJson } = require('./json-file.js');
+const { readJson, parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { sleepMs, takeLock } = require('./file-lock.js');
 const runtime = require('./runtime.js');
 const stamp = require('./stamp.js');
@@ -1481,17 +1481,14 @@ function linkTarget(file)
     throw Object.assign(new Error(`${file}: too many levels of symbolic links`), { code: 'ELOOP' });
 }
 
-// The file written back in its own shape: the indent of its first indented line, its line ending, its BOM - through a
+// The file written back in its own shape (json-file.js formatOf: its BOM, line ends and indent) - through a
 // temp file beside it and a rename. A LINK is written through, never replaced (review fix pass, run B, m7: a dotfiles
 // link at the account settings.json became a plain file): the temp file and the rename go to the link's real file, in
 // that file's own folder. Every writer here is an account settings.json writer - D5's apply and remove, and the
 // auto-update answer (marketplace-autoupdate.js).
 function writeLike(file, text, data)
 {
-    const indentLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l));
-    const indent = indentLine ? indentLine.match(/^[ \t]+/)[0] : '  ';
-    const eol = text.includes('\r\n') ? '\r\n' : '\n';
-    const body = `${text.startsWith('\uFEFF') ? '\uFEFF' : ''}${JSON.stringify(data, null, indent).split('\n').join(eol)}${eol}`;
+    const body = stringifyLike(data, formatOf(text));
     const target = linkTarget(file);
     const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
     try { fs.writeFileSync(tmp, body); fs.renameSync(tmp, target); }

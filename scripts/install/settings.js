@@ -26,7 +26,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
-const { parseJson } = require('./json-file.js');
+const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { stackSeat } = require('../derive-state.js');
 const { BRAND } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
@@ -174,7 +174,8 @@ function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note =
     const mine = Object.fromEntries(Object.entries(prior || {}).filter(([row]) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; }));
     let data;
     let existed;
-    try { ({ data, existed } = readSettings(file)); }
+    let fileText;
+    try { ({ data, existed, text: fileText } = readSettings(file)); }
     catch (err) { note(`${err.message} - its ${arrayPath} rows are kept as recorded`); return { rows: mine, changed: false, created: false, refused: true }; }
     const at = arrayAt(data, arrayPath, { make: true });
     if (!at.holder) { note(`${path.basename(file)}: ${arrayPath} is not under an object - left as it is`); return { rows: mine, changed: false, created: false, refused: true }; }
@@ -206,7 +207,7 @@ function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note =
     at.holder[at.key] = list;
     dropEmptyArray(data, arrayPath);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));
     log(`  ${path.basename(file)}: ${arrayPath} - ${Object.keys(rows).length} of the stack's members`);
     return { rows, changed: true, created: !existed };
 }
@@ -239,13 +240,13 @@ const HOOKS_DIR_MARK = '/.claude/hooks/';
 
 function readSettings(file)
 {
-    if (!fs.existsSync(file)) return { data: {}, existed: false };
+    if (!fs.existsSync(file)) return { data: {}, existed: false, text: null };
     // Re-verify 3 S9: a file that cannot be read is named by its read error, never as bad JSON.
     let raw;
     try { raw = fs.readFileSync(file, 'utf8'); }
     catch (err) { const e = new Error(`${path.basename(file)} could not be read (${err.code || err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     // An empty file holds nothing to lose: no settings yet, as docs.js reads it too (release matrix 2026-10-20).
-    if (!raw.trim()) return { data: {}, existed: true };
+    if (!raw.trim()) return { data: {}, existed: true, text: raw };
     let parsed;
     try { parsed = parseJson(raw); }
     catch (err) { const e = new Error(`${path.basename(file)} is not valid JSON (${err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
@@ -256,7 +257,7 @@ function readSettings(file)
     const where = hooksShapeError(parsed.hooks);
     if (where)
     { const e = new Error(`${path.basename(file)} hooks block is not the shape Claude Code reads (${where}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
-    return { data: parsed, existed: true };
+    return { data: parsed, existed: true, text: raw };
 }
 
 // Where a settings file's `hooks` value leaves the event -> [{ matcher?, hooks: [{ ... }] }] shape, or '' when it keeps it.
@@ -881,7 +882,8 @@ function writeSettings(opts)
     // M6: every log line names the file this run writes - settings.local.json at local scope.
     const label = path.basename(file);
     let data;
-    try { ({ data } = readSettings(file)); }
+    let fileText;
+    try { ({ data, text: fileText } = readSettings(file)); }
     catch (err) { note(err.message); return { written: false, refused: true }; }
     // THE MOVE (workspace roles and variables, D5): `variablesFile` is the project's .variables where this run keeps the
     // stack's variables - null keeps them in this file, as before 3.0.0 (git ignores the data root, a local-scope run over
@@ -977,10 +979,11 @@ function writeSettings(opts)
     // file, so the env pass writes a key it holds back into it (`applyEnv` `overlay`). A malformed one
     // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
     let local = null;
+    let localText = null;
     let localUnreadable = false;
     if (localFile && fs.existsSync(localFile))
     {
-        try { ({ data: local } = readSettings(localFile)); }
+        try { ({ data: local, text: localText } = readSettings(localFile)); }
         catch (err) { note(`${err.message} - its stack keys are not read or written this run`); local = null; localUnreadable = true; }
     }
     const localEnvBefore = local && plain(local.env) ? { ...local.env } : {};
@@ -1378,7 +1381,7 @@ function writeSettings(opts)
     else if (localChanged)
     {
         fs.mkdirSync(path.dirname(localFile), { recursive: true });
-        fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
+        fs.writeFileSync(localFile, stringifyLike(local, formatOf(localText)));
     }
 
     // A local-scope run writes settings.local.json, but the stack's OWN stale rows may sit in the shared
@@ -1388,7 +1391,8 @@ function writeSettings(opts)
     if (sharedFile && sharedFile !== file && fs.existsSync(sharedFile))
     {
         let shared = null;
-        try { ({ data: shared } = readSettings(sharedFile)); }
+        let sharedText = null;
+        try { ({ data: shared, text: sharedText } = readSettings(sharedFile)); }
         catch (err) { note(`${err.message} - its stale stack rows are not removed this run`); }
         if (shared)
         {
@@ -1406,7 +1410,7 @@ function writeSettings(opts)
             }
             if (JSON.stringify(shared) !== before)
             {
-                fs.writeFileSync(sharedFile, `${JSON.stringify(shared, null, 2)}\n`);
+                fs.writeFileSync(sharedFile, stringifyLike(shared, formatOf(sharedText)));
                 log(`  ${sharedName}: the stack's stale rows removed (a local-scope run writes ${label})`);
             }
         }
@@ -1419,7 +1423,7 @@ function writeSettings(opts)
     const variablesMoved = moved.length ? [...settingsHad].filter((k) => !outranked.has(k) && !(plain(data.env) && Object.hasOwn(data.env, k))) : [];
     if (!changed) return { written: localChanged, refused: false, managed, variablesMoved };
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));
     return { written: true, refused: false, managed, variablesMoved };
 }
 
@@ -1486,7 +1490,8 @@ function applyMcpDeny({ file, add = [], lift = [], why = 'picked again', log = (
     if (!add.length && !lift.length) return { added: [], lifted: [] };
     const label = path.basename(file);
     let data;
-    try { ({ data } = readSettings(file)); }
+    let fileText;
+    try { ({ data, text: fileText } = readSettings(file)); }
     catch (err) { note(`${err.message} - no deniedMcpServers entry was written there`); return null; }
     const had = data.deniedMcpServers;
     if (had !== undefined && !Array.isArray(had)) { note(`${label}: deniedMcpServers is not a list - left as it is, and no MCP server is switched off through it`); return null; }
@@ -1513,7 +1518,7 @@ function applyMcpDeny({ file, add = [], lift = [], why = 'picked again', log = (
     if (list.length) data.deniedMcpServers = list;
     else delete data.deniedMcpServers;
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));
     return { added, lifted };
 }
 
@@ -1612,7 +1617,9 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     if (!fs.existsSync(localFile)) return { moved: false };
     let local;
     let shared;
-    try { ({ data: local } = readSettings(localFile)); ({ data: shared } = readSettings(sharedFile)); }
+    let localText;
+    let sharedText;
+    try { ({ data: local, text: localText } = readSettings(localFile)); ({ data: shared, text: sharedText } = readSettings(sharedFile)); }
     catch (err) { note(`scope move: ${err.message} - the stack's local entries stay where they are`); return { moved: false, refused: true }; }
     const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
     const say = (m) => log(`  settings.local.json: ${m}`);
@@ -1731,8 +1738,8 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     if (!localChanged) return { moved: false };
     // The receiving file first: a crash between the two writes then leaves a key in both files,
     // which the next run reads the same way, never in neither.
-    if (sharedChanged) fs.writeFileSync(sharedFile, `${JSON.stringify(shared, null, 2)}\n`);
-    fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
+    if (sharedChanged) fs.writeFileSync(sharedFile, stringifyLike(shared, formatOf(sharedText)));
+    fs.writeFileSync(localFile, stringifyLike(local, formatOf(localText)));
     if (lifted.length)
     {
         const done = vars.write(variablesFile, Object.fromEntries(lifted.map((key) => [key, null])));
@@ -1801,7 +1808,8 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         // Review finding 12: a file the ledger names nothing in was never the stack's to tidy or delete.
         const named = Object.keys(keys).length > 0 || denies.length > 0 || ids.size > 0 || Object.keys(attr).length > 0;
         let data;
-        try { ({ data } = readSettings(file)); }
+        let fileText;
+        try { ({ data, text: fileText } = readSettings(file)); }
         catch (err) { note(`${err.message} - nothing of the stack's was removed from it`); continue; }
         let changed = false;
         if (plain(data.env))
@@ -1865,7 +1873,7 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
             if (Object.hasOwn(data, key) && empty(data[key])) { delete data[key]; changed = true; }
         if (!changed) continue;
         if (named && !Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
-        else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree / auto-compact / memory keys removed`); }
+        else { fs.writeFileSync(file, stringifyLike(data, formatOf(fileText))); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree / auto-compact / memory keys removed`); }
     }
     removeManagedVariables({ file: variablesFile, rows: (ledger.env || {})['.variables'] || {}, scope, log, note });
     if (keptOff.length)
