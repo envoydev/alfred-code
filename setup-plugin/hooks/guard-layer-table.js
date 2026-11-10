@@ -54,6 +54,7 @@
 // like any non-protective hook; GATE 4 is skipped (`setUp: false`), since it serves the install walk before any
 // install record exists - and such a repo is written nothing (R54), so the block row waits for an installed one.
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const MARKER = 'alfred-code layer-table gate';
@@ -69,8 +70,10 @@ try {
 }
 if (!payload || typeof payload !== 'object') process.exit(0);
 const WALK_STEP = /(?:stack-select|plugin-settings|install[\\/]alfred-code)\.js\b/;
+// The scripts whose output is a decision table - printed for the user at PostToolUse Bash (2026-11-10, below).
+const TABLE_SCRIPT = /(?:stack-select|workspace|plugin-settings|audit-install|update-preflight)\.js\b/;
 const bashCommand = payload.tool_name === 'Bash' ? String((payload.tool_input && payload.tool_input.command) || '') : '';
-if (payload.tool_name === 'Bash' && !WALK_STEP.test(bashCommand)) process.exit(0);
+if (payload.tool_name === 'Bash' && !(payload.hook_event_name === 'PostToolUse' ? TABLE_SCRIPT : WALK_STEP).test(bashCommand)) process.exit(0);
 
 const EVENT = payload.hook_event_name || 'PreToolUse';
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
@@ -411,6 +414,30 @@ const voidedResponse = (resp, line) => {
   return out;
 };
 
+// The decision table a call makes, from its command and its output: `{ name, proof, to?, from? }`, `proof` null for an
+// all-clear report (nothing to show), or null for no table call.
+function tableSpec(cmd, text) {
+  const m = TABLE_RE.exec(cmd);
+  const am = !m && AUDIT_RE.exec(cmd);
+  const report = !m && !am && LAST_LINE_REPORTS.find((r) => r.re.test(cmd) && !r.skip.test(cmd));
+  const plan = !m && !am && !report && WS_PLAN_RE.test(cmd) && WS_PLAN_PROOF.test(text);
+  if (plan) return { name: 'workspace plan table', proof: WS_PLAN_PROOF, to: WS_PLAN_PROOF, from: WS_PLAN_HEADER };
+  if (m) {
+    const total = new RegExp(`total:\\s*\\d+\\s+${m[1]}\\b`);
+    return { name: `${m[1]} table`, proof: total, to: total };
+  }
+  if (am) return { name: `${am[1]} audit`, proof: AUDIT_PROOF };
+  if (report) {
+    const last = text.split('\n').map((l) => l.trim()).filter(Boolean).pop();
+    // no result read back (a truncated tail) - nothing to prove against, so nothing to void; and an
+    // all-clear run printed no table, which the walk skips silently (measured on plugin-settings:
+    // every later ask was denied three times over a table that never existed)
+    const noTable = !last || report.empty.test(text);
+    return { name: report.name, proof: noTable ? null : { test: (t) => t.includes(last) } };
+  }
+  return null;
+}
+
 // What a void prints (F27): a table closed by its total line (`to`) ends there, and the plan starts at its header - the
 // update call cats update-workspace.md after the plan, and its preflight lines come before it. A report or an audit,
 // whose proof is no closing line, prints whole.
@@ -460,25 +487,7 @@ function unpasted(rows) {
         break;
       }
       if (o.type === 'assistant' && b.type === 'tool_use' && !table && !errored.has(b.id)) {
-        const cmd = String((b.input && b.input.command) || '');
-        const m = TABLE_RE.exec(cmd);
-        const am = !m && AUDIT_RE.exec(cmd);
-        const report = !m && !am && LAST_LINE_REPORTS.find((r) => r.re.test(cmd) && !r.skip.test(cmd));
-        const plan = !m && !am && !report && WS_PLAN_RE.test(cmd) && WS_PLAN_PROOF.test(results[b.id] || '');
-        if (plan) table = { name: 'workspace plan table', proof: WS_PLAN_PROOF, to: WS_PLAN_PROOF, from: WS_PLAN_HEADER };
-        else if (m) {
-          const total = new RegExp(`total:\\s*\\d+\\s+${m[1]}\\b`);
-          table = { name: `${m[1]} table`, proof: total, to: total };
-        }
-        else if (am) table = { name: `${am[1]} audit`, proof: AUDIT_PROOF };
-        else if (report) {
-          const last = (results[b.id] || '').split('\n').map((l) => l.trim()).filter(Boolean).pop();
-          // no result read back (a truncated tail) - nothing to prove against, so nothing to void; and an
-          // all-clear run printed no table, which the walk skips silently (measured on plugin-settings:
-          // every later ask was denied three times over a table that never existed)
-          const noTable = !last || report.empty.test(results[b.id] || '');
-          table = { name: report.name, proof: noTable ? null : { test: (t) => t.includes(last) } };
-        }
+        table = tableSpec(String((b.input && b.input.command) || ''), results[b.id] || '');
         if (table) output = tableAlone(results[b.id] || '', table);
       }
     }
@@ -516,6 +525,38 @@ function unpasted(rows) {
   };
 }
 
+// 2026-11-10 (the user's report on 3.9.2, Windows, Sonnet 5.5: five of eight first asks voided - the table written in
+// thinking only): the table is printed for the user when it is MADE, under its own Bash call, through systemMessage -
+// on screen above the ask's open dialog (the render check of 2026-11-10, Claude Code 2.1.321) - and the model is told so.
+// Once per session and tool id (the marker file, created exclusively); a table past PRINT_MAX prints nothing and the
+// paste check stays its gate. `guard-layer-table:print` in ALFRED_CODE_HOOKS_OFF switches it off.
+const PRINT_MAX = 9000;
+const safeName = (v) => String(v || '').replace(/[^\w.-]/g, '_');
+const printedPath = (session, id) => path.join(os.tmpdir(), `alfred-layer-printed-${safeName(session || 'nosession')}-${safeName(id)}`);
+const wasPrinted = (session, id) => { try { return !!id && fs.existsSync(printedPath(session, id)); } catch { return false; } };
+function printTable() {
+  const resp = payload.tool_response;
+  if (!ownId || !resp || resp.is_error) return;
+  const raw = typeof resp === 'string' ? resp : typeof resp.stdout === 'string' ? resp.stdout : '';
+  const text = raw.replace(/\r\n/g, '\n');
+  if (!text.trim() || !tableCall(bashCommand)) return;
+  const spec = tableSpec(bashCommand, text);
+  if (!spec || !spec.proof || !spec.proof.test(text)) return;
+  const shown = tableAlone(text, spec);
+  if (!shown || shown.length > PRINT_MAX) return;
+  let off = false;
+  try { off = (prelude || require(PRELUDE)).partOff('guard-layer-table', 'print', process.env); } catch { /* no prelude: print */ }
+  if (off) return;
+  try { fs.closeSync(fs.openSync(printedPath(payload.session_id, ownId), 'wx')); } catch { return; }
+  process.stdout.write(JSON.stringify({
+    systemMessage: `Alfred - the ${spec.name}:\n${shown}`,
+    hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: `the ${spec.name} is on the user's screen now ` +
+      `(printed under this call) - do not paste it again; send the step banner, at most one line, then the ask` },
+  }));
+  probeRow('layer-table-print', ownId);
+  try { if (prelude) prelude.sweepStale(os.tmpdir(), 'alfred-layer-printed-'); } catch { /* housekeeping only */ }
+}
+
 // PostToolUse: the ask's own message is on disk now. A missing paste or banner voids the answer.
 function voidAsk() {
   const rows = readRows();
@@ -538,6 +579,10 @@ function voidAsk() {
   blockRow(found.line, found.branch);
 }
 
+if (payload.tool_name === 'Bash' && EVENT === 'PostToolUse') {
+  try { printTable(); } catch { /* fail-open */ }
+  process.exit(0);
+}
 if (payload.tool_name === 'Bash') {
   try {
     const rs = readRows(WALK_TAIL);

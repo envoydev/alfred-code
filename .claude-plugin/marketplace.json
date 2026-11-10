@@ -405,6 +405,56 @@
             ]
           },
           {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "if": "Bash(node *stack-select.js*)",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "if": "Bash(node *workspace.js*)",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "if": "Bash(node *plugin-settings.js*)",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "if": "Bash(node *audit-install.js*)",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "if": "Bash(node *update-preflight.js*)",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
+                ],
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "Bash|PowerShell|Monitor",
             "hooks": [
               {

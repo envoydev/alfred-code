@@ -118,6 +118,14 @@ function coreEntry(options = {})
             PostToolUse: [{
                 matcher: 'AskUserQuestion',
                 hooks: [{ type: 'command', ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
+            }, {
+                // 2026-11-10: a decision table is printed for the user under the call that made it (systemMessage). One
+                // handler per table script: 'The `if` field holds exactly one permission rule ... define a separate hook
+                // handler for each' (code.claude.com/docs/en/hooks), so no other node call spawns it. The set matches
+                // the hook's own TABLE_SCRIPT line (build-marketplace.test.js).
+                matcher: 'Bash',
+                hooks: ['stack-select', 'workspace', 'plugin-settings', 'audit-install', 'update-preflight'].map((script) =>
+                    ({ type: 'command', if: `Bash(node *${script}.js*)`, ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 })),
             }],
             // Library copies move only on /alfred-code:update, so a session on a newer stack says
             // so at each fresh context - a startup, a /clear and a resume (loading audit 2026-10-21 G12: a cleared

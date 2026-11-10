@@ -742,3 +742,95 @@ test('F27: a layer table void prints through its total line, and a table with no
   assert.ok(voided(r), r.stdout);
   assert.strictEqual(printedOf(r.out.reason), '[step 5/12 - agents] adjust\n # | agent\n 1 | x\ntotal: 43 agents - if fewer', r.out.reason);
 });
+
+// ------------------------------------------------------------------ 2026-11-10: the table printed when it is made
+// The user's report on 3.9.2 (Windows, Sonnet 5.5): five of eight layer asks were voided on the first try - the model
+// wrote the table in thinking only, so the user met each question before any table. The gate now prints the decision
+// table at PostToolUse Bash, under the call that made it (systemMessage - on screen with the ask's dialog open, the
+// render check of 2026-11-10), and tells the model it is shown. TMPDIR, TEMP and TMP are one fresh dir per call
+// (Windows reads TEMP / TMP), so no two cases share the printed marker.
+function runPrint(command, stdout, { env = {}, tmp = fs.mkdtempSync(path.join(TMP, 'print-')), session = 's1', response } = {}) {
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  fs.writeFileSync(p, `${JSON.stringify(typed('/alfred-code:init'))}\n`);
+  const tool_response = response !== undefined ? response : { stdout, stderr: '' };
+  const input = JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command }, tool_use_id: 'b1', session_id: session, tool_response, transcript_path: p });
+  const r = spawnSync(process.execPath, [HOOK], { input, encoding: 'utf8', ...inProject({ TMPDIR: tmp, TEMP: tmp, TMP: tmp, ...env }) });
+  let out = null;
+  try { out = r.stdout.trim() ? JSON.parse(r.stdout) : null; } catch { /* asserted below */ }
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr, out, tmp };
+}
+const TABLE_CMD = (layer) => `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ${layer} --recs r.json`;
+const RULES_OUT = ' # | rule | state\n 1 | alfred-x | on\ntotal: 9 rules - 3 marked\n';
+
+test('print: a layer table is printed for the user under its own call, and the model is told it is shown', () => {
+  const r = runPrint(TABLE_CMD('rules'), RULES_OUT);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(r.out, `JSON on stdout: ${r.stdout}`);
+  assert.match(r.out.systemMessage, /^Alfred - the rules table:\n/);
+  assert.match(r.out.systemMessage, /total: 9 rules - 3 marked$/);
+  assert.match(r.out.hookSpecificOutput.additionalContext, /is on the user's screen now/);
+  assert.strictEqual(r.out.hookSpecificOutput.hookEventName, 'PostToolUse');
+  assert.strictEqual(r.out.decision, undefined, 'a print blocks nothing');
+  assert.ok(fs.existsSync(path.join(r.tmp, 'alfred-layer-printed-s1-b1')), 'the printed marker is written');
+});
+
+test('print: the missing audit, the install inventory, the install audit and the workspace plan print too', () => {
+  const cases = [
+    ['node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --missing', 'stack | state\nsqlite | MISSING\n', 'missing audit', /MISSING/],
+    ['node "$TMP/repo/scripts/update-preflight.js" --inventory "$TMP/installed.json"', ' 1 | x\ntotal: 12 installed\n', 'install inventory', /total: 12 installed$/],
+    ['node "$TMP/repo/scripts/audit-install.js" --root .', 'row | finding\n1 | wide grant\n2 findings\n', 'install audit', /2 findings$/],
+    ['node "$TMP/repo/scripts/workspace.js" plan --root .', 'workspace: preflight\nproject | role | action\n. | root | update\ntotal: 2 projects\n', 'workspace plan table', /^Alfred - the workspace plan table:\nproject \| role/],
+  ];
+  for (const [cmd, stdout, name, shown] of cases) {
+    const r = runPrint(cmd, stdout);
+    assert.ok(r.out, `${name}: ${r.stdout}`);
+    assert.ok(r.out.systemMessage.startsWith(`Alfred - the ${name}:\n`), `${name}: ${r.out.systemMessage}`);
+    assert.match(r.out.systemMessage, shown, name);
+  }
+});
+
+test('print: nothing for a non-table call, a table with no proof, an over-long table, a failed run or a repeat', () => {
+  const big = (n) => `${'a'.repeat(n - '\ntotal: 9 rules'.length)}\ntotal: 9 rules`;
+  const none = [
+    ['node x.js', RULES_OUT],
+    [TABLE_CMD('rules'), 'no footer here\n'],
+    [TABLE_CMD('rules'), big(9001)],
+    ['node "$TMP/repo/scripts/plugin-settings.js" --apply "$TMP/answers.json"', 'applied: 2\n'],
+    ['node "$TMP/repo/scripts/plugin-settings.js"', 'nothing to offer\n'],
+  ];
+  for (const [cmd, stdout] of none) {
+    const r = runPrint(cmd, stdout);
+    assert.deepStrictEqual([r.status, r.stdout], [0, ''], `${cmd}: ${r.stdout}`);
+  }
+  assert.ok(runPrint(TABLE_CMD('rules'), big(9000)).out, 'a 9,000-character table prints');
+  const failed = runPrint(TABLE_CMD('rules'), '', { response: { is_error: true, stdout: RULES_OUT } });
+  assert.deepStrictEqual([failed.status, failed.stdout], [0, ''], 'a failed run prints nothing');
+  const first = runPrint(TABLE_CMD('rules'), RULES_OUT);
+  assert.ok(first.out, 'the first run prints');
+  const again = runPrint(TABLE_CMD('rules'), RULES_OUT, { tmp: first.tmp });
+  assert.deepStrictEqual([again.status, again.stdout], [0, ''], 'the same session and id print once');
+  const other = runPrint(TABLE_CMD('rules'), RULES_OUT, { tmp: first.tmp, session: 's2' });
+  assert.ok(other.out, 'the same id in another session prints');
+  const off = runPrint(TABLE_CMD('rules'), RULES_OUT, { env: { ALFRED_CODE_HOOKS_OFF: 'guard-layer-table:print' } });
+  assert.deepStrictEqual([off.status, off.stdout], [0, ''], 'guard-layer-table:print switches the print off');
+});
+
+test('print: CRLF output and a string tool_response print; an empty response prints nothing', () => {
+  const crlf = runPrint(TABLE_CMD('rules'), RULES_OUT.replace(/\n/g, '\r\n'));
+  assert.ok(crlf.out, crlf.stdout);
+  assert.ok(!crlf.out.systemMessage.includes('\r'), 'line ends normalised');
+  assert.match(crlf.out.systemMessage, /total: 9 rules - 3 marked$/);
+  const str = runPrint(TABLE_CMD('rules'), '', { response: RULES_OUT });
+  assert.ok(str.out, str.stdout);
+  const empty = runPrint(TABLE_CMD('rules'), '', { response: {} });
+  assert.deepStrictEqual([empty.status, empty.stdout], [0, ''], 'tool_response {} prints nothing');
+});
+
+test('print: a PostToolUse Bash payload never runs the next-step judge', () => {
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  const rows = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'), say('Next I\'ll decide which to keep.')];
+  fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  assert.strictEqual(runBash(rows, EMIT).status, 2, 'the PreToolUse judge denies this step');
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: EMIT }, tool_use_id: 'b9', session_id: 's1', tool_response: { stdout: '', stderr: '' }, transcript_path: p }), encoding: 'utf8', ...inProject() });
+  assert.deepStrictEqual([r.status, r.stdout, r.stderr], [0, '', ''], 'PostToolUse leaves the judge alone');
+});
