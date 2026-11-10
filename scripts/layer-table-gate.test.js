@@ -137,12 +137,12 @@ test('a voided ask leaves the next --emit denied', () => {
   assert.match(r.stderr, /agents ask never happened/);
 });
 
-test('the valve passes the fourth void of one kind, and a banner gap still voids', () => {
+test('the valve passes the fourth void of one kind, and a banner gap only adds a note', () => {
   const rows = [typed('/alfred-code:configure'), b(1), b(2), table('agents'), result('t1', 'total: 43 agents'), ...denied(1, 'agents'), ...denied(2, 'agents'), ...denied(3, 'agents')];
   assert.strictEqual(runPost(rows).stdout, '');
   const gap = runPost([...rows, b(4)]);
-  assert.ok(voided(gap), gap.stdout);
-  assert.match(gap.out.reason, /step banner missing - step 3 of 13 printed none/);
+  assert.ok(!voided(gap), gap.stdout);
+  assert.match(gap.out.hookSpecificOutput.additionalContext, /step 3 of 13 printed no banner/);
 });
 
 test('PreToolUse never waits, and judges no paste', () => {
@@ -438,11 +438,18 @@ test('configure step 1: the never-ran denial has its own valve of three, and ano
 const b = (n, of = 13, name = 'x') => say(`[step ${n}/${of} - ${name}] something · next: y`);
 const areas = layerAsk('Which areas to adjust?');
 
-test('banners: a gap in a guided run is denied, naming the missing steps', () => {
+// 2026-11-10 (the user's report on 3.9.2): an init run's agents answer was voided for a banner gap with configure's
+// '[step 7/12 ...]' example. A gap is a note to the model now, in the run's own numbering - the answer stands.
+test('banners: a gap in a guided run is a note naming the missing steps, never a void', () => {
   const r = runPost([typed('/alfred-code:configure'), b(1), b(2), b(5), b(9)], ANS, {}, areas);
-  assert.ok(voided(r), r.stdout);
-  assert.match(r.out.reason, /step banner missing - step 3, 4, 6, 7, 8 of 13 printed none/);
-  assert.match(r.out.reason, /\[step 7\/12 - plugins\] skipped - area not selected/);
+  assert.ok(!voided(r), r.stdout);
+  assert.match(r.out.hookSpecificOutput.additionalContext, /step 3, 4, 6, 7, 8 of 13 printed no banner/);
+  assert.match(r.out.hookSpecificOutput.additionalContext, /\[step 3\/13 - /);
+  const init = runPost([typed('/alfred-code:init'), b(1, 10), b(3, 10)], ANS, {}, areas);
+  assert.ok(!voided(init), init.stdout);
+  assert.match(init.out.hookSpecificOutput.additionalContext, /step 2 of 10 printed no banner/);
+  assert.match(init.out.hookSpecificOutput.additionalContext, /\[step 2\/10 - /);
+  assert.doesNotMatch(init.out.hookSpecificOutput.additionalContext, /7\/12/);
   assert.strictEqual(runPost([typed('/alfred-code:validate'), b(1, 12), b(2, 12), say('[step 3/12 - rules] nothing to reconcile'), b(4, 12)], ANS, {}, areas).stdout, '');
 });
 
@@ -455,16 +462,17 @@ test('banners: no banner yet, another command, or a typed prompt mid-walk is not
 test('banners: the gap denial has its own valve of three', () => {
   const gd = (n) => [call(`g${n}`, 'AskUserQuestion', areas), result(`g${n}`, 'alfred-code layer-table gate: step banner missing - step 3 of 13 printed none', true)];
   const rows = [typed('/alfred-code:configure'), b(1), b(2), b(4), ...gd(1), ...gd(2)];
-  assert.ok(voided(runPost(rows, ANS, {}, areas)));
-  assert.strictEqual(runPost([...rows, ...gd(3)], ANS, {}, areas).stdout, '');
+  const noted = runPost(rows, ANS, {}, areas);
+  assert.ok(!voided(noted) && /printed no banner/.test(noted.out.hookSpecificOutput.additionalContext), noted.stdout);
+  assert.strictEqual(runPost([...rows, ...gd(3)], ANS, {}, areas).stdout, '', 'three gap voids of an older release spend the note too');
 });
 
 test('banners: the ask\'s own message is on disk, so a gap it opens is seen and a banner it adds counts', () => {
   const rows = [typed('/alfred-code:configure'), b(1), b(2)];
   assert.strictEqual(runPost([...rows, ...own('[step 3/13 - rules] adjust the installed rules · next: agents')]).stdout, '');
   const gap = runPost([...rows, ...own('[step 6/13 - hooks] adjust the installed hooks · next: plugins')]);
-  assert.ok(voided(gap), gap.stdout);
-  assert.match(gap.out.reason, /step 3, 4, 5 of 13 printed none/);
+  assert.ok(!voided(gap), gap.stdout);
+  assert.match(gap.out.hookSpecificOutput.additionalContext, /step 3, 4, 5 of 13 printed no banner/);
 });
 
 // ------------------------------------------------------------------ 2026-10-21: a skipped layer question
@@ -833,4 +841,49 @@ test('print: a PostToolUse Bash payload never runs the next-step judge', () => {
   assert.strictEqual(runBash(rows, EMIT).status, 2, 'the PreToolUse judge denies this step');
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: EMIT }, tool_use_id: 'b9', session_id: 's1', tool_response: { stdout: '', stderr: '' }, transcript_path: p }), encoding: 'utf8', ...inProject() });
   assert.deepStrictEqual([r.status, r.stdout, r.stderr], [0, '', ''], 'PostToolUse leaves the judge alone');
+});
+
+// 2026-11-10: a table the gate printed under its own call was on screen, so its ask is never voided for a missing
+// paste; a print's answer is measured (an option label, or Other text - a rejected ask fires no PostToolUse hook,
+// measured on Claude Code 2.1.321, so it records nothing).
+function runAnswered(rows, { tmp = fs.mkdtempSync(path.join(TMP, 'ans-')), session = 's1', response = ANS, input = ask, cwd } = {}) {
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  fs.writeFileSync(p, [...rows, call('a9', 'AskUserQuestion', input)].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const where = cwd ? { cwd, env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, TMPDIR: tmp, TEMP: tmp, TMP: tmp } } : inProject({ TMPDIR: tmp, TEMP: tmp, TMP: tmp });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_input: input,
+    tool_use_id: 'a9', session_id: session, tool_response: response, transcript_path: p }), encoding: 'utf8', ...where });
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
+}
+const printedIn = (tmp, session, id) => fs.writeFileSync(path.join(tmp, `alfred-layer-printed-${session}-${id}`), '');
+
+test('printed: an ask after a table the gate printed is never voided; the same table unprinted still is', () => {
+  const tmp = fs.mkdtempSync(path.join(TMP, 'ans-'));
+  printedIn(tmp, 's1', 't1');
+  const shown = runAnswered(UNPASTED(), { tmp });
+  assert.ok(!voided(shown), shown.stdout);
+  assert.ok(voided(runAnswered(UNPASTED())), 'no printed marker: the void as before');
+  assert.ok(voided(runAnswered(UNPASTED(), { tmp, session: 's2' })), 'the marker is per session');
+});
+
+test('printed: a banner gap beside an unprinted table voids with the gap note in its context', () => {
+  const rows = [typed('/alfred-code:init'), b(1, 10), b(3, 10), table('agents'), result('t1', ' 1  x\ntotal: 43 agents')];
+  const r = runAnswered(rows);
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /the agents table ran but its output is not in your message/);
+  assert.match(r.out.hookSpecificOutput.additionalContext, /step 2 of 10 printed no banner/);
+});
+
+test('printed: the answer to a printed table writes one probe row - an option label, or Other text', () => {
+  const proj = fs.mkdtempSync(path.join(TMP, 'probe-'));
+  fs.mkdirSync(path.join(proj, '.claude'));
+  fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'version: 3.9.2\n');
+  const tmp = fs.mkdtempSync(path.join(TMP, 'ans-'));
+  for (const s of ['pa', 'pb']) printedIn(tmp, s, 't1');
+  runAnswered(UNPASTED(), { tmp, session: 'pa', cwd: proj });
+  runAnswered(UNPASTED(), { tmp, session: 'pa', cwd: proj });
+  runAnswered(UNPASTED(), { tmp, session: 'pb', cwd: proj, response: { ...ANS, answers: { 'Keep as shown?': 'which rows are new?' } } });
+  const rows = (s) => fs.readFileSync(path.join(proj, '.alfred', 'statistics', 'hook-blocks', `${s}.jsonl`), 'utf8').trim().split('\n')
+    .map((l) => JSON.parse(l)).filter((x) => x.mode === 'probe' && x.kind === 'layer-table-print-answer');
+  assert.deepStrictEqual(rows('pa').map((x) => [x.detail.id, x.detail.answer]), [['a9', 'label']], 'a label answer, written once');
+  assert.deepStrictEqual(rows('pb').map((x) => [x.detail.id, x.detail.answer]), [['a9', 'other']], 'an Other answer');
 });

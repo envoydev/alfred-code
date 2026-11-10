@@ -127,7 +127,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     T2-03, 2026-10-21) (2.1.7, the user's report of 2026-10-06; its own valve of three per layer). Audit 2026-10-11 added
     configure step 1's `update-preflight.js --inventory` table (proof: its `total:` line) with its closing ask, which needs that
     call to have run, and - inside a typed init / configure / validate run that printed a banner - a gap in the `[step n/N`
-    numbers (voided at PostToolUse like the paste), each with its own valve. A walk that never ASKS gave it nothing to judge (2026-10-21: a real init run narrated
+    numbers (a note at PostToolUse since 2026-11-10, never a void), each with its own valve. A table the gate printed under its own call at PostToolUse Bash (`systemMessage`, five `if` handlers, `guard-layer-table:print`) is never voided (2026-11-10). A walk that never ASKS gave it nothing to judge (2026-10-21: a real init run narrated
     the hooks table and moved on, and rendered the plugins table through `node -e`), so it also rides PreToolUse `Bash`
     behind `if: Bash(node *)` and judges the walk's NEXT step - a `stack-select.js`, `plugin-settings.js` or installer
     call - inside a typed init / configure run: denied while the latest `--table` has no answered ask after it (a re-run

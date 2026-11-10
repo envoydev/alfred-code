@@ -25,7 +25,8 @@
 // not reset it), so a paste the transcript never shows cannot loop the walk. F27 (the fix run, live): Sonnet answered
 // six voids with the table in thinking only, so a paste void prints the table itself in the block reason the user sees,
 // and a re-ask of that table after such a void passes unpasted - one void per layer. Inside a typed init / configure / validate
-// run that has printed a step banner, a gap in the banner numbers voids the answer too, with its own valve of three.
+// run that has printed a step banner, a gap in the banner numbers is a note to the model in the run's own numbering
+// (2026-11-10: it voided an init answer with configure's '7/12' example), beside a void or alone - never a void itself.
 // `guard-layer-table:void` in ALFRED_CODE_HOOKS_OFF switches the void off. A tool_response with no answers object is no
 // shape this was measured on: no void.
 // PreToolUse (AskUserQuestion) keeps the checks that need no paste: a layer's own selection ask ('Agents: ...', 'Add to
@@ -113,13 +114,13 @@ function blockRow(reason, table) {
   try { appendRow({ reason: reason.slice(0, 200), detail: { branch: table } }); } catch { /* telemetry is never allowed to break the gate */ }
 }
 // One probe row per kind and id: a later gate run reads the same transcript again and writes none.
-function probeRow(kind, id) {
+function probeRow(kind, id, extra = {}) {
   if (unsetRepo) return;
   try {
     let have = '';
     try { have = fs.readFileSync(blocksFile(), 'utf8'); } catch { /* none yet */ }
     const seen = have.split('\n').some((l) => { try { const o = JSON.parse(l); return o.kind === kind && o.detail && o.detail.id === id; } catch { return false; } });
-    if (!seen) appendRow({ mode: 'probe', kind, detail: { id } });
+    if (!seen) appendRow({ mode: 'probe', kind, detail: { id, ...extra } });
   } catch { /* telemetry is never allowed to break the gate */ }
 }
 
@@ -464,6 +465,7 @@ function unpasted(rows) {
   const askIds = new Set();
   let stop = false;
   let output = '';    // the table's own output, printed for the user by a void
+  let tableId = '';
   for (let i = rows.length - 1; i >= 0 && !stop; i--) {
     let o;
     try { o = JSON.parse(rows[i]); } catch { continue; }
@@ -488,10 +490,12 @@ function unpasted(rows) {
       }
       if (o.type === 'assistant' && b.type === 'tool_use' && !table && !errored.has(b.id)) {
         table = tableSpec(String((b.input && b.input.command) || ''), results[b.id] || '');
-        if (table) output = tableAlone(results[b.id] || '', table);
+        if (table) { output = tableAlone(results[b.id] || '', table); tableId = b.id; }
       }
     }
   }
+  // 2026-11-10: the gate printed this table under its own call, so it was on screen when the user answered.
+  if (table && wasPrinted(payload.session_id, tableId)) return { printed: tableId };
   const ours = table ? [...denialTexts].filter(([id, t]) => askIds.has(id) && t.includes(`the ${table.name} ran`)).map(([, t]) => t) : [];
   // A void that printed this table put it on screen, so the re-ask is answered with it in view (F27).
   if (!table || !table.proof || ours.length >= MAX_DENIALS || ours.some((t) => t.includes(PRINTED)) || table.proof.test(texts)) return null;
@@ -566,17 +570,37 @@ function voidAsk() {
   if (off || !voidedResponse(payload.tool_response, MARKER)) return;
   const guided = guidedRun(rows);
   if (!tailHasTable(rows) && !guided) return;
+  // 2026-11-10 (the user's report on 3.9.2: an init answer voided for a banner gap, with configure's '7/12' example): a gap
+  // is a note to the model in the run's own numbering, beside a void or alone - never a void of its own.
   const gap = guided ? bannerGap(rows) : null;
-  const found = gap ? {
-    branch: 'void step banner',
-    line: `${MARKER}: step banner missing - step ${gap.missing.join(', ')} of ${gap.total} printed none - the user answered ` +
-      `without it - this answer is void; send ONE message: the missing banners in order, each with its one line ` +
-      `(\`[step 7/12 - plugins] skipped - area not selected\`), then this step's content and this same ask.`,
-  } : tailHasTable(rows) ? unpasted(rows) : null;
-  if (!found) return;
+  const note = gap ? `${MARKER}: step ${gap.missing.join(', ')} of ${gap.total} printed no banner; print ` +
+    `[step ${gap.missing[0]}/${gap.total} - <step name>] and its one line before the next step` : '';
+  let found = tailHasTable(rows) ? unpasted(rows) : null;
+  if (found && found.printed) {
+    printAnswerProbe(found.printed);
+    found = null;
+  }
+  if (!found && !note) return;
+  const context = note ? { additionalContext: note } : {};
+  if (!found) {
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', ...context } }));
+    return;
+  }
   process.stdout.write(JSON.stringify({ decision: 'block', reason: found.shown ? `${found.lead}\n${found.shown}\n${found.line}` : found.line,
-    hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: voidedResponse(payload.tool_response, found.line) } }));
+    hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: voidedResponse(payload.tool_response, found.line), ...context } }));
   blockRow(found.line, found.branch);
+}
+
+// The answer to a printed table, measured: every answer one of the ask's option labels ('label'), or typed text ('other'
+// - the miss signal: a user who did not see the table asks about it). A rejected ask fires no PostToolUse hook
+// (measured, Claude Code 2.1.321), so it is never counted here.
+function printAnswerProbe(tableId) {
+  const answers = (payload.tool_response && payload.tool_response.answers) || {};
+  const labels = new Set(((payload.tool_input && payload.tool_input.questions) || [])
+    .flatMap((q) => ((q && q.options) || []).map((o) => String((o && o.label) || '').trim())));
+  const isLabel = (a) => String(a).split(/,\s*/).every((part) => labels.has(part.trim()));
+  const answer = Object.values(answers).every(isLabel) ? 'label' : 'other';
+  probeRow('layer-table-print-answer', ownId, { answer, table: tableId });
 }
 
 if (payload.tool_name === 'Bash' && EVENT === 'PostToolUse') {
