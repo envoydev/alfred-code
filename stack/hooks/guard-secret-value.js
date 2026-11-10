@@ -3453,7 +3453,8 @@ if (isShellTool(payload.tool_name)) {
   const command = stripHeredocsOf(raw, code);
   judged = command;
   runBodies = code;
-  // the secrets engines by name (R9), before a rewrite below ends the run
+  // runtime code naming the store or an engine (SG1 rule 4), then the secrets engines by name (R9), before a rewrite ends the run
+  refuseRuntimeMention(command, code);
   refuseEngineMention([command, ...code.map((h) => h.body)].join('\n'));
   // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
   // result is judged like any command, so a credential printed elsewhere still takes its own form.
@@ -3536,11 +3537,59 @@ function refuseEngineMention(text) {
     // every look only as the LAST stage, `ls` and `test` too: `ls <runner> | xargs -I{} node {}` runs it
     if (parts[i + 1] !== '|' && sensitiveLooks(words, joined, false)) continue;
     global.BLOCK_DETAIL = { branch: 'secrets-engine', matched: `${m[1]}.js` };
-    block(`Blocked: this command names ${m[1]}.js, the workspace secrets engine - the MCP launcher passes a server's stdout\n` +
-      'unmasked and the chain reader returns every value raw, so neither runs from a shell the chat can read. A command\n' +
-      'that needs the values gets them in its own environment, both streams masked, each value printed as <KEY>:\n' +
-      `  node "${__filename}" --with-sensitive -- "<command line>"\n` +
-      'An MCP server gets them through its registration (/alfred-code:configure offers the wrap), never a shell run.\n');
+    block(engineRefusal(m[1]));
+  }
+}
+function engineRefusal(name) {
+  return `Blocked: this command names ${name}.js, the workspace secrets engine - the MCP launcher passes a server's stdout\n` +
+    'unmasked and the chain reader returns every value raw, so neither runs from a shell the chat can read. A command\n' +
+    'that needs the values gets them in its own environment, both streams masked, each value printed as <KEY>:\n' +
+    `  node "${__filename}" --with-sensitive -- "<command line>"\n` +
+    'An MCP server gets them through its registration (/alfred-code:configure offers the wrap), never a shell run.\n';
+}
+function storeRefusal() {
+  return 'Blocked: this command names the project\'s sensitive data (.secrets under the data root, .sensitive-data before). Its values never\n' +
+    'enter a shell or a file the chat can read - a source, a copy or a print would put them there. Its keys:\n' +
+    `  node "${__filename}" --presence <that file>\n` +
+    'A command that needs the values gets them in its own environment, each printed as <KEY>:\n' +
+    `  node "${__filename}" --with-sensitive -- "<command line>"\n` +
+    'The file itself is the user\'s to edit, by hand.\n';
+}
+// The store's names as text, one build for both readers: MENTION anywhere, BARE `.secrets` only beside a ROOT_WORD naming
+// the data root. Each workspace ancestor's data root counts as well, read only when the text names a store at all.
+function storeNameTests(text) {
+  const roots = [...new Set([dataRootRel(), ...(/\.(?:secrets|sensitive-data)/i.test(text) ? sensitiveRoots() : [])])];
+  const ROOT = `(?:${roots.map((r) => r.split('/').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]')).join('|')})`;
+  return { MENTION: new RegExp(`(?:^|[^\\w.-])(?:\\.sensitive-data|${ROOT}[\\\\/]\\.secrets)(?![\\w.-])`, 'i'),
+    BARE: /(?:^|[^\w.-])\.secrets(?![\w.-])/i, ROOT_WORD: new RegExp(`(?:^|[^\\w.-])${ROOT}(?![\\w.-])`, 'i') };
+}
+// SG1 rule 4 (spec step 4): runtime code naming the store or an engine is refused BEFORE any rewrite, with the Edit hint -
+// code that only mentions the file is the Edit tool's to change. Runtime code: a runtime heredoc body, the word after a
+// runtime's -e / -E / -c / -p / --eval / --print, an awk or sed program (its -e value, else its first non-option word; a -f
+// file is rule 1's). A shell's -c string and a heredoc fed to a shell are steps, judged after it (D6).
+function refuseRuntimeMention(command, code) {
+  if (allowAll) return;
+  const texts = code.filter((h) => h.runtime).map((h) => h.body);
+  for (const seg of splitSegments(stripComments(command))) for (const stage of splitPipes(seg)) {
+    if (/guard-secret-value\.js/.test(stage)) continue;
+    const toks = shellTokens(stage);
+    const k = commandAt(toks);
+    const verb = baseOf(wordOf(toks[k] || ''));
+    const args = toks.slice(k + 1).map(wordOf);
+    if (RUNTIME_WORD.test(verb)) args.forEach((w, j) => { if (/^(?:-[eEcp]|--eval|--print)$/.test(w) && j + 1 < args.length) texts.push(args[j + 1]); });
+    else if (/^(?:[gmn]?awk|sed)$/.test(verb) && !args.some((w) => /^(?:-f|--file)$/.test(w))) {
+      const e = args.indexOf('-e');
+      const prog = e >= 0 ? args[e + 1] : args.find((w, j) => !w.startsWith('-') && !/^-[Fv]$/.test(args[j - 1] || ''));
+      if (prog) texts.push(prog);
+    }
+  }
+  for (const t of texts) {
+    const j = t.replace(/(["'])([^"'\n]*)\1/g, '$2');
+    const { MENTION, BARE, ROOT_WORD } = storeNameTests(j);
+    const engine = j.match(/(?:^|[^\w.-])(secrets-run|secret-chain)\.js(?![\w.-])/i);
+    if (!engine && !MENTION.test(j) && !(BARE.test(j) && ROOT_WORD.test(j))) continue;
+    global.BLOCK_DETAIL = { branch: 'runtime-mention', matched: engine ? `${engine[1]}.js` : 'store' };
+    block(`${engine ? engineRefusal(engine[1]) : storeRefusal()}If this only edits text that mentions the file, make the edit with the Edit or Write tool.\n`);
   }
 }
 // The project's .sensitive-data named by a command the judge above let through unchanged: a `source` of it (every value
@@ -3564,21 +3613,12 @@ function refuseSensitiveMention(text, steps = text) {
   // Each workspace ancestor's data root counts as well (release 2: `../var/data/.secrets`), read only when the text names
   // a store at all.
   const joinQuoted = (s) => String(s).replace(/(["'])([^"'\n]*)\1/g, '$2');
-  const roots = [...new Set([dataRootRel(), ...(/\.(?:secrets|sensitive-data)/i.test(joinQuoted(text)) ? sensitiveRoots() : [])])];
-  const ROOT = `(?:${roots.map((r) => r.split('/').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]')).join('|')})`;
-  const MENTION = new RegExp(`(?:^|[^\\w.-])(?:\\.sensitive-data|${ROOT}[\\\\/]\\.secrets)(?![\\w.-])`, 'i');
-  const BARE = /(?:^|[^\w.-])\.secrets(?![\w.-])/i;
-  const ROOT_WORD = new RegExp(`(?:^|[^\\w.-])${ROOT}(?![\\w.-])`, 'i');
+  const { MENTION, BARE, ROOT_WORD } = storeNameTests(joinQuoted(text));
   const looks = sensitiveLooks;
   const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
   const refuse = (verb) => {
     global.BLOCK_DETAIL = { branch: 'sensitive-data', matched: String(verb || '').slice(0, 40) };
-    block('Blocked: this command names the project\'s sensitive data (.secrets under the data root, .sensitive-data before). Its values never\n' +
-      'enter a shell or a file the chat can read - a source, a copy or a print would put them there. Its keys:\n' +
-      `  node "${__filename}" --presence <that file>\n` +
-      'A command that needs the values gets them in its own environment, each printed as <KEY>:\n' +
-      `  node "${__filename}" --with-sensitive -- "<command line>"\n` +
-      'The file itself is the user\'s to edit, by hand.\n');
+    block(storeRefusal());
   };
   const plain = (w) => !/^[A-Za-z_]\w*=/.test(w) && w !== 'sudo' && w !== '!';
   // What an exclusion names is what the command leaves OUT (hooks review 2026-10-16: `rsync -a --exclude .alfred ./ x` was

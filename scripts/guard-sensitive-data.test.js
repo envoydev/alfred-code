@@ -388,6 +388,23 @@ test(`H3: a walk through the store and a git stream of it mask every value [${FI
     assert.match(r.stdout, /^\+DB_HOST=<set \(12 chars\)>$/m, r.stdout);
     assert.match(r.stdout, /^\+<sensitive-data line>$/m, r.stdout);
 });
+
+test(`SG1 rule 4: runtime code naming the store is refused with the Edit hint [${FILE}]`, () => {
+  const { dir } = project('rule4', { file: FILE });
+  fs.mkdirSync(path.join(dir, 'docs'), { recursive: true }); fs.writeFileSync(path.join(dir, 'docs', 'plan.md'), '# p\n');
+  const HINT = /make the edit with the Edit or Write tool/;
+  for (const c of [`python3 - <<'EOF'\nprint(open('.alfred/${FILE}').read())\nEOF`,
+    `node -e "console.log(['.alfred/${FILE}'].length)"`,
+    `awk '{print "see .alfred/${FILE}"}' docs/plan.md`,
+    `cat >> t.test.js <<'EOF'\nconst f = '.alfred/${FILE}';\nEOF\nnode --test t.test.js`,
+    `python3 - <<'EOF'\n# names ${['secret', '-chain.js'].join('')}\nEOF`]) {
+    const r = run({ tool_name: 'Bash', tool_input: { command: c }, cwd: dir, session_id: 'suite' });
+    assert.equal(r.status, 2, c);
+    assert.match(r.stderr, HINT, c);
+  }
+  assert.equal(bash(dir, `cat > notes.md <<'EOF'\nsource .alfred/${FILE}\nEOF`), 0, 'a data heredoc stays data (rule 3)');
+  assert.equal(bash(dir, `node "${HOOK}" --presence ".alfred/${FILE}"`), 0, 'the guard\'s own quoted presence read runs');
+});
 }
 
 // Workspace layering, release 2 (AC19, AC20): a joined child reads each linked ancestor's store after its own - the nearest
