@@ -2884,6 +2884,59 @@ test('no workspace docs line: a root with no domain, a seat\'s start, the kill s
   } finally { none.rm(); w.rm(); ig.rm(); }
 });
 
+// workspace.json design, Section 1: a garbage workspace record is said once at session start - in its own project and in
+// every project whose chain reads it - riding the start block or going out alone.
+const GARBAGE_START = (rel) => `!! workspace: ${rel} is not valid JSON - this project's workspace links (inherited variables, the members' secret stores, the member-memory deny) are off until it is fixed by hand`;
+const timesIn = (text, line) => (text || '').split('\n').filter((l) => l === line).length;
+const garble = (dir) => fs.writeFileSync(path.join(dir, '.alfred', 'workspace.json'), '{');
+
+test('a garbage workspace record is said once at session start', () => {
+  for (const childArch of [true, false]) {
+    const own = wsDocs({ childArch });
+    const up = wsDocs({ childArch });
+    try {
+      garble(path.join(own.docs, '..', '..', 'api'));
+      const a = ctx(own.hook({}));
+      assert.strictEqual(timesIn(a, GARBAGE_START('.alfred/workspace.json')), 1, `childArch ${childArch}:\n${a}`);
+      garble(path.join(up.docs, '..', '..'));
+      const b = ctx(up.hook({}));
+      assert.strictEqual(timesIn(b, GARBAGE_START('../.alfred/workspace.json')), 1, `childArch ${childArch}:\n${b}`);
+    } finally { own.rm(); up.rm(); }
+  }
+  // a linked worktree names the main checkout's file, relative to the worktree
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-ws-wt-')));
+  try {
+    const main = path.join(top, 'proj');
+    fs.mkdirSync(path.join(main, '.alfred'), { recursive: true });
+    const git = (...args) => spawnSync('git', args, { cwd: main, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'test');
+    git('config', 'commit.gpgsign', 'false');
+    fs.writeFileSync(path.join(main, '.gitignore'), '.alfred/\n');
+    git('add', '-A');
+    git('commit', '-qm', 'seed');
+    assert.strictEqual(git('worktree', 'add', '-q', path.join(top, 'wt')).status, 0);
+    garble(main);
+    const wt = path.join(top, 'wt');
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: wt, CLAUDE_CONFIG_DIR: path.join(top, 'cfg') };
+    for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_WORKSPACE', 'ALFRED_CODE_DATA_PATH']) delete env[k];
+    const out = spawnSync(process.execPath, [path.join(HOOKS, 'docs-session.js')], { cwd: wt, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid(), cwd: wt }), encoding: 'utf8', env });
+    assert.strictEqual(timesIn(ctx(out), GARBAGE_START('../proj/.alfred/workspace.json')), 1, out.stdout + out.stderr);
+  } finally { fs.rmSync(top, { recursive: true, force: true }); }
+});
+
+test('no garbage line: a valid chain, the kill switch at launch, a seat\'s start', () => {
+  const w = wsDocs();
+  const g = wsDocs();
+  try {
+    assert.doesNotMatch(ctx(w.hook({})) || '', /is not valid JSON/);
+    garble(path.join(g.docs, '..', '..'));
+    assert.doesNotMatch(ctx(g.hook({}, { ALFRED_CODE_WORKSPACE: '0' })) || '', /is not valid JSON/);
+    assert.doesNotMatch(ctx(g.hook({ agent_id: 'seat-1' })) || '', /is not valid JSON/);
+  } finally { w.rm(); g.rm(); }
+});
+
 // F25 (the 2026-10-28 workspace run): in a three-level chain every ancestor's line read 'root', so a leaf could not tell
 // its parent's docs from the workspace root's. Each line names the member's role.
 test('a three-level chain names parent then root', () => {

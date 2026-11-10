@@ -428,7 +428,7 @@ function main() {
   if (event === 'SessionStart') {
     const stranded = sweepStrandedRoot(root);
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
-    startNote = recordUntracked(input, root);
+    startNote = [recordUntracked(input, root), ...garbageRecordLines(input, root)].filter(Boolean).join('\n');
   }
   // On the PLUGIN route this hook runs from the marketplace clone, where docs.js and
   // history.js are both tracked - so a never-set-up project under a user-scope core never reaches
@@ -532,6 +532,21 @@ function sweepStrandedRoot(root) {
 
 // 2.8.0: the records and pointers are session scratch, <data root>/state/sessions/ (layout.js); one an older hook left
 // in the pre-2.8.0 <docs-path>/flow/ is still read, so a session it started keeps its record.
+// workspace.json design, Section 1: each workspace record the chain read as not valid JSON - this project's own, a parent's,
+// or the main checkout's for a linked worktree - named once at the main session's start, its path from this project.
+// Fail-open: no layout, the switch off or any read error says nothing.
+function garbageRecordLines(input, root) {
+  if (input.agent_id || !layout || typeof layout.workspaceOn !== 'function') return [];
+  try {
+    if (!layout.workspaceOn({ env: process.env, projectRoot: root })) return [];
+    const start = layout.chainProjectOf(root);
+    return (layout.workspaceChain(start).garbage || []).map((rel) => {
+      const shown = path.relative(root, path.resolve(start, ...rel.split('/'))).split(path.sep).join('/');
+      return `!! workspace: ${shown} is not valid JSON - this project's workspace links (inherited variables, the members' secret stores, the member-memory deny) are off until it is fixed by hand`;
+    });
+  } catch { return []; }
+}
+
 function recordUntracked(input, root) {
   let file;
   let list;

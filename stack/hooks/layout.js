@@ -268,12 +268,12 @@ function dataRootOf(root, { env = process.env } = {})
     return checked.ok ? checked.value : '.alfred';
 }
 
-// The workspace record a data-root folder holds, through the one reader: { file, view } - `view` the installer's
+// The workspace record a data-root folder holds, through the one reader: { file, state, view } - `view` the installer's
 // { parent, children, ignores }; a garbage or absent record reads as an empty view, and `file` is the path it was read from.
 function wsRead(dir)
 {
     const read = workspaceFile.readRecord(dir);
-    return { file: read.file, view: workspaceFile.viewOf(read.state === 'ok' ? read.record : workspaceFile.emptyRecord()) };
+    return { file: read.file, state: read.state, view: workspaceFile.viewOf(read.state === 'ok' ? read.record : workspaceFile.emptyRecord()) };
 }
 const wsDir = (root, env) => path.join(root, ...dataRootOf(root, { env }).split('/'));
 const wsReal = (p) =>
@@ -314,9 +314,10 @@ function ownWorkspace(projectRoot, { env = process.env } = {})
     return { parent: view.parent, ignores: view.ignores };
 }
 
-// The linked members above a project, nearest first: { members: [{ root, rel, dataRoot, ignores }], notes, ignores } -
-// `ignores` the project's own workspace record's, read once for the loader; `startData` the start's data root when the
-// caller already read it. A hop needs
+// The linked members above a project, nearest first: { members: [{ root, rel, dataRoot, ignores }], notes, ignores, garbage } -
+// `ignores` the project's own workspace record's, read once for the loader; `garbage` each record the walk read as not
+// valid JSON, its file relative to the start, the start's own first (docs-session says each at session start); `startData`
+// the start's data root when the caller already read it. A hop needs
 // a strict ancestor holding a stamp whose workspace record lists this folder as a child (workspace.js chain()); a note
 // names the file the refused record was read from. An
 // ancestor's data root is read with the account alone, never the run's ALFRED_CODE_DATA_PATH. The kill switch is the
@@ -338,7 +339,9 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
     const notes = [];
     const seen = new Set([keyOf(start)]);
     let current = start;
-    let { file, view } = wsRead(startData ? path.join(start, ...startData.split('/')) : wsDir(start, env));
+    const garbage = [];
+    let { file, state, view } = wsRead(startData ? path.join(start, ...startData.split('/')) : wsDir(start, env));
+    if (state === 'garbage') garbage.push(wsRel(start, file));
     const startIgnores = view.ignores;
     while (members.length < maxDepth && view.parent)
     {
@@ -351,7 +354,14 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         if (!up || up.startsWith('..') || path.isAbsolute(up)) { refuse(`${label} is not a folder above this one`); break; }
         if (!fs.existsSync(path.join(parent, '.claude', 'alfred-code.stamp'))) { refuse(`${label} holds no Alfred install`); break; }
         const parentData = dataRootOf(parent, { env: upEnv });
-        const { file: parentFile, view: parentView } = wsRead(path.join(parent, ...parentData.split('/')));
+        const { file: parentFile, state: parentState, view: parentView } = wsRead(path.join(parent, ...parentData.split('/')));
+        // A garbage parent record is named, never read as 'does not list this folder' - its children are unknown.
+        if (parentState === 'garbage')
+        {
+            garbage.push(wsRel(start, parentFile));
+            refuse(`${wsRel(start, parentFile)} is not valid JSON`);
+            break;
+        }
         if (!parentView.children.some((c) => keyOf(path.join(parent, ...c.split('/'))) === keyOf(current)))
         {
             refuse(`${label} does not list this folder as a child`);
@@ -365,7 +375,7 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         file = parentFile;
         view = parentView;
     }
-    return { members, notes, ignores: startIgnores };
+    return { members, notes, ignores: startIgnores, garbage };
 }
 
 // ---- the stack's variables (workspace roles and variables, D3 / D4) --------------------------------------------------

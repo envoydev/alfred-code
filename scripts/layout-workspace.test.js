@@ -666,3 +666,30 @@ test('layout.js requires only Node\'s own modules and ./workspace-file.js', () =
     assert.deepStrictEqual(required.filter((r) => !builtin.includes(r.replace(/^node:/, '')) && r !== './workspace-file.js'), []);
     assert.ok(required.includes('./workspace-file.js'), required.join(', '));
 });
+
+// workspace.json design, Section 1 (the session-start line): the walk names each garbage record it read, the start's own first.
+test('the chain names each garbage record it reads', () =>
+{
+    const put = (dir, text) => { fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true }); fs.writeFileSync(path.join(dir, '.alfred', 'workspace.json'), text); };
+    const valid = tree({ 'ws': { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    const v = layout.workspaceChain(valid('ws/api'), { env: env0 });
+    assert.deepStrictEqual(v.garbage, []);
+    assert.strictEqual(v.members.length, 1);
+    const empty = tree({ 'p': { stamp: true } });
+    put(empty('p'), '');
+    assert.deepStrictEqual(layout.workspaceChain(empty('p'), { env: env0 }).garbage, [], 'an empty workspace.json is an empty record');
+    const own = tree({ 'ws': { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true } });
+    put(own('ws/api'), '{');
+    const o = layout.workspaceChain(own('ws/api'), { env: env0 });
+    assert.deepStrictEqual(o.garbage, ['.alfred/workspace.json']);
+    assert.deepStrictEqual(o.members, []);
+    const root = tree({ 'ws': { stamp: true }, 'ws/api': { stamp: true } });
+    put(root('ws'), '{"children": [');
+    put(root('ws/api'), '{"parent": ".."}');
+    const r = layout.workspaceChain(root('ws/api'), { env: env0 });
+    assert.deepStrictEqual(r.garbage, ['../.alfred/workspace.json']);
+    assert.deepStrictEqual(r.members, []);
+    assert.strictEqual(r.notes.length, 1, r.notes.join('\n'));
+    assert.match(r.notes[0], /\.\.\/\.alfred\/workspace\.json is not valid JSON/);
+    assert.doesNotMatch(r.notes[0], /does not list/);
+});
