@@ -3445,3 +3445,8 @@ test('SG1 D7 review: an ls redirect or option value is no listed folder', () => 
     assert.equal(at(c), 2, c);
   assert.equal(at(`ls -I ${D7E} | xargs cat`), 0, 'an ignore pattern is no operand');
 });
+test('SG1 D7 review: the Path(a, b) constructor is a join', () => {
+  const at = d7Project({ [`.alfred/${D7E}`]: `API_TOKEN=${FAKE_TOKEN}\n` });
+  const c = `python3 -c "from pathlib import Path; print(open(Path('.alfred', '${D7E}')).read())"`;
+  assert.equal(at(c), REWRITE, c);
+});

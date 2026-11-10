@@ -2332,7 +2332,7 @@ function evalPath(expr, vals, homeMoved, depth = 0) {
 const ROOT_HINT = /homedir|\.\s*home\b|expanduser|HOME|USERPROFILE|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR|cwd|PWD/;
 // SG1 D7: a RELATIVE path a join or a concatenation of literals builds (`os.path.join('.alfred', '.env')`, `'a/' + '.env'`)
 // is returned too, so code holding a join or a `'...' + '...'` is read beside code naming a root
-const BUILT_HINT = /\b(?:join|resolve|joinpath)\s*\(|\)\s*\/\s*['"]|['"]\s*\+\s*['"]/;
+const BUILT_HINT = /\b(?:join|resolve|joinpath|Path)\s*\(|\)\s*\/\s*['"]|['"]\s*\+\s*['"]/;
 function builtPaths(texts) {
   const out = new Set();
   for (const text of texts) {
