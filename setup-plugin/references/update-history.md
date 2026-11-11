@@ -653,8 +653,8 @@ The guards read more of what a command really does. The rm guard expands globs a
 secret guard reads a script file a command runs, a backslash the shell drops (`cat .e\nv`) and a shell string carried
 in a variable. A session transcript is no longer a write target from inside a session.
 
-An approval receipt now opens a gate only after you answered the guard's ask with its allow option. `DISCARD-ALLOW`,
-`CROSS-WRITE-ALLOW` and `DESKTOP-EXEC-ALLOW` also need a `session:` line naming the session, and
+An approval receipt now opens a gate only after you answered the guard's ask with its allow option. `DISCARD-ALLOW` and
+`CROSS-WRITE-ALLOW` also need a `session:` line naming the session, and
 each denial prints the exact lines. A receipt left from an older release does not open anything: the next denial asks
 again. Under auto-run a guard's security ask always takes its safe option and lists the act for you in the close.
 Nothing to do by hand.

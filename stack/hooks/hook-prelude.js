@@ -27,13 +27,13 @@
 // so a plugin-launched hook there does nothing and writes nothing (no `.alfred/docs/` ledger or
 // history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`,
 // or its git top level's, or - for a linked worktree - the main checkout's: the stamp, or a copied
-// engine. A copied hook is set up by definition. Four guards stay live even there (R86, IM2), each
+// engine. A copied hook is set up by definition. Three guards stay live even there (R86), each
 // skipping its block row: what they stop cannot be undone, and a user-scope core is the only guard
 // a repo never set up has.
 //
 // GATE 5 - the hook profile. The core entry's `hook_profile` userConfig (minimal / standard / strict,
 // set in /config and stored in the ACCOUNT settings' `pluginConfigs` - never a project file) reaches
-// every plugin hook as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE. `minimal` keeps the four PROTECTIVE guards
+// every plugin hook as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE. `minimal` keeps the three PROTECTIVE guards
 // only; `standard`, absent or anything unknown is today's set; `strict` is standard with the seeded-off
 // switches that are safe on read as on (STRICT_ON - the Stop build check). The project's csv still wins:
 // a hook it names stays off under every profile. A copied hook gets no option variable, so it reads
@@ -42,7 +42,7 @@
 // GATE 6 - a Cursor host. Cursor loads Claude Code hooks by default (a compatibility toggle) and turns a
 // Claude Stop block into an automatic follow-up with no loop limit, so a hook that asks or blocks can loop
 // a Cursor session forever. Under a Cursor PAYLOAD (cursorHost: a `cursor_version` field, or a camelCase
-// event name - Claude's are PascalCase) only the four PROTECTIVE guards run; every other hook stands down
+// event name - Claude's are PascalCase) only the three PROTECTIVE guards run; every other hook stands down
 // silently and writes no ledger row, as under GATE 4. Judged from the payload ALONE, never from the
 // environment: a `claude` session in Cursor's integrated terminal inherits Cursor's variables and keeps
 // every hook. A hook makes the check itself, right after it parsed its own payload (cursorStandDown), so no
@@ -414,9 +414,9 @@ function isCliInvocation(argv)
 }
 
 // R86: what these stop cannot be undone, so GATE 4 never stands them down - each reads neverSetUp()
-// itself and skips its block row there instead. The desktop exec gate joined them (final review IM2, the
-// user's ruling of 2026-09-29): the macOS Shell it gates is a shell the other three never see.
-const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec']);
+// itself and skips its block row there instead. The desktop exec gate that joined them (final review IM2) left in
+// complexity stage 1 (B12): 0 fires in 442 sessions, and the stack ships no desktop server since 2.10.1.
+const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']);
 
 // UNATTENDED - nobody is at the terminal, so a Stop block or an offer reaches no person: it only buys
 // the model another turn (pilot 2, 2026-09-27: 8 of 12 print-mode cells ended on 'docs ok', nine
@@ -541,7 +541,7 @@ function autoStampLive(input, env)
 // - readReceiptFile: the lines (no blank, `#` or `session:` line) and whether the file is live for THIS call - under 8h,
 //   not older than the transcript (a birthtime equal to the ctime is a filesystem's fallback, unknown) and, where the call
 //   names its session, carrying a `session: <id>` line naming it (HK-16; the secret guard's rule since audit 2026-10-08).
-// - receiptAnswered: for the five SECURITY receipts (SECRET-READ, DISCARD, DESKTOP-EXEC, CROSS-WRITE, GUARD-OFF) the transcript must
+// - receiptAnswered: for the four SECURITY receipts (SECRET-READ, DISCARD, CROSS-WRITE, GUARD-OFF) the transcript must
 //   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label - the
 //   result of an AskUserQuestion call in this transcript, never an `answers`-shaped result of another tool (FA-4) - and
 //   given while auto-run was off - judged at the answer's place: a typed family command whose leading run turns auto-run

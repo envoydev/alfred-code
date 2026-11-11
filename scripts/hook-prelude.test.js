@@ -134,10 +134,10 @@ test('both gates FAIL OPEN - a missing, empty or malformed settings file yields 
 // GATE 5 - the hook profile. The core's `hook_profile` userConfig reaches every plugin hook as
 // CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the project's csv still wins over it.
 const PROFILE = 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE';
-const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec', 'guard-read-whole-file', 'guard-ungated-commit',
+const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-ungated-commit',
     'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build'];
 
-test('profile minimal keeps only the rm, secret, force-push and desktop exec guards; every other hook stands down', () => {
+test('profile minimal keeps only the rm, secret and force-push guards; every other hook stands down', () => {
     const { PROTECTIVE } = require(PRELUDE);
     for (const hook of EVERY_HOOK)
         assert.strictEqual(standDown(hook, { [PROFILE]: 'minimal' }, ['node', 'x.js']), !PROTECTIVE.has(hook), hook);
@@ -403,15 +403,15 @@ test('a worktree of a repo never set up is not set up either, and a .git file th
 // rm of an unrecoverable target, a credential value read into the transcript, a force-push over a
 // protected branch - and in a repo never set up a user-scope core is the only guard it has. They stay
 // live there and skip their block row, so R54 still holds: nothing is written. Every other hook
-// stands down. ALFRED_CODE_HOOKS_OFF still switches any of them off. The desktop exec gate joined them
-// (final review IM2): its macOS Shell is a shell the other three never see.
+// stands down. ALFRED_CODE_HOOKS_OFF still switches any of them off. The desktop exec gate that joined them
+// (final review IM2) left in complexity stage 1 (B12).
 test('in a repo never set up the protective guards stay live and write nothing; every other hook stands down (R86)', () => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-r86-')));
     const env = unsetEnv(dir);
     try
     {
-        assert.deepStrictEqual([...require(PRELUDE).PROTECTIVE].sort(), ['guard-catastrophic-rm', 'guard-desktop-exec', 'guard-protected-force-push', 'guard-secret-value']);
-        for (const hook of ['guard-catastrophic-rm', 'guard-secret-value.js', 'guard-protected-force-push', 'guard-desktop-exec'])
+        assert.deepStrictEqual([...require(PRELUDE).PROTECTIVE].sort(), ['guard-catastrophic-rm', 'guard-protected-force-push', 'guard-secret-value']);
+        for (const hook of ['guard-catastrophic-rm', 'guard-secret-value.js', 'guard-protected-force-push'])
             assert.strictEqual(standDown(hook, env, ['node', 'x.js']), false, `${hook} stays live`);
         for (const hook of ['guard-ungated-commit', 'guard-cross-project-write', 'guard-fresh-session-start', 'history-session', 'docs-session'])
             assert.strictEqual(standDown(hook, env, ['node', 'x.js']), true, `${hook} stands down`);
@@ -424,10 +424,7 @@ test('in a repo never set up the protective guards stay live and write nothing; 
         fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }));
         const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read');
         assert.strictEqual(secret.status, 2, `a credential file read blocked: ${secret.stderr}`);
-        // Final review IM2: the desktop Shell is a shell no shell guard sees - `rm -rf ~` ran there while Bash's was blocked.
-        const shell = fireIn('guard-desktop-exec.js', dir, { command: 'rm -rf ~' }, 'mcp__plugin_macos-control_macos-control__Shell'); // mcp-fixture
-        assert.strictEqual(shell.status, 2, `the macOS desktop Shell blocked: ${shell.stderr}`);
-        assert.ok(!fs.existsSync(path.join(dir, '.claude')) && !fs.existsSync(path.join(dir, '.alfred')), 'four blocks, no block row - nothing written into a repo never set up');
+        assert.ok(!fs.existsSync(path.join(dir, '.claude')) && !fs.existsSync(path.join(dir, '.alfred')), 'three blocks, no block row - nothing written into a repo never set up');
 
         // Positive control: once set up, the same block writes its row.
         fs.mkdirSync(path.join(dir, '.claude'));
@@ -1589,27 +1586,25 @@ test('HK-02: standDown carries the narrowed twin rule, and a copied hook still n
     finally { p.done(); }
 });
 
-// E-batch final review M1: guard-desktop-exec and guard-secret-value's own routes run as their own process and stood down
-// before they read the payload - with no session, a twin wired mid-session still stood these two protective guards down.
-test('final review M1: the standalone protective guards pass their session - a mid-session twin leaves them running', () => {
+// E-batch final review M1: guard-secret-value's own routes run as their own process and stood down before they read the
+// payload - with no session, a twin wired mid-session still stood the protective guard down. (The desktop exec guard,
+// the other standalone one, left in complexity stage 1 B12.)
+test('final review M1: the standalone protective guard passes its session - a mid-session twin leaves it running', () => {
     const rows = (file) => require('../meta/stack-manifest.json').hooks.filter((h) => h.file === file && /^(?:@|\^mcp__)/.test(h.matcher)).map((h) => `${file}::${h.matcher}`);
     const p = twinProject();
     try
     {
         assert.strictEqual(dispatch(p, 'guard-fresh-session-start.js', { session_id: 'S', hook_event_name: 'SessionStart', source: 'startup' }).status, 0);
-        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(copyRouteSettings([...rows('guard-desktop-exec.js'), ...rows('guard-secret-value.js')])));
-        for (const f of ['guard-desktop-exec.js', 'guard-secret-value.js']) fs.writeFileSync(path.join(p.repo, '.claude', 'hooks', f), '// copied\n');
+        fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(copyRouteSettings(rows('guard-secret-value.js'))));
+        fs.writeFileSync(path.join(p.repo, '.claude', 'hooks', 'guard-secret-value.js'), '// copied\n');
         fs.writeFileSync(path.join(p.repo, '.env'), DOTENV);
-        const shell = { tool_name: `mcp__${'win'}__PowerShell`, tool_input: { command: 'Remove-Item -Recurse C:\\x' } };
-        const read = { tool_name: `mcp__${'fsx'}__read_text_file`, tool_input: { path: path.join(p.repo, '.env') } };
-        for (const [file, call] of [['guard-desktop-exec.js', shell], ['guard-secret-value.js', read]])
-        {
-            const r = dispatch(p, file, { session_id: 'S', ...call });
-            assert.strictEqual(r.status, 2, `${file}: the plugin copy still judges for S: ${r.stdout}${r.stderr}`);
-            const fresh = dispatch(p, file, { session_id: 'S9', ...call });
-            assert.strictEqual(fresh.status, 0, `${file}: a session that began with the twin wired yields to it`);
-            assert.strictEqual(fresh.stdout + fresh.stderr, '', file);
-        }
+        const file = 'guard-secret-value.js';
+        const call = { tool_name: `mcp__${'fsx'}__read_text_file`, tool_input: { path: path.join(p.repo, '.env') } };
+        const r = dispatch(p, file, { session_id: 'S', ...call });
+        assert.strictEqual(r.status, 2, `${file}: the plugin copy still judges for S: ${r.stdout}${r.stderr}`);
+        const fresh = dispatch(p, file, { session_id: 'S9', ...call });
+        assert.strictEqual(fresh.status, 0, `${file}: a session that began with the twin wired yields to it`);
+        assert.strictEqual(fresh.stdout + fresh.stderr, '', file);
     }
     finally { p.done(); }
 });

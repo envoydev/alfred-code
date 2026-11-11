@@ -896,12 +896,6 @@
       "note": "same gate on a filesystem server the user registers: write_file, edit_file and create_directory judged on tool_input.path, move_file on its source and its destination, matched by the tool's name under any registration (audit 2026-11-03 SYS-02)"
     },
     {
-      "file": "guard-desktop-exec.js",
-      "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$|^mcp__.+__browser_run_code_unsafe$",
-      "event": "",
-      "note": "the desktop servers' process launchers, matched by tool name under whatever server the user registered (the stack ships none since 2026-10-24): deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees), and a server's PowerShell or execute_shell_command (the same, E-batch mcp-B-m1); App's launch / switch / resize pass; and a browser server's browser_run_code_unsafe (arbitrary JavaScript in the server's own process, no flag switches it off - 2026-10-24, ruling N9); the DESKTOP-EXEC-ALLOW receipt (App, Shell, PowerShell, execute_shell_command, browser_run_code_unsafe, an executable, or *) honours a wanted call"
-    },
-    {
       "file": "guard-answer.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
@@ -1236,7 +1230,8 @@
       "inject-code-style.js",
       "monitor-session.js",
       "guard-answer-length.js",
-      "memory-session.js"
+      "memory-session.js",
+      "guard-desktop-exec.js"
     ],
     "mcps": [
       "angular-cli",

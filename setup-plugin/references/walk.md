@@ -276,7 +276,7 @@ windows-service sets; ionic-angular, data, browser-extension, js), plus one ques
 ## Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. Recommended (FRESH) = all eighteen: the twelve always-on guards, the
+cascade never reaches here. Recommended (FRESH) = all seventeen: the eleven always-on guards, the
 four session engines (`docs-session` - the docs start block and finish ask - `preferences-session` - the
 preferences docs handed over before the first edit and the first git write, the tool order and the
 host's shell lines at every start - `history-session` - what the last sessions on this branch
@@ -288,7 +288,7 @@ idle, and dropping it leaves the install unable to record a measured run without
 The whole set ships together inside the core `alfred-code` plugin, so nothing is copied and nothing
 is wired per project: the answer is written as `ALFRED_CODE_HOOKS_OFF` in the scope's settings file
 env - the rows dropped are the ones named there, re-adding a row removes its name, and **None** names
-all eighteen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
+all seventeen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
 prerequisite check is what writes it). It can be changed later by editing that value, no reinstall.
 An install on the hooks copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the old behaviour -
 dropping a hook removes its file and its wiring - and, while the core is on for the skills, names

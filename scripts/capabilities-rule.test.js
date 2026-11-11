@@ -96,8 +96,8 @@ test('I20: the rows name the resolved data root, never the slots', () =>
     assert.equal(rows.length, 3, rows.join('\n'));
     assert.ok(rows[0].startsWith('- `playwright-chrome` - the browser server') && rows[1].startsWith('- `playwright-firefox` - the browser server'), rows.join('\n'));
     for (const row of rows.slice(0, 2)) assert.ok(row.includes("the server's `--output-dir`"), row);
-    // HK-16 (audit 2026-10-30): the desktop row sends the receipt to the denial's lines, so no row carries the data root.
-    assert.ok(rows[2].includes('write the lines the denial prints') && !rows[2].includes('DESKTOP-EXEC-ALLOW'), rows[2]);
+    // stage 1 B12: the desktop exec guard retired, so the desktop row names no guard or receipt and carries no data root.
+    assert.ok(rows[2].includes("with no guard in front of it - only on the user's ask") && !rows[2].includes('DESKTOP-EXEC-ALLOW'), rows[2]);
     for (const row of rows) assert.doesNotMatch(row, /<data root>|<engine>|<server>|<docs-path>/, row);
 });
 
@@ -148,7 +148,7 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
     for (const row of rows) assert.doesNotMatch(row.split('first call:')[0], /<[a-z][a-z -]*>/, row);
     assert.ok(rows[0].startsWith('- `playwright-webkit` - '), rows[0]);
     assert.ok(rows[1].startsWith('- `playwright` - '), rows[1]);
-    for (const row of rows.slice(2)) assert.ok(row.includes('write the lines the denial prints') && !row.includes('DESKTOP-EXEC-ALLOW'), row);
+    for (const row of rows.slice(2)) assert.ok(row.includes("with no guard in front of it - only on the user's ask") && !row.includes('DESKTOP-EXEC-ALLOW'), row);
 });
 
 test('I20: the rows\' docs and data roots follow a local-scope install\'s settings.local.json over settings.json', () =>
@@ -329,14 +329,14 @@ test('I45: the macOS row leads with the failed start, and an empty snapshot only
     assert.ok(!row.includes('an empty snapshot means the Accessibility grant is missing'), row);
     assert.ok(row.includes('fails to connect at start') && row.includes('System Settings opens'), row);
     assert.ok(row.includes('`MACOS_MCP_SKIP_PERMISSION_CHECK=1`'), row);
-    assert.ok(row.includes('`Shell`') && row.includes('write the lines the denial prints') && !row.includes('DESKTOP-EXEC-ALLOW'), row);
+    assert.ok(row.includes('`Shell`') && row.includes("with no guard in front of it - only on the user's ask") && !row.includes('DESKTOP-EXEC-ALLOW'), row);
 });
 
-test('I10: the Windows row keeps FileSystem excluded and App launch_executable denied without the receipt', () =>
+test('I10 / stage 1 B12: the Windows row keeps FileSystem excluded and App launch_executable on the user\'s ask', () =>
 {
     const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-desktop`')));
     assert.ok(row.includes('`FileSystem`'), row);
-    assert.ok(row.includes('`launch_executable`') && row.includes('write the lines the denial prints') && !row.includes('DESKTOP-EXEC-ALLOW'), row);
+    assert.ok(row.includes('`launch_executable`') && row.includes("with no guard in front of it - only on the user's ask") && !row.includes('DESKTOP-EXEC-ALLOW'), row);
 });
 
 // 2026-10-13: mobile-control (appium-mcp); 2026-10-24 keyed by the record's `appium-mcp`, its output dirs the server's own env.

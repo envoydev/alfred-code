@@ -210,7 +210,7 @@ try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
 // The hooks read their off-list (the HOOKS_OFF csv) from the settings `env` (hook-prelude.js GATE 1: layout.js applies the project's
 // settings.local.json and settings.json at every hook start, and Claude Code hands each hook the env of the user, project,
 // local - the repository root's since 2.1.211 - and managed files), and Claude Code's `disableAllHooks: true` stands every
-// hook down. So a write adding the rm, secret, force-push or desktop exec guard (hook-prelude.js PROTECTIVE) to the csv, or
+// hook down. So a write adding the rm, secret or force-push guard (hook-prelude.js PROTECTIVE) to the csv, or
 // setting disableAllHooks, stood that guard down from the next call on, and no guard judged it (replayed under
 // bypassPermissions). Such a write is denied with ONE ask on every route this guard covers - a file tool and a filesystem
 // server judged on the file it leaves, a shell write on the JSON it carries (a heredoc body, a quoted literal, a copied
@@ -226,7 +226,7 @@ try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
 // is live. Ceilings: a destination or a value the shell computes, a runtime script that builds the JSON, a git checkout or
 // clone laying a settings file down, and another extract tool. The core switched off in `enabledPlugins` or by the CLI is
 // THE PLUGIN SWITCH-OFF, below.
-const PROTECTIVE_GUARDS = (() => { try { return [...receipts.PROTECTIVE]; } catch { return ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec']; } })();
+const PROTECTIVE_GUARDS = (() => { try { return [...receipts.PROTECTIVE]; } catch { return ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']; } })();
 const RENAMED_HOOKS = (receipts && receipts.HOOK_RENAMED) || {};
 // The key as envOf spells every stack setting: the prefix, then the suffix.
 const HOOKS_OFF_SUFFIX = 'HOOKS_OFF';
@@ -863,8 +863,8 @@ function guardOffDenial(off) {
         : off.removed
           ? `Blocked: removing ${off.shown} takes its enabledPlugins entry for the ${CORE_PLUGIN} plugin with it, which stands every Alfred Code guard down from the next session on.\n`
         : `Blocked: this write to ${off.shown} ${what}, which stands ${off.all ? 'every hook' : off.core ? 'every Alfred Code guard' : guarded.length > 1 ? 'those guards' : 'that guard'} down from the next ${off.core && !off.all ? 'session' : 'call'} on.\n`) +
-    `The protective guards stop what cannot be undone (a recursive rm or a discard, a credential read, a force push, a\n` +
-    `desktop exec), so switching one off is the user's call, never the model's. End this turn with ONE AskUserQuestion,\n` +
+    `The protective guards stop what cannot be undone (a recursive rm or a discard, a credential read, a force push),\n` +
+    `so switching one off is the user's call, never the model's. End this turn with ONE AskUserQuestion,\n` +
     `in this order -\n` +
     `  'Keep the guards on (Recommended)' - leave the setting as it is\n` +
     `  '${GUARD_OFF_LABEL}' - the user wants ${names} off\n` +

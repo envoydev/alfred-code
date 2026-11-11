@@ -1485,7 +1485,7 @@ if (auto) {
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
     + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop, spend on a billed run) - waits for the user, so put only those; '
-    + "a guard's security ask (a credential shown, work discarded, a write outside the project, a desktop launch, a protective guard switched off) is never auto-run's to allow: take its safe option and list the act for the user in the close; "
+    + "a guard's security ask (a credential shown, work discarded, a write outside the project, a protective guard switched off) is never auto-run's to allow: take its safe option and list the act for the user in the close; "
     + "write every AskUserQuestion's questions and labels in English while auto-run is on - the hook reads English only and an ask it cannot read waits for the user - and the rest of the run in the user's language. "
     + (m ? `(2) Do not end a turn between steps: the Stop hook sends you back while ${m} stands. ` : '(2) Do not end a turn between steps: no run marker stands, so carry each step on in the same turn. ')
     + 'A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '

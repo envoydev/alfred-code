@@ -9,9 +9,9 @@ paths:
 
 # Hooks
 
-The eighteen hooks folded into the core plugin: gates, guards, engines and what each one does. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
+The seventeen hooks folded into the core plugin: gates, guards, engines and what each one does. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
 
-- `stack/hooks/` - eighteen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
+- `stack/hooks/` - seventeen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
   `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because 22 bodies shared
   with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
@@ -26,13 +26,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   (macOS: 800 ms against 725 ms over the nine). Through `node`, since a bare path needs the exec bit
   and never runs on Windows. Lint holds every core hook to the form, and a reader of a hook's line joins `command` and `args`.
   The cost, which 2.1.6 M3 refused: Cursor's hook schema has only `command` (cursor.com/docs/reference/third-party-hooks), so a
-  Cursor bridge of the plugin's rows runs a bare `node` that exits 1 on the payload and fails open - GATE 6's four protective
+  Cursor bridge of the plugin's rows runs a bare `node` that exits 1 on the payload and fails open - GATE 6's three protective
   guards run in Cursor only from the copy route's rows, which stay shell form in `settings.json`, the file Cursor reads.
   `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
   `ALFRED_CODE_HOOKS_OFF`. The six gates live in `hook-prelude.js`, never inlined: the csv opt-out;
-  the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret,
-  force-push and desktop exec guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
+  the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret
+  and force-push guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
   the plugin copy standing down beside a still-wired copied twin - only a REAL one (`yieldToCopiedTwin`, audit 2026-10-30
   HK-02: an entry naming the twin under matcher `Nothing`, no file on disk, stood both dispatchers down): the copied file
   on disk and entries covering every plugin row the run stands for (the event, a matcher firing on each of the row's
@@ -48,18 +48,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   SessionStart (startup, resume, clear, fork; a compaction keeps it), else by the first call naming the session in a
   set-up repo, or the first finding a twin in a repo never set up (exclusive create - the residual: a twin written before
   that call counts). Both dispatchers read `session_id` before their check and `useSession` it, so every guard they run
-  in-process is narrowed. The two protective guards that also run as their own process (`guard-desktop-exec`, the secret
-  guard's MCP and SessionStart routes) take every gate but the twin yield first (`standDown(..., { twin: false })`) and
-  call `yieldToCopiedTwin` with the payload's session once they have read it (E-batch final review M1); any other hook run
+  in-process is narrowed. The protective guard that also runs as its own process (the secret guard's MCP and
+  SessionStart routes) takes every gate but the twin yield first (`standDown(..., { twin: false })`) and
+  calls `yieldToCopiedTwin` with the payload's session once it has read it (E-batch final review M1); any other hook run
   as its own process, a call naming no session and an unreadable or unwritable snapshot yield as before; a repo never set up with no twin gets no read and no write; a repo never set up (no install
   record in it, any folder between it and its git top level (a monorepo package with its own install), the top itself -
   never a repo kept at the home directory, for the installer's `gitRoot` as much as the hooks, seam m3 - or - for a git
   worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
-  the rm, secret, force-push and desktop exec guards stay live, writing no row - R54, R86 - plus the dispatch guard's
+  the rm, secret and force-push guards stay live, writing no row - R54, R86 - plus the dispatch guard's
   implementer gate, M9. Known ceiling: such a repo still lists all 45 core seats, 13,008 characters of
   descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
-  stack never touched - revisit when a plugin's agents can be scoped per project); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret, force-push and desktop exec guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Before the gates, loading the prelude applies the stack's variables to the hook's
+  stack never touched - revisit when a plugin's agents can be scoped per project); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret and force-push guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Before the gates, loading the prelude applies the stack's variables to the hook's
   `process.env` (`layout.applyVariables`, 3.0.0): the project's `settings.local.json`, its `.variables`, the settings
   `env`, the launch env, then each workspace member's `.variables` - so a hook reads `process.env.ALFRED_CODE_*` as
   before, whichever file holds the value. Beside the gates,
@@ -338,12 +338,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   THE RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings): every one is read by ONE reader,
   `hook-prelude.js readReceiptFile` - under 8h, written after the session began, and, where the call names its session,
   holding a `session: <id>` line naming it - and each denial prints the exact lines to write, the session line first
-  (`receiptLinesText`). The five SECURITY receipts (`SECRET-READ-ALLOW`, `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`,
-  `DESKTOP-EXEC-ALLOW`, `GUARD-OFF-ALLOW` - the last since the system audit of 2026-11-03, SYS-01) count only through
+  (`receiptLinesText`). The four SECURITY receipts (`SECRET-READ-ALLOW`, `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`,
+  `GUARD-OFF-ALLOW` - the last since the system audit of 2026-11-03, SYS-01; `DESKTOP-EXEC-ALLOW` left with its guard in
+  complexity stage 1 B12) count only through
   `securityReceipt` / `receiptAnswered`: this session's transcript must hold an
   AskUserQuestion answered after that guard's last denial (an `is_error` tool result naming the receipt) with the
   guard's own allow label ('Show or use the value this session ...', 'Discard it', 'Allow ... for this session', 'Allow
-  the browser code runner / the desktop Shell / this executable this session', 'Allow this guard switch-off'), and given while auto-run was off,
+  this guard switch-off'), and given while auto-run was off,
   judged at the answer's position by the typed `modeFlags` rows - deleting the stamp or typing the off flag afterwards
   opens nothing, and no file the model can write decides it. An answer counts only as the result of an AskUserQuestion
   call in the same transcript (its `tool_use_id`; the final review of 2026-10-30 FA-4: an `answers`-shaped result under
@@ -352,7 +353,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `securityReceipt` with the guard's SHOW label (FA-3: its session line and age alone silenced the rotation ask). A seat's denial is anchored at its time in the seat
   transcript (the payload's `agent_transcript_path`, else `<session>/subagents/agent-<agent_id>.jsonl`), the answer read
   in the main one after it. A timed-out ask is no answer. With no transcript on disk (a CLI run) the old time rule
-  stands; with no prelude the five read shut. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
+  stands; with no prelude the four read shut. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
   when a whole typed row turning auto-run on (`modeFlags` family + on, or the tagged `/mode-auto-run` row) of this
   session sits within 5MB either side of that offset, read by position (64KB first; 5ms on a 200MB transcript), AND no
   typed row of any session turns auto-run off after the newest such row (`typedAutoOffFrom`, receiptAnswered's typed-flag
@@ -1527,8 +1528,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     / analyzer config or to a tsconfig / MSBuild strictness key, opened by a `CONFIG-EDIT-ALLOW` receipt) fired 0 times in
     442 sessions and left, so a check config is edited like any file, and `guard-config-protection` in
     `ALFRED_CODE_HOOKS_OFF` - where update folds the old `ALFRED_CODE_CONFIG_PROTECT=0` - switches nothing off.
-    THE GUARD SWITCH-OFF (system audit 2026-11-03 SYS-01, BLOCKER): a write that adds a PROTECTIVE guard (the rm, secret,
-    force-push or desktop exec guard; its old name too, `HOOK_RENAMED`) to `ALFRED_CODE_HOOKS_OFF` in a settings `env`, or
+    THE GUARD SWITCH-OFF (system audit 2026-11-03 SYS-01, BLOCKER): a write that adds a PROTECTIVE guard (the rm, secret
+    or force-push guard; its old name too, `HOOK_RENAMED`) to `ALFRED_CODE_HOOKS_OFF` in a settings `env`, or
     sets `disableAllHooks: true`, is denied with ONE ask ('Keep the guards on (Recommended)' / 'Allow this guard
     switch-off'), opened only by `GUARD-OFF-ALLOW`, a security receipt (THE RECEIPTS above; a line naming the file as shown,
     its real path or `*`). On win32 the off-list key is read in any letter case (the environment is case-insensitive there,
@@ -1578,26 +1579,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `clone` laying a settings file down, an extract tool other than tar and unzip, a scoped `claude plugin marketplace
     remove` of the core's marketplace, a glob or a deeper folder removed, and a dropped core key from a shell write whose
     content the guard cannot know (a redirect, a `jq` / `sponge` rewrite, `: > file`).
-  - `guard-desktop-exec.js` (PreToolUse on the desktop server types' process launchers, `App` and `Shell`, under any
-    registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
-    (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server
-    type's code runner `browser_run_code_unsafe` the same way, `|^mcp__.+__browser_run_code_unsafe$`: Playwright's README
-    calls it 'RCE-equivalent' and no flag switches it off, so the settings deny 2.5.0 to 2.10.0 wrote under the stack's own
-    server names is lifted and this gate holds it under any name, its block row keeping `from: code|file`, never the code
-    (2026-10-24, ruling N9, a side note's finding: an add-back under the record name ran it unjudged)) - the
-    user's ruling of 2026-09-29 (I10): Windows-MCP's `App` with `mode: launch_executable` (any executable, caller-given
-    args - the server excludes tools by NAME, never by mode) and every MacOS-MCP `Shell` call (a shell command no
-    shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. A server's `PowerShell` (Windows-MCP's
-    own) and `execute_shell_command` are that same unjudged shell (E-batch mcp-B-m1): `|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$`
-    in the matcher, each denied pointing at Claude Code's own Bash or PowerShell tool, each opened only by its own line -
-    the tool's name - after the 'Allow the server's <tool> this session' answer; a `Shell` line opens neither. 'Allow' is honoured through
-    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `PowerShell`, `execute_shell_command`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
-    a Windows path - or `*`, which opens every line but `browser_run_code_unsafe` - that one only by its own line, E-batch mcp-B-m2; a bare file name opens only a call naming it bare, never that name in every directory - audit
-    2026-10-20, the hooks track's minor list; a security receipt, THE RECEIPTS above); the denial suggests the full path - and names a live bare line that
-    missed it, with the full path to write in its place - and a Shell block row keeps
-    the command's verb only, never the command (audit 2026-10-08). PROTECTIVE
-    (final review IM2, the user's ruling): it holds under `minimal`, a Cursor payload and a repo never set up, where
-    it writes no row - the Shell it gates is one the other protective guards never see.
+  - `guard-desktop-exec.js` - RETIRED in complexity stage 1 B12 (2026-11-11): the gate on a desktop server's `App`
+    `launch_executable`, `Shell`, `PowerShell`, `execute_shell_command` and Playwright's `browser_run_code_unsafe`, under
+    any registration name, fired 0 times in 442 sessions, and the stack ships no such server since 2.10.1. The file is in
+    `retired.hooks`; the `desktop-automation` skill keeps those tools on the user's ask alone.
   - `check-turn-build.js` (`Stop` only) - seeded OFF
     (`ALFRED_CODE_TURN_CHECK=0`; `1` turns it on per project after a measured week - validate and status
     paste `analyze-usage.js --turn-check-advice`'s one row at 3 unchecked done claims in the newest 10

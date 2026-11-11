@@ -89,9 +89,9 @@ test('SYS-01: a write adding a protective guard to the off-list, or setting disa
     assert.equal(all.status, 2, `disableAllHooks in ${shown}`);
     assert.match(all.stderr, /disableAllHooks/);
   }
-  for (const name of ['guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec', ' Guard-Catastrophic-RM.js '])
+  for (const name of ['guard-secret-value', 'guard-protected-force-push', ' Guard-Catastrophic-RM.js '])
     assert.equal(configWrite(p, shared, offList(`docs-session,${name}`)).status, 2, `each protective guard, as the csv reader spells it: ${name}`);
-  for (const csv of ['docs-session', 'guard-config-protection', 'guard-catastrophic-rm:part', 'guard-catastrophic', ''])
+  for (const csv of ['docs-session', 'guard-config-protection', 'guard-desktop-exec', 'guard-catastrophic-rm:part', 'guard-catastrophic', ''])
     assert.equal(configWrite(p, shared, offList(csv)).status, 0, `no protective guard switched off: '${csv}'`);
   assert.equal(configWrite(p, shared, settings({ disableAllHooks: false })).status, 0, 'disableAllHooks false keeps every hook');
 });
@@ -119,7 +119,7 @@ test('SYS-01: an edit is judged on the file it leaves - an addition asks, a remo
   assert.equal(configEdit(p, f, '"docs-session,guard-catastrophic-rm"', '"guard-catastrophic-rm,docs-session"').status, 0, 'the same set reordered');
   assert.equal(configEdit(p, f, '"model": "sonnet"', '"model": "sonnet",\n  "disableAllHooks": true').status, 2, 'disableAllHooks added by an edit');
   assert.equal(hook(p, 'guard-config-protection.js', { tool_name: 'MultiEdit', tool_input: { file_path: f, edits: [{ old_string: '"sonnet"', new_string: '"opus"' },
-    { old_string: '"docs-session,', new_string: '"guard-desktop-exec,docs-session,' }] } }).status, 2, 'a MultiEdit');
+    { old_string: '"docs-session,', new_string: '"guard-secret-value,docs-session,' }] } }).status, 2, 'a MultiEdit');
   assert.equal(configEdit(p, f, 'NOT IN THE FILE', '"ALFRED_CODE_HOOKS_OFF": "guard-protected-force-push"').status, 2, 'an edit that cannot apply is judged on its fragments');
   assert.equal(configEdit(p, f, 'NOT IN THE FILE', '"model": "opus"').status, 0, 'a fragment naming no guard');
   const wired = p.file('.claude/settings.local.json', settings({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'node .claude/hooks/guard-catastrophic-rm.js' }] }] } }));
@@ -139,7 +139,7 @@ test('SYS-01: the shell routes - a redirect, a heredoc, an in-place sed, a jq an
     [`cat > .claude/settings.local.json <<'EOF'\n{ "hooks": { "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "node guard-catastrophic-rm.js" }] }] } }\nEOF`, 0, 'a heredoc whose JSON switches nothing off'],
     [`cat > .claude/settings.local.json <<'EOF'\n{ "disableAllHooks": true }\nEOF`, 2, 'a heredoc setting disableAllHooks'],
     [`sed -i.bak 's/docs-session,guard-catastrophic-rm/docs-session/' .claude/settings.json`, 0, 'a sed taking a guard off'],
-    [`sed -i.bak 's/"docs-session,/"docs-session,guard-desktop-exec,/' .claude/settings.json`, 2, 'a sed adding one'],
+    [`sed -i.bak 's/"docs-session,/"docs-session,guard-secret-value,/' .claude/settings.json`, 2, 'a sed adding one'],
     [`jq '.env.ALFRED_CODE_HOOKS_OFF = "guard-protected-force-push"' .claude/settings.json > /tmp/s.json && mv /tmp/s.json .claude/settings.json`, 2, 'a jq rewrite moved over it'],
     [`jq '.model = "opus"' .claude/settings.json > /tmp/s.json && mv /tmp/s.json .claude/settings.json`, 0, 'a jq rewrite of another key'],
     [`echo '{"disableAllHooks": true}' > ~/.claude/settings.json`, 2, 'the user file through ~'],

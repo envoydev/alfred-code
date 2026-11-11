@@ -1148,7 +1148,6 @@
       "guard-catastrophic-rm",
       "guard-config-protection",
       "guard-cross-project-write",
-      "guard-desktop-exec",
       "guard-fresh-session-start",
       "guard-protected-force-push",
       "guard-read-whole-file",

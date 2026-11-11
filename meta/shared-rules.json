@@ -3807,10 +3807,6 @@
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
         {
-          "file": "stack/hooks/guard-desktop-exec.js",
-          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
-        },
-        {
           "file": "stack/hooks/guard-fresh-session-start.js",
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
@@ -7863,10 +7859,6 @@
         },
         {
           "file": "stack/hooks/guard-cross-project-write.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
-        },
-        {
-          "file": "stack/hooks/guard-desktop-exec.js",
           "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
         },
         {
