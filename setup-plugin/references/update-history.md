@@ -654,7 +654,7 @@ secret guard reads a script file a command runs, a backslash the shell drops (`c
 in a variable. A session transcript is no longer a write target from inside a session.
 
 An approval receipt now opens a gate only after you answered the guard's ask with its allow option. `DISCARD-ALLOW`,
-`CROSS-WRITE-ALLOW`, `CONFIG-EDIT-ALLOW` and `DESKTOP-EXEC-ALLOW` also need a `session:` line naming the session, and
+`CROSS-WRITE-ALLOW` and `DESKTOP-EXEC-ALLOW` also need a `session:` line naming the session, and
 each denial prints the exact lines. A receipt left from an older release does not open anything: the next denial asks
 again. Under auto-run a guard's security ask always takes its safe option and lists the act for you in the close.
 Nothing to do by hand.

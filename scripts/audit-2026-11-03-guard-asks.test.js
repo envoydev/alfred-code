@@ -175,10 +175,10 @@ test('SYS-01: the ask holds under every stand-down - the csv naming this guard, 
   for (const [env, why] of [[{ ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' }, 'the csv names this guard'], [{ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }, 'the minimal profile'],
     [{ ALFRED_CODE_CONFIG_PROTECT: '0' }, 'the old CONFIG_PROTECT=0']])
     assert.equal(configWrite(p, f, offList('guard-catastrophic-rm'), { env }).status, 2, why);
-  // the csv's other job is untouched: this guard's own lint-config check stands down
+  // complexity stage 1 B11: the lint-config check is gone, so a lint config is written like any file, csv or not
   p.file('.eslintrc.json', '{ "rules": {} }\n');
-  assert.equal(configWrite(p, path.join(p.root, '.eslintrc.json'), '{}', { env: { ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' } }).status, 0, 'the csv still turns the config check off');
-  assert.equal(configWrite(p, path.join(p.root, '.eslintrc.json'), '{}').status, 2, 'and it is on without it');
+  assert.equal(configWrite(p, path.join(p.root, '.eslintrc.json'), '{}', { env: { ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' } }).status, 0, 'a lint config under the csv');
+  assert.equal(configWrite(p, path.join(p.root, '.eslintrc.json'), '{}').status, 0, 'and without it');
   const cursor = hook(p, 'guard-config-protection.js', { tool_name: 'Write', tool_input: { file_path: f, content: offList('guard-secret-value') }, cursor_version: '1.7.0' });
   assert.equal(cursor.status, 2, 'a Cursor payload');
   // a repo never set up: a user-scope core keeps the protective guards live there, so this half too - and writes no row

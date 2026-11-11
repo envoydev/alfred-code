@@ -863,19 +863,19 @@
       "file": "guard-config-protection.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, guard-config-protection in ALFRED_CODE_HOOKS_OFF turns that half off; a settings write adding a protective guard to ALFRED_CODE_HOOKS_OFF or setting disableAllHooks asks under every stand-down, opened only by the GUARD-OFF-ALLOW security receipt (audit 2026-11-03 SYS-01) - judged on what a copy, move, link or extract into a watched folder lands (unread content asks too), and a new hooks entry wiring a copied twin of a dispatcher or protective guard is a switch-off"
+      "note": "the guard switch-off check alone since complexity stage 1 B11 (the lint-config judge and its CONFIG-EDIT-ALLOW receipt left; guard-config-protection in ALFRED_CODE_HOOKS_OFF switches nothing off): a settings write adding a protective guard to ALFRED_CODE_HOOKS_OFF or setting disableAllHooks asks under every stand-down, opened only by the GUARD-OFF-ALLOW security receipt (audit 2026-11-03 SYS-01) - judged on what a copy, move, link or extract into a watched folder lands (unread content asks too), and a new hooks entry wiring a copied twin of a dispatcher or protective guard is a switch-off"
     },
     {
       "file": "guard-config-protection.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "same gate on the shell routes (an in-place edit, redirect, tee, rm, mv or cp onto the config) - run inside shell-guards.js with the other shell guards"
+      "note": "same gate on the shell routes (a redirect, tee, in-place sed, copy, move, link, extract or download onto a settings file, a hooks twin, or a claude plugin disable of the core) - run inside shell-guards.js with the other shell guards"
     },
     {
       "file": "guard-config-protection.js",
       "matcher": "^mcp__.+__(write_file|edit_file|move_file)$",
       "event": "",
-      "note": "same gate on a filesystem server the user registers: write_file judged as a Write over tool_input.path, edit_file as an edit over its edits (a dryRun writes nothing), move_file as a removal of its source and a write of its destination, matched by the tool's name under any registration (audit 2026-11-03 SYS-02)"
+      "note": "same gate on a filesystem server the user registers: write_file judged as a Write over tool_input.path, edit_file as an edit over its edits (a dryRun writes nothing), move_file by what it removes and what it lands, matched by the tool's name under any registration (audit 2026-11-03 SYS-02)"
     },
     {
       "file": "guard-cross-project-write.js",

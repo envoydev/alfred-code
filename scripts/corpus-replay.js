@@ -123,13 +123,14 @@ const UNEXERCISED = {
   // predates; what it writes is pinned in guard-stop-closes.test.js ('scorer seal').
   'guard-stop-contract.js::PreToolUse:SubagentHandback':
     'the corpus predates the output-scorer seat; the seal is pinned in guard-stop-closes.test.js',
-  // Replayed 2026-09-23 over 820 transcripts: 29,058 Bash and 1,523 Write payloads, none aimed at a
-  // check config that already existed - the sessions never shell-edited or overwrote one. The gate
-  // fires on both routes in guard-hooks.test.js.
+  // The config guard judges one thing since complexity stage 1 B11: a write that switches a protective guard off
+  // (SYS-01, 2026-11-03), which the corpus predates. The lint-config judge these routes were measured on (2026-09-23, 820
+  // transcripts: 29,058 Bash and 1,523 Write payloads, no fire) left with B11. The gate fires on both routes in
+  // audit-2026-11-03-guard-asks.test.js.
   'guard-config-protection.js::PreToolUse:Bash':
-    'no shell write to an existing check config in 29k Bash payloads; the gate fires in guard-hooks.test.js',
+    'the corpus predates the guard switch-off check, its one check since stage 1 B11; the gate fires in audit-2026-11-03-guard-asks.test.js',
   'guard-config-protection.js::PreToolUse:Write':
-    'no overwrite of an existing check config in 1.5k Write payloads; the gate fires in guard-hooks.test.js',
+    'the corpus predates the guard switch-off check, its one check since stage 1 B11; the gate fires in audit-2026-11-03-guard-asks.test.js',
   'guard-protected-force-push.js::PreToolUse:Bash':
     'no force-push to a protected branch occurred in 21.5k Bash payloads; the gate fires in guard-hooks.test.js',
   'guard-secret-value.js::PreToolUse:Grep':

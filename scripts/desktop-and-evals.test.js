@@ -60,7 +60,9 @@ test('I10: the skill and windows.md say what stays on and that a house guard den
     {
         const text = flat(read(rel));
         assert.doesNotMatch(text, /takes the file's path|allowed it in `<data root>/, `${rel} restates a receipt shape`);
-        assert.match(text, /the lines the denial prints/, `${rel} points at the denial's lines`);
+        // complexity stage 1 B11: the config receipt left with the lint-config judge, so only the desktop files name a denial
+        if (rel.includes('desktop-automation')) assert.match(text, /the lines the denial prints/, `${rel} points at the denial's lines`);
+        else assert.doesNotMatch(text, /CONFIG-EDIT-ALLOW|the lines the denial prints/, `${rel} still sends a config edit to a receipt`);
     }
 });
 

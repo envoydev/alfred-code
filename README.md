@@ -191,7 +191,7 @@ No. Every write is listed in [`docs/install-footprint.md`](docs/install-footprin
 Name it in `ALFRED_CODE_HOOKS_OFF`, a comma list in the `env` block of `.claude/settings.json`:
 
 ```json
-{ "env": { "ALFRED_CODE_HOOKS_OFF": "guard-config-protection,guard-read-whole-file" } }
+{ "env": { "ALFRED_CODE_HOOKS_OFF": "guard-answer,guard-read-whole-file" } }
 ```
 
 Or run `/alfred-code:configure` and it writes the key for you.

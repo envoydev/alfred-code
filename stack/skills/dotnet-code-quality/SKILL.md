@@ -75,16 +75,6 @@ If the fix is genuinely too large, put it to the user through ONE AskUserQuestio
 
 Flipping `TreatWarningsAsErrors=true` on an existing codebase floods the build - promote curated IDs in waves; the waves, their prerequisites and the per-wave proof are `references/legacy-backlog.md`.
 
-Where the house config-protection guard runs, it blocks a change that loosens `WarningsAsErrors`, `EnforceCodeStyleInBuild` or another warning key in a Directory.Build.props or csproj that already exists (a pure tightening - a `WarningsAsErrors` entry added, `EnforceCodeStyleInBuild`, `TreatWarningsAsErrors` or `EnableNETAnalyzers` set to true, a `NoWarn` entry removed - passes; an `AnalysisLevel` or `AnalysisMode` change, a raise included, is held), and any edit to an existing `.editorconfig` - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` and retry the same edit; a new file takes the settings from the start.
-
-```ask
-The config-protection guard holds this edit: <file> - <the change>, <N> new warnings.
-- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
-- 'Keep the config as it is' - nothing changes in the file
-```
-
-Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
-
 ## The gate is `dotnet build`
 
 Analyzer enforcement is not a separate CI step - `dotnet build` runs the analyzers and, with warnings-as-errors, fails on a violation. So the same gate developers run locally is the CI gate. Add the formatter check and the build to CI; both must be reproducible from a clean checkout with no machine-global state.
@@ -94,7 +84,7 @@ Prove the gate before calling any of this done, and quote the result:
 1. `dotnet tool restore` - the pinned tools resolve from the manifest, not from a machine-global install.
 2. `dotnet csharpier check .` - exit 0, or the list of unformatted files.
 3. `dotnet build -warnaserror` - exit 0, or the analyzer IDs it failed on.
-4. Check the diff against `references/reward-hacking.md` row by row - report `Reward-hack scan: clean` or the rows hit. The config-protection guard blocks the `<NoWarn>` and severity-downgrade rows where it runs; the rest is review discipline.
+4. Check the diff against `references/reward-hacking.md` row by row - report `Reward-hack scan: clean` or the rows hit.
 
 Report the command and its result line for each, never the claim alone. A gate you did not run is a gate you cannot say holds.
 

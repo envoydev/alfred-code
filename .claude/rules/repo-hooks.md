@@ -352,8 +352,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `securityReceipt` with the guard's SHOW label (FA-3: its session line and age alone silenced the rotation ask). A seat's denial is anchored at its time in the seat
   transcript (the payload's `agent_transcript_path`, else `<session>/subagents/agent-<agent_id>.jsonl`), the answer read
   in the main one after it. A timed-out ask is no answer. With no transcript on disk (a CLI run) the old time rule
-  stands; with no prelude the five and `CONFIG-EDIT-ALLOW` read shut. `CONFIG-EDIT-ALLOW` is a workflow gate: session
-  and time only. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
+  stands; with no prelude the five read shut. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
   when a whole typed row turning auto-run on (`modeFlags` family + on, or the tagged `/mode-auto-run` row) of this
   session sits within 5MB either side of that offset, read by position (64KB first; 5ms on a 200MB transcript), AND no
   typed row of any session turns auto-run off after the newest such row (`typedAutoOffFrom`, receiptAnswered's typed-flag
@@ -1523,41 +1522,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     opens that file, never the home). The record rule above still wins.
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route + a filesystem
     server's `write_file` as a Write, `edit_file` as an edit over its `oldText` / `newText` (a `dryRun` writes nothing) and
-    `move_file` as a removal of its source and of a config its destination would replace, a new destination's shadowing
-    judged too, under any registration name - audit 2026-11-03 SYS-02) - a
-    check is never made green by weakening the check: a change to a lint / format / analyzer config that
-    ALREADY exists (eslint, prettier, stylelint, biome, `.editorconfig`, a ruleset) is blocked, and in
-    tsconfig / MSBuild files only a change to the strictness keys (compared as key=value pairs, so any
-    other edit passes). Creating a config passes; the shell routes are the in-place edit, redirect, `tee`,
-    `rm`, `mv` and a `cp` onto it, read through `scanShell` (a wrapper, a carried script, a `cd`'s anchor) and then the
-    guard's own segment parser. Audit 2026-10-08: the ignore files (`.eslintignore`, `.prettierignore`,
-    `.stylelintignore`) are whole-file configs; a commented-out setting is no setting (JSONC comments string-aware, XML
-    comments, an unterminated start running to the end); an MSBuild property's attributes are part of its pair
-    (`Condition="false"`); an Edit is judged on the whole file it leaves; a shell write that replaces or removes a keyed
-    file holding a strictness key blocks; PowerShell's backslash is a separator; and paths compare as real paths.
-    'Allow' is honoured through `<data root>/state/approvals/CONFIG-EDIT-ALLOW` (a
-    file, its basename or `*`; this session's, under 8h); `guard-config-protection` in `ALFRED_CODE_HOOKS_OFF` turns it off (the old `ALFRED_CODE_CONFIG_PROTECT=0` folds in). Audit 2026-10-20 (the hooks track's minor
-    list): `RunAnalyzers` / `RunAnalyzersDuringBuild` / `EnableNETAnalyzers` are keyed (true is the strict value); a
-    tsconfig `extends` (the base the strictness comes from) and `exclude` (the files no check reads) are judged like a
-    key, an array compared without its whitespace; and an in-place edit naming no key (`sed -i '3s/true/false/'`) is
-    applied in memory - each `s` script with a line or /regex/ address (or a range), sed's basic syntax unless -E / -r -
-    and judged on the pairs it leaves, the file tool's rule; a script it cannot apply keeps the keyword rule. An MSBuild edit that only TIGHTENS passes
-    (audit 2026-10-11 SD16, 2ca8e8ee: a `NoWarn` entry removed was blocked): every changed property moves one way - a
-    `NoWarn` / `WarningsNotAsErrors` list only loses entries, `WarningsAsErrors` only gains, `TreatWarningsAsErrors` /
-    `EnforceCodeStyleInBuild` go true, `WarningLevel` up, `Nullable` toward enable; a property named twice, an attribute
-    change or any other key keeps the block. The same one-way rule reaches tsconfig and eslint (audit 2026-10-14 HK19:
-    `strict` false -> true and `"warn"` -> `"error"` were blocked): a tsconfig key moves to its strict value (true, false for
-    `allowUnreachableCode` / `allowUnusedLabels` / `skipLibCheck`; a removal blocks), and an eslint config passes when the
-    file it leaves differs only in rule severities, each raised (off / 0 -> warn / 1 -> error / 2) - token by token in JSON
-    and JS with the value straight inside a `rules` object, line by line in YAML under `rules:` (`severitiesOnlyRise`).
-    Audit 2026-10-30 HK-18: a runtime write over a keyed config is a replace, `git checkout <rev> -- <file>` / `git
-    restore --source` is judged on the version it restores, `git rm` / `git mv` remove the file, `dd of=` and `patch` are
-    judged on what they leave, and a NEW config that shadows an existing one (ESLint / Prettier lookup, a nested
-    `Directory.Build.props`, a `package.json` config key) counts as an edit of it - so 'creating a config passes' holds
-    only where nothing is shadowed.
-    A lockfile, a migration, the central
-    package file and a solution file are a recorded DECLINE (2.1.5 M13, in its header): legitimate work edits each, and
-    whether a migration was applied lives in a database no hook reads.
+    `move_file` by what it removes and lands, under any registration name - audit 2026-11-03 SYS-02) - one check since
+    complexity stage 1 B11 (2026-11-11): the lint-config judge that shared the file (a change to an existing lint / format
+    / analyzer config or to a tsconfig / MSBuild strictness key, opened by a `CONFIG-EDIT-ALLOW` receipt) fired 0 times in
+    442 sessions and left, so a check config is edited like any file, and `guard-config-protection` in
+    `ALFRED_CODE_HOOKS_OFF` - where update folds the old `ALFRED_CODE_CONFIG_PROTECT=0` - switches nothing off.
     THE GUARD SWITCH-OFF (system audit 2026-11-03 SYS-01, BLOCKER): a write that adds a PROTECTIVE guard (the rm, secret,
     force-push or desktop exec guard; its old name too, `HOOK_RENAMED`) to `ALFRED_CODE_HOOKS_OFF` in a settings `env`, or
     sets `disableAllHooks: true`, is denied with ONE ask ('Keep the guards on (Recommended)' / 'Allow this guard
@@ -1591,8 +1560,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     route is live (`CLAUDE_PLUGIN_ROOT` set, this run not the project's copy) a write that creates or replaces one of those
     files in the project's `.claude/hooks/` - on any route, a copy into the folder included - asks too. The copy route
     (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) is untouched: the installer writes both through its own process, and with no
-    plugin root the copy IS the guard. It runs BEFORE every stand-down - the csv (one naming this guard first would open the protective ones), the
-    `minimal` profile, a Cursor payload, `CONFIG_PROTECT=0` and a repo never set up, which writes no block row (R86).
+    plugin root the copy IS the guard. It holds under every stand-down - the csv (one naming this guard would open the protective ones), the
+    `minimal` profile, a Cursor payload and a repo never set up, which writes no block row (R86).
     Removing a guard from the list, a guard already listed and any other key pass. Not read: `.variables` (layout.js never
     reads the off-list there, D7) and a workspace member's files (they hand down `<hook>:<part>` entries only, and no
     protective guard has a part). THE PLUGIN SWITCH-OFF (SYS-01b; a side agent's note, the user's design of 2026-11-03):

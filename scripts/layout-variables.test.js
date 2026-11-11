@@ -307,9 +307,7 @@ test('Review Focus 6: a guard switch in .variables is not read - own and a membe
         putWorkspace(api, spec.ws);
         fs.mkdirSync(path.join(at('ws'), '.alfred'), { recursive: true });
         fs.writeFileSync(path.join(where === 'own' ? api : at('ws'), '.alfred', '.variables'), GUARD_LINES(sibling));
-        fs.writeFileSync(path.join(api, '.eslintrc.json'), '{ "rules": {} }\n');
-        const cfg = hook('guard-config-protection.js', { tool_name: 'Edit', cwd: api, tool_input: { file_path: path.join(api, '.eslintrc.json'), old_string: '{}', new_string: '{ "x": 1 }' } }, api);
-        assert.strictEqual(cfg.status, 2, `${where}: the config guard still denies - ${cfg.stderr}`);
+        // complexity stage 1 B11: the lint-config check CONFIG_PROTECT switched is gone, so only its 'not read' note is left
         const push = hook('guard-ungated-commit.js', { tool_name: 'Bash', cwd: api, tool_input: { command: 'git push' } }, api);
         assert.strictEqual(push.status, 2, `${where}: the push gate still denies - ${push.stderr}`);
         const cross = hook('guard-cross-project-write.js', { tool_name: 'Write', cwd: api, tool_input: { file_path: path.join(sibling, 'x.txt'), content: 'x' } }, api);

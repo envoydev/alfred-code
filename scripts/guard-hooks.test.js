@@ -4240,7 +4240,7 @@ test('guard-stop-contract: an unreadable subagent transcript never holds (no pro
   assert.equal(subStop(undefined, FORK_CLOSE).status, 0);
 });
 
-// --- guard-config-protection.js: the cheapest way to 'pass' a check is to weaken it ---------------
+// --- guard-config-protection.js: a write switching a protective guard off (SYS-01) ------------------------
 function cfgProject(prefix) {
   const root = fs.mkdtempSync(path.join(TMP, prefix));
   const at = (rel, body) => { const p = path.join(root, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, body); return p; };
@@ -4255,289 +4255,36 @@ function withProject(root, env, fn) {
   finally { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
 }
 
-test('guard-config-protection: an existing check config cannot be weakened, a new one can be created', () => {
+// Complexity stage 1 B11: the lint-config judge fired 0 times in 442 sessions and is gone; the guard keeps the SYS-01
+// switch-off refusal alone, which holds under the csv naming this guard (plan ruling 6: that entry is a no-op now).
+test('stage 1 B11: a check config can be loosened; switching a guard off is still refused', () => {
   const H = 'guard-config-protection.js';
   const { root, at } = cfgProject('cfg-');
   const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
-  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
-  const sh = (command, tool = 'Bash') => run(H, { tool_name: tool, cwd: root, tool_input: { command } });
+  const settings = at('.claude/settings.json', '{\n  "env": {}\n}\n');
+  const switchOff = { tool_name: 'Edit', cwd: root, tool_input: { file_path: settings, old_string: '"env": {}', new_string: '"env": { "ALFRED_CODE_HOOKS_OFF": "guard-catastrophic-rm" }' } };
   withProject(root, {}, () => {
     const eslint = at('eslint.config.js', 'export default [];');
-    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'existing eslint config is protected');
-    assert.strictEqual(write(path.join(root, '.prettierrc'), '{}'), 0, 'creating a config is allowed');
-
-    const ts = at('tsconfig.json', '{ "compilerOptions": { "strict": true, "paths": {} } }');
-    assert.strictEqual(edit(ts, '"paths": {}', '"paths": { "@app/*": ["src/*"] }'), 0, 'a non-strictness key is open');
-    assert.strictEqual(edit(ts, '"strict": true', '"strict": false'), 2, 'a strictness key is protected');
-    assert.strictEqual(write(ts, '{ "compilerOptions": { "strict": true, "paths": { "a": ["b"] } } }'), 0, 'a whole-file Write keeping every strictness line is open');
-    assert.strictEqual(write(ts, '{ "compilerOptions": { "strict": true, "skipLibCheck": true } }'), 2, 'a whole-file Write adding one is not');
-    assert.strictEqual(run(H, { tool_name: 'MultiEdit', cwd: root, tool_input: { file_path: ts, edits: [
-      { old_string: '"paths": {}', new_string: '"paths": {}, "noImplicitAny": false' }] } }), 2, 'MultiEdit is judged edit by edit');
-
-    const proj = at('src/App/App.csproj', '<Project><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>');
-    assert.strictEqual(edit(proj, '</PropertyGroup>', '<NoWarn>CS8602</NoWarn></PropertyGroup>'), 2, 'NoWarn added');
-    assert.strictEqual(edit(proj, '</Project>', '<ItemGroup><PackageReference Include="X" Version="1.0.0" /></ItemGroup></Project>'), 0, 'a package reference is open');
-
-    at('.editorconfig', 'root = true');
-    at('.eslintrc.json', '{}');
-    assert.strictEqual(sh("sed -i '' 's/true/false/' .editorconfig"), 2, 'in-place sed');
-    assert.strictEqual(sh('echo x > .editorconfig'), 2, 'redirect');
-    assert.strictEqual(sh('echo x | tee .editorconfig'), 2, 'tee after a pipe');
-    assert.strictEqual(sh('rm .eslintrc.json'), 2, 'deleting the check is weakening it');
-    assert.strictEqual(sh('cp /tmp/loose.json .eslintrc.json'), 2, 'copying over it');
-    assert.strictEqual(sh("Set-Content -Path .editorconfig -Value 'root = false'", 'PowerShell'), 2, 'the PowerShell route');
-    assert.strictEqual(sh('cat .editorconfig | grep root'), 0, 'a read passes');
-    assert.strictEqual(sh('git restore .editorconfig'), 0, 'restoring the committed check passes');
-    assert.strictEqual(sh('cp .eslintrc.json /tmp/backup.json'), 0, 'copying FROM it passes');
-    assert.strictEqual(sh('npx eslint --fix src'), 0, 'running the check passes');
-
-    const outside = fs.mkdtempSync(path.join(TMP, 'cfg-outside-'));
-    fs.writeFileSync(path.join(outside, '.editorconfig'), 'root = true');
-    assert.strictEqual(write(path.join(outside, '.editorconfig'), ''), 0, 'outside the project - the cross-project guard owns it');
-
-    at('.alfred/docs/flow/CONFIG-EDIT-ALLOW', 'eslint.config.js\n');
-    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 0, 'the receipt is honoured');
-    assert.strictEqual(edit(ts, '"strict": true', '"strict": false'), 2, 'for the file it names only');
-    const old = new Date(Date.now() - 9 * 60 * 60 * 1000);
-    fs.utimesSync(path.join(root, '.alfred/docs/flow/CONFIG-EDIT-ALLOW'), old, old);
-    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'a receipt older than 8h is not');
-    at('.alfred/state/approvals/CONFIG-EDIT-ALLOW', 'eslint.config.js\n');
-    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 0, '2.8.0: the receipt under state/approvals/ is read');
+    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 0, 'an existing eslint config is edited like any file');
+    assert.strictEqual(run(H, switchOff), 2, 'adding a protective guard to the off-list is refused');
   });
-  withProject(root, { ALFRED_CODE_CONFIG_PROTECT: '0' }, () =>
-    assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the env switch turns it off'));
-  withProject(root, { ALFRED_CODE_HOOKS_OFF: 'guard-answer,guard-config-protection' }, () =>
-    assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the per-project hooks csv switches it off'));
-});
-
-// Audit 2026-11-03 SYS-02: a filesystem server the user registers is the same gate's fourth route - write_file judged
-// as a Write over `path`, edit_file as an edit over `edits` (oldText / newText; a dryRun writes nothing), move_file as a
-// removal of `source` and a write of `destination` - matched by the tool's name under any registration name.
-test('guard-config-protection: a filesystem server write, edit or move of a check config is judged like the file tools (audit 2026-11-03 SYS-02)', () => {
-  const H = 'guard-config-protection.js';
-  const { root, at } = cfgProject('cfg-fs-');
-  const call = (tool, input) => run(H, { tool_name: tool, cwd: root, tool_input: input });
-  withProject(root, {}, () => {
-    const ts = at('tsconfig.json', '{ "compilerOptions": { "strict": true, "paths": {} } }');
-    const eslint = at('eslint.config.js', 'export default [];');
-    for (const tool of ['mcp__filesystem__write_file', 'mcp__plugin_fs_fs__write_file']) { // mcp-fixture
-      assert.strictEqual(call(tool, { path: ts, content: '{ "compilerOptions": { "strict": false, "paths": {} } }' }), 2, `${tool}: a strictness key turned off`);
-      assert.strictEqual(call(tool, { path: 'tsconfig.json', content: '{ "compilerOptions": { "strict": false } }' }), 2, `${tool}: a relative path, read at the project root`);
-      assert.strictEqual(call(tool, { path: ts, content: '{ "compilerOptions": { "strict": true, "paths": { "a": ["b"] } } }' }), 0, `${tool}: a non-strictness change`);
-      assert.strictEqual(call(tool, { path: eslint, content: 'export default [{ rules: {} }];' }), 2, `${tool}: an existing whole-file config`);
-      assert.strictEqual(call(tool, { path: path.join(root, 'src', 'a.ts'), content: 'x' }), 0, `${tool}: a source file`);
-      assert.strictEqual(call(tool, { path: path.join(root, '.prettierrc'), content: '{}' }), 0, `${tool}: creating a config`);
-    }
-    const edit = 'mcp__files__edit_file'; // mcp-fixture
-    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"strict": true', newText: '"strict": false' }] }), 2, 'edit_file: a strictness key turned off');
-    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"strict": true', newText: '"strict": false' }], dryRun: true }), 0, 'edit_file: a dry run writes nothing');
-    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"paths": {}', newText: '"paths": { "@app/*": ["src/*"] }' }] }), 0, 'edit_file: a non-strictness key');
-    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"paths": {}', newText: '"paths": {}, "noImplicitAny": false' }] }), 2, 'edit_file: a loosening key added');
-    assert.strictEqual(call(edit, { path: ts, edits: 'garbage' }), 0, 'edit_file: edits that are no list change nothing');
-    assert.strictEqual(call(edit, { path: ts }), 0, 'edit_file: no edits');
-    const move = 'mcp__filesystem__move_file'; // mcp-fixture
-    assert.strictEqual(call(move, { source: eslint, destination: path.join(root, 'old', 'eslint.config.js') }), 2, 'move_file: moving a check away removes it');
-    assert.strictEqual(call(move, { source: path.join(root, 'a.txt'), destination: eslint }), 2, 'move_file: onto an existing config replaces it');
-    at('a.txt', 'x');
-    assert.strictEqual(call(move, { source: path.join(root, 'a.txt'), destination: path.join(root, 'b.txt') }), 0, 'move_file: an ordinary rename');
-    assert.strictEqual(call(move, { source: path.join(root, 'a.txt') }), 0, 'move_file: no destination');
-    assert.strictEqual(call(move, {}), 0, 'move_file: no fields');
-    assert.strictEqual(call(move, { source: 7, destination: null }), 0, 'move_file: fields that are no strings');
-    assert.strictEqual(call('mcp__filesystem__create_directory', { path: path.join(root, 'tsconfig.json') }), 0, 'create_directory is no config change'); // mcp-fixture
-    assert.strictEqual(call('mcp__filesystem__read_text_file', { path: ts }), 0, 'a read is not this guard\'s'); // mcp-fixture
-    const outside = fs.mkdtempSync(path.join(TMP, 'cfg-fs-outside-'));
-    fs.writeFileSync(path.join(outside, 'tsconfig.json'), '{ "compilerOptions": { "strict": true } }');
-    assert.strictEqual(call('mcp__filesystem__write_file', { path: path.join(outside, 'tsconfig.json'), content: '{}' }), 0, 'outside the project - the cross-project guard owns it'); // mcp-fixture
-    at('.alfred/state/approvals/CONFIG-EDIT-ALLOW', 'tsconfig.json\n');
-    assert.strictEqual(call(edit, { path: ts, edits: [{ oldText: '"strict": true', newText: '"strict": false' }] }), 0, 'the receipt is honoured');
+  withProject(root, { ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' }, () => {
+    const r = spawnSync(process.execPath, [path.join(HOOKS, H)], { input: JSON.stringify(switchOff), encoding: 'utf8' });
+    assert.strictEqual(r.status, 2, `the csv naming this guard is a no-op for the switch-off refusal\n${r.stderr}`);
+    assert.match(r.stderr, /^Blocked: this write to \.claude\/settings\.json adds guard-catastrophic-rm/);
+    assert.doesNotMatch(r.stderr, /Error|\n\s+at /, 'no error on stderr');
   });
-  // the manifest wires the guard on the three tools that change a file's text, under any server name
-  const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
-    .find((h) => h.file === H && /write_file/.test(h.matcher));
-  assert.ok(row, 'a manifest row');
-  const re = new RegExp(row.matcher);
-  for (const tool of ['mcp__filesystem__write_file', 'mcp__a__edit_file', 'mcp__plugin_x_y__move_file']) assert.ok(re.test(tool), tool); // mcp-fixture
-  for (const tool of ['mcp__filesystem__create_directory', 'mcp__filesystem__read_text_file', 'write_file']) assert.ok(!re.test(tool), tool); // mcp-fixture
-});
-
-// A heredoc body and a quoted span are TEXT the command carries - a runbook that describes the rm, a
-// commit message that names the file - and the siblings mask both for the same reason (a 47KB plan
-// write denied for its own prose cost ~44k tokens). Replayed: both shapes below exit 2 before the fix.
-test('guard-config-protection: lockfiles, migrations, the central package file and the solution file are a recorded decline (2.1.5 M13)', () => {
-  // They had no cover and no decline on record. Each is edited by legitimate work - a dependency bump, a new
-  // project, a migration still in review - and whether a migration was APPLIED lives in a database no hook reads,
-  // so a block would fire on honest work far more than on a weakened check. The decline is written where the
-  // guard's scope is.
-  const H = 'guard-config-protection.js';
-  const src = fs.readFileSync(path.join(HOOKS, H), 'utf8');
-  const header = src.slice(0, src.indexOf("'use strict'"));
-  for (const cls of [/lockfile/i, /migration/i, /Directory\.Packages\.props/, /\.sln/]) assert.match(header, cls, `the header records ${cls}`);
-  assert.match(header, /Declined \(2\.1\.5 M13\)/, 'as a decline, with its reason');
-  const { root, at } = cfgProject('cfg-decline-');
-  const edit = (file) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string: 'a', new_string: 'b' } });
-  withProject(root, {}, () => {
-    for (const f of ['package-lock.json', 'Directory.Packages.props', 'App.sln', 'src/Data/Migrations/20260101_Init.cs'])
-      assert.strictEqual(edit(at(f, 'a')), 0, `${f} is not this guard's file`);
-  });
-});
-
-test('guard-config-protection: a heredoc body or a quoted message naming a config is prose', () => {
-  const H = 'guard-config-protection.js';
-  const { root, at } = cfgProject('cfg-prose-');
-  const sh = (command, tool = 'Bash') => run(H, { tool_name: tool, cwd: root, tool_input: { command } });
-  withProject(root, {}, () => {
-    at('.eslintrc.json', '{}');
-    at('.editorconfig', 'root = true');
-    assert.strictEqual(sh("cat > runbook.md <<'EOF'\n## Reset lint\nrm .eslintrc.json\necho x > .editorconfig\nEOF"), 0, 'a heredoc body describing the rm');
-    assert.strictEqual(sh("git commit -m 'docs: explain why; rm .eslintrc.json is blocked'"), 0, 'a quoted commit message naming it');
-    assert.strictEqual(sh('echo "use tee .editorconfig | never" > notes.md'), 0, 'a quoted pipe is not a pipe');
-    // the real writes stay blocked, quoted targets included
-    assert.strictEqual(sh('rm ".eslintrc.json"'), 2, 'a quoted target is still the target');
-    assert.strictEqual(sh("cat > .editorconfig <<'EOF'\nroot = false\nEOF"), 2, "a heredoc's own redirect still writes");
-    assert.strictEqual(sh("git add -A && rm .eslintrc.json"), 2, 'a real second step');
-  });
-});
-
-// Audit 2026-10-11 SD16, session 2ca8e8ee: removing `CS9057` from a NoWarn re-enables the warning, and was blocked as
-// weakening a check (an ask, a receipt, a retry - 3 messages at 417k). A change that only tightens passes.
-test('guard-config-protection: an MSBuild change that only makes a check stricter passes (audit 2026-10-11 SD16)', () => {
-  const H = 'guard-config-protection.js';
-  const { root, at } = cfgProject('cfg-tight-');
-  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
-  withProject(root, {}, () => {
-    const props = at('Directory.Build.props', '<Project>\n  <PropertyGroup>\n    <NoWarn>$(NoWarn);CS9057;NU1608</NoWarn>\n    <WarningLevel>4</WarningLevel>\n    <Nullable>annotations</Nullable>\n  </PropertyGroup>\n</Project>\n');
-    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);NU1608'), 0, 'the measured edit: one NoWarn entry removed');
-    assert.strictEqual(edit(props, '    <NoWarn>$(NoWarn);CS9057;NU1608</NoWarn>\n', ''), 0, 'the whole NoWarn removed');
-    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel>5</WarningLevel>'), 0, 'a higher warning level');
-    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>enable</Nullable>'), 0, 'Nullable toward enable');
-    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>\n  </PropertyGroup>'), 0, 'TreatWarningsAsErrors added as true');
-    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <WarningsAsErrors>CS8602</WarningsAsErrors>\n  </PropertyGroup>'), 0, 'a WarningsAsErrors entry added');
-    // every loosening, and anything mixed, still blocks
-    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);CS9057;NU1608;CS8602'), 2, 'a NoWarn entry added');
-    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);NU1608;CS8602'), 2, 'one removed and another added');
-    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel>3</WarningLevel>'), 2, 'a lower warning level');
-    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>disable</Nullable>'), 2, 'Nullable toward disable');
-    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>maybe</Nullable>'), 2, 'an unknown Nullable value');
-    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel Condition="\'$(CI)\'==\'\'">5</WarningLevel>'), 2, 'an attribute change');
-    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608</NoWarn>', '$(NoWarn);NU1608</NoWarn>\n    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>'), 2, 'a tightening beside a loosening');
-    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <AnalysisLevel>latest</AnalysisLevel>\n  </PropertyGroup>'), 2, 'a key with no direction rule keeps the block');
-    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <NoWarn>CS1591</NoWarn>\n  </PropertyGroup>'), 2, 'a property named twice keeps the block');
-    assert.strictEqual(edit(props, 'not in the file', '<NoWarn></NoWarn>'), 2, 'an old_string the file lacks is judged on the fragments');
-    const tw = at('src/App/App.csproj', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>');
-    assert.strictEqual(edit(tw, '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', ''), 2, 'removing TreatWarningsAsErrors');
-  });
-});
-
-// Audit 2026-10-14 HK19 (replay cfg.js): outside MSBuild a tightening edit was still blocked - eslint `"warn"` -> `"error"` and
-// tsconfig `"strict": false` -> `true` both exit 2. The one-way rule reaches tsconfig's strictness booleans and eslint's
-// rule severities; every loosening, and anything beside the severity, still blocks.
-test('guard-config-protection: a tsconfig strictness flag turned on and an eslint severity raised pass (audit 2026-10-14 HK19)', () => {
-  const H = 'guard-config-protection.js';
-  const { root, at } = cfgProject('cfg-hk19-');
-  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
-  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
-  withProject(root, {}, () => {
-    const ts = at('tsconfig.json', '{"compilerOptions":{"strict":false,"skipLibCheck":true,"noImplicitAny":false}}\n');
-    assert.strictEqual(edit(ts, '"strict":false', '"strict":true'), 0, 'the replayed edit: strict false -> true');
-    assert.strictEqual(edit(ts, '"skipLibCheck":true', '"skipLibCheck":false'), 0, 'a loosening-when-true key turned off');
-    assert.strictEqual(edit(ts, '"strict":false', '"strict":false,"noUncheckedIndexedAccess":true'), 0, 'a strict flag added as true');
-    assert.strictEqual(write(ts, '{"compilerOptions":{"strict":true,"skipLibCheck":false,"noImplicitAny":true}}\n'), 0, 'a whole-file Write that only tightens');
-    assert.strictEqual(edit(ts, '"strict":false,', ''), 2, 'a strict key removed');
-    assert.strictEqual(edit(ts, '"noImplicitAny":false', '"noImplicitAny":true,"allowUnreachableCode":true'), 2, 'a tightening beside a loosening');
-    assert.strictEqual(edit(ts, '"skipLibCheck":true', '"skipLibCheck":"yes"'), 2, 'a value that is no boolean');
-    assert.strictEqual(edit(ts, '"strict":false', '"strict":true,"strict":true'), 2, 'a key named twice');
-    const on = at('tsconfig.base.json', '{"compilerOptions":{"strict":true}}\n');
-    assert.strictEqual(edit(on, '"strict":true', '"strict":false'), 2, 'strict true -> false still blocks');
-
-    const json = at('.eslintrc.json', '{"rules":{"no-console":"warn","eqeqeq":0,"max-depth":["warn",4],"complexity":[1,{"max":10}]},"overrides":[{"files":["*.ts"],"rules":{"no-var":"off"}}]}\n');
-    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"error"'), 0, 'the replayed edit: warn -> error');
-    assert.strictEqual(edit(json, '"eqeqeq":0', '"eqeqeq":"error"'), 0, 'a numeric severity raised to a word');
-    assert.strictEqual(edit(json, '["warn",4]', '["error",4]'), 0, 'the array form, its options kept');
-    assert.strictEqual(edit(json, '"no-var":"off"', '"no-var":"warn"'), 0, 'inside an override\'s rules');
-    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"off"'), 2, 'a severity lowered');
-    assert.strictEqual(edit(json, '["warn",4]', '["error",6]'), 2, 'a raise beside a loosened option');
-    assert.strictEqual(edit(json, '{"max":10}', '{"max":2}'), 2, 'an option is never read as a severity');
-    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"warn","no-alert":"error"'), 2, 'a new rule is a change to the check');
-    assert.strictEqual(edit(json, '"no-console":"warn",', '"no-console": "warn" ,'), 2, 'whitespace alone keeps the block');
-    assert.strictEqual(edit(json, 'not in the file', '"error"'), 2, 'an old_string the file lacks');
-    const flat = at('eslint.config.js', 'export default [{ files: ["**/*.js"], rules: { "no-console": "off", semi: [1, "always"] } }];\n');
-    assert.strictEqual(edit(flat, '"no-console": "off"', '"no-console": "warn"'), 0, 'flat config, unquoted rules key');
-    assert.strictEqual(edit(flat, 'semi: [1,', 'semi: [2,'), 0, 'numeric severity in the array form');
-    assert.strictEqual(edit(flat, 'files: ["**/*.js"]', 'files: ["src/**/*.js"]'), 2, 'any other change keeps the block');
-    const yml = at('.eslintrc.yml', 'env:\n  node: true\nrules:\n  no-console: warn\n  quotes: [warn, single]\n  max-len: off  # later\n');
-    assert.strictEqual(edit(yml, '  no-console: warn', '  no-console: error'), 0, 'YAML warn -> error');
-    assert.strictEqual(edit(yml, 'quotes: [warn, single]', 'quotes: [error, single]'), 0, 'the YAML flow form');
-    assert.strictEqual(edit(yml, 'max-len: off  # later', 'max-len: warn  # later'), 0, 'a trailing comment kept');
-    assert.strictEqual(edit(yml, '  no-console: warn', '  no-console: off'), 2, 'YAML lowered');
-    assert.strictEqual(edit(yml, 'quotes: [warn, single]', 'quotes: [error, double]'), 2, 'YAML option changed beside it');
-    assert.strictEqual(edit(yml, '  node: true', '  node: false'), 2, 'a line outside rules');
-    assert.strictEqual(edit(at('.prettierrc.json', '{"semi":false}\n'), 'false', 'true'), 2, 'another whole-file config keeps the block');
-  });
-});
-
-test('guard-config-protection: comments, MSBuild attributes, wrappers, carried scripts and whole-file replaces (audit 2026-10-08)', () => {
-  const H = 'guard-config-protection.js';
-  const { root, at } = cfgProject('cfg-audit-');
-  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
-  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
-  const sh = (command, tool = 'Bash', cwd = root) => run(H, { tool_name: tool, cwd, tool_input: { command } });
-  withProject(root, {}, () => {
-    const ts = at('tsconfig.json', '{\n  "$schema": "https://json.schemastore.org/tsconfig",\n  "compilerOptions": {\n    "strict": true,\n    "paths": {}\n  }\n}\n');
-    assert.strictEqual(edit(ts, '"strict": true', '// "strict": true'), 2, 'commenting a strictness key out removes it');
-    assert.strictEqual(edit(ts, '"strict": true', '/* "strict": true */'), 2, '... in a block comment too');
-    assert.strictEqual(write(ts, '{"$schema":"https://json.schemastore.org/tsconfig","compilerOptions":{"strict":false}}'), 2, 'a URL is no comment start');
-    assert.strictEqual(edit(ts, '"paths": {}', '"paths": {} // the app aliases'), 0, 'a comment beside an unrelated key is open');
-    assert.strictEqual(edit(ts, '"paths": {}', '"paths": {}, "noFallthroughCasesInSwitch": false'), 2, 'a tsconfig key the list lacked');
-    const proj = at('src/App/App.csproj', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>');
-    assert.strictEqual(edit(proj, '<TreatWarningsAsErrors>', '<TreatWarningsAsErrors Condition="false">'), 2, 'a Condition switches it off');
-    assert.strictEqual(edit(proj, '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', '<!-- <TreatWarningsAsErrors>true</TreatWarningsAsErrors> -->'), 2, 'an XML comment removes it');
-    at('.eslintrc.json', '{}');
-    at('.eslintignore', 'dist/\n');
-    fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
-    assert.strictEqual(sh("echo '{}' | sudo tee .eslintrc.json"), 2, 'tee behind sudo');
-    assert.strictEqual(sh("bash -c 'rm .eslintrc.json'"), 2, 'a carried script');
-    assert.strictEqual(sh('cd sub && rm ../.eslintrc.json'), 2, 'after a cd');
-    assert.strictEqual(sh("echo '{}' > tsconfig.json"), 2, 'a whole-file replace of a keyed file holding a strictness key');
-    assert.strictEqual(sh('echo src/ >> .eslintignore'), 2, 'an ignore file takes a path out of the check');
-    assert.strictEqual(sh('Set-Content -Path .\\.eslintrc.json -Value "{}"', 'PowerShell'), 2, 'PowerShell .\\ on a POSIX host');
-    assert.strictEqual(sh("echo '{}' > other.json && cat tsconfig.json"), 0, 'a read of the keyed file passes');
-    const plain = at('tsconfig.build.json', '{ "include": ["src"] }');
-    assert.strictEqual(sh(`echo '{}' > ${path.basename(plain)}`), 0, 'replacing a keyed file that holds no strictness key passes');
-    // audit 2026-10-20 (hooks minor list): an `extends` names the base the strictness comes from, so dropping it is judged
-    at('tsconfig.lib.json', '{ "extends": "./tsconfig.json" }');
-    assert.strictEqual(sh("echo '{}' > tsconfig.lib.json"), 2, 'replacing one that extends a base drops the base');
-    assert.strictEqual(run(H, { tool_name: 'Monitor', cwd: root, tool_input: { command: 'rm .eslintrc.json' } }), 2, 'Monitor');
-    assert.strictEqual(run(H, { tool_name: 'NotebookEdit', cwd: root, tool_input: { notebook_path: path.join(root, '.eslintrc.json'), new_source: '{}' } }), 2, 'NotebookEdit');
-    // The same file through the real path of a symlinked root is inside the project.
-    const link = `${root}-link`;
-    fs.symlinkSync(root, link);
-    try { assert.strictEqual(withProject(link, {}, () => write(path.join(root, '.eslintrc.json'), '{"x":1}')), 2, 'a realpath spelling is inside'); }
-    finally { fs.unlinkSync(link); }
-  });
-});
-
-test('guard-config-protection: the denial routes a wanted change through ONE ask and the receipt', () => {
-  const { root, at } = cfgProject('cfg-msg-');
-  const file = at('.editorconfig', 'root = true');
-  const r = withProject(root, {}, () => spawnSync(process.execPath, [path.join(HOOKS, 'guard-config-protection.js')],
-    { input: JSON.stringify({ tool_name: 'Write', cwd: root, tool_input: { file_path: file, content: '' } }), encoding: 'utf8' }));
-  assert.strictEqual(r.status, 2);
-  assert.match(r.stderr, /Blocked: \.editorconfig already exists/);
-  assert.match(r.stderr, /ONE AskUserQuestion/);
-  assert.match(r.stderr, /\.alfred\/state\/approvals\/CONFIG-EDIT-ALLOW/);
-  // the denial names the mandate it mechanizes, so the next maintainer (and the model) can read why
-  assert.match(r.stderr, /habits-done-gate/);
 });
 
 test('guard-config-protection: a block writes one ledger row naming the hook', () => {
-  const { root } = cfgProject('cfg-led-');
-  fs.writeFileSync(path.join(root, '.editorconfig'), 'root = true');
+  const { root, at } = cfgProject('cfg-led-');
+  const settings = at('.claude/settings.json', '{}');
   withProject(root, {}, () => {
-    run('guard-config-protection.js', { session_id: 's1', tool_name: 'Write', cwd: root, tool_input: { file_path: path.join(root, '.editorconfig'), content: '' } });
+    run('guard-config-protection.js', { session_id: 's1', tool_name: 'Write', cwd: root, tool_input: { file_path: settings, content: '{ "disableAllHooks": true }' } });
     const rows = fs.readFileSync(path.join(root, '.alfred/statistics/hook-blocks/s1.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].hook, 'guard-config-protection.js');
-    assert.deepStrictEqual(rows[0].detail, { file: '.editorconfig', why: 'it is a lint / format / analyzer config' });
+    assert.deepStrictEqual(rows[0].detail, { branch: 'guard-off', file: '.claude/settings.json', guards: [], all: true });
   });
 });
 
@@ -5215,30 +4962,6 @@ test('askAnsweredSince: only an ask\'s own answer counts - not a printed file, n
   assert.equal(at([res('No response after 60s — the user may be away from keyboard. Proceed using your best judgment.\nBefore going idle the user had selected: "Go?"="Yes".')]), false, 'an idle timeout');
   assert.equal(at([res('Your questions have been answered: "Go?"="Yes".', { toolUseResult: { answers: { 'Go?': 'Yes' }, afkTimeoutMs: 60000 } })]), false, 'a row whose result carries afkTimeoutMs');
   eng.use({});
-});
-
-// Audit 2026-10-20 (hooks minor list): the analyzer switches are keyed; a keyword-less in-place edit is judged by the
-// pairs it leaves; a tsconfig `extends` / `exclude` change is judged like a key.
-test('guard-config-protection: analyzer switches, a keyword-less sed -i and tsconfig extends / exclude', () => {
-  const H = 'guard-config-protection.js';
-  const { root, at } = cfgProject('cfg-h2m-');
-  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
-  const sh = (command) => run(H, { tool_name: 'Bash', cwd: root, tool_input: { command } });
-  withProject(root, {}, () => {
-    const proj = at('Directory.Build.props', '<Project><PropertyGroup>\n<RunAnalyzers>true</RunAnalyzers>\n<EnableNETAnalyzers>true</EnableNETAnalyzers>\n<Version>1.0.0</Version>\n</PropertyGroup></Project>\n');
-    assert.strictEqual(edit(proj, '<RunAnalyzers>true</RunAnalyzers>', '<RunAnalyzers>false</RunAnalyzers>'), 2, 'RunAnalyzers switched off');
-    assert.strictEqual(edit(proj, '<EnableNETAnalyzers>true', '<EnableNETAnalyzers>false'), 2, 'EnableNETAnalyzers switched off');
-    assert.strictEqual(sh("sed -i '' '3s/true/false/' Directory.Build.props"), 2, 'a keyword-less addressed sed flips a keyed line');
-    assert.strictEqual(sh("sed -i '' 's/true/false/' Directory.Build.props"), 2, 'an unaddressed one too');
-    assert.strictEqual(sh("sed -i '' '4s/1.0.0/1.1.0/' Directory.Build.props"), 0, 'a version bump leaves every pair');
-    assert.strictEqual(sh("sed -i '' 's/<Version>1.0.0/<Version>2.0.0/' Directory.Build.props"), 0, 'by pattern too');
-    assert.strictEqual(sh("sed -i '' '/Version/s/1/2/g' Directory.Build.props"), 0, 'a regex address on another line');
-    const ts = at('tsconfig.json', '{\n  "extends": "./tsconfig.strict.json",\n  "exclude": ["dist"],\n  "compilerOptions": { "outDir": "dist" }\n}\n');
-    assert.strictEqual(edit(ts, './tsconfig.strict.json', './tsconfig.loose.json'), 2, 'extends moved to another base');
-    assert.strictEqual(edit(ts, '["dist"]', '["dist", "src/legacy"]'), 2, 'exclude grew');
-    assert.strictEqual(edit(ts, '["dist"]', '[ "dist" ]'), 0, 'whitespace inside the array is no change');
-    assert.strictEqual(edit(ts, '"outDir": "dist"', '"outDir": "build"'), 0, 'another key stays open');
-  });
 });
 
 // Audit 2026-10-20 (hooks minor list): PowerShell's backslash paths reach the reader as `/` (`..\sib\x` passed on a POSIX
@@ -5944,97 +5667,6 @@ test('audit 2026-10-30 HK-13, HK-14: every $HOME spelling and the other write ve
   allows(`[IO.File]::ReadAllText('${sib}/f.txt')`, 'HK-14 twin on the PowerShell tool', { tool: 'PowerShell' });
 });
 
-test('audit 2026-10-30 HK-18: a runtime write, git restoring or removing verbs, dd, patch and a shadowing config reach the config guard', () => {
-  const { dir, git } = hkProject('hk-cfg');
-  const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
-  const ts = (strict, paths) => JSON.stringify({ compilerOptions: { strict, paths } }, null, 2) + '\n';
-  put('tsconfig.json', ts(false, {}));
-  put('tsconfig.app.json', ts(true, { a: ['b'] }));
-  put('.eslintrc.json', '{ "rules": { "no-console": "error" } }\n');
-  put('.prettierrc', '{ "semi": true }\n');
-  put('package.json', JSON.stringify({ name: 'x', version: '1.0.0', stylelint: { rules: {} } }, null, 2) + '\n');
-  put('Directory.Build.props', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>\n');
-  put('src/a.ts', 'export const a = 1;\n');
-  put('fix.diff', '--- a/tsconfig.json\n+++ b/tsconfig.json\n@@ -1,3 +1,3 @@\n {\n   "compilerOptions": {\n-    "strict": true,\n+    "strict": false,\n');
-  put('paths.diff', '--- a/tsconfig.app.json\n+++ b/tsconfig.app.json\n@@ -2,2 +2,2 @@\n-    "paths": {"a": ["b"]}\n+    "paths": {}\n');
-  git('add', '-A'); git('commit', '-qm', 'configs v1');
-  put('tsconfig.json', ts(true, {}));
-  put('tsconfig.app.json', ts(true, {}));
-  put('.eslintrc.json', '{ "rules": { "no-console": "error", "eqeqeq": "error" } }\n');
-  git('add', '-A'); git('commit', '-qm', 'configs v2');
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
-  const cfgIn = (payload) => runIn('guard-config-protection.js', { cwd: dir, ...payload }, { cwd: dir, env });
-  const sh = (command) => cfgIn({ tool_name: 'Bash', tool_input: { command } });
-  const write = (rel, content) => cfgIn({ tool_name: 'Write', tool_input: { file_path: path.join(dir, rel), content } });
-  const edit = (rel, old_string, new_string) => cfgIn({ tool_name: 'Edit', tool_input: { file_path: path.join(dir, rel), old_string, new_string } });
-  const blocked = (r, why) => assert.equal(r.status, 2, `must block (${why})\n${r.stderr}`);
-  const passed = (r, why) => assert.equal(r.status, 0, `must allow (${why})\n${r.stderr}`);
-  // route gaps
-  for (const c of [
-    `node -e "require('fs').writeFileSync('tsconfig.json','{}')"`,
-    `python3 -c "open('tsconfig.json','w').write('{}')"`,
-    `python3 - <<'EOF'\nopen('Directory.Build.props', 'w').write('<Project/>')\nEOF`,
-    'git checkout HEAD~1 -- tsconfig.json',
-    'git checkout HEAD~1 .eslintrc.json',
-    'git restore --source HEAD~1 tsconfig.json',
-    'git restore -s HEAD~1 -- .eslintrc.json',
-    'git rm .eslintrc.json',
-    'git rm -q --cached tsconfig.json',
-    'git mv .eslintrc.json old.json',
-    'git mv tsconfig.json tsconfig.old.json',
-    'dd if=/dev/null of=tsconfig.json',
-    'patch tsconfig.json fix.diff',
-    'patch -p1 < fix.diff',
-    'patch -p1 -i fix.diff',
-    'git apply fix.diff',
-  ]) blocked(sh(c), `HK-18: ${c}`);
-  for (const c of [
-    `node -e "require('fs').writeFileSync('notes.json','{}')"`,
-    'git checkout HEAD~1 -- tsconfig.app.json',
-    'git checkout HEAD -- .eslintrc.json',
-    'git checkout -- .eslintrc.json',
-    'git restore --staged .eslintrc.json',
-    'git checkout HEAD~1 -- src/a.ts',
-    'git rm src/a.ts',
-    'git mv src/a.ts src/b.ts',
-    'dd if=tsconfig.json of=/dev/null',
-    'patch -p1 < paths.diff',
-    'git apply --check fix.diff',
-  ]) passed(sh(c), `HK-18 twin: ${c}`);
-  // shadowing: a new config whose precedence beats an existing one is an edit of it (the user's ruling)
-  blocked(write('eslint.config.js', 'export default [];\n'), 'a flat config beside .eslintrc.json');
-  blocked(write('src/.eslintrc.json', '{ "rules": {} }\n'), 'a nested eslint config');
-  blocked(write('.eslintignore', '**/*\n'), 'a new eslint ignore file');
-  blocked(write('src/.prettierrc', '{ "semi": false }\n'), 'a nearer prettier config');
-  blocked(write('sub/Directory.Build.props', '<Project/>\n'), 'a nearer Directory.Build.props');
-  blocked(sh(`echo 'export default []' > eslint.config.js`), 'a flat config written by the shell');
-  blocked(edit('package.json', '"name": "x"', '"name": "x",\n  "prettier": { "semi": false }'), 'a package.json prettier key beats .prettierrc');
-  blocked(edit('package.json', '"stylelint": {\n    "rules": {}\n  }', '"stylelint": {\n    "rules": {},\n    "ignoreFiles": ["**/*"]\n  }'), 'a changed stylelint key in package.json');
-  passed(write('.prettierrc.toml', 'semi = false\n'), 'a lower-precedence prettier file in the same folder is never read');
-  blocked(write('.stylelintrc.json', '{}\n'), 'stylelint states no order among its files, so a second one in the folder may win');
-  passed(write('biome.json', '{}\n'), 'a first biome config shadows nothing');
-  passed(write('src/tsconfig.json', '{}\n'), 'a nested tsconfig is a new project, not a shadow');
-  passed(write('docs/notes.json', '{}\n'), 'no config at all');
-  passed(edit('package.json', '"version": "1.0.0"', '"version": "1.0.1"'), 'a package.json edit away from its config keys');
-  passed(edit('package.json', '"name": "x"', '"name": "x",\n  "eslintConfig": { "rules": {} }'), 'eslintConfig in package.json ranks below .eslintrc.json');
-});
-
-test('guard-config-protection: a NEW shadowing config under a differently spelled root is still inside the project (the 3.6.0 windows-2025 job)', { skip: process.platform === 'win32' && 'symlinks need privileges' }, () => {
-  // An 8.3 short name (RUNNER~1) spells the root one way, its native real path another; a file that does not exist yet
-  // cannot be resolved, so its spelling stayed short while the root's went long and the file read as outside the project.
-  const { root, at } = cfgProject('cfg-new-');
-  at('.eslintrc.json', '{ "rules": {} }\n');
-  const link = `${root}-link`;
-  fs.symlinkSync(root, link);
-  try {
-    const payload = (file) => ({ tool_name: 'Write', cwd: link, tool_input: { file_path: file, content: 'export default [];\n' } });
-    const run1 = (file) => withProject(link, {}, () => spawnSync(process.execPath, [path.join(HOOKS, 'guard-config-protection.js')],
-      { input: JSON.stringify(payload(file)), encoding: 'utf8' }));
-    assert.equal(run1(path.join(link, 'eslint.config.js')).status, 2, 'a new flat config through the link shadows .eslintrc.json');
-    assert.equal(run1(path.join(link, 'notes.json')).status, 0, 'a new file that shadows nothing passes');
-  } finally { fs.unlinkSync(link); }
-});
-
 test('audit 2026-10-30 HK-17: a runtime spawning git commit, update-ref on a branch and rebase --exec commit are commits', () => {
   const dir = cleanRepo();
   for (const f of ['n1.txt', 'n2.txt', 'n3.txt']) fs.writeFileSync(path.join(dir, f), forty());
@@ -6216,7 +5848,7 @@ test('audit 2026-10-30 HK-03: a seat\'s denial is anchored at its time in the se
   assert.equal(readAs({ agent_id: 'seat2' }).status, 0, 'a seat with no denial of its own: the main transcript\'s anchor');
 });
 
-test('audit 2026-10-30 HK-03 / HK-16: DISCARD, CROSS-WRITE and DESKTOP-EXEC are this session\'s and the user\'s; CONFIG-EDIT this session\'s; each denial prints the lines', () => {
+test('audit 2026-10-30 HK-03 / HK-16: DISCARD, CROSS-WRITE and DESKTOP-EXEC are this session\'s and the user\'s; each denial prints the lines', () => {
   let k = 0;
   const session = (dir, rows) => { const tp = rcFile(path.join(dir, 'sessions', `s${++k}.jsonl`), rows); pause(5); return tp; };
   // DISCARD-ALLOW: the rm guard's git half
@@ -6282,25 +5914,6 @@ test('audit 2026-10-30 HK-03 / HK-16: DISCARD, CROSS-WRITE and DESKTOP-EXEC are 
     stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'Shell\n');
     assert.equal(shell(session(root, [rc.typed('list it'), rc.denial('DESKTOP-EXEC-ALLOW', 'mcp__my-mac__Shell'), rc.answer('Allow the desktop Shell this session')])).status, 2,
       'HK-16: a receipt naming no session');
-  }
-  // CONFIG-EDIT-ALLOW: a workflow gate - its session line binds it, no answer is read
-  {
-    const { root, at } = cfgProject('rc-cfg-');
-    const eslint = at('.eslintrc.json', '{ "rules": { "no-console": "error" } }');
-    const env = { ...process.env, CLAUDE_PROJECT_DIR: root };
-    const edit = (tp, sid = RC) => runIn('guard-config-protection.js', { tool_name: 'Write', tool_input: { file_path: eslint, content: '{}' }, session_id: sid, transcript_path: tp, cwd: root }, { env });
-    const tp = session(root, [rc.typed('the lint rule is wrong, relax it')]);
-    const denied = edit(tp);
-    assert.equal(denied.status, 2);
-    assert.ok(denied.stderr.includes(`  session: ${RC}\n  .eslintrc.json\n`), `HK-16: the denial prints the exact lines\n${denied.stderr}`);
-    stateReceipt(root, 'CONFIG-EDIT-ALLOW', `session: ${RC}\n.eslintrc.json\n`);
-    assert.equal(edit(tp).status, 0, 'its own session line opens it - no answer binding for a workflow gate');
-    stateReceipt(root, 'CONFIG-EDIT-ALLOW', 'session: other\n.eslintrc.json\n');
-    assert.match(edit(tp).stderr, /names another session/, 'HK-16: another session\'s receipt, and the denial says why');
-    stateReceipt(root, 'CONFIG-EDIT-ALLOW', '.eslintrc.json\n');
-    assert.equal(edit(tp).status, 2, 'HK-16: a receipt naming no session, for a call naming one');
-    assert.equal(runIn('guard-config-protection.js', { tool_name: 'Write', tool_input: { file_path: eslint, content: '{}' }, transcript_path: tp, cwd: root }, { env }).status, 0,
-      'a payload with no session id keeps the time rule');
   }
 });
 

@@ -182,8 +182,7 @@ test('row 12: the stamp, loop-twin, quality-capture, coverage and size-row clust
     const rules = JSON.parse(read('meta/shared-rules.json')).rules;
     const ids = ['approval-stamp-shape', 'approval-stamp-refused', 'approval-stamp-auto-carve-out', 'ask-idle-timeout-no-answer',
         'no-stops-waiver-solve-flows', 'no-stops-points-to-auto-mode', 'loop-substantial-steps', 'loop-round-cap',
-        'testing-coverage-mechanics', 'quality-capture-run-gate-and-receipt', 'size-first-trivial-row', 'dotnet-floor-line',
-        'config-protection-allow-ask'];
+        'testing-coverage-mechanics', 'quality-capture-run-gate-and-receipt', 'size-first-trivial-row', 'dotnet-floor-line'];
     const sub = {};
     for (const id of ids) { assert.ok(rules[id], `${id} is registered`); sub[id] = rules[id]; }
     assert.deepStrictEqual(lintSharedRules({ rules: sub }, read), []);
@@ -204,9 +203,7 @@ test('row 13: the named prose stops are ask templates, each marking one option f
         'capture-quality/references/architecture-quality.md': /- 'Verify and rewrite at this HEAD \(Recommended\)'/,
         'capture-quality/references/code-quality.md': /Judge <the modules> through the code-quality-analyzer seats or in this session\?/,
         'dotnet-windows-service/SKILL.md': /- 'Hand the script over \(Recommended\)'/,
-        'dotnet-code-quality/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
-        'dotnet-project-setup/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
-        'typescript/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
+        // the three config-protection allowance asks left with the lint-config judge (complexity stage 1 B11)
     };
     for (const [rel, re] of Object.entries(want))
     {

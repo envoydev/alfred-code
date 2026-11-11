@@ -226,19 +226,25 @@ test('I43: prepared statements behind a transaction pooler follow the pooler, no
     }
 });
 
-// I44 - the config-protection guard blocks the Nullable edit the setup skill prescribes.
-test('I44: dotnet-project-setup names the config-protection gate, pinned with typescript', () =>
+// Complexity stage 1 B11: the lint-config judge and its CONFIG-EDIT-ALLOW receipt are gone, so no shipped skill
+// sends the model to write the receipt and no shared-rules entry pins that prose.
+test('stage 1 B11: no shipped skill names CONFIG-EDIT-ALLOW', () =>
+{
+    for (const file of skillFiles(() => true))
+        assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /CONFIG-EDIT-ALLOW/, path.relative(ROOT, file));
+    const ids = Object.keys(shared()).filter((id) => id.startsWith('config-protection-'));
+    assert.deepStrictEqual(ids, [], 'no config-protection- entry in meta/shared-rules.json');
+});
+
+// I44 - the setup skill's Nullable loosening. The config-protection guard that blocked it left in complexity stage 1
+// (B11), so the skills name no gate: a loosening to go green is no fix, in the setup skill and typescript alike.
+test('I44: dotnet-project-setup says a Nullable loosening is no fix, and no skill names the config-protection gate', () =>
 {
     const text = squash(read('stack/skills/dotnet-project-setup/SKILL.md'));
-    assert.match(text, /Where the house config-protection guard runs, it blocks a change that loosens `Nullable`/);
-    // audit 2026-10-14 SKD-04: a pure MSBuild tightening passes the guard since audit 2026-10-11 SD16, so neither .NET
-    // skill says a tightening is blocked for an MSBuild key; the .editorconfig half (whole-file) still is
-    assert.match(text, /a pure tightening \(`Nullable` toward `enable`/);
-    const quality = squash(read('stack/skills/dotnet-code-quality/SKILL.md'));
-    assert.match(quality, /it blocks a change that loosens `WarningsAsErrors`/);
-    assert.match(quality, /any edit to an existing `\.editorconfig` - a tightening included -/);
-    assert.match(text, /never route around the block/);
-    assertPinned(['stack/skills/typescript/SKILL.md', 'stack/skills/dotnet-project-setup/SKILL.md', 'stack/skills/dotnet-code-quality/SKILL.md'], 'stack/skills/typescript/SKILL.md');
+    assert.match(text, /loosening `Nullable` or a warning key \(`TreatWarningsAsErrors`, `NoWarn`, \.\.\.\) to turn a red build green is no fix: fix the code/);
+    assert.match(squash(read('stack/skills/typescript/SKILL.md')), /never by removing or loosening a strictness key/);
+    for (const rel of ['stack/skills/dotnet-project-setup/SKILL.md', 'stack/skills/dotnet-code-quality/SKILL.md', 'stack/skills/typescript/SKILL.md', 'stack/skills/nx/SKILL.md'])
+        assert.doesNotMatch(read(rel), /config-protection/, rel);
 });
 
 // audit 2026-10-14 SKS01 - npm 12 blocks dependency install scripts behind the root `allowScripts` policy

@@ -234,7 +234,6 @@ test('copy route: the ledger keeps the dispatcher wiring this run wrote', () => 
 test('each guard\'s block reaches the combined answer, with its own ledger row', () => {
   const dir = project();
   const other = fs.mkdtempSync(path.join(TMP, 'other-'));
-  fs.writeFileSync(path.join(dir, 'eslint.config.js'), 'export default [];\n');
   const FAKE_JWT = ['eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0', 'SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'].join('.');
   const cases = [
     ['guard-protected-force-push', 'git push --force origin main'],
@@ -242,7 +241,7 @@ test('each guard\'s block reaches the combined answer, with its own ledger row',
     ['guard-read-whole-file', `cat ${BIG}`],
     ['guard-secret-value', `curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`],
     ['guard-ungated-commit', 'git commit -am "wip"'],
-    ['guard-config-protection', 'echo "export default [{}];" > eslint.config.js'],
+    ['guard-config-protection', `echo '{"disableAllHooks": true}' > .claude/settings.local.json`], // stage 1 B11: its switch-off half
     ['guard-cross-project-write', `echo x > ${path.join(other, 'f.txt')}`],
   ];
   const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
@@ -541,12 +540,11 @@ test('file-guards: the core entry launches ONE process per file-tool call, with 
 test('file-guards: each guard\'s block reaches the combined answer through the dispatcher, with its own ledger row', () => {
   const dir = project();
   const other = fs.mkdtempSync(path.join(TMP, 'fg-other-'));
-  fs.writeFileSync(path.join(dir, 'eslint.config.js'), 'export default [];\n');
   fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }, null, 2));
   const cases = [
     ['guard-read-whole-file', 'Read', { file_path: BIG }],
     ['guard-secret-value', 'Read', { file_path: path.join(dir, 'settings.local.json') }],
-    ['guard-config-protection', 'Edit', { file_path: path.join(dir, 'eslint.config.js'), old_string: '[]', new_string: '[{}]' }],
+    ['guard-config-protection', 'Write', { file_path: path.join(dir, '.claude', 'settings.local.json'), content: '{ "disableAllHooks": true }' }], // stage 1 B11: its switch-off half
     ['guard-cross-project-write', 'Write', { file_path: path.join(other, 'f.txt'), content: 'x' }],
   ];
   const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };

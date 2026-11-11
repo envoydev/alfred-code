@@ -337,7 +337,7 @@
     "entry": "guard-config-protection"
    },
    "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the lint and format config guard is `guard-config-protection` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
-   "then": "nothing - add `guard-config-protection` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
+   "then": "nothing - the lint and format config check was removed in complexity stage 1, so the `guard-config-protection` entry switches nothing off; the guard switch-off refusal holds with or without it"
   },
   {
    "id": "memory-db-retired",
