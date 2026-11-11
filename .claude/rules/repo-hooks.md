@@ -439,7 +439,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     leading `cd` moves the anchor; a runtime script (`node -e`, `python3 -c`, one fed through a heredoc or here-string)
     is not read - complexity stage 1 A5 removed the print analyser that judged what it PRINTS (2.1.6 K2), whose one real
     fire was a print the host caps at 30,000 characters of Bash output. A heredoc body is its program's script only when that program takes its script from stdin
-    (`stdinIsScript`, one walker in both guards, `heredoc-stdin-script` in shared-rules.json): each option word is read
+    (`stdinIsScript`; the secret guard's copy left with its shell judging in swap 1): each option word is read
     the way that interpreter's own parser reads it (a `STDIN_FLAGS` row for the shells, node, python, ruby, perl and
     php), so a script file named, or a script handed as `-c` / `-e` / `-m` / php's `-r`, makes the body input data;
     an option's value, bundled or the next word, is never a script file (`bash -euo pipefail`, `--rcfile x`, `node
@@ -495,9 +495,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     budget of `hook-prelude.js` `SCAN_LIMITS` (8MB of text, 3 script levels, 48 judged git calls) that the shared reader spends.
     Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
     on any machine: each judging step charges the characters it reads, the thresholds at the top of each guard
-    (`JUDGE_MAX_WORK`, 20x the costliest of 54,503 recorded commands; the secret guard's `JUDGE_MAX_DEPTH`). A test holds each
-    40,000-character pathological shape to linear work in both guards, and a command past the work budget is blocked
-    while code nested past the secret guard's depth cap is read as printing what it read (it blocks it) - never let
+    (`JUDGE_MAX_WORK`, 20x the costliest of 54,503 recorded commands; the secret guard's own budget and depth cap left
+    with its shell judging in swap 1). A test holds each 40,000-character pathological shape to linear work, and a
+    command past the work budget is blocked - never let
     through; nothing stops reading silently at a count; a shell heredoc nested past three levels is out of budget and
     blocks (audit 2026-10-08: five `bash <<EOF` levels passed). The audit 2026-10-08 route fixes: a pipe into a filter
     exempts a segment only when the filter bounds it - an identity filter (`grep ""`, `awk 1`, wholeFiles' rules) or a
@@ -543,11 +543,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     2026-10-30 HK-26; `read_media_file` returns any file as base64, E-batch O2 - one more node start on those calls only;
     the browser `browser_file_upload` route of audit 2026-10-14 PL3 went in complexity stage 1, A1: it never fired, and
     no browser server ships) - credentials are read for PRESENCE, never
-    value. A leading `NAME=value` word and every `$(...)` / backtick body are judged as commands of their own, quote-
-    and nesting-aware (audit 2026-10-20 C17: the source protocol's own `MARK="...$(printf ... | ...)"` read as a
-    changing step); a count or a facts-only print (a length, a boolean, a type, a label) runs as written, never one routed
-    to stderr, a throw or an assert; a store name built from literals the same command assigned is masked or refused like
-    the spelled name (a concatenated name was used to dodge a refusal). Judged by file CONTENT (a JSON, dotenv, INI - `~/.aws/credentials`, `~/.pypirc`, a `[section]` file,
+    value. Judged by file CONTENT (a JSON, dotenv, INI - `~/.aws/credentials`, `~/.pypirc`, a `[section]` file,
     `~/.npmrc` - netrc or URL-per-line (`~/.git-credentials`) file holding a `secret_key_pattern` key with a live
     value; a key that names a key, `signingkey` or `publicKeyToken`, holds none, nor does a field named exactly `key` unless
     its value is credential-shaped (a Confluence `space.key` of `SD`, a Jira `customfield_10010` - 2.1.7), and neither does a file path, a switch
@@ -564,19 +560,46 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     space pairs, a JSON credential keyed by its host (composer's `auth.json`), a private key file (PEM, OpenSSH,
     PuTTY, GnuPG), a token file and a binary key store (`.p12`, `.jks`, `.kdbx`), judged by its kind; a file's key
     also reads `pass`, `client-key-data` and a camelCase `userPass` / `userPWD`, which a variable name does not.
-    The redacted view and the git stream masker mask what the reader judged, where it stands; a stream with no header
+    The redacted view and the masker's line pass mask what the reader judged, where it stands; a stream with no header
     naming the file (`git show <rev>:<path>`) reads the generic pairs only, never an HCL attribute. A file past 512KB
     (`MAX_BYTES`) is judged by its first 512KB - a JSON cut there by its `"key": "value"` pairs - on every route, the
     Grep walk included, and a Read naming `offset` / `limit` by the lines it asks for (64KB chunks, up to 64MB in; audit
     2026-10-30 HK-07: a 600KB dotenv and a 910KB `terraform.tfstate` passed whole); a credential past the head of a file
-    printed whole is a stated ceiling, and its dump's view is a note naming `--presence`. A UTF-16 file
-    (either byte order) is judged by its decoded content, and a file printed under another verb's name is a dump too
-    (`dd if=`, `iconv`, curl `file://`, vim's print, a copy onto `/dev/stdout`, sqlite3's `readfile()`, php's
-    `file_get_contents` / `getenv`, and every verb of shell-writes.js's one print table - `shuf`, `vis`, `join`, a
-    compressor's `-c` (a level cluster such as `-9c` read as flags by the table's `levels`, final review FB), whose view goes through the same compressor so a decompressor after it reads text; audit 2026-10-30
-    HK-06), a bare name after a `cd` resolved against the `cd` target.
-    Every shell text is judged as bash hands each word on: an unquoted backslash before an ordinary character is dropped before the path and verb tests (`shellUnescape`; final review 2026-10-30 FC: `cat .e\nv`, `cat \.env`, `c\at .env` read the file raw, the runner's line too), one before a blank, an operator, a quote, `$`, a glob or `~` stays, quoted text is untouched, a bare Windows path on Windows keeps its backslashes, and a splice keeps the other steps as written; on Windows the text is also judged AS WRITTEN, first, and so is the env / git staging - a relative `.claude\settings.json`, `..\x\.env` or `file://C:\x\.env` means the separator there (the 2026-10-30 gate's Windows leg: four guard cases passed unread). On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
-    `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
+    printed whole is a stated ceiling, and `--redacted` of one is a note naming `--presence`. A UTF-16 file
+    (either byte order) is judged by its decoded content.
+    THE SHELL ROUTE (swap 1 of the complexity audit, Task 2, 2026-11-11): nothing is judged by what a command MIGHT
+    print and nothing is rewritten - no `updatedInput` is ever written, and the dump, env, variable, git-probe,
+    walk-probe, feeder, engine and runtime-code judges left with the rewrite (about 3,000 lines of the guard). Above
+    THE FLOOR - Claude Code `2.1.322` (`MASKER_FLOOR`; the client's version is the transcript's newest `version` row,
+    `hook-prelude.js transcriptField`, compared numerically per part; no transcript, no version row, a torn last row
+    or a suffixed version is no version) - a foreground Bash call runs as written and THE OUTPUT MASKER below covers
+    what it printed. Before the run the route keeps, in order: (1) the literal check; (2) THE STORE CHECK (below);
+    (3) where no masker runs, THE DENY-ON-NAME CORE (`coreMode`: a Cursor payload - first, so no transcript is read -
+    PowerShell, Monitor, a background Bash, a client under the floor or naming no version): a command whose words name
+    a file holding a credential, the store under either name, the key file or an engine is refused whatever its verb
+    - `ls -la .env` and `cp .env.example .env` too, ruling 3's stated cost - except the guard's own `--presence` /
+    `--redacted` / `--redacted-env` / `--with-sensitive` calls, the routes every refusal prints; (4) above the floor,
+    THREE DENIES for prints no mask can cover, each naming `--presence`: a COMPARISON naming a credential file (`diff`,
+    `sdiff`, `cmp`, `git diff --no-index` - it exits non-zero when its files differ, and a failed call's output takes
+    no replacement), an ENCODER over one (`base64`, `xxd`, `od`, `hexdump`, `rev`, `fold` - its own operand, its `<`
+    redirect or an earlier stage of its own pipeline; exact-text masking cannot match what it prints), checked before
+    the third so `base64 .env && make` is told the encoder rule, and a print that is NOT ALONE (a `PRINT_VERBS` entry
+    naming one beside another file operand, or with a step after its pipeline in the same list: `cat .env && npm
+    test`). A step before the read, a filter piped after it and a wrapper (`sudo cat .env`) change nothing. The words
+    are `shell-writes.js commandWords` entries read once (`shellEntries`, no script file read) - the command's own
+    and those of each inline script a SHELL carries (`carriedScripts`, one level: `bash -c`, a heredoc or
+    here-string into a shell, `eval`, behind a wrapper; a runtime's `node -e` is never read); `namedBy` resolves
+    each entry's own argv words, an option's `=value` side, a `rev:path` word's path (`git show HEAD:.env`), the
+    word as the shared reader expands it (a name the command assigned a literal) and its `<` redirect targets -
+    64 words per command - at
+    the default anchors and where an earlier `cd` / `pushd` of the command leaves (`anchorAt`; a cd it cannot follow
+    leaves the judgement where it was). STATED CEILINGS: a filter read before another step (`grep K .env && false`)
+    is no print verb, so its failed output is only observed (the masker's `exposure` row); in core mode an inline
+    script and the environment pass raw (`node -e` reading a credential file, `env`, `echo $TOKEN`); a 65th word is
+    not read; the guard's path held in a variable (`node "$G" --presence .env`) is refused in core mode, the denial
+    printing the absolute form. A deny's block row names its branch (`core`, `compare`, `encode`, `alone`,
+    `store-carry`) and a basename, never a value. The stream mode left with the rewrite: an unknown `--` mode prints
+    the usage line and exits 2. The
     Read tool and a credential literal stay blocked - but a FETCH of a short-lived link passes the literal check (the
     user's ruling 2026-10-14, after a Jira image download's `?token=<JWT>` was refused in every session): a token in a
     link's query whose link states an hour or less (`hook-prelude.js` `shortLivedLinks` - a JWT's `exp`, and `exp - iat`
@@ -584,102 +607,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     is a fetch (curl, wget, xh, httpie, `Invoke-WebRequest` / `-RestMethod`) whose first URL carries it and no other shape
     is left once it is blanked (`withoutShortLived`). A header, a lifeless or longer token, a write, an assignment and a
     post to another host keep the block; each pass writes one `short-lived-link` probe row (host, seconds, kind, key -
-    never the token). The JWT is decoded, never verified: a forged short `exp` buys a forger nothing. The comparison verbs (`diff`, `sdiff`, `cmp`, `comm`, `rev`)
-    are judged like `cat` (I2). A git command that prints file content (`git diff`, `git show`, `git log -p`,
-    `git stash show -p`) is PROBED - the same read run as argv, no shell, 3s / 8MB, external diff, textconv, signature
-    checks and fsmonitor off (`hook-prelude.js gitSafe`), at most four probes per call - and only when its output would carry a credential, or it cannot be probed (a word the shell
-    expands, `-c` config, `--output`, an option that RUNS a program - grep's `-O` pager in any cluster or abbreviation,
-    `--ext-diff`, `--textconv`, `--show-signature`, `--submodule=diff`; audit 2026-10-20 H1, BLOCKER: the probe runs
-    before the permission prompt, and `git grep -O'touch X' key` created X), a `cd` the guard cannot follow or a changing step before it (the probe runs before
-    the command, so `git add -N . && git diff HEAD` would read the tree without the new file), a failed run, a fifth probe, a
-    repository-local `filter.*` config that a working-tree diff would run; audit 2026-10-08). A `cd` / `pushd` to ONE
-    inert word naming a directory that exists is followed, and the probe runs there (`literalCdTarget`; deep hooks review
-    2026-10-16: every `cd`, the project root's own included, piped about two thirds of 3,957 stages unprobed - a replay of
-    9,991 real commands rewrote 399 fewer, each `cd` resolving where a real shell lands); a subshell or group no longer
-    hides the dump or the walk (`(cd sub && git diff)`, `(git diff)` and `(grep -rn KEY .)` each printed a credential raw;
-    the temp-project matrix found the last two), the pipe going inside the group. Such a call
-    gets `| node <guard> --redact-stdin` where
-    it stands: a stream mode masking a credential key's value (JSON, dotenv, YAML, an INI / properties / `.npmrc` pair) in a config file the diff header
-    names, a URL password, a credential shape and a PEM body line by line, the note on stderr. A clean diff runs
-    as written - an unconditional pipe would make every read-only `git diff` ask permission. Summary forms and
-    `--quiet` / `--exit-code` are left alone (a pipe replaces git's exit status - `git diff --exit-code` prints
-    unmasked, a stated ceiling); bash family only, like the env pass. A file rewrite SPLICES the view into its own segment where
-    it can, and the other segments run as written - judged first, shell strings included (2.1.7: a consuming project's
-    sessions were refused `cat settings.json; claude plugin list`, `git check-ignore`, `cygpath` and the
-    source-protocol `$(git rev-parse ... || pwd)` as dropped steps). Only what the rewrite really drops counts: the
-    read's other pipe stages, or the whole command when no splice is possible (and every variable rewrite), so one
-    carrying a CHANGING step there (an edit, a redirect, a build) is blocked instead - read-only verbs (cygpath, uname,
-    the read forms of git and `claude plugin|mcp list`) and an inline runtime that neither writes, spawns nor reaches
-    the network are no changing step, and a `$(...)` / backtick keeps its separators; and so is a
-    judged stage that itself WRITES - an in-place flag on sed / perl / ruby among its flags, gawk's
-    `-i inplace`, inline code that writes, or a runtime run on a script FILE, which the guard cannot see into
-    (pilot 3's `node -e ...writeFileSync` and `perl -0pi` came back as the view, the edit never
-    ran); the denial names the Edit tool, which changes the file without printing it. A `sed` whose FIRST
-    flag is `-i` is never judged - an edit, not a dump - unless its script writes to a terminal stream
-    (`w /dev/stdout`), runs a command (`e`) or sits in a `-f` file; then it is judged, and blocked. A filtering
-    read (`grep`, `jq .path`, `head`) keeps its filter over the view. A recursive search (`grep -rn`, `rg`) is probed as argv
-    like the git branch (3s / 8MB) and piped through `--redact-stdin --grep` only when its output carries a credential, a clean
-    one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked - its pattern read as ripgrep writes it (a
-    leading `(?i)`, `\A` / `\z`; one JavaScript cannot compile matches every line), its walk breadth-first with dependency
-    folders (`.venv`, `vendor`, `target`, ...) last, and unjudged past 4,000 files its filters let through, 32MB or 100,000
-    entries (a stated ceiling). A find or a listing that hands its files to a reader is no longer judged before the run
-    (swap 1, 2026-11-11: the AC-2R find judge and SG1 D7's fed-listing half left; THE OUTPUT MASKER below reads what the
-    reader printed). SG1 D7's other half stays until the swap's Task 2: a runtime's path BUILT with `join` / `resolve` /
-    `joinpath` / `Path(...)`, `/` or `+` from literals (a `path` alias of `require('path')` too, a folder name bound to a
-    literal joined) is a candidate like the spelled one, its literals paired in order (`scriptLiterals`). A path-qualified verb (`./tools/grep`,
-    `bin/rg`) is never spawned - the probe runs before the permission prompt, so it would run whatever script sits there
-    (audit 2026-10-08, replayed) - and is piped unprobed, as is a walk naming a program-running option (`--pre`, `--hostname-bin`,
-    ugrep's `--filter`, `--pager`, `--view`, `-Q`, a config file; audit 2026-10-20 H1). Audit 2026-10-10 (C12): a word's inner quotes count
-    (`--include='*.cs'` is probed), `l` / `c` / `q` anywhere in a flag cluster prints no line, the `--grep` pipe exits 1 on
-    empty input (grep's status), a walk rewrite's row says `walk-stage`, and a pattern naming password / secret / token /
-    api key adds `--literals` (every quoted literal on a matched line masked but an email, a path or a dotted name). A
-    runtime's code is no shell: a string in it, or any word of a heredoc body, is globbed only when the code calls a glob
-    (`/**` in a JSDoc named a credential file 7 times), and `/**` globs `/`. `T=$(<reader>)` whose `$T` only reaches
-    another command's arguments (no print verb, runtime, `curl -v` or `set -x`) prints nothing; a grep over a credential
-    file and others searches each credential file through its own view and the others as written (`-H --label`), a
-    missing operand keeping grep's own error and a directory or an unexpandable operand named on stderr as not searched.
-    Audit 2026-10-11 SD01 (`grepArgs`): a narrowed filter never carries a recursion option, and every walk spelling -
-    `-rC2`, `-d recurse`, ugrep's `-NUM` / `--depth`, and a directory operand with no `-r`, which ugrep (the Bash tool's
-    `grep` on every OS) walks - is probed with `-r` (a kept `-rn` walked the cwd and printed the credential raw); `git grep`
-    is probed like the other git reads; a sibling step that names the file but prints none of it (`git ls-files`,
-    `check-ignore`, a non-patch `git log`, a count, an `echo`) no longer forces the whole-command rewrite; a heredoc-written
-    file is code only as the runtime's SCRIPT operand or with a code extension, never as a data argument, and the
-    dropped-steps note lists no body lines (sessions ae38c08f, 5f9fec85); a loop's `cat "$f"` becomes `--redacted "$f"` with the
-    loop and every other step kept; `--presence` prints `KEY=empty (present, no value)` for `''` / `null`. `git remote -v` / `get-url` / `show` and
-    `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A git
-    dump in a loop or branch body (`do`, `then`, `else`, a group) or run by `xargs` over a listing takes the same pipe where
-    it stands - the xargs-fed one unprobed, a condition (`if`, `while`) left as written (audit 2026-10-11, session 42951e5b:
-    the per-file `git diff --no-index -- /dev/null <file>` review read ran unmasked in a `while read` loop and behind xargs). A print
-    piped into a login that reads stdin (`--password-stdin`, `--with-token`) is a use, `${NAME:+word}` prints no value, a
-    `{...process.env}` spread is no dump, and a command whose stdout IS a token (`gh auth token`, `op read`, a keychain `-w`)
-    is a print when it ends the pipeline. PowerShell's own prints are judged too (audit 2026-10-20 H8): the env: drive through
-    Get-Content and its aliases (`gc env:X`, `type env:X`), an expandable string statement around a reference
-    (`"token: $env:X"`), cmd's `set` on either shell (`cmd /c set`, the masked listing) and .NET's file reads
-    (`[IO.File]::ReadAllText('.env')`, the redacted view). An environment dump is replaced
-    stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
-    and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked) - env's and
-    printenv's printing options too (`-0`, `-u NAME`, `--unset=NAME`, `NAME=v` with no command; `envDumpOf`, audit
-    2026-10-30 HK-05), a declaration builtin with only options (`declare -x`, `-px`, `+x`, `typeset -x`, bare `declare` /
-    `typeset` / `readonly`; final review FB - a name or an assignment declares, `-f` / `-F` list functions), the view keeping `-0`'s NUL separator, and `${!v}` prints the variable v names (one bound to a
-    literal name is judged as that name, any other is the masked listing). A `ps` with BSD `e` or `-E`, a read of
-    `/proc/<pid>/environ` and `launchctl getenv <credential name>` have no masked form and block. A
-    lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A heredoc
-    body is data (`shell-writes.js`'s blanker, its first line kept as shell) unless the command word of its stage, or
-    of one piped from it, is a runtime or a shell - a `.sh` in the name of the file it writes is neither; a runtime
-    body under a quoted tag reaches the runtime verbatim, so `$NAME` in it is text, never a path, unless the code
-    reads NAME from the environment (2.1.6 K1). A runtime body reads the environment only in its own spelling
-    (`os.environ` in Python, `process.env` in node), never through a shell stage, and a runtime's `-` is stdin with its
-    argv after it (`python3 - <file> <<'EOF'`). A `~/` string in runtime code is text - no runtime expands the tilde -
-    unless the code expands it (`expanduser`, `expand_path`, a glob, a replace) or the runtime is PowerShell. A command
-    string a runtime hands to a shell (`execSync("cat <file>")`, `os.system('env')`, Ruby or Perl backticks, `sh -c`) is
-    judged as that shell, and so is one it BUILDS from the home directory (`execSync("cat " + os.homedir() + "/...")`), a
-    shell's own `-c` string (its options read with the shell row of `STDIN_FLAGS`), `eval`, `watch`, `su -c` / `script -c`,
-    what a print stage pipes into a shell and a printed `$(...)` or backtick substitution (`echo "$(cat <file>)"`) - each
-    read past any wrapper word and that wrapper's own flags and operands (`timeout 30`, `env -u X A=1`, `nice -n 5`,
-    `sudo -u root`, `stdbuf -oL`, `ionice -c 3`, `nohup`, `time`, `command`, `exec`; env's `-S` string is the command
-    itself, and a wrapper the module lists - `doas`, `caffeinate`, `chronic`, `unbuffer`, `setsid`, `npx`, `uv run`, `xargs`, `find -exec`,
-    a here-string into a shell), ONE walker, `shell-writes.js` `commandIndex` (it also passes a body keyword, `!`, `{`, `(`), that the
-    read and rm guards walk too (2.1.6 seam review M2; a table test runs every wrapper of the module's own list through both guards).
+    never the token). The JWT is decoded, never verified: a forged short `exp` buys a forger nothing.
     THE OUTPUT MASKER (swap 1 of the complexity audit, 2026-11-11; its own `@PostToolUse:Bash` and
     `@PostToolUseFailure:Bash` rows, each a process of its own): what a Bash command PRINTED goes back to the model with
     every credential value this run can name shown as `<set (N chars)>` - `hookSpecificOutput.updatedToolOutput`, the
@@ -695,18 +623,18 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     credential verdicts only; (3) the stores (`denyStores`) and the key file at the project, the cwd, their data roots,
     the home and the account dir, every value; (4) variables named like a credential. A value under 4 characters
     (`MASK_MIN`), a placeholder and - outside a store - a sample are not masked; each value is matched in its literal and
-    its JSON-escaped spelling, longest first (`maskText`), and then the stream masker's shape pass (`lineRedactor`'s
-    search form) reads each line, so a credential file a walk reached and nobody named is masked past its `path:N:`
+    its JSON-escaped spelling, longest first (`maskText`), and then the shape pass (`lineRedactor`, one form since Task 2: a line
+    the reader leaves alone is retried past a `path:N:` prefix) reads each line, so a credential file a walk reached and nobody named is masked past its `path:N:`
     prefix. A DOTENV IS `sensitive` BY NAME since this swap (ruling 14: `.env` and `.env.*`, never a `.example` /
-    `.sample` / `.template` / `.dist` name): the masker shows every value of one a command names, and until Tasks 2 and 3
-    land, a Read of one is blocked and a dump of one is the view with every live value masked, whatever its keys; a diff
+    `.sample` / `.template` / `.dist` name): the masker shows every value of one a command names, a Read of one
+    is blocked and `--redacted` of one masks every live value, whatever its keys; a diff
     of one and a walk's line out of one take the store's rule. EXACT TEXT ONLY: an encoded, split or reversed print is not
     caught - leak protection, never a wall. Past `MASK_BUDGET_MS` (5 s from process start) `stdout` becomes `output
     withheld: the masker ran out of time` and `stderr` empty (`mask-withheld`); an image and empty output pass; a
     `tool_response` that is no object with string `stdout` and `stderr` passes with one `mask-shape` probe row; a run past
     `MASK_SLOW_MS` (1 s) writes one `mask-slow` row with its ms and the files read. A `mask` row carries the count, the
-    sources (`named`, `well-known`, `store`, `env`, `shape`), file basenames and ms - never a value (`ledgerRow`, the
-    rewrite row's writer, which now carries the actor, the call id and `host: 'cursor'` on a Cursor payload). STATED
+    sources (`named`, `well-known`, `store`, `env`, `shape`), file basenames and ms - never a value (`ledgerRow`,
+    which carries the actor, the call id and `host: 'cursor'` on a Cursor payload). STATED
     CEILINGS: a FAILED call is only observed - PostToolUseFailure takes no replacement output - so its `error` text is
     read with the credential-verdict values and a find writes one `exposure` probe row (up to 8 key names, a count, file
     basenames); a CURSOR payload (`postToolUse`, `eventIs` folding the first letter; tool `Bash` or `Shell`) is observed
@@ -714,84 +642,40 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     the carried-script judge left too: a script FILE a shell runs (`bash run.sh` holding `cat .env`) runs as written and
     its output is masked.
     The read and rm guards cut a command at a subshell's or group's parens too (`groupsAsCuts`, seam delta 1), and the read guard
-    judges a here-string into a runtime (`python3 - <<<`, `deno run - <<<`) as a heredoc body, `pwsh -Command "Get-Content f"` included (delta 3). A credential path a runtime BUILDS from `os.homedir()`,
-    `process.env.HOME` / `CLAUDE_CONFIG_DIR`, `Path.home()` or `Dir.home` is judged like the literal path, unless the
-    script assigns HOME itself first. A connection-string / URL password and a PEM
-    private key count as credentials whatever the key. The guard's path through a variable is its own read when the
-    command binds it - a literal, or a `$(...)` whose every stage is ls / find / head / tail / sort naming
-    `guard-secret-value.js` (audit 2026-10-20, the hooks track's minor list: `G=$(ls -d ~/.claude/plugins/cache/*/alfred-code/*/stack/hooks/guard-secret-value.js | tail -1); node "$G" --presence .env` was refused as an opaque script);
-    an unbound `$G` or any other binding stays one. `--presence <file> [KEY ...]` is the sanctioned
+    judges a here-string into a runtime (`python3 - <<<`, `deno run - <<<`) as a heredoc body, `pwsh -Command "Get-Content f"` included (delta 3).
+    A connection-string / URL password and a PEM
+    private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
     one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key; with no KEY it lists at
     most 200 string leaves plus a count, a credential-shaped key name masked); the guard ships only
-    in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<data root>/state/approvals/SECRET-READ-ALLOW` receipt - where the call names its session, only with a `session: <id>` line naming it, the stop contract's rotation read included (audit 2026-10-08: time alone opened it to a second session on the project), and only after the user's own answer to its denial (THE RECEIPTS above). The
-    name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
-    so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key
-    is `MKT`; as `KEY` it was blocked twice in pilot 2). A rewrite is no block but is counted: one `mode: rewrite` row
-    (tool, branch - `file`, `env`, `env-stage`, `git-stage`, `walk-stage`, `variable` - and a file's basename, never the value), which
-    the block rate skips like the probe rows (2.1.5 M17). The row carries the payload's `permissionMode` when it has one
-    (audit 2026-10-10 C09: an auto-mode classifier gave one rewritten call no verdict and stalled it 80s, 1 of 89
-    rewrites in that session) - the rate a denial-in-auto would be decided on; the dispatcher's `zsh-quote` row does too.
+    in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<data root>/state/approvals/SECRET-READ-ALLOW` receipt - where the call names its session, only with a `session: <id>` line naming it, the stop contract's rotation read included (audit 2026-10-08: time alone opened it to a second session on the project), and only after the user's own answer to its denial (THE RECEIPTS above). No rewrite
+    row is written any more: the masker's `mask` row and the probe rows are the measurements the block rate skips
+    (2.1.5 M17), each carrying the payload's `permissionMode` when it has one (audit 2026-10-10 C09: an auto-mode
+    classifier gave one rewritten call no verdict and stalled it 80s); the dispatcher's `zsh-quote` row does too.
     THE PROJECT'S SENSITIVE DATA (the user's ruling of 2026-10-13: per project, model-blind): `<data root>/.secrets`
     (`.sensitive-data` before item 3, 2026-10-25: both names read for 2.x, `.secrets` first; a `.secrets` is the store only
     where its path, as written or real, ends in `<data root>/.secrets`, so a project's own one elsewhere - nektos/act's
     default `--secret-file` - is neither masked by name nor refused by mention, `isDataRootSecrets`; both names and the data root
     in any letter case, since a case-insensitive disk opens `.ALFRED/.SECRETS` too - final review 2026-10-25 C2), a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
     `projectRootOf`; the root from `ALFRED_CODE_DATA_PATH`, relative and `..`-free, else `.alfred`). Its kind is `sensitive` by
-    NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and a dump
-    becomes the redacted view with every value masked; the stream masker reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
+    NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and
+    `--redacted` of it masks every value; the masker's line pass reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
     prefix, `git grep`'s, a diff header naming it - by the same rule, a line that is no `KEY=value` pair masked whole (audit
-    2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw), so the probe finds it
-    and the stage is piped. A shell command is refused for what it READS of the store, never for naming it (SG1 rule 1,
-    D6; `refuseSensitiveMention`'s `judgeStage`) - a `source`, a `cp`, a `git add` or an `rm` would carry the values
-    somewhere the chat can read (probed: `source` then `echo` and a `cp` then `cat` both leaked before it). An operand of
-    the steps the shell runs is refused when the dump judge's own resolver (globs, braces, list variables, a `cd`) takes it
-    to the store itself, or on an archive / `git add` / recursive copy verb to a folder holding it directly, at EVERY anchor
-    the operand exists at (2.8.0: the project dir's own `.alfred`, listed before the cwd, hid a nested cwd's store from
-    `tar cf - .alfred`; audit 2026-10-14 HK11's `source .alfred/.sens*`, `git add -f .alfred/.sens*`, `--env-file` and
-    `tar cf - .alfred | tar xOf -` resolve the same way) - and, resolvable or not, when its text names the store
-    (`.sensitive-data` anywhere, `.secrets` behind its data root - `"$(pwd)/.alfred/.secrets"`, `$R/...` - or bare in a
-    pipe a stage of which names the data root), a `NAME=value` or `@file` word's value being an operand
-    (`DOTENV_CONFIG_PATH=`, `dd if=`, curl's `-F file=@`), or when it is a substitution whose body names it. THE FEEDER
-    RULE: a stage naming the store anywhere is refused when a later stage of its pipe runs what it prints - `xargs`,
-    `parallel`, a `while read` loop, a shell reading stdin, `source /dev/stdin` (`ls -a .alfred | grep .secrets | xargs
-    cat`) - looks included. TEXT is no operand (`textPositions`): a grep, `git grep` or rg pattern and a value option's
-    value (a `-f` / `--file` value stays an operand; `grepArgs` and `rgOperands` record both), a git `-m` / `--message`
-    value on commit, merge, tag, stash and notes and a `--grep` / `-S` / `-G` value on the log family, and an `echo` /
-    `printf` word but a redirect and its target; nor is an exclusion's value. The dump judge takes a grep stage's operands
-    and `-f` values as its candidates, never its pattern (`grepCandidates`: a grep for the store's name had become the
-    store's masked view). A look passes (`sensitiveLooks`: `test`, `[`, `ls`, `stat`, `wc`, the PowerShell `Test-Path` /
-    `Get-Item` / `Get-ChildItem`; as the LAST stage of its pipe only, git's `check-ignore` / `check-attr` / `ls-files` /
-    `status`, a count-only, quiet or list grep or another `isReducer` stage), and so do a data heredoc's body and the
-    guard's own runs; a shell's `-c` string and a heredoc a shell runs are commands. RULE 4: runtime code naming the store
-    or an engine - a runtime heredoc body, a runtime's `-e` / `-c` / `-p` / `--eval` / `--print` string, an awk or sed
-    program - is refused before any rewrite, with the hint that editing text that names the file is the Edit or Write
-    tool's (`refuseRuntimeMention`; a script's `open('<path>', 'r')` is no path a resolver follows). A verb that takes a TREE whole - an archive being created, a recursive copy's source
-    (not its destination), a forced `git add` - is refused on any folder above the store too, unless the command excludes
-    the store or a folder on its way (`--exclude`, zip's `-x`, matched as globs); a tar or 7z extract and a copy into the
-    project pass (deep hooks review 2026-10-16, the user's ruling: `cp -R . x` and `rsync -a ./ x` copied it and passed).
-    Final review 2026-10-25 C1: a `find` handing what it finds to a reader (an `-exec` / `-ok` action, a pipe on, a `$(...)` around it) is refused
-    when its walk reaches the store and a `-name` / `-path` test matches the store's name, or, from the data root itself,
-    no name test narrows it; a `-maxdepth` short of the store passes. The word after a find test (`-name`, `-path`,
-    `-wholename`, `-regex`, `-lname` and their `-i` forms) is a pattern, never a path the command opens (E-batch U24:
-    `-not -path './.alfred/*'` excluding the data root was refused as naming the store). A negated test (`-not` / `!`)
-    matching the store where the find PRINTS it - the path from its start as written for a path test, the basename for a
-    name test - excludes it (AC-1, 2026-11-10): the find judge skips that store, and the feeder rule skips that operand,
-    only when it excludes the store from EVERY start reaching it, and only in a plain conjunction (`liftable`, the final
-    review's I1): no `-o` / `-or` / `,` or parentheses, one negation word before the test (`! -not -path` is no exclusion),
-    no action (`-print`, `-exec`) before it that has already handed the file on, and no `$` or backtick in its pattern.
-    A start that does not print the pattern's path (`find .alfred -not -path './.alfred/<store>'`) excludes nothing. The same day the dump half took `$(pwd)` / a backtick
-    `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
-    `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
-    path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged. Audit 2026-10-30 HK-04: `$PWD`
-    itself is where the shell stands in every spelling - a quoted piece (`"$PWD"/.env`, the shell's quote removal), an
-    assignment (`f=$PWD/.env`, `D=$PWD`), a `for` list - after a followed `cd`, a relative one moving from the payload's
-    cwd; what VARS leaves (`${PWD:?}`, `${HOME:=x}`) goes through shell-writes.js `shellVars`, never inside a verbatim body.
-    An inline script's own cwd - `process.cwd()`, `os.getcwd()`, `process.env.PWD`, `os.environ['PWD']` - is that place
-    too when it builds a path by concatenation (E-batch E1-5, HK-04's runtime half). A read-only verb spelled by a system
-    directory (`/usr/bin/grep`, `/bin/`, `/usr/local/bin/`, `/opt/homebrew/bin/`) is the bare verb; a project or temp
-    path to a verb is whatever that file is (U22). In the runner's own line a print verb is judged inside that line's own
-    stage, so `echo 'ok' && docker run -e PGPASSWORD=$DB_PASSWORD ...` prints nothing while an `echo $DB_PASSWORD` in it
-    still blocks (U23, usage audit 2026-11-03: the retry dropped the safety test before a delete).
+    2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw).
+    THE STORE CHECK (swap 1 ruling 6; `storeCarry` over the data table `STORE_CARRIERS`): the store stays model-blind
+    on every host and version. A copy, move, link, archive or `git add` NAMING it - `cp`, `ditto`, `mv`, `ln`,
+    `install`, `rsync`, `scp`, a creating `tar`, `zip`, `7z a`, `git add` - is refused, by what the operand resolves
+    to (the store under either name, the key file) or by its text (`storeNameTests`), and a verb that takes a TREE
+    whole (`-r` / `-R` / `-a` / `--recursive` / `--archive`, every creating tar and 7z, a forced `git add`) is refused
+    on any folder above the store (the owner's tree ruling of 2026-10-16: `cp -R . x` and `rsync -a ./ x` copied it
+    and passed) unless an `--exclude` value or a word of zip's `-x` list names the data root or the store - an
+    exclusion lifts the tree rule alone, never a direct naming. A glob exclusion (`--exclude '.*'`) is not read and
+    is refused; a destination (the last operand, or `-t`'s value) and an extract carry nothing; an operand is tried
+    as written and as the shared reader expands it, and a symlink is taken by its real path. A copy of the key file
+    gets its own message, naming the file and `--presence`.
+    A READ passes above the floor - `cat`, `grep`, even a `source` - since the masker shows every store value of 4+
+    characters as `<set (N chars)>`; in core mode the deny-on-name core refuses it. `mv`, `ln` and `install` are judged
+    by direct naming only, and `git -C x add` / `tar -C x -c` are not read (the honest-command rule). SG1's feeder
+    rule, find judge, runtime-mention rule, look list and text-position readers left with the shell judging.
     The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and
@@ -802,16 +686,12 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     left with them, and the line's 'type a KEY name in the browser' sentence after them - audit 2026-10-30 HK-20); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
     through its own parser, `guard-sensitive-data.test.js` holding both to one fixture.
     THE KEY FILE (SG1 D2): a companion plugin's `.mcps-secrets` (`KEY_FILE`) is `sensitive` by name - every value a
-    credential - so a Read, a Grep and a dump of it are judged like the store's; an operand that reads or moves it
-    (resolved, or its last segment split on `/`, `\`, `=` or `@`) is refused with its own message, `--presence` alone
-    (`--with-sensitive` reads only the data-root store). It is no feeder subject, and script text naming it is judged like
-    text naming `.env` (the narrow pin). THE ENGINES (R9, SG1 rule 2): `secrets-run.js` and `secret-chain.js` - the MCP
-    launcher passes a server's stdout unmasked, the chain reader returns every value raw - are refused, pointed to
-    `--with-sensitive`, when a command RUNS one (its command word, a runner's script operand or `-r` preload, a
-    substitution there), moves or copies it (`cp`, `mv`, `ln`, `install`, `rsync`) or feeds it to a runner (a `<`
-    redirect, a pipe into a runner on stdin or `source /dev/stdin`, an `xargs` / `parallel` running one, a `while read`
-    loop whose body has one), a name bound earlier in the command counting (`refuseEngineMention`); a read of its source
-    (`cat`, `sed -n`, `git diff`) runs.
+    credential - so a Read and a Grep of it are judged like the store's, the masker shows every value of it, the store
+    check refuses a copy of it and the core a command naming it (`isStoreName`); `--presence` alone reads it
+    (`--with-sensitive` reads only the data-root store). THE ENGINES (`ENGINE_NAMES`: `secrets-run`, `secret-chain`):
+    the refusal of a run, a move or a feed of one left with the shell judging (swap 1 ruling 1) - above the floor a
+    run of one is a command like any other and its output is masked; in core mode a command naming one, the word or
+    the word plus `.js` resolving to a file, is refused.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent|SendMessage`, `SubagentStart`, `SubagentStop`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without its plan's gate file (written on explicit approval or an AUTO waiver) -
     PER PLAN since 2.8.0 (spec Part 4, the user's ruling of 2026-10-20: two sessions on two plans shared one stamp): the brief

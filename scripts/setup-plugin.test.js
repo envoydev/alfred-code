@@ -1473,42 +1473,65 @@ test('configure step 1: the inventory comes from the preflight, the close is one
 
 // Audit 2026-10-11 (SD01, session 5f9fec85): configure step 10's settings read went through `jq` (absent on Git for
 // Windows, exit 127) and `--presence` (a length, never the mode), and the step's 'account: <mode>' line never appeared.
-// Both texts now name ONE reader; it must survive the secret guard's redacted view of a credential-bearing file and
-// print `unset` for an absent key or file.
-test('init\'s install phase and configure read permissions.defaultMode with the same stdin reader, and it survives the secret guard', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+// Both texts name ONE reader. Since swap 1 (2026-11-11) the secret guard rewrites nothing, and where no masker runs it
+// refuses a command whose words name a credential file - so the reader opens the file INSIDE its script: it passes on
+// every host, prints the mode and no value, and prints `unset` for an absent key or file.
+test('init\'s install phase and configure read permissions.defaultMode with the same in-script reader, and it passes the secret guard on every host', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
     const { spawnSync } = require('node:child_process');
     const os = require('node:os');
     const reader = (rel) => {
-        const m = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8').replace(/\s*\n\s*/g, ' ').match(/`(cat "<file>" \| node -e '[^']+')`/);
-        assert.ok(m, `${rel} names the stdin reader`);
+        const m = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8').replace(/\s*\n\s*/g, ' ').match(/`(node -e '[^']+')`/);
+        assert.ok(m, `${rel} names the in-script reader`);
         return m[1];
     };
     const cmd = reader('commands/configure.md');
     assert.strictEqual(reader('references/init-install.md'), cmd, 'one reader in both texts');
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-reader-')));
+    assert.match(cmd, /readFileSync\("<file>","utf8"\)/, 'the file is read inside the script');
+    for (const rel of ['commands/configure.md', 'references/init-install.md'])
+        assert.match(fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8').replace(/\s*\n\s*/g, ' '), /never as an argument or through `cat`: the secret guard refuses a credential file named as a command word on hosts it cannot mask/, `${rel} says why`);
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-reader-')));
+    const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-reader-home-')));
     try {
         const token = 'sntrys_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0';
         const f = path.join(dir, 'settings.json');
-        const read = () => {
+        const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude') };
+        const transcript = (version) => { const p = path.join(home, `t-${version}.jsonl`); fs.writeFileSync(p, JSON.stringify({ type: 'user', entrypoint: 'cli', version }) + '\n'); return p; };
+        const HOSTS = { 'above the floor': { transcript_path: transcript('2.1.322') }, 'an older Claude Code': { transcript_path: transcript('2.1.321') },
+            Cursor: { cursor_version: '2.1.0', hook_event_name: 'preToolUse' } };
+        const guard = (payload) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
+            { input: JSON.stringify({ session_id: 'suite', cwd: dir, ...payload }), encoding: 'utf8', env });
+        const before = (host, command) => guard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, ...HOSTS[host] });
+        const read = (host) => {
             const command = cmd.replace('<file>', 'settings.json');
-            const g = spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
-                { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
-            assert.notStrictEqual(g.status, 2, g.stderr);
-            let ran = command;
-            try { ran = JSON.parse(g.stdout).hookSpecificOutput.updatedInput.command || command; } catch { /* passed as written */ }
-            const r = spawnSync('sh', ['-c', ran], { cwd: dir, encoding: 'utf8' });
-            assert.ok(!`${r.stdout}${r.stderr}`.includes(token), 'no credential value printed');
-            return r.stdout;
+            const g = before(host, command);
+            assert.strictEqual(g.status, 0, `${host}: ${g.stderr}`);
+            assert.ok(!/updatedInput/.test(g.stdout), `${host}: nothing is rewritten`);
+            const r = spawnSync('sh', ['-c', command], { cwd: dir, encoding: 'utf8' });
+            // what the model gets: the run's output after the masker (above the floor), which has no value to mask here
+            const after = guard({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command },
+                tool_response: { stdout: r.stdout, stderr: r.stderr, interrupted: false, isImage: false, noOutputExpected: false } });
+            const out = after.stdout ? JSON.parse(after.stdout).hookSpecificOutput.updatedToolOutput.stdout : r.stdout;
+            assert.ok(!`${out}${r.stderr}`.includes(token), `${host}: no credential value printed`);
+            return out;
         };
+        for (const host of Object.keys(HOSTS)) {
+            fs.writeFileSync(f, JSON.stringify({ permissions: { defaultMode: 'acceptEdits' }, env: { SENTRY_ACCESS_TOKEN: token } }, null, 2));
+            assert.strictEqual(read(host), 'acceptEdits\n', `${host}: a credential-bearing file still yields its mode`);
+            fs.writeFileSync(f, JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: token } }));
+            assert.strictEqual(read(host), 'unset\n', `${host}: an absent key`);
+            fs.writeFileSync(f, '{ not json');
+            assert.strictEqual(read(host), 'unset\n', `${host}: an unreadable file`);
+            fs.rmSync(f);
+            assert.strictEqual(read(host), 'unset\n', `${host}: a missing file`);
+        }
+        // the old form names the file as a command word: refused where no masker runs, naming the presence read
         fs.writeFileSync(f, JSON.stringify({ permissions: { defaultMode: 'acceptEdits' }, env: { SENTRY_ACCESS_TOKEN: token } }, null, 2));
-        assert.strictEqual(read(), 'acceptEdits\n', 'a credential-bearing file still yields its mode');
-        fs.writeFileSync(f, JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: token } }));
-        assert.strictEqual(read(), 'unset\n', 'an absent key');
-        fs.writeFileSync(f, '{ not json');
-        assert.strictEqual(read(), 'unset\n', 'an unreadable file');
-        fs.rmSync(f);
-        assert.strictEqual(read(), 'unset\n', 'a missing file');
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+        for (const host of ['an older Claude Code', 'Cursor']) {
+            const old = before(host, 'cat "settings.json" | node -e \'process.stdin.resume()\'');
+            assert.strictEqual(old.status, 2, `${host}: the old stdin form`);
+            assert.match(old.stderr, /--presence/, host);
+        }
+    } finally { for (const d of [dir, home]) fs.rmSync(d, { recursive: true, force: true }); }
 });
 
 // Audit 2026-10-20 C16 / C46: validate reset every pin unasked, cleaned up by a glob zsh aborted on, skipped six

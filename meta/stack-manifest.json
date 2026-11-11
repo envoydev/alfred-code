@@ -731,7 +731,7 @@
       "file": "guard-secret-value.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "same gate on Bash: cat/jq/grep/an inline node read of such a file, `echo $SECRET`, a bare `env`, or a credential-shaped literal in the command - a prose rule that failed live (a JSON.stringify(s.env) printed a token)"
+      "note": "same gate on the shell route, and nothing is judged by what a command might print: a credential-shaped literal in the command is blocked, the store check refuses a copy, move, link, archive or `git add` of the project's sensitive data, and above the masker's floor (Claude Code 2.1.322) three prints no mask can cover are denied - a comparison naming a credential file, an encoder over one, a print that is not alone; where no masker runs (Cursor, PowerShell, Monitor, a background call, an older Claude Code) the deny-on-name core refuses a command whose words name a file holding a credential. Nothing is rewritten - the prose rule failed live (a JSON.stringify(s.env) printed a token)"
     },
     {
       "file": "guard-secret-value.js",
@@ -749,13 +749,13 @@
       "file": "guard-secret-value.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "the project's sensitive data (<data root>/.secrets, .sensitive-data before; a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a dump masked and a source or copy refused"
+      "note": "the project's sensitive data (<data root>/.secrets, .sensitive-data before; a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a copy refused and what a shell read printed comes back masked"
     },
     {
       "file": "guard-secret-value.js",
       "matcher": "@PostToolUse:Bash",
       "event": "",
-      "note": "the output masker (swap 1): what a Bash command printed goes back with each credential value shown as `<set (N chars)>` (`updatedToolOutput`, Claude Code 2.1.322+) - the values read after the run from four sources: the files the command names (every value of a dotenv or a store, every env / headers string of a JSON config), the well-known credential files, the stores and the key file, and credential-named variables; then the stream masker's shape pass, line by line. Exact text only; past 5 s the output is withheld; a Cursor payload is observed, never answered"
+      "note": "the output masker (swap 1): what a Bash command printed goes back with each credential value shown as `<set (N chars)>` (`updatedToolOutput`, Claude Code 2.1.322+) - the values read after the run from four sources: the files the command names (every value of a dotenv or a store, every env / headers string of a JSON config), the well-known credential files, the stores and the key file, and credential-named variables; then the shape pass, line by line. Exact text only; past 5 s the output is withheld; a Cursor payload is observed, never answered"
     },
     {
       "file": "guard-secret-value.js",

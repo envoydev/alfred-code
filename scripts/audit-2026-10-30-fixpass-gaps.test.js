@@ -92,21 +92,19 @@ test('FC 1: a shell-run string that is a name bound to a literal is carried as t
   }
 });
 
+// Swap 1 Task 2 (2026-11-11): no rewrite is left. These calls name no transcript, so the secret guard is in core
+// mode - a command whose words name a credential file is refused - and the words are the shared reader's.
 test('FC 2: an unquoted backslash is judged as bash hands the word on - dropped before the path and verb tests', () => {
   const dir = project('fc2-');
-  for (const c of ['cat .e\\nv', 'cat \\.env', 'c\\at .env', 'ca\\t ./.e\\nv', 'e\\nv']) {
+  for (const c of ['cat .e\\nv', 'cat \\.env', 'c\\at .env', 'ca\\t ./.e\\nv']) {
     const r = bash(dir, c);
-    assert.ok(r.v === 'rewrite' || r.v === 2, `${c}: read raw\n${r.out}`);
-    if (r.v === 'rewrite') assert.match(r.out, /--redacted/, c);
+    assert.strictEqual(r.v, 2, `${c}: read raw\n${r.out}`);
+    assert.match(r.out, /--presence/, c);
   }
   for (const line of ["'cat .e\\nv'", "'c\\at .env'", "'cat \\.env'"]) {
     const r = bash(dir, runner(line));
     assert.strictEqual(r.v, 2, `${line} inside the runner\n${r.out}`);
   }
-  // the steps a rewrite keeps are the ones the model wrote, every backslash in place
-  const kept = bash(dir, 'cat .e\\nv; echo a\\-b');
-  assert.strictEqual(kept.v, 'rewrite', kept.out);
-  assert.match(JSON.parse(kept.stdout).hookSpecificOutput.updatedInput.command, /; echo a\\-b$/);
   // the twins: a backslash inside quotes is the program's, never the shell's; one before a blank or an operator stays
   for (const c of ["printf 'a\\nb'", "grep 'x\\.y' README.md", 'echo "a\\nb"', 'echo a\\;b', 'ls my\\ dir']) {
     const r = bash(dir, c);
@@ -114,8 +112,9 @@ test('FC 2: an unquoted backslash is judged as bash hands the word on - dropped 
   }
 });
 
-// Swap 1 Task 1 (2026-11-11): the carried-script judge left with the find judge. A script FILE a shell runs, and a
-// command a variable carries, run as written; the output masker reads what they printed.
+// Swap 1 Task 1 (2026-11-11): the carried-script judge left with the find judge. A script FILE a shell runs runs as
+// written; the output masker reads what it printed. Task 2: a command a variable carries into `bash -c` is an inline
+// script, read like the command - this suite's payload names no transcript, so the core refuses the name in it.
 test('FC 3: a script file a shell runs is no longer judged before the run - its output is masked after it', () => {
   const dir = project('fc3-');
   const put = (name, text) => fs.writeFileSync(path.join(dir, name), text);
@@ -132,7 +131,9 @@ test('FC 3: a script file a shell runs is no longer judged before the run - its 
   for (const c of ['bash dump.sh', 'sh dump.sh', '. ./dump.sh', 'source dump.sh', './dump.sh', './bang.sh', 'bash runner.sh', 'bash outer.sh',
     'bash < dump.sh', 'cat dump.sh | sh', 'C=\'cat .env\'; bash -c "$C"', 'cd sub && bash up.sh']) {
     const r = bash(dir, c);
-    assert.strictEqual(r.v, 0, `${c}\n${r.out}`);
+    const inline = /bash -c "\$C"/.test(c);
+    assert.strictEqual(r.v, inline ? 2 : 0, `${c}\n${r.out}`);
+    if (inline) assert.match(r.out, /--presence/, c);
     const value = 'x0'.repeat(20);
     const after = spawnSync(process.execPath, [GUARD], {
       input: JSON.stringify({ session_id: 'fc', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: c }, cwd: dir,
@@ -147,36 +148,25 @@ test('FC 3: a script file a shell runs is no longer judged before the run - its 
     const r = bash(dir, c);
     assert.strictEqual(r.v, 0, `${c}\n${r.out}`);
   }
-  // a dump in the command itself still takes its view beside a clean script
+  // a credential file named in the command itself is refused where no masker runs (these calls name no transcript)
   const r = bash(dir, 'cat .env; bash clean.sh');
-  assert.strictEqual(r.v, 'rewrite', r.out);
+  assert.strictEqual(r.v, 2, r.out);
+  assert.match(r.out, /--presence/);
 });
 
-test('FC 3: a script file is judged in linear work - its held assignments read the text once, and a 1MB one runs', () => {
-  // Found while closing gap 3: every `X=$(...)` stage split the whole text again (heldOnlyInArgs), uncharged - a 500KB
-  // script file took 50s. The work count must grow linearly, and one generous wall-clock bound catches a step that
-  // charges nothing.
+test('FC 3: the secret guard reads no script file - a 1MB one a shell runs passes at once', () => {
+  // The judge that read a script file left with swap 1 (it once took 50s on a 500KB file); the guard reads the command's own words only.
   const dir = project('fc3w-');
-  const meter = path.join(TMP, 'judge-work.js');
-  fs.writeFileSync(meter, "process.on('exit', () => { if (global.JUDGE_WORK) require('fs').writeSync(2, `\\nJUDGE_WORK ${global.JUDGE_WORK.used}\\n`); });\n");
   const line = 'V=$(date); curl -H "$V" https://example.invalid/x\n';
-  const once = (chars) => {
-    fs.writeFileSync(path.join(dir, 'held.sh'), line.repeat(Math.ceil(chars / line.length)));
-    const t = process.hrtime.bigint();
-    const r = spawnSync(process.execPath, ['-r', meter, GUARD], {
-      input: JSON.stringify({ session_id: 'fc', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'bash held.sh' }, cwd: dir }),
-      encoding: 'utf8', cwd: dir, env: { ...process.env, HOME, USERPROFILE: HOME, CLAUDE_PROJECT_DIR: dir },
-    });
-    return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: r.status, work: Number((/JUDGE_WORK (\d+)/.exec(r.stderr) || [])[1]), err: r.stderr };
-  };
-  const half = once(100000);
-  const full = once(200000);
-  assert.strictEqual(full.status, 0, full.err);
-  assert.ok(full.work <= 2.5 * half.work, `work grows linearly (${half.work} at 100,000 characters, ${full.work} at 200,000)`);
-  assert.ok(full.ms < 10000, `the 200,000-character script took ${Math.round(full.ms)}ms`);
-  // a clean script past the old 2M work budget still runs: the budget grows with what the reader carried
-  const big = once(1000000);
-  assert.strictEqual(big.status, 0, big.err);
+  fs.writeFileSync(path.join(dir, 'held.sh'), line.repeat(Math.ceil(1000000 / line.length)));
+  const t = process.hrtime.bigint();
+  const r = spawnSync(process.execPath, [GUARD], {
+    input: JSON.stringify({ session_id: 'fc', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'bash held.sh' }, cwd: dir }),
+    encoding: 'utf8', cwd: dir, env: { ...process.env, HOME, USERPROFILE: HOME, CLAUDE_PROJECT_DIR: dir },
+  });
+  const ms = Number(process.hrtime.bigint() - t) / 1e6;
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(ms < 5000, `the 1MB script took ${Math.round(ms)}ms`);
 });
 
 test('FC 4: a session transcript is no write target - under the config dir\'s projects/ and the payload\'s own transcript_path', () => {

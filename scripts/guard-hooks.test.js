@@ -3529,15 +3529,6 @@ test('guard-read-whole-file: a shell heredoc body is judged as commands, like -c
     ['a body fed to a script file after -euo pipefail', `bash -euo pipefail ./run.sh <<'EOF'\ncat ${BIG}\nEOF`],
   ];
   for (const [what, command] of passes) assert.equal(call(command), 0, `data or bounded: ${what}`);
-  // The two guards read an interpreter's options with ONE walker (shared-rules heredoc-stdin-script): the table and
-  // the function are the same text in both, so a flag one learns the other knows.
-  const walker = (file) => {
-    const s = fs.readFileSync(path.join(HOOKS, file), 'utf8');
-    const a = s.indexOf('// The body is the program only when the program takes its SCRIPT from stdin');
-    return s.slice(a, s.indexOf('\n  return true;\n}\n', s.indexOf('function stdinIsScript', a)));
-  };
-  assert.ok(walker('guard-read-whole-file.js').includes('const STDIN_FLAGS'), 'the walker is found');
-  assert.equal(walker('guard-read-whole-file.js'), walker('guard-secret-value.js'), 'one walker, the same text in both guards');
 });
 
 test('guard-read-whole-file: a sweep over .md files is a sweep; one named .md file is not', () => {

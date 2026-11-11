@@ -1608,3 +1608,18 @@ test('final review M1: the standalone protective guard passes its session - a mi
     }
     finally { p.done(); }
 });
+
+test('transcriptField reads the newest row carrying the key; a torn last row reads null', () => {
+    const { transcriptField } = require(PRELUDE);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-field-'));
+    let n = 0;
+    const file = (rows, tail = '') => { const p = path.join(dir, `t${++n}.jsonl`); fs.writeFileSync(p, rows.map((r) => `${JSON.stringify(r)}\n`).join('') + tail); return p; };
+    assert.strictEqual(transcriptField(file([{ version: '2.1.321' }, { type: 'user' }, { version: '2.1.322', entrypoint: 'cli' }, { type: 'last-prompt' }]), 'version'), '2.1.322');
+    assert.strictEqual(transcriptField(file([{ version: '2.1.322', entrypoint: 'sdk-cli' }]), 'entrypoint'), 'sdk-cli');
+    assert.strictEqual(transcriptField(file([{ type: 'user' }, { type: 'assistant' }]), 'version'), null, 'no row carries the key');
+    assert.strictEqual(transcriptField(file([{ version: 5 }]), 'version'), null, 'a value that is no string');
+    assert.strictEqual(transcriptField(file([{ version: '2.1.322' }], '{"version":"2.1.3'), 'version'), null, 'a torn last row');
+    assert.strictEqual(transcriptField(file([]), 'version'), null, 'an empty file');
+    assert.strictEqual(transcriptField(path.join(dir, 'absent.jsonl'), 'version'), null, 'no file');
+    fs.rmSync(dir, { recursive: true, force: true });
+});

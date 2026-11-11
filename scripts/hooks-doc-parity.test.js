@@ -34,11 +34,23 @@ test('I1: CLAUDE.md names the Monitor route and the widened dispatcher matcher',
     assert.strictEqual(row.matcher, 'Bash|PowerShell|Monitor', `${row.file}: every shell row names Monitor`);
 });
 
-test('I2: CLAUDE.md states the comparison verbs and the probed git redactor', () => {
+test('swap 1: the hooks doc states the masker, its floor and the failure-path ceiling', () => {
   const text = claude();
-  assert.match(text, /comparison verbs \(`diff`, `sdiff`, `cmp`, `comm`, `rev`\)\s+are judged like `cat`/);
-  assert.match(text, /--redact-stdin/);
-  assert.match(text, /`git diff --exit-code` prints\s+unmasked, a stated ceiling/);
+  assert.match(text, /updatedToolOutput/);
+  assert.match(text, /Claude Code `2\.1\.322` \(`MASKER_FLOOR`/);
+  assert.match(text, /PostToolUseFailure takes no replacement output/);
+  assert.match(text, /THE DENY-ON-NAME CORE/);
+  assert.match(text, /THE STORE CHECK/);
+  assert.match(text, /a COMPARISON naming a credential file[\s\S]*an ENCODER over one[\s\S]*a print that is NOT ALONE/);
+  assert.doesNotMatch(text, /--redact-stdin/);
+  assert.doesNotMatch(text, /are REWRITTEN via/);
+  const notes = Object.fromEntries(manifestRows().filter((r) => r.file === 'guard-secret-value.js').map((r) => [r.matcher, r.note]));
+  assert.match(notes['Bash|PowerShell|Monitor'], /the store check/);
+  assert.match(notes['Bash|PowerShell|Monitor'], /a comparison naming a credential file, an encoder over one, a print that is not alone/);
+  assert.match(notes['Bash|PowerShell|Monitor'], /the deny-on-name core/);
+  assert.match(notes['Bash|PowerShell|Monitor'], /Nothing is rewritten/);
+  assert.doesNotMatch(notes['@SessionStart'], /a dump masked and a source or copy refused/);
+  assert.match(notes['@SessionStart'], /a copy refused and what a shell read printed comes back masked/);
 });
 
 test('I3: the ask wiring is no longer described as injection-only, never denying', () => {

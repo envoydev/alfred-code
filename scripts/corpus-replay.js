@@ -99,6 +99,9 @@ const ROUTES = [
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: HOLD_TOOLS, deny: true, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false },
   { hook: 'guard-answer.js', event: 'PostToolUse', deny: false, probe: 'ask-answer-typed', noShell: true },
+  // The output masker (swap 1, 2026-11-11) reads what a command PRINTED, and a failed call's error text - declared below.
+  { hook: 'guard-secret-value.js', event: 'PostToolUse', deny: false, noShell: true },
+  { hook: 'guard-secret-value.js', event: 'PostToolUseFailure', deny: false, noShell: true },
 ];
 // A route can be silent on the corpus for two very different reasons: the gate is broken, or the
 // thing it guards simply never happened. Only the second is acceptable, and declaring it here is
@@ -130,9 +133,9 @@ const UNEXERCISED = {
   'guard-secret-value.js::PreToolUse:Grep':
     'the corpus predates this matcher - it was wired after a content-mode Grep was measured reading a settings.json the Bash route had just blocked; the gate fires in guard-secret-value.test.js',
   // The output masker (swap 1, 2026-11-11): it reads what a command PRINTED, and a failed call's error text.
-  'guard-secret-value.js::PostToolUse:Bash':
+  'guard-secret-value.js::PostToolUse':
     'the corpus holds commands, not their outputs; the canary in guard-secret-value.test.js',
-  'guard-secret-value.js::PostToolUseFailure:Bash':
+  'guard-secret-value.js::PostToolUseFailure':
     'the corpus holds commands, not their outputs; the canary in guard-secret-value.test.js',
   // The PowerShell spelling of the shell route, wired 2026-09-12 after an audit measured 122
   // PowerShell tool calls in a 115-session corpus against six guards matching `Bash` alone. The

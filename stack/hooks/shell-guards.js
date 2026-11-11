@@ -28,7 +28,7 @@
 // deny-on-timeout of the agent-sdk page is the SDK callback family) - and the protective ones therefore run first
 // (RUN_ORDER). Context
 // (`additionalContext`) is joined with a newline and delivered even beside a block, as separate
-// hooks' was; `updatedInput` (the secret guard's rewrite) applies only when nothing blocks, and every
+// hooks' was; `updatedInput` (a guard's rewrite of the command) applies only when nothing blocks, and every
 // guard judged the ORIGINAL command, as it did beside the others in parallel. A guard that throws or
 // exits non-zero without JSON fails open for ITSELF - the others' verdicts stand - and the user gets
 // the same notice a separate hook's failure gave (a `systemMessage`, never seen by the model).

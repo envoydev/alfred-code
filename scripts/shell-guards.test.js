@@ -472,21 +472,23 @@ test('a guard list in the wiring runs exactly those guards', () => {
   assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env, args: ['guard-ungated-commit'] }).status, 2);
 });
 
-test('the secret rewrite passes through unchanged, and a block from another guard wins over it', () => {
+// Swap 1 (2026-11-11): the secret guard rewrites nothing any more. A payload naming no transcript is its core mode,
+// where a command whose words name a credential file is refused; the stub-guard fixtures above still pin the rewrite merge.
+test('the secret guard\'s denial reaches the call through the dispatcher, and no rewrite is written', () => {
   const dir = project();
   const env = { CLAUDE_PROJECT_DIR: dir };
-  const payload = bashPayload('echo $SENTRY_ACCESS_TOKEN', dir);
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${'x0'.repeat(20)}\n`);
+  const payload = bashPayload('cat .env', dir);
   const alone = run(path.join(HOOKS, 'guard-secret-value.js'), payload, { cwd: dir, env });
   const both = run(DISPATCH, payload, { cwd: dir, env });
-  assert.strictEqual(both.status, 0);
-  assert.deepStrictEqual(JSON.parse(both.stdout), JSON.parse(alone.stdout), 'the rewrite is the secret guard\'s own, byte for byte');
-  // The other guards judge the ORIGINAL command, as they do beside it in parallel today.
-  const mixed = bashPayload(`echo $SENTRY_ACCESS_TOKEN; cat ${BIG}`, dir);
-  const secret = run(path.join(HOOKS, 'guard-secret-value.js'), mixed, { cwd: dir, env });
-  assert.ok(JSON.parse(secret.stdout).hookSpecificOutput.updatedInput, 'standalone, the secret guard rewrites this command');
-  const out = run(DISPATCH, mixed, { cwd: dir, env });
-  assert.strictEqual(out.status, 2, 'the whole-file guard blocks the original command');
-  assert.ok(!out.stdout.includes('updatedInput'), 'the rewrite never reaches a blocked call');
+  assert.strictEqual(alone.status, 2, alone.stderr);
+  assert.strictEqual(both.status, 2, both.stderr);
+  assert.ok(both.stderr.includes(alone.stderr.trim()), 'the denial is the secret guard\'s own text');
+  assert.ok(!both.stdout.includes('updatedInput') && !alone.stdout.includes('updatedInput'), 'nothing is rewritten');
+  // an environment print passes as written: its output is the masker's to cover, never a rewrite
+  const print = run(DISPATCH, bashPayload('echo $SENTRY_ACCESS_TOKEN', dir), { cwd: dir, env });
+  assert.strictEqual(print.status, 0, print.stderr);
+  assert.ok(!print.stdout.includes('updatedInput'), 'no rewrite of a variable print');
 });
 
 // ---- the file-guard dispatcher (2.1.5 M3) -------------------------------------------------------
@@ -1015,7 +1017,11 @@ test('audit 2026-10-30 HK-01: the --with-sensitive runner carries its command li
   blocked(runner('rm -rf ~'), 'the argv form: several words are one command line');
   blocked(runner("'rm -rf ~'"), 'a single-quoted line');
   blocked(runner('"git push --force origin main"'), 'a force push to main');
-  blocked(runner('"cat .env"'), 'a raw credential file read: the runner masks only the store values', /with-sensitive/);
+  // swap 1: this payload names no transcript, so the secret guard's core reads the carried line and refuses the name
+  blocked(runner('"cat .env"'), 'a raw credential file read: refused by name where no masker runs', /--presence/);
+  // the read guard keeps a reader of its own, so the dispatcher judges the runner's line with it and writes the runner's row
+  fs.writeFileSync(path.join(dir, 'big.ts'), 'const a = 1;\n'.repeat(500));
+  blocked(runner('"cat big.ts"'), 'a whole-file dump inside the runner', /with-sensitive/);
   blocked(runner(`"echo x > ${other}/f.txt"`), 'a write outside the project');
   blocked(runner('"git commit -am x"'), 'an ungated commit');
   blocked(`bash -c '${runner('"rm -rf ~"')}'`, 'a runner inside a carried script');

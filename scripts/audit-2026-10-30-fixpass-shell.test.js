@@ -153,18 +153,8 @@ test('FB 3: an 8,000-pair assignment chain over 8,000 rm operands is judged in s
   assert.ok(ms < 5000, `judged in ${Math.round(ms)}ms`);
 });
 
-test('FB 4: declare / typeset listings with -x or -p (and bare) are environment dumps; a declaration is not', () => {
-  const dir = project('fb4-');
-  for (const c of ['declare -x', 'declare -px', 'declare -xp', 'declare -p -x', 'typeset -x', 'typeset -px', 'export -p', 'declare', 'typeset',
-    'declare +x', 'declare -x | grep TOKEN', 'readonly', 'readonly -p']) {
-    const r = fire(dir, c);
-    assert.strictEqual(r.v, 'rewrite', `${c}: ${r.out}`);
-    assert.match(JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command, /--redacted-env/, `${c} becomes the masked listing`);
-  }
-  assert.strictEqual(fire(dir, 'declare -px API_TOKEN').v, 'rewrite', 'one credential variable printed with -px');
-  for (const c of ['declare -x FOO=bar', 'declare -x FOO', 'typeset -x FOO=bar', 'declare -a arr', 'declare -f', 'declare -F', 'declare -px HOME'])
-    assert.strictEqual(fire(dir, c).v, 0, `${c} prints no credential`);
-});
+// FB 4 (declare / typeset listings rewritten into the masked env listing) left with the rewrite in swap 1 Task 2:
+// above the masker's floor a listing's output comes back masked, and core mode passes the environment raw (ruling 3).
 
 test('FB 5: git\'s own regenerable leftovers may go; a submodule\'s repo, the hooks and the history still block', () => {
   const dir = project('fb5-');
@@ -190,5 +180,5 @@ test('FB 6: the print-verb table reads a compressor\'s level cluster (-9c) as fl
   assert.deepStrictEqual(shell.printedFiles('join', ['-1', '2', 'a', 'b']), { files: ['a', 'b'], bounded: false }, 'join keeps its own digits rule');
   const dir = project('fb6-');
   assert.strictEqual(fire(dir, 'gzip -9c ./build.log > out.gz').v, 0, 'a clean file compressed to a file');
-  assert.strictEqual(fire(dir, 'gzip -9c .env | zcat').v, 'rewrite', 'the credential file through a level cluster');
+  assert.strictEqual(fire(dir, 'gzip -9c .env | zcat').v, 2, 'the credential file through a level cluster: named, so refused where no masker runs');
 });

@@ -3105,7 +3105,6 @@ const REALPATH_PINS = {
     'scripts/session-scope.test.js': 1,
     'scripts/session-status.test.js': 3,
     'scripts/session-surface.test.js': 1,
-    'scripts/setup-plugin.test.js': 1,
     'scripts/shell-guards.test.js': 7,
     'scripts/shell-writes.test.js': 1,
     'scripts/source-cache.test.js': 2,
