@@ -79,3 +79,16 @@ test('a 2.10.0 install owes the modes section, and it names the four flags and t
     for (const flag of ['--mode-auto-run-on', '--mode-auto-run-off', '--mode-output-scorer-on', '--mode-output-scorer-off', '--auto-mode', '/mode-auto-run'])
         assert.ok(modes.text.includes(flag), flag);
 });
+
+// Complexity stage 1 (the whole-branch review, Important 1): the update owes a 3.10.0 install the note that names what
+// stopped being guarded - a user who relied on a removed gate learns it from the update, not from a missing denial.
+test('a 3.10.0 install owes the stage 1 guard note, and it names every gate that left', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const note = owed(s, '3.10.0').find((x) => x.text.startsWith('## after 3.10.0 - '));
+    assert.ok(note, 'owed to a 3.10.0 install');
+    for (const word of ['launch_executable', 'browser_run_code_unsafe', 'browser_file_upload', 'ALFRED_CODE_FORGE_WATCH',
+        'git add -N', 'commit-tree', 'reflog expire', 'ALFRED_CODE_HOOKS_OFF', 'minimal', 'DESKTOP-EXEC-ALLOW', 'CONFIG-EDIT-ALLOW', 'UNTRACKED-ALLOW'])
+        assert.ok(note.text.includes(word), word);
+    assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
+});

@@ -1900,8 +1900,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     api -F <key>=@<file>` is a hidden body; curl's `-K` / `--config` file is read (64KB, from where the call runs) and
     parsed with the call, one it cannot read or past the cap making the call `unknown` - a descriptor (`/dev/stdin`,
     `/dev/fd/N`, `/proc/self/fd/N`) is never opened (the hook's own stdin is drained) and a non-file is refused by stat
-    before any open a FIFO would block (final review M2); and a bare `@` refspec is `HEAD`
-    (`pushTargets`). Nothing is ledgered: the act ledger (`ACTS-<session>.jsonl`) and the ref watch that read it left in
+    before any open a FIFO would block (final review M2). Nothing is ledgered: the act ledger (`ACTS-<session>.jsonl`) and the ref watch that read it left in
     complexity stage 1 (B9, 0 fires in 442 sessions); files an older release wrote under `<data root>/state/forge/` stay,
     inert. A forge publish act chained behind a
     push is gated as if it stood alone (E-batch 4b, a side review of fn-9): it needs the receipt when the push moves

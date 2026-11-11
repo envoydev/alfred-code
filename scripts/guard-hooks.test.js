@@ -4214,6 +4214,16 @@ function withProject(root, env, fn) {
 
 // Complexity stage 1 B11: the lint-config judge fired 0 times in 442 sessions and is gone; the guard keeps the SYS-01
 // switch-off refusal alone, which holds under the csv naming this guard (plan ruling 6: that entry is a no-op now).
+// The whole-branch review of stage 1 (Important 2): after B11 the config guard judges a settings switch-off only, never a
+// source edit, so no shipped seat may name it among the hooks that watch Edit / Write for source edits.
+test('stage 1 B11: no shipped seat names config protection as a watcher of source edits', () => {
+  const stale = 'the edit hooks watch (config protection';
+  const agents = path.join(REPO, 'stack', 'agents');
+  for (const f of fs.readdirSync(agents).filter((n) => n.endsWith('.md')))
+    assert.ok(!fs.readFileSync(path.join(agents, f), 'utf8').includes(stale), f);
+  assert.ok(!fs.readFileSync(path.join(REPO, 'meta', 'shared-rules.json'), 'utf8').includes(stale), 'meta/shared-rules.json');
+});
+
 test('stage 1 B11: a check config can be loosened; switching a guard off is still refused', () => {
   const H = 'guard-config-protection.js';
   const { root, at } = cfgProject('cfg-');

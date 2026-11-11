@@ -751,3 +751,31 @@ removes the mod.
 `session-inspector`, the mod's old name, left the catalog: Discover shows only `alfred-mods`. An install still on the
 old id stops loading without a warning (`claude plugin list --json` shows the error). Move it as the note above says:
 `claude plugin uninstall session-inspector@envoydev`, then `claude plugin install alfred-mods@envoydev`.
+
+## after 3.10.0 - guard checks that never fired are gone
+
+Checks that fired once or never in 442 measured sessions were removed; each guard keeps its core. What is no longer
+judged:
+
+- The desktop exec guard is gone: a desktop server's `App` with `launch_executable`, its `Shell` and `PowerShell`, and
+  a browser server's `browser_run_code_unsafe` run with no stack check. If you register such a server, deny those
+  tools in your own `permissions.deny`. Its `DESKTOP-EXEC-ALLOW` receipt is no longer read, and the `minimal` hook
+  profile now keeps three guards: rm, secret and force-push.
+- The secret guard no longer judges a browser server's `browser_file_upload`. A Read, a shell print and a filesystem
+  server's reads of a credential file are judged as before.
+- The config guard no longer holds a loosened lint, type-check or analyzer config, and its `CONFIG-EDIT-ALLOW` receipt
+  is no longer read. A settings write that switches a guard off still asks first; naming `guard-config-protection` in
+  `ALFRED_CODE_HOOKS_OFF` now turns nothing off.
+- The commit guard no longer refuses a `git add -A` that takes in a file untracked before the session (its
+  `UNTRACKED-ALLOW` receipt is no longer read) or a `git add -N`, and it no longer reads a commit made from a script
+  (`node -e`, `python3 -c`), `git commit-tree` or `git rebase --exec`. A credential in the staged lines is still refused
+  at `git commit`.
+- The rm guard no longer reads `git reflog expire`, `git prune` or `git gc`. A recursive delete of the home, the project
+  or `.git`, and a discard of uncommitted work, are refused as before.
+- The read guard judges a literal print only: a script's print, a copy then a print, and a print after a `cd` it cannot
+  follow are not judged.
+- The forge ref watch and its act ledger are gone. This update removes `ALFRED_CODE_FORGE_WATCH` from `.alfred/.variables`
+  and the settings env and prints the line; the session's `Forge:` line stays, and files the watch wrote under
+  `state/forge/` stay, unread.
+
+Nothing to do by hand. Restart a session left open across the update, so it reads the new hook rows.
