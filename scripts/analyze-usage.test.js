@@ -2513,15 +2513,16 @@ test('a state claim reads data/ beside the transcript or --data-root; with neith
   assert.deepStrictEqual(d2(), ['1', '0', '0', '1', '<data root>/state/history/s.json']);
   assert.deepStrictEqual(d2('--data-root', path.join(dir, 'elsewhere')), ['1', '1', '0', '0', '']);
 });
-test('--no-conformance leaves the section out; the probe kinds the shell guards write get a table each; the navigation row names no retired server', () => {
+test('stage 1 A3: an old ledger with symbol-grep probe rows is read, the rows skipped; the other probe kinds get a table each; --no-conformance leaves the section out; the navigation row names no retired server', () => {
   const dir = tmp();
   fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'N1', 'violated'), dir, { recursive: true });
   const row = (kind, extra = {}) => JSON.stringify({ ts: '2026-10-25T10:00:03.000Z', hook: 'shell-guards.js', event: 'PreToolUse', tool: 'Bash', mode: 'probe', kind, reason: `probe: ${kind}`, detail: { branch: kind, ...extra } });
   fs.writeFileSync(path.join(dir, 'hook-blocks-s.jsonl'), [row('symbol-grep', { pattern: 'cartTotal' }), row('symbol-grep', { pattern: 'cartTotal' }), row('bg-note'), row('sed-multi-match')].join('\n') + '\n');
   const dest = path.join(dir, 'report.md');
-  assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--hook-blocks', dir, '--out', dest]).status, 0);
+  const r = cli([path.join(dir, 's.jsonl'), '--report-md', '--hook-blocks', dir, '--out', dest]);
+  assert.strictEqual(r.status, 0, r.stderr);
   const md = fs.readFileSync(dest, 'utf8');
-  assert.match(md, /^\| symbol-grep \| 2 \| .*cartTotal x2/m);
+  assert.doesNotMatch(md, /symbol-grep|cartTotal/, 'an old probe row prints no probe line');
   assert.match(md, /^\| bg-note \| 1 \|/m);
   assert.match(md, /^\| sed-multi-match \| 1 \|/m);
   assert.doesNotMatch(md, /^\| monitor-note \|/m, 'a kind with no row prints no table');

@@ -672,7 +672,7 @@ test('the docs label every shell guard with the shell route, never Bash alone (2
 
 // ---------------------------------------------------------------------------------------------
 // audit 2026-10-10 (C14, C25, T5 cross-track): the dispatcher's own checks - zsh quoting, the foreground poll loop,
-// an unaddressed sed -i over several lines, the symbol-grep probe
+// an unaddressed sed -i over several lines
 // ---------------------------------------------------------------------------------------------
 const own = (dir, command, { env = {}, extra = {} } = {}) => {
   const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command, ...extra }, session_id: 'own', cwd: dir }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ...env } });
@@ -823,14 +823,11 @@ test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its fil
   assert.strictEqual(sedRow.kind, 'sed-multi-match', 'the probe row names its kind (item 7)');
 });
 
-test('audit 2026-10-10: a recursive grep for a code identifier in the main session writes one probe row; a seat writes none', () => {
+test('stage 1 A3: a recursive symbol grep in the main session writes no probe row', () => {
   const dir = project('sym-');
-  own(dir, 'grep -rn SearchTermNormalizer .');
-  own(dir, 'grep -rn "todo list" .');
-  run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'grep -rn OrderService .' }, session_id: 'own', cwd: dir, agent_id: 'seat-1' }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
-  const probes = rowsIn(dir).filter((x) => x.mode === 'probe' && x.detail.branch === 'symbol-grep');
-  assert.deepStrictEqual(probes.map((x) => x.detail.pattern), ['SearchTermNormalizer'], 'bc2fa83e');
-  assert.strictEqual(probes[0].kind, 'symbol-grep', 'the probe row names its kind (item 7)');
+  assert.equal(own(dir, 'grep -rn SearchTermNormalizer .').status, 0);
+  assert.equal(own(dir, 'grep -rn "cartTotal(" .').status, 0);
+  assert.deepStrictEqual(rowsIn(dir).filter((x) => x.mode === 'probe'), [], 'the symbol-grep probe is gone');
 });
 
 test('audit 2026-10-10: the dispatcher\'s own checks stand down where the stack does - a repo never set up, hook_profile minimal', () => {

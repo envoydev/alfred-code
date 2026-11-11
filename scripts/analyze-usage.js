@@ -3445,7 +3445,6 @@ function computeAggregates(main, agents) {
 // empty tally is the truth, a neighbour's rows are not. Pass the file directly to bypass this.
 // The log-only rows shell-guards.js writes, each a table of its own in the Probes section: what the row marks.
 const SHELL_PROBES = {
-  'symbol-grep': 'a recursive grep for a code identifier in the main session - a symbol question the navigation tools answer',
   'bg-note': "an actor's first background shell call - the note on how to watch it was sent",
   'monitor-note': "an actor's first Monitor call - the one-start-line note was sent",
   'sed-multi-match': 'an unaddressed sed -i whose pattern matched more than one line - the lines were named',
@@ -3554,13 +3553,12 @@ function readBlockLedger(target, sessionId, transcript) {
         if (o.mode === 'probe' && o.kind === 'root-cause' && o.detail) (out.rootCauseRows || (out.rootCauseRows = [])).push(o.detail);
         if (o.mode === 'probe' && o.kind === 'correction') { const c = out.correction || (out.correction = newCorrection()); c.turns += 1; if (o.injected === true) c.injected += 1; }
         if (o.mode === 'probe' && o.kind === 'rationalization') tallyRationalization(out.rationalization || (out.rationalization = newRationalization()), o.detail || {});
-        // The shell guards' notes and the symbol-grep row; a row from before `kind` names its kind in `detail.branch`.
+        // The shell guards' notes; a row from before `kind` names its kind in `detail.branch`. A kind SHELL_PROBES no
+        // longer lists (the symbol-grep probe, removed in complexity stage 1) is skipped.
         const sk = o.mode === 'probe' ? o.kind || (o.detail && o.detail.branch) : null;
         if (sk && Object.hasOwn(SHELL_PROBES, sk)) {
           const sp = out.shellProbes || (out.shellProbes = {});
-          const t = sp[sk] || (sp[sk] = { rows: 0, patterns: new Map() });
-          t.rows += 1;
-          if (o.detail && o.detail.pattern) { const p = String(o.detail.pattern); t.patterns.set(p, (t.patterns.get(p) || 0) + 1); }
+          (sp[sk] || (sp[sk] = { rows: 0 })).rows += 1;
         }
         continue;
       }
@@ -4799,11 +4797,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, confo
       `| rationalization | ${ra.closes} | ${ra.red} | ${ra.skipped} | ${ra.skipEdit} | ${ra.preExisting} | ${ra.unrelated} | ${ra.flaky} | ${ra.deferred} |`, '');
     for (const [kind, marks] of Object.entries(SHELL_PROBES)) {
       const sp = blockLedger.shellProbes && blockLedger.shellProbes[kind];
-      if (!sp) continue;
-      if (kind === 'symbol-grep') {
-        const top = [...sp.patterns.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([p, n]) => `${p} x${n}`).join(', ');
-        out.push('| probe | rows | patterns (top 5) | what it marks |', '|---|---|---|---|', `| ${kind} | ${sp.rows} | ${cell(top || '-')} | ${marks} |`, '');
-      } else out.push('| probe | rows | what it marks |', '|---|---|---|', `| ${kind} | ${sp.rows} | ${marks} |`, '');
+      if (sp) out.push('| probe | rows | what it marks |', '|---|---|---|', `| ${kind} | ${sp.rows} | ${marks} |`, '');
     }
   }
   if (conformance) out.push(...conformanceSection(conformance));

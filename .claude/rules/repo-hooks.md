@@ -280,10 +280,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   exclusive `alfred-bg-note-<session>-<agent|main>` marker in the hook temp dir (a dir it cannot write stays silent),
   plus a `mode: probe`, `bg-note` row (audit 2026-10-14 RU04: the text left `alfred-quality-gates.md`, 533 chars in
   every session, for the 24.8% of sessions that start a background call; a week of `bg-note` rows against the
-  background-call rate is the owed comparison); the first `Monitor` call of each actor gets `MONITOR_NOTE` (one start
+  background-call rate is the owed comparison); and the first `Monitor` call of each actor gets `MONITOR_NOTE` (one start
   line, never a reply per sample) under its own marker and a `monitor-note` probe row (audit 2026-10-20 C32: a 30 s
-  sample loop woke 12 turns, 2.82M, and the Bash note never reached a Monitor start); and a recursive grep for a code identifier (CamelCase, a call) in the
-  main session writes one `mode: probe` row. Each writes its row under `shell-guards.js`. Each guard body is compiled
+  sample loop woke 12 turns, 2.82M, and the Bash note never reached a Monitor start). The symbol-grep probe row went in
+  complexity stage 1 (A3: no decision read it). Each writes its row under `shell-guards.js`. Each guard body is compiled
   through V8's code cache (`compileGuard`: `alfred-v8-<guard>-<sha16>.bin` in the temp dir, keyed on the source and the
   Node version, written once after the guard ran; the helpers it requires take Node's own `enableCompileCache`) - p50
   58.9 to 48.6 ms per shell call (deep hooks review 2026-10-16); any cache failure is a plain compile.

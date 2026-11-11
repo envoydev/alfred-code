@@ -2640,7 +2640,6 @@ function writtenScripts(P, raw, heredocs, anchor, run) {
 // word after `--` (or after the flag) is the line itself, several words are one command line, each quoted for the shell -
 // the runner's own rule. The runner masks only the store's exact values in what the line prints; it never made the line
 // safe. Returns { text, at, end, mapped } for the call `c`, or null.
-const RUNNER_FILE = 'guard-secret-value.js';
 const runnerQuote = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`);
 // A word whose quoted text IS what the carried shell runs, so a position in it maps back to the command: a single-quoted
 // word, or a double-quoted one holding none of bash's double-quote escapes. Bash undoes `\"`, `\$`, `\\`, a backslashed
@@ -4472,6 +4471,6 @@ function enclosingEnd(P, at, closesOf) {
   return undefined;
 }
 
-module.exports = { failedRead, scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
-  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
-  resolveOn, shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, RUNNER_FILE, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan, COPY_VERBS };
+module.exports = { failedRead, scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
+  blankComments, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE,
+  resolveOn, shellVars, PRINT_VERBS, printedFiles, sensitiveRuns, runtimeScripts, codeStrings, copyPlan, psCopyPlan, PS_COPY, tarPlan, unzipPlan };

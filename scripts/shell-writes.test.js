@@ -1131,3 +1131,7 @@ test('review 16, 3: repeated same-name loops cost linear work', () => {
   assert.ok(Date.now() - t0 < 2000, `${Date.now() - t0} ms`);
   assert.ok(g.calls.length <= 1000, `${g.calls.length} calls`);
 });
+test('stage 1 A4: the dead exports are gone', () => {
+  const sw = require('../stack/hooks/shell-writes.js');
+  assert.deepEqual(['anchorer', 'joinContinuations', 'RUNNER_FILE', 'COPY_VERBS'].filter((n) => n in sw), []);
+});
