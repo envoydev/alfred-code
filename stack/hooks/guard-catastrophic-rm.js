@@ -42,11 +42,10 @@
 // `find -exec sh -c ...` and text past the scan budget.
 // The git half (main() below) reads EVERY git call in the command from its argv - flags anywhere, a
 // tree-ish before the paths - and judges each by what it would destroy: the dirty paths a discard
-// names, what `clean -n` of the same flags lists (ignored files included), a stash entry, the reflog
-// entries or unreachable objects a dry run would prune. One block names every loss. Ceilings: under a
-// dated `gc --prune` a PACKED unreachable object is counted whatever its age (its age sits in the pack, not read
-// here), a git probe past its 5s timeout fails open like every hook here, and a command with more destructive git
-// calls than the scan budget's `gitJudged` reads the rest as one whole-tree discard.
+// names, what `clean -n` of the same flags lists (ignored files included) and a stash entry. One block names
+// every loss. Ceilings: a git probe past its 5s timeout fails open like every hook here, and a command with more
+// destructive git calls than the scan budget's `gitJudged` reads the rest as one whole-tree discard. A reflog
+// expire, a prune and a gc are not read (complexity stage 1 B6: 0 fires in 442 sessions).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -569,7 +568,7 @@ function runtimeWipe(rawCommand, read, payload, powershell)
 // (shell-writes.js `gitText` reads the words, the `-C` / `-c` options and the alias; a call's verb and argv come from it.)
 
 // The verbs `gitPlan` can find a loss in - any other git call has nothing to lose and spawns nothing.
-const LOSS_VERBS = new Set(['checkout', 'restore', 'reset', 'switch', 'clean', 'stash', 'reflog', 'prune', 'gc']);
+const LOSS_VERBS = new Set(['checkout', 'restore', 'reset', 'switch', 'clean', 'stash']);
 
 // Per verb: the short letters and long names that take a VALUE, and the long names this guard reads. A
 // long option may be cut to any unique prefix, as git's own parser allows (`git reset --har` is --hard).
@@ -579,7 +578,6 @@ const GIT_OPTS = {
     switch: { short: 'cC', value: ['create', 'force-create', 'orphan', 'conflict'], flags: ['force', 'discard-changes'] },
     reset: { short: '', value: ['pathspec-from-file'], flags: ['hard'] },
     clean: { short: 'e', value: ['exclude'], flags: ['force', 'dry-run', 'quiet', 'interactive'] },
-    gc: { short: '', value: [], flags: ['prune', 'no-prune'] },
 };
 
 // One verb's argv as entries (`-f`, `--force`, each with its value when it takes one), the positionals,
@@ -632,12 +630,11 @@ function parseGitArgs(args, spec)
 
 // What ONE git call would destroy, as a plan the loss reader in main() answers - or null when the call
 // is no destructive form at all. `isRev(word)` says whether a word names a commit or tree: git's own
-// rule for `checkout <tree-ish> <paths>` written without `--`. `config` is the call's `-c` pairs.
-function gitPlan(verb, args, config, isRev)
+// rule for `checkout <tree-ish> <paths>` written without `--`.
+function gitPlan(verb, args, isRev)
 {
     const p = parseGitArgs(args, GIT_OPTS[verb] || { short: '', value: [], flags: [] });
     const prev = (t) => (t === '-' ? '@{-1}' : t);   // `-` is the previous branch to checkout and switch
-    const reflogConfig = config.filter((c) => /^gc\..*reflogexpire(?:unreachable)?=/i.test(c)).flatMap((c) => ['-c', c]);
     if (verb === 'checkout')
     {
         const forced = p.has('-f', '--force');
@@ -690,33 +687,6 @@ function gitPlan(verb, args, config, isRev)
         const named = args.slice(1).find((a) => !a.startsWith('-')) || '0';
         return { kind: 'stash', ref: /^\d+$/.test(named) ? `stash@{${named}}` : named };
     }
-    // A dry run deletes nothing - it is how a careful run asks what the real one would.
-    if (verb === 'reflog')
-    {
-        if (args[0] !== 'expire' || args.some((a) => a === '-n' || a === '--dry-run')) return null;
-        const rest = args.slice(1).filter((a) => a !== '--verbose');
-        return { kind: 'reflog', argv: [...reflogConfig, 'reflog', 'expire', '--dry-run', '--verbose', ...rest] };
-    }
-    if (verb === 'prune') return args.some((a) => a === '-n' || a === '--dry-run') ? null : { kind: 'prune', argv: ['prune', '--dry-run', ...args] };
-    if (verb === 'gc')
-    {
-        // The prune date gc uses: -c gc.pruneExpire, then --prune=<date> / --no-prune, the last one
-        // winning as git's parser reads them; a bare --prune keeps the configured default.
-        let expiry;
-        for (const c of config)
-        {
-            const m = /^gc\.pruneexpire=(.*)$/i.exec(c);
-            if (m) expiry = m[1];
-        }
-        for (const e of p.entries)
-        {
-            if (e.name === '--prune' && e.value !== undefined) expiry = e.value;
-            if (e.name === '--no-prune') expiry = 'never';
-        }
-        const dated = expiry !== undefined && expiry !== 'never' && expiry !== 'false';
-        if (!dated && !reflogConfig.length) return null;
-        return { kind: 'gc', expiry: dated ? expiry : null, reflog: reflogConfig.length ? [...reflogConfig, 'reflog', 'expire', '--dry-run', '--verbose', '--all'] : null };
-    }
     return null;
 }
 
@@ -724,41 +694,14 @@ function gitPlan(verb, args, config, isRev)
 // denial lists, `targets` what a DISCARD-ALLOW line must cover, `named` when the command named paths.
 // `run(argv)` is git in the call's own directory; it throws when git cannot answer. `opAborted`: the same command aborts
 // a merge, rebase, cherry-pick, revert or am in progress here before this call (below).
-function readLoss(plan, run, gitCwd, opAborted = false)
+function readLoss(plan, run, opAborted = false)
 {
     const lines = (out) => out.split('\n').filter(Boolean);
-    const wouldPrune = (argv) => lines(run(argv)).filter((l) => /^would prune\b/.test(l));
     if (plan.kind === 'stash')
     {
         const entries = lines(run(['stash', 'list']));
         if (plan.all) return [{ kind: 'stash', rows: entries, targets: entries.map((e) => e.split(':')[0]) }];
         return [{ kind: 'stash', rows: entries.filter((e) => e.startsWith(`${plan.ref}:`)), targets: [plan.ref] }];
-    }
-    if (plan.kind === 'reflog') return [{ kind: 'reflog', rows: wouldPrune(plan.argv), targets: ['*'] }];
-    if (plan.kind === 'prune') return [{ kind: 'objects', rows: lines(run(plan.argv)), targets: ['*'] }];
-    if (plan.kind === 'gc')
-    {
-        const out = [];
-        if (plan.expiry)
-        {
-            // fsck names the loose AND packed unreachable objects, reflogs counted as reachable as gc
-            // counts them. A date short of now keeps the younger ones: a loose object is judged by its own
-            // age (a prune dry run of that date), a packed one counted whatever its age (not read here).
-            let rows = lines(run(['fsck', '--unreachable', '--connectivity-only', '--no-progress'])).filter((l) => /^unreachable\b/.test(l));
-            if (!/^(?:now|all)$/.test(plan.expiry))
-            {
-                const aged = new Set(lines(run(['prune', '--dry-run', `--expire=${plan.expiry}`])).map((l) => l.split(' ')[0]));
-                const objects = path.resolve(gitCwd, run(['rev-parse', '--git-path', 'objects']).trim());
-                rows = rows.filter((l) =>
-                {
-                    const sha = l.split(' ').pop();
-                    return aged.has(sha) || !fs.existsSync(path.join(objects, sha.slice(0, 2), sha.slice(2)));
-                });
-            }
-            out.push({ kind: 'objects', rows, targets: ['*'] });
-        }
-        if (plan.reflog) out.push({ kind: 'reflog', rows: wouldPrune(plan.reflog), targets: ['*'] });
-        return out;
     }
     if (plan.kind === 'clean')
     {
@@ -823,7 +766,7 @@ function readLoss(plan, run, gitCwd, opAborted = false)
 // verb in the picked label or its description, or a yes to a question asking the discard; a keep, skip or negated pick
 // is none (e95004e7: a revert picked by label was asked again twice, then done with Edit). Read from the transcript
 // alone (hook-prelude.js asksAnsweredSinceTyped: an answer is the result of an AskUserQuestion call in it - FA-4), never
-// from a file (HK-03). A stash entry is named as `stash@{N}`; an object or reflog loss (`*`) opens only through the receipt.
+// from a file (HK-03). A stash entry is named as `stash@{N}`; an unread loss (`*`) opens only through the receipt.
 const DISCARD_VERB = /\b(?:discard|revert|restore|reset|undo|roll\s?-?back|throw\s+(?:it\s+|them\s+)?away|drop|delete|remove|wipe|clean)\w*/i;
 const KEEP_WORD = /\b(?:keep|don'?t|do\s+not|not|no|never|skip|cancel|leave)\b/i;
 const YES_LABEL = /^\s*(?:yes|y|ok|okay|sure|go\s+ahead|do\s+it|proceed|confirm(?:ed)?|approve[d]?)\b/i;
@@ -928,38 +871,6 @@ function main()
 
     const rawCommand = String(payload?.tool_input?.command ?? '');
 
-    // COUNT FIRST, never deny: a SQL `DROP` and `dotnet ef database drop` are the database's rm -rf,
-    // but whether a gate would earn its keep is a rate nobody has measured - so each call writes one
-    // log-only `mode: 'probe'` row and passes. The SQL usually sits in a quoted argument or a heredoc,
-    // so the raw text is scanned; the client that ran it is recorded, so prose can be told from
-    // execution when the rows are read.
-    (() => {
-        if (unsetRepo) return;
-        try
-        {
-            const raw = String(payload?.tool_input?.command ?? '');
-            const bare = raw.replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x')).replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
-            const ef = /(?:^|[\s;&|(])dotnet\s+ef\s+database\s+drop\b/.exec(bare);
-            const sql = ef ? null : /\bdrop\s+(?:table|database|schema|view|index|user|role)\b[^;\n'"]{0,80}/i.exec(raw);
-            if (!ef && !sql) return;
-            const client = (/(?:^|[\s;&|(/])(psql|mysql|mariadb|sqlite3|sqlcmd|sqlplus|mongosh|duckdb|clickhouse(?:-client)?|cockroach|snowsql|bq|dotnet)(?=\s|$)/.exec(bare) || [])[1] || '';
-            const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-            const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
-            fs.mkdirSync(dir, { recursive: true });
-            fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
-                ts: new Date().toISOString(),
-                hook: path.basename(__filename),
-                event: payload.hook_event_name || payload.tool_name || '',
-                tool: payload.tool_name || '',
-                mode: 'probe',
-                kind: ef ? 'ef-database-drop' : 'sql-drop',
-                reason: `probe: ${ef ? 'dotnet ef database drop' : `a SQL ${sql[0].split(/\s+/).slice(0, 2).join(' ').toUpperCase()}`}${client && !ef ? ` through ${client}` : ''} - logged, not denied`,
-                detail: { client, matched: (ef ? ef[0] : sql[0]).trim().slice(0, 120) },
-            }) + '\n');
-        }
-        catch { /* a probe never changes a verdict and never throws */ }
-    })();
-
     // A marketplace removed with no --scope goes from EVERY settings scope, and the CLI uninstalls every plugin
     // installed from it, in every project on the machine (`claude plugin marketplace remove --help`: 'Omit to remove
     // it from every scope'). Measured 2026-10-06: a session asked to drop a retired key at user scope ran the bare
@@ -989,12 +900,9 @@ function main()
     // same arithmetic the commit gate's trivial-diff exemption uses, and it keeps the guard silent
     // in the overwhelmingly common case of resetting an already-clean checkout.
     // The same class, one step further: a FORCED checkout or switch overwrites the tree on its way to
-    // another branch, and `stash drop` / `stash clear` / `reflog expire` destroy the recovery points
-    // themselves - a dropped stash and an expired reflog entry are what every other undo leans on.
-    // `prune` (whose default expiry is everything) and a `gc` given a prune date or a reflog expiry on
-    // the command line delete what those undos recover, ending the grace window early.
+    // another branch, and `stash drop` / `stash clear` destroy a recovery point itself.
     // Each is judged by what it would actually destroy: the dirty paths, what a `clean -n` of the same
-    // flags lists, the stash entries it names, the reflog entries or objects a dry run would prune.
+    // flags lists and the stash entries it names.
     // EVERY git call in the command is read, as git reads its argv (flags anywhere, a tree-ish before
     // the paths): judging only the first let `git reset --hard && git clean -fd` delete an untracked
     // file the reset keeps, and the positional regex this replaced let a dozen discard spellings by.
@@ -1060,14 +968,14 @@ function main()
             try { run(['rev-parse', '--verify', '--quiet', `${w}^{tree}`]); return true; }
             catch { return false; }
         };
-        const plan = gitPlan(verb, argvOf(call), call.config, isRev);
+        const plan = gitPlan(verb, argvOf(call), isRev);
         if (!plan) continue;
         // A git that cannot answer (not a repo, git absent) is no loss - never block on our own failure.
-        try { losses.push(...readLoss(plan, run, gitCwd, aborted.size > 0 && aborted.has(topOf(gitCwd)))); }
+        try { losses.push(...readLoss(plan, run, aborted.size > 0 && aborted.has(topOf(gitCwd)))); }
         catch { /* nothing read, nothing claimed */ }
     }
     // Past the cap each call is still read as one whole-tree discard where it runs - and now ALSO by its own plan when
-    // that is no tree plan: the whole-tree read counts no untracked file and reads no stash, reflog or object, so 48
+    // that is no tree plan: the whole-tree read counts no untracked file and reads no stash, so 48
     // judged calls then `git clean -fd` or `git stash clear` passed (audit 2026-10-08, replayed). A plan is read from the
     // argv alone (no rev lookup - a checkout's word is a path, judged as the whole tree anyway), once per directory and
     // kind, at most OVER_CAP_READS of them; past that the rest is a loss nobody read, never let through.
@@ -1079,7 +987,7 @@ function main()
         if (seen.has(key)) return;
         seen.add(key);
         if (seen.size > OVER_CAP_READS) { if (seen.size === OVER_CAP_READS + 1) unread(`more distinct git calls than the guard reads (${OVER_CAP_READS}) - not judged`); return; }
-        try { losses.push(...readLoss(plan, gitIn(gitCwd), gitCwd)); }
+        try { losses.push(...readLoss(plan, gitIn(gitCwd))); }
         catch { /* nothing read, nothing claimed */ }
     };
     const seenOverCap = new Set();
@@ -1088,7 +996,7 @@ function main()
         const gitCwd = read.callDir(call);
         overCapRead({ kind: 'tree', paths: [], target: undefined }, gitCwd, seenOverCap);
         let own = null;
-        try { own = gitPlan(call.sub, argvOf(call), call.config, () => false); } catch { own = null; }
+        try { own = gitPlan(call.sub, argvOf(call), () => false); } catch { own = null; }
         if (own && own.kind !== 'tree') overCapRead(own, gitCwd, seenOverCap);
     }
     // Text the reader could not read (an alias git cannot answer, a subcommand xargs supplies, text past the scan budget
@@ -1139,24 +1047,18 @@ function main()
             const entries = (n) => `entr${n === 1 ? 'y' : 'ies'}`;
             const head = (g) => (g.kind === 'stash'
                 ? `this destroys ${g.rows.length} stash ${entries(g.rows.length)}, and a dropped stash leaves no\nreflog entry to recover it from.`
-                : g.kind === 'reflog'
-                    ? `this expires ${g.rows.length} reflog ${entries(g.rows.length)} - the reflog is the one record of\ncommits no branch reaches, and gc deletes them once it is gone.`
-                    : g.kind === 'objects'
-                        ? `this deletes ${g.rows.length} unreachable object(s) now - a reset-away commit, a dropped stash or a lost\n\`git add\` lives on only as these until the grace window ends.`
-                        : `this discards uncommitted work in ${g.rows.length} file(s) under ${g.named ? 'the path(s) this command names' : 'the working tree'}, and there is\nno reflog for a working tree - once it is gone it is gone.`);
+                : `this discards uncommitted work in ${g.rows.length} file(s) under ${g.named ? 'the path(s) this command names' : 'the working tree'}, and there is\nno reflog for a working tree - once it is gone it is gone.`);
             const body = kinds.map((g, k) => `${k ? 'And ' : 'Blocked: '}${head(g)}\n` +
                 g.rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
                 (g.rows.length > 10 ? `\n  ... and ${g.rows.length - 10} more` : '')).join('\n');
             const one = kinds.length === 1 ? kinds[0].kind : '';
             const keep = one === 'stash' ? `'Keep the stash (Recommended)' - leave it, or \`git stash apply\` it first`
-                : one === 'reflog' ? `'Keep the reflog (Recommended)' - skip the expire`
-                    : one === 'objects' ? `'Keep them (Recommended)' - a plain \`git gc\` keeps the grace window`
-                        : one === 'tree' ? `'Keep the work (Recommended)' - \`git stash -u\`, or commit it`
-                            : `'Keep it all (Recommended)' - run none of it; \`git stash -u\` or commit the work first`;
+                : one === 'tree' ? `'Keep the work (Recommended)' - \`git stash -u\`, or commit it`
+                    : `'Keep it all (Recommended)' - run none of it; \`git stash -u\` or commit the work first`;
             const narrow = one === 'stash' ? `'Narrow it' - drop ONE named entry instead of every one`
                 : groups.has('tree') ? `'Narrow it' - name the ONE file to revert instead of the whole tree` : '';
-            // The exact lines to write (HK-16): the session line, then every target the discard must cover - `*` when a
-            // reflog or object loss is named, or past 30 targets.
+            // The exact lines to write (HK-16): the session line, then every target the discard must cover - `*` when an
+            // unread loss is named, or past 30 targets.
             const want = [...new Set(targets)];
             const lines = want.includes('*') || want.length > 30 || !want.length ? ['*'] : want;
             const write = receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, lines) : lines.map((l) => `  ${l}\n`).join('');

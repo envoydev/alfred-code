@@ -1214,9 +1214,9 @@ test('guard-catastrophic-rm: an untracked file is lost only to clean, or to a ta
   assert.equal(rm('git reset --hard'), 2, 'which reset --hard does discard');
 });
 
-test('guard-catastrophic-rm: a forced checkout or switch, a stash drop or clear and a reflog expire lose work too', () => {
-  // Five verbs with no undo walked past the four the gate knew (reproduced on a dirty tree): a forced
-  // branch change overwrites the tree, a dropped stash and an expired reflog are the recovery points.
+test('guard-catastrophic-rm: a forced checkout or switch and a stash drop or clear lose work too', () => {
+  // Verbs with no undo walked past the four the gate knew (reproduced on a dirty tree): a forced
+  // branch change overwrites the tree, a dropped stash is a recovery point.
   // The same arithmetic: gated on what the call would actually destroy, answered by DISCARD-ALLOW.
   const dir = cleanRepo();
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
@@ -1242,70 +1242,45 @@ test('guard-catastrophic-rm: a forced checkout or switch, a stash drop or clear 
   assert.match(rm('git stash clear').stderr, /stash@\{0\}/, 'the denial lists the entries it would destroy');
   assert.equal(rm('echo "then git stash clear"').status, 0, 'a quoted mention is prose');
 
-  assert.equal(rm('git reflog expire --expire=now --all').status, 2, 'expiring every reflog entry now removes the recovery points');
-  assert.equal(rm('git reflog expire --all').status, 0, 'the default 90-day window prunes nothing in a fresh repo');
-  assert.equal(rm('git reflog show').status, 0, 'reading the reflog loses nothing');
-
   const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), 'stash@{0}\n');
   assert.equal(rm('git stash drop').status, 0, 'the receipt names the entry the user chose to drop');
-  assert.equal(rm('git reflog expire --expire=now --all').status, 2, 'and covers nothing else');
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed again\n');
+  assert.equal(rm('git checkout -f other').status, 2, 'and covers nothing else');
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '*\n');
-  assert.equal(rm('git reflog expire --expire=now --all').status, 0, 'the * line does');
+  assert.equal(rm('git checkout -f other').status, 0, 'the * line does');
 });
 
-test('guard-catastrophic-rm: gc --prune=now and prune delete the unreachable objects every undo recovers from', () => {
-  // A reset-away commit, a dropped stash, a lost `git add` all survive as unreachable objects until
-  // the grace window ends; these forms end it now. Judged by what the call would delete, like the reflog.
+test('stage 1 B6/B13: reflog, gc and SQL DROP are unread; the rm guard\'s delete checks stay', () => {
+  // Complexity stage 1 (B6, B13): the reflog, gc and prune checks and the SQL DROP probe fired 0 times in 442 sessions.
+  // The rm core, find -delete, a runtime's recursive delete and the piped Remove-Item stay (ruling 9), and so does the
+  // stash half of the discard check.
   const dir = cleanRepo();
-  const rm = (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
-
-  for (const c of ['git gc --prune=now', 'git prune --expire=now', 'git prune'])
-    assert.equal(rm(c).status, 0, `nothing unreachable yet: ${c}`);
-  const blob = spawnSync('git', ['-C', dir, 'hash-object', '-w', '--stdin'], { input: 'lost work\n', encoding: 'utf8' }).stdout.trim();
-  for (const c of ['git gc --prune=now', 'git gc --prune=all', 'git gc --aggressive --prune=now', 'git -c gc.auto=0 gc --prune=now',
-    'git prune --expire=now', 'git prune --expire now', 'git prune --expire=all', 'git prune -v', 'git prune'])
-    assert.equal(rm(c).status, 2, `deletes the unreachable object now: ${c}`);
-  const denial = rm('git gc --prune=now').stderr;
-  assert.match(denial, new RegExp(blob.slice(0, 12)), 'the denial lists what it would delete');
-  assert.match(denial, /DISCARD-ALLOW/, 'and names the receipt');
-  for (const c of ['git gc', 'git gc --prune=2.weeks.ago', 'git prune --expire=2.weeks.ago', 'git prune -n', 'git prune --dry-run --expire=now',
-    'git reflog expire --dry-run --expire=now --all', 'echo "then git gc --prune=now"', 'git count-objects -v'])
-    assert.equal(rm(c).status, 0, `keeps the objects: ${c}`);
-
-  const flow = path.join(dir, '.alfred', 'docs', 'flow');
-  fs.mkdirSync(flow, { recursive: true });
-  fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), 'stash@{0}\n');
-  assert.equal(rm('git gc --prune=now').status, 2, 'a receipt naming something else covers nothing');
-  fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '*\n');
-  assert.equal(rm('git gc --prune=now').status, 0, 'the * line does');
-  assert.equal(rm('git prune').status, 0, '... for prune too');
-});
-
-test('guard-catastrophic-rm: a SQL DROP or an EF database drop is counted, never denied', () => {
-  // Count first (the user's direction): a probe row per call, so the block rate a gate would have is
-  // measured before one is built.
-  const dir = cleanRepo();
-  const sid = 'probe-sql';
-  const rm = (command) => runIn('guard-catastrophic-rm.js', { session_id: sid, tool_name: 'Bash', tool_input: { command } },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  const home = fs.mkdtempSync(path.join(TMP, 'b6-home-'));
+  const sid = 'stage1-b6';
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude') };
+  const rm = (command, tool = 'Bash') => runIn('guard-catastrophic-rm.js', { session_id: sid, cwd: dir, tool_name: tool, tool_input: { command } }, { env, cwd: dir });
   const ledger = path.join(dir, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
-  const rows = () => (fs.existsSync(ledger) ? fs.readFileSync(ledger, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
-
-  assert.equal(rm('psql -c "DROP TABLE users"').status, 0, 'a probe never denies');
-  assert.equal(rm('dotnet ef database drop --force').status, 0);
-  assert.equal(rm('sqlite3 app.db "drop database x"').status, 0);
-  assert.equal(rm('ls -la').status, 0);
-  const got = rows();
-  assert.equal(got.length, 3, 'one row per drop-shaped call, none for the rest');
-  for (const r of got) {
-    assert.equal(r.mode, 'probe');
-    assert.match(r.reason, /^probe: /);
-  }
-  assert.deepStrictEqual(got.map((r) => r.kind), ['sql-drop', 'ef-database-drop', 'sql-drop']);
-  assert.equal(got[0].detail.client, 'psql', 'the client that ran it is named, so prose can be told from execution');
+  const probes = () => (fs.existsSync(ledger) ? fs.readFileSync(ledger, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [])
+    .filter((r) => r.mode === 'probe');
+  const reflog = spawnSync('git', ['-C', dir, 'reflog', 'show', '--all'], { encoding: 'utf8' }).stdout.trim();
+  assert.ok(reflog, 'the seed commit left a reflog entry');
+  spawnSync('git', ['-C', dir, 'hash-object', '-w', '--stdin'], { input: 'lost work\n', encoding: 'utf8' });
+  for (const c of ['git reflog expire --expire=now --all', 'git gc --prune=now', 'git prune', "find . -name '*.tmp' -delete"])
+    assert.equal(rm(c).status, 0, `not judged: ${c}`);
+  assert.equal(rm("psql -c 'DROP TABLE x'").status, 0, 'a SQL DROP passes');
+  assert.deepEqual(probes(), [], 'and writes no probe row');
+  const rt = ['rm', 'tree'].join('');
+  for (const c of ['rm -rf ~', 'rm -rf .git', 'rm -rf *', 'find ~ -delete', 'find . -delete',
+    `python3 -c "import shutil, os; shutil.${rt}(os.path.expanduser('~'))"`])
+    assert.equal(rm(c).status, 2, `the rm core still refuses: ${c}`);
+  assert.equal(rm('Get-ChildItem -Recurse | Remove-Item -Recurse -Force', 'PowerShell').status, 2, 'a piped Remove-Item of the cwd is still refused');
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
+  spawnSync('git', ['-C', dir, 'stash', 'push', '-qm', 'keep'], { encoding: 'utf8' });
+  const drop = rm('git stash drop');
+  assert.equal(drop.status, 2, 'a stash drop over a stash with work in it is still refused');
+  assert.match(drop.stderr, /this destroys 1 stash entry/, 'with the stash head in its denial');
 });
 
 test('guard-catastrophic-rm: the pathspec is judged where the command runs - its cwd, a cd, a -C', () => {
@@ -1439,24 +1414,6 @@ test('guard-catastrophic-rm: the discard spellings are read from the git argv, f
     'git reset --keep HEAD', 'git clean -d', 'git clean -n -fd', 'git clean -fd --dry-run', 'git clean -f -- seed.txt',
     'git checkout trunk -- new.txt', 'git restore new.txt'])
     assert.equal(rm(c).status, 0, `not a discard of this work: ${c}`);
-});
-
-test('guard-catastrophic-rm: an explicit prune date or gc expiry config is judged by what it destroys', () => {
-  // `git -c gc.pruneExpire=now gc` and `git gc --prune=1.second.ago` passed: only the literal `now` / `all`
-  // were read. An explicit date deletes the unreachable objects older than it; a reflog expiry set on the
-  // command line expires the recovery points themselves.
-  const dir = cleanRepo();
-  const blob = spawnSync('git', ['-C', dir, 'hash-object', '-w', '--stdin'], { input: 'lost work\n', encoding: 'utf8' }).stdout.trim();
-  const hourAgo = new Date(Date.now() - 3600 * 1000);
-  fs.utimesSync(path.join(dir, '.git', 'objects', blob.slice(0, 2), blob.slice(2)), hourAgo, hourAgo);
-  const rm = rmAt(dir);
-  for (const c of ['git -c gc.pruneExpire=now gc', 'git gc --prune=1.second.ago', 'git gc --prune=30.minutes.ago', 'git gc --pru=now',
-    'git -c gc.reflogExpire=now -c gc.reflogExpireUnreachable=now gc', 'git -c gc.reflogExpire=now reflog expire --all'])
-    assert.equal(rm(c).status, 2, `destroys an unreachable object or a reflog entry now: ${c}`);
-  assert.match(rm('git gc --prune=1.second.ago').stderr, new RegExp(blob.slice(0, 12)), 'the denial names the object');
-  for (const c of ['git gc --prune=2.weeks.ago', 'git gc --prune=never', 'git gc --no-prune', 'git -c gc.pruneExpire=never gc',
-    'git gc --prune', 'git -c gc.pruneExpire=2.weeks.ago gc', 'git gc --prune=now --no-prune'])
-    assert.equal(rm(c).status, 0, `keeps the hour-old object: ${c}`);
 });
 
 test('guard-catastrophic-rm: the PowerShell spellings and the Windows roots', () => {

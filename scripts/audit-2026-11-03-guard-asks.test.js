@@ -557,7 +557,6 @@ test('U21: no effect from a keep pick, another file, an answer before the last t
   deny([typed('go'), said('Revert a.txt? -> Revert a.txt')], 'git restore a.txt', 'the model\'s own prose');
   p.file('answers.json', JSON.stringify({ answers: { 'Revert a.txt?': 'Revert a.txt' } }));
   deny([typed('go')], 'cat answers.json; git restore a.txt', 'a file holding an answer shape');
-  deny([typed('go'), asked('Expire the reflog?', [['Expire it', ''], ['Keep it (Recommended)', '']], 'Expire it')], 'git reflog expire --expire=now --all', 'an object or reflog loss never opens by an ask');
   assert.equal(rm(p.write([typed('go'), asked('Revert a.txt?', REVERT, 'Revert a.txt')]), 'git restore a.txt').status, 0, 'and the control case opens');
   assert.equal(hook(p, 'guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git restore a.txt' } }, { transcript: false }).status, 2, 'no transcript: no ask to read');
 });

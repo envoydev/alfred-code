@@ -387,10 +387,10 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     or group (`(cd d && rm -rf x)`, `{ ...; }`, `! rm`, whose parens `groupsAsCuts` reads as cuts), `bash -c`,
     a heredoc into a shell and `eval`; `xargs rm` fed a listing and `find -exec sh -c` stay out of model), and
     EVERY git call in the command, read from its argv by `gitText` (the same wrappers, bodies, scripts and aliases as the
-    force-push guard; only the nine verbs that can lose work spawn git, and past `SCAN_LIMITS.gitJudged` the rest of a command reads
+    force-push guard; only the six verbs that can lose work spawn git, and past `SCAN_LIMITS.gitJudged` the rest of a command reads
     as one whole-tree discard, so N `git add` calls cost no git and the count never lets a discard through - seam M3, m4;
-    each call past the cap is also read by its own plan from its argv when that plan is a clean, a stash, a reflog or an
-    object loss (one read per directory and kind, at most 16, past them an unread loss), and text the reader could not
+    each call past the cap is also read by its own plan from its argv when that plan is a clean or a stash
+    (one read per directory and kind, at most 16, past them an unread loss), and text the reader could not
     read (`unreadAt`) is a whole-tree discard where the shell runs - audit 2026-10-08;
     PowerShell's paths reach the reader with backslash and backtick swapped, and its rm targets with every backslash
     read as `/` - `.\`, `..\`): a
@@ -398,8 +398,8 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     when the PATHSPEC it names is dirty (judged where git runs: cwd, a leading `cd`, `-C`; `status -z`, so
     a non-ASCII name reads as written; an untracked file counts only when the target tracks it, `-` being
     the previous branch), `clean -f` by its own `-n` dry run (ignored files included), plus
-    `stash drop` / `stash clear` / `reflog expire` / `prune` / a `gc` given a prune date or a `-c gc.*Expire`
-    by what they destroy; one block names every loss. A `merge` / `rebase` / `cherry-pick` / `revert` / `am --abort`
+    `stash drop` / `stash clear` by what they destroy; one block names every loss. A reflog expire, a prune and a `gc`
+    are not read (complexity stage 1 B6, 0 fires in 442 sessions). A `merge` / `rebase` / `cherry-pick` / `revert` / `am --abort`
     earlier in the command, of an operation in progress in that repo, takes that operation's rows (staged-only or
     unmerged) out of a later discard's loss - its abort drops them first (audit 2026-10-10 C17, session 349e4825: 37
     merge rows blocked an approved abort-and-reset); a row the work tree also changes is still judged. PowerShell `Remove-Item -Recurse`
@@ -408,7 +408,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     literal path is resolved and compared with the home directory, the project root and the cwd, or any folder holding the
     first two (audit 2026-10-20 H6: each spelling passed). A `claude plugin marketplace remove|rm` with no `--scope` - the binary by its path or inside `bash -c` too -
     is denied (2.1.7): the CLI then removes the
-    declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row.
+    declaration from every scope and uninstalls every plugin installed from it, in every project. The SQL `DROP` probe is gone (complexity stage 1 B13).
     Audit 2026-10-30 HK-08..HK-11: a recursive rm of `.git`'s contents (objects, refs, a `.git/*` glob) blocks while git's
     transient state (`rebase-merge`, `*.lock`, `MERGE_HEAD`) stays removable, and so do git's regenerable leftovers
     `refs/original`, one `worktrees/<name>` and `lfs/tmp` (final review FB, the lead's ruling; `modules/<path>` and `hooks`
@@ -424,8 +424,8 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     pick is the discard - a discard verb (discard, revert, restore, reset, undo, roll back, throw away, drop, delete,
     remove, wipe, clean) with no keep word (keep, don't, not, no, never, skip, cancel, leave) in the chosen label or in
     its description, or a yes to a question asking the discard. A typed message after the answer, a free-text answer
-    naming no discard, model prose and any file (an `answers.json` included) open nothing, and a `*` loss (a reflog expire,
-    a prune) never opens this way. The denial says an Edit or Write revert of the same files is the same discard and
+    naming no discard, model prose and any file (an `answers.json` included) open nothing, and a `*` loss (an unread
+    one) never opens this way. The denial says an Edit or Write revert of the same files is the same discard and
     needs that answer first.
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). THRESHOLD is 400 lines, and the range cap and every shell span
