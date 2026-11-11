@@ -153,19 +153,6 @@
             ]
           },
           {
-            "matcher": "^mcp__.+__browser_file_upload$",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node",
-                "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
-                ],
-                "timeout": 10
-              }
-            ]
-          },
-          {
             "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files|read_media_file)$",
             "hooks": [
               {

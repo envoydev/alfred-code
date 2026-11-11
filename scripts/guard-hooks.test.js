@@ -5286,7 +5286,7 @@ test('mcps T1-1: the retired alias spellings are gated like their successors', (
   // the six 2.4.0 aliases, retired with their successors on 2026-10-24 - a user may still run one under its old name
   const LISTED_ALIASES = ['browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop'];
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
-  const gated = ['App', 'Shell', 'browser_file_upload'];
+  const gated = ['App', 'Shell']; // the upload gate went in complexity stage 1 (A1)
   let held = 0;
   for (const alias of LISTED_ALIASES) {
     const successor = manifest.renamed.mcps[alias];
@@ -5300,7 +5300,7 @@ test('mcps T1-1: the retired alias spellings are gated like their successors', (
       }
     }
   }
-  assert.ok(held >= 6, `the check reached the desktop and upload gates (${held})`);
+  assert.ok(held >= 6, `the check reached the desktop gates (${held})`);
 });
 
 test('guard-desktop-exec: the ledger keeps the Shell verb only, and the denial suggests the full path', () => {

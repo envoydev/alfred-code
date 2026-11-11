@@ -544,13 +544,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot); with no rules
     directory anywhere it cannot tell and names the rule (a recorded choice, pinned in `guard-read-write.test.js`); a
     target is resolved where the shell stands after a `cd` (`cd /tmp && cat > x.ts` names no rule - audit 2026-10-10).
-  - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + a Playwright server's `browser_file_upload` under any
-    registration name (N6), whose
-    `tool_input.paths` each take the Read judgement - a page asking for an upload got any workspace file, audit 2026-10-14
-    PL3 - + a filesystem server's `read_text_file` / `read_file` / `read_media_file` / `read_multiple_files` under any
-    registration name, whose `path` (a `head` judged as a window from line 1) or `paths` take it too - the user's own server
-    returned a `.env` unjudged, audit 2026-10-30 HK-26; `read_media_file` returns any file as base64, E-batch O2 - one more
-    node start on those calls only) - credentials are read for PRESENCE, never
+  - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + a filesystem server's `read_text_file` /
+    `read_file` / `read_media_file` / `read_multiple_files` under any registration name, whose `path` (a `head` judged as
+    a window from line 1) or `paths` take the Read judgement - the user's own server returned a `.env` unjudged, audit
+    2026-10-30 HK-26; `read_media_file` returns any file as base64, E-batch O2 - one more node start on those calls only;
+    the browser `browser_file_upload` route of audit 2026-10-14 PL3 went in complexity stage 1, A1: it never fired, and
+    no browser server ships) - credentials are read for PRESENCE, never
     value. A leading `NAME=value` word and every `$(...)` / backtick body are judged as commands of their own, quote-
     and nesting-aware (audit 2026-10-20 C17: the source protocol's own `MARK="...$(printf ... | ...)"` read as a
     changing step); a count or a facts-only print (a length, a boolean, a type, a label) runs as written, never one routed

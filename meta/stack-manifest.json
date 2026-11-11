@@ -741,12 +741,6 @@
     },
     {
       "file": "guard-secret-value.js",
-      "matcher": "^mcp__.+__browser_file_upload$",
-      "event": "",
-      "note": "the fourth read route: Playwright MCP's browser_file_upload hands a workspace file to whatever page asks - the Read judgement over tool_input.paths, matched by the tool's name under whatever server the user registered (audit 2026-10-14 PL3; the stack ships no browser server since 2026-10-24)"
-    },
-    {
-      "file": "guard-secret-value.js",
       "matcher": "^mcp__.+__(read_file|read_text_file|read_multiple_files|read_media_file)$",
       "event": "",
       "note": "the fifth read route: a filesystem server the user registers returns a file's text - the Read judgement over tool_input.path (a head as a window) or .paths, matched by the tool's name under any registration (audit 2026-10-30 HK-26)"

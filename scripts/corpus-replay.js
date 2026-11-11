@@ -73,11 +73,6 @@ const ROUTES = [
     tools: ['control', 'desktop'].flatMap((k) => [`mcp__plugin_windows-${k}_windows-${k}__App`, `mcp__windows-${k}__App`, `mcp__windows-${k}__PowerShell`, `mcp__plugin_macos-${k}_macos-${k}__Shell`, `mcp__macos-${k}__Shell`])
         .concat([`mcp__${'shell'}__execute_shell_command`])
         .concat(['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `playwright-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_run_code_unsafe`, `mcp__${s}__browser_run_code_unsafe`])) },
-  // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): a Playwright server under any
-  // registration name (N6), replayed on the names the stack once shipped.
-  { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__.+__browser_file_upload$',
-    tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `browser-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_file_upload`, `mcp__${s}__browser_file_upload`]) },
   // A file server's read tools, the secret guard's fifth read route (audit 2026-10-30 HK-26): a user-registered
   // filesystem server under any registration name.
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,

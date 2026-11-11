@@ -2610,49 +2610,17 @@ test('audit 2026-10-11 SD01: git grep over a tracked credential file is probed l
   assert.equal(verdict(at(dir, 'git grep -l SENTRY')), 0, 'names only');
 });
 
-// Audit 2026-10-14 PL3: Playwright MCP's browser_file_upload ({ paths: [<absolute path>, ...] }, its schema) hands each file
-// to whatever page asked - no house guard read an MCP tool's paths. Each path now takes the Read judgement, on both
-// routes' spellings of the four engine servers; the manifest wires the guard there.
-test('browser_file_upload: a credential file or the sensitive-data store is refused, an image passes, on both spellings (PL3)', () => {
+// Complexity stage 1 A1: the browser-upload branch (audit 2026-10-14 PL3) never fired in 442 sessions and the stack ships
+// no browser server since 2.10.1, so it went: an upload is not judged, and no manifest row wires the guard there.
+test('stage 1 A1: a browser file upload is not judged', () => {
   const dir = fs.mkdtempSync(path.join(TMP, 'upload-'));
   const env = path.join(dir, '.env');
   fs.writeFileSync(env, `API_TOKEN=${FAKE_TOKEN}\n`);
-  fs.mkdirSync(path.join(dir, '.alfred'));
-  const store = path.join(dir, '.alfred', '.sensitive-data');
-  fs.writeFileSync(store, 'DB_HOST=db.internal\n');
-  const png = path.join(dir, 'fixture.png');
-  fs.writeFileSync(png, Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
-  const upload = (tool, paths) => run({ tool_name: tool, tool_input: { paths }, cwd: dir, session_id: 'up' });
-  const plugin = 'mcp__plugin_chrome-control_chrome-control__browser_file_upload'; // mcp-fixture
-  const copyRoute = `mcp__${'webkit-control'}__browser_file_upload`; // mcp-fixture: the copy route's spelling
-  for (const tool of [plugin, copyRoute]) {
-    const r = upload(tool, [env]);
-    assert.strictEqual(r.status, 2, `${tool}: a credential .env`);
-    assert.match(r.stderr, /Blocked: upload of .*\.env to a browser page - it holds a credential under `API_TOKEN`/);
-    assert.strictEqual(upload(tool, [store]).status, 2, `${tool}: the sensitive-data store, whatever its keys`);
-    assert.strictEqual(upload(tool, [png]).status, 0, `${tool}: an image fixture`);
-    assert.strictEqual(upload(tool, [png, env]).status, 2, `${tool}: any one path in the list`);
-  }
-  assert.strictEqual(upload(plugin, []).status, 0, 'no paths cancels the chooser');
-  assert.strictEqual(run({ tool_name: plugin, tool_input: {}, cwd: dir, session_id: 'up' }).status, 0, 'paths omitted');
-  assert.strictEqual(upload('mcp__plugin_chrome-control_chrome-control__browser_click', [env]).status, 0, 'another browser tool is not judged here'); // mcp-fixture
-  // the manifest wires the guard on that tool, both spellings, every engine
-  const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
-    .find((h) => h.file === 'guard-secret-value.js' && /browser_file_upload/.test(h.matcher));
-  assert.ok(row, 'a manifest row');
-  const re = new RegExp(row.matcher);
-  for (const engine of ['chrome', 'msedge', 'firefox', 'webkit']) {
-    assert.ok(re.test(`mcp__plugin_${engine}-control_${engine}-control__browser_file_upload`), engine);
-    assert.ok(re.test(`mcp__${engine}-control__browser_file_upload`), `${engine} (copy route)`); // mcp-fixture
-  }
-  assert.ok(!re.test(`mcp__plugin_chrome-control_chrome-control__browser_file_upload${'_x'}`), 'anchored at the end'); // mcp-fixture
-  // mcps track T1-1: a retired 2.4.0 alias runs the same server under its old name, and the guard holds it there too.
-  for (const engine of ['chrome', 'msedge', 'firefox', 'webkit']) {
-    const alias = `browser-${engine}`;
-    assert.ok(re.test(`mcp__plugin_${alias}_${alias}__browser_file_upload`), `${alias}: the manifest wires it`);
-    assert.strictEqual(upload(`mcp__plugin_${alias}_${alias}__browser_file_upload`, [env]).status, 2, `${alias}: the guard holds it`);
-    assert.strictEqual(upload(`mcp__${alias}__browser_file_upload`, [env]).status, 2, `${alias} (copy route)`); // mcp-fixture
-  }
+  const r = run({ tool_name: 'mcp__playwright__browser_file_upload', tool_input: { paths: [env] }, cwd: dir, session_id: 'up' }); // mcp-fixture
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.stdout, '');
+  const hooks = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks);
+  assert.ok(!hooks.includes('browser_file_upload'), 'no manifest row names the upload tool');
 });
 
 // hooks review 2026-10-16: a comparison of two credential files kept only the first, so `cmp -s A B && echo SAME || echo

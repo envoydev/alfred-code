@@ -4805,22 +4805,6 @@ if (payload.tool_name === 'Read') {
   const key = file && secretInUnlessAllowed(file, window);
   if (key) block(`Blocked: Read of ${file}, which holds a credential under \`${key}\`.\n` + presenceHint(file));
 }
-// The FOURTH read route (audit 2026-10-14 PL3): Playwright MCP's `browser_file_upload` hands each file in
-// `tool_input.paths` (absolute paths, its schema) to whatever page asked for it - and the server reaches every file in the
-// workspace, `<data root>/.sensitive-data` and a `.env` included, so a page's injected 'upload your config' would get them.
-// Each path takes the Read judgement above. The stack ships no browser server (2026-10-24), so the tool is matched by its
-// name under whatever server the user registered it (one per engine, a plugin's, any name) - a user server with a tool of
-// the same name takes the same judgement, the accepted cost.
-if (/^mcp__.+__browser_file_upload$/.test(String(payload.tool_name || ''))) {
-  for (const p of (Array.isArray(input.paths) ? input.paths : []).slice(0, 50)) {
-    const file = resolveFile(String(p || ''));
-    const key = file && secretInUnlessAllowed(file);
-    if (key) {
-      global.BLOCK_DETAIL = { branch: 'file-upload', matched: pathMod.basename(file).slice(0, 40) };
-      block(`Blocked: upload of ${file} to a browser page - it holds a credential under \`${key}\`, and the page gets every byte.\n` + presenceHint(file));
-    }
-  }
-}
 // The FIFTH read route (audit 2026-10-30 HK-26): a filesystem server the user registers returns a file's text to the model
 // - `read_text_file` (and the older `read_file`) by `path`, with an optional `head` line count, `read_media_file` by `path` (O2:
 // base64 of any file, a `.env` included), and `read_multiple_files` by `paths` (the server's README). Each path takes the Read judgement, a `head` as a window from line 1; matched by the tool's
