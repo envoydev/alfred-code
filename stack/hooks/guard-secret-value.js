@@ -743,75 +743,12 @@ function resolveFile(token) {
   return null;
 }
 
-// ---- the user's own allowance for THIS session -------------------------------------------------
-// A block or a redacted view ends in an ask, and the 'show or use it' answer has to be honourable or
-// the ask offers a route this guard then denies. A remote user cannot run the copy-ready command in
-// their own terminal - the bare denial took the decision away from them. So the answer is a receipt
-// this guard reads: <data root>/state/approvals/SECRET-READ-ALLOW (the pre-2.8.0 <docs-path>/flow/ one still read, layout.js), one entry per line ('#' comments allowed) -
-// a file path (that file may be read or dumped), a variable NAME (that variable may be printed), or
-// `*` (everything, this session). Session-scoped the way the dispatch guard's APPROVAL stamp is:
-// older than 8h, or written before this session began (the transcript's birthtime where the
-// filesystem reports a real one), reads as absent. While any entry is live the credential-literal
-// check is relaxed too - the value the user chose to expose may be placed into a file. The default
-// stays the redacted view: a model improvising a presence check is still the measured incident.
-// Where the call names its session, the receipt is that session's only through a `session: <id>` line naming
-// it: time alone let a second session open on the same project honour the first one's answer, and a `*` lifted
-// the literal check there too (audit 2026-10-08). A reader with no session id keeps the time rule. The 8h limit is the
-// prelude's RECEIPT_MAX_MS, read through securityReceipt.
 // The native realpath first, as secret-chain.js and layout.js take it (a Windows 8.3 short name in one spelling and the
 // long name in the other matched no store); `realStrict` throws where the path does not exist.
 const realStrict = (p) => { try { return fs.realpathSync.native(p); } catch { return fs.realpathSync(p); } };
 const realOf = (p) => { try { return realStrict(p); } catch { return pathMod.resolve(p); } };
-const sessionIdOf = (v) => (typeof v === 'string' && /^[\w.-]{1,128}$/.test(v) ? v : '');
-let layout = null;
-try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
-// Audit 2026-10-30 HK-03: the file is one the model can write, so it counts only after the user answered this guard's
-// last denial 'Show or use the value ...' with auto-run off (hook-prelude.js securityReceipt; the hook's own payload
-// carries the seat's `agent_id`). A CLI run (`--redacted`, no transcript) reads it only for its note. No prelude: shut.
-const SHOW_LABEL = 'Show or use the value this session - it enters the transcript permanently';
-function readReceipt(root, transcriptPath, sessionId) {
-  const r = { path: layout ? layout.findState(root, 'approvals', 'SECRET-READ-ALLOW') : pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'),
-    write: layout ? layout.statePath(root, 'approvals', 'SECRET-READ-ALLOW') : null, stale: false, all: false, files: new Set(), names: new Set(), live: false, session: sessionIdOf(sessionId), why: '' };
-  try {
-    let receipts = null;
-    try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
-    const input = { ...(payload && typeof payload === 'object' ? payload : {}), transcript_path: transcriptPath || undefined, session_id: r.session || undefined };
-    const held = receipts && receipts.securityReceipt ? receipts.securityReceipt(r.path, input, { marker: 'SECRET-READ-ALLOW', labels: [SHOW_LABEL] })
-      : fs.existsSync(r.path) ? { live: false, lines: [], why: 'no receipt reader beside this guard' } : null;
-    const lines = held && held.live ? held.lines : null;
-    if (held && !held.live) {
-      r.stale = true;
-      r.why = held.why;
-    } else if (lines) {
-      for (const e of lines) {
-        if (!e || e.startsWith('#') || /^session:/.test(e)) continue;
-        if (e === '*') r.all = true;
-        else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(e)) r.names.add(e);
-        else {
-          const p = expandPath(e);
-          if (p) r.files.add(realOf(pathMod.isAbsolute(p) ? p : pathMod.join(anchorDirs()[0] || process.cwd(), p)));
-        }
-      }
-    }
-  } catch { /* absent or unreadable - no allowance recorded */ }
-  r.live = r.all || r.files.size > 0 || r.names.size > 0;
-  return r;
-}
-// The one sentence every denial and every redacted view ends on: the block or the placeholder is the
-// default, the user's answer is honoured. It names the RESOLVED receipt path - the docs root may be
-// absolute, and a relative spelling of it is one the model would have to re-anchor.
-// Cut to its instruction (deep hooks review 2026-10-16: about 720 characters rode every denial and every rewritten call's
-// note, some 4,000 a fortnight); the three labels are the contract and stay verbatim.
-const askLine = (r) =>
-  'If the user needs the VALUE itself (shown, or placed where a blind copy cannot reach), end the turn with ONE ' +
-  "AskUserQuestion: 'Presence only (Recommended)', 'Show or use the value this session - it enters the transcript permanently', 'Drop it'. " +
-  `On the second answer write ${r.write || r.path}: ${r.session ? `\`session: ${r.session}\`` : '`session: <id>` (`$CLAUDE_CODE_SESSION_ID`)'}, ` +
-  'then the file, the variable NAME or `*`, one per line, and retry (this session, under 8h)' +
-  // the receipt reader's own reason (hook-prelude.js readReceiptFile / receiptAnswered), never a list of the possible ones
-  (r.stale ? ` - the receipt there now does not count (${r.why || 'it is stale'}), so rewrite it only on a fresh answer` : '') + '.';
-// A note the rewritten call prints as its first line, so the model reads what happened and the route
-// to the value in the same tool result - nothing is fed back through a denial.
-const noteLine = (what, r) => `# credential guard: ${what} A value never enters the chat. ${askLine(r)}`;
+// The first line of a redacted view: what it is. No receipt opens the value any more (swap 1) - the user opens the file.
+const noteLine = (what) => `# credential guard: ${what} A value never enters the chat.`;
 const SECRET_SHAPE_G = new RegExp(SECRET_SHAPE.source, 'g');
 // A value is masked when its KEY is credential-shaped and it holds a credential, or when the value
 // itself has a known credential SHAPE (or is a PEM private key) whatever the key - the cases the key test
@@ -1214,14 +1151,13 @@ if (process.argv[2] === '--redacted') {
   const fileArg = String(process.argv[3] || '');
   const filtered = process.argv[4] === '--note-to-stderr';
   const file = nativePath(fileArg.replace(/^~(?=\/|$)/, HOME));
-  const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null, process.env.CLAUDE_CODE_SESSION_ID);
   let text = null;
   let out = '';
   try {
     const size = fs.statSync(file).size;
     if (size > 0 && isKeyStore(file)) {
       out = noteLine(`redacted view of ${file} - a binary key store, judged by its kind and never printed.` +
-        ` Presence: node "${__filename}" --presence "${file}".`, receipt) + `\n<binary key store, ${size} bytes>\n`;
+        ` Presence: node "${__filename}" --presence "${file}".`) + `\n<binary key store, ${size} bytes>\n`;
     } else if (size > MAX_BYTES) {
       // past the cap no view is built (HK-07: the guard judges such a file by its first MAX_BYTES, and a dump of
       // one is rewritten here only when that head holds a credential)
@@ -1253,7 +1189,7 @@ if (process.argv[2] === '--redacted') {
     // guessed `.claude/hooks/`, where only the docs and history engines are copied.
     const note = noteLine(`redacted view of ${file} - ${masked} credential value(s) shown as <set (N chars)>, everything else as written` +
       (filtered ? '; piped through the command\'s own filter, so line numbers count the view, not the file.' : '.') +
-      ` Presence of one key: node "${__filename}" --presence "${file}" KEY (A.B.C reads a nested key).`, receipt);
+      ` Presence of one key: node "${__filename}" --presence "${file}" KEY (A.B.C reads a nested key).`);
     if (filtered) { process.stderr.write(note + '\n'); out = body; } else out = note + '\n' + body;
   }
   process.stdout.write(out);
@@ -1268,7 +1204,6 @@ if (process.argv[2] === '--redacted') {
 if (process.argv[2] === '--redacted-env') {
   const filtered = process.argv.slice(3).includes('--note-to-stderr');
   const sep = process.argv.slice(3).includes('-0') ? '\0' : '\n';
-  const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null, process.env.CLAUDE_CODE_SESSION_ID);
   const lines = [];
   let masked = 0;
   for (const k of Object.keys(process.env).sort()) {
@@ -1276,7 +1211,7 @@ if (process.argv[2] === '--redacted-env') {
     if (maskable(k, v)) { masked++; lines.push(`${k}=<set (${v.length} chars)>`); } else lines.push(`${k}=${maskEmbedded(v, (x) => { masked++; return `<set (${x.length} chars)>`; })}`);
   }
   const note = noteLine(`the environment with ${masked} credential value(s) shown as <set (N chars)>, everything else as env prints it`
-    + (filtered ? '; piped through the command\'s own filter.' : '.'), receipt);
+    + (filtered ? '; piped through the command\'s own filter.' : '.'));
   if (filtered) process.stderr.write(note + '\n');
   process.stdout.write((filtered ? '' : note + '\n') + lines.join(sep) + sep);
   process.exit(0);
@@ -1673,15 +1608,7 @@ if (posted || eventIs(payload, 'PostToolUseFailure')) {
 }
 
 const input = payload.tool_input || {};
-const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.transcript_path, payload.session_id);
-const receiptLive = receipt.live;
-const allowAll = receipt.all;
-const fileAllowed = (file) => allowAll || receipt.files.has(realOf(file));
-const secretInUnlessAllowed = (file, window = null) => (fileAllowed(file) ? null : secretIn(file, window));
-// Every denial ends in the ask mandate: the block is the default, the user's answer is honoured.
-const askHint = () => '\nIf PRESENCE answers the question, take the presence route and do not ask. ' + askLine(receipt) + '\n';
-const block = (msg) => { process.stderr.write(msg + askHint()); process.exit(2); };
-// A refusal of the shell route: no receipt opens it (swap 1), so it ends in no ask.
+// A refusal ends in no ask: no receipt opens one (swap 1). The one ask left is the host's, on a Read (askOrDeny).
 const refuse = (msg) => { process.stderr.write(msg); process.exit(2); };
 const presenceHint = (file) =>
   `Read it for PRESENCE: node "${__filename}" --presence "${file}" [KEY ...]  ->  KEY=set (N chars) | empty | absent.\n` +
@@ -1859,10 +1786,10 @@ if (isShellTool(payload.tool_name)) {
   // input; blocking still keeps it out of a file, a header and a remote, and names the rule. Judged
   // on the RAW text: a heredoc that writes the value into a file is the same leak. The denial names
   // the shape only - the value is never repeated. A fetch of a short-lived link passes (above).
-  const fetched = !receiptLive && SECRET_SHAPE.test(raw) ? shortLivedFetch(raw) : null;
+  const fetched = SECRET_SHAPE.test(raw) ? shortLivedFetch(raw) : null;
   if (fetched) shortLivedRow(fetched);
-  if (!receiptLive && !fetched && SECRET_SHAPE.test(raw)) {
-    block('Blocked: the command carries a credential-shaped literal (a token / key / JWT).\n' +
+  if (!fetched && SECRET_SHAPE.test(raw)) {
+    refuse('Blocked: the command carries a credential-shaped literal (a token / key / JWT).\n' +
       'Per alfred-security.md a secret never passes through a tool call or the chat: the user puts it\n' +
       'in the file by hand, or runs a copy-ready command in their own terminal (getpass, not an argument).\n');
   }
@@ -1913,6 +1840,21 @@ function storeNameTests(text) {
     BARE: /(?:^|[^\w.-])\.secrets(?![\w.-])/i, ROOT_WORD: new RegExp(`(?:^|[^\\w.-])${ROOT}(?![\\w.-])`, 'i') };
 }
 
+// A Read of a credential file is the host's to ask about (swap 1, ruling 5): the user sees which file and what allowing
+// costs, and answers once per Read. Where nobody can answer - bypassPermissions, dontAsk, an unattended run, a Cursor
+// payload (its preToolUse takes 'ask' and does not enforce it) - the Read is refused with the same reason. The ask row
+// is what the stop contract reads as the consent to that call's value being in the transcript (askedExposure).
+function askOrDeny(file, key) {
+  const what = `holds a credential under \`${key}\``;
+  const presence = `node "${__filename}" --presence "${file}" [KEY ...]`;
+  let nobody = onCursor || /^(?:bypassPermissions|dontAsk)$/.test(String(payload.permission_mode || ''));
+  try { nobody = nobody || require('./hook-prelude.js').unattended(payload, process.env); } catch { /* no prelude: the mode alone */ }
+  if (nobody) refuse(`Blocked: Read of ${file}, which ${what} - nobody can answer an ask here, and the value would enter the transcript permanently. Presence: ${presence}; the user opens the file.\n`);
+  ledgerRow('ask', { branch: 'read', file: pathMod.basename(file) });
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
+    permissionDecisionReason: `Read of ${file}: it ${what}. Allowing it puts the value in this transcript permanently. Presence only: ${presence}` } }));
+  process.exit(0);
+}
 // ---- Read matcher ----
 // The settings.json permissions.deny already stops a Read of the ACCOUNT files by path; this is the
 // content-judged complement for everything the path list cannot name - a project settings.json
@@ -1921,8 +1863,10 @@ if (payload.tool_name === 'Read') {
   const file = resolveFile(String(input.file_path || ''));
   // a window (`offset` / `limit`) of a file past MAX_BYTES is judged on its own lines (HK-07); a smaller file whole
   const window = input.offset != null || input.limit != null ? { offset: input.offset, limit: input.limit } : null;
-  const key = file && secretInUnlessAllowed(file, window);
-  if (key) block(`Blocked: Read of ${file}, which holds a credential under \`${key}\`.\n` + presenceHint(file));
+  const key = file && secretIn(file, window);
+  // The store under both names and the key file are the model's never (ruling 6): a plain deny, by identity.
+  if (key && isStoreName(realOf(file))) refuse(`Blocked: Read of ${file}, which holds a credential under \`${key}\`.\n` + presenceHint(file));
+  if (key) askOrDeny(file, key);
 }
 // The FIFTH read route (audit 2026-10-30 HK-26): a filesystem server the user registers returns a file's text to the model
 // - `read_text_file` (and the older `read_file`) by `path`, with an optional `head` line count, `read_media_file` by `path` (O2:
@@ -1936,10 +1880,10 @@ if (FS_READ_TOOL.test(String(payload.tool_name || ''))) {
   const window = !many && Number.isInteger(head) && head > 0 ? { offset: 1, limit: head } : null;
   for (const p of paths.slice(0, 50)) {
     const file = resolveFile(String(p || ''));
-    const key = file && secretInUnlessAllowed(file, window);
+    const key = file && secretIn(file, window);
     if (key) {
       global.BLOCK_DETAIL = { branch: 'mcp-file-read', matched: pathMod.basename(file).slice(0, 40) };
-      block(`Blocked: ${String(payload.tool_name).replace(/^mcp__.+__/, '')} of ${file}, which holds a credential under \`${key}\` - a`
+      refuse(`Blocked: ${String(payload.tool_name).replace(/^mcp__.+__/, '')} of ${file}, which holds a credential under \`${key}\` - a`
         + ` filesystem server returns the file's text to the chat, the same value read a Read is refused.\n` + presenceHint(file));
     }
   }
@@ -1998,7 +1942,7 @@ function walkCredentialFile(root, tool) {
       if (bytes > WALK_BYTES) return null;
       let text;
       try { text = size > MAX_BYTES ? readText(full, MAX_BYTES) : readText(full); } catch { continue; }
-      if (re.test(text) && secretInUnlessAllowed(full)) return full;
+      if (re.test(text) && secretIn(full)) return full;
     }
   }
   return null;
@@ -2014,8 +1958,8 @@ if (payload.tool_name === 'Grep') {
   // the same literal in `pattern` and nothing judged it, so the value the shell route refuses was
   // free through the search tool. The pattern is the call's own input and lands in the transcript
   // whatever the search returns - judged here by the same shape test, in every output mode.
-  if (!receiptLive && SECRET_SHAPE.test(String(input.pattern || ''))) {
-    block('Blocked: the Grep pattern carries a credential-shaped literal (a token / key / JWT).\n'
+  if (SECRET_SHAPE.test(String(input.pattern || ''))) {
+    refuse('Blocked: the Grep pattern carries a credential-shaped literal (a token / key / JWT).\n'
       + 'Per alfred-security.md a secret never passes through a tool call or the chat, and a search\n'
       + 'pattern is a tool input like any other - it is in the transcript before the first match is.\n'
       + 'Search for the KEY NAME instead, or ask presence:\n'
@@ -2034,9 +1978,9 @@ if (payload.tool_name === 'Grep') {
       }
     }
     if (file) {
-      const key = secretInUnlessAllowed(file);
+      const key = secretIn(file);
       if (key) {
-        block(`Blocked: Grep -> content of ${file}, which holds a credential under \`${key}\`.\n` +
+        refuse(`Blocked: Grep -> content of ${file}, which holds a credential under \`${key}\`.\n` +
           `A content-mode Grep PRINTS the matching lines, so it is the same value read the Read and\n` +
           `shell routes already block - just spelled as a search. Use \`output_mode: "count"\` or\n` +
           `\`"files_with_matches"\` to ask whether the key is there, or the presence route for what it holds.\n` +
@@ -2045,7 +1989,7 @@ if (payload.tool_name === 'Grep') {
     } else if (!target || dir) {
       const hit = walkCredentialFile(dir || (typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.env.CLAUDE_PROJECT_DIR || process.cwd()), input);
       if (hit) {
-        block(`Blocked: Grep -> content over a directory reaches ${hit}, which holds a credential under \`${secretInUnlessAllowed(hit)}\`, and the pattern matches a line of it.\n` +
+        refuse(`Blocked: Grep -> content over a directory reaches ${hit}, which holds a credential under \`${secretIn(hit)}\`, and the pattern matches a line of it.\n` +
           `A content-mode Grep PRINTS the matching lines, so this is the same value read the Read and shell routes\n` +
           `already block - spelled as a tree search. Use \`output_mode: "count"\` or \`"files_with_matches"\` to ask which files\n` +
           `mention it, narrow the pattern or \`glob\` away from that file, or the presence route for what it holds.\n` +

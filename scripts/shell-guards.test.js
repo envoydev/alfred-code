@@ -545,15 +545,15 @@ test('file-guards: each guard\'s block reaches the combined answer through the d
   fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }, null, 2));
   const cases = [
     ['guard-read-whole-file', 'Read', { file_path: BIG }],
-    ['guard-secret-value', 'Read', { file_path: path.join(dir, 'settings.local.json') }],
+    ['guard-secret-value', 'Read', { file_path: path.join(dir, 'settings.local.json') }, { permission_mode: 'bypassPermissions' }], // where nobody can answer the ask: a block
     ['guard-config-protection', 'Write', { file_path: path.join(dir, '.claude', 'settings.local.json'), content: '{ "disableAllHooks": true }' }], // stage 1 B11: its switch-off half
     ['guard-cross-project-write', 'Write', { file_path: path.join(other, 'f.txt'), content: 'x' }],
   ];
   const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
-  for (const [guard, tool, input] of cases)
+  for (const [guard, tool, input, more] of cases)
   {
     const session = `fg-${guard}`;
-    const payload = filePayload(tool, input, dir, session);
+    const payload = { ...filePayload(tool, input, dir, session), ...more };
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
     assert.strictEqual(alone.status, 2, `${guard} blocks ${tool} on its own: ${alone.stderr}`);
     for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
@@ -562,6 +562,24 @@ test('file-guards: each guard\'s block reaches the combined answer through the d
     assert.ok(both.stderr.includes(alone.stderr.trim()), `${guard}: its own message reaches the model\n--- alone\n${alone.stderr}\n--- dispatched\n${both.stderr}`);
     assert.deepStrictEqual(hooksOf(ledgerRows(dir, session)), [`${guard}.js`], `${guard}: one ledger row, its own`);
   }
+});
+
+test('file-guards: the secret guard\'s ask reaches the host through the dispatcher; a Cursor Read is denied there', () => {
+  const dir = project();
+  const file = path.join(dir, 'deploy.yaml');
+  fs.writeFileSync(file, `users:\n- name: dev\n  user:\n    token: ${'kc-' + 'w6'.repeat(8)}\n`);
+  const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_CODE_ENTRYPOINT: 'cli', ALFRED_CODE_UNATTENDED: '' };
+  const payload = { ...filePayload('Read', { file_path: file }, dir, 'fg-ask'), permission_mode: 'default', tool_use_id: 'toolu_fg1' };
+  const r = run(FILES, payload, { cwd: dir, env });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const h = JSON.parse(r.stdout).hookSpecificOutput;
+  assert.deepStrictEqual([h.hookEventName, h.permissionDecision], ['PreToolUse', 'ask']);
+  assert.match(h.permissionDecisionReason, /in this transcript permanently/);
+  assert.ok(ledgerRows(dir, 'fg-ask').some((x) => x.hook === 'guard-secret-value.js' && x.mode === 'ask' && x.tool_use_id === 'toolu_fg1'), 'the ask row');
+  const cursor = run(FILES, { ...payload, session_id: 'fg-ask-cursor', cursor_version: '2.1.0', hook_event_name: 'preToolUse' }, { cwd: dir, env });
+  assert.strictEqual(cursor.status, 2, 'a Cursor Read is denied');
+  assert.match(cursor.stderr, /nobody can answer an ask here/);
+  assert.doesNotMatch(cursor.stdout, /permissionDecision/);
 });
 
 test('file-guards: a guard never judges a tool its row did not name; an ordinary call and garbage pass silently', () => {
@@ -586,7 +604,7 @@ test('file-guards: the protective secret guard is answered at once, and a guard 
   const dir = project();
   fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=abc123\n');
   const r = spawnSync(process.execPath, [path.join(copy, 'file-guards.js')], {
-    input: JSON.stringify(filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'fg-prot')), encoding: 'utf8', cwd: dir,
+    input: JSON.stringify({ ...filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'fg-prot'), permission_mode: 'bypassPermissions' }), encoding: 'utf8', cwd: dir,
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
   });
   assert.strictEqual(r.status, 2, `the secret block arrives before the stalled guard runs (status ${r.status})`);
@@ -621,7 +639,7 @@ test('a stalled guard ahead of the secret guard in the manifest cannot drop its 
   const spawnIt = (file, payload) => spawnSync(process.execPath, [path.join(copy, file)], {
     input: JSON.stringify(payload), encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
   });
-  const read = spawnIt('file-guards.js', filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'stall-read'));
+  const read = spawnIt('file-guards.js', { ...filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'stall-read'), permission_mode: 'bypassPermissions' });
   assert.strictEqual(read.status, 2, `file-guards: the secret block arrives though the read guard stalls (status ${read.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-read')), ['guard-secret-value.js']);
   // a second read that PRINTS the file forces the whole-command rewrite, which would drop the build - a block, not a

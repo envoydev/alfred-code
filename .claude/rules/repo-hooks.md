@@ -338,19 +338,19 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   THE RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings): every one is read by ONE reader,
   `hook-prelude.js readReceiptFile` - under 8h, written after the session began, and, where the call names its session,
   holding a `session: <id>` line naming it - and each denial prints the exact lines to write, the session line first
-  (`receiptLinesText`). The four SECURITY receipts (`SECRET-READ-ALLOW`, `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`,
+  (`receiptLinesText`). The three SECURITY receipts (`DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`,
   `GUARD-OFF-ALLOW` - the last since the system audit of 2026-11-03, SYS-01; `DESKTOP-EXEC-ALLOW` left with its guard in
-  complexity stage 1 B12) count only through
+  complexity stage 1 B12, `SECRET-READ-ALLOW` in swap 1 - a credential Read is the host's own ask now) count only through
   `securityReceipt` / `receiptAnswered`: this session's transcript must hold an
   AskUserQuestion answered after that guard's last denial (an `is_error` tool result naming the receipt) with the
-  guard's own allow label ('Show or use the value this session ...', 'Discard it', 'Allow ... for this session', 'Allow
+  guard's own allow label ('Discard it', 'Allow ... for this session', 'Allow
   this guard switch-off'), and given while auto-run was off,
   judged at the answer's position by the typed `modeFlags` rows - deleting the stamp or typing the off flag afterwards
   opens nothing, and no file the model can write decides it. An answer counts only as the result of an AskUserQuestion
   call in the same transcript (its `tool_use_id`; the final review of 2026-10-30 FA-4: an `answers`-shaped result under
   another tool's id opened one), and a typed row is never a compaction summary or a sidechain row - both the model's
-  words (FA-2, `typedRowText`). The stop contract's rotation read takes `SECRET-READ-ALLOW` through the same
-  `securityReceipt` with the guard's SHOW label (FA-3: its session line and age alone silenced the rotation ask). A seat's denial is anchored at its time in the seat
+  words (FA-2, `typedRowText`). The stop contract's rotation read takes no receipt since swap 1: an exposure is consented when
+  the session's hook-blocks ledger holds the secret guard's `mode: 'ask'` row with that call's `tool_use_id` (`askedExposure`; a forged row skips one rotation ask, nothing more). A seat's denial is anchored at its time in the seat
   transcript (the payload's `agent_transcript_path`, else `<session>/subagents/agent-<agent_id>.jsonl`), the answer read
   in the main one after it. A timed-out ask is no answer. With no transcript on disk (a CLI run) the old time rule
   stands; with no prelude the four read shut. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
@@ -647,7 +647,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
     one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key; with no KEY it lists at
     most 200 string leaves plus a count, a credential-shaped key name masked); the guard ships only
-    in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<data root>/state/approvals/SECRET-READ-ALLOW` receipt - where the call names its session, only with a `session: <id>` line naming it, the stop contract's rotation read included (audit 2026-10-08: time alone opened it to a second session on the project), and only after the user's own answer to its denial (THE RECEIPTS above). No rewrite
+    in the plugin, so every denial and view names it by its absolute path. A Read of a credential file is the HOST'S ask (`askOrDeny`, swap 1 ruling 5): `permissionDecision: 'ask'` with the file, the key and 'Allowing it puts the value in this transcript permanently', one `ask` ledger row per call (the stop contract's rotation consent), under `default`, `acceptEdits`, `plan`, `auto` or no mode; refused with the same reason under `bypassPermissions` / `dontAsk`, when unattended (`hook-prelude.js unattended`) and on a Cursor payload (its preToolUse does not enforce an ask); the store under both names and the key file are a plain deny in every mode, and Grep and the MCP reads deny with no ask. No receipt opens anything. No rewrite
     row is written any more: the masker's `mask` row and the probe rows are the measurements the block rate skips
     (2.1.5 M17), each carrying the payload's `permissionMode` when it has one (audit 2026-10-10 C09: an auto-mode
     classifier gave one rewritten call no verdict and stalled it 80s); the dispatcher's `zsh-quote` row does too.

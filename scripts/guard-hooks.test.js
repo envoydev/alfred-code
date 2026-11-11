@@ -193,53 +193,47 @@ test('guard-stop-contract: a suggestion close that says nothing is pending on th
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: bare }), 2, 'the same card without the line is the measured stall');
 });
 
-test('guard-stop-contract: a credential shape in a tool result demands the rotate ask - unless the user allowed the read this session', () => {
-  // The secret guard's receipt is the user's consent to the value being in the transcript; without
-  // honouring it here, every turn after a consented read ended in 'Rotate it now?'.
-  // Since the final review of 2026-10-30 (FA-3) the receipt is read the guard's way: it counts only beside the user's own
-  // SHOW answer to an AskUserQuestion after the guard's denial, which this session's transcript holds.
+test('swap 1 rotate: an exposure the secret guard asked about is consented, any other is asked', () => {
+  // Rotation consent is the ledger's ask row (swap 1, ruling 10): the secret guard asked the host about the call whose
+  // result put the value in the transcript, and the result being there shows the user allowed it. No receipt is read.
   const root = fs.mkdtempSync(path.join(TMP, 'projS-'));
   const shape = 'ghp_' + 'A'.repeat(24); // fake by construction - the SHAPE is what the contract reads
-  const SHOW_ANSWER = 'Show or use the value this session - it enters the transcript permanently';
-  const leakRows = [
-    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't9', content: `TOKEN=${shape}` }] } },
-    assistantRow('m9', 'Copied the token into .env as asked; all tests green.'),
-  ];
   const tp = transcript('leak', [
-    { type: 'user', message: { role: 'user', content: 'put the token in .env' } },
-    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'd9', is_error: true, content: 'PreToolUse:Read hook error: Blocked: ... write .alfred/state/approvals/SECRET-READ-ALLOW and retry' }] } },
-    { type: 'assistant', message: { id: 'q9', role: 'assistant', content: [{ type: 'tool_use', id: 'q9', name: 'AskUserQuestion', input: { questions: [] } }] } },
-    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q9', content: `User has answered your questions: "Show it?"="${SHOW_ANSWER}".` }] },
-      toolUseResult: { questions: [{ question: 'Show it?' }], answers: { 'Show it?': SHOW_ANSWER } } },
-    { type: 'user', message: { role: 'user', content: 'go on' } },
-    ...leakRows,
+    { type: 'user', message: { role: 'user', content: 'read the kubeconfig' } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_t9', content: `TOKEN=${shape}` }] } },
+    assistantRow('m9', 'Read the config as asked; all tests green.'),
   ]);
-  const unasked = transcript('leak-unasked', leakRows); // written before the receipt, so its birth never decides
-  const stop = (t = tp) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: t },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
-  const r = stop();
-  assert.equal(r.status, 2, 'a shape in a tool result with no consent');
-  assert.match(r.stderr, /Rotate it now/);
-  const receipt = path.join(root, '.alfred', 'docs', 'flow', 'SECRET-READ-ALLOW');
-  fs.mkdirSync(path.dirname(receipt), { recursive: true });
-  fs.writeFileSync(receipt, '*\n');
-  assert.equal(stop().status, 0, 'the consented exposure is not re-asked');
-  assert.equal(stop(unasked).status, 2, 'FA-3: the same receipt with no SHOW answer in the session is no consent');
-  // audit 2026-10-08: a Stop naming its session reads the receipt only through a `session:` line naming it
-  const stopAs = (sid) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, session_id: sid },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
-  assert.equal(stopAs('s1').status, 2, 'a receipt naming no session is no consent for a session');
-  fs.writeFileSync(receipt, 'session: s2\n*\n');
-  assert.equal(stopAs('s1').status, 2, 'another session\'s receipt is no consent');
-  fs.writeFileSync(receipt, 'session: s1\n*\n');
-  assert.equal(stopAs('s1').status, 0, 'this session\'s receipt is');
-  fs.writeFileSync(receipt, 'session: s1\n');
-  assert.equal(stopAs('s1').status, 2, 'a session line alone allows nothing');
-  fs.writeFileSync(receipt, '*\n');
-  const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(receipt, old, old);
-  assert.equal(stop().status, 2, 'a stale receipt is no consent');
-  stateReceipt(root, 'SECRET-READ-ALLOW', '*\n');
-  assert.equal(stop().status, 0, '2.8.0: the receipt under state/approvals/ is read, and wins over a stale flow/ copy');
+  const logDir = fs.mkdtempSync(path.join(TMP, 'logS-'));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir };
+  const stop = () => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, session_id: 's1' }, { env });
+  const ledger = path.join(root, '.alfred', 'statistics', 'hook-blocks', 's1.jsonl');
+  const rows = (...list) => { fs.mkdirSync(path.dirname(ledger), { recursive: true }); fs.writeFileSync(ledger, list.map((r) => JSON.stringify(r) + '\n').join('')); };
+  const askRow = (id, over = {}) => ({ ts: new Date().toISOString(), hook: 'guard-secret-value.js', tool: 'Read', mode: 'ask', tool_use_id: id, reason: 'ask: read', ...over });
+  const asksRotation = (why) => { const r = stop(); assert.equal(r.status, 2, why); assert.match(r.stderr, /Rotate it now/); };
+  asksRotation('a shape in a tool result, no ledger');
+  rows(askRow('toolu_other'));
+  asksRotation('an ask row for another call');
+  rows(askRow('toolu_t9', { hook: 'guard-read-whole-file.js' }));
+  asksRotation('another hook\'s row with the id');
+  rows(askRow('toolu_t9', { mode: 'block' }));
+  asksRotation('the guard\'s block row with the id');
+  fs.writeFileSync(ledger, 'not json\n');
+  asksRotation('a torn ledger');
+  rows(askRow('toolu_other'), askRow('toolu_t9'));
+  assert.equal(stop().status, 0, 'the guard asked about this call: the exposure is consented');
+  // the scan state carries the exposure's call id under v 2; a v 1 file (an older release's, no id in it) is read cold
+  const stateFile = path.join(logDir, fs.readdirSync(logDir).find((f) => /^guard-stop-scan-s1-/.test(f)));
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.deepStrictEqual([state.v, state.user.id], [2, 'toolu_t9']);
+  fs.writeFileSync(stateFile, JSON.stringify({ ...state, v: 1, user: { at: state.user.at, key: state.user.key } }));
+  assert.equal(stop().status, 0, 'a v 1 scan state is read cold: the same verdict with the ask row');
+  assert.equal(JSON.parse(fs.readFileSync(stateFile, 'utf8')).v, 2, 'and rewritten as v 2');
+  fs.writeFileSync(stateFile, JSON.stringify({ ...state, v: 1, user: { at: state.user.at, key: state.user.key } }));
+  fs.rmSync(ledger);
+  asksRotation('a v 1 scan state, no ask row');
+  // a receipt file of the old name is inert (ruling 11)
+  stateReceipt(root, ['SECRET', 'READ', 'ALLOW'].join('-'), 'session: s1\n*\n');
+  asksRotation('an old receipt is never read');
 });
 
 test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and its HOOKS_OFF part turns it off', () => {
@@ -5533,78 +5527,85 @@ const rcAskCall = (row) => ({ type: 'assistant', sessionId: row.sessionId, times
 const rcWithCall = (row) => (row.toolUseResult && row.toolUseResult.answers ? [rcAskCall(row), row] : [row]);
 const rcFile = (file, rows) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, rows.flatMap(rcWithCall).map((r) => JSON.stringify(r)).join('\n') + '\n'); return file; };
 const rcLine = (row) => rcWithCall(row).map((r) => JSON.stringify(r) + '\n').join('');
-const SHOW = 'Show or use the value this session - it enters the transcript permanently';
 
-test('audit 2026-10-30 HK-03: SECRET-READ-ALLOW opens only on the user\'s own allow answer to the last denial, never one auto-run gave', () => {
-  const root = fs.mkdtempSync(path.join(TMP, 'rc-secret-'));
-  fs.writeFileSync(path.join(root, '.env'), `API_TOKEN=${'x0'.repeat(20)}\n`);
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: root };
+// Swap 1 took the secret guard's receipt; these two rode it, and what they pin is the shared reader (hook-prelude.js
+// receiptAnswered), so they ride the cross-project write guard's receipt now.
+const CROSS = 'CROSS-WRITE-ALLOW';
+function crossProject(prefix) {
+  const root = fs.mkdtempSync(path.join(TMP, `${prefix}A-`));
+  const otherRoot = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, `${prefix}B-`)));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+  const write = (tp, extra = {}) => runIn('guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: path.join(otherRoot, 'src', 'a.ts') }, session_id: RC,
+    ...(tp ? { transcript_path: tp } : {}), cwd: root, ...extra }, { env });
+  return { root, otherRoot, write, allow: `Allow writes into ${otherRoot} for this session`, mine: `session: ${RC}\n${otherRoot}\n` };
+}
+
+test('audit 2026-10-30 HK-03: a security receipt opens only on the user\'s own allow answer to the last denial, never one auto-run gave', () => {
+  const { root, otherRoot, write, allow: ALLOW, mine } = crossProject('rc-open');
   let k = 0;
-  // the session's transcript, then the receipt the model writes (after it, so the transcript's birth never decides), then the Read
-  const read = (rows, receipt = `session: ${RC}\n*\n`) => {
+  // the session's transcript, then the receipt the model writes (after it, so the transcript's birth never decides), then the Write
+  const attempt = (rows, receipt = mine) => {
     const tp = rcFile(path.join(root, 'sessions', `t${++k}.jsonl`), rows);
     pause(5);
-    stateReceipt(root, 'SECRET-READ-ALLOW', receipt);
-    return runIn('guard-secret-value.js', { tool_name: 'Read', tool_input: { file_path: path.join(root, '.env') }, session_id: RC, transcript_path: tp, cwd: root }, { env });
+    stateReceipt(root, CROSS, receipt);
+    return write(tp);
   };
-  const opens = (rows, why, receipt) => { const r = read(rows, receipt); assert.equal(r.status, 0, `must open (${why})\n${r.stderr}`); };
-  const shut = (rows, why, receipt) => { const r = read(rows, receipt); assert.equal(r.status, 2, `must stay shut (${why})`); return r; };
-  const ask = rc.typed('read the config and fix the token check');
-  opens([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)], 'the user answered the denial with the allow label');
-  opens([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer(`${SHOW} (Recommended)`)], 'a Recommended mark is the same label');
-  opens([ask, rc.answer(SHOW)], 'a rewrite (no denial) asked first: any answer of the session');
-  assert.match(shut([ask, rc.denial('SECRET-READ-ALLOW')], 'a receipt the model wrote with no ask answered').stderr, /does not count \(no ask answered with the allow label/, 'the denial says why the receipt there is not honoured');
-  shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer('Presence only (Recommended)')], 'a declined ask');
-  shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer('Drop it')], 'an ask answered with another label');
-  shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer('Discard it')], 'another guard\'s allow label');
-  shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW), rc.denial('SECRET-READ-ALLOW')], 'an answer older than the last denial');
-  shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)], 'another session\'s receipt', 'session: other\n*\n');
-  shut([ask, rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)], 'a receipt naming no session, for a call naming one', '*\n');
-  const timedOut = rc.answer(SHOW);
+  const opens = (rows, why, receipt) => { const r = attempt(rows, receipt); assert.equal(r.status, 0, `must open (${why})\n${r.stderr}`); };
+  const shut = (rows, why, receipt) => { const r = attempt(rows, receipt); assert.equal(r.status, 2, `must stay shut (${why})`); return r; };
+  const ask = rc.typed('wire the client in the sibling repo');
+  const no = () => rc.denial(CROSS, 'Write');
+  opens([ask, no(), rc.answer(ALLOW)], 'the user answered the denial with the allow label');
+  opens([ask, no(), rc.answer(`${ALLOW} (Recommended)`)], 'a Recommended mark is the same label');
+  opens([ask, rc.answer(ALLOW)], 'no denial in the transcript yet: any answer of the session');
+  assert.match(shut([ask, no()], 'a receipt the model wrote with no ask answered').stderr, /no ask answered with the allow label/, 'the denial says why the receipt there is not honoured');
+  shut([ask, no(), rc.answer('Task card in this project (Recommended)')], 'a declined ask');
+  shut([ask, no(), rc.answer('Drop it')], 'an ask answered with another label');
+  shut([ask, no(), rc.answer('Discard it')], 'another guard\'s allow label');
+  shut([ask, no(), rc.answer(ALLOW), no()], 'an answer older than the last denial');
+  shut([ask, no(), rc.answer(ALLOW)], 'another session\'s receipt', `session: other\n${otherRoot}\n`);
+  shut([ask, no(), rc.answer(ALLOW)], 'a receipt naming no session, for a call naming one', `${otherRoot}\n`);
+  const timedOut = rc.answer(ALLOW);
   timedOut.toolUseResult.afkTimeoutMs = 60000;
-  shut([ask, rc.denial('SECRET-READ-ALLOW'), timedOut], 'an ask the idle timeout closed');
+  shut([ask, no(), timedOut], 'an ask the idle timeout closed');
   // auto-run, judged at the answer's place in the transcript - never by the stamp or the ledger at read time
-  const on = rc.command('task-solve', '--mode-auto-run-on fix the token check');
+  const on = rc.command('task-solve', '--mode-auto-run-on wire the client');
   const stampFile = path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL');
   const ledger = path.join(root, '.alfred', 'statistics', 'hook-blocks', `${RC}.jsonl`);
-  fs.writeFileSync(stampFile, `AUTO - "/task-solve --mode-auto-run-on fix the token check"\nsession: ${RC}\nskill: task-solve\ntranscript-size: 0\n`);
+  fs.writeFileSync(stampFile, `AUTO - "/task-solve --mode-auto-run-on wire the client"\nsession: ${RC}\nskill: task-solve\ntranscript-size: 0\n`);
   fs.mkdirSync(path.dirname(ledger), { recursive: true });
   fs.writeFileSync(ledger, JSON.stringify({ mode: 'auto', kind: 'auto-answer', session: RC }) + '\n');
-  const autoAnswered = [on, rc.denial('SECRET-READ-ALLOW'), rc.said('Asking for the value.'), rc.answer(`${SHOW} (Recommended)`)];
+  const autoAnswered = [on, no(), rc.said('Asking for the write.'), rc.answer(`${ALLOW} (Recommended)`)];
   shut(autoAnswered, 'a self-built Recommended-allow ask auto-answered under a live AUTO stamp');
   fs.rmSync(ledger);
   shut(autoAnswered, 'the same with the auto-answer ledger row deleted');
   fs.rmSync(stampFile);
   shut(autoAnswered, 'the stamp deleted after the answer opens nothing');
   shut([...autoAnswered, rc.command('task-solve', '--mode-auto-run-off')], 'nor does the off-flag typed after it');
-  shut([rc.command('mode-auto-run', 'fix the token check'), rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)], 'a typed /mode-auto-run <request> is its own -on');
-  opens([on, rc.command('mode-auto-run', '--mode-auto-run-off'), rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)], 'an answer after the typed off-flag counts');
-  opens([rc.typed('what does --mode-auto-run-on do?'), rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)], 'a prose mention of the flag switches nothing');
-  opens([rc.typed('/fix-this --mode-auto-run-on now'), rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)], 'a flag after a non-family command switches nothing');
+  shut([rc.command('mode-auto-run', 'wire the client'), no(), rc.answer(ALLOW)], 'a typed /mode-auto-run <request> is its own -on');
+  opens([on, rc.command('mode-auto-run', '--mode-auto-run-off'), no(), rc.answer(ALLOW)], 'an answer after the typed off-flag counts');
+  opens([rc.typed('what does --mode-auto-run-on do?'), no(), rc.answer(ALLOW)], 'a prose mention of the flag switches nothing');
+  opens([rc.typed('/fix-this --mode-auto-run-on now'), no(), rc.answer(ALLOW)], 'a flag after a non-family command switches nothing');
   // no transcript in the payload (a CLI run, an older fixture): the session and time rules alone, as before
-  stateReceipt(root, 'SECRET-READ-ALLOW', `session: ${RC}\n*\n`);
-  assert.equal(runIn('guard-secret-value.js', { tool_name: 'Read', tool_input: { file_path: path.join(root, '.env') }, session_id: RC, cwd: root }, { env }).status, 0, 'no transcript');
+  stateReceipt(root, CROSS, mine);
+  assert.equal(write(null).status, 0, 'no transcript');
 });
 
 test('audit 2026-10-30 HK-03: a seat\'s denial is anchored at its time in the seat\'s own transcript', () => {
-  const root = fs.mkdtempSync(path.join(TMP, 'rc-seat-'));
-  fs.writeFileSync(path.join(root, '.env'), `API_TOKEN=${'x0'.repeat(20)}\n`);
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: root };
+  const { root, write, allow: ALLOW, mine } = crossProject('rc-seat');
   // Claude Code's layout: <dir>/<session>.jsonl, the seat's own at <dir>/<session>/subagents/agent-<id>.jsonl
   const tp = path.join(root, 'projects', `${RC}.jsonl`);
   const seat = path.join(root, 'projects', RC, 'subagents', 'agent-seat1.jsonl');
-  const readAs = (extra = {}) => runIn('guard-secret-value.js', { tool_name: 'Read', tool_input: { file_path: path.join(root, '.env') }, session_id: RC,
-    transcript_path: tp, cwd: root, agent_id: 'seat1', agent_type: 'Explore', ...extra }, { env });
-  rcFile(tp, [rc.typed('check the token'), rc.denial('SECRET-READ-ALLOW'), rc.answer(SHOW)]);
-  rcFile(seat, [rc.typed('Brief: check the token'), rc.denial('SECRET-READ-ALLOW')]);
+  const writeAs = (extra = {}) => write(tp, { agent_id: 'seat1', agent_type: 'Explore', ...extra });
+  rcFile(tp, [rc.typed('wire the client'), rc.denial(CROSS, 'Write'), rc.answer(ALLOW)]);
+  rcFile(seat, [rc.typed('Brief: wire the client'), rc.denial(CROSS, 'Write')]);
   pause(5);
-  stateReceipt(root, 'SECRET-READ-ALLOW', `session: ${RC}\n*\n`);
-  assert.equal(readAs().status, 2, 'an older allow answer plus a new denial in a seat stays shut');
-  fs.appendFileSync(tp, rcLine(rc.answer(SHOW)));
-  assert.equal(readAs().status, 0, 'the user\'s answer after the seat\'s denial opens it');
-  const named = rcFile(path.join(root, 'elsewhere', 'agent.jsonl'), [rc.denial('SECRET-READ-ALLOW')]);
-  assert.equal(readAs({ agent_transcript_path: named }).status, 2, 'the payload\'s own agent_transcript_path is read first: a later seat denial there shuts it');
-  assert.equal(readAs({ agent_id: 'seat2' }).status, 0, 'a seat with no denial of its own: the main transcript\'s anchor');
+  stateReceipt(root, CROSS, mine);
+  assert.equal(writeAs().status, 2, 'an older allow answer plus a new denial in a seat stays shut');
+  fs.appendFileSync(tp, rcLine(rc.answer(ALLOW)));
+  assert.equal(writeAs().status, 0, 'the user\'s answer after the seat\'s denial opens it');
+  const named = rcFile(path.join(root, 'elsewhere', 'agent.jsonl'), [rc.denial(CROSS, 'Write')]);
+  assert.equal(writeAs({ agent_transcript_path: named }).status, 2, 'the payload\'s own agent_transcript_path is read first: a later seat denial there shuts it');
+  assert.equal(writeAs({ agent_id: 'seat2' }).status, 0, 'a seat with no denial of its own: the main transcript\'s anchor');
 });
 
 test('audit 2026-10-30 HK-03 / HK-16: DISCARD and CROSS-WRITE are this session\'s and the user\'s; each denial prints the lines', () => {

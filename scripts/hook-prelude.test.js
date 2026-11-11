@@ -346,10 +346,10 @@ function repoWithWorktree({ stamp = true } = {})
 }
 const unsetEnv = (dir) => ({ CLAUDE_PLUGIN_ROOT: UNSET_ROOT, CLAUDE_PROJECT_DIR: dir });
 const HOOK_FILE = (file) => path.join(__dirname, '..', 'stack', 'hooks', file);
-function fireIn(file, dir, toolInput, toolName = 'Bash')
+function fireIn(file, dir, toolInput, toolName = 'Bash', more = {})
 {
     return spawnSync(process.execPath, [HOOK_FILE(file)], {
-        input: JSON.stringify({ session_id: 's', cwd: dir, hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: toolInput }),
+        input: JSON.stringify({ session_id: 's', cwd: dir, hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: toolInput, ...more }),
         env: { PATH: process.env.PATH, HOME: path.join(os.tmpdir(), 'prelude-no-home'), ...unsetEnv(dir) }, encoding: 'utf8',
     });
 }
@@ -422,8 +422,10 @@ test('in a repo never set up the protective guards stay live and write nothing; 
         const push = fireIn('guard-protected-force-push.js', dir, { command: 'git push --force origin main' });
         assert.strictEqual(push.status, 2, `a force-push to main blocked: ${push.stderr}`);
         fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }));
-        const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read');
+        const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read', { permission_mode: 'bypassPermissions' });
         assert.strictEqual(secret.status, 2, `a credential file read blocked: ${secret.stderr}`);
+        const asked = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read', { permission_mode: 'default' });
+        assert.match(asked.stdout, /"permissionDecision":"ask"/, 'an attended session is asked there too (swap 1)');
         assert.ok(!fs.existsSync(path.join(dir, '.claude')) && !fs.existsSync(path.join(dir, '.alfred')), 'three blocks, no block row - nothing written into a repo never set up');
 
         // Positive control: once set up, the same block writes its row.
@@ -1351,7 +1353,8 @@ test('HK-02 replay: a dangling shell-guards twin under matcher Nothing no longer
             assert.strictEqual(r.status, 2, `${command} must be blocked: ${r.stdout}${r.stderr}`);
         }
         fs.writeFileSync(path.join(p.repo, '.env'), DOTENV);
-        const read = dispatch(p, 'file-guards.js', { tool_name: 'Read', tool_input: { file_path: path.join(p.repo, '.env') } });
+        // where nobody can answer the Read ask (swap 1), the secret guard's verdict is a block
+        const read = dispatch(p, 'file-guards.js', { tool_name: 'Read', tool_input: { file_path: path.join(p.repo, '.env') }, permission_mode: 'bypassPermissions' });
         assert.strictEqual(read.status, 2, `a Read of .env must be blocked: ${read.stdout}${read.stderr}`);
     }
     finally { p.done(); }
@@ -1569,7 +1572,7 @@ test('HK-02: a guard the plugin dispatcher runs in-process yields only to a twin
         {
             assert.strictEqual(dispatch(p, 'shell-guards.js', bash('rm -rf ~'), ['guard-catastrophic-rm']).status, 2, JSON.stringify(settings));
             fs.writeFileSync(path.join(p.repo, '.env'), DOTENV);
-            const r = dispatch(p, 'file-guards.js', { tool_name: 'Read', tool_input: { file_path: path.join(p.repo, '.env') } }, ['guard-secret-value']);
+            const r = dispatch(p, 'file-guards.js', { tool_name: 'Read', tool_input: { file_path: path.join(p.repo, '.env') }, permission_mode: 'bypassPermissions' }, ['guard-secret-value']);
             assert.strictEqual(r.status, 2, `the secret guard judges the Read: ${r.stdout}${r.stderr}`);
         }
         finally { p.done(); }

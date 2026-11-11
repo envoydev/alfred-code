@@ -85,7 +85,10 @@ function shaped(input) {
   const out = r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput : { stdout: input, stderr: '' };
   return { status: r.status, stdout: out.stdout, stderr: out.stderr };
 }
-const read = (file_path, env) => run({ tool_name: 'Read', tool_input: { file_path }, session_id: 'suite' }, env).status;
+// The legacy Read rows run where nobody can answer an ask (`bypassPermissions`), so a credential file is REFUSED (2)
+// there; the ask an attended session gets has its own tests, from 'swap 1 ask' down.
+const NO_ASK = 'bypassPermissions';
+const read = (file_path, env) => run({ tool_name: 'Read', tool_input: { file_path }, session_id: 'suite', permission_mode: NO_ASK }, env).status;
 const cli = (...args) => spawnSync(process.execPath, [HOOK, ...args], { encoding: 'utf8' });
 
 test('guard-secret-value: the Windows spelling of the home dir is a path this guard can expand', () => {
@@ -212,11 +215,11 @@ test('guard-secret-value: the Read tool on a file that holds a credential is blo
   assert.equal(read(f.mcp), 0, 'placeholders');
   assert.equal(read(f.code), 0, 'source');
   assert.equal(read(path.join(f.dir, 'missing.json')), 0, 'missing - let Read surface its own error');
-  const r = run({ tool_name: 'Read', tool_input: { file_path: f.secret }, session_id: 'suite' });
+  const r = run({ tool_name: 'Read', tool_input: { file_path: f.secret }, session_id: 'suite', permission_mode: NO_ASK });
   assert.match(r.stderr, /env\.SENTRY_ACCESS_TOKEN/);
-  assert.match(r.stderr, /--redacted/, 'the denial names the redacted view the shell route gives for free');
+  assert.match(r.stderr, /--presence/, 'the denial names the presence read');
   assert.doesNotMatch(r.stderr, new RegExp(FAKE_TOKEN));
-  assert.equal(run({ tool_name: 'Read', tool_input: { file_path: f.secret, offset: 1, limit: 2 }, session_id: 'suite' }).status, 2, 'a ranged Read reads the same value');
+  assert.equal(run({ tool_name: 'Read', tool_input: { file_path: f.secret, offset: 1, limit: 2 }, session_id: 'suite', permission_mode: NO_ASK }).status, 2, 'a ranged Read reads the same value');
   assert.equal(read(path.join('.claude', 'settings-secret.json')), 2, 'a relative file_path resolves against CLAUDE_PROJECT_DIR');
 });
 
@@ -856,7 +859,7 @@ test('deep review: a tree-taking copy, archive or forced add of a folder above t
 test('both store names are all-secret; the project\'s own .secrets passes, the data-root store does not (item 3, Review Focus 1)', () => {
   const dir = fs.mkdtempSync(path.join(TMP, 'secrets-names-'));
   const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }));
-  const readOf = (file) => run({ tool_name: 'Read', tool_input: { file_path: file }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }).status;
+  const readOf = (file) => run({ tool_name: 'Read', tool_input: { file_path: file }, cwd: dir, session_id: 'suite', permission_mode: NO_ASK }, { CLAUDE_PROJECT_DIR: dir }).status;
   fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
   for (const name of ['.secrets', '.sensitive-data']) {
     fs.writeFileSync(path.join(dir, '.alfred', name), 'DB_HOST=db.internal\n');
@@ -888,7 +891,7 @@ test('HK-07: a credential file past 512KB is judged by its first 512KB, and a Re
     return file;
   };
   const env = { CLAUDE_PROJECT_DIR: dir };
-  const readAt = (file, extra = {}) => run({ tool_name: 'Read', tool_input: { file_path: file, ...extra }, cwd: dir, session_id: 'suite' }, env).status;
+  const readAt = (file, extra = {}) => run({ tool_name: 'Read', tool_input: { file_path: file, ...extra }, cwd: dir, session_id: 'suite', permission_mode: NO_ASK }, env).status;
   const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, env));
   // the boundary: one byte under, exactly at, one byte over the cap - the key on line 1 is judged in all three
   for (const [name, bytes] of [['under.env', MAX - 1], ['at.env', MAX], ['over.env', MAX + 1]]) {
@@ -1546,4 +1549,143 @@ test('swap 1: --redact-stdin and any unknown mode print usage and exit 2', () =>
     assert.match(r.stderr, /^usage: guard-secret-value\.js --presence <file> \[KEY \.\.\.\] \| --redacted <file> \| --redacted-env \| --with-sensitive -- "<command>"$/m, mode);
     assert.strictEqual(r.stdout, '', mode);
   }
+});
+
+// --- swap 1, Task 3: the Read ask ------------------------------------------------------------------------------------
+// A Read of a credential file is the host's to ask about (ruling 5); where nobody can answer it is refused. The store
+// under both names and the key file stay a plain deny, as do the Grep tool and a filesystem server's read (ruling 9).
+const KUBE_VAL = 'kc-' + 'w6'.repeat(8);
+const OLD_STORE = ['.sensitive', 'data'].join('-');
+let askFx = null;
+const askFixture = () => askFx || (askFx = coreProject({
+  'deploy/kubeconfig.yaml': `apiVersion: v1\nkind: Config\nusers:\n- name: dev\n  user:\n    token: ${KUBE_VAL}\n`,
+  '.env.local': 'NODE_ENV=production\n', '.env.example': 'API_KEY=your-api-key-here\n',
+  '.alfred/.secrets': `STORE_KEY=${STORE_VAL}\n`, [`.alfred/${OLD_STORE}`]: `OLD_KEY=${STORE_VAL}\n`, '.mcps-secrets': `KEY_ONE=${NESTED[0]}\n`,
+}));
+// One PreToolUse call on a file tool. The entrypoint is pinned, so the runner's own never decides who is attended.
+function fileCall(tool, input, opts = {}) {
+  const fx = opts.fx || askFixture();
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: fx.project, HOME: fx.home, USERPROFILE: fx.home, CLAUDE_CODE_ENTRYPOINT: 'cli', ALFRED_CODE_UNATTENDED: '', ...opts.env };
+  delete env.ALFRED_CODE_DOCS_PATH;
+  const payload = { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, session_id: `ask-${++maskSeq}`, cwd: fx.project, ...opts.payload };
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(payload), encoding: 'utf8', env });
+  let rows = [];
+  try { rows = fs.readFileSync(path.join(fx.project, '.alfred', 'statistics', 'hook-blocks', `${payload.session_id}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { /* no row */ }
+  let ask = null;
+  try { const h = JSON.parse(r.stdout).hookSpecificOutput; if (h.permissionDecision === 'ask') ask = h; } catch { /* no answer */ }
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr, rows, ask, asked: rows.filter((x) => x.mode === 'ask') };
+}
+const fileOf = (rel, fx = askFixture()) => path.join(fx.project, ...rel.split('/'));
+const readFile = (rel, payload, opts = {}) => fileCall('Read', { file_path: fileOf(rel, opts.fx) }, { ...opts, payload });
+const ASK_MODES = ['default', 'acceptEdits', 'plan', 'auto', undefined];
+const CURSOR = { cursor_version: '2.1.0', hook_event_name: 'preToolUse' };
+const ASK_RE = /^Read of .*kubeconfig\.yaml: it holds a credential under `[^`]+`\. Allowing it puts the value in this transcript permanently\. Presence only: node ".*guard-secret-value\.js" --presence ".*kubeconfig\.yaml" \[KEY \.\.\.\]$/;
+const DENY_RE = /^Blocked: Read of .*kubeconfig\.yaml, which holds a credential under `[^`]+` - nobody can answer an ask here, and the value would enter the transcript permanently\. Presence: node ".*guard-secret-value\.js" --presence ".*kubeconfig\.yaml" \[KEY \.\.\.\]; the user opens the file\.$/m;
+const denied = (r, what) => {
+  assert.strictEqual(r.status, 2, what);
+  assert.match(r.stderr, DENY_RE, what);
+  assert.strictEqual(r.stdout, '', `${what}: no answer on stdout`);
+  assert.strictEqual(r.asked.length, 0, `${what}: no ask row`);
+};
+
+test('swap 1 ask: a Read of a credential file asks an attended session', () => {
+  for (const mode of ASK_MODES) {
+    const r = readFile('deploy/kubeconfig.yaml', { permission_mode: mode, tool_use_id: 'toolu_ask1' });
+    assert.strictEqual(r.status, 0, `${mode}\n${r.stderr}`);
+    const h = JSON.parse(r.stdout).hookSpecificOutput;
+    assert.strictEqual(h.hookEventName, 'PreToolUse');
+    assert.strictEqual(h.permissionDecision, 'ask');
+    assert.match(h.permissionDecisionReason, /in this transcript permanently/);
+    assert.match(h.permissionDecisionReason, /--presence/);
+    assert.match(h.permissionDecisionReason, ASK_RE, 'the exact ask text');
+    assert.ok(!r.stdout.includes(KUBE_VAL) && !r.stderr.includes(KUBE_VAL), 'the ask carries no value');
+    assert.ok(r.rows.some((x) => x.hook === 'guard-secret-value.js' && x.mode === 'ask' && x.tool_use_id === 'toolu_ask1' && x.detail.branch === 'read'
+      && x.detail.file === 'kubeconfig.yaml'), `${mode}: one ask row naming the call and the file's basename`);
+  }
+  const ranged = fileCall('Read', { file_path: fileOf('deploy/kubeconfig.yaml'), offset: 1, limit: 20 }, { payload: { permission_mode: 'default' } });
+  assert.ok(ranged.ask, 'a ranged Read of the same lines asks too');
+  assert.strictEqual(readFile('deploy/kubeconfig.yaml', { permission_mode: 'default' }, { env: { ALFRED_CODE_HOOKS_OFF: 'guard-secret-value' } }).stdout, '', 'control: the guard switched off asks nothing');
+});
+
+test('swap 1 ask: denied where nobody can answer', () => {
+  const cases = [[{ permission_mode: 'bypassPermissions' }, {}], [{ permission_mode: 'dontAsk' }, {}], [{ permission_mode: 'default' }, { ALFRED_CODE_UNATTENDED: '1' }],
+    [{ permission_mode: 'default' }, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }], [{}, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }]];
+  for (const [payload, env] of cases)
+    denied(readFile('deploy/kubeconfig.yaml', { ...payload, tool_use_id: 'toolu_deny1' }, { env }), JSON.stringify([payload, env]));
+});
+
+test('swap 1 Cursor: the Read, Grep and MCP routes deny on a Cursor payload in every mode', () => {
+  for (const mode of [...ASK_MODES, 'bypassPermissions'])
+    denied(readFile('deploy/kubeconfig.yaml', { ...CURSOR, permission_mode: mode }), `a Cursor Read under ${mode}`);
+  const kube = fileOf('deploy/kubeconfig.yaml');
+  for (const [tool, input] of [['Grep', { pattern: 'token', path: kube, output_mode: 'content' }], ['mcp__filesystem__read_text_file', { path: kube }]]) { // mcp-fixture
+    for (const payload of [CURSOR, { permission_mode: 'default' }]) {
+      const r = fileCall(tool, input, { payload });
+      assert.strictEqual(r.status, 2, `${tool} ${JSON.stringify(payload)}`);
+      assert.match(r.stderr, /^Blocked: /);
+      assert.doesNotMatch(r.stdout, /permissionDecision/, `${tool}: never an ask (ruling 9)`);
+      assert.strictEqual(r.asked.length, 0, `${tool}: no ask row`);
+    }
+  }
+});
+
+test('swap 1 dotenv: a Read of a dotenv with no credential key asks; a sample dotenv reads freely', () => {
+  const r = readFile('.env.local', { permission_mode: 'default', tool_use_id: 'toolu_env1' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(r.ask, 'a dotenv is the project\'s sensitive data whatever its keys: the host asks');
+  assert.ok(r.asked.some((x) => x.tool_use_id === 'toolu_env1' && x.detail.file === '.env.local'), 'its ask row');
+  assert.strictEqual(readFile('.env.local', CURSOR).status, 2, 'refused on a Cursor payload');
+  const sample = readFile('.env.example', { permission_mode: 'default' });
+  assert.deepStrictEqual([sample.status, sample.stdout, sample.rows.length], [0, '', 0], 'a sample dotenv: no ask, no row');
+});
+
+test('swap 1 ask: the store under both names and the key file are a plain deny in every mode', () => {
+  for (const rel of ['.alfred/.secrets', `.alfred/${OLD_STORE}`, '.mcps-secrets']) {
+    for (const mode of [...ASK_MODES, 'bypassPermissions', 'dontAsk']) {
+      const r = readFile(rel, { permission_mode: mode });
+      assert.strictEqual(r.status, 2, `${rel} under ${mode}`);
+      assert.match(r.stderr, /^Blocked: Read of /);
+      assert.doesNotMatch(r.stderr, /nobody can answer/, `${rel}: the plain deny, never the ask's fallback`);
+      assert.strictEqual(r.stdout, '', `${rel}: no ask`);
+      assert.strictEqual(r.asked.length, 0, `${rel}: no ask row`);
+    }
+  }
+  assert.strictEqual(readFile('.alfred/.secrets', CURSOR).status, 2, 'and on a Cursor payload');
+});
+
+test('swap 1 ask: a SECRET-READ-ALLOW receipt opens nothing', () => {
+  const fx = askFixture();
+  const session = 'receipt-sess';
+  const SHOW = 'Show or use the value this session - it enters the transcript permanently';
+  const receiptName = ['SECRET', 'READ', 'ALLOW'].join('-');
+  const row = (o) => JSON.stringify({ sessionId: session, timestamp: new Date().toISOString(), entrypoint: 'cli', ...o });
+  const tp = path.join(fx.project, 'sessions', `${session}.jsonl`);
+  fs.mkdirSync(path.dirname(tp), { recursive: true });
+  fs.writeFileSync(tp, [
+    row({ type: 'user', message: { role: 'user', content: 'show me the kubeconfig token' } }),
+    row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'd1', is_error: true,
+      content: `PreToolUse:Read hook error: [node "guard.js"]: Blocked: ... write .alfred/state/approvals/${receiptName} and retry` }] } }),
+    row({ type: 'assistant', message: { id: 'q1', role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_q1', name: 'AskUserQuestion', input: { questions: [{ question: 'Show it?', options: [] }] } }] } }),
+    row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_q1', content: `User has answered your questions: "Show it?"="${SHOW}".` }] },
+      toolUseResult: { questions: [{ question: 'Show it?', options: [] }], answers: { 'Show it?': SHOW } } }),
+  ].join('\n') + '\n');
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+  for (const dir of [path.join(fx.project, '.alfred', 'state', 'approvals'), path.join(fx.project, '.alfred', 'docs', 'flow')]) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, receiptName), `session: ${session}\n*\n`);
+  }
+  const live = { session_id: session, transcript_path: tp, permission_mode: 'default' };
+  const kube = fileOf('deploy/kubeconfig.yaml');
+  const r = fileCall('Read', { file_path: kube }, { payload: live });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(r.ask, 'the receipt opens no silent Read: the host is still asked');
+  const shut = fileCall('Read', { file_path: kube }, { payload: { ...live, permission_mode: 'bypassPermissions' } });
+  assert.strictEqual(shut.status, 2, 'nor where nobody can answer');
+  assert.match(shut.stderr, DENY_RE);
+  assert.strictEqual(fileCall('Grep', { pattern: 'token', path: kube, output_mode: 'content' }, { payload: live }).status, 2, 'a content Grep');
+  assert.strictEqual(fileCall('mcp__filesystem__read_text_file', { path: kube }, { payload: live }).status, 2, 'a filesystem server read'); // mcp-fixture
+  assert.strictEqual(fileCall('Bash', { command: `echo ${GH}` }, { payload: live }).status, 2, 'a credential literal in a command');
+  assert.strictEqual(fileCall('Grep', { pattern: GH, path: fileOf('.env.example') }, { payload: live }).status, 2, 'a credential literal in a Grep pattern');
+  for (const f of ['guard-secret-value.js', 'guard-stop-contract.js'])
+    assert.ok(!fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8').includes(receiptName), `${f} names no receipt`);
 });

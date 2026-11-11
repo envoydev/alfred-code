@@ -541,7 +541,7 @@ function autoStampLive(input, env)
 // - readReceiptFile: the lines (no blank, `#` or `session:` line) and whether the file is live for THIS call - under 8h,
 //   not older than the transcript (a birthtime equal to the ctime is a filesystem's fallback, unknown) and, where the call
 //   names its session, carrying a `session: <id>` line naming it (HK-16; the secret guard's rule since audit 2026-10-08).
-// - receiptAnswered: for the four SECURITY receipts (SECRET-READ, DISCARD, CROSS-WRITE, GUARD-OFF) the transcript must
+// - receiptAnswered: for the three SECURITY receipts (DISCARD, CROSS-WRITE, GUARD-OFF; SECRET-READ left in swap 1) the transcript must
 //   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label - the
 //   result of an AskUserQuestion call in this transcript, never an `answers`-shaped result of another tool (FA-4) - and
 //   given while auto-run was off - judged at the answer's place: a typed family command whose leading run turns auto-run

@@ -1691,7 +1691,8 @@ function visibleRow(line) {
 // 250-300KB before a print turn ended, outside the old 256KB tail (only the Edit's stored copy near the end had caught
 // them). The read is INCREMENTAL (hooks review 2026-10-16: re-reading the 64MB tail was ~450 ms of a 561 ms Stop on a
 // 114MB transcript, paid again by every Stop and every ask). One pass over the lines not scanned yet moves four
-// positions - the newest shape a user-role row put in front of the model (`user`, with its row's key), the newest shape
+// positions - the newest shape a user-role row put in front of the model (`user`, with its row's key and call id; the
+// state is `v: 2` since the id, an older file is scanned cold), the newest shape
 // in any row (`any`), the newest rotate-ask block and the newest answer - kept as line numbers in a per-session state
 // file beside the hook's log (`guard-stop-scan-*`, swept with its markers). The state is reused only for the same file
 // (path and inode) at its scanned size or larger; a shrunk, replaced, torn or missing one is scanned cold. The row still
@@ -1713,7 +1714,7 @@ function scanRow(line, n, into) {
   into.any = n;
   // USER-role rows: both the tool_results the model's own reads returned, and the user's own typed or pasted text. The
   // assistant's own text is judged separately, by ROTATE_RE.
-  if (seen.includes('"tool_result"') || /"type"\s*:\s*"user"/.test(seen)) into.user = { at: n, key: require('crypto').createHash('sha1').update(line).digest('hex').slice(0, 16) };
+  if (seen.includes('"tool_result"') || /"type"\s*:\s*"user"/.test(seen)) into.user = { at: n, key: require('crypto').createHash('sha1').update(line).digest('hex').slice(0, 16), id: (/"tool_use_id"\s*:\s*"([\w-]{1,128})"/.exec(line) || [])[1] || null };
 }
 function credentialScan() {
   if (SCAN) return SCAN;
@@ -1726,9 +1727,9 @@ function credentialScan() {
     let state = null;
     try {
       const o = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (o && o.v === 1 && o.path === p && o.ino === st.ino && Number.isInteger(o.scanned) && o.scanned <= st.size && Number.isInteger(o.lines)) state = o;
+      if (o && o.v === 2 && o.path === p && o.ino === st.ino && Number.isInteger(o.scanned) && o.scanned <= st.size && Number.isInteger(o.lines)) state = o;
     } catch { /* absent or torn: a cold scan */ }
-    if (!state) state = { v: 1, path: p, ino: st.ino, scanned: Math.max(0, st.size - SCAN_COLD_BYTES), lines: 0, ...empty };
+    if (!state) state = { v: 2, path: p, ino: st.ino, scanned: Math.max(0, st.size - SCAN_COLD_BYTES), lines: 0, ...empty };
     const buf = Buffer.alloc(st.size - state.scanned);
     const fd = fs.openSync(p, 'r');
     try { fs.readSync(fd, buf, 0, buf.length, state.scanned); } finally { fs.closeSync(fd); }
@@ -1746,38 +1747,30 @@ function credentialScan() {
     return (SCAN = empty);
   }
 }
-// The newest row that put a credential shape in front of the model, as `{ at, key }`, or null. A token inside a link that
+// The newest row that put a credential shape in front of the model, as `{ at, key, id }`, or null. A token inside a link that
 // states an hour of life or less (hook-prelude.js shortLivedLinks - a Jira media `?token=`, an S3 presigned URL) is that
 // link's own capability and expires by itself, so it is blanked before the shape test: rotating it is no answer to anything.
 const exposedShape = (row) => SECRET_SHAPE.test(withoutShortLived(row));
 const secretExposure = () => credentialScan().user;
 const secretInSession = () => secretExposure() !== null;
 
-// The secret guard's receipt is the user's CONSENT to a value being in this transcript - the remote
-// user who asked to see it, or to have it placed where a blind copy cannot reach. A shape that
-// entered under a live receipt is not re-asked for rotation every turn; the receipt is read the way
-// the guard reads it (hook-prelude.js securityReceipt with the guard's own SHOW label): under 8h, not
-// older than this session's transcript, a `session: <id>` line naming the session when the payload
-// carries one, AND the user's own SHOW answer to an AskUserQuestion after the guard's last denial, given
-// with auto-run off. The file is one the model can write, so its session line and age alone silenced
-// the rotation ask after a token entered a tool result (the final review of 2026-10-30 FA-3). No
-// prelude beside this hook: no consent read. Its path is pinned in shared-rules.json with the guard's.
-const SECRET_SHOW_LABEL = 'Show or use the value this session - it enters the transcript permanently';
-function secretReadAllowed() {
+// The CONSENT to a value being in this transcript is the secret guard's own ask (swap 1, ruling 10): its hook-blocks
+// row with `mode: 'ask'` and the exposure's call id says the host was asked about that Read, and the tool result in the
+// transcript says the user allowed it - such a shape is not re-asked for rotation every turn. The ledger is a file the
+// model can write: a forged row skips one rotation ask and nothing more. No receipt is read any more.
+function askedExposure(row) {
+  if (!row || !row.id) return false;
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    // 2.8.0: <data root>/state/approvals/ (layout.js), the pre-2.8.0 flow/ still read - the secret guard's own lookup
-    let layout = null;
-    try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
-    const receipt = layout ? layout.findState(root, 'approvals', 'SECRET-READ-ALLOW') : path.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW');
-    let receipts = null;
-    try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
-    if (!receipts || typeof receipts.securityReceipt !== 'function') return false;
-    const held = receipts.securityReceipt(receipt, payload, { marker: 'SECRET-READ-ALLOW', labels: [SECRET_SHOW_LABEL] });
-    return Boolean(held && held.live && held.lines.length > 0);
+    const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
+    const rows = fs.readFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), 'utf8').split('\n');
+    return rows.some((line) => {
+      if (!line.includes(row.id)) return false;
+      try { const r = JSON.parse(line); return r.hook === 'guard-secret-value.js' && r.mode === 'ask' && r.tool_use_id === row.id; } catch { return false; }
+    });
   } catch {
-    return false; // absent or unreadable - no consent recorded
+    return false; // no ledger - no consent recorded
   }
 }
 
@@ -2645,7 +2638,7 @@ if (payload.hook_event_name === 'Stop') {
   // undone by a later turn, and the transcript keeps the value whatever happens next. This branch
   // runs FIRST and fires on a clean close too - three measured exposures ended exactly there.
   const exposure = ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered()
-    ? (ROTATE_RE.test(prose) ? { route: 'close' } : (() => { const row = secretExposure(); return row && !secretReadAllowed() ? { route: 'shape', key: row.key } : null; })())
+    ? (ROTATE_RE.test(prose) ? { route: 'close' } : (() => { const row = secretExposure(); return row && !askedExposure(row) ? { route: 'shape', key: row.key } : null; })())
     : null;
   // With nobody at the terminal (hook-prelude.js unattended - print mode, never an SDK session) the ask
   // cannot be answered and only replaced the final answer (pilot 3, 2 of 12 finals): one ledger row per
@@ -3512,9 +3505,9 @@ if (payload.tool_name === 'AskUserQuestion') {
     notes.push(...flowFieldNotes(questions, askText, turnText));
 
     // 4. CREDENTIAL.
-    // The Stop branch's own conditions: once per exposure, off under its rotate part, and not while the
-    // user's SECRET-READ-ALLOW consent stands.
-    if (ROTATE_ASK_ON && secretInSession() && !rotateAskAnswered() && !secretReadAllowed()) {
+    // The Stop branch's own conditions: once per exposure, off under its rotate part, and not for an
+    // exposure the secret guard asked the host about.
+    if (ROTATE_ASK_ON && secretInSession() && !rotateAskAnswered() && !askedExposure(secretExposure())) {
       notes.push('A credential-shaped value has already entered this session\'s tool results. It ' +
         'cannot be unsent, and the ask just answered did not settle its rotation. Before this turn ' +
         'closes, ask whether to rotate it now - name the key and its shape only, never the value.');

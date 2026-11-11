@@ -725,7 +725,7 @@
       "file": "guard-secret-value.js",
       "matcher": "Read",
       "event": "",
-      "note": "block a Read of a file that HOLDS a credential (content-judged: a JSON/dotenv key matching environment.json's secret_key_pattern with a live value) - presence only via `node guard-secret-value.js --presence <file> [KEY ...]`"
+      "note": "a Read of a file that HOLDS a credential (content-judged: a JSON/dotenv key matching environment.json's secret_key_pattern with a live value) is the host's to ASK about - the ask names the file and says that allowing it puts the value in the transcript permanently; it is refused where nobody can answer (bypassPermissions, dontAsk, an unattended run, a Cursor payload), and the store and the key file are refused in every mode - presence only via `node guard-secret-value.js --presence <file> [KEY ...]`"
     },
     {
       "file": "guard-secret-value.js",
