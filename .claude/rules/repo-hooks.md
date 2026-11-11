@@ -537,7 +537,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot); with no rules
     directory anywhere it cannot tell and names the rule (a recorded choice, pinned in `guard-read-write.test.js`); a
     target is resolved where the shell stands after a `cd` (`cd /tmp && cat > x.ts` names no rule - audit 2026-10-10).
-  - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + a filesystem server's `read_text_file` /
+  - `guard-secret-value.js` (PostToolUse and PostToolUseFailure on `Bash` - THE OUTPUT MASKER, below; PreToolUse `Read` + `Grep` + the shell route + a filesystem server's `read_text_file` /
     `read_file` / `read_media_file` / `read_multiple_files` under any registration name, whose `path` (a `head` judged as
     a window from line 1) or `paths` take the Read judgement - the user's own server returned a `.env` unjudged, audit
     2026-10-30 HK-26; `read_media_file` returns any file as base64, E-batch O2 - one more node start on those calls only;
@@ -622,18 +622,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked - its pattern read as ripgrep writes it (a
     leading `(?i)`, `\A` / `\z`; one JavaScript cannot compile matches every line), its walk breadth-first with dependency
     folders (`.venv`, `vendor`, `target`, ...) last, and unjudged past 4,000 files its filters let through, 32MB or 100,000
-    entries (a stated ceiling). A FIND that hands its files to a reader (AC-2R, the owner's ruling of 2026-11-10) - an
-    `-exec` / `-execdir` / `-ok` action, a later `| xargs <print verb>` stage (a filter between counts), or `$(find ...)` as
-    a print verb's operand, no reducer (`grep -l`, `wc`) - is judged when a positive `-name` / `-path` pattern can match a
-    name on `CREDENTIAL_NAME_SAMPLES`, or one on `CREDENTIAL_NAMES_AIMED` (`.credentials.json`, `auth.json`, `hosts.yml`)
-    while matching none of `AIMED_DECOYS` (`*.json` matches every package.json, so it is not walked; a negated `-type` is
-    no type restriction - the final review's I2): `findCredentialFile` walks it in the Grep walk's order (`.git` and `node_modules`
-    last, not skipped; a `-o` / `-regex` find keeps only its depth and type tests), and a match holding a credential blocks
-    (`find-reader`), as does a walk past the same three ceilings - fail CLOSED there (`find-reader-unjudged`); a test
-    preload lowers them through `global.FIND_WALK_LIMITS`. A listing, a reducer and a pattern naming no listed file pass
-    (`find . -name '*.js' | xargs grep foo`); a loop, `xargs -a` and a find with no name test are stated limits. SG1 D7:
-    an `ls` listing fed on (`ls -a d | xargs -I{} cat d/{}`) is judged as a depth-1 find of its folder - a dot-name only
-    under `-a` / `-A` / `--all`, a walk past a ceiling passing - and a runtime's path BUILT with `join` / `resolve` /
+    entries (a stated ceiling). A find or a listing that hands its files to a reader is no longer judged before the run
+    (swap 1, 2026-11-11: the AC-2R find judge and SG1 D7's fed-listing half left; THE OUTPUT MASKER below reads what the
+    reader printed). SG1 D7's other half stays until the swap's Task 2: a runtime's path BUILT with `join` / `resolve` /
     `joinpath` / `Path(...)`, `/` or `+` from literals (a `path` alias of `require('path')` too, a folder name bound to a
     literal joined) is a candidate like the spelled one, its literals paired in order (`scriptLiterals`). A path-qualified verb (`./tools/grep`,
     `bin/rg`) is never spawned - the probe runs before the permission prompt, so it would run whatever script sits there
@@ -689,7 +680,39 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     itself, and a wrapper the module lists - `doas`, `caffeinate`, `chronic`, `unbuffer`, `setsid`, `npx`, `uv run`, `xargs`, `find -exec`,
     a here-string into a shell), ONE walker, `shell-writes.js` `commandIndex` (it also passes a body keyword, `!`, `{`, `(`), that the
     read and rm guards walk too (2.1.6 seam review M2; a table test runs every wrapper of the module's own list through both guards).
-    A script FILE a shell runs is judged as commands too (`judgeCarried`; final review 2026-10-30 FC: `bash run.sh` with `cat .env`, or the runner's line, in run.sh passed): every text `carriedScripts` reads - `bash` / `sh` / `.` / `source` / `./x.sh` with a shell shebang or none, a file fed or piped into a shell, each text carried inside one, a line bound through a name - inside the shared scan budget and depth cap, judged where its shell starts; no view goes into a file, so a dump there BLOCKS naming `--presence` and `--redacted`, a presence test or the guard's own read runs, and the judging budget grows by 2 a carried character (real scripts measured at about 1, judged at about a second per MB, so the 8MB scan budget fits; a held `X=$(...)`'s later uses are read once per text, `heldUsesOf` - re-split per assignment, a 500KB script took 50s). Bash family only; a script the reader could not read is the cross-project guard's ask (a stated ceiling under `minimal`).
+    THE OUTPUT MASKER (swap 1 of the complexity audit, 2026-11-11; its own `@PostToolUse:Bash` and
+    `@PostToolUseFailure:Bash` rows, each a process of its own): what a Bash command PRINTED goes back to the model with
+    every credential value this run can name shown as `<set (N chars)>` - `hookSpecificOutput.updatedToolOutput`, the
+    measured shape `{ ...tool_response, stdout, stderr }`, answered only when something was masked, `stderr` ending in one
+    note line naming the count and `--presence`. The values are read AFTER the run (`collectValues`) from four sources:
+    (1) the existing files the command's text names - `pathFragments`, the raw text split on blanks, quotes and
+    `=:;|&<>(),`, at most 200 fragments, an observation of names and never a parse - tried at the cwd, the project, each
+    directory the command names and each directory a `cd` / `pushd` of it leaves (`shell-writes.js anchorAt`): every
+    value of a dotenv or a store, every string under an `env` or `headers` object of `.mcp.json`, `.claude/settings*.json`
+    and the account `settings.json`, and any other file's credential verdicts (`valuesOf`, the redacted view's judgement
+    with a recording mask; a file `secretIn` calls no credential file gives nothing); (2) `WELL_KNOWN` - the home
+    credential files, the account settings and credentials, the project's root `.env*`, `.mcp.json` and settings files -
+    credential verdicts only; (3) the stores (`denyStores`) and the key file at the project, the cwd, their data roots,
+    the home and the account dir, every value; (4) variables named like a credential. A value under 4 characters
+    (`MASK_MIN`), a placeholder and - outside a store - a sample are not masked; each value is matched in its literal and
+    its JSON-escaped spelling, longest first (`maskText`), and then the stream masker's shape pass (`lineRedactor`'s
+    search form) reads each line, so a credential file a walk reached and nobody named is masked past its `path:N:`
+    prefix. A DOTENV IS `sensitive` BY NAME since this swap (ruling 14: `.env` and `.env.*`, never a `.example` /
+    `.sample` / `.template` / `.dist` name): the masker shows every value of one a command names, and until Tasks 2 and 3
+    land, a Read of one is blocked and a dump of one is the view with every live value masked, whatever its keys; a diff
+    of one and a walk's line out of one take the store's rule. EXACT TEXT ONLY: an encoded, split or reversed print is not
+    caught - leak protection, never a wall. Past `MASK_BUDGET_MS` (5 s from process start) `stdout` becomes `output
+    withheld: the masker ran out of time` and `stderr` empty (`mask-withheld`); an image and empty output pass; a
+    `tool_response` that is no object with string `stdout` and `stderr` passes with one `mask-shape` probe row; a run past
+    `MASK_SLOW_MS` (1 s) writes one `mask-slow` row with its ms and the files read. A `mask` row carries the count, the
+    sources (`named`, `well-known`, `store`, `env`, `shape`), file basenames and ms - never a value (`ledgerRow`, the
+    rewrite row's writer, which now carries the actor, the call id and `host: 'cursor'` on a Cursor payload). STATED
+    CEILINGS: a FAILED call is only observed - PostToolUseFailure takes no replacement output - so its `error` text is
+    read with the credential-verdict values and a find writes one `exposure` probe row (up to 8 key names, a count, file
+    basenames); a CURSOR payload (`postToolUse`, `eventIs` folding the first letter; tool `Bash` or `Shell`) is observed
+    the same way, never answered, since Cursor replaces output for MCP tools alone - NOT RUN live. With the masker in,
+    the carried-script judge left too: a script FILE a shell runs (`bash run.sh` holding `cat .env`) runs as written and
+    its output is masked.
     The read and rm guards cut a command at a subshell's or group's parens too (`groupsAsCuts`, seam delta 1), and the read guard
     judges a here-string into a runtime (`python3 - <<<`, `deno run - <<<`) as a heredoc body, `pwsh -Command "Get-Content f"` included (delta 3). A credential path a runtime BUILDS from `os.homedir()`,
     `process.env.HOME` / `CLAUDE_CONFIG_DIR`, `Path.home()` or `Dir.home` is judged like the literal path, unless the

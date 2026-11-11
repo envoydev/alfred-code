@@ -129,6 +129,11 @@ const UNEXERCISED = {
     'no force-push to a protected branch occurred in 21.5k Bash payloads; the gate fires in guard-hooks.test.js',
   'guard-secret-value.js::PreToolUse:Grep':
     'the corpus predates this matcher - it was wired after a content-mode Grep was measured reading a settings.json the Bash route had just blocked; the gate fires in guard-secret-value.test.js',
+  // The output masker (swap 1, 2026-11-11): it reads what a command PRINTED, and a failed call's error text.
+  'guard-secret-value.js::PostToolUse:Bash':
+    'the corpus holds commands, not their outputs; the canary in guard-secret-value.test.js',
+  'guard-secret-value.js::PostToolUseFailure:Bash':
+    'the corpus holds commands, not their outputs; the canary in guard-secret-value.test.js',
   // The PowerShell spelling of the shell route, wired 2026-09-12 after an audit measured 122
   // PowerShell tool calls in a 115-session corpus against six guards matching `Bash` alone. The
   // replay corpus predates the wiring, so it can prove nothing about these six; each fires on its

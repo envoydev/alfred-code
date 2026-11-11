@@ -630,9 +630,16 @@ test('SG1 D2: the key file is guarded by name for what reads or moves it', () =>
   assert.equal(call('Grep', { pattern: 'DB', path: path.join(dir, '.alfred', KEY), output_mode: 'content' }).status, 2);
   const view = updated(call('Bash', { command: `cat .alfred/${KEY}` }));
   assert.ok(view && !spawnSync('bash', ['-c', view], { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } }).stdout.includes('db.internal'), 'cat: the view masks every value');
-  for (const c of [`source .alfred/${KEY}`, `cp .alfred/${KEY} copy.txt`, `cp .companion/${KEY} k.txt`, `mv .alfred/${KEY} x`,
-    `find ~/.companion -name ${KEY} -exec cat {} +`, `find . -name ${KEY} | xargs cat`, `cat $(find . -name ${KEY})`])
+  for (const c of [`source .alfred/${KEY}`, `cp .alfred/${KEY} copy.txt`, `cp .companion/${KEY} k.txt`, `mv .alfred/${KEY} x`])
     assert.equal(verdict(call('Bash', { command: c })), 2, c);
+  // swap 1: the find judge is gone - a find handing the key file to a reader runs, and the masker reads what it printed:
+  // every value of a key file the command names or the data root holds, whatever its key
+  for (const c of [`find ~/.companion -name ${KEY} -exec cat {} +`, `find . -name ${KEY} | xargs cat`, `cat $(find . -name ${KEY})`]) {
+    assert.equal(verdict(call('Bash', { command: c })), 0, c);
+    const after = run({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: c }, cwd: dir, session_id: 'suite',
+      tool_response: { stdout: 'DB_HOST=db.internal\n', stderr: '', interrupted: false, isImage: false, noOutputExpected: false } }, env);
+    assert.equal(JSON.parse(after.stdout).hookSpecificOutput.updatedToolOutput.stdout, 'DB_HOST=<set (11 chars)>\n', `masked after the run: ${c}`);
+  }
   const msg = call('Bash', { command: `cp .alfred/${KEY} copy.txt` }).stderr;
   assert.match(msg, /key file/); assert.match(msg, /--presence/); assert.doesNotMatch(msg, /--with-sensitive/);
   // D2's narrow pin: script text naming the key file is judged like text naming .env - never refused for the name

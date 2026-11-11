@@ -752,6 +752,18 @@
       "note": "the project's sensitive data (<data root>/.secrets, .sensitive-data before; a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a dump masked and a source or copy refused"
     },
     {
+      "file": "guard-secret-value.js",
+      "matcher": "@PostToolUse:Bash",
+      "event": "",
+      "note": "the output masker (swap 1): what a Bash command printed goes back with each credential value shown as `<set (N chars)>` (`updatedToolOutput`, Claude Code 2.1.322+) - the values read after the run from four sources: the files the command names (every value of a dotenv or a store, every env / headers string of a JSON config), the well-known credential files, the stores and the key file, and credential-named variables; then the stream masker's shape pass, line by line. Exact text only; past 5 s the output is withheld; a Cursor payload is observed, never answered"
+    },
+    {
+      "file": "guard-secret-value.js",
+      "matcher": "@PostToolUseFailure:Bash",
+      "event": "",
+      "note": "the masker's failure path, a stated ceiling: PostToolUseFailure takes no replacement output, so a failed call's error text is only read with the same values and a find writes one `exposure` probe row (key names, a count, file basenames - never a value)"
+    },
+    {
       "file": "guard-unapproved-dispatch.js",
       "matcher": "Task|Agent|SendMessage",
       "event": "",

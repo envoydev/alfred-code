@@ -114,7 +114,9 @@ test('FC 2: an unquoted backslash is judged as bash hands the word on - dropped 
   }
 });
 
-test('FC 3: a script file a shell runs is judged as commands - a dump in one blocks, naming the presence and redacted routes', () => {
+// Swap 1 Task 1 (2026-11-11): the carried-script judge left with the find judge. A script FILE a shell runs, and a
+// command a variable carries, run as written; the output masker reads what they printed.
+test('FC 3: a script file a shell runs is no longer judged before the run - its output is masked after it', () => {
   const dir = project('fc3-');
   const put = (name, text) => fs.writeFileSync(path.join(dir, name), text);
   put('dump.sh', 'cat .env\n');
@@ -130,9 +132,15 @@ test('FC 3: a script file a shell runs is judged as commands - a dump in one blo
   for (const c of ['bash dump.sh', 'sh dump.sh', '. ./dump.sh', 'source dump.sh', './dump.sh', './bang.sh', 'bash runner.sh', 'bash outer.sh',
     'bash < dump.sh', 'cat dump.sh | sh', 'C=\'cat .env\'; bash -c "$C"', 'cd sub && bash up.sh']) {
     const r = bash(dir, c);
-    assert.strictEqual(r.v, 2, `${c}\n${r.out}`);
-    assert.match(r.out, /--presence/, c);
-    assert.match(r.out, /--redacted/, c);
+    assert.strictEqual(r.v, 0, `${c}\n${r.out}`);
+    const value = 'x0'.repeat(20);
+    const after = spawnSync(process.execPath, [GUARD], {
+      input: JSON.stringify({ session_id: 'fc', hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: c }, cwd: dir,
+        tool_response: { stdout: `API_TOKEN=${value}\n`, stderr: '', interrupted: false, isImage: false, noOutputExpected: false } }),
+      encoding: 'utf8', cwd: dir, env: { ...process.env, HOME, USERPROFILE: HOME, CLAUDE_PROJECT_DIR: dir },
+    });
+    assert.ok(!after.stdout.includes(value), `the value is out of the answer: ${c}`);
+    assert.strictEqual(JSON.parse(after.stdout).hookSpecificOutput.updatedToolOutput.stdout, 'API_TOKEN=<set (40 chars)>\n', c);
   }
   // the twins: no credential read, a presence test, the guard's own presence read, another interpreter's file
   for (const c of ['bash clean.sh', 'bash test.sh', 'bash presence.sh', './py.py', 'C=ls; bash -c "$C"', 'bash missing.sh']) {

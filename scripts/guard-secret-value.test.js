@@ -180,7 +180,7 @@ test('guard-secret-value: a dump is rewritten into a redacted view - the file wi
   assert.match(view.stdout, /Presence only \(Recommended\)/);
   assert.match(view.stdout, /state[\\/]approvals[\\/]SECRET-READ-ALLOW/);
   const env = cli('--redacted', f.dotenv).stdout;
-  assert.match(env, /^DB_HOST=localhost$/m, 'dotenv: a plain line stays');
+  assert.match(env, /^DB_HOST=<set \(9 chars\)>$/m, 'dotenv: every live value is masked, whatever its key (swap 1 ruling 14)');
   assert.match(env, /^API_KEY=<set \(6 chars\)>$/m, 'dotenv: the credential line is masked');
   // The view is SPLICED in: only the segment that named the credential file becomes the redacted
   // read, and the other read-only segments run as written. Replacing the whole command dropped 3 of
@@ -1190,7 +1190,6 @@ test('guard-secret-value: the credential files beyond the named formats, their v
     ['a .NET publicKeyToken', w('ok/web.config', '<configuration>\n  <runtime>\n    <dependentAssembly>\n      <assemblyIdentity name="System.Web.Mvc" publicKeyToken="31bf3856ad364e35" culture="neutral" />\n    </dependentAssembly>\n  </runtime>\n</configuration>\n')],
     ['an OpenAPI security scheme', w('ok/openapi.yaml', 'components:\n  securitySchemes:\n    apiKey:\n      type: apiKey\n      name: X-API-Key\n      in: header\n')],
     ['workflow and template references', w('ok/refs.yml', 'env:\n  NPM_TOKEN: ${{secrets.NPM_TOKEN}}\n  DB_PASSWORD: "{{.Values.dbPassword}}"\n  API_KEY: "#{ApiKey}"\n  SIGNING_SECRET: $(SigningSecret)\n  STORE_PASSWORD: "@store.password@"\n')],
-    ['a key file path', w('ok/.env', 'SSH_KEY=~/.ssh/id_ed25519\nTLS_KEY=/etc/ssl/private/site.key\n')],
     ['an nginx config', w('ok/nginx.conf', 'server {\n  listen 443 ssl;\n  ssl_certificate_key /etc/nginx/ssl/site.key;\n  auth_basic "Restricted";\n}\n')],
     ['a ConfigMap alone', w('ok/cm.yaml', 'kind: ConfigMap\ndata:\n  api: someid\n')],
     ['a doc naming a password', w('ok/setup.md', '# Setup\n\npassword: hunter2 is what the tutorial uses\n')],
@@ -1199,6 +1198,8 @@ test('guard-secret-value: the credential files beyond the named formats, their v
     ['a Procfile', w('ok/Procfile', 'web: node server.js\nworker: node worker.js\n')],
   ];
   for (const [what, f] of allowed) assert.equal(bash(`cat ${f}`), 0, `${what}: stays allowed`);
+  // a dotenv is `sensitive` by name (swap 1 ruling 14): one holding only key file paths is viewed masked, where it passed
+  assert.equal(bash(`cat ${w('ok/.env', 'SSH_KEY=~/.ssh/id_ed25519\nTLS_KEY=/etc/ssl/private/site.key\n')}`), REWRITE, 'a dotenv of key file paths');
   // the stream masker a git dump is piped through reads the same formats
   const diff = [
     'diff --git a/.m2/settings.xml b/.m2/settings.xml', '+++ b/.m2/settings.xml', `+      <password>${T}</password>`, '+      <username>someone</username>',
@@ -1510,7 +1511,7 @@ test('guard-secret-value: the PowerShell rewrites run in pwsh and print no value
   }
   const view = pwshRun(rewritten(`Get-Content ${f.dotenv}`));
   assert.equal(view.status, 0, `the file view runs (${view.stderr})`);
-  assert.ok(view.stdout.includes('DB_HOST=localhost') && !view.stdout.includes('abc123'), 'the file view masks the value');
+  assert.ok(view.stdout.includes('DB_HOST=<set (9 chars)>') && !view.stdout.includes('abc123'), 'the file view masks every value of a dotenv');
   const listing = pwshRun(rewritten('Get-ChildItem env:'), { SENTRY_ACCESS_TOKEN: FAKE_TOKEN });
   assert.equal(listing.status, 0, `the env listing runs (${listing.stderr})`);
   assert.ok(!listing.stdout.includes(FAKE_TOKEN), 'the env listing masks the value');
@@ -1964,9 +1965,22 @@ test('a git dump in a loop body or behind xargs takes the stream redactor where 
   assert.equal(at(`${list} | xargs git diff --no-index --stat -- /dev/null`), null, 'a summary form prints no content');
 });
 
+test('swap 1: a diff of a dotenv is masked by the store rule - every value, a line that is no pair whole', () => {
+  const input = ['diff --git a/.env b/.env', '--- a/.env', '+++ b/.env', ' DB_HOST=localhost', '+PORT=3000', '+not a pair', '+# a comment', ''].join('\n');
+  const r = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input, encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /^ DB_HOST=<set \(9 chars\)>$/m);
+  assert.match(r.stdout, /^\+PORT=<set \(4 chars\)>$/m);
+  assert.match(r.stdout, /^\+<sensitive-data line>$/m);
+  assert.match(r.stdout, /^\+# a comment$/m, 'a comment stays');
+  // a sample dotenv keeps the generic pair rules
+  const sample = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input: input.split('.env').join('.env.example'), encoding: 'utf8' });
+  assert.match(sample.stdout, /^ DB_HOST=localhost$/m);
+});
+
 test('I2: the stream redactor masks credential values, URL passwords and PEM bodies line by line', () => {
   const pem = ['-----BEGIN RSA PRIVATE KEY-----', 'MIIEowIBAAKCAQEA0000', 'abcdabcdabcd', '-----END RSA PRIVATE KEY-----'];
-  const input = ['diff --git a/.env b/.env', '--- a/.env', '+++ b/.env', '-API_TOKEN=old', `+API_TOKEN=${FAKE_TOKEN}`, ' DB_HOST=localhost',
+  const input = ['diff --git a/app.env b/app.env', '--- a/app.env', '+++ b/app.env', '-API_TOKEN=old', `+API_TOKEN=${FAKE_TOKEN}`, ' DB_HOST=localhost',
     '+  "ClientSecret": "' + FAKE_TOKEN + '",', '+DATABASE_URL=postgres://app:' + FAKE_TOKEN + '@db:5432/app',
     ...pem.map((l) => `+${l}`), '+const x = 1;'].join('\n') + '\n';
   const r = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input, encoding: 'utf8' });
@@ -1978,7 +1992,7 @@ test('I2: the stream redactor masks credential values, URL passwords and PEM bod
   assert.match(r.stdout, /^\+DATABASE_URL=postgres:\/\/app:<set \(40 chars\)>@db:5432\/app$/m);
   assert.match(r.stdout, /^\+-----BEGIN RSA PRIVATE KEY-----$/m, 'the PEM markers stay');
   assert.match(r.stdout, /^-API_TOKEN=<set \(3 chars\)>$/m, 'a removed value is a credential too');
-  for (const keep of ['diff --git a/.env b/.env', '+++ b/.env', ' DB_HOST=localhost', '+const x = 1;'])
+  for (const keep of ['diff --git a/app.env b/app.env', '+++ b/app.env', ' DB_HOST=localhost', '+const x = 1;'])
     assert.ok(r.stdout.split('\n').includes(keep), `${keep} stays as written`);
   assert.match(r.stderr, /credential guard/, 'a masked stream says so on stderr');
   const clean = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input: '+const x = 1;\n', encoding: 'utf8' });
@@ -3114,173 +3128,6 @@ test('guard-secret-value: a GitLab personal token literal is blocked, the bare p
   assert.equal(bash(`echo "GitLab tokens open with ${'glpat' + '-'} and twenty characters"`), 0, 'prose about the shape is not the shape');
 });
 
-// AC-2R (the owner's ruling, 2026-11-10: 'Close it in this fix'): a find whose -name / -path pattern can name a credential
-// file the guard knows, handing its files to a reader - an -exec action, `| xargs <print verb>`, `cat $(find ...)` - is
-// judged by what its walk matches: a match holding a credential blocks, a walk past a ceiling blocks unjudged. A listing,
-// a reducer, a clean match and a pattern that names no credential file pass. Every fake value is built here, never printed.
-test('AC-2R: a find that hands a credential file to a reader', () => {
-  const FAKE_PASS = ['Qm', '7v', 'Lr', '2k'].join('').repeat(3);
-  const noValue = (text) => !text.includes(FAKE_TOKEN) && !text.includes(FAKE_PASS);
-  const dir = fs.mkdtempSync(path.join(TMP, 'ac2r-'));
-  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
-  fs.mkdirSync(path.join(dir, 'sub'));
-  fs.writeFileSync(path.join(dir, 'sub', '.env.local'), `DB_PASSWORD=${FAKE_PASS}\n`);
-  fs.mkdirSync(path.join(dir, 'docs'));
-  fs.writeFileSync(path.join(dir, 'docs', 'a.md'), '# notes\n');
-  fs.writeFileSync(path.join(dir, 'package.json'), '{"version":"1.0.0"}\n');
-  fs.writeFileSync(path.join(dir, '.env.example'), '');
-  const call = (command, cwd = dir, env = {}, pre = null) => spawnSync(process.execPath, [...(pre ? ['-r', pre] : []), HOOK],
-    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, ...env } });
-  const DISPATCH = path.join(__dirname, '..', 'stack', 'hooks', 'shell-guards.js');
-  const viaDispatch = (command, cwd = dir) => spawnSync(process.execPath, [DISPATCH],
-    { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: cwd } });
-  const refusedHere = (what, r, file) => {
-    assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
-    assert.strictEqual(r.status, 2, `${what}: ${r.stdout}${r.stderr}`);
-    assert.match(r.stderr, /credential guard: this find hands /, what);
-    assert.match(r.stderr, /--presence/, what);
-    if (file) assert.ok(r.stderr.includes(file), `${what}: names ${file}\n${r.stderr}`);
-  };
-  const passed = (what, r) => {
-    assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
-    assert.strictEqual(r.status, 0, `${what}: ${r.stderr}`);
-    assert.strictEqual(updatedCommand(r), null, `${what}: the command untouched`);
-  };
-  try {
-    const refused = [
-      ['xargs cat', 'find . -name .env | xargs cat', '.env'],
-      ['-type f before the name test', 'find . -type f -name .env | xargs cat', '.env'],
-      ['-print0 into xargs -0', "find . -name '.env*' -print0 | xargs -0 cat", '.env'],
-      ['-exec cat {} +', 'find . -name .env -exec cat {} +', '.env'],
-      ['-exec cat {} \\;', 'find . -name .env -exec cat {} \\;', '.env'],
-      ['-iname into -execdir head', "find . -iname '.ENV' -execdir head {} +", '.env'],
-      ['cat $(find ...)', 'cat $(find . -name .env)', '.env'],
-      ['a start folder', "find sub -name '.env*' | xargs cat", '.env.local'],
-      ['xargs grep printing lines', "find . -name '.env*' | xargs grep API", '.env'],
-      ['wide: an -o reaches every file', "find . -name '.env*' -o -name '*.md' | xargs cat", '.env'],
-      ["-name '*' reaches .env", "find . -name '*' | xargs cat", '.env'],
-      // a filter stage between the find and its xargs still hands the names on (a side agent's note, the owner's run)
-      ['a sort between', 'find . -name .env | sort | xargs cat', '.env'],
-      ['a head between', "find . -name '.env*' | head -5 | xargs head", '.env'],
-      // the final review's I2a: a negated -type is no 'only folders' (AC-2 had opened it, the walk read `d` as the only type)
-      ['! -type d', 'find . -name .env ! -type d | xargs cat', '.env'],
-      ['-not -type d', 'find . -name .env -not -type d | xargs cat', '.env'],
-      ['! -type d -print0 into xargs -0 head', 'find . -name .env ! -type d -print0 | xargs -0 head', '.env'],
-      // the final review's M4: a print verb is a lone word - `cat.exe` is cat
-      ['xargs cat.exe', 'find . -name .env | xargs cat.exe', '.env'],
-    ];
-    for (const [what, command, file] of refused) refusedHere(what, call(command), file);
-    for (const [what, command, file] of refused.slice(0, 10)) refusedHere(`dispatcher: ${what}`, viaDispatch(command), file);
-    // the block row names the branch and the file, never the value
-    const ledger = path.join(TMP, `ledger-ac2r-${Date.now()}`);
-    refusedHere('ledgered', call('find . -name .env | xargs cat', dir, { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger }));
-    const rowsText = fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'suite.jsonl'), 'utf8');
-    assert.ok(noValue(rowsText), 'no value in the block row');
-    assert.deepStrictEqual(rowsText.trim().split('\n').map((l) => JSON.parse(l).detail.branch), ['find-reader']);
-
-    const pass = [
-      ['a listing', 'find . -name .env'],
-      ['a listing piped to sort', 'find . -name .env | sort'],
-      ['a listing piped to head', 'find . -name .env | head'],
-      ['xargs ls -l', 'find . -name .env | xargs ls -l'],
-      ['xargs wc -l', 'find . -name .env | xargs wc -l'],
-      ['xargs grep -l', "find . -name '.env*' | xargs grep -l API_TOKEN"],
-      ['xargs grep -c', "find . -name '.env*' | xargs grep -c API_TOKEN"],
-      ['-exec grep -q', "find . -name '*.json' -exec grep -q version {} \\; -print"],
-      ['a pattern naming no credential file', "find . -name '*.md' | xargs cat"],
-      ['-exec cat over docs', "find docs -name '*.md' -exec cat {} +"],
-      ['a negated test leaves only the empty example', "find . -maxdepth 1 -name '.env*' -not -name .env | xargs cat"],
-      ['no name test (unchanged)', 'find . -type f | xargs cat'],
-      ['wide with no pattern naming a credential file', "find . -name '*.md' -o -name none | xargs cat"],
-      ['a filter then xargs ls', 'find . -name .env | sort | xargs ls -l'],
-      // the final review's M4: a hyphenated program that starts with a print verb's name is another program
-      ['xargs sort-package-json', "find . -name '.env*' | xargs sort-package-json"],
-      ['xargs head-check', 'find . -name .env | xargs head-check'],
-    ];
-    for (const [what, command] of pass) passed(what, call(command));
-
-    // a node_modules of 4,001 .js files beside a fake-token .env: no pattern names a credential file, so no walk
-    const big = fs.mkdtempSync(path.join(TMP, 'ac2r-big-'));
-    fs.writeFileSync(path.join(big, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
-    fs.mkdirSync(path.join(big, 'node_modules'));
-    for (let i = 1; i <= 4001; i++) fs.writeFileSync(path.join(big, 'node_modules', `m${String(i).padStart(4, '0')}.js`), 'module.exports = 1;\n');
-    fs.mkdirSync(path.join(big, 'src'));
-    fs.writeFileSync(path.join(big, 'src', 'a.ts'), 'export const a = 1;\n');
-    passed('a search through a large tree', call("find . -name '*.js' | xargs grep -n foo", big));
-    passed('the -prune -o form', call("find . -path ./node_modules -prune -o -name '*.ts' -print | xargs grep foo", big));
-    // the final review's I2b: the account's credential file, named by its own name, is walked and judged; a pattern every
-    // package.json also matches (`*.json`) aims at no credential file and is not walked
-    const acct = fs.mkdtempSync(path.join(TMP, 'ac2r-acct-'));
-    fs.mkdirSync(path.join(acct, '.claude'));
-    fs.writeFileSync(path.join(acct, '.claude', '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: FAKE_TOKEN } }));
-    fs.writeFileSync(path.join(acct, '.claude', 'settings.json'), '{"theme":"dark"}\n');
-    refusedHere('the account file by name', call('find . -maxdepth 1 -type f -name .credentials.json | xargs cat', path.join(acct, '.claude')), '.credentials.json');
-    refusedHere('cd into the account folder', call(`cd "${path.join(acct, '.claude')}" && find . -maxdepth 1 -type f -name .credentials.json | xargs cat`, acct), '.credentials.json');
-    refusedHere('a pattern aimed at it', call("find . -name '*credentials*' | xargs cat", acct), '.credentials.json');
-    passed('*.json across a tree past the entries ceiling: not walked', call("find . -name '*.json' | xargs grep -n version", big, {}, (() => {
-      const p = path.join(TMP, 'ac2r-tiny.js'); fs.writeFileSync(p, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 30, entries: 10 };\n'); return p; })()));
-
-    // a project with no credential file, and a .env with an empty value
-    const clean = fs.mkdtempSync(path.join(TMP, 'ac2r-clean-'));
-    fs.writeFileSync(path.join(clean, 'notes.env'), 'NOTE=hello\n');
-    passed('no credential file', call("find . -name '*.env' | xargs cat", clean));
-    fs.writeFileSync(path.join(clean, '.env'), 'API_TOKEN=\n');
-    passed('an empty value', call('find . -name .env | xargs cat', clean));
-
-    // the three ceilings at their boundaries, through findCredentialFile with small limits (a test preload, as the
-    // judging budget's JUDGE_WORK_MAX), the fake token placed past the cut
-    const pre = path.join(TMP, 'ac2r-limits.js');
-    fs.writeFileSync(pre, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 30, entries: 10 };\n');
-    const small = (d) => call("find . -name '*.env' | xargs cat", d, {}, pre);
-    const unjudged = (what, r, ceiling) => {
-      assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
-      assert.strictEqual(r.status, 2, `${what}: ${r.stderr}`);
-      assert.match(r.stderr, new RegExp(`credential guard: this find walks past ${ceiling} before handing its files to cat`), what);
-      assert.match(r.stderr, /--redacted/, what);
-    };
-    const files = fs.mkdtempSync(path.join(TMP, 'ac2r-files-'));
-    for (const n of ['a', 'b']) fs.writeFileSync(path.join(files, `${n}.env`), 'A=1\n');
-    passed('files: 2 clean matches', small(files));
-    fs.writeFileSync(path.join(files, 'c.env'), 'A=1\n');
-    passed('files: 3 clean matches', small(files));
-    fs.writeFileSync(path.join(files, 'd.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
-    unjudged('files: 4 matches', small(files), '3 matched files');
-    const bytes = fs.mkdtempSync(path.join(TMP, 'ac2r-bytes-'));
-    const sized = (n) => `NOTE=${'x'.repeat(n - 6)}\n`;
-    fs.writeFileSync(path.join(bytes, 'a.env'), sized(15));
-    fs.writeFileSync(path.join(bytes, 'b.env'), sized(14));
-    passed('bytes: 29 in all', small(bytes));
-    fs.writeFileSync(path.join(bytes, 'b.env'), sized(15));
-    passed('bytes: 30 in all', small(bytes));
-    fs.writeFileSync(path.join(bytes, 'b.env'), sized(16));
-    unjudged('bytes: 31 in all', small(bytes), '30 bytes of matched files');
-    const entries = fs.mkdtempSync(path.join(TMP, 'ac2r-entries-'));
-    fs.writeFileSync(path.join(entries, 'a.env'), 'A=1\n');
-    for (let i = 1; i <= 8; i++) fs.writeFileSync(path.join(entries, `n${i}.txt`), 'x\n');
-    passed('entries: 9 walked', small(entries));
-    fs.writeFileSync(path.join(entries, 'n9.txt'), 'x\n');
-    passed('entries: 10 walked', small(entries));
-    fs.writeFileSync(path.join(entries, 'z.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
-    unjudged('entries: 11 walked', small(entries), '10 folder entries');
-
-    // the real files ceiling: 3,999 and 4,000 clean pass, the token in the 4,000th is found, 4,001 clean is unjudged
-    const many = fs.mkdtempSync(path.join(TMP, 'ac2r-many-'));
-    const nth = (i) => path.join(many, `f${String(i).padStart(4, '0')}.env`);
-    for (let i = 1; i <= 3999; i++) fs.writeFileSync(nth(i), 'A=1\n');
-    const real = () => call("find . -name '*.env' | xargs cat", many);
-    passed('3,999 clean matches', real());
-    fs.writeFileSync(nth(4000), 'A=1\n');
-    passed('4,000 clean matches', real());
-    fs.writeFileSync(nth(4000), `API_TOKEN=${FAKE_TOKEN}\n`);
-    refusedHere('the token in the 4,000th', real(), 'f4000.env');
-    fs.writeFileSync(nth(4000), 'A=1\n');
-    fs.writeFileSync(nth(4001), 'A=1\n');
-    unjudged('4,001 clean matches', real(), '4000 matched files');
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 // SG1 D1: the companion catalog's auth / noKey mode values ('token', 'oauth', 'optional-token') name HOW a server
 // authenticates, not a credential - an exact, case-sensitive word list, so anything else stays guarded.
 test('SG1 D1: a mode word under a credential key is no credential; anything else stays guarded', () => {
@@ -3363,9 +3210,9 @@ test('SG1 Bearer: a diff adding a Bearer token is piped through the masker; an i
   for (const c of ['git diff -- a.ts', 'git diff -- b.py', 'grep -rn Bearer a.ts b.py']) assert.equal(verdict(call(c)), 0, `${c} runs as written, no pipe`);
 });
 
-// SG1 D7: the two read gaps the dotenv and the key file share - a path a script builds from literals, and a listing
-// fed to a reader. Project `a` holds only `.alfred/.env`, `b` only a root `.env`, so each row's cause stays apart.
-test('SG1 D7: a built path or a fed listing reaching a credential file is judged', () => {
+// SG1 D7: a path a script builds from literals. Project `a` holds only `.alfred/.env`, `b` only a root `.env`, so each
+// row's cause stays apart. Its fed-listing half left with the find judge (swap 1 Task 1: the masker reads the output).
+test('SG1 D7: a built path reaching a credential file is judged', () => {
   const E = ['.e', 'nv'].join('');
   const a = fs.mkdtempSync(path.join(TMP, 'd7a-'));
   fs.mkdirSync(path.join(a, '.alfred')); fs.mkdirSync(path.join(a, 'config'));
@@ -3381,10 +3228,7 @@ test('SG1 D7: a built path or a fed listing reaching a credential file is judged
     [b, `python3 -c "import os; print(open(os.path.join('.', '${E}')).read())"`],
     [b, `python3 -c "x='.'; print(open('${E}').read())"`], // no join: only the in-order string pass reads it
   ]) assert.equal(at(dir, c), REWRITE, c);
-  for (const [dir, c] of [[b, 'ls -a | grep env | xargs cat'], [b, 'ls -A . | xargs cat'], [a, 'ls -a .alfred | xargs -I{} cat .alfred/{}'],
-    [a, 'ls -a .alfred/.e* | xargs cat']]) // the last is Review Focus 5
-    assert.equal(at(dir, c), 2, c);
-  for (const [dir, c] of [[a, 'ls | xargs wc -l'], [a, 'ls config | xargs cat'], [b, 'ls | xargs cat'],
+  for (const [dir, c] of [
     [a, `python3 -c "import os; print(os.path.join('.alfred', 'x.md'))"`],
     [a, `python3 -c "import os; print(open(os.path.join('.alfred', 'missing', '${E}')).read())"`]])
     assert.equal(at(dir, c), 0, c);
@@ -3395,7 +3239,6 @@ test('SG1 D7: a built path or a fed listing reaching a credential file is judged
   for (const [sub, name, text] of forms) { fs.mkdirSync(path.join(d7c, sub)); fs.writeFileSync(path.join(d7c, sub, name), text); }
   for (const [sub, name] of forms) {
     assert.equal(at(d7c, `python3 -c "import os; print(open(os.path.join('${sub}', '${name}')).read())"`), REWRITE, `join: ${sub}`);
-    assert.equal(at(d7c, `ls -a ${sub} | xargs -I{} cat ${sub}/{}`), 2, `listing: ${sub}`);
   }
   assert.equal(at(d7c, `python3 -c "import os; p=os.path.join('d1', '${E}'); open('out.txt','w').write(open(p).read())"`), 2, 'a join with a write');
 });
@@ -3407,12 +3250,6 @@ const d7Project = (files) => {
   return (command, pre = null) => verdict(spawnSync(process.execPath, [...(pre ? ['-r', pre] : []), HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }));
 };
 const D7E = ['.e', 'nv'].join('');
-test('SG1 D7 review: an ls redirect or option value is no listed folder', () => {
-  const at = d7Project({ [D7E]: `API_TOKEN=${FAKE_TOKEN}\n`, 'notes.md': '# n\n' });
-  for (const c of ['ls -A 2>/dev/null | xargs cat', 'ls -A 2> /dev/null | xargs cat', 'ls -A -I node_modules | xargs cat', 'ls -A --hide x | xargs cat', 'ls -A -w 200 | xargs cat'])
-    assert.equal(at(c), 2, c);
-  assert.equal(at(`ls -I ${D7E} | xargs cat`), 0, 'an ignore pattern is no operand');
-});
 test('SG1 D7 review: the Path(a, b) constructor is a join', () => {
   const at = d7Project({ [`.alfred/${D7E}`]: `API_TOKEN=${FAKE_TOKEN}\n` });
   const c = `python3 -c "from pathlib import Path; print(open(Path('.alfred', '${D7E}')).read())"`;
@@ -3432,13 +3269,283 @@ test('SG1 D7 review: a folder name bound to a literal joins', () => {
     `node -e "const path=require('path'); const dir='.alfred'; console.log(require('fs').readFileSync(path.join(dir,'${D7E}'),'utf8'))"`])
     assert.equal(at(c), REWRITE, c);
 });
-test('SG1 D7 review: a listing past a walk ceiling passes, a dot-name before it is still judged', () => {
-  const logs = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`logs/app${n}.log`, 'ERROR nothing to see here\n']));
-  const at = d7Project({ ...logs, [D7E]: `API_TOKEN=${FAKE_TOKEN}\n` });
-  const pre = path.join(TMP, 'd7r-limits.js');
-  fs.writeFileSync(pre, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 60, entries: 10 };\n');
-  for (const c of ['ls logs/*.log | xargs grep -n ERROR', 'ls logs | xargs -I{} cat logs/{}', 'ls logs/*.log | xargs tail -n 2'])
-    assert.equal(at(c, pre), 0, c);
-  assert.equal(at('ls -A . logs | xargs cat', pre), 2, 'the dot-name sorts first and is judged');
-  assert.equal(at("find logs . -name '*.log' -o -name '.e*' | xargs cat", pre), 2, 'a find past a ceiling still fails closed');
+// ---- swap 1 (complexity audit, stage 2): the output masker - PostToolUse and PostToolUseFailure ---------------------
+// Secrets are judged by what a Bash command PRINTED. Every planted value is built in code, and no assertion message
+// prints one.
+const GH = 'ghp_' + 'x9'.repeat(18); // 40 chars, a known shape
+const GH2 = 'ghp_' + 'y8'.repeat(18);
+const PW = 'pw-' + 'q7'.repeat(6); // 15 chars, no known shape
+const NESTED = ['n1-' + 'a3'.repeat(6), 'n2-' + 'b4'.repeat(6), 'n3-' + 'c5'.repeat(6), 'n4-' + 'd6'.repeat(6)];
+const STORE_VAL = 'st-' + 'k4'.repeat(6);
+const ENV_VAL = 'ev-' + 'm2'.repeat(6);
+const SUB_VAL = 'sb-' + 'f8'.repeat(6);
+const PLANTED = new Map([['GITHUB_TOKEN', GH], ['DB_PASSWORD', PW], ['apiToken', GH2], ['STORE_KEY', STORE_VAL], ['MY_API_TOKEN', ENV_VAL],
+  ['SUB_TOKEN', SUB_VAL], ...NESTED.map((v, i) => [`nested ${i + 1}`, v])]);
+const SET = (v) => `<set (${String(v).length} chars)>`;
+const WITHHELD = 'output withheld: the masker ran out of time';
+const noPlanted = (text, what) => { for (const [k, v] of PLANTED) assert.ok(!String(text).includes(v), `${what}: ${k} is masked`); };
+const have = (bin) => spawnSync(bin, ['--version'], { encoding: 'utf8' }).status === 0;
+const NO_SH = process.platform === 'win32' && 'sh pipeline';
+let maskFx = null;
+function maskFixture() {
+  if (maskFx) return maskFx;
+  const project = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'mask-')));
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'mask-home-')));
+  const w = (rel, text) => { const p = path.join(project, ...rel.split('/')); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); };
+  const git = (...a) => spawnSync('git', ['-C', project, ...a], { encoding: 'utf8' });
+  w('.gitignore', '.alfred/\n.env*\nbackend/\nsub/\n');
+  w('config/app.json', JSON.stringify({ name: 'app', apiToken: 'unset' }, null, 2) + '\n');
+  w('package.json', JSON.stringify({ name: 'mask-fixture', version: '1.0.0' }, null, 2) + '\n');
+  w('notes.txt', 'plain text\n');
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  w('config/app.json', JSON.stringify({ name: 'app', apiToken: GH2 }, null, 2) + '\n');
+  w('.env', `GITHUB_TOKEN=${GH}\nDB_PASSWORD=${PW}\nPORT=3000\n`);
+  w('.env.local', 'NODE_ENV=production\nPORT=3000\n');
+  w('.env.example', 'NODE_ENV=production\nAPI_KEY=your-api-key-here\n');
+  w('.mcp.json', JSON.stringify({ mcpServers: { x: { command: 'npx', env: { REGION: 'eu-west-7' }, headers: { 'X-Trace': 'trace-on-77' } } } }, null, 2) + '\n');
+  w('.claude/settings.json', JSON.stringify({ permissions: { defaultMode: 'acceptEdits' }, env: { MY_FLAG: 'flag-value-9' } }, null, 2) + '\n');
+  w('.alfred/.secrets', `STORE_KEY=${STORE_VAL}\n`);
+  w('backend/.env', `DB_PASSWORD=${NESTED[0]}\nPORT=3000\n`);
+  w('config/database.yml', `production:\n  password: ${NESTED[1]}\n`);
+  w('app.properties', `db.pass=${NESTED[2]}\napi_key=${NESTED[3]}\n`);
+  w('sub/.env', `PORT=3000\nSUB_TOKEN=${SUB_VAL}\n`);
+  maskFx = { project, home, w };
+  return maskFx;
+}
+let maskSeq = 0;
+// Runs `command` in the fixture (or takes `opts.response` as what it printed), then hands the guard the PostToolUse payload.
+function masked(command, opts = {}) {
+  const fx = maskFixture();
+  const cwd = opts.cwd || fx.project;
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: fx.project, HOME: fx.home, USERPROFILE: fx.home, MY_API_TOKEN: ENV_VAL, ...opts.env };
+  delete env.ALFRED_CODE_DOCS_PATH;
+  let response = opts.response;
+  if (response === undefined) {
+    const ran = opts.run ? spawnSync(opts.run[0], opts.run[1], { cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+      : spawnSync('sh', ['-c', command], { cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    response = { stdout: ran.stdout, stderr: ran.stderr, interrupted: false, isImage: false, noOutputExpected: false };
+  }
+  const session = `mask-${++maskSeq}`;
+  const payload = { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command }, tool_response: response, session_id: session, cwd, ...opts.payload };
+  if (response === null && !(opts.payload && 'tool_response' in opts.payload)) delete payload.tool_response;
+  const r = spawnSync(process.execPath, [...(opts.pre ? ['-r', opts.pre] : []), HOOK], { input: JSON.stringify(payload), encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024 });
+  let rows = [];
+  try { rows = fs.readFileSync(path.join(fx.project, '.alfred', 'statistics', 'hook-blocks', `${session}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { /* no row */ }
+  return { status: r.status, out: r.stdout, err: r.stderr, rows, response };
+}
+const said = (stdout) => ({ stdout, stderr: '', interrupted: false, isImage: false, noOutputExpected: false });
+const answer = (r) => JSON.parse(r.out).hookSpecificOutput;
+const preload = (name, body) => { const p = path.join(TMP, name); fs.writeFileSync(p, body); return p; };
+
+test('swap 1 canary: cat, node -e, python3 -c, git diff and grep -rn of a planted file come back masked in the measured shape', () => {
+  const READ = "process.stdout.write(require('fs').readFileSync('.env','utf8'))";
+  const CANARY = [
+    { command: 'cat .env', sh: true },
+    { command: `node -e "${READ}"`, run: [process.execPath, ['-e', READ]] },
+    { command: 'python3 -c "print(open(\'.env\').read())"', sh: true, needs: 'python3' },
+    { command: 'git diff', run: ['git', ['diff']] },
+    { command: 'grep -rn TOKEN .', sh: true },
+  ].filter((c) => !(c.sh && process.platform === 'win32') && !(c.needs && !have(c.needs)));
+  for (const { command, run: how } of CANARY) {
+    const r = masked(command, { run: how });
+    assert.strictEqual(r.status, 0, command);
+    const h = answer(r);
+    assert.strictEqual(h.hookEventName, 'PostToolUse');
+    assert.deepStrictEqual(Object.keys(h.updatedToolOutput).sort(), ['interrupted', 'isImage', 'noOutputExpected', 'stderr', 'stdout']);
+    noPlanted(r.out, command);
+    assert.ok(h.updatedToolOutput.stdout.includes(SET(GH)), `${command}: the mask stands where the value stood`);
+    assert.match(h.updatedToolOutput.stderr, /credential guard: \d+ credential value\(s\)[^\n]*--presence[^\n]*\n?$/, 'one note line ends stderr');
+  }
+});
+
+test('swap 1: each of the four sources masks - a named file, a well-known file, the store, a credential-named variable', () => {
+  // 1. a file the command names
+  const named = masked('cat config/app.json', { response: said(fs.readFileSync(path.join(maskFixture().project, 'config', 'app.json'), 'utf8')) });
+  assert.ok(answer(named).updatedToolOutput.stdout.includes(`"apiToken": "${SET(GH2)}"`), 'the named file');
+  assert.ok(answer(named).updatedToolOutput.stdout.includes('"name": "app"'), 'the rest as printed');
+  // 2. a well-known file the command never names: its credential values, never its other ones
+  const known = masked('node build-and-print.js', { response: said(`token ${GH} and ${PW} on port 3000\n`) });
+  assert.strictEqual(answer(known).updatedToolOutput.stdout, `token ${SET(GH)} and ${SET(PW)} on port 3000\n`, 'a well-known file');
+  // 3. the data-root store: every value
+  const store = masked('node print-it.js', { response: said(`it is ${STORE_VAL}\n`) });
+  assert.strictEqual(answer(store).updatedToolOutput.stdout, `it is ${SET(STORE_VAL)}\n`, 'the store');
+  // 4. a credential-named environment variable
+  const envd = masked('node print-env.js', { response: said(`v=${ENV_VAL}\n`) });
+  assert.strictEqual(answer(envd).updatedToolOutput.stdout, `v=${SET(ENV_VAL)}\n`, 'the environment');
+  // a diff of a config file nobody planted on disk is masked by the header rule of the shape pass
+  const other = 'ot-' + 'z1'.repeat(6);
+  const diff = masked('git diff', { response: said(['diff --git a/svc/other.json b/svc/other.json', '+++ b/svc/other.json', `+  "clientSecret": "${other}"`, ''].join('\n')) });
+  assert.ok(answer(diff).updatedToolOutput.stdout.includes(`+  "clientSecret": "${SET(other)}"`) && !diff.out.includes(other), 'the diff header rule');
+  // stderr is masked like stdout
+  const err = masked('node print-it.js', { response: { ...said('ok\n'), stderr: `warn ${STORE_VAL}\n` } });
+  assert.ok(!err.out.includes(STORE_VAL) && answer(err).updatedToolOutput.stdout === 'ok\n', 'stderr is masked, stdout as printed');
+});
+
+test('swap 1: a search walk masks credential files it never names, past the path:N: prefix', { skip: NO_SH }, () => {
+  for (const command of ['grep -rn PASSWORD .', 'grep -rn pass .', ...(have('rg') ? ['rg -n api_key'] : [])]) {
+    const r = masked(command);
+    noPlanted(r.out, command);
+    const out = answer(r).updatedToolOutput.stdout;
+    if (command === 'grep -rn PASSWORD .') assert.ok(out.includes(`./backend/.env:1:DB_PASSWORD=${SET(NESTED[0])}`), 'the nested dotenv, its prefix kept');
+    if (command === 'grep -rn pass .') {
+      assert.match(out, /\.\/config\/database\.yml:2:\s+password: <set \(15 chars\)>/, 'the nested YAML, its prefix kept');
+      assert.ok(out.includes(`./app.properties:1:db.pass=${SET(NESTED[2])}`), 'the nested properties file, its prefix kept');
+    }
+    if (command === 'rg -n api_key') assert.ok(out.includes(`app.properties:2:api_key=${SET(NESTED[3])}`), 'the rg line, its prefix kept');
+  }
+});
+
+test('swap 1: clean output gets no answer and no row', () => {
+  for (const response of [said('all good\n'), said('PORT=3000\n'), said('')]) {
+    const r = masked('npm test', { response });
+    assert.deepStrictEqual([r.status, r.out, r.rows.length], [0, '', 0]);
+  }
+});
+
+test('swap 1: MASK_MIN boundary - 3 characters stay, 4 and 5 are masked', () => {
+  const fx = maskFixture();
+  // keys of no credential shape: the exact-value pass alone decides (the shape pass masks a credential-named pair of any length)
+  fx.w('edge/.env', 'A_WORD=abc\nB_WORD=abcd\nC_WORD=abcde\n');
+  const r = masked('cat edge/.env', { response: said('A_WORD=abc\nB_WORD=abcd\nC_WORD=abcde\nplain abc here, abcd there, abcde last\n') });
+  assert.strictEqual(answer(r).updatedToolOutput.stdout, `A_WORD=abc\nB_WORD=${SET('abcd')}\nC_WORD=${SET('abcde')}\nplain abc here, ${SET('abcd')} there, ${SET('abcde')} last\n`);
+});
+
+test('swap 1: a wrong shape passes and writes one mask-shape row', () => {
+  for (const [response, type] of [[`text ${GH}`, 'string'], [null, 'undefined'], [{ stdout: 5, stderr: '' }, 'object'], [[GH], 'array']]) {
+    const r = masked('cat .env', { response });
+    assert.deepStrictEqual([r.status, r.out], [0, ''], type);
+    assert.strictEqual(r.rows.length, 1, type);
+    assert.deepStrictEqual([r.rows[0].mode, r.rows[0].detail.kind, r.rows[0].detail.type], ['probe', 'mask-shape', type]);
+    noPlanted(JSON.stringify(r.rows), type);
+  }
+});
+
+test('swap 1: past the budget the output is withheld', () => {
+  const pre = preload('mask-budget.js', 'global.MASK_BUDGET_MS = 0;\n');
+  const r = masked('cat .env', { response: { ...said(`GITHUB_TOKEN=${GH}\n`), stderr: `also ${PW}\n` }, pre });
+  const out = answer(r).updatedToolOutput;
+  assert.deepStrictEqual([out.stdout, out.stderr, out.interrupted], [WITHHELD, '', false]);
+  assert.deepStrictEqual(r.rows.map((x) => [x.mode, x.detail.kind]), [['probe', 'mask-withheld']]);
+  noPlanted(r.out, 'withheld');
+});
+
+test('swap 1: a failed call is observed, never answered', () => {
+  const failed = (payload) => masked('cat .env && false', { response: null, payload: { hook_event_name: 'PostToolUseFailure', ...payload } });
+  const r = failed({ error: `Exit code 1\nGITHUB_TOKEN=${GH}\nDB_PASSWORD=${PW}\nPORT=3000\n` });
+  assert.deepStrictEqual([r.status, r.out], [0, '']);
+  assert.strictEqual(r.rows.length, 1);
+  const [row] = r.rows;
+  assert.deepStrictEqual([row.mode, row.detail.kind, row.detail.count], ['probe', 'exposure', 2]);
+  assert.deepStrictEqual([...row.detail.keys].sort(), ['DB_PASSWORD', 'GITHUB_TOKEN']);
+  assert.deepStrictEqual(row.detail.files, ['.env']);
+  noPlanted(JSON.stringify(r.rows), 'the exposure row');
+  assert.deepStrictEqual(failed({ error: 'Exit code 1\nnothing here\n' }).rows, [], 'a clean failure writes nothing');
+  // Cursor's map has no PostToolUseFailure: its shape (error_message, no error) writes no row
+  const cursor = failed({ error_message: `GITHUB_TOKEN=${GH}\n` });
+  assert.deepStrictEqual([cursor.status, cursor.out, cursor.rows.length], [0, '', 0]);
+});
+
+test('swap 1 masker: every value of a named dotenv and every env / headers string of a named JSON config is masked; other values stay', () => {
+  const fx = maskFixture();
+  const text = (rel) => fs.readFileSync(path.join(fx.project, ...rel.split('/')), 'utf8');
+  const out = (command, stdout) => answer(masked(command, { response: said(stdout) })).updatedToolOutput.stdout;
+  assert.strictEqual(out('cat .env.local', text('.env.local')), `NODE_ENV=${SET('production')}\nPORT=${SET('3000')}\n`, 'every value of a named dotenv');
+  const mcp = out('cat .mcp.json', text('.mcp.json'));
+  assert.ok(mcp.includes(`"REGION": "${SET('eu-west-7')}"`) && mcp.includes(`"X-Trace": "${SET('trace-on-77')}"`) && mcp.includes('"command": "npx"'), 'env and headers strings of .mcp.json, its command kept');
+  const settings = out('cat .claude/settings.json', text('.claude/settings.json'));
+  assert.ok(settings.includes(`"MY_FLAG": "${SET('flag-value-9')}"`) && settings.includes('"defaultMode": "acceptEdits"'), 'the settings env block, permissions kept');
+  assert.strictEqual(out('cat package.json .env.local', text('package.json') + text('.env.local')).includes('"name": "mask-fixture"'), true, 'another JSON value in the same output stays');
+  // kept: a sample dotenv, and a dotenv value with no file named (source 2 adds no non-credential value)
+  assert.deepStrictEqual(masked('cat .env.example', { response: said(text('.env.example')) }).out, '', 'a sample dotenv prints as written');
+  assert.deepStrictEqual(masked('echo production', { response: said('production\n3000\n') }).out, '', 'no file named: a non-credential dotenv value stays');
+  if (process.platform !== 'win32') {
+    const walk = masked('grep -rn PORT .');
+    assert.ok(answer(walk).updatedToolOutput.stdout.includes(`./backend/.env:2:PORT=${SET('3000')}`), "a walk's dotenv line is masked by the store's rule");
+  }
+});
+
+test('swap 1 masker: the 200-fragment cap', () => {
+  const fx = maskFixture();
+  const value = (n) => `capval-${String(n).padStart(3, '0')}`;
+  for (let n = 1; n <= 201; n++) fx.w(`cap/f${n}/.env`, `WORD=${value(n)}\n`);
+  const command = `cat ${Array.from({ length: 201 }, (_, i) => `cap/f${i + 1}/.env`).join(' ')}`;
+  const stdout = Array.from({ length: 201 }, (_, i) => `x ${value(i + 1)}`).join('\n') + '\n';
+  const out = answer(masked(command, { response: said(stdout) })).updatedToolOutput.stdout.split('\n');
+  assert.strictEqual(out[199], `x ${SET(value(200))}`, 'the 200th named file is read');
+  assert.strictEqual(out[200], `x ${value(201)}`, 'the 201st is past the cap (source 1 stops at 200, stated)');
+});
+
+test('swap 1: a dotenv reached through a cd is masked whole', () => {
+  const r = masked('cd sub && cat .env', { response: said(`PORT=3000\nSUB_TOKEN=${SUB_VAL}\n`) });
+  assert.strictEqual(answer(r).updatedToolOutput.stdout, `PORT=${SET('3000')}\nSUB_TOKEN=${SET(SUB_VAL)}\n`);
+  // a value only the cd reaches: no credential key, no file of that name at the cwd's own level holds it
+  maskFixture().w('deep/.env', 'LEVEL=deep-level-7\n');
+  for (const command of ['cd deep && cat .env', 'pushd deep; cat .env; popd'])
+    assert.strictEqual(answer(masked(command, { response: said('LEVEL=deep-level-7\n') })).updatedToolOutput.stdout, `LEVEL=${SET('deep-level-7')}\n`, command);
+});
+
+test('swap 1: a run past MASK_SLOW_MS writes one mask-slow row, clean output included', () => {
+  const pre = preload('mask-slow.js', 'global.MASK_SLOW_MS = 0;\n');
+  const clean = masked('npm test', { response: said('all good\n'), pre });
+  assert.deepStrictEqual([clean.status, clean.out], [0, '']);
+  assert.deepStrictEqual(clean.rows.map((x) => [x.mode, x.detail.kind, typeof x.detail.ms, typeof x.detail.files]), [['probe', 'mask-slow', 'number', 'number']]);
+  const dirty = masked('cat .env', { response: said(`GITHUB_TOKEN=${GH}\n`), pre });
+  assert.deepStrictEqual(dirty.rows.map((x) => x.mode === 'mask' ? 'mask' : x.detail.kind).sort(), ['mask', 'mask-slow']);
+  const failed = masked('false', { response: null, payload: { hook_event_name: 'PostToolUseFailure', error: 'Exit code 1\n' }, pre });
+  assert.deepStrictEqual(failed.rows.map((x) => x.detail.kind), ['mask-slow'], 'the failure branch too');
+});
+
+test('swap 1 Cursor: a postToolUse payload is observed, never answered', () => {
+  const dotenv = `GITHUB_TOKEN=${GH}\nDB_PASSWORD=${PW}\n`;
+  for (const tool_name of ['Bash', 'Shell']) {
+    for (const shape of [{ tool_output: dotenv }, { tool_response: { stdout: dotenv, stderr: '' } }, { tool_response: dotenv }]) {
+      const r = masked('cat .env', { response: null, payload: { cursor_version: '2.1.0', hook_event_name: 'postToolUse', tool_name, ...shape } });
+      assert.deepStrictEqual([r.status, r.out], [0, ''], `${tool_name} ${Object.keys(shape)}`);
+      assert.strictEqual(r.rows.length, 1);
+      const [row] = r.rows;
+      assert.deepStrictEqual([row.mode, row.detail.kind, row.host, row.detail.count], ['probe', 'exposure', 'cursor', 2]);
+      assert.deepStrictEqual([...row.detail.keys].sort(), ['DB_PASSWORD', 'GITHUB_TOKEN']);
+      noPlanted(JSON.stringify(r.rows), 'the Cursor exposure row');
+    }
+  }
+  const clean = masked('ls', { response: null, payload: { cursor_version: '2.1.0', hook_event_name: 'postToolUse', tool_output: 'a.txt\n' } });
+  assert.deepStrictEqual([clean.status, clean.out, clean.rows.length], [0, '', 0]);
+  // a Claude Code payload naming Shell is no Bash call: the shell route's names are another decision
+  assert.deepStrictEqual(masked('cat .env', { response: said(dotenv), payload: { tool_name: 'Shell' } }).out, '');
+});
+
+test('swap 1: an image passes untouched', () => {
+  const r = masked('cat .env', { response: { ...said(`GITHUB_TOKEN=${GH}\n`), isImage: true } });
+  assert.deepStrictEqual([r.status, r.out, r.rows.length], [0, '', 0]);
+});
+
+test('swap 1: the mask row names count, sources, basenames and ms - never a value', () => {
+  const r = masked('cat .env', { response: said(`GITHUB_TOKEN=${GH}\nDB_PASSWORD=${PW}\nSTORE=${STORE_VAL}\n`), payload: { tool_use_id: 'toolu_mask1', agent_id: 'seat-7' } });
+  assert.strictEqual(r.rows.length, 1);
+  const [row] = r.rows;
+  assert.deepStrictEqual([row.mode, row.hook, row.tool, row.tool_use_id, row.agent, row.detail.count], ['mask', 'guard-secret-value.js', 'Bash', 'toolu_mask1', 'seat-7', 3]);
+  assert.deepStrictEqual([...row.detail.sources].sort(), ['named', 'store']);
+  assert.ok(row.detail.files.includes('.env') && row.detail.files.every((f) => !/[\\/]/.test(f)), 'basenames only');
+  assert.strictEqual(typeof row.detail.ms, 'number');
+  assert.strictEqual(row.host, undefined, 'no host on a Claude Code row');
+  noPlanted(JSON.stringify(r.rows), 'the mask row');
+});
+
+test('swap 1: the find and carried-script judges are gone', () => {
+  const fx = maskFixture();
+  fx.w('run.sh', 'cat .env\n');
+  const pre = (command) => {
+    const session = `mask-${++maskSeq}`;
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: session, cwd: fx.project }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: fx.project, HOME: fx.home, USERPROFILE: fx.home, ALFRED_CODE_DOCS_PATH: '' } });
+    let rows = '';
+    try { rows = fs.readFileSync(path.join(fx.project, '.alfred', 'statistics', 'hook-blocks', `${session}.jsonl`), 'utf8'); } catch { /* no row */ }
+    return r.stderr + rows;
+  };
+  for (const command of ["find . -name '.env' -exec cat {} +", "find . -name '.env' | xargs cat", 'ls -a backend | xargs -I{} cat backend/{}', 'bash run.sh', '. ./run.sh'])
+    assert.doesNotMatch(pre(command), /find-reader|find-reader-unjudged|carried-script/, command);
 });

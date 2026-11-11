@@ -395,6 +395,14 @@
                   "update-preflight"
                 ],
                 "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
+                ],
+                "timeout": 10
               }
             ]
           }
@@ -473,6 +481,21 @@
                 "command": "node",
                 "args": [
                   "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"
+                ],
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostToolUseFailure": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
                 ],
                 "timeout": 10
               }
